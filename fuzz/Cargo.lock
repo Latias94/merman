@@ -1263,6 +1263,7 @@ dependencies = [
  "rustc-hash",
  "ryu-js",
  "serde_json",
+ "svgtypes",
  "unicode-segmentation",
 ]
 

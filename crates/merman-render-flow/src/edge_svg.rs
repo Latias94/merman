@@ -18,6 +18,15 @@ use merman_render_core::{
 
 use crate::{document::FlowchartDocumentId, source_style::FlowchartStyleDeclaration};
 
+mod step;
+mod terminal;
+
+pub use step::FlowchartSteps;
+pub use terminal::{
+    FlowchartEdgeSvgContext, FlowchartEdgeSvgGeometry, FlowchartEdgeSvgScratch,
+    FlowchartEdgeTerminal,
+};
+
 const PATH_START: &str = r#"<path d=""#;
 const ID_ATTRIBUTE: &str = r#"" id=""#;
 const CLASS_ATTRIBUTE: &str = r#"" class=""#;
@@ -72,14 +81,14 @@ pub fn flowchart_neo_mask_uses_dash_pairs(edge: &FlowEdge) -> bool {
 
 /// Reusable storage for Mermaid's serialized edge point attribute.
 #[derive(Default)]
-pub struct FlowchartEdgeDataPoints {
+struct FlowchartEdgeDataPoints {
     json: String,
     base64: String,
     number: ryu_js::Buffer,
 }
 
 impl FlowchartEdgeDataPoints {
-    pub fn encode(&mut self, points: &[LayoutPoint]) -> &str {
+    fn encode(&mut self, points: &[LayoutPoint]) -> &str {
         self.json.clear();
         json_stringify_points_into(&mut self.json, points, &mut self.number);
         self.base64.clear();
@@ -89,24 +98,24 @@ impl FlowchartEdgeDataPoints {
     }
 }
 
-pub struct FlowchartEdgeSvgEmission<'a> {
-    pub edge_dom_id: FlowchartDocumentId<'a>,
-    pub edge: &'a FlowEdge,
-    pub d: &'a str,
-    pub data_points_b64: &'a str,
-    pub data_look: DiagramLook<'a>,
-    pub hand_drawn: bool,
-    pub class_declarations: &'a [Arc<FlowchartStyleDeclaration>],
-    pub class_attr: &'a str,
-    pub marker_attrs: &'a str,
-    pub default_edge_style: &'a [String],
-    pub adaptive_ink: Option<&'static str>,
-    pub neo_edge_mask: Option<FlowchartNeoEdgeMaskPlan>,
-    pub line_hop_applied: bool,
+struct FlowchartEdgeSvgEmission<'a> {
+    edge_dom_id: FlowchartDocumentId<'a>,
+    edge: &'a FlowEdge,
+    d: &'a str,
+    data_points_b64: &'a str,
+    data_look: DiagramLook<'a>,
+    hand_drawn: bool,
+    class_declarations: &'a [Arc<FlowchartStyleDeclaration>],
+    class_attr: &'a str,
+    marker_attrs: &'a str,
+    default_edge_style: &'a [String],
+    adaptive_ink: Option<&'static str>,
+    neo_edge_mask: Option<FlowchartNeoEdgeMaskPlan>,
+    line_hop_applied: bool,
 }
 
 impl FlowchartEdgeSvgEmission<'_> {
-    pub fn append_to(
+    fn append_to(
         &self,
         out: &mut impl SvgOutput,
         source_style_svg_bytes: usize,
@@ -281,7 +290,7 @@ fn write_style_joined(
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct FlowchartNeoEdgeMaskPlan {
+struct FlowchartNeoEdgeMaskPlan {
     start_offset: f64,
     middle_length: f64,
     end_offset: f64,
@@ -290,7 +299,7 @@ pub struct FlowchartNeoEdgeMaskPlan {
 }
 
 impl FlowchartNeoEdgeMaskPlan {
-    pub fn prepare(
+    fn prepare(
         path_length: f64,
         edge: &FlowEdge,
         line_hop_applied: bool,
@@ -335,7 +344,7 @@ impl FlowchartNeoEdgeMaskPlan {
         })
     }
 
-    pub const fn serialized_bytes(self) -> usize {
+    const fn serialized_bytes(self) -> usize {
         self.serialized_bytes
     }
 

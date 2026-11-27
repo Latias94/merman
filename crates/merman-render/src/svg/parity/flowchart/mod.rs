@@ -10,7 +10,6 @@ mod cluster_geometry;
     feature = "layout-dagre"
 ))]
 mod compact;
-mod css;
 mod defs;
 mod edge;
 mod edge_fill;

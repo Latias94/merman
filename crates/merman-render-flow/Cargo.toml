@@ -32,7 +32,9 @@ diagram-agentflow = [
     "dep:rustc-hash",
     "dep:ryu-js",
     "dep:serde_json",
+    "dep:svgtypes",
     "dep:unicode-segmentation",
+    "merman-render-core/svg-animation",
     "merman-render-core/svg-edge-parity",
     "merman-model/diagram-agentflow",
     "merman-render-core/css-style",
@@ -58,7 +60,9 @@ diagram-flowchart = [
     "dep:rustc-hash",
     "dep:ryu-js",
     "dep:serde_json",
+    "dep:svgtypes",
     "dep:unicode-segmentation",
+    "merman-render-core/svg-animation",
     "merman-render-core/svg-edge-parity",
     "merman-model/diagram-flowchart",
     "merman-render-core/css-style",
@@ -84,7 +88,9 @@ diagram-swimlane = [
     "dep:rustc-hash",
     "dep:ryu-js",
     "dep:serde_json",
+    "dep:svgtypes",
     "dep:unicode-segmentation",
+    "merman-render-core/svg-animation",
     "merman-render-core/svg-edge-parity",
     "merman-model/diagram-swimlane",
     "merman-render-core/css-style",
@@ -116,6 +122,7 @@ roughr = { workspace = true, optional = true }
 rustc-hash = { workspace = true, optional = true }
 ryu-js = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
+svgtypes = { workspace = true, optional = true }
 unicode-segmentation = { workspace = true, optional = true }
 
 [dev-dependencies]

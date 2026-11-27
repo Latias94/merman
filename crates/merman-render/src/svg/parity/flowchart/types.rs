@@ -112,7 +112,7 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) uses_elk_adapter_dom: bool,
     pub(in crate::svg::parity::flowchart) class_defs: &'a IndexMap<String, Vec<String>>,
     pub(in crate::svg::parity::flowchart) edge_style_plan: &'a FlowchartEdgeStylePlan,
-    pub(in crate::svg::parity::flowchart) steps: super::step::FlowchartSteps,
+    pub(in crate::svg::parity::flowchart) steps: merman_render_flow::edge_svg::FlowchartSteps,
     pub(in crate::svg::parity::flowchart) document_ids:
         std::cell::OnceCell<super::document_ids::FlowchartDocumentIds>,
     pub(in crate::svg::parity::flowchart) layout: &'a FlowchartLayout,
@@ -251,10 +251,8 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRenderDetails {
 
 #[derive(Default)]
 pub(in crate::svg::parity::flowchart) struct FlowchartEdgeDataPointsScratch {
-    pub(in crate::svg::parity::flowchart) data_points:
-        merman_render_flow::edge_svg::FlowchartEdgeDataPoints,
-    pub(in crate::svg::parity::flowchart) edge_class_attr: String,
-    pub(in crate::svg::parity::flowchart) edge_marker_attrs: String,
+    pub(in crate::svg::parity::flowchart) terminal:
+        merman_render_flow::edge_svg::FlowchartEdgeSvgScratch,
     pub(in crate::svg::parity::flowchart) tmp_points_a: Vec<crate::model::LayoutPoint>,
     pub(in crate::svg::parity::flowchart) tmp_points_b: Vec<crate::model::LayoutPoint>,
     pub(in crate::svg::parity::flowchart) tmp_points_c: Vec<crate::model::LayoutPoint>,

@@ -257,7 +257,7 @@ pub(super) fn with_flowchart_paint_context<T>(
         uses_elk_adapter_dom: layout.route_contract.is_elk_parity(),
         class_defs: &model.class_defs,
         edge_style_plan,
-        steps: super::step::FlowchartSteps::new(model, effective_config),
+        steps: merman_render_flow::edge_svg::FlowchartSteps::new(model, effective_config),
         document_ids: std::cell::OnceCell::new(),
         layout,
         swimlane_layout,
