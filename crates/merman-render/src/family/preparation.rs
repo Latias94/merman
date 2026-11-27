@@ -149,36 +149,10 @@ fn prepare_mindmap_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    use crate::mindmap::{MindmapAppearance, MindmapCssBinding, MindmapNativeStyle};
-
-    let appearance = match execution.native_family_theme() {
-        Some(theme) => MindmapAppearance::Native(MindmapNativeStyle::resolve(theme)),
-        None => {
-            execution
-                .family
-                .session()
-                .checkpoint(merman_model::OperationPhase::Layout)?;
-            let binding = MindmapCssBinding::new(&meta.effective_config);
-            execution
-                .family
-                .session()
-                .checkpoint(merman_model::OperationPhase::Layout)?;
-            MindmapAppearance::Mermaid(Box::new(binding))
-        }
-    };
-    let (layout, prepared_labels) = crate::mindmap::layout_mindmap_diagram_typed_with_work_meter(
-        model,
-        &meta.effective_config,
-        appearance.text_style(),
-        execution,
-    )?;
-    Ok(BuiltinFamilyArtifact::Mindmap(Box::new(
-        MindmapFamilyArtifact {
-            pair: FamilyPair::new(model, layout),
-            appearance,
-            prepared_labels,
-        },
-    )))
+    let prepared = crate::mindmap::prepare(model, &meta.effective_config, execution)?;
+    Ok(BuiltinFamilyArtifact::Mindmap(Box::new(FamilyPair::new(
+        model, prepared,
+    ))))
 }
 
 #[inline(never)]
@@ -210,27 +184,14 @@ fn prepare_block_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme();
-    let mut typography_theme = match native {
-        Some(theme) => crate::block::BlockTypographyThemePlan::resolve_native(
-            theme,
-            execution.family.session().canvas_background(),
-            meta.effective_config.as_value(),
-        ),
-        None => crate::block::BlockTypographyThemePlan::resolve(meta.effective_config.as_value())?,
-    };
-    typography_theme.prepare_class_definitions(&model.class_defs);
-    let (mut layout, prepared_labels) = crate::block::layout_block_diagram_typed_with_text_style(
+    let native = execution
+        .native_family_theme()
+        .map(|theme| (theme, execution.family.session().canvas_background()));
+    let (mut layout, prepared_labels, typography_theme) = crate::block::prepare_block_layout(
         model,
-        typography_theme.padding(),
-        crate::block::BlockShapeSettings::resolve(
-            meta.effective_config.as_value(),
-            typography_theme.native(),
-        ),
-        typography_theme.css_binding().html_labels,
-        typography_theme.text_style().clone(),
-        execution.text_measurer(),
         &meta.effective_config,
+        native,
+        execution.text_measurer(),
         &execution.work_meter(),
     )?;
     let edge_routes = crate::block::BlockEdgeRoutes::prepare(
@@ -370,7 +331,7 @@ fn prepare_state_family<'parsed>(
     let style = crate::state::StateStylePlan::resolve(
         model,
         &meta.effective_config,
-        execution.layout_backend(),
+        execution.layout_backend() == GraphLayoutBackend::Dagre,
         execution.native_family_theme(),
         execution.family.session().canvas_background(),
     );
@@ -754,7 +715,7 @@ fn prepare_er_family<'parsed>(
         theme.zip(native),
         relationship_html_labels,
         model,
-        &layout,
+        layout.svg_layout(),
         execution.work_meter_ref(),
     )?;
     Ok(BuiltinFamilyArtifact::Er(Box::new(ErFamilyArtifact {
@@ -837,16 +798,10 @@ fn prepare_tree_view_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    use crate::tree_view::TreeViewCssBinding;
-
-    let theme = match execution.native_family_theme() {
-        Some(theme) => TreeViewCssBinding::for_native(&meta.effective_config, theme),
-        None => TreeViewCssBinding::from_config(meta.effective_config.as_value()),
-    };
-    let layout = crate::tree_view::layout_tree_view_diagram_typed(
+    let (layout, theme) = crate::tree_view::prepare_tree_view_diagram(
         model,
-        meta.effective_config.as_value(),
-        &theme,
+        &meta.effective_config,
+        execution.native_family_theme(),
         execution.text_measurer(),
     )?;
     Ok(BuiltinFamilyArtifact::TreeView(Box::new(
@@ -985,32 +940,14 @@ fn prepare_zenuml_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    use crate::zenuml::ZenumlSourceStyle;
-
-    let background = execution.family.session().canvas_background();
-    let mut style = if let Some(native) = execution.native_family_theme() {
-        ZenumlSourceStyle::for_native(native, background)
-    } else {
-        let style = ZenumlSourceStyle::new(meta.effective_config.as_value());
-        if background.is_some() {
-            style.with_canvas_replacement()
-        } else {
-            style
-        }
-    };
-    let measurer = execution.text_measurer();
-    let mut layout =
-        crate::zenuml::layout_zenuml_diagram_typed(model, &style.typography, measurer)?;
-    if let Some(native) = style.native.as_mut() {
-        if let Some(title) = crate::zenuml::resolve_zenuml_title(model, meta.title.as_deref()) {
-            let title = crate::zenuml::resolve_zenuml_emojis_in_text(title);
-            let title_style = style.typography.native_title_style();
-            layout.width = layout
-                .width
-                .max(measurer.measure(&title, &title_style).width);
-        }
-        native.measure_numbers(&mut layout, &style.typography, measurer);
-    }
+    let (layout, style) = crate::zenuml::prepare_zenuml_diagram(
+        model,
+        &meta.effective_config,
+        meta.title.as_deref(),
+        execution.native_family_theme(),
+        execution.family.session().canvas_background(),
+        execution.text_measurer(),
+    )?;
     Ok(BuiltinFamilyArtifact::Zenuml(Box::new(
         ZenumlFamilyArtifact {
             pair: FamilyPair::new(model, layout),
@@ -1026,22 +963,17 @@ fn prepare_eventmodeling_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme();
-    let style = crate::eventmodeling::EventModelingStyle::resolve(&meta.effective_config, native);
-    let (layout, prepared_labels) =
-        crate::eventmodeling::prepare_eventmodeling_diagram_typed_with_binding(
-            model,
-            style.css_binding(),
-            style.native(),
-            &meta.effective_config,
-            execution.text_measurer(),
-            &execution.work_meter(),
-        )?;
+    let (layout, prepared) = crate::eventmodeling::prepare_eventmodeling_diagram(
+        model,
+        &meta.effective_config,
+        execution.native_family_theme(),
+        execution.text_measurer(),
+        &execution.work_meter(),
+    )?;
     Ok(BuiltinFamilyArtifact::EventModeling(Box::new(
         EventModelingFamilyArtifact {
             pair: FamilyPair::new(model, layout),
-            style,
-            prepared_labels,
+            prepared,
         },
     )))
 }
@@ -1196,15 +1128,16 @@ pub(super) fn prepare_non_class_render<'parsed>(
         #[cfg(feature = "diagram-kanban")]
         RenderSemanticModel::Kanban(model) => {
             BuiltinFamilyArtifact::Kanban(prepare_pair(model, |model| {
-                crate::kanban::prepare_kanban_diagram_typed_with_work_meter(
+                let fit_width = (options.adaptation == crate::LayoutAdaptation::FitWidth)
+                    .then_some(options.container_width);
+                crate::kanban::prepare_kanban_diagram(
                     model,
                     &meta.effective_config,
                     execution.native_family_theme(),
                     execution.text_measurer(),
-                    execution.work_meter_ref(),
-                    options,
-                )?
-                .with_retained_text_accounting(&execution.work_meter())
+                    execution.family.session().work_meter(),
+                    fit_width,
+                )
             })?)
         }
         #[cfg(feature = "diagram-gantt")]

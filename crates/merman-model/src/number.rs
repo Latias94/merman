@@ -94,6 +94,31 @@ pub mod serde_number_list {
     }
 }
 
+/// Converts Mermaid's scalar number text using JavaScript whitespace and radix prefixes.
+#[doc(hidden)]
+pub fn parse_js_number(input: &str) -> Option<f64> {
+    let input = input.trim_matches(crate::text::is_ecmascript_whitespace);
+    if input.is_empty() {
+        return Some(0.0);
+    }
+    let unsigned = input.strip_prefix(['+', '-']).unwrap_or(input);
+    if (unsigned.eq_ignore_ascii_case("inf") || unsigned.eq_ignore_ascii_case("infinity"))
+        && !matches!(input, "Infinity" | "+Infinity" | "-Infinity")
+    {
+        return None;
+    }
+    for (prefixes, radix) in [(["0x", "0X"], 16_u32), (["0o", "0O"], 8), (["0b", "0B"], 2)] {
+        let Some(digits) = prefixes
+            .iter()
+            .find_map(|prefix| input.strip_prefix(prefix))
+        else {
+            continue;
+        };
+        return parse_power_of_two_digits(digits, radix);
+    }
+    input.parse().ok()
+}
+
 /// Converts unsigned base-2, base-8, or base-16 digits with one binary64 rounding step.
 ///
 /// The caller owns prefixes, signs, and token boundaries. Empty or invalid digits are rejected;

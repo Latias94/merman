@@ -31,8 +31,7 @@ pub fn prepare_gitgraph_diagram(
         Some(theme) => GitGraphTypographyThemePlan::for_native(config, theme),
         None => GitGraphTypographyThemePlan::resolve(config),
     };
-    let layout =
-        layout::layout_gitgraph_diagram_typed(model, config.as_value(), &typography, measurer)?;
+    let layout = layout::layout_gitgraph_diagram_typed(model, config, &typography, measurer)?;
     Ok((layout, typography))
 }
 

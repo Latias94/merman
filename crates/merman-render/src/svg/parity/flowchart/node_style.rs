@@ -193,6 +193,7 @@ impl PreparedNodeTerminal {
     )]
     pub(super) fn prepare(
         class_defs: &crate::flowchart::FlowchartClassDefinitions<'_>,
+        node_classes: &mut super::style::FlowchartNodeClassStyles<'_>,
         (classes, inline_styles, include_default_class): (&[String], &[String], bool),
         terminal_shape: Option<&str>,
         structural: &crate::flowchart::FlowchartStructuralLabelTypography,
@@ -214,11 +215,7 @@ impl PreparedNodeTerminal {
         let Some(source_text_style) = source_text_style else {
             return Ok(None);
         };
-        let source = if include_default_class {
-            flowchart_compile_node_styles(class_defs.source, classes, inline_styles, &[])
-        } else {
-            flowchart_compile_styles(class_defs.source, classes, inline_styles, &[])
-        };
+        let source = node_classes.compile(classes, inline_styles, include_default_class);
         let mut selection = PreparedNodeSelection::prepare(inputs, &source);
         if let Some(native) = inputs.native {
             let shape = terminal_shape.and_then(FlowchartShape::resolve);

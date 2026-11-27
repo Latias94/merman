@@ -1,6 +1,9 @@
+use merman_render_flow::document::{
+    FlowchartDocumentScope, FlowchartSvgDocumentRequest, prepare_flowchart_svg_document,
+};
+use merman_render_flow::stylesheet::{FlowchartStylesheetRequest, SwimlaneStylesheet};
+
 use super::defs::{FlowchartMarkerEmissionPlan, prepare_flowchart_defs};
-use super::document::{FlowchartSvgDocumentRequest, prepare_flowchart_svg_document};
-use super::document_ids::FlowchartDocumentIds;
 use super::edge_fill::FlowchartEdgeFillPlan;
 use super::render_config::FlowchartRenderConfig;
 use super::viewbox::{
@@ -88,6 +91,7 @@ pub(super) fn render_flowchart_svg_model(
             let mut timings = timing::RenderTimings::default();
             let total_timer = render_timing.start();
             let document_ids = ctx.document_ids();
+            let document_scope = document_ids.scope();
             let diagram_id = ctx.diagram_id;
             let font_family = &render_config.font_family;
             let font_size = render_config.font_size;
@@ -195,10 +199,7 @@ pub(super) fn render_flowchart_svg_model(
             );
             let document = prepare_flowchart_svg_document(FlowchartSvgDocumentRequest {
                 root_viewport: options.root_viewport(options.family_id(), diagram_id),
-                diagram_id,
-                diagram_type,
-                model,
-                document_ids,
+                document_scope,
                 use_max_width,
                 diagram_padding,
                 source_paint_bounds,
@@ -206,169 +207,97 @@ pub(super) fn render_flowchart_svg_model(
                 bbox_min_y,
                 bbox_max_x,
                 bbox_max_y,
+                acc_title: model.acc_title.as_deref(),
+                acc_descr: model.acc_descr.as_deref(),
+                diagram_title: diagram_title.as_deref(),
+                title_anchor_x,
+                title_top_margin,
             });
 
             drop(_g_viewbox);
             let _g_render_svg = render_timing.section(&mut timings.render_svg);
 
-            let mut out = BoundedSvgOutput::new(options.work_meter());
-
-            let root_document = document.push_root_open(&mut out)?;
-            document.push_accessibility_metadata(&mut out);
-            out.push_str("<style>");
-            out.checkpoint()?;
-            let compatibility = &prepared_theme.compatibility;
-            let defer_palette = options.generation == crate::svg::SvgGeneration::Static
-                && ctx.icon_registry.is_none()
-                && super::agentflow::can_defer_palette(ctx)?;
-            let palette_offset = {
-                let mut css_out = super::super::output::XmlTextOutput::new(&mut out);
-                let flowchart_palette_offset = write_flowchart_css(
-                    &mut css_out,
+            let swimlane = swimlane_layout.map(|_| match ctx.native {
+                Some(native) => SwimlaneStylesheet::Native {
+                    container: native.container,
+                    guide: native.guide,
+                    emphasis: native.emphasis,
+                    on_emphasis: native.on_emphasis,
+                },
+                None => SwimlaneStylesheet::Mermaid,
+            });
+            let document = document.write(
+                options.work_meter(),
+                FlowchartStylesheetRequest {
                     diagram_id,
                     diagram_type,
-                    document_ids.drop_shadow(),
-                    document_ids.drop_shadow_small(),
-                    document_ids.root_gradient(),
-                    compatibility,
-                    ctx.native.map(|native| &native.title_style),
-                    &ctx.palette,
+                    drop_shadow_id: document_scope.drop_shadow(),
+                    drop_shadow_small_id: document_scope.drop_shadow_small(),
+                    gradient_id: document_scope.root_gradient(),
+                    theme: super::css::stylesheet_theme(&prepared_theme.compatibility),
+                    native_title: ctx.native.map(|native| &native.title_style),
+                    palette: &ctx.palette,
                     font_family,
                     font_size,
-                    &model.class_defs,
-                    defer_palette,
-                )?;
-                let palette_offset = if diagram_type == "agentflow" {
-                    super::agentflow::write_css(
-                        &mut css_out,
-                        diagram_id,
-                        &ctx.palette,
-                        defer_palette,
-                    )?
-                } else {
-                    flowchart_palette_offset
-                };
-                if swimlane_layout.is_some() {
-                    super::swimlane::write_swimlane_css(
-                        &mut css_out,
-                        diagram_id,
-                        &compatibility.cluster_border,
-                        ctx.native,
-                    );
-                }
-                palette_offset
-            };
-            out.push_str("</style>");
-            out.checkpoint()?;
-            let body_start = out.len();
-            let defs = prepare_flowchart_defs(
-                document_ids.marker_scope(),
-                diagram_type,
-                ctx,
-                &marker_plan,
-            );
-
-            let mut root_session = FlowchartRootRenderSession {
-                timing: render_timing,
-                details: &mut detail,
-                node_label_div_style: String::new(),
-                edge_cache: &mut edge_path_cache,
-                hierarchy_plan,
-                marker_plan: &marker_plan,
-                edge_fills: &edge_fills,
-                edge_labels: &mut edge_labels,
-                step_badges: &step_badges,
-            };
-            if layout.route_contract.is_elk_parity() {
-                out.push_str("<g>");
-                defs.push_base_markers(&mut out)?;
-                out.checkpoint()?;
-                defs.push_extra_markers(&mut out)?;
-                out.checkpoint()?;
-                render_flowchart_elk_root_groups(&mut out, ctx, &mut root_session)?;
-                out.push_str("</g>");
-                // The shadow filters are siblings of Mermaid's marker/root wrapper,
-                // rather than children of the wrapper that owns the painted graph.
-                push_flowchart_shadow_defs(
-                    &mut out,
-                    document_ids,
-                    &prepared_theme.compatibility.look_defs,
-                );
-                out.checkpoint()?;
-            } else {
-                push_flowchart_shadow_defs(
-                    &mut out,
-                    document_ids,
-                    &prepared_theme.compatibility.look_defs,
-                );
-                out.checkpoint()?;
-                out.push_str("<g>");
-                defs.push_base_markers(&mut out)?;
-                render_flowchart_root(&mut out, ctx, None, 0.0, 0.0, &mut root_session)?;
-
-                defs.push_extra_markers(&mut out)?;
-                out.push_str("</g>");
-                out.checkpoint()?;
-            }
-            push_flowchart_gradient(
-                &mut out,
-                document_ids,
+                    class_defs: &model.class_defs,
+                    swimlane,
+                    allow_deferred_palette: options.generation == crate::svg::SvgGeneration::Static
+                        && ctx.icon_registry.is_none(),
+                },
                 &prepared_theme.compatibility.look_defs,
-            );
-            out.checkpoint()?;
-            if let Some(title) = diagram_title.as_deref() {
-                let title_x = title_anchor_x;
-                let title_y = -title_top_margin;
-                let _ = write!(
-                    &mut out,
-                    r#"<text text-anchor="middle" x="{}" y="{}" class="{}">{}</text>"#,
-                    fmt(title_x),
-                    fmt(title_y),
-                    title_css_class(diagram_type),
-                    escape_xml(title)
-                );
-            }
-            ctx.steps.write_style(&mut out, diagram_id);
-            out.push_str("</svg>\n");
-            out.checkpoint()?;
+                |out| {
+                    let defs = prepare_flowchart_defs(
+                        document_ids.marker_scope(),
+                        diagram_type,
+                        ctx,
+                        &marker_plan,
+                    );
 
-            if let Some(offset) = palette_offset {
-                let slots = super::agentflow::emitted_palette_slots(
-                    out.as_str(),
-                    body_start,
-                    ctx.palette.color_count(),
-                    ctx,
-                )?;
-                if slots.as_ref().is_none_or(|slots| !slots.is_empty()) {
-                    out.write_deferred_at(offset, |out| {
-                        let mut css_out = super::super::output::XmlTextOutput::new(out);
-                        if diagram_type == "agentflow" {
-                            super::agentflow::write_agentflow_container_css(
-                                &mut css_out,
-                                diagram_id,
-                                &ctx.palette,
-                                slots.as_ref(),
-                            )
-                        } else {
-                            let id = css_selector_diagram_id(diagram_id);
-                            match slots {
-                                Some(slots) => super::agentflow::write_flowchart_container_css(
-                                    &mut css_out,
-                                    id,
-                                    &ctx.palette,
-                                    slots,
-                                ),
-                                None => super::agentflow::write_flowchart_container_css(
-                                    &mut css_out,
-                                    id,
-                                    &ctx.palette,
-                                    0..ctx.palette.color_count(),
-                                ),
-                            }
-                        }
-                    })?;
-                }
-            }
+                    let mut root_session = FlowchartRootRenderSession {
+                        timing: render_timing,
+                        details: &mut detail,
+                        node_label_div_style: String::new(),
+                        edge_cache: &mut edge_path_cache,
+                        hierarchy_plan,
+                        marker_plan: &marker_plan,
+                        edge_fills: &edge_fills,
+                        edge_labels: &mut edge_labels,
+                        step_badges: &step_badges,
+                    };
+                    if layout.route_contract.is_elk_parity() {
+                        out.push_str("<g>");
+                        defs.push_base_markers(out)?;
+                        out.checkpoint()?;
+                        defs.push_extra_markers(out)?;
+                        out.checkpoint()?;
+                        render_flowchart_elk_root_groups(out, ctx, &mut root_session)?;
+                        out.push_str("</g>");
+                        // The shadow filters are siblings of Mermaid's marker/root wrapper,
+                        // rather than children of the wrapper that owns the painted graph.
+                        push_flowchart_shadow_defs(
+                            out,
+                            document_scope,
+                            &prepared_theme.compatibility.look_defs,
+                        );
+                        out.checkpoint()?;
+                    } else {
+                        push_flowchart_shadow_defs(
+                            out,
+                            document_scope,
+                            &prepared_theme.compatibility.look_defs,
+                        );
+                        out.checkpoint()?;
+                        out.push_str("<g>");
+                        defs.push_base_markers(out)?;
+                        render_flowchart_root(out, ctx, None, 0.0, 0.0, &mut root_session)?;
+
+                        defs.push_extra_markers(out)?;
+                        out.push_str("</g>");
+                        out.checkpoint()?;
+                    }
+                    Ok(ctx.steps.emitted())
+                },
+            )?;
 
             drop(_g_render_svg);
             timings.total = total_timer
@@ -405,7 +334,7 @@ pub(super) fn render_flowchart_svg_model(
                     detail.nested_roots,
                 );
             }
-            root_document.complete(out.finish()?)
+            document.finish()
         },
     )
 }
@@ -519,7 +448,7 @@ mod tests {
 
 fn push_flowchart_shadow_defs(
     out: &mut impl crate::svg::parity::SvgOutput,
-    document_ids: &FlowchartDocumentIds,
+    document_scope: &FlowchartDocumentScope,
     prepared: &crate::svg::PreparedLookDefs,
 ) {
     let flood_color = prepared.flood_color();
@@ -527,32 +456,13 @@ fn push_flowchart_shadow_defs(
     let _ = write!(
         out,
         r#"<defs><filter id="{}" height="130%" width="130%"><feDropShadow dx="{offset}" dy="{offset}" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs><defs><filter id="{}" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
-        document_ids.drop_shadow(),
+        document_scope.drop_shadow(),
         flood_color,
-        document_ids.drop_shadow_small(),
+        document_scope.drop_shadow_small(),
         flood_color
     );
 }
 
-fn push_flowchart_gradient(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    document_ids: &FlowchartDocumentIds,
-    prepared: &crate::svg::PreparedLookDefs,
-) {
-    let Some((gradient_start, gradient_stop)) = prepared.gradient() else {
-        return;
-    };
-
-    let gradient_start = escape_xml(gradient_start);
-    let gradient_stop = escape_xml(gradient_stop);
-    let _ = write!(
-        out,
-        r#"<linearGradient id="{}" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient>"#,
-        document_ids.root_gradient(),
-        gradient_start.as_str(),
-        gradient_stop.as_str()
-    );
-}
 #[cfg(all(test, feature = "diagram-flowchart"))]
 mod integration_tests {
     use super::super::render_input::prepare_flowchart_render_inputs;

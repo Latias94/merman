@@ -110,9 +110,11 @@ class LayoutCalibrationProcessContractsTest(unittest.TestCase):
     def test_timeout_terminates_descendants_that_close_output_pipes(self) -> None:
         self._assert_timeout_terminates_descendant(close_pipes=True)
 
-    def test_windows_reads_peak_working_set_after_target_releases_memory(self) -> None:
+    def test_windows_venv_runner_reads_target_peak_working_set_after_release(self) -> None:
         if sys.platform != "win32":
             self.skipTest("Windows only")
+        import venv
+
         allocation_bytes = 64 * 1024 * 1024
         target = (
             "import mmap\n"
@@ -121,11 +123,15 @@ class LayoutCalibrationProcessContractsTest(unittest.TestCase):
             "        memory[offset] = 1\n"
             "print('done')\n"
         )
-        result = calibration.run_managed_process(
-            [sys.executable, "-c", target],
-            cwd=calibration.ROOT,
-            timeout_seconds=10,
-        )
+        # Match production: a runner may use a venv, and the measured probe is a direct exe.
+        command = [sys._base_executable, "-c", target]
+        with tempfile.TemporaryDirectory() as directory:
+            venv.EnvBuilder(with_pip=False).create(directory)
+            runner = Path(directory) / "Scripts" / "python.exe"
+            with mock.patch.object(sys, "executable", str(runner)):
+                result = calibration.run_managed_process(
+                    command, cwd=calibration.ROOT, timeout_seconds=10
+                )
         self.assertEqual(result["returncode"], 0)
         self.assertFalse(result["timed_out"])
         self.assertEqual(result["stdout"].strip(), "done")

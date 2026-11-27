@@ -14,11 +14,14 @@ use crate::{
     EditorSemanticSymbol,
 };
 use merman_core_structured::ishikawa::{
-    IshikawaSyntax, IshikawaSyntaxError, IshikawaSyntaxNode, scan_ishikawa_lines_controlled,
+    IshikawaSyntax, IshikawaSyntaxError, IshikawaSyntaxNode, build_ishikawa_model_controlled,
+    scan_ishikawa_lines_controlled,
 };
+pub(crate) use merman_model::families::ishikawa::IshikawaDiagramModel;
+#[cfg(test)]
+pub(crate) use merman_model::families::ishikawa::IshikawaNode;
 #[cfg(all(test, feature = "compat-json"))]
 use merman_model::families::ishikawa::project_root_controlled;
-pub(crate) use merman_model::families::ishikawa::{IshikawaDiagramModel, IshikawaNode};
 #[cfg(feature = "compat-json")]
 use serde_json::Value;
 #[cfg(test)]
@@ -70,7 +73,7 @@ impl IshikawaSemanticSource {
             control.checkpoint()?;
             node.text = sanitize_text(&node.text, config);
         }
-        nodes_to_semantic_model_controlled(self.nodes, control)
+        build_ishikawa_model_controlled(self.nodes, control)
     }
 }
 
@@ -344,50 +347,6 @@ fn push_ishikawa_node_fact(
     ));
 }
 
-fn nodes_to_semantic_model_controlled(
-    nodes: Vec<IshikawaSyntaxNode>,
-    control: &crate::OperationControl,
-) -> crate::OperationControlResult<IshikawaDiagramModel> {
-    let mut iter = nodes.into_iter();
-    let Some(root) = iter.next() else {
-        return Ok(IshikawaDiagramModel::default());
-    };
-    let mut arena = vec![IshikawaNode {
-        text: root.text,
-        children: Vec::new(),
-    }];
-    let mut stack = vec![(0usize, 0usize)];
-    let mut base_level = None;
-    for flat in iter {
-        control.checkpoint()?;
-        let base = *base_level.get_or_insert(flat.raw_level);
-        let level = flat.raw_level.saturating_sub(base) + 1;
-        while stack.len() > 1
-            && stack
-                .last()
-                .is_some_and(|(_, top_level)| *top_level >= level)
-        {
-            control.checkpoint()?;
-            stack.pop();
-        }
-        let parent = stack.last().map(|(id, _)| *id).unwrap_or(0);
-        let id = arena.len();
-        arena.push(IshikawaNode {
-            text: flat.text,
-            children: Vec::new(),
-        });
-        arena[parent].children.push(id);
-        stack.push((id, level));
-    }
-    control.checkpoint()?;
-    Ok(IshikawaDiagramModel {
-        title: Some(arena[0].text.clone()),
-        root: Some(0),
-        nodes: arena,
-        ..Default::default()
-    })
-}
-
 #[cfg(all(test, feature = "compat-json"))]
 mod tests {
     use super::*;
@@ -450,7 +409,7 @@ mod tests {
 
     #[test]
     fn ishikawa_deep_clone_drop_export_child() {
-        crate::diagrams::treemap::tests::run_lifecycle_child(
+        crate::tree_lifecycle_test_support::run_lifecycle_child(
             "diagrams::ishikawa::tests::ishikawa_deep_clone_drop_export_child",
             || {
                 let source = deep_ishikawa_source(5_000);
@@ -466,7 +425,7 @@ mod tests {
                     ManagedSemanticJson::from(render_model_to_compat_json(model, &meta()).unwrap());
                 let mut output = Vec::new();
                 json.write_json(&mut output).unwrap();
-                crate::diagrams::treemap::tests::assert_in_progress_export_deadline(&json);
+                crate::tree_lifecycle_test_support::assert_in_progress_export_deadline(&json);
                 assert!(output.windows(9).any(|bytes| bytes == b"Node 4999"));
                 drop(json.clone());
                 drop(json);
@@ -487,7 +446,7 @@ mod tests {
     #[cfg(feature = "all-diagrams")]
     #[test]
     fn ishikawa_projection_cancels_after_deep_completed_subtree_child() {
-        crate::diagrams::treemap::tests::run_lifecycle_child(
+        crate::tree_lifecycle_test_support::run_lifecycle_child(
             "diagrams::ishikawa::tests::ishikawa_projection_cancels_after_deep_completed_subtree_child",
             || {
                 const DEPTH: usize = 3_000;

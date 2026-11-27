@@ -64,7 +64,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
             out.push_str(r#"<circle class="state-start" r="7" width="14" height="14""#);
             write_small_state_shadow_attr(
                 out,
-                ctx.document_ids().drop_shadow_small(),
+                ctx.document_ids().scope().drop_shadow_small(),
                 common.layout_node.width,
                 common.look,
                 ctx.compatibility.small_state_shadow,
@@ -89,7 +89,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
             out.push_str(r#"<g class="outer-path""#);
             write_small_state_shadow_attr(
                 out,
-                ctx.document_ids().drop_shadow_small(),
+                ctx.document_ids().scope().drop_shadow_small(),
                 common.layout_node.width,
                 common.look,
                 ctx.compatibility.small_state_shadow,

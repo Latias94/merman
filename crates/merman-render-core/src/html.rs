@@ -7,6 +7,17 @@ use merman_model::OperationPhase;
 
 use crate::resources::{OperationWorkError, OperationWorkMeter, ResourceLimitPhase};
 
+/// Let measured HTML labels paint glyph overhangs in browsers and static exports.
+pub const HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR: &str = r#" style="overflow: visible;""#;
+
+pub fn html_label_overflow_attr(uses_shoal: bool, width: f64, height: f64) -> &'static str {
+    if uses_shoal && width > 0.0 && height > 0.0 {
+        HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR
+    } else {
+        ""
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum HtmlOutputError {
     Limit { attempted: usize },

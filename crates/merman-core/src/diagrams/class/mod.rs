@@ -1,9 +1,3 @@
-pub(crate) use merman_model::families::class::{
-    LINE_DOTTED, LINE_SOLID, MERMAID_DOM_ID_PREFIX, REL_AGGREGATION, REL_COMPOSITION,
-    REL_DEPENDENCY, REL_EXTENSION, REL_LOLLIPOP, REL_NONE,
-};
-
-mod db;
 #[cfg(feature = "editor-facts")]
 mod editor;
 mod parse;

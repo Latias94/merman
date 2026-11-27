@@ -157,6 +157,7 @@ def terminate_process_group(
 
 
 def windows_peak_working_set(process: subprocess.Popen[str]) -> int:
+    """Read the lifetime peak working set of the process that Popen launched."""
     import ctypes
     from ctypes import wintypes
 
@@ -187,6 +188,8 @@ def run_windows_child(peak_path: Path, command: Sequence[str]) -> int:
     # The parent assigns this helper to its job before releasing the launch gate.
     if sys.stdin.buffer.read(1) != b"1":
         raise RuntimeError("Windows calibration launch gate was not released")
+    # Calibration passes the native probe as the direct target. This helper may
+    # have been started through a Python redirector, but owns the probe's handle.
     process = subprocess.Popen(command, stdin=subprocess.DEVNULL)
     returncode = process.wait()
     # PeakWorkingSetSize remains available after exit while this handle is open.

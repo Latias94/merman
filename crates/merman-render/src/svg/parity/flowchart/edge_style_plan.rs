@@ -91,7 +91,7 @@ impl FlowchartStructuralEdgePathStyle {
             .into_iter()
             .filter_map(|class| {
                 class_defs
-                    .source
+                    .source()
                     .get_index_of(class)
                     .map(|index| (index, class))
             })

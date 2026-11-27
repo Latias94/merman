@@ -1,0 +1,491 @@
+use super::super::metrics::architecture_estimate_service_bounds;
+use crate::architecture::{ArchitectureCytoscapeServiceBounds, ArchitectureDiagramLayout};
+use merman_model::families::architecture::{
+    ArchitectureDiagramModel, ArchitectureNodeKind, ArchitectureNodeModel,
+};
+use merman_render_core::{
+    Bounds, Result, root_svg,
+    svg_output::{BoundedSvgOutput, SvgOutput, timing::RenderTimings},
+    theme_svg::elevation,
+};
+
+use super::super::labels::{svg_service_title_bounds, wrap_svg_words_to_lines};
+#[cfg(feature = "layout-shoal")]
+use super::ArchitectureCanonicalSvg;
+use super::edges::{ArchitectureEdgeRenderContext, push_architecture_edges};
+use super::geometry::{GroupRect, GroupRectComputer, bounds_from_rect, extend_bounds};
+use super::icons::ArchitectureNodeResources;
+use super::nodes::{
+    ArchitectureNodeRenderContext, push_architecture_group_surfaces, push_architecture_groups,
+    push_architecture_services_and_junctions,
+};
+use super::root::{architecture_a11y_nodes, begin_architecture_document};
+use super::settings::ArchitectureRenderSettings;
+use super::viewport::{ArchitectureRootViewportContext, finalize_architecture_root_viewport};
+use super::{ArchitectureEmitCheckpoints, ArchitectureSvgContext};
+
+fn architecture_bounds_match_icon_rect(bounds: &Bounds, x: f64, y: f64, icon_size_px: f64) -> bool {
+    const EPSILON: f64 = 1e-6;
+    (bounds.min_x - x).abs() <= EPSILON
+        && (bounds.min_y - y).abs() <= EPSILON
+        && (bounds.max_x - (x + icon_size_px)).abs() <= EPSILON
+        && (bounds.max_y - (y + icon_size_px)).abs() <= EPSILON
+}
+
+fn architecture_cached_service_child_bounds<'a>(
+    service_bounds_by_id: &'a rustc_hash::FxHashMap<&str, &'a ArchitectureCytoscapeServiceBounds>,
+    service: &ArchitectureNodeModel,
+    x: f64,
+    y: f64,
+    icon_size_px: f64,
+) -> Option<&'a ArchitectureCytoscapeServiceBounds> {
+    let cached = service_bounds_by_id.get(service.id.as_str()).copied()?;
+    if cached.in_group.as_deref() != service.in_group.as_deref() {
+        return None;
+    }
+    if !architecture_bounds_match_icon_rect(&cached.body_bounds, x, y, icon_size_px) {
+        return None;
+    }
+    Some(cached)
+}
+
+struct ArchitectureDrawingBounds<'a> {
+    content_bounds: Option<Bounds>,
+    junction_bounds: rustc_hash::FxHashMap<&'a str, Bounds>,
+    group_rects: Vec<GroupRect<'a>>,
+}
+
+#[cfg(feature = "layout-shoal")]
+impl<'a> ArchitectureDrawingBounds<'a> {
+    fn from_shoal(
+        layout: &ArchitectureDiagramLayout,
+        model: &'a ArchitectureDiagramModel,
+        geometry: &dyn ArchitectureCanonicalSvg,
+    ) -> Self {
+        let group_rects = model
+            .groups
+            .iter()
+            .zip(0..geometry.group_count())
+            .map(|(model_group, ordinal)| {
+                let group = geometry.group(ordinal);
+                GroupRect {
+                    id: model_group.id.as_str(),
+                    parent: group
+                        .parent
+                        .map(|index| model.groups[index as usize].id.as_str()),
+                    x: group.x,
+                    y: group.y,
+                    w: group.width,
+                    h: group.height,
+                    icon: model_group.icon.as_deref(),
+                    title: model_group.title.as_deref(),
+                }
+            })
+            .collect();
+        Self {
+            content_bounds: layout.bounds.clone(),
+            junction_bounds: Default::default(),
+            group_rects,
+        }
+    }
+}
+
+fn architecture_legacy_bounds<'a>(
+    layout: &ArchitectureDiagramLayout,
+    model: &'a ArchitectureDiagramModel,
+    node_xy: &rustc_hash::FxHashMap<&'a str, (f64, f64)>,
+    settings: &ArchitectureRenderSettings,
+    text_measurer: &dyn merman_render_core::text::TextMeasurer,
+) -> ArchitectureDrawingBounds<'a> {
+    let icon_size_px = settings.icon_size_px;
+    let padding_px = settings.padding_px;
+    let arch_font_size_px = settings.arch_font_size_px;
+    let text_style = &settings.text_style;
+    let compound_text_style = &settings.compound_text_style;
+
+    // Mermaid Architecture uses `setupGraphViewbox()` which expands the viewBox based on the
+    // SVG's `getBBox()` plus `architecture.padding`. Reconstruct that effective bbox from the
+    // emitted geometry, cached Cytoscape bounds, and operation-owned text measurements.
+    let mut content_bounds: Option<Bounds> = None;
+
+    // Service/root text bounds use the exact tspan-height and middle-baseline operations. Compound
+    // sizing stays on the separate Cytoscape child-bbox phases cached by layout; the two DOM
+    // consumers intentionally do not share a vertical extent.
+
+    let mut cached_service_bounds_by_id: rustc_hash::FxHashMap<
+        &str,
+        &ArchitectureCytoscapeServiceBounds,
+    > = rustc_hash::FxHashMap::default();
+    cached_service_bounds_by_id.reserve(layout.cytoscape_service_bounds.len());
+    for bounds in &layout.cytoscape_service_bounds {
+        cached_service_bounds_by_id.insert(bounds.id.as_str(), bounds);
+    }
+
+    let mut service_bounds: rustc_hash::FxHashMap<&str, Bounds> = rustc_hash::FxHashMap::default();
+    for svc in model
+        .nodes
+        .iter()
+        .filter(|node| node.node_type == ArchitectureNodeKind::Service)
+    {
+        let (x, y) = node_xy.get(svc.id.as_str()).copied().unwrap_or((0.0, 0.0));
+        if svc.in_group.is_some()
+            && let Some(cached) = architecture_cached_service_child_bounds(
+                &cached_service_bounds_by_id,
+                svc,
+                x,
+                y,
+                icon_size_px,
+            )
+        {
+            service_bounds.insert(svc.id.as_str(), cached.union_bounds.clone());
+            extend_bounds(&mut content_bounds, cached.body_bounds.clone());
+            continue;
+        }
+
+        let estimate = architecture_estimate_service_bounds(
+            x,
+            y,
+            icon_size_px,
+            arch_font_size_px,
+            svc.title.as_deref(),
+            text_measurer,
+            compound_text_style,
+            |title| {
+                let lines =
+                    wrap_svg_words_to_lines(title, icon_size_px * 1.5, text_measurer, text_style);
+                svg_service_title_bounds(&lines, text_measurer, text_style)
+            },
+        );
+        let b_full = if svc.in_group.is_some() {
+            estimate
+                .cytoscape_group_child_contribution
+                .union_bounds
+                .clone()
+        } else {
+            estimate.svg_root_bounds.clone()
+        };
+        // Group rectangles (compound nodes) are sized by Cytoscape to include service labels, so
+        // extending the root `getBBox()` estimate with *in-group* label bounds can double-count
+        // and inflate the final `viewBox` / `max-width` in parity-root comparisons.
+        //
+        // Keep full label bounds for group sizing, but only union label extents into the root
+        // viewport bounds when the service is not inside a group.
+        service_bounds.insert(svc.id.as_str(), b_full.clone());
+        if svc.in_group.is_none() {
+            extend_bounds(&mut content_bounds, estimate.svg_root_bounds);
+        } else {
+            extend_bounds(&mut content_bounds, estimate.emitted_icon_bounds);
+        }
+    }
+
+    let mut junction_bounds: rustc_hash::FxHashMap<&str, Bounds> = rustc_hash::FxHashMap::default();
+    for junction in model
+        .nodes
+        .iter()
+        .filter(|node| node.node_type == ArchitectureNodeKind::Junction)
+    {
+        let (x, y) = node_xy
+            .get(junction.id.as_str())
+            .copied()
+            .unwrap_or((0.0, 0.0));
+        let b = bounds_from_rect(x, y, icon_size_px, icon_size_px);
+        junction_bounds.insert(junction.id.as_str(), b.clone());
+        extend_bounds(&mut content_bounds, b);
+    }
+
+    // Groups (outer rects, including nested groups).
+    let mut child_groups: rustc_hash::FxHashMap<&str, Vec<&str>> = rustc_hash::FxHashMap::default();
+    for g in &model.groups {
+        if let Some(parent) = g.in_group.as_deref() {
+            child_groups.entry(parent).or_default().push(g.id.as_str());
+        }
+    }
+    for v in child_groups.values_mut() {
+        v.sort_unstable();
+    }
+
+    let mut services_in_group: rustc_hash::FxHashMap<&str, Vec<&str>> =
+        rustc_hash::FxHashMap::default();
+    for svc in model
+        .nodes
+        .iter()
+        .filter(|node| node.node_type == ArchitectureNodeKind::Service)
+    {
+        if let Some(parent) = svc.in_group.as_deref() {
+            services_in_group
+                .entry(parent)
+                .or_default()
+                .push(svc.id.as_str());
+        }
+    }
+    for v in services_in_group.values_mut() {
+        v.sort_unstable();
+    }
+
+    let mut junctions_in_group: rustc_hash::FxHashMap<&str, Vec<&str>> =
+        rustc_hash::FxHashMap::default();
+    for junction in model
+        .nodes
+        .iter()
+        .filter(|node| node.node_type == ArchitectureNodeKind::Junction)
+    {
+        if let Some(parent) = junction.in_group.as_deref() {
+            junctions_in_group
+                .entry(parent)
+                .or_default()
+                .push(junction.id.as_str());
+        }
+    }
+    for v in junctions_in_group.values_mut() {
+        v.sort_unstable();
+    }
+
+    let mut group_rects_computer = GroupRectComputer::new(
+        icon_size_px,
+        padding_px,
+        &services_in_group,
+        &junctions_in_group,
+        &child_groups,
+        &service_bounds,
+        &junction_bounds,
+    );
+    for g in &model.groups {
+        let _ = group_rects_computer.compute(g.id.as_str());
+    }
+
+    let mut group_rects: Vec<GroupRect<'_>> = Vec::with_capacity(model.groups.len());
+    for g in &model.groups {
+        if let Some(b) = group_rects_computer.get(g.id.as_str()) {
+            group_rects.push(GroupRect {
+                id: g.id.as_str(),
+                parent: g.in_group.as_deref(),
+                x: b.min_x,
+                y: b.min_y,
+                w: (b.max_x - b.min_x).max(1.0),
+                h: (b.max_y - b.min_y).max(1.0),
+                icon: g.icon.as_deref(),
+                title: g.title.as_deref(),
+            });
+            extend_bounds(&mut content_bounds, b.clone());
+        }
+    }
+    ArchitectureDrawingBounds {
+        content_bounds,
+        junction_bounds,
+        group_rects,
+    }
+}
+
+pub fn render_architecture_diagram_svg_typed_with_config(
+    layout: &ArchitectureDiagramLayout,
+    model: &ArchitectureDiagramModel,
+    effective_config: &merman_model::presentation::PresentationConfig,
+    group_theme: &super::super::ArchitectureGroupThemePlan,
+    options: &ArchitectureSvgContext<'_>,
+) -> Result<root_svg::RootedSvg> {
+    let timing = options.timing;
+    let mut timings = RenderTimings::default();
+    let total_timer = timing.start();
+    let _g_render_svg = timing.section(&mut timings.render_svg);
+
+    let diagram_id = options.diagram_id;
+    #[cfg(feature = "layout-shoal")]
+    let shoal_geometry = options.canonical;
+    let checkpoints = ArchitectureEmitCheckpoints::new(options.work_meter);
+    checkpoints.checkpoint()?;
+    let typography = group_theme.typography_theme();
+    let mut settings = ArchitectureRenderSettings::from_prepared(diagram_id, typography);
+    let native = group_theme.native_style();
+    if let Some(native) = native {
+        settings.apply_native(diagram_id, native, typography.css_binding());
+    }
+    checkpoints.checkpoint()?;
+    let css = settings.css.as_str();
+    let icon_size_px = settings.icon_size_px;
+    let half_icon = settings.half_icon;
+    let padding_px = settings.padding_px;
+    let use_max_width = settings.use_max_width;
+
+    let a11y = architecture_a11y_nodes(
+        diagram_id,
+        model.acc_title.as_deref(),
+        model.acc_descr.as_deref(),
+    );
+    checkpoints.checkpoint()?;
+
+    let mut node_xy: rustc_hash::FxHashMap<&str, (f64, f64)> = rustc_hash::FxHashMap::default();
+    for n in &layout.nodes {
+        node_xy.insert(n.id.as_str(), (n.x, n.y));
+    }
+
+    let text_measurer = options.text_measurer;
+
+    let legacy_bounds =
+        || architecture_legacy_bounds(layout, model, &node_xy, &settings, text_measurer);
+    #[cfg(feature = "layout-shoal")]
+    let drawing = shoal_geometry
+        .map(|geometry| ArchitectureDrawingBounds::from_shoal(layout, model, geometry))
+        .unwrap_or_else(legacy_bounds);
+    #[cfg(not(feature = "layout-shoal"))]
+    let drawing = legacy_bounds();
+    let ArchitectureDrawingBounds {
+        mut content_bounds,
+        junction_bounds,
+        group_rects,
+    } = drawing;
+
+    let is_empty = model.nodes.is_empty() && model.groups.is_empty() && model.edges.is_empty();
+
+    let mut out = BoundedSvgOutput::new(options.work_meter);
+    let root_viewport = &options.viewport;
+    let root_document = begin_architecture_document(
+        &mut out,
+        root_viewport,
+        diagram_id,
+        css,
+        &a11y,
+        use_max_width,
+    )?;
+    checkpoints.checkpoint()?;
+    let separate_group_surfaces = native.is_some();
+    #[cfg(feature = "layout-shoal")]
+    let separate_group_surfaces = separate_group_surfaces || shoal_geometry.is_some();
+    if separate_group_surfaces {
+        let group_style =
+            native.map(|style| format!("fill:{};stroke-dasharray:none;", style.group_fill));
+        push_architecture_group_surfaces(
+            &mut out,
+            diagram_id,
+            &group_rects,
+            group_style.as_deref(),
+            native.map(|style| style.group_radius),
+            #[cfg(feature = "layout-shoal")]
+            shoal_geometry.is_some(),
+            checkpoints,
+        )?;
+    }
+    if let Some(native) = native
+        && !matches!(native.elevation, merman_theme_contract::v2::Elevation::Flat)
+    {
+        use kurbo::Shape;
+
+        let card = kurbo::Rect::new(0.0, 0.0, icon_size_px, icon_size_px);
+        let silhouette = kurbo::RoundedRect::from_rect(card, native.radius).to_path(0.1);
+        let depth = elevation::bounds(&native.elevation, card);
+        for (index, service) in model
+            .nodes
+            .iter()
+            .enumerate()
+            .filter(|(_, node)| node.node_type == ArchitectureNodeKind::Service)
+        {
+            checkpoints.checkpoint()?;
+            let (x, y) = node_xy
+                .get(service.id.as_str())
+                .copied()
+                .unwrap_or((0.0, 0.0));
+            let _ = elevation::write_depth(
+                &mut out,
+                &native.elevation,
+                &format!("{}-architecture-service-{index}", diagram_id.semantic_str()),
+                &silhouette,
+                (x, y),
+            );
+            extend_bounds(
+                &mut content_bounds,
+                Bounds {
+                    min_x: x + depth.x0,
+                    min_y: y + depth.y0,
+                    max_x: x + depth.x1,
+                    max_y: y + depth.y1,
+                },
+            );
+            out.checkpoint()?;
+        }
+    }
+    out.push_str(r#"<g class="architecture-edges">"#);
+    out.checkpoint()?;
+    // Edge bounds and DOM emission live in `architecture/edges.rs`.
+    {
+        let mut edge_render_ctx = ArchitectureEdgeRenderContext {
+            out: &mut out,
+            diagram_id,
+            layout,
+            #[cfg(feature = "layout-shoal")]
+            shoal: shoal_geometry,
+            model,
+            node_xy: &node_xy,
+            settings: &settings,
+            native,
+            text_measurer,
+            content_bounds: &mut content_bounds,
+            junction_bounds: &junction_bounds,
+            checkpoints,
+        };
+        push_architecture_edges(&mut edge_render_ctx)?;
+    }
+    out.push_str("</g>");
+    out.checkpoint()?;
+
+    {
+        let mut node_render_ctx = ArchitectureNodeRenderContext {
+            out: &mut out,
+            diagram_id,
+            #[cfg(feature = "layout-shoal")]
+            shoal: shoal_geometry,
+            model,
+            node_xy: &node_xy,
+            settings: &settings,
+            native,
+            text_measurer,
+            resources: ArchitectureNodeResources {
+                effective_config,
+                icon_registry: options.icon_registry,
+                work_meter: options.work_meter,
+            },
+            icon_scope_root: None,
+            service_icon_scope_prefix: None,
+            group_icon_scope_prefix: None,
+            content_bounds: &mut content_bounds,
+            checkpoints,
+        };
+        push_architecture_services_and_junctions(&mut node_render_ctx)?;
+        push_architecture_groups(&mut node_render_ctx, &group_rects, !separate_group_surfaces)?;
+    }
+
+    checkpoints.checkpoint()?;
+    out.push_str("</svg>\n");
+    out.checkpoint()?;
+
+    let root_document = finalize_architecture_root_viewport(ArchitectureRootViewportContext {
+        out: &mut out,
+        root_viewport,
+        root_document,
+        content_bounds,
+        padding_px,
+        half_icon,
+        icon_size_px,
+        use_max_width,
+        is_empty,
+        trust_content_bounds: options.icon_registry.is_none(),
+    })?;
+    let rooted_svg = root_document.complete(out.finish()?)?;
+
+    drop(_g_render_svg);
+
+    timings.total = total_timer
+        .map(merman_model::runtime::OperationTimer::elapsed)
+        .unwrap_or_default();
+    if timing.is_enabled() {
+        eprintln!(
+            "[render-timing] diagram=architecture total={:?} deserialize={:?} build_ctx={:?} viewbox={:?} render_svg={:?} finalize={:?}",
+            timings.total,
+            timings.deserialize_model,
+            timings.build_ctx,
+            timings.viewbox,
+            timings.render_svg,
+            timings.finalize_svg,
+        );
+    }
+
+    Ok(rooted_svg)
+}

@@ -74,3 +74,57 @@ pub struct LayoutEdge {
     #[serde(default)]
     pub stroke_dasharray: Option<String>,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SwimlaneDirection {
+    #[serde(rename = "TB")]
+    Tb,
+    #[serde(rename = "LR")]
+    Lr,
+    #[serde(rename = "BT")]
+    Bt,
+    #[serde(rename = "RL")]
+    Rl,
+}
+
+impl SwimlaneDirection {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Tb => "TB",
+            Self::Lr => "LR",
+            Self::Bt => "BT",
+            Self::Rl => "RL",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SwimlaneTitleRect {
+    pub left: f64,
+    pub right: f64,
+    pub top: f64,
+    pub bottom: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SwimlaneLaneLayout {
+    pub id: String,
+    pub title: String,
+    #[serde(default)]
+    pub parent_id: Option<String>,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub padding: f64,
+    /// Prepared terminal label width shared by Swimlane layout and SVG rendering.
+    pub title_label_width: f64,
+    /// Prepared terminal label height shared by Swimlane layout and SVG rendering.
+    pub title_label_height: f64,
+    #[serde(default)]
+    pub content_top: Option<f64>,
+    #[serde(default)]
+    pub title_rect: Option<SwimlaneTitleRect>,
+    #[serde(default)]
+    pub requested_dir: Option<String>,
+}

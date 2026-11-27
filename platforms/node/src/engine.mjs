@@ -108,6 +108,12 @@ const SVG_REQUEST_FRAME_BYTES = '{"operation_id":"svg","source":"","uri":null,"i
 const SVG_OPTIONS_FRAME_BYTES = ',"options_json":""'.length;
 const SVG_TIMEOUT_FRAME_BYTES = ',"operation_control":{"timeout_ms":}'.length;
 const SVG_ID_OPTIONS_BYTES = '{"svg":{"diagram_id":""}}'.length;
+// Reserve the largest timeout and six escaped bytes per admitted options byte.
+const DIRECT_SVG_SOURCE_UNIT_BOUND = Math.floor(Math.min(
+  NODE_TRANSPORT_FIELD_LIMITS.source_utf8_bytes / 3,
+  (NODE_TRANSPORT_LIMITS.request.max_utf8_bytes - directSvgFrameBytes(0, MAX_OPERATION_TIMEOUT_MS) -
+    SVG_OPTIONS_FRAME_BYTES - 6 * NODE_TRANSPORT_FIELD_LIMITS.options_json_utf8_bytes) / 6,
+));
 const MERMAN_ENGINE_CONSTRUCTION_TOKEN = Symbol("MermanEngine construction");
 
 export async function createNodeEngine(
@@ -509,11 +515,18 @@ function prepareOperationRequest(value, { timeoutMs, directSvg }) {
     "operation request operationId",
     NODE_TRANSPORT_FIELD_LIMITS.operation_id_utf8_bytes,
   );
-  const sourceBytes = (directSvg ? jsonStringFieldBytes : assertUtf8Field)(
-    source,
-    "operation request source",
-    NODE_TRANSPORT_FIELD_LIMITS.source_utf8_bytes,
-  );
+  let sourceByteBound;
+  if (directSvg && source.length <= DIRECT_SVG_SOURCE_UNIT_BOUND && source.isWellFormed()) {
+    // Every admitted options or typed-ID frame still fits with this upper bound.
+    sourceByteBound = source.length * 6;
+  } else {
+    const measureSource = directSvg ? jsonStringFieldBytes : assertUtf8Field;
+    sourceByteBound = measureSource(
+      source,
+      "operation request source",
+      NODE_TRANSPORT_FIELD_LIMITS.source_utf8_bytes,
+    );
+  }
   if (normalizedUri !== null) {
     assertUtf8Field(
       normalizedUri,
@@ -538,7 +551,7 @@ function prepareOperationRequest(value, { timeoutMs, directSvg }) {
     }
     request.operation_control = { timeout_ms: timeoutMs };
   }
-  return { expectation, request, value, sourceBytes, diagramIdOptionsJson: undefined };
+  return { expectation, request, value, sourceByteBound, diagramIdOptionsJson: undefined };
 }
 
 function operationOptionsJsonBytes(optionsJson, fromDiagramId, countJsonEscapes = false) {
@@ -563,16 +576,16 @@ function operationRequestJson({ request, value, diagramIdOptionsJson }, includeM
   return encodeTransportJson(request, "operation request", NODE_TRANSPORT_LIMITS.request);
 }
 
-function prepareDirectSvgOptions({ value, sourceBytes, diagramIdOptionsJson }, timeoutMs) {
+function prepareDirectSvgOptions({ value, sourceByteBound, diagramIdOptionsJson }, timeoutMs) {
   // Match the former fixed request's byte budget without building or scanning the document.
-  let requestBytes = directSvgFrameBytes(sourceBytes, timeoutMs);
+  let requestByteBound = directSvgFrameBytes(sourceByteBound, timeoutMs);
   const optionsJson = diagramIdOptionsJson ?? value.optionsJson;
   if (optionsJson !== undefined) {
     const optionsBytes = operationOptionsJsonBytes(optionsJson, diagramIdOptionsJson !== undefined, true);
-    requestBytes += SVG_OPTIONS_FRAME_BYTES + optionsBytes;
+    requestByteBound += SVG_OPTIONS_FRAME_BYTES + optionsBytes;
   }
   const max = NODE_TRANSPORT_LIMITS.request.max_utf8_bytes;
-  if (requestBytes > max) {
+  if (requestByteBound > max) {
     throw new MermanInvalidTransportError(
       `Merman transport operation request exceeds the ${max}-byte wire limit.`,
     );
@@ -580,9 +593,9 @@ function prepareDirectSvgOptions({ value, sourceBytes, diagramIdOptionsJson }, t
   return optionsJson;
 }
 
-function directSvgFrameBytes(sourceBytes, timeoutMs) {
+function directSvgFrameBytes(sourceByteBound, timeoutMs) {
   const timeoutBytes = timeoutMs === undefined ? 0 : SVG_TIMEOUT_FRAME_BYTES + String(timeoutMs).length;
-  return SVG_REQUEST_FRAME_BYTES + sourceBytes + timeoutBytes;
+  return SVG_REQUEST_FRAME_BYTES + sourceByteBound + timeoutBytes;
 }
 
 function prepareSvgDiagramId(prepared, diagramId, timeoutMs, typedTransport) {
@@ -599,15 +612,22 @@ function prepareSvgDiagramId(prepared, diagramId, timeoutMs, typedTransport) {
   const optionsLimit = NODE_TRANSPORT_FIELD_LIMITS.options_json_utf8_bytes;
   const maxOptionsBytes = SVG_ID_OPTIONS_BYTES + diagramId.length * 6;
   if (typedTransport && maxOptionsBytes <= optionsLimit &&
-      directSvgFrameBytes(prepared.sourceBytes, timeoutMs) + SVG_OPTIONS_FRAME_BYTES + maxOptionsBytes * 2 <=
+      directSvgFrameBytes(prepared.sourceByteBound, timeoutMs) + SVG_OPTIONS_FRAME_BYTES + maxOptionsBytes * 2 <=
         NODE_TRANSPORT_LIMITS.request.max_utf8_bytes) {
     assertUtf8Field(diagramId, "operation request diagramId", optionsLimit);
     return true;
   }
 
-  prepared.diagramIdOptionsJson = encodeTransportJson(
-    { svg: { diagram_id: diagramId } }, "operation request diagramId", NODE_TRANSPORT_LIMITS.binding_options,
-  );
+  try {
+    prepared.diagramIdOptionsJson = encodeTransportJson(
+      { svg: { diagram_id: diagramId } }, "operation request diagramId", NODE_TRANSPORT_LIMITS.binding_options,
+    );
+  } catch (error) {
+    // The encoder can exhaust the document budget before reaching the end of the ID.
+    // Give raw ID field and UTF-16 errors the same priority as the typed input path.
+    assertUtf8Field(diagramId, "operation request diagramId.svg.diagram_id", optionsLimit);
+    throw error;
+  }
   return false;
 }
 

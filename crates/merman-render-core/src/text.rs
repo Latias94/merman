@@ -1,5 +1,9 @@
 //! Shared text style and measurement values.
 
+#[cfg(all(feature = "markdown-labels", feature = "math-labels"))]
+#[doc(hidden)]
+pub mod create_text_html;
+
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "text-layout")]
@@ -118,7 +122,7 @@ pub use label_metrics::{
 #[doc(hidden)]
 pub use markdown::{
     MermaidMarkdownAnalysis, analyze_mermaid_markdown, mermaid_markdown_contains_html_tags,
-    mermaid_markdown_is_plain_text, mermaid_markdown_to_lines,
+    mermaid_markdown_is_plain_text, mermaid_markdown_svg_plain_text, mermaid_markdown_to_lines,
 };
 #[cfg(feature = "markdown-labels")]
 #[doc(hidden)]

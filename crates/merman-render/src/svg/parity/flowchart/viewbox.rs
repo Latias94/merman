@@ -1,13 +1,12 @@
 //! Flowchart final viewBox/content-bounds preparation.
 
+use merman_render_flow::stylesheet::TITLE_FONT_SIZE_PX;
 use rustc_hash::FxHashMap;
 
 use super::super::timing::RenderTiming;
 use super::cluster_geometry::painted_cluster_frame;
 use super::viewbox_node_bounds::include_flowchart_node_rendered_bounds;
 use super::*;
-
-pub(super) const TITLE_FONT_SIZE_PX: f64 = 18.0;
 
 pub(in crate::svg::parity::flowchart) struct FlowchartRenderedBoundsRequest<'view, 'data> {
     pub ctx: &'view FlowchartRenderCtx<'data>,

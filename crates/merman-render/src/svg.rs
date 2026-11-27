@@ -20,33 +20,19 @@ pub(crate) use fallback::measure_styled_html_label;
 mod icon_registry;
 mod parity;
 pub(crate) use merman_render_core::svg_css::PreparedCommonCss;
-pub(crate) use parity::BaseEdgeMarkerKind;
+#[cfg(all(feature = "diagram-block", feature = "layout-shoal"))]
+pub(crate) use merman_render_core::svg_edge_parity::markers::BaseEdgeMarkerKind;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
-    feature = "diagram-agentflow",
-    feature = "diagram-usecase"
+    feature = "diagram-agentflow"
 ))]
 pub(crate) use parity::PreparedCommonNeoCss;
 pub(crate) use parity::PreparedLookDefs;
 #[cfg(all(feature = "diagram-class", feature = "layout-shoal"))]
 pub(crate) use parity::class_canonical_marker;
-pub(crate) use parity::cssom_color_value;
 #[cfg(all(feature = "diagram-er", feature = "layout-shoal"))]
 pub(crate) use parity::er_canonical_marker;
-#[cfg(any(
-    feature = "diagram-er",
-    feature = "diagram-requirement",
-    feature = "diagram-pie",
-    feature = "diagram-treemap",
-    feature = "diagram-flowchart",
-    feature = "diagram-agentflow",
-    feature = "diagram-swimlane",
-    feature = "diagram-sequence",
-    feature = "diagram-zenuml",
-    feature = "diagram-kanban",
-))]
-pub(crate) use parity::escape_attr;
 #[cfg(any(feature = "diagram-er", feature = "diagram-requirement"))]
 pub(crate) use parity::escape_xml;
 #[cfg(all(feature = "diagram-state", feature = "layout-shoal"))]
@@ -65,15 +51,6 @@ pub use icon_registry::{
     IconRegistryBuilder, IconRegistryResourceLimitDescriptor, IconRegistryResourceLimitId,
     icon_registry_resource_limit_descriptors,
 };
-#[cfg(any(
-    feature = "diagram-agentflow",
-    feature = "diagram-class",
-    feature = "diagram-flowchart",
-    feature = "diagram-kanban",
-    feature = "diagram-requirement",
-    feature = "diagram-swimlane"
-))]
-pub(crate) use merman_render_core::svg_css::escape_css_identifier;
 pub use merman_render_core::svg_output::SvgOutputProfile;
 #[cfg(all(
     feature = "diagram-architecture",
@@ -82,12 +59,7 @@ pub use merman_render_core::svg_output::SvgOutputProfile;
 pub(crate) use parity::render_architecture_family_artifact;
 #[cfg(feature = "native-compact")]
 pub(crate) use parity::render_native_compact_family_artifact;
-#[cfg(any(
-    feature = "diagram-kanban",
-    feature = "diagram-mindmap",
-    feature = "diagram-radar",
-    feature = "diagram-treemap"
-))]
+#[cfg(any(feature = "diagram-radar", feature = "diagram-treemap"))]
 pub(crate) use parity::theme as render_theme;
 pub use parity::*;
 #[cfg(any(

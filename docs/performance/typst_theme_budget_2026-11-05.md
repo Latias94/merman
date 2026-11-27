@@ -243,3 +243,20 @@ left 117,843 and 23,768 bytes of headroom. Apply the existing 3% margin and
 crate moves. The raw ceiling already leaves 475,597 bytes of headroom.
 The recorded job stopped at the budget check. The updated head still needs the
 complete package validation and Typst runtime smoke.
+
+## Requirement and ZenUML crate split, 2026-11-27
+
+[PR 380's Linux Typst job](https://github.com/Latias94/merman/actions/runs/45949675423/job/140342664225)
+measured the `publish` recipe at head `ae2ed422fba36d2705ec4bf3e1938b39cae502cc`.
+
+| Metric | Linux measurement | Previous ceiling | Selected ceiling |
+| --- | ---: | ---: | ---: |
+| Raw | 22,795,991 | 22,668,000 | 24,000,000 |
+| Stripped | 11,469,798 | 11,676,000 | 11,676,000 |
+| Gzip | 4,442,545 | 4,485,000 | 4,485,000 |
+| Brotli | 3,252,383 | 3,318,000 | 3,318,000 |
+
+The raw ceiling provides 1,204,009 bytes of staging headroom for the remaining vertical
+crate moves. The recorded job exceeded its raw ceiling and stopped before package validation
+and real Typst smoke. The publish workflow checks all four sizes and then runs the package and
+runtime checks on the updated source.

@@ -513,7 +513,7 @@ python3 tools/bench/bench.py rust --plan target/bench/layouts/pinned.json --metr
 Use `bench.py report` to turn completed benchmark evidence into a dated Markdown page and a
 portable JSON receipt. [Published comparisons](reports/README.md) live in `docs/performance/reports/`.
 Keep exploratory drafts and raw collector bundles in `target/bench/`. The
-[Markdown template](../../tools/bench/workload_report.md.in) owns the common product descriptions,
+[Markdown template](../../tools/bench/merman_bench/report.md.in) owns the common product descriptions,
 interpretation and section order. Each section uses the host, operation and sample units of its
 own inputs. Review the exact product versions and their upstream descriptions on each update.
 
@@ -547,8 +547,8 @@ workloads. Establish cache hits separately with implementation evidence.
 For each product and scenario, the Node worker records package import and engine creation,
 the first successful draw at request index zero, and the continuous interval from import start
 through that call's return. Node process startup happens before this clock. Peak RSS includes
-the worker runtime, renderer and in-process checks over its cold and warm batches. The worker
-reads the high-water mark before fingerprinting product files and excludes validator children.
+the worker runtime and renderer across the cold batch, warmup, and warm samples. The worker
+reads the high-water mark before deferred SVG validation and product fingerprinting.
 The report uses independent workers as its sample unit. A direction that repeats in all eligible
 rounds describes those rounds. Identify the tested drawing properties alongside the timings.
 

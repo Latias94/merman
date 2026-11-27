@@ -93,11 +93,7 @@ pub(crate) mod sankey;
 pub(crate) mod scan;
 #[cfg(feature = "diagram-sequence")]
 pub(crate) mod sequence;
-#[cfg(any(
-    feature = "diagram-agentflow",
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane"
-))]
+#[cfg(feature = "diagram-agentflow")]
 use merman_model::families::flowchart::shapes;
 #[cfg(feature = "diagram-state")]
 pub(crate) mod state;

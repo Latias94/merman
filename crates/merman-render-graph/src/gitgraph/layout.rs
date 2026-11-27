@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use merman_model::families::git_graph::{GitGraphCommit, GitGraphDiagramModel};
 use merman_render_core::{
     Bounds, Error, Result,
-    config::{config_bool as cfg_bool, config_f64 as cfg_f64},
+    config::{ConfigLookup, config_bool as cfg_bool, config_f64 as cfg_f64},
     text::{TextMeasurer, TextStyle, trim_ecmascript_whitespace, trim_start_ecmascript_whitespace},
 };
 
@@ -607,7 +607,7 @@ fn draw_arrow(
 
 pub(super) fn layout_gitgraph_diagram_typed(
     model: &GitGraphDiagramModel,
-    effective_config: &serde_json::Value,
+    effective_config: &dyn ConfigLookup,
     typography_theme: &GitGraphTypographyThemePlan,
     measurer: &dyn TextMeasurer,
 ) -> Result<GitGraphDiagramLayout> {

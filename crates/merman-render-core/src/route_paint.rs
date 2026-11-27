@@ -656,6 +656,15 @@ pub struct RoutePaintScratch {
     measured_length: Option<f64>,
 }
 
+/// Per-operation buffers shared by a canonical route adapter and its SVG writer.
+#[doc(hidden)]
+#[derive(Default)]
+pub struct CanonicalPaintScratch {
+    pub points: Vec<RoutePoint>,
+    pub route: RoutePaintScratch,
+    pub data_points: Vec<LayoutPoint>,
+}
+
 impl RoutePaintScratch {
     /// Measures the next route through this scratch using the same segments written to SVG.
     pub fn measure_length(&mut self) {

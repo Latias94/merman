@@ -24,6 +24,11 @@ pub use id_suffix::lower_id_suffix_selectors;
 #[cfg(feature = "css-style")]
 pub use palette::{default_c_scale, default_section_colors};
 #[cfg(feature = "css-style")]
+mod look_defs;
+#[cfg(feature = "css-style")]
+pub use look_defs::PreparedLookDefs;
+
+#[cfg(feature = "css-style")]
 pub use prepared::{PreparedCommonCss, PreparedCommonNeoCss};
 #[cfg(feature = "svg-identity")]
 pub use resource_urls::{CssResourceScanError, CssResourceUrl, visit_css_resource_urls};

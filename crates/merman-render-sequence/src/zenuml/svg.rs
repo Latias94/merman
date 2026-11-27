@@ -1,0 +1,1636 @@
+use std::fmt::Write as _;
+
+use kurbo::{Rect, Shape};
+use merman_model::{OperationPhase, families::zenuml::ZenumlDiagramModel};
+use merman_render_core::{
+    Result,
+    number_format::canonical_number as fmt,
+    resources::OperationWorkMeter,
+    root_svg::{self, RootViewportContext},
+    svg_css::SvgId,
+    svg_output::{BoundedSvgOutput, SvgOutput, XmlTextOutput},
+    theme_svg::elevation as elevation_svg,
+    xml::{escape_attr, escape_attr_display, escape_xml},
+};
+use merman_theme_contract::v2::Elevation;
+
+use super::native_theme::ZenumlNativeStyle;
+use super::{
+    ZenumlArrowStyle, ZenumlCommentLayout, ZenumlCreationLayout, ZenumlDiagramLayout,
+    ZenumlFragmentLayout, ZenumlLayoutFragmentKind, ZenumlMessageLayout, ZenumlParticipantLayout,
+    ZenumlReturnLayout, ZenumlSelfCallLayout, ZenumlSourceStyle, ZenumlTypography,
+    resolve_zenuml_emojis_in_text, resolve_zenuml_title, zenuml_emoji_unicode,
+    zenuml_participant_icon_key,
+};
+
+const FRAME_HEADER_HEIGHT: f64 = 28.0;
+const CONTENT_PADDING: f64 = 10.0;
+const ZENUML_FRAME_TITLE_CLASS: &str = "frame-title";
+
+/// The caller's projected SVG ID, viewport policy, and operation meter.
+pub struct ZenumlSvgContext<'a> {
+    pub diagram_id: SvgId<'a>,
+    pub viewport: RootViewportContext<'a>,
+    pub work_meter: &'a OperationWorkMeter,
+}
+
+pub fn render_zenuml_diagram_svg_model(
+    layout: &ZenumlDiagramLayout,
+    model: &ZenumlDiagramModel,
+    effective_config: &serde_json::Value,
+    diagram_title: Option<&str>,
+    theme: &ZenumlSourceStyle,
+    context: &ZenumlSvgContext<'_>,
+) -> Result<root_svg::RootedSvg> {
+    let diagram_id = context.diagram_id;
+    let title = resolve_zenuml_title(model, diagram_title);
+    let native = theme.native.as_deref();
+    let vertical_scale = theme.typography.vertical_scale();
+    let content_left = 1.0 + CONTENT_PADDING + layout.frame_border_left;
+    let view_width =
+        layout.width + content_left + CONTENT_PADDING + layout.frame_border_right + 1.0;
+    let view_height =
+        layout.height + (CONTENT_PADDING * 2.0 + FRAME_HEADER_HEIGHT - 1.0) * vertical_scale;
+    let use_max_width = effective_config
+        .get("sequence")
+        .and_then(|sequence| sequence.get("useMaxWidth"))
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(true);
+    let mut viewport = Rect::new(0.0, 0.0, view_width, view_height);
+    let header_y = (FRAME_HEADER_HEIGHT + 6.0) * vertical_scale;
+    if let Some(native) = native {
+        viewport = viewport.inflate(
+            native.form.stroke_width / 2.0,
+            native.form.stroke_width / 2.0,
+        );
+        if !matches!(native.elevation, Elevation::Flat) {
+            let offset = kurbo::Vec2::new(content_left, header_y);
+            for participant in layout.participants.iter().chain(
+                layout
+                    .creations
+                    .iter()
+                    .map(|creation| &creation.participant),
+            ) {
+                let surface = participant_rect(participant) + offset;
+                viewport = viewport.union(elevation_svg::bounds(&native.elevation, surface));
+            }
+        }
+    }
+    let bounds = root_svg::DiagramBounds::from_view_box(
+        viewport.x0,
+        viewport.y0,
+        viewport.width(),
+        viewport.height(),
+    );
+    let root_spec = root_svg::RootViewportSpec::mermaid(bounds, use_max_width);
+    let mut out = BoundedSvgOutput::new(context.work_meter);
+    let mut chrome = root_svg::RootChrome::new(diagram_id, "zenuml");
+    chrome.dom.trailing_newline = false;
+    let root_document = context.viewport.write_open(&mut out, root_spec, chrome)?;
+    context.work_meter.checkpoint(OperationPhase::Emit)?;
+
+    out.push_str("<defs><style>");
+    {
+        let mut css = XmlTextOutput::new(&mut out);
+        if let Some(native) = native {
+            write_zenuml_native_css(&mut css, diagram_id, native, &theme.typography);
+        } else {
+            write_zenuml_css(
+                &mut css,
+                diagram_id,
+                theme.color(
+                    "titleTextColor",
+                    theme.color("textColor", ZENUML_DEFAULT_TITLE_FILL),
+                ),
+                theme,
+            );
+        }
+    }
+    out.push_str("</style></defs>");
+    out.checkpoint()?;
+    let _ = write!(
+        &mut out,
+        r#"<rect class="frame-border-outer" x="0" y="0" width="{}" height="{}" rx="{}"/><rect class="frame-border-inner" x="1" y="1" width="{}" height="{}" rx="{}"/>"#,
+        fmt(view_width),
+        fmt(view_height),
+        fmt(native.map_or(4.0, |style| style.form.container_radius)),
+        fmt(view_width - 2.0),
+        fmt(view_height - 2.0),
+        fmt(native.map_or(3.0, |style| (style.form.container_radius - 1.0).max(0.0))),
+    );
+    out.checkpoint()?;
+    let _ = write!(
+        &mut out,
+        r#"<line class="frame-header-line" x1="1" y1="{}" x2="{}" y2="{}"/>"#,
+        fmt(header_y - 0.5),
+        fmt(view_width - 1.0),
+        fmt(header_y - 0.5),
+    );
+    out.checkpoint()?;
+    if let Some(title) = title {
+        let _ = write!(
+            &mut out,
+            r#"<text x="5" y="{}" dominant-baseline="central" class="{}">{}</text>"#,
+            fmt((header_y - 0.5) / 2.0),
+            ZENUML_FRAME_TITLE_CLASS,
+            escape_xml(&resolve_emoji_in_text(title)),
+        );
+        out.checkpoint()?;
+    }
+    let _ = write!(
+        &mut out,
+        r#"<g class="zenuml-content" transform="translate({}, {})">"#,
+        fmt(content_left),
+        fmt(header_y),
+    );
+    out.checkpoint()?;
+    let creation_names = layout
+        .creations
+        .iter()
+        .map(|creation| creation.participant.name.as_str())
+        .collect::<std::collections::HashSet<_>>();
+
+    if let Some(native) = native {
+        // Outer fragments must be painted before the nested frames and their contents.
+        let mut fragments = layout.fragments.iter().collect::<Vec<_>>();
+        fragments.sort_by_key(|fragment| fragment.depth);
+        for fragment in fragments {
+            let _ = write!(
+                &mut out,
+                r#"<rect class="fragment-surface" x="{}" y="{}" width="{}" height="{}" rx="{}"/>"#,
+                fmt(fragment.x + 0.5),
+                fmt(fragment.y + 0.5),
+                fmt(fragment.width - 1.0),
+                fmt(fragment.height - 1.0),
+                fmt(native.form.container_radius),
+            );
+            out.checkpoint()?;
+        }
+    }
+
+    for group in &layout.groups {
+        let rect_x = group.x - 0.5;
+        let rect_y = group.y - 2.0 * vertical_scale;
+        let title = (!group.name.is_empty()).then(|| escape_xml(&group.name));
+        let _ = write!(
+            &mut out,
+            r#"<g class="participant-group"><rect x="{}" y="{}" width="{}" height="{}"{} class="group-outline" stroke-width="1" stroke-dasharray="4 3"/>"#,
+            fmt(rect_x),
+            fmt(rect_y),
+            fmt(group.width + 1.0),
+            fmt(group.height + 1.5 * vertical_scale),
+            native
+                .map(|style| format!(r#" rx="{}""#, fmt(style.form.container_radius)))
+                .unwrap_or_default(),
+        );
+        if let Some(title) = title {
+            let _ = write!(
+                &mut out,
+                r#"<rect x="{}" y="{}" width="{}" height="{}" class="group-title-bg"/><text x="{}" y="{}" text-anchor="middle" dominant-baseline="middle" class="group-title-text">{}</text>"#,
+                fmt(group.x + 0.5),
+                fmt(rect_y + 0.5),
+                fmt(group.width - 1.0),
+                fmt(19.5 * vertical_scale),
+                fmt(group.x + group.width / 2.0),
+                fmt(group.y + 10.0 * vertical_scale),
+                title,
+            );
+        }
+        out.push_str("</g>");
+        out.checkpoint()?;
+    }
+    if let Some(native) = native
+        && !matches!(native.elevation, Elevation::Flat)
+    {
+        for (index, participant) in layout
+            .participants
+            .iter()
+            .filter(|participant| !creation_names.contains(participant.name.as_str()))
+            .chain(
+                layout
+                    .creations
+                    .iter()
+                    .map(|creation| &creation.participant),
+            )
+            .enumerate()
+        {
+            let surface = participant_rect(participant);
+            let silhouette = surface.to_rounded_rect(native.form.radius).to_path(0.1);
+            let scope = format!("{}-participant-{index}", diagram_id.semantic_str());
+            let _ = elevation_svg::write_depth(
+                &mut out,
+                &native.elevation,
+                &scope,
+                &silhouette,
+                (0.0, 0.0),
+            );
+            out.checkpoint()?;
+        }
+    }
+    for lifeline in &layout.lifelines {
+        let _ = write!(
+            &mut out,
+            r#"<line class="lifeline" data-participant="{}" x1="{}" y1="{}" x2="{}" y2="{}" stroke-dasharray="5,5" stroke-dashoffset="5" shape-rendering="crispEdges"/>"#,
+            escape_attr(&lifeline.participant_name),
+            fmt(lifeline.x + 0.5),
+            fmt(lifeline.top_y),
+            fmt(lifeline.x + 0.5),
+            fmt(lifeline.bottom_y),
+        );
+        out.checkpoint()?;
+    }
+    for participant in layout
+        .participants
+        .iter()
+        .filter(|participant| !creation_names.contains(participant.name.as_str()))
+    {
+        render_participant(&mut out, participant, theme)?;
+    }
+    for occurrence in &layout.occurrences {
+        let _ = write!(
+            &mut out,
+            r#"<rect class="occurrence" data-statement="{}" data-participant="{}" x="{}" y="{}" width="{}" height="{}" rx="1"/>"#,
+            escape_attr(&occurrence.statement_id),
+            escape_attr(&occurrence.participant_name),
+            fmt(occurrence.x + 1.0),
+            fmt(occurrence.y + 1.0),
+            fmt(occurrence.width - 2.0),
+            fmt(occurrence.height - 2.0),
+        );
+        out.checkpoint()?;
+    }
+    for creation in &layout.creations {
+        render_participant(&mut out, &creation.participant, theme)?;
+    }
+    for message in &layout.messages {
+        render_message(&mut out, message, theme)?;
+    }
+    for self_call in &layout.self_calls {
+        render_self_call(&mut out, self_call, theme)?;
+    }
+    for creation in &layout.creations {
+        render_creation(&mut out, creation, theme)?;
+    }
+    for returned in &layout.returns {
+        render_return(&mut out, returned, theme)?;
+    }
+    for fragment in &layout.fragments {
+        render_fragment(&mut out, fragment, theme)?;
+    }
+    for divider in &layout.dividers {
+        let center_x = divider.width / 2.0;
+        let label = divider
+            .label
+            .trim()
+            .trim_start_matches('=')
+            .trim_end_matches('=')
+            .trim();
+        let label = resolve_emoji_in_text(label);
+        let rect_width = divider.label_width + 17.0;
+        let rect_height = 27.0 * vertical_scale;
+        let rect_x = center_x - rect_width / 2.0;
+        let rect_y = divider.y - rect_height / 2.0;
+        let outer_left = rect_x - 0.5;
+        let outer_right = rect_x + rect_width + 0.5;
+        let _ = write!(
+            &mut out,
+            r#"<g class="divider" data-statement="{}"><line x1="0" y1="{}" x2="{}" y2="{}" class="divider-line"/><line x1="{}" y1="{}" x2="{}" y2="{}" class="divider-line"/><rect x="{}" y="{}" width="{}" height="{}" rx="2" class="divider-bg"/><text x="{}" y="{}" text-anchor="middle" dominant-baseline="central" class="divider-label">{}</text></g>"#,
+            escape_attr(&divider.statement_id),
+            fmt(divider.y),
+            fmt(outer_left),
+            fmt(divider.y),
+            fmt(outer_right),
+            fmt(divider.y),
+            fmt(divider.width),
+            fmt(divider.y),
+            fmt(rect_x),
+            fmt(rect_y),
+            fmt(rect_width),
+            fmt(rect_height),
+            fmt(center_x),
+            fmt(divider.y),
+            escape_xml(&label),
+        );
+        out.checkpoint()?;
+    }
+    for comment in &layout.comments {
+        render_comment(&mut out, comment, theme)?;
+    }
+    out.push_str("</g></svg>");
+    out.checkpoint()?;
+    root_document.complete(out.finish()?)
+}
+
+fn participant_rect(participant: &ZenumlParticipantLayout) -> Rect {
+    Rect::from_origin_size(
+        (
+            participant.x - participant.width / 2.0 + 1.0,
+            participant.y + 1.0,
+        ),
+        (participant.width - 2.0, participant.height - 2.0),
+    )
+}
+
+fn render_participant(
+    out: &mut impl SvgOutput,
+    participant: &ZenumlParticipantLayout,
+    theme: &ZenumlSourceStyle,
+) -> Result<()> {
+    let vertical_scale = theme.typography.vertical_scale();
+    let y = participant.y;
+    let x = participant.x - participant.width / 2.0 + 1.0;
+    let fill = participant
+        .color
+        .as_deref()
+        .map(|color| {
+            let color = if color.starts_with('#') {
+                color.to_string()
+            } else {
+                format!("#{color}")
+            };
+            format!(r#" style="fill:{};""#, escape_attr(&color))
+        })
+        .unwrap_or_default();
+    let _ = write!(
+        out,
+        r#"<g class="participant" data-participant="{}"><rect class="participant-box" x="{}" y="{}" width="{}" height="{}" rx="{}"{}/>"#,
+        escape_attr(&participant.name),
+        fmt(x),
+        fmt(y + 1.0),
+        fmt(participant.width - 2.0),
+        fmt(participant.height - 2.0),
+        fmt(theme.native.as_ref().map_or(3.0, |style| style.form.radius)),
+        fill,
+    );
+    out.checkpoint()?;
+    if participant.is_starter {
+        render_participant_icon(
+            out,
+            "actor",
+            participant.x - 14.0 * vertical_scale,
+            y + 8.0 * vertical_scale,
+            vertical_scale,
+        )?;
+        out.push_str("</g>");
+        return out.checkpoint();
+    }
+    let text_y = y + participant.height / 2.0 - 0.25 * vertical_scale;
+    let label_y = if participant.stereotype.is_some() {
+        text_y + 8.0 * vertical_scale
+    } else {
+        text_y
+    };
+    let icon = participant
+        .participant_type
+        .as_deref()
+        .and_then(zenuml_participant_icon_key);
+    let emoji = participant
+        .emoji
+        .as_deref()
+        .map(|shortcode| zenuml_emoji_unicode(shortcode).unwrap_or(shortcode));
+    let mut text_x = participant.x;
+    let mut text_anchor = "middle";
+    if let Some(icon) = icon {
+        let emoji_extra = if emoji.is_some() {
+            20.0 * vertical_scale
+        } else {
+            0.0
+        };
+        let group_width = 44.0 * vertical_scale + participant.label_width + emoji_extra;
+        let group_x = participant.x - group_width / 2.0;
+        let icon_x = group_x + 4.0 * vertical_scale;
+        let icon_y = y
+            + (participant.height - 24.0 * vertical_scale) / 2.0
+            + if icon == "boundary" {
+                2.75 * vertical_scale
+            } else {
+                0.0
+            };
+        render_participant_icon(out, icon, icon_x, icon_y, vertical_scale)?;
+        if let Some(emoji) = emoji {
+            let emoji_x = icon_x + 28.0 * vertical_scale;
+            render_participant_emoji(out, emoji, emoji_x, label_y)?;
+            text_x = emoji_x + 24.0 * vertical_scale;
+        } else {
+            text_x = group_x + 36.0 * vertical_scale;
+        }
+        text_anchor = "start";
+    } else if let Some(emoji) = emoji {
+        let group_width = 28.0 * vertical_scale + participant.label_width;
+        let inner_width = participant
+            .stereotype_width
+            .unwrap_or_default()
+            .max(group_width);
+        let group_x = participant.x - inner_width / 2.0;
+        render_participant_emoji(out, emoji, group_x, label_y)?;
+        text_x = group_x + 24.0 * vertical_scale;
+        text_anchor = "start";
+    }
+    if let Some(stereotype) = &participant.stereotype {
+        let stereotype_x = if icon.is_some() {
+            text_x + participant.label_width / 2.0
+        } else {
+            participant.x
+        };
+        let _ = write!(
+            out,
+            r#"<text class="stereotype-label" x="{}" y="{}" text-anchor="middle" dominant-baseline="central" font-size="{}" style="fill:{};">«{}»</text>"#,
+            fmt(stereotype_x),
+            fmt(text_y - 8.0 * vertical_scale),
+            fmt(theme.typography.size(16.0)),
+            escape_attr_display(
+                theme
+                    .native
+                    .as_ref()
+                    .map(|style| style.primary.to_string())
+                    .as_deref()
+                    .unwrap_or_else(|| theme.color("actorTextColor", "#222"))
+            ),
+            escape_xml(stereotype),
+        );
+        out.checkpoint()?;
+    }
+    let text_length = if participant.name.contains(':') {
+        format!(
+            r#" textLength="{}" lengthAdjust="spacing""#,
+            fmt(participant.label_width)
+        )
+    } else {
+        String::new()
+    };
+    let _ = write!(
+        out,
+        r#"<text class="participant-label" x="{}" y="{}" text-anchor="{}" dominant-baseline="central"{}>{}</text></g>"#,
+        fmt(text_x),
+        fmt(label_y),
+        text_anchor,
+        text_length,
+        escape_xml(&participant.label),
+    );
+    out.checkpoint()
+}
+
+fn render_participant_emoji(out: &mut impl SvgOutput, emoji: &str, x: f64, y: f64) -> Result<()> {
+    let _ = write!(
+        out,
+        r#"<text x="{}" y="{}" dominant-baseline="central" font-family="'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji','Twemoji Mozilla',sans-serif" class="participant-emoji">{}</text>"#,
+        fmt(x),
+        fmt(y),
+        escape_xml(emoji),
+    );
+    out.checkpoint()
+}
+
+struct ParticipantIcon {
+    svg: &'static str,
+    view_box_width: f64,
+    view_box_height: f64,
+    attributes: &'static str,
+}
+
+fn render_participant_icon(
+    out: &mut impl SvgOutput,
+    key: &str,
+    x: f64,
+    y: f64,
+    typography_scale: f64,
+) -> Result<()> {
+    let Some(icon) = participant_icon(key) else {
+        return Ok(());
+    };
+    let scale = 24.0 * typography_scale / icon.view_box_width.max(icon.view_box_height);
+    let content = svg_asset_content(icon.svg);
+    let attributes = if icon.attributes.is_empty() {
+        String::new()
+    } else {
+        format!(" {}", icon.attributes)
+    };
+    let _ = write!(
+        out,
+        r#"<g class="participant-icon" data-icon="{}" transform="translate({}, {}) scale({})"{}>{}</g>"#,
+        escape_attr(key),
+        fmt(x),
+        fmt(y),
+        fmt(scale),
+        attributes,
+        content,
+    );
+    out.checkpoint()
+}
+
+fn participant_icon(key: &str) -> Option<ParticipantIcon> {
+    Some(match key {
+        "actor" => ParticipantIcon {
+            svg: include_str!("../../assets/zenuml/actor.svg"),
+            view_box_width: 24.0,
+            view_box_height: 24.0,
+            attributes: r#"fill="none""#,
+        },
+        "database" => ParticipantIcon {
+            svg: include_str!("../../assets/zenuml/database.svg"),
+            view_box_width: 24.0,
+            view_box_height: 24.0,
+            attributes: r#"fill="none""#,
+        },
+        "boundary" => ParticipantIcon {
+            svg: include_str!("../../assets/zenuml/boundary.svg"),
+            view_box_width: 101.0,
+            view_box_height: 78.0,
+            attributes: r#"fill="none""#,
+        },
+        "control" => ParticipantIcon {
+            svg: include_str!("../../assets/zenuml/control.svg"),
+            view_box_width: 77.0,
+            view_box_height: 86.0,
+            attributes: r#"fill="none""#,
+        },
+        "entity" => ParticipantIcon {
+            svg: include_str!("../../assets/zenuml/entity.svg"),
+            view_box_width: 77.0,
+            view_box_height: 80.0,
+            attributes: r#"fill="none""#,
+        },
+        "ec2" => ParticipantIcon {
+            svg: include_str!("../../assets/zenuml/ec2.svg"),
+            view_box_width: 48.0,
+            view_box_height: 48.0,
+            attributes: "",
+        },
+        "lambda" => ParticipantIcon {
+            svg: include_str!("../../assets/zenuml/lambda.svg"),
+            view_box_width: 48.0,
+            view_box_height: 48.0,
+            attributes: "",
+        },
+        "sqs" => ParticipantIcon {
+            svg: include_str!("../../assets/zenuml/sqs.svg"),
+            view_box_width: 48.0,
+            view_box_height: 48.0,
+            attributes: "",
+        },
+        "sns" => ParticipantIcon {
+            svg: include_str!("../../assets/zenuml/sns.svg"),
+            view_box_width: 48.0,
+            view_box_height: 48.0,
+            attributes: "",
+        },
+        "iam" => ParticipantIcon {
+            svg: include_str!("../../assets/zenuml/iam.svg"),
+            view_box_width: 48.0,
+            view_box_height: 48.0,
+            attributes: "",
+        },
+        "azurefunction" => ParticipantIcon {
+            svg: include_str!("../../assets/zenuml/azurefunction.svg"),
+            view_box_width: 18.0,
+            view_box_height: 18.0,
+            attributes: "",
+        },
+        _ => return None,
+    })
+}
+
+fn render_message(
+    out: &mut impl SvgOutput,
+    message: &ZenumlMessageLayout,
+    theme: &ZenumlSourceStyle,
+) -> Result<()> {
+    let left_to_right = message.from_x < message.to_x;
+    let from_x = if left_to_right {
+        message.from_x + 1.0
+    } else {
+        message.from_x
+    };
+    let to_x = if left_to_right {
+        message.to_x
+    } else {
+        message.to_x + 1.0
+    };
+    let direction = if left_to_right { 1.0 } else { -1.0 };
+    let label_x = (message.from_x + message.to_x) / 2.0 - direction * 3.5 + 0.5;
+    let label_y = message.y - 3.5;
+    let line_y = message.y - 0.5;
+    let dash = if message.arrow_style == ZenumlArrowStyle::Dashed {
+        r#" stroke-dasharray="6,4""#
+    } else {
+        ""
+    };
+    let _ = write!(
+        out,
+        r#"<g class="message" data-statement="{}"><line class="message-line" x1="{}" y1="{}" x2="{}" y2="{}"{} />"#,
+        escape_attr(&message.statement_id),
+        fmt(from_x),
+        fmt(line_y),
+        fmt(to_x),
+        fmt(line_y),
+        dash,
+    );
+    render_arrow_head(
+        out,
+        to_x,
+        line_y,
+        message.is_reverse,
+        message.arrow_style,
+        theme,
+    )?;
+    let _ = write!(
+        out,
+        r#"<text class="message-label" x="{}" y="{}" text-anchor="middle"{}>{}</text>"#,
+        fmt(label_x),
+        fmt(label_y),
+        style_attr(&message.style),
+        escape_xml(&resolve_emoji_in_text(&message.label)),
+    );
+    write_number_badge(
+        out,
+        theme,
+        &message.number,
+        from_x.min(to_x) - 4.0,
+        label_y,
+        false,
+    );
+    out.push_str("</g>");
+    out.checkpoint()
+}
+
+fn write_number_badge(
+    out: &mut impl SvgOutput,
+    theme: &ZenumlSourceStyle,
+    number: &str,
+    x: f64,
+    y: f64,
+    centered: bool,
+) {
+    let baseline = if centered {
+        r#" dominant-baseline="central""#
+    } else {
+        ""
+    };
+    if let Some(width) = theme
+        .native
+        .as_ref()
+        .and_then(|style| style.number_widths.get(number))
+    {
+        let font_size = theme.typography.size(12.0);
+        let height = font_size * 1.4;
+        let y = if centered { y } else { y - font_size * 0.35 };
+        let _ = write!(
+            out,
+            r#"<rect class="seq-number-badge" x="{}" y="{}" width="{}" height="{}" rx="{}"/><text class="seq-number" x="{}" y="{}" text-anchor="middle" dominant-baseline="central">{}</text>"#,
+            fmt(x - width),
+            fmt(y - height / 2.0),
+            fmt(*width),
+            fmt(height),
+            fmt(height / 2.0),
+            fmt(x - width / 2.0),
+            fmt(y),
+            escape_xml(number)
+        );
+    } else if centered {
+        let _ = write!(
+            out,
+            r#"<text x="{}" y="{}" text-anchor="end"{baseline} class="seq-number">{}</text>"#,
+            fmt(x),
+            fmt(y),
+            escape_xml(number)
+        );
+    } else {
+        let _ = write!(
+            out,
+            r#"<text class="seq-number" x="{}" y="{}" text-anchor="end">{}</text>"#,
+            fmt(x),
+            fmt(y),
+            escape_xml(number)
+        );
+    }
+}
+
+fn connector_color(theme: &ZenumlSourceStyle) -> std::borrow::Cow<'_, str> {
+    match theme.native.as_deref() {
+        Some(native) => std::borrow::Cow::Owned(native.connector.to_string()),
+        None => std::borrow::Cow::Borrowed(
+            theme.color("messageLineColor", theme.color("lineColor", "#000")),
+        ),
+    }
+}
+
+fn render_self_call(
+    out: &mut impl SvgOutput,
+    call: &ZenumlSelfCallLayout,
+    theme: &ZenumlSourceStyle,
+) -> Result<()> {
+    let vertical_scale = theme.typography.vertical_scale();
+    let asynchronous = call.arrow_style == ZenumlArrowStyle::Open;
+    let label_y = call.y + (if asynchronous { 15.0 } else { 12.0 }) * vertical_scale;
+    let svg_y = call.y + (if asynchronous { 20.0 } else { 14.0 }) * vertical_scale;
+    let path_end = if asynchronous { "L1,15" } else { "L14,15" };
+    let arrow_tx = if asynchronous { 0.0 } else { 7.0 };
+    let filled_arrow = if asynchronous {
+        None
+    } else {
+        theme.native.as_deref().map_or(
+            Some("M1 1.25 L6.15 4.5 L1 7.75 Z"),
+            ZenumlNativeStyle::filled_arrow,
+        )
+    };
+    let arrow_path = filled_arrow.unwrap_or("M1 1.25 L6.15 4.5 L1 7.75");
+    let line_color = connector_color(theme);
+    let arrow_fill = filled_arrow.map_or("none", |_| line_color.as_ref());
+    let stroke_width = theme
+        .native
+        .as_ref()
+        .map_or(2.0, |style| style.form.connector_width);
+    let view_box = if vertical_scale == 1.0 {
+        ""
+    } else {
+        r#" viewBox="0 0 30 24""#
+    };
+    let _ = write!(
+        out,
+        r##"<g class="message self-call" data-statement="{}"><svg x="{}" y="{}" width="{}" height="{}"{}><path d="M0,2 L26,2 Q28,2 28,4 L28,13 Q28,15 26,15 {}" fill="none" stroke="{}" stroke-width="{stroke_width}"/><g transform="translate({}, 10)"><svg height="10" width="7" viewBox="0 0 7 9"><g transform="scale(-1, 1) translate(-7, 0)"><path d="{}" stroke="{}" stroke-linecap="round" fill="{}" stroke-width="{stroke_width}"/></g></svg></g></svg><text x="{}" y="{}" text-anchor="start" class="message-label"{}>{}</text>"##,
+        escape_attr(&call.statement_id),
+        fmt(call.x + 1.0),
+        fmt(svg_y),
+        fmt(30.0 * vertical_scale),
+        fmt(24.0 * vertical_scale),
+        view_box,
+        path_end,
+        escape_attr(&line_color),
+        fmt(arrow_tx),
+        arrow_path,
+        escape_attr(&line_color),
+        escape_attr(arrow_fill),
+        fmt(call.x + 6.0),
+        fmt(label_y),
+        style_attr(&call.style),
+        escape_xml(&resolve_emoji_in_text(call.label.trim())),
+        stroke_width = fmt(stroke_width),
+    );
+    // Self-call sequence numbers use a different attribute order in the companion SVG.
+    if theme.native.is_some() {
+        write_number_badge(
+            out,
+            theme,
+            &call.number,
+            call.x - 3.0,
+            call.y + 12.0 * vertical_scale,
+            false,
+        );
+    } else {
+        let _ = write!(
+            out,
+            r#"<text x="{}" y="{}" text-anchor="end" class="seq-number">{}</text>"#,
+            fmt(call.x - 3.0),
+            fmt(call.y + 12.0 * vertical_scale),
+            escape_xml(&call.number)
+        );
+    }
+    out.push_str("</g>");
+    out.checkpoint()
+}
+
+fn render_creation(
+    out: &mut impl SvgOutput,
+    creation: &ZenumlCreationLayout,
+    theme: &ZenumlSourceStyle,
+) -> Result<()> {
+    let message = &creation.message;
+    let participant = &creation.participant;
+    let reverse = message.to_x < message.from_x;
+    let to_x = if reverse {
+        participant.x + participant.width / 2.0
+    } else {
+        participant.x - participant.width / 2.0
+    };
+    let from_x = if reverse {
+        message.from_x
+    } else {
+        message.from_x + 1.0
+    };
+    let label_x = from_x + (to_x - from_x) / 2.0 + if reverse { 3.5 } else { -3.0 };
+    let label_y = message.y - 3.0 * theme.typography.vertical_scale();
+    let _ = write!(
+        out,
+        r#"<g class="creation" data-statement="{}"><line x1="{}" y1="{}" x2="{}" y2="{}" class="message-line" stroke-dasharray="6,4"/>"#,
+        escape_attr(&creation.statement_id),
+        fmt(from_x),
+        fmt(message.y),
+        fmt(to_x),
+        fmt(message.y),
+    );
+    out.checkpoint()?;
+    render_open_polyline(out, to_x, message.y, reverse, "arrow-head arrow-open")?;
+    let rendered_label = render_creation_label(&message.label, &message.style);
+    let _ = write!(
+        out,
+        r#"<text x="{}" y="{}" text-anchor="middle" class="message-label">{}</text>"#,
+        fmt(label_x),
+        fmt(label_y),
+        rendered_label,
+    );
+    if theme.native.is_some() {
+        write_number_badge(
+            out,
+            theme,
+            &message.number,
+            from_x.min(to_x) - 4.0,
+            label_y,
+            false,
+        );
+    } else {
+        let _ = write!(
+            out,
+            r#"<text x="{}" y="{}" text-anchor="end" class="seq-number">{}</text>"#,
+            fmt(from_x.min(to_x) - 4.0),
+            fmt(label_y),
+            escape_xml(&message.number)
+        );
+    }
+    out.push_str("</g>");
+    out.checkpoint()
+}
+
+fn render_return(
+    out: &mut impl SvgOutput,
+    returned: &ZenumlReturnLayout,
+    theme: &ZenumlSourceStyle,
+) -> Result<()> {
+    if returned.is_self {
+        let icon_x = returned.from_x + 4.0;
+        let icon_y = returned.y - 12.0 * theme.typography.vertical_scale();
+        let _ = write!(
+            out,
+            r#"<g class="return return-self" data-statement="{}"><g transform="translate({},{}) scale(0.0234375)"><path d="M256 0C114.84 0 0 114.84 0 256s114.84 256 256 256 256-114.84 256-256S397.16 0 256 0Zm0 469.33c-117.63 0-213.33-95.7-213.33-213.33S138.37 42.67 256 42.67 469.33 138.37 469.33 256 373.63 469.33 256 469.33Z" class="return-icon"/><path d="M288 192h-87.16l27.58-27.58a21.33 21.33 0 1 0-30.17-30.17l-64 64a21.33 21.33 0 0 0 0 30.17l64 64a21.33 21.33 0 0 0 30.17-30.17l-27.58-27.58H288a53.33 53.33 0 0 1 0 106.67h-32a21.33 21.33 0 0 0 0 42.66h32a96 96 0 0 0 0-192Z" class="return-icon"/></g><text x="{}" y="{}" text-anchor="start" class="return-label">{}</text></g>"#,
+            escape_attr(&returned.statement_id),
+            fmt(icon_x),
+            fmt(icon_y),
+            fmt(icon_x + 16.0),
+            fmt(returned.y - 1.0),
+            escape_xml(&resolve_emoji_in_text(&returned.label)),
+        );
+        return out.checkpoint();
+    }
+    let line_y = returned.y.floor();
+    let label_x = returned.from_x.min(returned.to_x)
+        + (returned.to_x - returned.from_x).abs() / 2.0
+        + if returned.is_reverse { 3.5 } else { -3.5 };
+    let label_y = line_y - 3.0;
+    let _ = write!(
+        out,
+        r#"<g class="return" data-statement="{}"><line x1="{}" y1="{}" x2="{}" y2="{}" class="return-line"/>"#,
+        escape_attr(&returned.statement_id),
+        fmt(returned.from_x),
+        fmt(line_y),
+        fmt(returned.to_x),
+        fmt(line_y),
+    );
+    out.checkpoint()?;
+    render_open_polyline(
+        out,
+        returned.to_x,
+        line_y,
+        returned.is_reverse,
+        "return-arrow",
+    )?;
+    let _ = write!(
+        out,
+        r#"<text x="{}" y="{}" text-anchor="middle" class="return-label">{}</text>"#,
+        fmt(label_x),
+        fmt(label_y),
+        escape_xml(&resolve_emoji_in_text(&returned.label)),
+    );
+    let number_x = returned.from_x.min(returned.to_x) - 4.0;
+    if theme.native.is_some() {
+        write_number_badge(out, theme, &returned.number, number_x, label_y, false);
+    } else {
+        let _ = write!(
+            out,
+            r#"<text x="{}" y="{}" text-anchor="end" class="seq-number">{}</text>"#,
+            fmt(number_x),
+            fmt(label_y),
+            escape_xml(&returned.number)
+        );
+    }
+    out.push_str("</g>");
+    out.checkpoint()
+}
+
+fn render_arrow_head(
+    out: &mut impl SvgOutput,
+    tip_x: f64,
+    tip_y: f64,
+    points_left: bool,
+    style: ZenumlArrowStyle,
+    theme: &ZenumlSourceStyle,
+) -> Result<()> {
+    let filled_arrow = (style == ZenumlArrowStyle::Solid)
+        .then(|| {
+            theme.native.as_deref().map_or(
+                Some("M1 1.25 L6.15 4.5 L1 7.75 Z"),
+                ZenumlNativeStyle::filled_arrow,
+            )
+        })
+        .flatten();
+    let arrow_path = filled_arrow.unwrap_or("M1 1.25 L6.15 4.5 L1 7.75");
+    let x = if points_left { tip_x } else { tip_x - 7.0 };
+    let transform = if points_left {
+        r#" transform="scale(-1, 1) translate(-7, 0)""#
+    } else {
+        ""
+    };
+    let line_color = connector_color(theme);
+    let stroke_width = theme
+        .native
+        .as_ref()
+        .map_or(2.0, |style| style.form.connector_width);
+    let _ = write!(
+        out,
+        r##"<svg x="{}" y="{}" width="7" height="10" viewBox="0 0 7 9" overflow="visible" class="arrow-head{}"><g{}><path d="{arrow_path}" stroke="{}" stroke-linecap="round" stroke-width="{}" fill="{}"/></g></svg>"##,
+        fmt(x),
+        fmt(tip_y - 5.0),
+        if filled_arrow.is_some() {
+            ""
+        } else {
+            " arrow-open"
+        },
+        transform,
+        escape_attr(&line_color),
+        fmt(stroke_width),
+        escape_attr(filled_arrow.map_or("none", |_| line_color.as_ref())),
+    );
+    out.checkpoint()
+}
+
+fn render_open_polyline(
+    out: &mut impl SvgOutput,
+    tip_x: f64,
+    tip_y: f64,
+    points_left: bool,
+    class: &str,
+) -> Result<()> {
+    let direction = if points_left { 1.0 } else { -1.0 };
+    let base_x = tip_x + direction * 5.15;
+    let _ = write!(
+        out,
+        r#"<polyline points="{},{} {},{} {},{}" fill="none" stroke-linecap="round" class="{}"/>"#,
+        fmt(base_x),
+        fmt(tip_y - 3.25),
+        fmt(tip_x),
+        fmt(tip_y),
+        fmt(base_x),
+        fmt(tip_y + 3.25),
+        class,
+    );
+    out.checkpoint()
+}
+
+fn render_creation_label(
+    label: &str,
+    style: &std::collections::BTreeMap<String, String>,
+) -> String {
+    let style = style_attr(style);
+    if let Some(inner) = label
+        .strip_prefix('«')
+        .and_then(|label| label.strip_suffix('»'))
+    {
+        if inner == "create" {
+            return format!("<tspan{style}>{}</tspan>", escape_xml(label));
+        }
+        return format!(
+            "<tspan{style}>«</tspan><tspan dx=\"4\"{style}>{}</tspan><tspan dx=\"4\"{style}>»</tspan>",
+            escape_xml(inner)
+        );
+    }
+    format!("<tspan{style}>{}</tspan>", escape_xml(label))
+}
+
+fn render_fragment(
+    out: &mut impl SvgOutput,
+    fragment: &ZenumlFragmentLayout,
+    theme: &ZenumlSourceStyle,
+) -> Result<()> {
+    let vertical_scale = theme.typography.vertical_scale();
+    let (class, kind_label) = match fragment.kind {
+        ZenumlLayoutFragmentKind::Loop => ("loop", "Loop"),
+        ZenumlLayoutFragmentKind::Alternative => ("alt", "Alt"),
+        ZenumlLayoutFragmentKind::Parallel => ("par", "Par"),
+        ZenumlLayoutFragmentKind::Optional => ("opt", "Opt"),
+        ZenumlLayoutFragmentKind::Critical => ("critical", "Critical"),
+        ZenumlLayoutFragmentKind::Section => ("section", "Section"),
+        ZenumlLayoutFragmentKind::TryCatchFinally => ("tcf", "Try"),
+        ZenumlLayoutFragmentKind::Reference => ("ref", "Ref"),
+    };
+    let header_x = fragment.x + 1.0;
+    let header_y = fragment.header_y;
+    let native = theme.native.as_deref();
+    let _ = write!(
+        out,
+        r#"<g class="fragment fragment-{}" data-statement="{}"><rect class="fragment-border" x="{}" y="{}" width="{}" height="{}" rx="{}"/><rect class="fragment-header" x="{}" y="{}" width="{}" height="{}"/>"#,
+        class,
+        escape_attr(&fragment.statement_id),
+        fmt(fragment.x + 0.5),
+        fmt(fragment.y + 0.5),
+        fmt(fragment.width - 1.0),
+        fmt(fragment.height - 1.0),
+        fmt(native.map_or(4.0, |style| style.form.container_radius)),
+        fmt(header_x),
+        fmt(header_y),
+        fmt(fragment.width - 2.0),
+        fmt(25.0 * vertical_scale),
+    );
+    render_fragment_icon(
+        out,
+        fragment.kind,
+        header_x + 4.0 * vertical_scale,
+        header_y,
+        theme,
+    )?;
+    let _ = write!(
+        out,
+        r#"<text x="{}" y="{}" dominant-baseline="central" class="fragment-label">{}</text>"#,
+        fmt(header_x + 26.0 * vertical_scale),
+        fmt(header_y + 12.0 * vertical_scale),
+        kind_label,
+    );
+    write_number_badge(
+        out,
+        theme,
+        &fragment.number,
+        fragment.x - 3.0,
+        header_y + 8.0 * vertical_scale,
+        true,
+    );
+    out.checkpoint()?;
+    if !fragment.label.is_empty() {
+        render_bracketed_label(
+            out,
+            header_x,
+            header_y + 40.0 * vertical_scale,
+            &fragment.label,
+            fragment.label_width,
+            "fragment-condition",
+        )?;
+    }
+    for section in fragment.sections.iter().skip(1) {
+        let separator_y = section.y + 0.5;
+        let _ = write!(
+            out,
+            r#"<line class="fragment-separator" x1="{}" y1="{}" x2="{}" y2="{}"/>"#,
+            fmt(fragment.x + 1.0 + section.content_inset_left.unwrap_or_default()),
+            fmt(separator_y),
+            fmt(fragment.x + fragment.width - 1.0),
+            fmt(separator_y),
+        );
+        out.checkpoint()?;
+        if let Some(inner) = &section.inner_label {
+            render_bracketed_label(
+                out,
+                fragment.x + 1.0,
+                section.y + 16.0 * vertical_scale,
+                inner,
+                section.inner_label_width,
+                "fragment-section-label",
+            )?;
+        } else if let (Some(keyword), Some(detail)) = (&section.keyword, &section.detail) {
+            let keyword_width = section.keyword_width.unwrap_or(0.0);
+            let background_width = keyword_width + section.detail_width.unwrap_or(0.0) + 16.0;
+            let background = native.map_or_else(
+                || std::borrow::Cow::Borrowed(theme.color("backgroundColor", "#fff")),
+                |style| std::borrow::Cow::Owned(style.container.to_string()),
+            );
+            let text_color = native.map_or_else(
+                || std::borrow::Cow::Borrowed(theme.color("textColor", "#222")),
+                |style| std::borrow::Cow::Owned(style.primary.to_string()),
+            );
+            let _ = write!(
+                out,
+                r##"<g opacity="0.65"><rect x="{}" y="{}" width="{}" height="{}" fill="{}"/><text x="{}" y="{}" class="fragment-section-label" fill="{}">{}</text><text x="{}" y="{}" class="fragment-section-label" fill="{}">{}</text></g>"##,
+                fmt(fragment.x + 1.0),
+                fmt(section.y + 1.0),
+                fmt(background_width),
+                fmt(20.0 * vertical_scale),
+                escape_attr(&background),
+                fmt(fragment.x + 5.0),
+                fmt(section.y + 16.0 * vertical_scale),
+                escape_attr(&text_color),
+                escape_xml(keyword),
+                fmt(fragment.x + 13.0 + keyword_width),
+                fmt(section.y + 16.0 * vertical_scale),
+                escape_attr(&text_color),
+                escape_xml(detail),
+            );
+            out.checkpoint()?;
+        } else if !section.label.is_empty() {
+            let background = native.map_or_else(
+                || std::borrow::Cow::Borrowed(theme.color("backgroundColor", "#fff")),
+                |style| std::borrow::Cow::Owned(style.container.to_string()),
+            );
+            let _ = write!(
+                out,
+                r##"<g opacity="0.65"><rect x="{}" y="{}" width="{}" height="{}" fill="{}"/><text x="{}" y="{}" class="fragment-section-label">{}</text></g>"##,
+                fmt(fragment.x + 1.0),
+                fmt(section.y + 1.0),
+                fmt(section.label_width.unwrap_or(0.0) + 8.0),
+                fmt(20.0 * vertical_scale),
+                escape_attr(&background),
+                fmt(fragment.x + 5.0),
+                fmt(section.y + 16.0 * vertical_scale),
+                escape_xml(&section.label),
+            );
+            out.checkpoint()?;
+        }
+    }
+    out.push_str("</g>");
+    out.checkpoint()
+}
+
+fn render_bracketed_label(
+    out: &mut impl SvgOutput,
+    x: f64,
+    y: f64,
+    inner: &str,
+    inner_width: Option<f64>,
+    class: &str,
+) -> Result<()> {
+    let inner_x = x + 7.89;
+    let close_x = inner_x + inner_width.unwrap_or(0.0) + 4.0;
+    let _ = write!(
+        out,
+        r#"<g><text x="{}" y="{}" class="{}">[</text><text x="{}" y="{}" class="{}" opacity="0.65">{}</text><text x="{}" y="{}" class="{}">]</text></g>"#,
+        fmt(x),
+        fmt(y),
+        class,
+        fmt(inner_x),
+        fmt(y),
+        class,
+        escape_xml(&resolve_emoji_in_text(inner)),
+        fmt(close_x),
+        fmt(y),
+        class,
+    );
+    out.checkpoint()
+}
+
+fn render_fragment_icon(
+    out: &mut impl SvgOutput,
+    kind: ZenumlLayoutFragmentKind,
+    x: f64,
+    y: f64,
+    theme: &ZenumlSourceStyle,
+) -> Result<()> {
+    let (key, raw, view_box, attributes) = match kind {
+        ZenumlLayoutFragmentKind::Alternative => (
+            "alt",
+            include_str!("../../assets/zenuml/fragment-alt.svg"),
+            "0 0 24 24",
+            r#" fill="none""#,
+        ),
+        ZenumlLayoutFragmentKind::Optional => (
+            "opt",
+            include_str!("../../assets/zenuml/fragment-opt.svg"),
+            "0 0 24 24",
+            r#" fill="none""#,
+        ),
+        ZenumlLayoutFragmentKind::Parallel => (
+            "par",
+            include_str!("../../assets/zenuml/fragment-par.svg"),
+            "0 0 24 24",
+            r#" fill="none""#,
+        ),
+        ZenumlLayoutFragmentKind::Critical => (
+            "critical",
+            include_str!("../../assets/zenuml/fragment-critical.svg"),
+            "0 0 24 24",
+            r#" fill="none""#,
+        ),
+        ZenumlLayoutFragmentKind::Loop => (
+            "loop",
+            include_str!("../../assets/zenuml/fragment-loop.svg"),
+            "0 0 1024 1024",
+            r##" fill="#000" stroke="none""##,
+        ),
+        ZenumlLayoutFragmentKind::TryCatchFinally => (
+            "tcf",
+            include_str!("../../assets/zenuml/fragment-tcf.svg"),
+            "0 0 76 76",
+            r##" fill="#000" stroke="none""##,
+        ),
+        ZenumlLayoutFragmentKind::Section => (
+            "section",
+            include_str!("../../assets/zenuml/fragment-section.svg"),
+            "0 0 15 15",
+            r##" fill="#000" stroke="none""##,
+        ),
+        ZenumlLayoutFragmentKind::Reference => (
+            "ref",
+            include_str!("../../assets/zenuml/fragment-ref.svg"),
+            "0 0 24 24",
+            r#" fill="none""#,
+        ),
+    };
+    let content = svg_asset_content(raw);
+    let attributes = if matches!(
+        kind,
+        ZenumlLayoutFragmentKind::Loop
+            | ZenumlLayoutFragmentKind::TryCatchFinally
+            | ZenumlLayoutFragmentKind::Section
+    ) {
+        format!(
+            r#" fill="{}" stroke="none""#,
+            escape_attr(theme.color("fragmentTextColor", "#000"))
+        )
+    } else {
+        attributes.to_string()
+    };
+    let _ = write!(
+        out,
+        r#"<svg class="fragment-icon" data-icon="{}" x="{}" y="{}" width="{}" height="{}" viewBox="{}"{}>{}</svg>"#,
+        key,
+        fmt(x),
+        fmt(y),
+        fmt(20.0 * theme.typography.vertical_scale()),
+        fmt(24.0 * theme.typography.vertical_scale()),
+        view_box,
+        attributes,
+        content,
+    );
+    out.checkpoint()
+}
+
+fn svg_asset_content(svg: &'static str) -> &'static str {
+    let Some(svg_start) = svg.find("<svg") else {
+        return svg;
+    };
+    let Some(open_end) = svg[svg_start..].find('>') else {
+        return svg;
+    };
+    let content_start = svg_start + open_end + 1;
+    let Some(content_end) = svg.rfind("</svg>") else {
+        return svg;
+    };
+    svg[content_start..content_end].trim()
+}
+
+fn render_comment(
+    out: &mut impl SvgOutput,
+    comment: &ZenumlCommentLayout,
+    theme: &ZenumlSourceStyle,
+) -> Result<()> {
+    let lines = markdown_comment_lines(&comment.text);
+    let _ = write!(
+        out,
+        r#"<text class="comment-text" data-statement="{}"{}>"#,
+        escape_attr(&comment.statement_id),
+        style_attr(&comment.style),
+    );
+    out.checkpoint()?;
+    for (index, line) in lines.iter().enumerate() {
+        if index == 0 {
+            let _ = write!(
+                out,
+                r#"<tspan x="{}" y="{}">{}</tspan>"#,
+                fmt(comment.x),
+                fmt(comment.y),
+                if line.is_empty() { " " } else { line },
+            );
+        } else {
+            let _ = write!(
+                out,
+                r#"<tspan x="{}" dy="{}">{}</tspan>"#,
+                fmt(comment.x),
+                fmt(20.0 * theme.typography.vertical_scale()),
+                if line.is_empty() { " " } else { line },
+            );
+        }
+        out.checkpoint()?;
+    }
+    out.push_str("</text>");
+    out.checkpoint()
+}
+
+fn markdown_comment_lines(markdown: &str) -> Vec<String> {
+    use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
+
+    let mut lines = vec![String::new()];
+    let mut style = MarkdownRunStyle::default();
+    let parser = Parser::new_ext(markdown, Options::ENABLE_STRIKETHROUGH);
+    for event in parser {
+        match event {
+            Event::Start(Tag::Strong) => style.strong = true,
+            Event::End(TagEnd::Strong) => style.strong = false,
+            Event::Start(Tag::Emphasis) => style.emphasis = true,
+            Event::End(TagEnd::Emphasis) => style.emphasis = false,
+            Event::Start(Tag::CodeBlock(_)) => style.code_block = true,
+            Event::End(TagEnd::CodeBlock) => style.code_block = false,
+            Event::Text(text) => append_markdown_text(&mut lines, &text, style),
+            Event::Code(text) => append_markdown_text(&mut lines, &text, style),
+            Event::SoftBreak | Event::HardBreak => lines.push(String::new()),
+            Event::End(TagEnd::Paragraph) if lines.last().is_some_and(|line| !line.is_empty()) => {
+                lines.push(String::new());
+            }
+            Event::Html(html) | Event::InlineHtml(html) => {
+                append_markdown_text(&mut lines, &html, style);
+            }
+            _ => {}
+        }
+    }
+    while lines.len() > 1 && lines.last().is_some_and(String::is_empty) {
+        lines.pop();
+    }
+    lines
+}
+
+#[derive(Clone, Copy, Default)]
+struct MarkdownRunStyle {
+    strong: bool,
+    emphasis: bool,
+    code_block: bool,
+}
+
+fn append_markdown_text(lines: &mut Vec<String>, text: &str, style: MarkdownRunStyle) {
+    for (index, line) in text.split('\n').enumerate() {
+        if index > 0 {
+            lines.push(String::new());
+        }
+        let escaped = escape_xml(line);
+        if escaped.is_empty() {
+            continue;
+        }
+        if !style.strong && !style.emphasis && !style.code_block {
+            lines.last_mut().unwrap().push_str(&escaped);
+            continue;
+        }
+        lines.last_mut().unwrap().push_str("<tspan");
+        if style.strong {
+            lines.last_mut().unwrap().push_str(r#" font-weight="bold""#);
+        }
+        if style.emphasis {
+            lines
+                .last_mut()
+                .unwrap()
+                .push_str(r#" font-style="italic""#);
+        }
+        if style.code_block {
+            lines
+                .last_mut()
+                .unwrap()
+                .push_str(r#" font-family="monospace""#);
+        }
+        lines.last_mut().unwrap().push('>');
+        lines.last_mut().unwrap().push_str(&escaped);
+        lines.last_mut().unwrap().push_str("</tspan>");
+    }
+}
+
+fn style_attr(style: &std::collections::BTreeMap<String, String>) -> String {
+    if style.is_empty() {
+        return String::new();
+    }
+    let declarations = style
+        .iter()
+        .map(|(name, value)| format!("{name}:{}", escape_attr(value)))
+        .collect::<Vec<_>>()
+        .join(";");
+    format!(r#" style="{declarations}""#)
+}
+
+fn resolve_emoji_in_text(text: &str) -> String {
+    resolve_zenuml_emojis_in_text(text)
+}
+
+fn write_zenuml_native_css(
+    out: &mut impl SvgOutput,
+    id: impl std::fmt::Display,
+    native: &ZenumlNativeStyle,
+    typography: &ZenumlTypography,
+) {
+    let (title_font, title_weight) = typography.native_title_font();
+    let _ = write!(
+        out,
+        r#"#{id}{{font-family:{font};font-weight:{weight};fill:{text}}}
+#{id} .frame-border-outer{{fill:none;stroke:{border};stroke-width:{width}}}
+#{id} .frame-border-inner,#{id} .frame-header-bg{{fill:none}}
+#{id} .frame-header-line,#{id} .fragment-border{{fill:none;stroke:{border};stroke-width:{width}}}
+#{id} .frame-title{{font-family:{title_font};font-size:{base}px;font-weight:{title_weight};fill:{title}}}
+#{id} .participant-box{{fill:{actor};stroke:{border};stroke-width:{width}}}
+#{id} .participant-label,#{id} .stereotype-label,#{id} .participant-emoji{{font-size:{base}px}}
+#{id} .participant-icon{{color:{text}}}
+#{id} .participant-icon [fill="currentColor"]:not([stroke]){{stroke:{border};stroke-width:1}}
+#{id} .lifeline,#{id} .fragment-separator{{stroke:{guide};stroke-width:1}}
+#{id} .message-line,#{id} .return-line,#{id} .return-arrow,#{id} .arrow-head{{stroke:{connector};stroke-width:{connector_width}}}
+#{id} .arrow-head{{fill:{connector}}}
+#{id} .arrow-open,#{id} .return-arrow{{fill:none}}
+#{id} .return-line{{stroke-dasharray:6,4}}
+#{id} .occurrence{{fill:{emphasis};stroke:{connector};stroke-width:{width}}}
+#{id} .fragment-surface,#{id} .group-outline,#{id} .group-title-bg{{fill:{container}}}
+#{id} .group-outline,#{id} .divider-line,#{id} .divider-bg{{stroke:{border};stroke-width:{width}}}
+#{id} .fragment-header{{fill:{emphasis}}}
+#{id} .fragment-label{{fill:{on_emphasis}}}
+#{id} .fragment-icon{{color:{on_emphasis}}}
+#{id} .message-label,#{id} .return-label,#{id} .fragment-label,#{id} .fragment-condition,#{id} .fragment-section-label,#{id} .divider-label,#{id} .comment-text{{font-size:{label_size}px}}
+#{id} .divider-bg{{fill:{callout}}}
+#{id} .divider-label{{fill:{callout_text}}}
+#{id} .comment-text{{fill:{muted}}}
+#{id} .seq-number-badge{{fill:{connector}}}
+#{id} .seq-number{{font-size:{number_size}px;fill:{number_text}}}
+#{id} .group-title-text{{font-size:{group_size}px}}"#,
+        font = typography.css_family(),
+        weight = typography.native_label_weight(),
+        base = fmt(typography.size(16.0)),
+        label_size = fmt(typography.size(14.0)),
+        number_size = fmt(typography.size(12.0)),
+        group_size = fmt(typography.size(13.0)),
+        width = fmt(native.form.stroke_width),
+        connector_width = fmt(native.form.connector_width),
+        actor = native.actor,
+        container = native.container,
+        callout = native.callout,
+        emphasis = native.emphasis,
+        border = native.border,
+        connector = native.connector,
+        guide = native.guide,
+        text = native.primary,
+        muted = native.muted,
+        title = native.title,
+        callout_text = native.callout_text,
+        on_emphasis = native.emphasis_text,
+        number_text = native.number_text,
+    );
+}
+
+fn write_default_zenuml_css(out: &mut impl SvgOutput, diagram_id: impl std::fmt::Display) {
+    let _ = write!(
+        out,
+        r#"
+#{diagram_id} .frame-border-outer{{fill:#666}}#{diagram_id} .frame-border-inner,#{diagram_id} .frame-header-bg{{fill:#fff}}#{diagram_id} .frame-header-line{{stroke:#666;stroke-width:1;shape-rendering:crispEdges}}#{diagram_id} .frame-title{{font-family:Helvetica,Verdana,serif;font-size:16px;font-weight:600;fill:#222}}#{diagram_id} .participant-box{{fill:#fff;stroke:#666;stroke-width:2}}#{diagram_id} .participant-label{{font-family:Helvetica,Verdana,serif;font-size:16px;fill:#222}}#{diagram_id} .participant-icon{{color:#222}}#{diagram_id} .participant-icon [fill="currentColor"]:not([stroke]){{stroke:#666;stroke-width:1}}#{diagram_id} .participant-emoji{{font-size:16px}}#{diagram_id} .stereotype-label{{font-family:Helvetica,Verdana,serif;font-size:16px;fill:#222}}#{diagram_id} .lifeline{{stroke:#666;stroke-width:1}}#{diagram_id} .message-line{{stroke:#000;stroke-width:2;shape-rendering:crispEdges}}#{diagram_id} .message-label{{font-family:Helvetica,Verdana,serif;font-size:14px;fill:#222}}#{diagram_id} .arrow-head{{fill:#000;stroke:#000;stroke-width:2}}#{diagram_id} .arrow-open{{fill:none}}#{diagram_id} .occurrence{{fill:#dedede;stroke:#666;stroke-width:2;shape-rendering:crispEdges}}#{diagram_id} .fragment-border{{fill:none;stroke:#666;stroke-width:1;shape-rendering:crispEdges}}#{diagram_id} .fragment-header{{fill:#dedede;fill-opacity:.498;stroke:none;shape-rendering:crispEdges}}#{diagram_id} .fragment-label{{font-family:Helvetica,Verdana,serif;font-size:14px;font-weight:600;fill:#000}}#{diagram_id} .fragment-condition{{font-family:Helvetica,Verdana,serif;font-size:14px;fill:#000}}#{diagram_id} .fragment-separator{{stroke:#e5e7eb;stroke-width:1;shape-rendering:crispEdges}}#{diagram_id} .fragment-section-label{{font-family:Helvetica,Verdana,serif;font-size:14px;fill:#000}}#{diagram_id} .return-line{{stroke:#000;stroke-width:2;stroke-dasharray:6,4;shape-rendering:crispEdges}}#{diagram_id} .return-arrow{{stroke:#000;stroke-width:2;fill:none}}#{diagram_id} .return-label{{font-family:Helvetica,Verdana,serif;font-size:14px;fill:#222}}#{diagram_id} .return-icon{{fill:#222}}#{diagram_id} .divider-line{{stroke:#aa3;stroke-width:1}}#{diagram_id} .divider-bg{{fill:#fff5ad;stroke:#aa3;stroke-width:1}}#{diagram_id} .divider-label{{font-family:Helvetica,Verdana,serif;font-size:14px;fill:#333}}#{diagram_id} .comment-text{{font-family:Helvetica,Verdana,serif;font-size:14px;fill:#333;opacity:.5}}#{diagram_id} .seq-number{{font-family:Helvetica,Verdana,serif;font-size:12px;font-weight:100;fill:#6b7280}}#{diagram_id} .group-outline{{fill:none;stroke:#666}}#{diagram_id} .group-title-bg{{fill:#fff;stroke:none}}#{diagram_id} .group-title-text{{font-family:Helvetica,Verdana,serif;font-size:13px;font-weight:400;fill:#222}}
+"#
+    );
+}
+
+fn themed_zenuml_css(
+    diagram_id: impl std::fmt::Display,
+    theme: &ZenumlSourceStyle,
+    title_fill: &str,
+) -> String {
+    let mut css = format!(
+        r#"
+#{diagram_id} .frame-border-outer{{fill:{outer_paint}}}#{diagram_id} .frame-border-inner,#{diagram_id} .frame-header-bg{{fill:{background}}}#{diagram_id} .frame-header-line{{stroke:{border};stroke-width:1;shape-rendering:crispEdges}}#{diagram_id} .frame-title{{font-family:{font_family};font-size:{size_16}px;font-weight:600;fill:{title_fill}}}#{diagram_id} .participant-box{{fill:{actor_background};stroke:{actor_border};stroke-width:2}}#{diagram_id} .participant-label{{font-family:{font_family};font-size:{size_16}px;fill:{actor_text}}}#{diagram_id} .participant-icon{{color:{actor_text}}}#{diagram_id} .participant-icon [fill="currentColor"]:not([stroke]){{stroke:{actor_border};stroke-width:1}}#{diagram_id} .participant-emoji{{font-size:{size_16}px}}#{diagram_id} .stereotype-label{{font-family:{font_family};font-size:{size_16}px;fill:{actor_text}}}#{diagram_id} .lifeline{{stroke:{line};stroke-width:1}}#{diagram_id} .message-line{{stroke:{message_line};stroke-width:2;shape-rendering:crispEdges}}#{diagram_id} .message-label{{font-family:{font_family};font-size:{size_14}px;fill:{text}}}#{diagram_id} .arrow-head{{fill:{message_line};stroke:{message_line};stroke-width:2}}#{diagram_id} .arrow-open{{fill:none}}#{diagram_id} .occurrence{{fill:{activation_background};stroke:{activation_border};stroke-width:2;shape-rendering:crispEdges}}#{diagram_id} .fragment-border{{fill:none;stroke:{fragment_border};stroke-width:1;shape-rendering:crispEdges}}#{diagram_id} .fragment-header{{fill:{muted_surface};fill-opacity:.498;stroke:none;shape-rendering:crispEdges}}#{diagram_id} .fragment-label{{font-family:{font_family};font-size:{size_14}px;font-weight:600;fill:{fragment_header_text}}}#{diagram_id} .fragment-condition{{font-family:{font_family};font-size:{size_14}px;fill:{fragment_text}}}#{diagram_id} .fragment-separator{{stroke:{separator};stroke-width:1;shape-rendering:crispEdges}}#{diagram_id} .fragment-section-label{{font-family:{font_family};font-size:{size_14}px;fill:{fragment_text}}}#{diagram_id} .return-line{{stroke:{message_line};stroke-width:2;stroke-dasharray:6,4;shape-rendering:crispEdges}}#{diagram_id} .return-arrow{{stroke:{message_line};stroke-width:2;fill:none}}#{diagram_id} .return-label{{font-family:{font_family};font-size:{size_14}px;fill:{text}}}#{diagram_id} .return-icon{{fill:{text}}}#{diagram_id} .divider-line{{stroke:{note_border};stroke-width:1}}#{diagram_id} .divider-bg{{fill:{note_background};stroke:{note_border};stroke-width:1}}#{diagram_id} .divider-label{{font-family:{font_family};font-size:{size_14}px;fill:{note_text}}}#{diagram_id} .comment-text{{font-family:{font_family};font-size:{size_14}px;fill:{comment_text};opacity:.5}}#{diagram_id} .seq-number{{font-family:{font_family};font-size:{size_12}px;font-weight:100;fill:{subtle_text}}}#{diagram_id} .group-outline{{fill:none;stroke:{group_border}}}#{diagram_id} .group-title-bg{{fill:{group_background};stroke:none}}#{diagram_id} .group-title-text{{font-family:{font_family};font-size:{size_13}px;font-weight:400;fill:{group_text}}}
+"#,
+        font_family = theme.typography.css_family(),
+        size_16 = fmt(theme.typography.size(16.0)),
+        size_14 = fmt(theme.typography.size(14.0)),
+        size_12 = fmt(theme.typography.size(12.0)),
+        size_13 = fmt(theme.typography.size(13.0)),
+        outer_paint = if theme.transparent_frame() {
+            format!(
+                "none;stroke:{};stroke-width:2",
+                theme.color("borderColor", "#666")
+            )
+        } else {
+            theme.color("borderColor", "#666").to_owned()
+        },
+        border = theme.color("borderColor", "#666"),
+        background = if theme.transparent_frame() {
+            "none"
+        } else {
+            theme.color("backgroundColor", "#fff")
+        },
+        text = theme.color("messageTextColor", theme.color("textColor", "#222")),
+        actor_background = theme.color("actorBackgroundColor", "#fff"),
+        actor_border = theme.color("actorBorderColor", "#666"),
+        actor_text = theme.color("actorTextColor", "#222"),
+        line = theme.color("lifelineColor", theme.color("lineColor", "#666")),
+        message_line = theme.color("messageLineColor", theme.color("lineColor", "#000")),
+        activation_background = theme.color("activationBackgroundColor", "#dedede"),
+        activation_border = theme.color("activationBorderColor", "#666"),
+        muted_surface = theme.color("mutedSurfaceColor", "#dedede"),
+        fragment_border = theme.color("fragmentBorderColor", theme.color("borderColor", "#666")),
+        fragment_text = theme.color("fragmentTextColor", theme.color("textColor", "#000")),
+        fragment_header_text = theme.color("fragmentTextColor", "#000"),
+        group_text = theme.color("groupTextColor", "#222"),
+        separator = theme.color("borderColor", "#e5e7eb"),
+        note_border = theme.color("noteBorderColor", "#aa3"),
+        note_background = theme.color("noteBackgroundColor", "#fff5ad"),
+        note_text = theme.color("noteTextColor", "#333"),
+        comment_text = theme.color("subtleTextColor", "#333"),
+        subtle_text = theme.color(
+            "sequenceNumberTextColor",
+            theme.color("subtleTextColor", "#6b7280")
+        ),
+        group_border = theme.color("groupBorderColor", "#666"),
+        group_background = theme.color("groupBackgroundColor", "#fff"),
+    );
+    if let Some(color) = theme
+        .configured_color("fragmentTextColor")
+        .or_else(|| theme.configured_color("textColor"))
+    {
+        let _ = write!(&mut css, "#{diagram_id} .fragment-icon{{color:{}}}", color);
+    }
+    css
+}
+
+#[cfg(test)]
+fn zenuml_css(
+    diagram_id: impl std::fmt::Display,
+    theme: &ZenumlSourceStyle,
+    title_fill: &str,
+) -> String {
+    let mut out = String::new();
+    write_zenuml_css(&mut out, diagram_id, title_fill, theme);
+    out
+}
+
+const ZENUML_DEFAULT_TITLE_FILL: &str = "#222";
+
+fn write_zenuml_css(
+    out: &mut impl SvgOutput,
+    diagram_id: impl std::fmt::Display,
+    title_fill: &str,
+    theme: &ZenumlSourceStyle,
+) {
+    if theme.uses_default_css() && title_fill == ZENUML_DEFAULT_TITLE_FILL {
+        write_default_zenuml_css(out, diagram_id);
+    } else {
+        out.push_str(&themed_zenuml_css(diagram_id, theme, title_fill));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use merman_render_core::{
+        Error,
+        resources::{RenderResourcePolicy, ResourceLimitId},
+    };
+
+    #[test]
+    fn zenuml_default_css_fast_path_matches_dynamic_template() {
+        let theme = ZenumlSourceStyle::new(&serde_json::Value::Null);
+
+        assert_eq!(
+            zenuml_css("test", &theme, ZENUML_DEFAULT_TITLE_FILL),
+            themed_zenuml_css("test", &theme, ZENUML_DEFAULT_TITLE_FILL)
+        );
+    }
+
+    #[test]
+    fn zenuml_css_has_one_final_frame_title_fill_owner() {
+        let theme = ZenumlSourceStyle::new(&serde_json::Value::Null);
+        let mut baseline = String::new();
+        write_zenuml_css(&mut baseline, "test", ZENUML_DEFAULT_TITLE_FILL, &theme);
+        assert_eq!(
+            baseline,
+            zenuml_css("test", &theme, ZENUML_DEFAULT_TITLE_FILL)
+        );
+
+        let mut themed = String::new();
+        write_zenuml_css(&mut themed, "test", "transparent", &theme);
+        assert!(themed.contains(
+            ".frame-title{font-family:Helvetica,Verdana,serif;font-size:16px;font-weight:600;fill:transparent}"
+        ));
+        assert_eq!(themed.matches(".frame-title{").count(), 1);
+        assert!(!themed.contains(".frame-title{fill:"));
+    }
+
+    #[test]
+    fn zenuml_polyline_propagates_the_bounded_svg_sink_failure() {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, 1)
+            .unwrap();
+        let meter = OperationWorkMeter::new(policy);
+        let mut out = BoundedSvgOutput::new(&meter);
+
+        let error = render_open_polyline(&mut out, 32.0, 48.0, false, "return-arrow")
+            .expect_err("the bounded sink must stop ZenUML polyline emission");
+
+        assert!(matches!(error, Error::ResourceLimitExceeded(_)));
+        assert!(out.as_str().is_empty());
+    }
+
+    #[test]
+    fn fenced_comment_code_closes_monospace_runs_per_svg_line() {
+        let lines = markdown_comment_lines("```text\nfirst\nsecond\n```");
+
+        assert_eq!(
+            lines,
+            [
+                r#"<tspan font-family="monospace">first</tspan>"#,
+                r#"<tspan font-family="monospace">second</tspan>"#,
+            ]
+        );
+    }
+
+    #[test]
+    fn vendored_icon_content_does_not_add_nested_svg_viewports() {
+        for raw in [
+            include_str!("../../assets/zenuml/actor.svg"),
+            include_str!("../../assets/zenuml/ec2.svg"),
+            include_str!("../../assets/zenuml/fragment-loop.svg"),
+        ] {
+            let content = svg_asset_content(raw);
+            assert!(!content.contains("<svg"));
+            assert!(!content.contains("</svg>"));
+            assert!(content.contains('<'));
+        }
+    }
+}

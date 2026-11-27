@@ -42,13 +42,9 @@ use merman_core::preprocess::SourceConfigEvidence;
 //! Recognition and custom source registries remain available without a diagram family.
 
 use merman_markup::sanitize;
-#[cfg(feature = "diagram-class")]
-use merman_markup::style;
 #[cfg(feature = "presentation")]
 use merman_markup::theme_color;
-#[cfg(feature = "diagram-class")]
-use merman_model::text as common;
-#[cfg(any(test, feature = "presentation", feature = "diagram-gantt"))]
+#[cfg(any(test, feature = "presentation"))]
 use merman_model::time;
 use merman_model::{baseline, json as json_value, operation, text as entities};
 mod common_db;
@@ -64,8 +60,6 @@ mod family;
 pub mod generated;
 #[cfg(any(
     test,
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
     feature = "diagram-agentflow",
     feature = "diagram-kanban",
     feature = "diagram-sequence"
@@ -117,7 +111,7 @@ use merman_model::presentation::RenderSemanticModel;
 use merman_model::semantic::{SemanticDiagramModel, SemanticMetadata};
 use merman_model::source::SourceSpan;
 use merman_model::warnings::DiagramWarningFact;
-#[cfg(any(test, feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(all(test, feature = "compat-json", feature = "editor-facts"))]
 use merman_model::warnings::FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID;
 #[cfg(test)]
 use operation::CancelReason;
@@ -191,3 +185,9 @@ pub fn diagram_header_facts() -> &'static [DiagramHeaderFact] {
 
 #[cfg(all(test, feature = "compat-json", feature = "editor-facts"))]
 mod tests;
+#[cfg(all(
+    test,
+    feature = "compat-json",
+    any(feature = "diagram-ishikawa", feature = "all-diagrams")
+))]
+mod tree_lifecycle_test_support;

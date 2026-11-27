@@ -1183,7 +1183,8 @@ mod tests {
         feature = "diagram-cynefin",
         feature = "diagram-flowchart",
         feature = "diagram-info",
-        feature = "diagram-pie"
+        feature = "diagram-pie",
+        feature = "diagram-swimlane"
     ))]
     use serde_json::json;
     #[cfg(all(feature = "diagram-flowchart", feature = "presentation"))]

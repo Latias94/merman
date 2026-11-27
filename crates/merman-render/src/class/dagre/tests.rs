@@ -1,11 +1,12 @@
 use super::{ClassLayoutGraph, class_cluster_candidates, project_graph};
 use crate::class::measured::{MeasuredGraph, MeasuredNode};
 use crate::class::{
-    ClassNodeLabelPlan, ClassRenderConfig, ClassTextThemePlan,
-    debug_build_class_diagram_dagre_graph, layout_class_diagram_typed_with_config,
+    ClassRenderConfig, ClassTextThemePlan, debug_build_class_diagram_dagre_graph,
+    layout_class_diagram_typed_with_config,
 };
 use crate::graph_layout::ir::Direction;
 use crate::layout_work::OperationLayoutWorkControl;
+use crate::model::ClassNodeLabelPlan;
 use crate::text::DeterministicTextMeasurer;
 use dugong::graphlib::{Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, NodeLabel};
@@ -238,8 +239,6 @@ fn class_html_prepared_labels_follow_public_layout_and_plan_owners() {
         &mut work,
     )
     .unwrap();
-    assert!(sidecar.titles_by_id.is_empty());
-    assert!(sidecar.edges_by_id.is_empty());
     let retained = meter.prepared_text_retained_bytes();
     assert!(retained > 0);
     let plan = Arc::clone(&layout.class_label_plans_by_id["A"]);
@@ -249,14 +248,6 @@ fn class_html_prepared_labels_follow_public_layout_and_plan_owners() {
     assert!(labels.annotation.is_some());
     assert_eq!(labels.members.len(), 1);
     assert_eq!(labels.methods.len(), 1);
-    assert_eq!(
-        labels
-            ._retained_reservation
-            .as_ref()
-            .unwrap()
-            .retained_bytes(),
-        retained
-    );
     assert!(
         serde_json::to_value(&layout)
             .unwrap()

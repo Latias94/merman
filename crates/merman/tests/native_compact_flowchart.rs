@@ -57,7 +57,7 @@ fn shafts(root: roxmltree::Node<'_, '_>) -> Vec<Vec<f64>> {
 
 #[test]
 fn compact_flowchart_keeps_the_prepared_dagre_shafts() {
-    let source = "flowchart TB\nA[Left] --> Z[Join]\nB[Middle] --> Z\nC[Right] --> Z";
+    let source = "flowchart TB\nA[Left lane] --> Z[Join here]\nB[Middle] --> Z\nC[Right] --> Z";
     let parity = render(source, SvgRequest::default()).unwrap();
     let compact = render(source, compact_request()).unwrap();
     let parity = roxmltree::Document::parse(&parity).unwrap();
@@ -69,7 +69,7 @@ fn compact_flowchart_keeps_the_prepared_dagre_shafts() {
             || node.has_tag_name("style")
             || node.attribute("data-points").is_some()
     }));
-    for label in ["Left", "Middle", "Right", "Join"] {
+    for label in ["Left lane", "Middle", "Right", "Join here"] {
         assert!(
             root.descendants()
                 .any(|node| node.has_tag_name("text") && node.text() == Some(label))

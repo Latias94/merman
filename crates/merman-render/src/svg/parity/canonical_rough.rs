@@ -1,7 +1,7 @@
 use crate::graph_layout::{Marker, route_paint::LEAD};
 use crate::resources::OperationWorkMeter;
-use crate::svg::parity::roughjs_common::{controlled, ops_to_svg_path_d};
 use kurbo::Point;
+use merman_render_core::rough_svg::{controlled, ops_to_svg_path_d};
 use roughr::core::{Op, OpType, OptionsBuilder, RoughRandomness};
 use roughr::work::WorkError;
 use svgtypes::PathSegment;

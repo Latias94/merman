@@ -1,0 +1,1855 @@
+use crate::class::ClassPreparedSvgTitle;
+use crate::class::model::{Bounds, ClassNodeLabelPlan, ClassPreparedHtmlLabel, LayoutNode};
+use merman_model::families::class::ClassMember;
+use merman_render_core::svg_security::{
+    MermaidNavigationSecurity, prepare_mermaid_navigation_href,
+};
+use merman_render_core::text::{TextMeasurer, TextStyle, WrapMode};
+use std::time::Duration;
+
+use super::SvgDiagramId;
+use super::bounds::{include_path_d, include_xywh};
+use super::context::ClassEmitCheckpoint;
+use super::label::{
+    ClassHtmlLabelSpec, class_html_div_style, class_html_label_metrics,
+    class_html_member_div_style, class_html_title_metrics, class_svg_label_rect,
+    render_class_html_label, wrap_class_svg_text_like_mermaid,
+    write_class_svg_text_markdown_with_style,
+};
+use super::rough::{
+    class_rough_hachure_rect_paths, class_rough_hand_drawn_line_path,
+    class_rough_line_double_path_and_bounds, class_rough_rect_stroke_path_and_bounds,
+    class_rough_seed,
+};
+use super::{ClassSvgNode, Rect};
+use super::{SvgOutput, escape_attr_display, escape_xml_into, fmt, fmt_into};
+use merman_render_core::html::html_label_overflow_attr;
+use merman_render_core::svg_output::timing::RenderTiming;
+
+#[derive(Debug, Clone, Copy)]
+pub(super) struct ClassNodeRenderPosition {
+    pub node_tx: f64,
+    pub node_ty: f64,
+    pub node_bounds_tx: f64,
+    pub node_bounds_ty: f64,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct ClassNodeBoxGeometry {
+    pub w: f64,
+    pub h: f64,
+    pub left: f64,
+    pub rough_seed: roughr::core::RoughRandomness,
+}
+
+pub(super) struct ClassNodeRenderState<'a, O: SvgOutput> {
+    pub out: &'a mut O,
+    pub content_bounds: &'a mut Option<Bounds>,
+}
+
+pub(super) struct ClassNodeShellContext<'a> {
+    pub diagram_id: SvgDiagramId<'a>,
+    pub emit: ClassEmitCheckpoint<'a>,
+    pub look: &'a str,
+    pub security_level_loose: bool,
+    pub color_index: Option<usize>,
+    pub palette_size: usize,
+}
+
+pub(super) struct ClassNodeBasicContainerContext<'a> {
+    pub work_meter: &'a merman_render_core::resources::OperationWorkMeter,
+    pub diagram_id: SvgDiagramId<'a>,
+    pub node_fill_style_attr: &'a str,
+    pub node_stroke_style_attr: &'a str,
+    pub node_fill: &'a str,
+    pub node_stroke: &'a str,
+    pub node_stroke_width: &'a str,
+    pub node_stroke_dasharray: &'a str,
+    pub look: &'a str,
+    pub radius: Option<f64>,
+    pub hand_drawn_seed: roughr::core::RoughRandomness,
+    pub timing: RenderTiming,
+}
+
+pub(super) struct ClassNodeDividerContext<'a> {
+    pub work_meter: &'a merman_render_core::resources::OperationWorkMeter,
+    pub node_stroke_style_attr: &'a str,
+    pub node_stroke: &'a str,
+    pub node_stroke_width: &'a str,
+    pub node_stroke_dasharray: &'a str,
+    pub look: &'a str,
+    pub use_neo_line_class: bool,
+    pub timing: RenderTiming,
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub(super) struct ClassNodeRenderStats {
+    pub path_bounds: Duration,
+    pub path_bounds_calls: usize,
+}
+
+pub(super) struct ClassNodeBasicContainerResult {
+    pub geometry: ClassNodeBoxGeometry,
+    pub stats: ClassNodeRenderStats,
+}
+
+pub(super) struct ClassHtmlNodeRow<'a> {
+    pub text: String,
+    pub row_style: String,
+    pub metrics: merman_render_core::text::TextMetrics,
+    pub max_width_px: i64,
+    pub prepared_xhtml: Option<&'a str>,
+    pub y: f64,
+}
+
+pub(super) struct ClassHtmlNodeRows<'a> {
+    pub rows: Vec<ClassHtmlNodeRow<'a>>,
+    pub raw_height: f64,
+}
+
+pub(super) struct ClassHtmlNodeRowsContext<'a> {
+    pub measurer: &'a dyn TextMeasurer,
+    pub text_style: &'a TextStyle,
+    pub html_calc_text_style: &'a TextStyle,
+    pub node_label_style: &'a str,
+    pub line_height: f64,
+}
+
+pub(super) struct ClassSvgNodeLabelRun {
+    pub text: String,
+    pub literal_fallback: bool,
+    pub style: String,
+    pub metrics: merman_render_core::text::TextMetrics,
+    pub y_offset: f64,
+}
+
+pub(super) struct ClassHtmlNodeLabelGroupSpec<'a> {
+    pub label_style: &'a str,
+    pub translate_y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub div_style: &'a str,
+    pub text: &'a str,
+    pub include_p: bool,
+    pub extra_span_class: Option<&'a str>,
+    pub span_style: Option<&'a str>,
+    pub prepared_xhtml: Option<&'a str>,
+    pub mermaid_config: Option<&'a merman_model::presentation::PresentationConfig>,
+    pub math_renderer: Option<&'a (dyn merman_render_core::math::MathRenderer + Send + Sync)>,
+}
+
+pub(super) struct ClassHtmlNodeBodyContext<'a> {
+    pub work_meter: &'a merman_render_core::resources::OperationWorkMeter,
+    pub measurer: &'a dyn TextMeasurer,
+    pub text_style: &'a TextStyle,
+    pub html_calc_text_style: &'a TextStyle,
+    pub line_height: f64,
+    pub class_padding: f64,
+    pub hide_empty_members_box: bool,
+    pub node_stroke_style_attr: &'a str,
+    pub node_label_style_attr: &'a str,
+    pub node_stroke: &'a str,
+    pub node_stroke_width: &'a str,
+    pub node_stroke_dasharray: &'a str,
+    pub look: &'a str,
+    pub use_neo_line_class: bool,
+    pub uses_canonical_routes: bool,
+    pub mermaid_config: Option<&'a merman_model::presentation::PresentationConfig>,
+    pub math_renderer: Option<&'a (dyn merman_render_core::math::MathRenderer + Send + Sync)>,
+    pub timing: RenderTiming,
+    pub native: Option<&'a crate::class::ClassNativeStyle>,
+    pub paint_heading: bool,
+}
+
+pub(super) struct ClassSvgNodeBodyContext<'a> {
+    pub work_meter: &'a merman_render_core::resources::OperationWorkMeter,
+    pub measurer: &'a dyn TextMeasurer,
+    pub text_style: &'a TextStyle,
+    pub html_calc_text_style: &'a TextStyle,
+    pub wrap_probe_font_size: f64,
+    pub class_padding: f64,
+    pub hide_empty_members_box: bool,
+    pub node_stroke_style_attr: &'a str,
+    pub node_label_style_attr: &'a str,
+    pub font_family: Option<&'a str>,
+    pub node_stroke: &'a str,
+    pub node_stroke_width: &'a str,
+    pub node_stroke_dasharray: &'a str,
+    pub look: &'a str,
+    pub use_neo_line_class: bool,
+    pub timing: RenderTiming,
+    pub native: Option<&'a crate::class::ClassNativeStyle>,
+    pub paint_heading: bool,
+}
+
+fn write_class_color_slot(
+    out: &mut impl SvgOutput,
+    color_index: Option<usize>,
+    palette_size: usize,
+) {
+    if palette_size > 0
+        && let Some(index) = color_index
+    {
+        let _ = write!(out, r#" data-color-id="color-{}""#, index % palette_size);
+    }
+}
+
+pub(super) fn render_class_node_shell_open(
+    out: &mut impl SvgOutput,
+    node: ClassSvgNode<'_>,
+    position: ClassNodeRenderPosition,
+    ctx: &ClassNodeShellContext<'_>,
+) -> merman_render_core::Result<bool> {
+    let tooltip = node.tooltip.as_deref().unwrap_or("").trim();
+    let has_tooltip = !tooltip.is_empty();
+
+    let link = node.link.as_deref().filter(|s| !s.is_empty());
+    let href = link.and_then(|href| {
+        prepare_mermaid_navigation_href(
+            href,
+            MermaidNavigationSecurity::from_security_level_loose(ctx.security_level_loose),
+        )
+    });
+    let have_callback = node.have_callback;
+
+    if link.is_some() {
+        out.push_str(r#"<a data-look=""#);
+        merman_render_core::xml::escape_attr_into(out, ctx.look);
+        out.push('"');
+        if let Some(href) = href.as_ref() {
+            out.push_str(r#" xlink:href=""#);
+            out.push_str(href.as_serialized_str());
+            out.push('"');
+        }
+        if ctx.security_level_loose
+            && let Some(target) = node
+                .link_target
+                .as_deref()
+                .map(str::trim)
+                .filter(|target| !target.is_empty())
+        {
+            out.push_str(r#" target=""#);
+            merman_render_core::xml::escape_attr_into(out, target);
+            out.push('"');
+        }
+        if have_callback {
+            out.push_str(r#" class="null clickable""#);
+        }
+        out.push_str(r#" transform="translate("#);
+        fmt_into(out, position.node_tx);
+        out.push_str(", ");
+        fmt_into(out, position.node_ty);
+        out.push_str(r#")">"#);
+    }
+
+    out.push_str(r#"<g class=""#);
+    if ctx.look == "handDrawn" {
+        out.push_str("rough-node ");
+    } else {
+        out.push_str("node ");
+    }
+    merman_render_core::xml::escape_attr_into(out, node.css_classes.trim());
+    out.push_str(r#"" id=""#);
+    let _ = write!(out, "{}", ctx.diagram_id);
+    ctx.emit.checkpoint()?;
+    out.push('-');
+    merman_render_core::xml::escape_attr_into(out, node.dom_id);
+    out.push('"');
+    if link.is_none() {
+        out.push_str(r#" data-look=""#);
+        merman_render_core::xml::escape_attr_into(out, ctx.look);
+        out.push('"');
+    }
+    write_class_color_slot(out, ctx.color_index, ctx.palette_size);
+    if has_tooltip {
+        out.push_str(r#" title=""#);
+        merman_render_core::xml::escape_attr_into(out, tooltip);
+        out.push('"');
+    }
+    if link.is_none() {
+        out.push_str(r#" transform="translate("#);
+        fmt_into(out, position.node_tx);
+        out.push_str(", ");
+        fmt_into(out, position.node_ty);
+        out.push_str(r#")""#);
+    }
+    out.push('>');
+
+    Ok(link.is_some())
+}
+
+pub(super) fn render_class_node_basic_container<O: SvgOutput>(
+    state: ClassNodeRenderState<'_, O>,
+    node: ClassSvgNode<'_>,
+    layout_node: &LayoutNode,
+    position: ClassNodeRenderPosition,
+    ctx: &ClassNodeBasicContainerContext<'_>,
+) -> ClassNodeBasicContainerResult {
+    let out = &mut *state.out;
+    let content_bounds = &mut *state.content_bounds;
+    let mut stats = ClassNodeRenderStats::default();
+
+    let w = layout_node.width.max(1.0);
+    let h = layout_node.height.max(1.0);
+    let left = -w / 2.0;
+    let top = -h / 2.0;
+    let rough_seed = class_rough_seed(
+        &ctx.hand_drawn_seed,
+        ctx.diagram_id.semantic_str(),
+        node.dom_id,
+    );
+    let hand_drawn = ctx.look == "handDrawn";
+    out.push_str(r#"<g class="basic label-container outer-path">"#);
+    if let Some(radius) = ctx.radius.filter(|_| !hand_drawn) {
+        let _ = write!(
+            out,
+            r#"<rect class="class-native-box" x="{}" y="{}" width="{}" height="{}" rx="{}" style="fill:{};stroke:{};stroke-width:{};{}"/></g>"#,
+            fmt(left),
+            fmt(top),
+            fmt(w),
+            fmt(h),
+            fmt(radius),
+            escape_attr_display(ctx.node_fill),
+            escape_attr_display(ctx.node_stroke),
+            escape_attr_display(ctx.node_stroke_width),
+            escape_attr_display(ctx.node_fill_style_attr),
+        );
+        include_xywh(
+            content_bounds,
+            position.node_bounds_tx + left,
+            position.node_bounds_ty + top,
+            w,
+            h,
+        );
+        return ClassNodeBasicContainerResult {
+            geometry: ClassNodeBoxGeometry {
+                w,
+                h,
+                left,
+                rough_seed,
+            },
+            stats,
+        };
+    }
+    if !hand_drawn {
+        let _ = write!(
+            out,
+            r#"<path d="M{} {} L{} {} L{} {} L{} {}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
+            fmt(left),
+            fmt(top),
+            fmt(left + w),
+            fmt(top),
+            fmt(left + w),
+            fmt(top + h),
+            fmt(left),
+            fmt(top + h),
+            escape_attr_display(ctx.node_fill),
+            escape_attr_display(ctx.node_fill_style_attr)
+        );
+    }
+
+    let (fill_d, stroke_d) = if hand_drawn {
+        class_rough_hachure_rect_paths(
+            left,
+            top,
+            w,
+            h,
+            ctx.node_fill,
+            ctx.node_stroke,
+            ctx.node_stroke_width.parse::<f32>().unwrap_or(1.3),
+            ctx.node_stroke_dasharray,
+            ctx.work_meter,
+            &rough_seed,
+        )
+        .unwrap_or_else(|| {
+            let (stroke_d, _) =
+                class_rough_rect_stroke_path_and_bounds(left, top, w, h, &rough_seed);
+            (String::new(), stroke_d)
+        })
+    } else {
+        let (stroke_d, _) = class_rough_rect_stroke_path_and_bounds(left, top, w, h, &rough_seed);
+        (String::new(), stroke_d)
+    };
+    include_xywh(
+        content_bounds,
+        position.node_bounds_tx + left,
+        position.node_bounds_ty + top,
+        w,
+        h,
+    );
+    let path_bounds_start = ctx.timing.start();
+    include_path_d(
+        content_bounds,
+        &stroke_d,
+        position.node_bounds_tx,
+        position.node_bounds_ty,
+    );
+    if let Some(s) = path_bounds_start {
+        stats.path_bounds += s.elapsed();
+        stats.path_bounds_calls += 1;
+    }
+    if hand_drawn {
+        let _ = write!(
+            out,
+            r#"<path d="{}" stroke="{}" stroke-width="1.5" fill="none" stroke-dasharray="0 0"/>"#,
+            escape_attr_display(&fill_d),
+            escape_attr_display(ctx.node_fill),
+        );
+    }
+    let _ = write!(
+        out,
+        r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
+        escape_attr_display(&stroke_d),
+        escape_attr_display(ctx.node_stroke),
+        escape_attr_display(ctx.node_stroke_width),
+        escape_attr_display(ctx.node_stroke_dasharray),
+        escape_attr_display(ctx.node_stroke_style_attr),
+    );
+    out.push_str("</g>");
+
+    ClassNodeBasicContainerResult {
+        geometry: ClassNodeBoxGeometry {
+            w,
+            h,
+            left,
+            rough_seed,
+        },
+        stats,
+    }
+}
+
+fn write_class_native_heading(
+    out: &mut impl SvgOutput,
+    geometry: &ClassNodeBoxGeometry,
+    bottom: f64,
+    native: &crate::class::ClassNativeStyle,
+    stroke_width: &str,
+) {
+    let inset = stroke_width.parse::<f64>().unwrap_or(1.0).max(0.0) / 2.0;
+    let left = geometry.left + inset;
+    let right = geometry.left + geometry.w - inset;
+    let top = -geometry.h / 2.0 + inset;
+    let bottom = bottom.min(geometry.h / 2.0 - inset);
+    if right <= left || bottom <= top {
+        return;
+    }
+    let radius = (native.radius - inset)
+        .max(0.0)
+        .min((right - left) / 2.0)
+        .min(bottom - top);
+    let _ = write!(
+        out,
+        r#"<path class="class-native-header" d="M{} {} Q{} {} {} {} H{} Q{} {} {} {} V{} H{} Z" style="fill:{};stroke:none"/>"#,
+        fmt(left),
+        fmt(top + radius),
+        fmt(left),
+        fmt(top),
+        fmt(left + radius),
+        fmt(top),
+        fmt(right - radius),
+        fmt(right),
+        fmt(top),
+        fmt(right),
+        fmt(top + radius),
+        fmt(bottom),
+        fmt(left),
+        escape_attr_display(&native.emphasis),
+    );
+}
+
+pub(super) fn render_class_node_dividers<O: SvgOutput>(
+    state: ClassNodeRenderState<'_, O>,
+    position: ClassNodeRenderPosition,
+    left: f64,
+    right: f64,
+    divider_ys: [f64; 2],
+    rough_seed: &roughr::core::RoughRandomness,
+    ctx: &ClassNodeDividerContext<'_>,
+) -> ClassNodeRenderStats {
+    let out = &mut *state.out;
+    let content_bounds = &mut *state.content_bounds;
+    let mut stats = ClassNodeRenderStats::default();
+
+    for y in divider_ys {
+        let _ = write!(
+            out,
+            r#"<g class="divider{}" style="{}">"#,
+            if ctx.use_neo_line_class {
+                " neo-line"
+            } else {
+                ""
+            },
+            escape_attr_display(ctx.node_stroke_style_attr)
+        );
+        let d = if ctx.look == "handDrawn" {
+            class_rough_hand_drawn_line_path(
+                left,
+                y,
+                right,
+                y + 0.001,
+                ctx.node_stroke,
+                ctx.node_stroke_width.parse::<f32>().unwrap_or(1.3),
+                ctx.node_stroke_dasharray,
+                ctx.work_meter,
+                rough_seed,
+            )
+            .unwrap_or_else(|| {
+                class_rough_line_double_path_and_bounds(left, y, right, y, rough_seed).0
+            })
+        } else {
+            class_rough_line_double_path_and_bounds(left, y, right, y, rough_seed).0
+        };
+        let path_bounds_start = ctx.timing.start();
+        include_path_d(
+            content_bounds,
+            &d,
+            position.node_bounds_tx,
+            position.node_bounds_ty,
+        );
+        if let Some(s) = path_bounds_start {
+            stats.path_bounds += s.elapsed();
+            stats.path_bounds_calls += 1;
+        }
+        let _ = write!(
+            out,
+            r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
+            escape_attr_display(&d),
+            escape_attr_display(ctx.node_stroke),
+            escape_attr_display(ctx.node_stroke_width),
+            escape_attr_display(ctx.node_stroke_dasharray),
+            escape_attr_display(ctx.node_stroke_style_attr),
+        );
+        out.push_str("</g>");
+    }
+
+    stats
+}
+
+pub(super) fn render_class_html_node_body<O: SvgOutput>(
+    state: ClassNodeRenderState<'_, O>,
+    position: ClassNodeRenderPosition,
+    node: ClassSvgNode<'_>,
+    geometry: ClassNodeBoxGeometry,
+    label_plan: Option<&ClassNodeLabelPlan>,
+    ctx: &ClassHtmlNodeBodyContext<'_>,
+) -> ClassNodeRenderStats {
+    let out = &mut *state.out;
+    let content_bounds = &mut *state.content_bounds;
+    let padding = ctx.class_padding.max(0.0);
+    let gap = padding;
+    let members_rows = node.members.len();
+    let methods_rows = node.methods.len();
+    let render_extra_box = members_rows == 0 && methods_rows == 0 && !ctx.hide_empty_members_box;
+    let content_bbox_height = if render_extra_box {
+        (geometry.h - 4.0 * padding).max(0.0)
+    } else if members_rows == 0 && methods_rows == 0 {
+        (geometry.h - padding).max(0.0)
+    } else {
+        (geometry.h - 2.0 * padding).max(0.0)
+    };
+    let content_top = -content_bbox_height / 2.0;
+    let text_translate_y = if render_extra_box {
+        content_top
+    } else if members_rows == 0 && methods_rows == 0 {
+        content_top + padding * 1.5
+    } else {
+        content_top + padding
+    };
+
+    let (class_row_metrics, prepared_html) = match label_plan {
+        Some(ClassNodeLabelPlan::RowMetrics(metrics)) => (Some(metrics), None),
+        Some(ClassNodeLabelPlan::PreparedHtml(prepared)) => (None, Some(prepared)),
+        None => (None, None),
+    };
+
+    let title_text = node.text.trim();
+    let title_max_width_px = prepared_html.map_or_else(
+        || {
+            crate::class::class_html_create_text_width_px(
+                title_text,
+                ctx.measurer,
+                ctx.html_calc_text_style,
+            )
+        },
+        |prepared| prepared.title.max_width_px,
+    );
+    let title_metrics = prepared_html.map_or_else(
+        || {
+            let (base, weight) = ctx
+                .native
+                .map_or((ctx.text_style, "font-weight:bolder"), |native| {
+                    (&native.title_style, "")
+                });
+            let style =
+                crate::class::class_html_node_text_style(base, weight, ctx.node_label_style_attr);
+            ctx.mermaid_config
+                .and_then(|config| {
+                    crate::class::class_math_label_metrics(
+                        title_text,
+                        ctx.measurer,
+                        &style,
+                        Some(title_max_width_px.max(1) as f64),
+                        config,
+                        ctx.math_renderer,
+                    )
+                })
+                .unwrap_or_else(|| {
+                    class_html_title_metrics(
+                        ctx.measurer,
+                        ctx.text_style,
+                        title_text,
+                        title_max_width_px,
+                        ctx.node_label_style_attr,
+                    )
+                })
+        },
+        |prepared| prepared.title.metrics,
+    );
+    let title_width = title_metrics.width.max(1.0);
+    let title_height = title_metrics.height.max(ctx.line_height).max(1.0);
+    let title_x = -title_width / 2.0;
+
+    let annotation_text = node.annotation_text_for_render();
+    let annotation_prepared = prepared_html.and_then(|prepared| prepared.annotation.as_ref());
+    let annotation_metrics = annotation_text.as_deref().map(|text| {
+        annotation_prepared.map_or_else(
+            || {
+                let style = crate::class::class_html_node_text_style(
+                    ctx.text_style,
+                    "",
+                    ctx.node_label_style_attr,
+                );
+                let max_width_px = crate::class::class_html_create_text_width_px(
+                    text,
+                    ctx.measurer,
+                    ctx.html_calc_text_style,
+                );
+                ctx.mermaid_config
+                    .and_then(|config| {
+                        crate::class::class_math_label_metrics(
+                            text,
+                            ctx.measurer,
+                            &style,
+                            Some(max_width_px.max(1) as f64),
+                            config,
+                            ctx.math_renderer,
+                        )
+                    })
+                    .unwrap_or_else(|| {
+                        class_html_label_metrics(ctx.measurer, &style, text, max_width_px, "")
+                    })
+            },
+            |prepared| prepared.metrics,
+        )
+    });
+    let annotation_width = annotation_metrics
+        .as_ref()
+        .map(|metrics| metrics.width.max(1.0))
+        .unwrap_or(0.0);
+    let annotation_height = annotation_metrics
+        .as_ref()
+        .map(|metrics| metrics.height.max(ctx.line_height).max(1.0))
+        .unwrap_or(0.0);
+    let annotation_group_x = if annotation_width > 0.0 {
+        -annotation_width / 2.0
+    } else {
+        0.0
+    };
+    let annotation_group_y = text_translate_y;
+    let title_y = annotation_height + text_translate_y;
+
+    let html_rows_ctx = ClassHtmlNodeRowsContext {
+        measurer: ctx.measurer,
+        text_style: ctx
+            .native
+            .map_or(ctx.text_style, |native| &native.code_style),
+        html_calc_text_style: ctx
+            .native
+            .map_or(ctx.html_calc_text_style, |native| &native.code_style),
+        node_label_style: ctx.node_label_style_attr,
+        line_height: ctx.line_height,
+    };
+    let members_rows_rendered = measure_class_html_node_rows(
+        &node.members,
+        class_row_metrics.map(|rows| rows.members.as_slice()),
+        prepared_html.map(|prepared| prepared.members.as_slice()),
+        &html_rows_ctx,
+    );
+    let members_group_raw_height = members_rows_rendered.raw_height;
+    let members_group_y = annotation_height + title_height + gap * 2.0 + text_translate_y;
+
+    let methods_offset_base = if members_group_raw_height > 0.0 {
+        members_group_raw_height + gap * 4.0
+    } else {
+        gap / 2.0 + gap * 4.0
+    };
+    let methods_rows_rendered = measure_class_html_node_rows(
+        &node.methods,
+        class_row_metrics.map(|rows| rows.methods.as_slice()),
+        prepared_html.map(|prepared| prepared.methods.as_slice()),
+        &html_rows_ctx,
+    );
+    let methods_group_y = annotation_height + title_height + methods_offset_base + text_translate_y;
+
+    let members_group_width = members_rows_rendered
+        .rows
+        .iter()
+        .fold(0.0_f64, |acc, row| acc.max(row.metrics.width.max(1.0)));
+    let methods_group_width = methods_rows_rendered
+        .rows
+        .iter()
+        .fold(0.0_f64, |acc, row| acc.max(row.metrics.width.max(1.0)));
+    let mut content_bbox_min_x = 0.0_f64;
+    let mut content_bbox_max_x = 0.0_f64;
+    for centered_width in [annotation_width, title_width] {
+        if centered_width > 0.0 {
+            content_bbox_min_x = content_bbox_min_x.min(-centered_width / 2.0);
+            content_bbox_max_x = content_bbox_max_x.max(centered_width / 2.0);
+        }
+    }
+    for left_aligned_width in [members_group_width, methods_group_width] {
+        if left_aligned_width > 0.0 {
+            content_bbox_max_x = content_bbox_max_x.max(left_aligned_width);
+        }
+    }
+    let content_bbox_width = (content_bbox_max_x - content_bbox_min_x).max(0.0);
+    let members_x = -content_bbox_width / 2.0;
+
+    let divider_adjust = if render_extra_box { padding / 2.0 } else { 0.0 };
+    let divider1_y = (annotation_height - divider_adjust)
+        + (title_height - divider_adjust)
+        + content_top
+        + padding;
+    let divider2_y = (annotation_height - divider_adjust)
+        + (title_height - divider_adjust)
+        + (members_group_raw_height - divider_adjust)
+        + content_top
+        + padding
+        + gap * 2.0;
+
+    if let Some(native) = ctx.native.filter(|_| ctx.paint_heading) {
+        write_class_native_heading(
+            out,
+            &geometry,
+            divider1_y.max(title_y - 12.0 + title_height),
+            native,
+            ctx.node_stroke_width,
+        );
+        out.push_str(r#"<g class="class-native-heading">"#);
+    }
+
+    if let Some(annotation_text) = annotation_text.as_deref() {
+        let annotation_max_width_px = annotation_prepared.map_or_else(
+            || {
+                crate::class::class_html_create_text_width_px(
+                    annotation_text,
+                    ctx.measurer,
+                    ctx.html_calc_text_style,
+                )
+            },
+            |prepared| prepared.max_width_px,
+        );
+        let annotation_div_style =
+            class_html_div_style(annotation_width.max(1.0), annotation_max_width_px);
+        let _ = write!(
+            out,
+            r#"<g class="annotation-group text" transform="translate({}, {})">"#,
+            fmt(annotation_group_x),
+            fmt(annotation_group_y)
+        );
+        render_class_html_node_label_group(
+            out,
+            &ClassHtmlNodeLabelGroupSpec {
+                label_style: "",
+                translate_y: -annotation_height / 2.0,
+                width: annotation_width.max(1.0),
+                height: annotation_height.max(1.0),
+                div_style: annotation_div_style.as_str(),
+                text: annotation_text,
+                include_p: true,
+                extra_span_class: Some("markdown-node-label"),
+                span_style: Some(ctx.node_label_style_attr),
+                prepared_xhtml: annotation_prepared.map(|prepared| prepared.xhtml.as_str()),
+                mermaid_config: ctx.mermaid_config,
+                math_renderer: ctx.math_renderer,
+            },
+            ctx.uses_canonical_routes,
+        );
+        out.push_str("</g>");
+    } else {
+        let _ = write!(
+            out,
+            r#"<g class="annotation-group text" transform="translate(0, {})"/>"#,
+            fmt(annotation_group_y)
+        );
+    }
+
+    let title_div_style = class_html_div_style(title_width, title_max_width_px);
+    let _ = write!(
+        out,
+        r#"<g class="label-group text" transform="translate({}, {})">"#,
+        fmt(title_x),
+        fmt(title_y)
+    );
+    let native_title_weight = ctx
+        .native
+        .and_then(|native| native.title_style.font_weight.as_deref())
+        .map(|weight| format!("font-weight:{weight}"));
+    render_class_html_node_label_group(
+        out,
+        &ClassHtmlNodeLabelGroupSpec {
+            label_style: native_title_weight
+                .as_deref()
+                .unwrap_or("font-weight: bolder"),
+            translate_y: -12.0,
+            width: title_width,
+            height: title_height,
+            div_style: title_div_style.as_str(),
+            text: title_text,
+            include_p: true,
+            extra_span_class: Some("markdown-node-label"),
+            span_style: Some(ctx.node_label_style_attr),
+            prepared_xhtml: prepared_html.map(|prepared| prepared.title.xhtml.as_str()),
+            mermaid_config: ctx.mermaid_config,
+            math_renderer: ctx.math_renderer,
+        },
+        ctx.uses_canonical_routes,
+    );
+    out.push_str("</g>");
+    if ctx.paint_heading {
+        out.push_str("</g>");
+    }
+
+    render_class_html_node_rows_group(
+        out,
+        "members-group text",
+        members_x,
+        members_group_y,
+        &members_rows_rendered,
+        ctx,
+    );
+
+    render_class_html_node_rows_group(
+        out,
+        "methods-group text",
+        members_x,
+        methods_group_y,
+        &methods_rows_rendered,
+        ctx,
+    );
+
+    if ctx.hide_empty_members_box && members_rows == 0 && methods_rows == 0 {
+        ClassNodeRenderStats::default()
+    } else {
+        render_class_node_dividers(
+            ClassNodeRenderState {
+                out,
+                content_bounds,
+            },
+            position,
+            geometry.left,
+            geometry.left + geometry.w,
+            [divider1_y, divider2_y],
+            &geometry.rough_seed,
+            &ClassNodeDividerContext {
+                work_meter: ctx.work_meter,
+                node_stroke_style_attr: ctx.node_stroke_style_attr,
+                node_stroke: ctx.node_stroke,
+                node_stroke_width: ctx.node_stroke_width,
+                node_stroke_dasharray: ctx.node_stroke_dasharray,
+                look: ctx.look,
+                use_neo_line_class: ctx.use_neo_line_class,
+                timing: ctx.timing,
+            },
+        )
+    }
+}
+
+pub(super) fn render_class_svg_node_body<O: SvgOutput>(
+    state: ClassNodeRenderState<'_, O>,
+    position: ClassNodeRenderPosition,
+    node: ClassSvgNode<'_>,
+    geometry: ClassNodeBoxGeometry,
+    prepared_title: &ClassPreparedSvgTitle,
+    ctx: &ClassSvgNodeBodyContext<'_>,
+) -> ClassNodeRenderStats {
+    let out = &mut *state.out;
+    let content_bounds = &mut *state.content_bounds;
+    let padding = ctx.class_padding.max(0.0);
+    let gap = padding;
+    let text_padding = 3.0;
+
+    let label_style;
+    let node_label_style = match ctx.font_family {
+        Some(family) => {
+            let mut style = ctx.node_label_style_attr.to_owned();
+            if !style.is_empty() {
+                style.push(';');
+            }
+            style.push_str("font-family:");
+            style.push_str(family);
+            label_style = style;
+            label_style.as_str()
+        }
+        None => ctx.node_label_style_attr,
+    };
+    let text_style = crate::class::class_svg_text_with_family(ctx.text_style, ctx.font_family);
+    let probe_style = if ctx.font_family.is_some() {
+        text_style.as_ref()
+    } else {
+        ctx.html_calc_text_style
+    };
+    let title_label = &prepared_title.label;
+    let title_metrics = prepared_title.metrics;
+    // Annotation group: Mermaid only renders the first annotation.
+    let mut annotation_runs: Vec<ClassSvgNodeLabelRun> = Vec::new();
+    let mut annotation_rect: Option<Rect> = None;
+    let mut annotation_group_height: f64 = 0.0;
+    let mut annotation_group_width: f64 = 0.0;
+    if let Some(mut text) = node.annotation_text_for_render() {
+        if crate::class::analyze_class_svg_markdown(&text).all_runs_normal() {
+            text = wrap_class_svg_text_like_mermaid(
+                &text,
+                ctx.measurer,
+                &text_style,
+                probe_style,
+                ctx.wrap_probe_font_size,
+                false,
+            );
+        }
+        let metrics = merman_render_core::text::measure_markdown_with_inline_styles(
+            ctx.measurer,
+            &text,
+            &text_style,
+            None,
+            WrapMode::SvgLike,
+        );
+        annotation_group_width = metrics.width.max(0.0);
+        if let Some(r) = class_svg_label_rect(&metrics, 0.0) {
+            annotation_group_height = r.height().max(0.0);
+            annotation_rect = Some(r);
+        }
+        annotation_runs.push(ClassSvgNodeLabelRun {
+            text,
+            literal_fallback: false,
+            style: String::new(),
+            metrics,
+            y_offset: 0.0,
+        });
+    }
+
+    let title_rect = class_svg_label_rect(&title_metrics, 0.0);
+    let label_group_height = title_rect.as_ref().map(|r| r.height()).unwrap_or(0.0);
+    let label_group_width = title_metrics.width.max(0.0);
+
+    let (members_runs, members_rect) =
+        measure_class_svg_node_rows(&node.members, ctx, text_padding);
+    let mut members_group_height = members_rect.as_ref().map(|r| r.height()).unwrap_or(0.0);
+    if members_group_height <= 0.0 {
+        // Mermaid reserves half a gap when the members group is empty.
+        members_group_height = (gap / 2.0).max(0.0);
+    }
+
+    let (methods_runs, methods_rect) =
+        measure_class_svg_node_rows(&node.methods, ctx, text_padding);
+
+    // textHelper(...) pre-adjust group transforms.
+    let ann_tx = -annotation_group_width / 2.0;
+    let ann_ty = 0.0;
+    let label_tx = -label_group_width / 2.0;
+    let label_ty = annotation_group_height;
+    let members_tx = 0.0;
+    let members_ty = annotation_group_height + label_group_height + gap * 2.0;
+    let methods_tx = 0.0;
+    let methods_ty =
+        annotation_group_height + label_group_height + (members_group_height + gap * 4.0);
+
+    // Compute bbox returned by textHelper(...) after group transforms.
+    let mut bbox_opt: Option<Rect> = None;
+    if let Some(mut r) = annotation_rect {
+        r.translate(ann_tx, ann_ty);
+        bbox_opt = Some(if let Some(mut cur) = bbox_opt {
+            cur.union(r);
+            cur
+        } else {
+            r
+        });
+    }
+    if let Some(mut r) = title_rect {
+        r.translate(label_tx, label_ty);
+        bbox_opt = Some(if let Some(mut cur) = bbox_opt {
+            cur.union(r);
+            cur
+        } else {
+            r
+        });
+    }
+    if let Some(mut r) = members_rect {
+        r.translate(members_tx, members_ty);
+        bbox_opt = Some(if let Some(mut cur) = bbox_opt {
+            cur.union(r);
+            cur
+        } else {
+            r
+        });
+    }
+    if let Some(mut r) = methods_rect {
+        r.translate(methods_tx, methods_ty);
+        bbox_opt = Some(if let Some(mut cur) = bbox_opt {
+            cur.union(r);
+            cur
+        } else {
+            r
+        });
+    }
+    let bbox = bbox_opt.unwrap_or_else(|| Rect::from_min_max(0.0, 0.0, 0.0, 0.0));
+    let bbox_w = bbox.width().max(0.0);
+    let mut bbox_h = bbox.height().max(0.0);
+    let members_rows = node.members.len();
+    let methods_rows = node.methods.len();
+    if members_rows == 0 && methods_rows == 0 {
+        bbox_h += gap;
+    } else if members_rows > 0 && methods_rows == 0 {
+        bbox_h += gap * 2.0;
+    }
+    let x = -bbox_w / 2.0;
+    let y = -bbox_h / 2.0;
+
+    let render_extra_box = members_rows == 0 && methods_rows == 0 && !ctx.hide_empty_members_box;
+    let adjust_term = if render_extra_box {
+        padding
+    } else if members_rows == 0 && methods_rows == 0 {
+        -padding / 2.0
+    } else {
+        0.0
+    };
+
+    // classBox.ts label adjustment stage.
+    let adjust_y = |ty: f64| ty + y + padding - adjust_term - 4.0;
+    let adjusted_label_group_x = -label_group_width / 2.0;
+    let adjusted_annotation_group_x = -annotation_group_width / 2.0;
+    let mut adjusted_text_group_x = x;
+    let expected_text_group_x = -geometry.w / 2.0 + padding;
+    if expected_text_group_x.is_finite()
+        && adjusted_text_group_x.is_finite()
+        && (expected_text_group_x - adjusted_text_group_x).abs() > 1e-6
+    {
+        // Keep the members/methods groups consistent with the already-laid-out node rectangle
+        // width (`bbox.width + 2*PADDING` in Mermaid's `classBox.ts`).
+        adjusted_text_group_x = expected_text_group_x;
+    }
+
+    let ann_new_x = if annotation_runs.is_empty() {
+        0.0
+    } else {
+        adjusted_annotation_group_x
+    };
+    let ann_new_y = adjust_y(ann_ty);
+    let label_new_y = adjust_y(label_ty);
+    if let Some(native) = ctx.native.filter(|_| ctx.paint_heading) {
+        write_class_native_heading(
+            out,
+            &geometry,
+            label_new_y + label_group_height / 2.0 + padding / 2.0,
+            native,
+            ctx.node_stroke_width,
+        );
+        out.push_str(r#"<g class="class-native-heading">"#);
+    }
+    render_class_svg_node_runs_group(
+        out,
+        "annotation-group text",
+        ann_new_x,
+        ann_new_y,
+        &annotation_runs,
+        node_label_style,
+    );
+
+    let native_title_weight = ctx
+        .native
+        .and_then(|native| native.title_style.font_weight.as_deref())
+        .map(|weight| format!("font-weight:{weight}"));
+    render_class_svg_title_group(
+        out,
+        adjusted_label_group_x,
+        label_new_y,
+        title_label,
+        &title_metrics,
+        node_label_style,
+        native_title_weight
+            .as_deref()
+            .unwrap_or("font-weight: bolder"),
+    );
+    if ctx.paint_heading {
+        out.push_str("</g>");
+    }
+
+    let members_new_y = adjust_y(members_ty);
+    render_class_svg_node_runs_group(
+        out,
+        "members-group text",
+        adjusted_text_group_x,
+        members_new_y,
+        &members_runs,
+        node_label_style,
+    );
+
+    let methods_new_y = adjust_y(methods_ty);
+    render_class_svg_node_runs_group(
+        out,
+        "methods-group text",
+        adjusted_text_group_x,
+        methods_new_y,
+        &methods_runs,
+        node_label_style,
+    );
+
+    // Dividers (classBox.ts uses group bbox heights).
+    if ctx.hide_empty_members_box && members_rows == 0 && methods_rows == 0 {
+        ClassNodeRenderStats::default()
+    } else {
+        let mut ann_h = annotation_group_height;
+        let mut label_h = label_group_height;
+        let mut members_h = members_rect.as_ref().map(|r| r.height()).unwrap_or(0.0);
+        if render_extra_box {
+            let shrink = (padding / 2.0).max(0.0);
+            ann_h -= shrink;
+            label_h -= shrink;
+            members_h -= shrink;
+        }
+        let divider1_y = ann_h + label_h + y + padding;
+        let divider2_y = ann_h + label_h + members_h + y + gap * 2.0 + padding;
+        render_class_node_dividers(
+            ClassNodeRenderState {
+                out,
+                content_bounds,
+            },
+            position,
+            geometry.left,
+            geometry.left + geometry.w,
+            [divider1_y, divider2_y],
+            &geometry.rough_seed,
+            &ClassNodeDividerContext {
+                work_meter: ctx.work_meter,
+                node_stroke_style_attr: ctx.node_stroke_style_attr,
+                node_stroke: ctx.node_stroke,
+                node_stroke_width: ctx.node_stroke_width,
+                node_stroke_dasharray: ctx.node_stroke_dasharray,
+                look: ctx.look,
+                use_neo_line_class: ctx.use_neo_line_class,
+                timing: ctx.timing,
+            },
+        )
+    }
+}
+
+pub(super) fn measure_class_html_node_rows<'a>(
+    members: &[ClassMember],
+    row_metrics: Option<&[merman_render_core::text::TextMetrics]>,
+    prepared_rows: Option<&'a [ClassPreparedHtmlLabel]>,
+    ctx: &ClassHtmlNodeRowsContext<'_>,
+) -> ClassHtmlNodeRows<'a> {
+    let mut raw_height = 0.0;
+    let mut rows = Vec::with_capacity(members.len());
+    for (idx, member) in members.iter().enumerate() {
+        let text = crate::class::class_member_create_text_input(member);
+        let prepared = prepared_rows.and_then(|rows| rows.get(idx));
+        let max_width_px = prepared.map_or_else(
+            || {
+                crate::class::class_html_create_text_width_px(
+                    text.as_str(),
+                    ctx.measurer,
+                    ctx.html_calc_text_style,
+                )
+            },
+            |prepared| prepared.max_width_px,
+        );
+        let metrics = prepared
+            .map(|prepared| prepared.metrics)
+            .unwrap_or_else(|| {
+                row_metrics
+                    .and_then(|rows| rows.get(idx).copied())
+                    .unwrap_or_else(|| {
+                        let style = crate::class::class_html_node_text_style(
+                            ctx.text_style,
+                            &member.css_style,
+                            ctx.node_label_style,
+                        );
+                        class_html_label_metrics(
+                            ctx.measurer,
+                            &style,
+                            text.as_str(),
+                            max_width_px,
+                            "",
+                        )
+                    })
+            });
+        let row_height = metrics.height.max(ctx.line_height).max(1.0);
+        let y = raw_height - row_height / 2.0;
+        raw_height += row_height;
+        rows.push(ClassHtmlNodeRow {
+            text,
+            row_style: member.css_style.trim().to_string(),
+            metrics,
+            max_width_px,
+            prepared_xhtml: prepared.map(|prepared| prepared.xhtml.as_str()),
+            y,
+        });
+    }
+
+    ClassHtmlNodeRows { rows, raw_height }
+}
+
+pub(super) fn render_class_html_node_label_group(
+    out: &mut impl SvgOutput,
+    spec: &ClassHtmlNodeLabelGroupSpec<'_>,
+    uses_canonical_routes: bool,
+) {
+    let _ = write!(
+        out,
+        r#"<g class="label" style="{}" transform="translate(0,{})"><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}">"#,
+        escape_attr_display(spec.label_style.trim().trim_end_matches(';')),
+        fmt(spec.translate_y),
+        fmt(spec.width),
+        fmt(spec.height),
+        html_label_overflow_attr(uses_canonical_routes, spec.width, spec.height),
+        escape_attr_display(spec.div_style)
+    );
+    render_class_html_label(
+        out,
+        &ClassHtmlLabelSpec {
+            span_class: "nodeLabel",
+            text: spec.text,
+            include_p: spec.include_p,
+            extra_span_class: spec.extra_span_class,
+            span_style: spec.span_style,
+            prepared_xhtml: spec.prepared_xhtml,
+            mermaid_config: spec.mermaid_config,
+            math_renderer: spec.math_renderer,
+        },
+    );
+    out.push_str("</div></foreignObject></g>");
+}
+
+fn render_class_html_node_rows_group(
+    out: &mut impl SvgOutput,
+    group_class: &str,
+    group_x: f64,
+    group_y: f64,
+    rows_rendered: &ClassHtmlNodeRows<'_>,
+    ctx: &ClassHtmlNodeBodyContext<'_>,
+) {
+    if rows_rendered.rows.is_empty() {
+        let _ = write!(
+            out,
+            r#"<g class="{}" transform="translate({}, {})"/>"#,
+            group_class,
+            fmt(group_x),
+            fmt(group_y)
+        );
+        return;
+    }
+
+    let _ = write!(
+        out,
+        r#"<g class="{}" transform="translate({}, {})">"#,
+        group_class,
+        fmt(group_x),
+        fmt(group_y)
+    );
+    for row in &rows_rendered.rows {
+        let div_style = class_html_member_div_style(
+            row.metrics.width.max(1.0),
+            row.max_width_px,
+            ctx.uses_canonical_routes,
+        );
+        render_class_html_node_label_group(
+            out,
+            &ClassHtmlNodeLabelGroupSpec {
+                label_style: row.row_style.as_str(),
+                translate_y: row.y,
+                width: row.metrics.width.max(1.0),
+                height: row.metrics.height.max(ctx.line_height).max(1.0),
+                div_style: div_style.as_str(),
+                text: row.text.as_str(),
+                include_p: true,
+                extra_span_class: Some("markdown-node-label"),
+                span_style: Some(ctx.node_label_style_attr),
+                prepared_xhtml: row.prepared_xhtml,
+                mermaid_config: ctx.mermaid_config,
+                math_renderer: ctx.math_renderer,
+            },
+            ctx.uses_canonical_routes,
+        );
+    }
+    out.push_str("</g>");
+}
+
+fn measure_class_svg_node_rows(
+    rows: &[ClassMember],
+    ctx: &ClassSvgNodeBodyContext<'_>,
+    text_padding: f64,
+) -> (Vec<ClassSvgNodeLabelRun>, Option<Rect>) {
+    let mut runs = Vec::with_capacity(rows.len());
+    let mut rect: Option<Rect> = None;
+    let mut y_offset = 0.0;
+    for row in rows {
+        let mut text = row.display_text_for_render();
+        let fallback = crate::class::class_svg_empty_markdown_fallback(&text);
+        let literal_fallback = fallback.is_some();
+        let text_style = crate::class::class_svg_row_text_style(
+            ctx.native
+                .map_or(ctx.text_style, |native| &native.code_style),
+            &row.css_style,
+            literal_fallback,
+        );
+        let text_style = crate::class::class_svg_text_with_family(&text_style, ctx.font_family);
+        if let Some(fallback) = fallback {
+            text = fallback;
+        }
+        if !literal_fallback && crate::class::analyze_class_svg_markdown(&text).all_runs_normal() {
+            text = wrap_class_svg_text_like_mermaid(
+                &text,
+                ctx.measurer,
+                &text_style,
+                if ctx.native.is_some() {
+                    &text_style
+                } else {
+                    ctx.html_calc_text_style
+                },
+                ctx.wrap_probe_font_size,
+                false,
+            );
+        }
+        let metrics = if literal_fallback {
+            ctx.measurer
+                .measure_wrapped(&text, &text_style, None, WrapMode::SvgLike)
+        } else {
+            merman_render_core::text::measure_markdown_with_inline_styles(
+                ctx.measurer,
+                &text,
+                &text_style,
+                None,
+                WrapMode::SvgLike,
+            )
+        };
+        if let Some(row_rect) = class_svg_label_rect(&metrics, y_offset) {
+            if let Some(rect) = rect.as_mut() {
+                rect.union(row_rect);
+            } else {
+                rect = Some(row_rect);
+            }
+        }
+        runs.push(ClassSvgNodeLabelRun {
+            text,
+            literal_fallback,
+            style: row.css_style.trim().to_owned(),
+            metrics,
+            y_offset,
+        });
+        y_offset += metrics.height.max(0.0) + text_padding;
+    }
+    (runs, rect)
+}
+
+pub(super) fn render_class_svg_node_runs_group(
+    out: &mut impl SvgOutput,
+    group_class: &str,
+    group_x: f64,
+    group_y: f64,
+    runs: &[ClassSvgNodeLabelRun],
+    group_style: &str,
+) {
+    if runs.is_empty() {
+        let _ = write!(
+            out,
+            r#"<g class="{}" transform="translate({}, {})"/>"#,
+            group_class,
+            fmt(group_x),
+            fmt(group_y)
+        );
+        return;
+    }
+
+    let _ = write!(
+        out,
+        r#"<g class="{}" transform="translate({}, {})">"#,
+        group_class,
+        fmt(group_x),
+        fmt(group_y)
+    );
+    for run in runs {
+        let t_y = -run.metrics.height.max(0.0) / (2.0 * run.metrics.line_count.max(1) as f64)
+            + run.y_offset;
+        let _ = write!(
+            out,
+            r#"<g class="label" style="{}" transform="translate(0,{})"><g><rect class="background" style="stroke: none"/>"#,
+            escape_attr_display(run.style.as_str()),
+            fmt(t_y)
+        );
+        if run.literal_fallback {
+            super::label::write_class_svg_empty_markdown_fallback(
+                out,
+                run.text.as_str(),
+                group_style,
+            );
+        } else {
+            write_class_svg_text_markdown_with_style(out, run.text.as_str(), group_style);
+        }
+        out.push_str("</g></g>");
+    }
+    out.push_str("</g>");
+}
+
+pub(super) fn render_class_svg_title_group(
+    out: &mut impl SvgOutput,
+    group_x: f64,
+    group_y: f64,
+    title: &crate::class::ClassSvgTitleLabel,
+    title_metrics: &merman_render_core::text::TextMetrics,
+    group_style: &str,
+    weight_style: &str,
+) {
+    let _ = write!(
+        out,
+        r#"<g class="label-group text" transform="translate({}, {})">"#,
+        fmt(group_x),
+        fmt(group_y)
+    );
+    let t_y = -title_metrics.height.max(0.0) / (2.0 * title_metrics.line_count.max(1) as f64);
+    let _ = write!(
+        out,
+        r#"<g class="label" style="{}" transform="translate(0,{})"><g><rect class="background" style="stroke: none"/><text y="-10.1" style="{}">"#,
+        weight_style,
+        fmt(t_y),
+        escape_attr_display(group_style),
+    );
+    write_class_svg_label_rows(out, title.lines(), true, title.literal_first_row(), false);
+    out.push_str("</text></g></g></g>");
+}
+
+#[cfg(test)]
+mod palette_tests {
+    #[test]
+    fn class_palette_slots_wrap_and_leave_unassigned_containers_unstamped() {
+        let mut attributes = String::new();
+        super::write_class_color_slot(&mut attributes, Some(4), 3);
+        assert_eq!(attributes, r#" data-color-id="color-1""#);
+        attributes.clear();
+        super::write_class_color_slot(&mut attributes, None, 3);
+        super::write_class_color_slot(&mut attributes, Some(0), 0);
+        assert!(attributes.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod typography_tests {
+    use super::*;
+    use merman_core::{MermaidEngine, ParseOptions};
+    use merman_model::presentation::RenderSemanticModel;
+    use merman_render_core::text::TextMetrics;
+    use merman_render_core::text::measurement::TextMeasurementOperation;
+    use std::sync::Mutex;
+
+    struct RecordingMeasurer {
+        measured: Mutex<Vec<(TextMeasurementOperation, String, TextStyle)>>,
+        computed: Mutex<Vec<TextStyle>>,
+        probes: Mutex<Vec<TextStyle>>,
+        probe_width: f64,
+    }
+
+    impl RecordingMeasurer {
+        fn new(probe_width: f64) -> Self {
+            Self {
+                measured: Mutex::default(),
+                computed: Mutex::default(),
+                probes: Mutex::default(),
+                probe_width,
+            }
+        }
+
+        fn record(&self, operation: TextMeasurementOperation, text: &str, style: &TextStyle) {
+            self.measured
+                .lock()
+                .unwrap()
+                .push((operation, text.to_owned(), style.clone()));
+        }
+
+        fn metrics(text: &str, style: &TextStyle) -> TextMetrics {
+            let lines = text.split('\n').collect::<Vec<_>>();
+            TextMetrics {
+                width: lines
+                    .iter()
+                    .map(|line| line.chars().count() as f64 * style.font_size)
+                    .fold(0.0, f64::max),
+                height: lines.len() as f64 * style.font_size,
+                line_count: lines.len(),
+            }
+        }
+    }
+
+    impl TextMeasurer for RecordingMeasurer {
+        fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+            panic!("Class SVG rows must select an explicit measurement operation")
+        }
+
+        fn measure_wrapped(
+            &self,
+            text: &str,
+            style: &TextStyle,
+            max_width: Option<f64>,
+            wrap: WrapMode,
+        ) -> TextMetrics {
+            assert_eq!(max_width, None);
+            assert_eq!(wrap, WrapMode::SvgLike);
+            self.record(TextMeasurementOperation::Wrapped, text, style);
+            Self::metrics(text, style)
+        }
+
+        fn measure_svg_tspan_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+            assert!(!text.contains('\n'), "terminal probes own one literal word");
+            self.record(TextMeasurementOperation::TspanBBoxHeight, text, style);
+            style.font_size
+        }
+
+        fn measure_svg_create_text_bbox_y_offset_px(&self, text: &str, style: &TextStyle) -> f64 {
+            assert!(!text.contains('\n'), "terminal probes own one literal word");
+            self.record(TextMeasurementOperation::CreateTextBBoxYOffset, text, style);
+            -style.font_size / 4.0
+        }
+
+        fn measure_svg_text_computed_length_px(&self, text: &str, style: &TextStyle) -> f64 {
+            self.computed.lock().unwrap().push(style.clone());
+            Self::metrics(text, style).width
+        }
+
+        fn measure_mermaid_calculate_text_dimensions(
+            &self,
+            _text: &str,
+            style: &TextStyle,
+        ) -> TextMetrics {
+            self.probes.lock().unwrap().push(style.clone());
+            TextMetrics {
+                width: self.probe_width,
+                height: style.font_size,
+                line_count: 1,
+            }
+        }
+    }
+
+    fn body_context<'a>(
+        measurer: &'a dyn TextMeasurer,
+        style: &'a TextStyle,
+        work_meter: &'a merman_render_core::resources::OperationWorkMeter,
+    ) -> ClassSvgNodeBodyContext<'a> {
+        ClassSvgNodeBodyContext {
+            work_meter,
+            measurer,
+            text_style: style,
+            html_calc_text_style: style,
+            wrap_probe_font_size: 16.0,
+            class_padding: 12.0,
+            hide_empty_members_box: false,
+            node_stroke_style_attr: "",
+            node_label_style_attr: "",
+            font_family: None,
+            node_stroke: "#000",
+            node_stroke_width: "1",
+            node_stroke_dasharray: "",
+            look: "classic",
+            use_neo_line_class: false,
+            timing: RenderTiming::disabled(),
+            native: None,
+            paint_heading: false,
+        }
+    }
+
+    fn class_node() -> merman_model::families::class::ClassNode {
+        let parsed = MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(
+                "classDiagram\nclass Vehicle {\n+owner\n+name\n+drive()\n+stop()\n}",
+                ParseOptions::default(),
+            )
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let RenderSemanticModel::Class(model) = parsed.model() else {
+            panic!("expected Class model");
+        };
+        model.class("Vehicle").unwrap().node.clone()
+    }
+
+    #[test]
+    fn class_svg_row_plans_use_member_and_method_fonts_for_measurement_and_positioning() {
+        let mut node = class_node();
+        node.members[0].css_style =
+            "font-family:serif;font-size:32px;font-weight:900;font-style:italic".to_owned();
+        node.methods[0].css_style =
+            "font-family:serif;font-size:24px;font-weight:900;font-style:italic".to_owned();
+        let measurer = RecordingMeasurer::new(1024.0);
+        let base = TextStyle::default();
+        let meter = merman_render_core::resources::OperationWorkMeter::new(Default::default());
+        let ctx = body_context(&measurer, &base, &meter);
+
+        for (rows, font_size) in [(&node.members, 32.0), (&node.methods, 24.0)] {
+            let (runs, rect) = measure_class_svg_node_rows(rows, &ctx, 3.0);
+            assert_eq!(runs[0].metrics.height, font_size);
+            assert_eq!(runs[1].metrics.height, 16.0);
+            assert_eq!(runs[1].y_offset, font_size + 3.0);
+            assert_eq!(rect.unwrap().height(), font_size * 1.5 + 11.0);
+            let measured = measurer.measured.lock().unwrap();
+            for operation in [
+                TextMeasurementOperation::TspanBBoxHeight,
+                TextMeasurementOperation::CreateTextBBoxYOffset,
+            ] {
+                assert!(measured.iter().any(|(actual, text, style)| {
+                    *actual == operation
+                        && text == &runs[0].text
+                        && style.font_family.as_deref() == Some("serif")
+                        && style.font_size == font_size
+                        && style.font_weight.as_deref() == Some("normal")
+                        && style.font_style.as_deref() == Some("normal")
+                }));
+            }
+            drop(measured);
+
+            let mut svg = String::new();
+            render_class_svg_node_runs_group(&mut svg, "members-group text", 0.0, 0.0, &runs, "");
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let labels: Vec<_> = document.root_element().children().collect();
+            assert_eq!(
+                labels[0].attribute("transform"),
+                Some(format!("translate(0,{})", -font_size / 2.0).as_str())
+            );
+            assert_eq!(
+                labels[1].attribute("transform"),
+                Some(format!("translate(0,{})", font_size - 5.0).as_str())
+            );
+            let word = labels[0]
+                .descendants()
+                .find(|child| child.attribute("class") == Some("text-inner-tspan"))
+                .unwrap();
+            assert_eq!(word.attribute("font-style"), Some("normal"));
+            assert_eq!(word.attribute("font-weight"), Some("normal"));
+        }
+    }
+
+    #[test]
+    fn class_svg_row_wrapping_uses_the_effective_font_without_changing_probe_budget() {
+        let mut node = class_node();
+        node.members[0].display_text = "WWWWWW".to_owned();
+        node.members[0].css_style = "font-size:32px".to_owned();
+        let measurer = RecordingMeasurer::new(0.0);
+        let base = TextStyle::default();
+        let meter = merman_render_core::resources::OperationWorkMeter::new(Default::default());
+        let ctx = body_context(&measurer, &base, &meter);
+        let (runs, _) = measure_class_svg_node_rows(&node.members[..1], &ctx, 3.0);
+
+        assert_eq!(runs[0].text, "W\nW\nW\nW\nW\nW");
+        assert_eq!(runs[0].metrics.line_count, 6);
+        let mut svg = String::new();
+        render_class_svg_node_runs_group(&mut svg, "members-group text", 0.0, 0.0, &runs, "");
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let rows: Vec<_> = document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("row text-outer-tspan"))
+            .collect();
+        assert_eq!(rows.len(), runs[0].metrics.line_count);
+        let baseline_em = |row: &roxmltree::Node<'_, '_>| {
+            ["y", "dy"]
+                .into_iter()
+                .map(|name| {
+                    row.attribute(name)
+                        .unwrap()
+                        .strip_suffix("em")
+                        .unwrap()
+                        .parse::<f64>()
+                        .unwrap()
+                })
+                .sum::<f64>()
+        };
+        let baseline_span = baseline_em(rows.last().unwrap()) - baseline_em(&rows[0]);
+        let font_size = 32.0;
+        let expected_height = baseline_span * font_size + font_size;
+        assert!((runs[0].metrics.height - expected_height).abs() < 1e-9);
+        let measured = measurer.measured.lock().unwrap();
+        for operation in [
+            TextMeasurementOperation::TspanBBoxHeight,
+            TextMeasurementOperation::CreateTextBBoxYOffset,
+        ] {
+            let words: Vec<_> = measured
+                .iter()
+                .filter(|(actual, _, _)| *actual == operation)
+                .collect();
+            assert_eq!(words.len(), rows.len());
+            assert!(
+                words
+                    .iter()
+                    .all(|(_, text, style)| text == "W" && style.font_size == font_size)
+            );
+        }
+        assert!(
+            measured
+                .iter()
+                .all(|(operation, _, _)| *operation != TextMeasurementOperation::Wrapped)
+        );
+        let computed = measurer.computed.lock().unwrap();
+        assert!(!computed.is_empty());
+        assert!(computed.iter().all(|style| style.font_size == 32.0));
+        let probes = measurer.probes.lock().unwrap();
+        assert_eq!(probes.len(), 2);
+        assert_eq!(probes[0].font_family.as_deref(), Some("sans-serif"));
+        assert_eq!(probes[1].font_family.as_deref(), Some("Arial"));
+        assert!(
+            probes
+                .iter()
+                .all(|style| style.font_size == ctx.wrap_probe_font_size)
+        );
+    }
+
+    #[test]
+    fn class_svg_literal_fallback_and_html_spellings_keep_row_typography() {
+        let mut node = class_node();
+        node.members[0].display_text = "\\".repeat(3);
+        node.members[0].css_style = "font-size:32px;font-style:italic".to_owned();
+        node.members[1].display_text = "<span style='font-size:99px'>owner</span>".to_owned();
+        node.members[1].css_style = node.members[0].css_style.clone();
+        let measurer = RecordingMeasurer::new(4096.0);
+        let base = TextStyle::default();
+        let meter = merman_render_core::resources::OperationWorkMeter::new(Default::default());
+        let ctx = body_context(&measurer, &base, &meter);
+        let (runs, _) = measure_class_svg_node_rows(&node.members, &ctx, 3.0);
+
+        assert!(runs[0].literal_fallback);
+        assert!(!runs[1].literal_fallback);
+        assert!(runs.iter().all(|run| run.metrics.height == 32.0));
+        let mut svg = String::new();
+        render_class_svg_node_runs_group(&mut svg, "members-group text", 0.0, 0.0, &runs, "");
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        assert!(
+            !document
+                .descendants()
+                .any(|child| child.has_tag_name("span"))
+        );
+        let visible: String = document
+            .descendants()
+            .filter(|child| child.is_text())
+            .filter_map(|child| child.text())
+            .collect();
+        assert_eq!(visible, "\\\\<span style='font-size:99px'> owner </span>");
+        let measured = measurer.measured.lock().unwrap();
+        let fallback: Vec<_> = measured
+            .iter()
+            .filter(|(operation, _, _)| *operation == TextMeasurementOperation::Wrapped)
+            .collect();
+        assert_eq!(fallback.len(), 1);
+        assert_eq!(fallback[0].1, "\\\\");
+        let words: Vec<_> = document
+            .descendants()
+            .filter(|child| child.attribute("class") == Some("text-inner-tspan"))
+            .map(|child| child.text().unwrap())
+            .collect();
+        assert_eq!(
+            words,
+            ["<span style='font-size:99px'>", " owner", " </span>"]
+        );
+        for operation in [
+            TextMeasurementOperation::TspanBBoxHeight,
+            TextMeasurementOperation::CreateTextBBoxYOffset,
+        ] {
+            let actual: Vec<_> = measured
+                .iter()
+                .filter(|(actual, _, _)| *actual == operation)
+                .map(|(_, text, _)| text.as_str())
+                .collect();
+            assert_eq!(actual, words);
+        }
+        assert!(measured.iter().all(|(_, _, style)| {
+            style.font_size == 32.0 && style.font_style.as_deref() == Some("normal")
+        }));
+        assert_eq!(
+            runs[1].metrics.width,
+            words.iter().map(|word| word.chars().count()).sum::<usize>() as f64 * 32.0
+        );
+    }
+}
+
+/// Emit retained createText words; title role and literal fallback are applied after parsing.
+pub(super) fn write_class_svg_label_rows(
+    out: &mut impl SvgOutput,
+    lines: &[Vec<(
+        String,
+        merman_render_core::text::inline_html::MermaidMarkdownWordType,
+    )>],
+    title: bool,
+    literal_first_row: bool,
+    centered: bool,
+) {
+    if !title && lines.len() == 1 && lines[0].is_empty() {
+        let _ = write!(
+            out,
+            r#"<tspan class="row text-outer-tspan" x="0" y="-0.1em" dy="1.1em"{}/>"#,
+            if centered {
+                r#" text-anchor="middle""#
+            } else {
+                ""
+            }
+        );
+        return;
+    }
+    for (index, words) in lines.iter().enumerate() {
+        let y_em = if index == 0 {
+            "-0.1em".to_owned()
+        } else if index == 1 {
+            "1em".to_owned()
+        } else {
+            format!("{:.1}em", 1.0 + (index as f64 - 1.0) * 1.1)
+        };
+        let _ = write!(
+            out,
+            r#"<tspan class="row text-outer-tspan" x="0" y="{}" dy="1.1em"{}{}>"#,
+            y_em,
+            if title { r#" font-weight="""# } else { "" },
+            if centered {
+                r#" text-anchor="middle""#
+            } else {
+                ""
+            }
+        );
+        if literal_first_row && index == 0 {
+            if let Some((literal, _)) = words.first() {
+                escape_xml_into(out, literal);
+            }
+        } else {
+            for (word_index, (word, kind)) in words.iter().enumerate() {
+                let font_style = if *kind
+                    == merman_render_core::text::inline_html::MermaidMarkdownWordType::Em
+                {
+                    "italic"
+                } else {
+                    "normal"
+                };
+                let font_weight = if title {
+                    ""
+                } else if *kind
+                    == merman_render_core::text::inline_html::MermaidMarkdownWordType::Strong
+                {
+                    "bold"
+                } else {
+                    "normal"
+                };
+                let _ = write!(
+                    out,
+                    r#"<tspan font-style="{}" class="text-inner-tspan" font-weight="{}">"#,
+                    font_style, font_weight
+                );
+                if word_index > 0 {
+                    out.push(' ');
+                }
+                escape_xml_into(out, word);
+                out.push_str("</tspan>");
+            }
+        }
+        out.push_str("</tspan>");
+    }
+}

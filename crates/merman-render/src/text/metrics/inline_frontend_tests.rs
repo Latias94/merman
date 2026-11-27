@@ -7,13 +7,13 @@ use crate::environment::{
 use crate::environment::{RenderEnvironment, TextMeasurementPhase};
 #[cfg(feature = "markdown-labels")]
 use crate::text::measure_markdown_with_inline_styles;
-use crate::text::measure_xhtml_label_fragment_with_terminal_fonts;
 use crate::text::{
     DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode,
     measure_html_with_inline_styles,
 };
 #[cfg(feature = "markdown-labels")]
 use merman_render_core::text::inline_html::style_requests_bold_font_weight;
+use merman_render_core::text::measure_xhtml_label_fragment_with_terminal_fonts;
 use std::cell::RefCell;
 #[cfg(feature = "diagram-er")]
 use std::sync::{Arc, Mutex};

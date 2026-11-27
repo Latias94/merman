@@ -1,70 +1,13 @@
-pub(super) use merman_render_core::svg_bounds::{
-    CubicBezier, SvgPathBounds, svg_path_bounds_from_d, svg_path_bounds_include_cubic,
-    svg_path_bounds_include_quadratic,
-};
+pub(super) use merman_render_core::svg_bounds::{SvgPathBounds, svg_path_bounds_from_d};
 
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-agentflow"
 ))]
-pub(super) fn svg_path_bounds_from_rough_ops(
-    opset: &roughr::core::OpSet<f64>,
-) -> Option<SvgPathBounds> {
-    use roughr::core::OpType;
+pub(super) use merman_render_core::rough_svg::paths::svg_path_bounds_from_rough_ops;
 
-    let mut bounds = None;
-    let (mut x, mut y) = (0.0, 0.0);
-    for op in &opset.ops {
-        if op.data.iter().any(|coordinate| !coordinate.is_finite()) {
-            return None;
-        }
-        match (&op.op, op.data.as_slice()) {
-            (OpType::Move | OpType::LineTo, &[nx, ny]) => {
-                bounds
-                    .get_or_insert_with(|| SvgPathBounds::at(nx, ny))
-                    .include_point(nx, ny);
-                (x, y) = (nx, ny);
-            }
-            (OpType::BCurveTo, &[x1, y1, x2, y2, x3, y3]) => {
-                svg_path_bounds_include_cubic(
-                    bounds.get_or_insert_with(|| SvgPathBounds::at(x, y)),
-                    CubicBezier {
-                        x0: x,
-                        y0: y,
-                        x1,
-                        y1,
-                        x2,
-                        y2,
-                        x3,
-                        y3,
-                    },
-                );
-                (x, y) = (x3, y3);
-            }
-            _ => return None,
-        }
-    }
-    bounds
-}
-
-/// Returns the rendered centerline length for an SVG path.
-///
-/// Mermaid derives Neo edge masking from `SVGPathElement.getTotalLength()`. Kurbo parses the same
-/// SVG path grammar, including arcs, and evaluates Bezier arc length without flattening the path
-/// into a local polyline approximation.
-pub(super) fn svg_path_length_from_d(d: &str) -> Option<f64> {
-    use kurbo::Shape;
-
-    let path = kurbo::BezPath::from_svg(d).ok()?;
-    // SVGGeometryElement.getTotalLength() exposes a Web IDL `float`, promoted to a JS Number
-    // before Mermaid applies marker offsets. Preserve that boundary instead of exposing the
-    // platform-dependent low bits of Kurbo's f64 arc-length calculation in SVG styles.
-    // https://www.w3.org/TR/SVG/types.html#InterfaceSVGGeometryElement
-    let length =
-        f64::from(path.perimeter(merman_render_core::route_types::SVG_LENGTH_ACCURACY) as f32);
-    length.is_finite().then_some(length)
-}
+pub(super) use merman_render_core::svg_edge_parity::svg_path_length_from_d;
 
 #[cfg(test)]
 mod tests {

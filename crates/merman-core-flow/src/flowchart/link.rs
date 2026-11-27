@@ -1,3 +1,5 @@
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+use super::LinkToken;
 use super::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -98,5 +100,36 @@ pub(super) fn destruct_labeled_end_link(s: &str) -> EndLinkSemantics {
     EndLinkSemantics {
         start_marker: FlowEdgeMarker::None,
         ..destruct_end_link(s)
+    }
+}
+
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+pub(super) fn compatibility_edge_type(link: &LinkToken) -> &'static str {
+    // An open START_LINK inherits the final LINK's aggregate type, including a pair
+    // such as `o--o` captured at the end of `--No--o`. Keep the authored marker for ASCII.
+    let start_marker = match link.start_marker {
+        FlowEdgeMarker::None => link.final_operator_start_marker(),
+        marker => marker,
+    };
+    match (start_marker, link.end_marker) {
+        (FlowEdgeMarker::Point, FlowEdgeMarker::Point) => "double_arrow_point",
+        (FlowEdgeMarker::Circle, FlowEdgeMarker::Circle) => "double_arrow_circle",
+        (FlowEdgeMarker::Cross, FlowEdgeMarker::Cross) => "double_arrow_cross",
+        (_, FlowEdgeMarker::Point) => "arrow_point",
+        (_, FlowEdgeMarker::Circle) => "arrow_circle",
+        (_, FlowEdgeMarker::Cross) => "arrow_cross",
+        (_, FlowEdgeMarker::None) => "arrow_open",
+    }
+}
+
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+pub(super) const fn compatibility_stroke(link: &LinkToken) -> &'static str {
+    if matches!(link.visibility, FlowEdgeVisibility::Invisible) {
+        return "invisible";
+    }
+    match link.stroke_kind {
+        FlowEdgeStroke::Normal => "normal",
+        FlowEdgeStroke::Dotted => "dotted",
+        FlowEdgeStroke::Thick => "thick",
     }
 }

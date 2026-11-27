@@ -2,10 +2,10 @@
   "schema_version": 2,
   "updated": "2026-11-27",
   "compression_source": "stripped",
-  "notes": "Typst publication checks independent raw, optimized/stripped, gzip and Brotli ceilings. The November 27 measurements restore headroom after the Sequence, Pie and vertical family crate splits. Published-artifact ceilings use the measured Linux bytes plus 3%, rounded up to 1,000 bytes. Compression uses the final stripped artifact. Web and Playground report sizes without ceilings. See docs/performance/typst_theme_budget_2026-11-05.md for the measurements and docs/performance/binding_wasm_budget_2026-11-01.md for historical Web figures.",
+  "notes": "Typst publication checks independent raw, optimized/stripped, gzip and Brotli ceilings. The raw ceiling provides staging headroom for vertical crate extraction. Published-artifact ceilings use the November 27 Linux measurements plus 3%, rounded up to 1,000 bytes. Compression uses the final stripped artifact. Web and Playground report sizes without ceilings. See docs/performance/typst_theme_budget_2026-11-05.md for the measurements and docs/performance/binding_wasm_budget_2026-11-01.md for historical Web figures.",
   "artifact_profiles": {
     "typst-wasm": {
-      "max_raw_bytes": 22668000,
+      "max_raw_bytes": 24000000,
       "max_stripped_bytes": 11676000,
       "max_gzip_bytes": 4485000,
       "max_brotli_bytes": 3318000

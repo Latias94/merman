@@ -1,9 +1,9 @@
 mod labels;
 
-use super::layout::{
-    C4Measurement, measure_c4_relation, measure_c4_shape, prepare_c4_boundary_layout,
+use super::{
+    C4_ROUNDED_RADIUS, C4ClusterThemePlan, C4ConfigView, C4Measurement, C4TypographyThemePlan,
+    measure_c4_relation, measure_c4_shape, prepare_c4_boundary_layout, title_ink,
 };
-use super::{C4_ROUNDED_RADIUS, C4ClusterThemePlan, C4ConfigView, C4TypographyThemePlan};
 use crate::graph_layout::Marker;
 use crate::graph_layout::canonical::{CanonicalPaintScratch, CanonicalRoutes};
 use crate::graph_layout::contour::ShapePortProfile;
@@ -15,12 +15,13 @@ use crate::graph_layout::placement;
 use crate::graph_layout::route_paint::RouteStyle;
 use crate::layout_frame::GraphPlacement;
 use crate::layout_work::OperationLayoutWorkControl;
-use crate::model::{Bounds, C4DiagramLayout, LayoutPoint};
+use crate::model::{Bounds, C4DiagramLayout};
 use crate::{Error, LayoutAdaptation, LayoutAdaptationObservation, LayoutExecution, Result};
 use kurbo::{Insets, Vec2};
 use merman_layout_shoal::{WidthPolicy, card_grid};
 use merman_model::families::c4::C4DiagramModel;
 use merman_render_core::graph_layout::shoal::{Placement, project_input, project_output};
+use merman_render_graph::c4::{C4RoutedGeometry, C4RoutedRelation};
 use merman_theme_contract::v2::EdgeStyle;
 use rustc_hash::FxHashMap;
 use serde_json::Value;
@@ -38,22 +39,16 @@ const MARKER: Marker = Marker {
 #[derive(Debug)]
 pub(crate) struct C4ShoalGeometry {
     placement: GraphPlacement,
-    pub(crate) boundary_title_x: Vec<Option<f64>>,
-    pub(crate) relations: Vec<C4ShoalRelation>,
-}
-
-#[derive(Debug)]
-pub(crate) struct C4ShoalRelation {
-    pub(crate) id: String,
-    pub(crate) path: String,
-    pub(crate) points: Vec<LayoutPoint>,
-    pub(crate) label: Option<labels::PlacedRelationLabel>,
-    pub(crate) shaft_cutouts: Vec<kurbo::Rect>,
+    routed: C4RoutedGeometry,
 }
 
 impl C4ShoalGeometry {
     pub(crate) const fn placement(&self) -> &GraphPlacement {
         &self.placement
+    }
+
+    pub(crate) const fn routed(&self) -> &C4RoutedGeometry {
+        &self.routed
     }
 }
 
@@ -236,7 +231,7 @@ pub(crate) fn layout_c4_shoal(
         let title = if boundary.alias == ROOT {
             None
         } else {
-            labels::title_ink(&layout, &measure)?
+            title_ink(&layout, &measure)?
         };
         if group_indices.contains_key(boundary.alias.as_str()) {
             let height = title.map_or(0.0, |ink| ink.height());
@@ -443,11 +438,11 @@ pub(crate) fn layout_c4_shoal(
             &mut shaft_cutouts,
             &mut work,
         )?;
-        geometry.push(C4ShoalRelation {
+        geometry.push(C4RoutedRelation {
             id,
             path: painted.path.d,
             points: painted.data_points,
-            label: placed_label,
+            label_origin: placed_label.map(|label| label.origin),
             shaft_cutouts,
         });
     }
@@ -459,26 +454,25 @@ pub(crate) fn layout_c4_shoal(
             ink_width,
         ));
     }
-    let layout = C4DiagramLayout {
-        bounds: Some(bounds),
-        width: ink_width + 2.0 * conf.diagram_margin_x,
-        height: ink_height + 2.0 * conf.diagram_margin_y,
-        container_width: execution.container_width,
-        container_height: execution.container_height,
-        screen_available_width: execution.screen_available_width,
-        c4_type: model.c4_type.clone(),
-        title: model.title.clone(),
-        use_max_width: conf.use_max_width,
+    let layout = C4DiagramLayout::from_routed(
+        model,
+        &conf,
+        bounds,
+        crate::geom::Size::new(ink_width, ink_height),
+        crate::geom::Size::new(execution.container_width, execution.container_height),
+        execution.screen_available_width,
         boundaries,
         shapes,
-        rels: relations,
-    };
+        relations,
+    );
     Ok((
         layout,
         C4ShoalGeometry {
             placement,
-            boundary_title_x,
-            relations: geometry,
+            routed: C4RoutedGeometry {
+                boundary_title_x,
+                relations: geometry,
+            },
         },
     ))
 }

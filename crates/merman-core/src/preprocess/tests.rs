@@ -3,7 +3,7 @@ use super::config_scan::{
     config_nesting_exceeds_limit_controlled, max_yaml_indent_depth_controlled,
 };
 use super::directives::{parse_directive_like_upstream, sanitize_directive};
-use super::frontmatter::FrontmatterCapture;
+use super::frontmatter_config::FrontmatterCapture;
 #[cfg(feature = "editor-facts")]
 use super::rewrite_order::MAX_REWRITE_DEPTH;
 use super::*;

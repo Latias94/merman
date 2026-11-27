@@ -1,6 +1,19 @@
-use std::fmt;
-
-pub(in crate::svg) use merman_render_core::icon_registry::{IconIdScope, IconIdScopePrefix};
+#[cfg(all(
+    test,
+    any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    )
+))]
+pub(in crate::svg) use merman_render_core::icon_registry::IconIdScope;
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow",
+    feature = "diagram-usecase"
+))]
+pub(in crate::svg) use merman_render_core::icon_registry::IconIdScopePrefix;
 
 pub use merman_render_core::icon_registry::{
     IconPack, IconRegistry, IconRegistryBuildError, IconRegistryBuildErrorKind,
@@ -8,28 +21,20 @@ pub use merman_render_core::icon_registry::{
     icon_registry_resource_limit_descriptors,
 };
 
-mod render;
-
-const MERMAID_UNKNOWN_ICON_BODY: &str = r#"<g><rect width="80" height="80" style="fill: #087ebf; stroke-width: 0px;"/><text transform="translate(21.16 64.67)" style="fill: #fff; font-family: ArialMT, Arial; font-size: 67.75px;"><tspan x="0" y="0">?</tspan></text></g>"#;
-
-pub(in crate::svg) fn mermaid_unknown_icon_svg(
-    width: impl fmt::Display,
-    height: impl fmt::Display,
-) -> String {
-    format!(
-        r#"<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 80 80">{MERMAID_UNKNOWN_ICON_BODY}</svg>"#
-    )
-}
-
-pub(in crate::svg) fn render_icon(
-    registry: &IconRegistry,
-    request: IconRenderRequest<'_>,
-) -> crate::Result<Option<String>> {
-    registry
-        .resolve_icon(request.icon_name, request.fallback_prefix)
-        .map(|icon| render::render_resolved_icon(icon, icon.parsed_body(), &request))
-        .transpose()
-}
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow",
+    feature = "diagram-usecase"
+))]
+pub(in crate::svg) use merman_render_core::icon_registry::mermaid_unknown_icon_svg;
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow",
+    feature = "diagram-usecase"
+))]
+pub(in crate::svg) use merman_render_core::icon_registry::{IconRenderRequest, render_icon};
 
 #[cfg(any(
     feature = "diagram-flowchart",
@@ -64,44 +69,17 @@ pub(in crate::svg) fn bpmn_icon_svg(
             .transpose()?
             .flatten()
     };
-    Ok(rendered.unwrap_or_else(|| {
-        mermaid_unknown_icon_svg(
-            crate::number_format::canonical_number(width),
-            crate::number_format::canonical_number(height),
-        )
-    }))
+    Ok(rendered.unwrap_or_else(|| mermaid_unknown_icon_svg(width, height)))
 }
 
-pub(in crate::svg) struct IconRenderRequest<'a> {
-    pub(in crate::svg) icon_name: &'a str,
-    pub(in crate::svg) width_px: f64,
-    pub(in crate::svg) height_px: f64,
-    pub(in crate::svg) fallback_prefix: Option<&'a str>,
-    pub(in crate::svg) extra_class: Option<&'a str>,
-    pub(in crate::svg) id_scope: IconIdScope,
-    pub(in crate::svg) effective_config: &'a merman_model::presentation::PresentationConfig,
-    pub(in crate::svg) work_meter: &'a crate::resources::OperationWorkMeter,
-}
-
-/// Rewrites IDs in renderer-owned Architecture artwork.
 #[cfg(all(
-    feature = "diagram-architecture",
-    any(feature = "layout-cytoscape", feature = "layout-shoal")
+    test,
+    any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    )
 ))]
-pub(in crate::svg) fn rewrite_builtin_icon_ids(
-    body: &'static str,
-    scope: IconIdScope,
-) -> crate::Result<merman_render_core::icon_registry::UntrustedIconXml> {
-    use merman_render_core::icon_registry::{IconDefsPlacement, ParsedIconBody};
-
-    let parsed = ParsedIconBody::parse_builtin_fragment(body)
-        .map_err(|_| crate::Error::icon_processing("built-in icon fragment is invalid"))?;
-    parsed
-        .rewrite_ids(scope, IconDefsPlacement::Inline)
-        .map_err(|_| crate::Error::icon_processing("built-in icon ID scoping failed"))
-}
-
-#[cfg(test)]
 pub(in crate::svg) fn icon_id_scope_for_test(value: &str) -> IconIdScope {
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
 
@@ -139,7 +117,6 @@ mod tests {
                 width_px: 18.0,
                 height_px: 18.0,
                 fallback_prefix: Some("bpmn"),
-                extra_class: None,
                 id_scope: icon_id_scope_for_test("bpmn"),
                 effective_config: &config,
                 work_meter: &meter,

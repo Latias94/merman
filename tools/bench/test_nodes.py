@@ -538,7 +538,7 @@ class ProcessRoundTests(unittest.TestCase):
     def test_replay_requires_the_same_fixed_or_selected_layout_capabilities(self):
         self.args.variant = ["peer=pele", "dagre=merman::{}", "elk=merman::{}", "shoal=merman::{}"]
         self.args.variant_layout = ["dagre=dagre", "elk=elk", "shoal=shoal"]
-        self.freeze({"doc": ["info", "architecture", "block", "swimlane"], "control": ["c"]})
+        self.freeze({"doc": ["info", "architecture", "block", "swimlane", "flowchart-elk"], "control": ["c"]})
 
         def edit_plans(round_no, raw):
             if layout := raw.get("variant", {}).get("site_layout"):
@@ -548,6 +548,7 @@ class ProcessRoundTests(unittest.TestCase):
                          required_capability_ids=["layout-shoal" if layout == "shoal" else "layout-cytoscape"]),
                     dict(diagram_type="block", required_capability_ids=["layout-shoal"] if layout == "shoal" else []),
                     dict(diagram_type="swimlane", required_capability_ids=[f"layout-{layout}"]),
+                    dict(diagram_type="flowchart-elk", required_capability_ids=["layout-elk"]),
                 ]
 
         self.edit = edit_plans
@@ -563,6 +564,7 @@ class ProcessRoundTests(unittest.TestCase):
             ("elk", "swimlane", ["layout-dagre"]),
             ("shoal", "architecture", ["layout-cytoscape"]),
             ("shoal", "block", []),
+            ("shoal", "flowchart-elk", ["layout-shoal"]),
         ):
             with self.subTest(layout=layout, kind=kind):
                 path = bundle / "rounds" / "002" / f"{layout}.json"

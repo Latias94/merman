@@ -130,7 +130,6 @@ CRATE_COMPONENTS = {
         "roxmltree-ego-tree",
         "unicode-linebreak",
         "venn-js",
-        "zenuml-core",
     ),
     "crates/merman-render-core": ("mermaid", "roxmltree-ego-tree", "unicode-linebreak"),
     "crates/merman-render-charts": (
@@ -143,8 +142,14 @@ CRATE_COMPONENTS = {
         "venn-js",
     ),
     "crates/merman-render-flow": ("mermaid",),
-    "crates/merman-render-graph": ("mermaid",),
-    "crates/merman-render-sequence": ("mermaid",),
+    "crates/merman-render-graph": (
+        "cytoscape",
+        "cytoscape-fcose",
+        "mermaid",
+        "non-layered-tidy-tree-layout",
+        "roxmltree-ego-tree",
+    ),
+    "crates/merman-render-sequence": ("mermaid", "zenuml-core"),
     "crates/merman-render-structured": ("mermaid",),
     "crates/merman-unicode-linebreak": ("unicode-linebreak",),
 }

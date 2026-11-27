@@ -45,18 +45,8 @@ impl FlowchartSteps {
         Ok((begin, self.duration, gap))
     }
 
-    pub(super) fn write_style(&self, out: &mut impl SvgOutput, diagram_id: SvgDiagramId<'_>) {
-        if !self.emitted.get() {
-            return;
-        }
-        #[cfg(feature = "benchmark-stages")]
-        let _stage =
-            merman_model::benchmark_stages::enter(merman_model::benchmark_stages::Stage::CssEmit);
-        let scope = css_selector_diagram_id(diagram_id);
-        let _ = write!(
-            out,
-            r#"<style class="edge-step-style">@media (prefers-reduced-motion: reduce) {{ #{scope} .edge-step-dot, #{scope} .edge-step-highlight {{ display: none; }} }}</style>"#,
-        );
+    pub(super) fn emitted(&self) -> bool {
+        self.emitted.get()
     }
 }
 

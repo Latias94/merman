@@ -1,6 +1,34 @@
 use std::fmt::Write as _;
 
 pub mod controlled;
+#[cfg(feature = "svg-edge-parity")]
+#[doc(hidden)]
+pub mod paths;
+
+/// Selects the RoughJS numeric seed and the operation's dedicated fallback random stream.
+pub fn operation_randomness(
+    operation: &merman_model::runtime::OperationContext,
+    configured_seed: f64,
+    owner_domain: &str,
+) -> roughr::core::RoughRandomness {
+    use roughr::core::{RoughJsSeed, RoughMathRandom, RoughRandomness};
+
+    let resolved_seed = if configured_seed == 0.0 {
+        operation.derive_nonzero_u64("render.root", 0).get() as f64
+    } else {
+        configured_seed
+    };
+    RoughRandomness::new(
+        RoughJsSeed::new(resolved_seed),
+        RoughMathRandom::new(operation.derive_u64(owner_domain, 0)),
+    )
+}
+mod geometry;
+
+pub use geometry::{
+    RoughRectSpec, closed_path_d_from_points, mermaid_arc_points, roughjs_circle_operations,
+    roughjs_circle_path_d, roughjs_paths_for_rect, roughjs_rect_operations,
+};
 
 pub fn parse_hex_color_to_srgba(s: &str) -> Option<roughr::Srgba> {
     let hex = s.trim().strip_prefix('#')?;

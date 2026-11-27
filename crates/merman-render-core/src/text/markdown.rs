@@ -44,6 +44,25 @@ pub fn mermaid_markdown_to_lines(
     markdown_to_lines(markdown, markdown_auto_wrap, false)
 }
 
+/// Projects Mermaid SVG Markdown word lines to the text seen by bbox probes.
+pub fn mermaid_markdown_svg_plain_text(label: &str) -> String {
+    mermaid_markdown_to_lines(label, true)
+        .into_iter()
+        .map(|line| {
+            line.into_iter()
+                .map(
+                    |(word, _)| match crate::entities::decode_svg_text_content_entities(&word) {
+                        std::borrow::Cow::Borrowed(_) => word,
+                        std::borrow::Cow::Owned(decoded) => decoded,
+                    },
+                )
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 pub(super) fn html_markdown_measurement_lines(
     markdown: &str,
 ) -> Vec<Vec<(String, MermaidMarkdownWordType)>> {

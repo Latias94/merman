@@ -286,12 +286,13 @@ test("Merman site layouts admit fixed family capabilities without admitting sele
     const shoal = layout === "shoal";
     const accepted = [
       ["info", "math"], ["gitGraph"], ["railroadAbnf"],
+      ["flowchart-elk", "layout-elk"],
       ["architecture", shoal ? selected : "layout-cytoscape"],
       ["block", ...(shoal ? [selected] : [])], ["c4", ...(shoal ? [selected] : [])],
       ["swimlane", selected], ["classDiagram", selected],
     ];
     const rejected = layout === "elk" ? ["swimlane", "layout-dagre"]
-      : ["architecture", shoal ? "layout-cytoscape" : selected];
+      : ["flowchart-elk", selected];
     const probe = ([type, ...caps]) => request([type, ...caps].join(" "), type);
     plan(dir, [
       { id: "accepted", requests: accepted.map(probe) },

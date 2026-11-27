@@ -17,30 +17,56 @@ third-party-bundle = true
 
 [features]
 default = []
+diagram-block = [
+    "dep:base64", "dep:indexmap", "dep:kurbo", "dep:merman-markup", "dep:merman-model",
+    "dep:merman-render-core", "dep:merman-theme-contract", "dep:roxmltree", "dep:roughr",
+    "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-markup/color", "merman-markup/html",
+    "merman-model/diagram-block", "merman-render-core/html", "merman-render-core/root-svg",
+    "merman-render-core/rough-svg", "merman-render-core/svg-edge-parity",
+    "merman-render-core/theme-elevation", "merman-render-core/xhtml-labels",
+]
 diagram-cynefin = ["dep:cssparser", "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-cynefin", "merman-render-core/root-svg", "merman-render-core/text-layout"]
+diagram-event-modeling = [
+    "dep:merman-markup", "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract",
+    "dep:serde", "dep:serde_json", "merman-model/diagram-event-modeling", "merman-render-core/html",
+    "merman-render-core/root-svg", "merman-render-core/text-layout",
+]
 diagram-gantt = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:serde", "dep:serde_json", "merman-model/diagram-gantt", "merman-render-core/root-svg", "merman-render-core/text-layout"]
 diagram-info = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:serde", "merman-render-core/root-svg", "merman-render-core/theme-svg"]
 diagram-ishikawa = ["dep:cssparser", "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:roughr", "dep:serde", "dep:serde_json", "merman-model/diagram-ishikawa", "merman-render-core/root-svg", "merman-render-core/rough-svg"]
 diagram-journey = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:serde", "dep:serde_json", "merman-model/diagram-journey", "merman-render-core/root-svg", "merman-render-core/text-layout"]
+diagram-kanban = [
+    "dep:kurbo", "dep:merman-markup", "dep:merman-model", "dep:merman-render-core",
+    "dep:merman-theme-contract", "dep:serde", "dep:serde_json", "merman-model/diagram-kanban",
+    "merman-render-core/markdown-labels", "merman-render-core/root-svg", "merman-render-core/theme-elevation",
+]
 diagram-packet = ["dep:merman-markup", "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-packet", "merman-render-core/root-svg"]
 diagram-railroad = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:serde", "dep:serde_json", "merman-model/diagram-railroad", "merman-render-core/root-svg"]
 diagram-timeline = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:serde", "dep:serde_json", "merman-model/diagram-timeline", "merman-render-core/root-svg"]
+diagram-tree-view = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:serde", "dep:serde_json", "merman-model/diagram-tree-view", "merman-render-core/icon-svg", "merman-render-core/root-svg", "merman-render-core/text-layout"]
 
 system-timezone = ["merman-model?/system-timezone"]
 
 [dependencies]
+base64 = { workspace = true, optional = true }
 cssparser = { workspace = true, optional = true }
+indexmap = { workspace = true, optional = true }
+kurbo = { workspace = true, optional = true }
 merman-markup = { workspace = true, optional = true }
 merman-model = { workspace = true, features = ["presentation-data"], optional = true }
 merman-render-core = { workspace = true, features = ["css-style", "svg-output"], optional = true }
 merman-theme-contract = { workspace = true, optional = true }
+roxmltree = { workspace = true, optional = true }
 roughr = { workspace = true, optional = true }
 ryu-js = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 
 [dev-dependencies]
-merman-render-core = { workspace = true, features = ["text-layout"] }
+data-encoding.workspace = true
+merman-core = { workspace = true, features = ["diagram-block", "presentation"] }
+merman-render-core = { workspace = true, features = ["test-support", "text-layout"] }
 merman-theme-contract = { workspace = true, features = ["presets"] }
 roxmltree.workspace = true
+sha2.workspace = true
 svgtypes.workspace = true

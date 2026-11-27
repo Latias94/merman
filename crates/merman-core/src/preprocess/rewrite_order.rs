@@ -1,6 +1,6 @@
 use super::config_scan::max_flow_collection_depth_controlled;
 use super::directives::{MAX_DIRECTIVE_CONFIG_PARSE_BYTES, sanitize_directive_controlled};
-use super::frontmatter::frontmatter_config_routes;
+use super::frontmatter_config::frontmatter_config_routes;
 use super::split_frontmatter_block_controlled;
 use crate::{MermaidConfig, OperationControl, OperationControlResult, SourceSpan};
 use merman_core_preprocess::MappedSource;

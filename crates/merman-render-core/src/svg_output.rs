@@ -3,6 +3,14 @@ use std::ops::Range;
 
 use crate::resources::{OperationWorkMeter, SvgByteBudget};
 
+#[doc(hidden)]
+pub mod timing;
+
+/// Writer-owned terminal fill for a single fallback background occurrence.
+pub const FALLBACK_BACKGROUND_FILL_DATA_ATTR: &str = "data-merman-fallback-background-fill";
+/// Stable occurrence identity paired with [`FALLBACK_BACKGROUND_FILL_DATA_ATTR`].
+pub const FALLBACK_OCCURRENCE_DATA_ATTR: &str = "data-merman-fallback-occurrence";
+
 const MAX_HINTED_SVG_CAPACITY: usize = 32 * 1024;
 const XML_TEXT_CHUNK_BYTES: usize = 2_048;
 
@@ -1229,7 +1237,7 @@ mod tests {
     #[test]
     fn bounded_svg_output_rejects_invalid_replace_ranges_without_panicking() {
         for (initial, range) in [
-            ("abcdef", 4..2),
+            ("abcdef", Range { start: 4, end: 2 }),
             ("abcdef", 0..7),
             ("abcdef", 7..8),
             ("aéb", 1..2),

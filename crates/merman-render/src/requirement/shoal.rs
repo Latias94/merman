@@ -1,8 +1,4 @@
-use super::{
-    RequirementCssBinding, RequirementEdgeLabels, RequirementMeasurements,
-    RequirementNodeRenderPlan, RequirementPreparedArtifact, measure_requirement,
-    measure_requirement_relationship, missing_relationship_node, requirement_layout_node,
-};
+use super::RequirementPreparedArtifact;
 use crate::Result;
 use crate::graph_layout::canonical::CanonicalRoutes;
 use crate::graph_layout::contour::ShapePortProfile;
@@ -17,6 +13,11 @@ use crate::resources::OperationWorkMeter;
 use crate::text::TextMeasurer;
 use merman_model::MermaidConfig;
 use merman_model::families::requirement::RequirementDiagramModel;
+use merman_render_graph::requirement::{
+    RequirementConfigView, RequirementCssBinding, RequirementEdgeLabels, RequirementMeasurements,
+    RequirementNodeRenderPlan, RequirementPreparedArtifact as GraphPrepared, measure_requirement,
+    measure_requirement_relationship, missing_relationship_node, requirement_layout_node,
+};
 use std::{collections::HashMap, sync::Arc};
 
 pub(super) fn layout(
@@ -76,7 +77,7 @@ pub(super) fn layout(
 
     let effective_config = config.as_value();
     let neo = crate::config::config_diagram_look(effective_config).is_neo();
-    let stroke_width = super::RequirementConfigView::new(effective_config).canonical_stroke_width();
+    let stroke_width = RequirementConfigView::new(effective_config).canonical_stroke_width();
     let (contains_marker, arrow_marker) = relation_markers(neo, stroke_width);
     let endpoint = |id: &str, terminal: &str| {
         nodes
@@ -167,16 +168,17 @@ pub(super) fn layout(
         max_y: solved.bounds.height,
     });
     Ok(RequirementPreparedArtifact {
-        layout: RequirementDiagramLayout {
-            nodes: layout_nodes,
-            edges: layout_edges,
-            bounds,
-        },
-        render_layout: None,
+        prepared: GraphPrepared::from_shoal(
+            RequirementDiagramLayout {
+                nodes: layout_nodes,
+                edges: layout_edges,
+                bounds,
+            },
+            prepared_nodes,
+            prepared_edges,
+            measurement_binding,
+        ),
         route_contract: crate::graph_layout::RouteContract::canonical_graph(canonical_routes),
-        nodes: prepared_nodes,
-        edges: prepared_edges,
-        measurement_binding,
     })
 }
 

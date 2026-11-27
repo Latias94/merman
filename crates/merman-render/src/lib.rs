@@ -17,18 +17,15 @@
     any(feature = "layout-cytoscape", feature = "layout-shoal")
 ))]
 pub mod architecture;
-#[cfg(all(
-    feature = "diagram-architecture",
-    any(feature = "layout-cytoscape", feature = "layout-shoal")
-))]
-pub(crate) mod architecture_metrics;
+#[cfg(all(feature = "diagram-architecture", feature = "layout-shoal"))]
+pub(crate) use merman_render_graph::architecture::metrics as architecture_metrics;
 #[cfg(feature = "diagram-block")]
 pub mod block;
 #[cfg(feature = "diagram-c4")]
 pub mod c4;
 #[cfg(feature = "diagram-class")]
 pub mod class;
-use merman_render_core::{config, entities, mermaid_style, number_format};
+use merman_render_core::{config, mermaid_style, number_format};
 #[cfg(feature = "diagram-cynefin")]
 pub mod cynefin;
 #[cfg(all(
@@ -37,7 +34,6 @@ pub mod cynefin;
         feature = "diagram-agentflow",
         feature = "diagram-er",
         feature = "diagram-flowchart",
-        feature = "diagram-requirement",
         feature = "diagram-state",
         feature = "diagram-swimlane"
     )
@@ -101,11 +97,7 @@ mod elk_options;
     feature = "diagram-swimlane",
     all(
         feature = "layout-elk",
-        any(
-            feature = "diagram-class",
-            feature = "diagram-requirement",
-            feature = "diagram-state"
-        )
+        any(feature = "diagram-class", feature = "diagram-state")
     )
 ))]
 use merman_render_core::graph_layout::elk_terminal_jogs;
@@ -129,7 +121,6 @@ pub mod geom;
 pub mod gitgraph;
 #[cfg(any(
     feature = "diagram-agentflow",
-    feature = "diagram-block",
     feature = "diagram-class",
     feature = "diagram-er",
     feature = "diagram-flowchart",
@@ -226,6 +217,11 @@ pub mod quadrantchart;
 pub mod radar;
 #[cfg(feature = "diagram-railroad")]
 pub mod railroad;
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 mod raster_data_url;
 #[cfg(feature = "diagram-requirement")]
 pub mod requirement;

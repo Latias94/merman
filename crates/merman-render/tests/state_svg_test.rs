@@ -19,6 +19,68 @@ use merman_render::text::{
 
 #[cfg(feature = "layout-shoal")]
 #[test]
+fn shoal_mermaid_transition_label_inset_matches_layout_and_keeps_empty_container() {
+    for theme in ["default", "dark"] {
+        let source = format!(
+            "---\nconfig:\n  layout: shoal\n  theme: {theme}\n  htmlLabels: true\n---\n\
+             stateDiagram-v2\n  direction LR\n  A --> B: {}\n\
+               B --> C: A long explanation with several words that should wrap across multiple lines\n\
+               C --> D",
+            "i".repeat(42)
+        );
+        let parsed = MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let artifact =
+            family::prepare(parsed.presentation(), &LayoutOptions::default(), session).unwrap();
+        let layout = artifact.layout_json().unwrap();
+        let svg = artifact
+            .render_svg(&Default::default(), &Default::default())
+            .unwrap();
+        let doc = roxmltree::Document::parse(svg.svg()).unwrap();
+        let labels = layout["layout"]["StateDiagramV2"]["edges"]
+            .as_array()
+            .unwrap();
+        for (id, wrapping) in [
+            ("edge0", "nowrap"),
+            ("edge1", "break-spaces"),
+            ("edge2", ""),
+        ] {
+            let box_node = doc
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("foreignObject")
+                        && node.parent_element().unwrap().attribute("data-id") == Some(id)
+                })
+                .unwrap();
+            let style = box_node
+                .first_element_child()
+                .unwrap()
+                .attribute("style")
+                .unwrap();
+            if wrapping.is_empty() {
+                assert_eq!(box_node.attribute("width"), Some("0"));
+                assert_eq!(box_node.attribute("height"), Some("0"));
+                assert!(!style.contains("padding-inline"));
+                continue;
+            }
+            let label = labels.iter().find(|edge| edge["id"] == id).unwrap();
+            let width = label["label"]["width"].as_f64().unwrap();
+            assert!(width > 200.0 && width <= 208.0, "{theme} {id} {width}");
+            assert!(
+                (width - box_node.attribute("width").unwrap().parse::<f64>().unwrap()).abs() < 1e-9
+            );
+            assert!(style.contains("padding-inline: 4px;"));
+            assert!(style.contains("background-color:"));
+            assert!(style.contains(&format!("white-space: {wrapping};")));
+        }
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
 fn shoal_state_html_labels_allow_ink_overhang_and_composites_share_a_bottom_edge() {
     let svg = render_state_svg_from_text(
         "---\nconfig:\n  layout: shoal\n  htmlLabels: true\n---\nstateDiagram-v2\n\

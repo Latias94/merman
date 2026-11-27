@@ -141,6 +141,28 @@ fn viewport_uses_gitgraph_max_width_and_padding_after_measuring_rotated_labels()
 }
 
 #[test]
+fn viewport_accepts_mermaid_scalar_values_for_gitgraph_max_width() {
+    let source = "gitGraph\ncommit id:\"root\"\n";
+    for configured_value in [json!(0), json!("false")] {
+        let (_, _, svg) = inspect(&configured(
+            json!({"gitGraph": {"useMaxWidth": configured_value}}),
+            source,
+        ));
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let root = document.root_element();
+        let view_box = root.attribute("viewBox").unwrap().split_ascii_whitespace();
+        for (attribute, expected) in ["width", "height"].into_iter().zip(view_box.skip(2)) {
+            assert_eq!(
+                root.attribute(attribute),
+                Some(expected),
+                "{configured_value}"
+            );
+        }
+        assert_eq!(root.attribute("style"), None, "{configured_value}");
+    }
+}
+
+#[test]
 fn signed_title_margin_reaches_the_svg_title_and_intrinsic_viewport() {
     for margin in [-12.5, 0.0, 40.0] {
         let source = format!(

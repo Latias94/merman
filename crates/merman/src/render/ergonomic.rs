@@ -18,11 +18,13 @@ use super::{SvgEnvironment, SvgOutput, SvgRequest};
 #[cfg(feature = "ascii")]
 use crate::ascii::AsciiRenderOptions;
 #[cfg(feature = "svg")]
-use crate::svg::{RenderResourcePolicy, TextMeasurementPolicy};
+use crate::svg::{
+    RenderResourceLimitId, RenderResourcePolicy, ResourceLimitId, TextMeasurementPolicy,
+};
 #[cfg(any(feature = "svg", feature = "ascii"))]
 use crate::theme::{Appearance, BuiltinPreset, ThemeSelection};
 #[cfg(any(feature = "svg", feature = "ascii"))]
-use merman_model::resources::{InputResourcePolicy, ResourceProfile};
+use merman_model::resources::{InputResourceLimitId, InputResourcePolicy, ResourceProfile};
 #[cfg(any(feature = "svg", feature = "ascii"))]
 use std::sync::Arc;
 
@@ -59,6 +61,14 @@ pub enum RendererBuilderError {
     #[cfg(feature = "svg")]
     #[error("unbounded graphical limits must be selected on an explicit render operation")]
     UnboundedRenderPolicy,
+}
+
+#[cfg(any(feature = "svg", feature = "ascii"))]
+fn input_policy_is_unbounded(policy: InputResourcePolicy) -> bool {
+    policy.profile() == ResourceProfile::UnboundedForTrustedInput
+        || InputResourceLimitId::ALL
+            .into_iter()
+            .any(|id| matches!(policy.value(id), None | Some(usize::MAX)))
 }
 
 /// Configures site defaults and the zero-configuration methods on [`Renderer`].
@@ -126,7 +136,8 @@ impl RendererBuilder {
         self
     }
 
-    /// Sets input admission for the one-argument methods, ahead of any target environment.
+    /// Sets input admission for the one-argument methods and `render_ascii_with`.
+    /// This policy takes precedence over the default graphical target environment.
     #[cfg(any(feature = "svg", feature = "ascii"))]
     pub fn with_input_resource_policy(mut self, policy: InputResourcePolicy) -> Self {
         self.input_resources = Some(policy);
@@ -182,14 +193,12 @@ impl RendererBuilder {
 
     /// Builds one reusable renderer without initializing its presentation engine.
     ///
-    /// Unbounded defaults are not accepted. Use an explicit request to render trusted input
-    /// without those limits. Preset and layout admission still occur when rendering.
+    /// Defaults require a bounded profile and effective ceilings below `usize::MAX`. Use an
+    /// explicit render request for unbounded trusted input. Preset and layout admission still
+    /// occur when rendering.
     pub fn build(mut self) -> Result<Renderer, RendererBuilderError> {
         #[cfg(any(feature = "svg", feature = "ascii"))]
-        if self
-            .input_resources
-            .is_some_and(|policy| policy.profile() == ResourceProfile::UnboundedForTrustedInput)
-        {
+        if self.input_resources.is_some_and(input_policy_is_unbounded) {
             return Err(RendererBuilderError::UnboundedInputPolicy);
         }
 
@@ -207,21 +216,21 @@ impl RendererBuilder {
             if let Some(policy) = self.render_resources {
                 request.environment = request.environment.with_resource_policy(policy);
             }
-            if request.environment.resource_policy().profile()
-                == ResourceProfile::UnboundedForTrustedInput
+            let render_policy = *request.environment.resource_policy();
+            if render_policy.profile() == ResourceProfile::UnboundedForTrustedInput
+                || RenderResourceLimitId::ALL.into_iter().any(|id| {
+                    matches!(
+                        render_policy.value(ResourceLimitId::Render(id)),
+                        None | Some(usize::MAX)
+                    )
+                })
             {
                 return Err(RendererBuilderError::UnboundedRenderPolicy);
             }
             if let Some(policy) = self.input_resources {
                 request.environment = request.environment.with_input_resource_policy(policy);
             }
-            if request
-                .environment
-                .resource_policy()
-                .input_policy()
-                .profile()
-                == ResourceProfile::UnboundedForTrustedInput
-            {
+            if input_policy_is_unbounded(*request.environment.resource_policy().input_policy()) {
                 return Err(RendererBuilderError::UnboundedInputPolicy);
             }
             if let Some(policy) = self.text_measurement {
@@ -296,25 +305,28 @@ impl Renderer {
     }
 
     #[cfg(any(feature = "svg", feature = "ascii"))]
+    fn configured_input_policy(&self) -> Option<InputResourcePolicy> {
+        self.ergonomic_defaults
+            .as_deref()
+            .and_then(|defaults| defaults.input_resources)
+    }
+
+    #[cfg(any(feature = "svg", feature = "ascii"))]
     fn render_default_target(
         &self,
         source: &str,
         target: RenderTarget,
     ) -> Result<RenderOutput, RenderError> {
-        let policy = self
-            .ergonomic_defaults
-            .as_deref()
-            .and_then(|defaults| defaults.input_resources)
-            .or_else(|| {
-                if self.resources.profile() != ResourceProfile::UnboundedForTrustedInput {
-                    return None;
-                }
-                #[cfg(feature = "svg")]
-                let bounded = target.svg_input_resource_policy().unwrap_or_default();
-                #[cfg(not(feature = "svg"))]
-                let bounded = InputResourcePolicy::default();
-                Some(bounded.meet(&self.resources))
-            });
+        let policy = self.configured_input_policy().or_else(|| {
+            if self.resources.profile() != ResourceProfile::UnboundedForTrustedInput {
+                return None;
+            }
+            #[cfg(feature = "svg")]
+            let bounded = target.svg_input_resource_policy().unwrap_or_default();
+            #[cfg(not(feature = "svg"))]
+            let bounded = InputResourcePolicy::default();
+            Some(bounded.meet(&self.resources))
+        });
         let mut request = RenderRequest::new(source, target, OperationControl::new());
         if let Some(policy) = policy {
             request = request.with_resource_policy(policy);
@@ -380,7 +392,8 @@ impl Renderer {
     }
 
     /// Renders terminal text using the supplied target request and operation control.
-    /// Use [`Self::default_ascii_request`] to keep the builder's target defaults.
+    /// The builder's input policy still applies. Use [`Self::default_ascii_request`] to keep
+    /// its target defaults, or [`RenderRequest::with_resource_policy`] for a per-call input policy.
     #[cfg(feature = "ascii")]
     pub fn render_ascii_with(
         &self,
@@ -388,11 +401,11 @@ impl Renderer {
         request: AsciiRequest,
         control: OperationControl,
     ) -> Result<AsciiOutput, RenderError> {
-        require_output!(
-            self.render_typed_target(RenderRequest::ascii(source, control, request)),
-            Ascii,
-            "ascii"
-        )
+        let mut operation = RenderRequest::ascii(source, control, request);
+        if let Some(policy) = self.configured_input_policy() {
+            operation = operation.with_resource_policy(policy);
+        }
+        require_output!(self.render_typed_target(operation), Ascii, "ascii")
     }
 
     /// Renders PNG with bounded graphical and raster export defaults.

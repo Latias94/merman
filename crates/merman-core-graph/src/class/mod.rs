@@ -1,13 +1,18 @@
-//! Class lexical syntax and grammar actions.
+//! Class syntax, database replay, and canonical model construction.
 
 mod ast;
+mod db;
 mod lexer;
 mod parser;
 
 use crate::scan::collect_lexical_events;
 use ast::ActionArena;
+use db::ClassDb;
 use lexer::{Lexer, Tok};
-use merman_model::{OperationControl, OperationControlResult};
+use merman_model::{
+    MermaidConfig, OperationControl, OperationControlResult, families::class::ClassDiagramModel,
+    warnings::DiagramWarningFact,
+};
 
 pub use ast::{
     Action as ClassAction, Relation as ClassRelation, RelationData as ClassRelationData,
@@ -18,6 +23,13 @@ pub use lexer::{
     ClassLexicalExpectation, editor_name_needs_separator, editor_name_requires_backticks,
 };
 pub use parser::{ClassExpectedTokens, ClassSyntaxDiagnostic};
+
+/// A Class grammar failure in preprocessed source coordinates or a database failure.
+#[derive(Debug)]
+pub enum ClassModelError {
+    Grammar(ClassSyntaxDiagnostic),
+    Db(String),
+}
 
 /// A normalized lexical stream, including events after recoverable lexical errors.
 pub struct ClassSyntax {
@@ -67,6 +79,34 @@ impl ClassSyntax {
     #[cfg(feature = "editor-facts")]
     pub fn events(&self) -> &[ClassLexicalEvent] {
         &self.events
+    }
+
+    /// Consumes the observed syntax, validates the grammar, and replays the database actions.
+    /// A warning sink requests ignored-statement warnings and retains them in replay order.
+    pub fn into_model(
+        self,
+        config: &MermaidConfig,
+        diagram_type: &str,
+        mut warning_facts: Option<&mut Vec<DiagramWarningFact>>,
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<ClassDiagramModel, ClassModelError>> {
+        let actions = match self.into_actions(warning_facts.is_some(), control)? {
+            Ok(actions) => actions,
+            Err(diagnostic) => return Ok(Err(ClassModelError::Grammar(diagnostic))),
+        };
+
+        let mut db = ClassDb::new(config);
+        for (index, action) in actions.into_iter().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            if let Err(message) = db.apply(action, warning_facts.as_deref_mut()) {
+                return Ok(Err(ClassModelError::Db(message)));
+            }
+        }
+
+        control.checkpoint()?;
+        Ok(Ok(db.into_semantic_model(diagram_type)))
     }
 
     /// Constructs the flat actions consumed by the Class database.

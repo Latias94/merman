@@ -13,7 +13,9 @@ use merman_layout_elk as elk;
 use serde_json::Value;
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-use super::measured::{MeasuredClassDiagram, measure_class_diagram};
+use merman_render_graph::class::measured::MeasuredClassDiagram;
+
+use super::measured::measure_class_diagram;
 use super::{
     ClassDiagramModel, ClassPreparedLabels, ClassRenderConfig, EdgeTerminalMetrics, Rect,
     TerminalPos, apply_class_terminal_labels, calculate_point, class_namespace_ids_in_decl_order,
