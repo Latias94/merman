@@ -1,6 +1,12 @@
+#[cfg(feature = "svg")]
+use super::engine_config::{
+    NATIVE_ICON_PACK_RECORD_LIMIT, preflight_native_icon_pack_resource_limits,
+};
 use super::records::{checked_record_array_byte_len, validate_record_array_shape};
 use super::result::{initialized_native_result, native_error_json, result_allocation_is_live};
 use super::*;
+#[cfg(feature = "svg")]
+use merman_bindings_core::IconRegistryResourceLimitId;
 use std::collections::BTreeSet;
 use std::mem::align_of;
 use std::panic::{AssertUnwindSafe, catch_unwind};
