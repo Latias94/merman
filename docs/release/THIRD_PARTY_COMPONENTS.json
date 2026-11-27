@@ -1027,7 +1027,7 @@
         "path": "src"
       },
       "relationships": ["modified", "translated"],
-      "local_paths": ["crates/merman-render/src/mindmap/tidy_tree.rs"],
+      "local_paths": ["crates/merman-render-graph/src/mindmap/tidy_tree.rs"],
       "license_expression": "MIT",
       "license_files": [
         {

@@ -45,7 +45,7 @@ Architecture layout and styling use source-backed Cytoscape behavior and default
 - Source path: `.`
 - Relationship: `behavior-reference`, `translated`
 - License: `MIT`
-- Local evidence: `crates/manatee`, `crates/merman-render/src/architecture.rs`
+- Local evidence: `crates/manatee`, `crates/merman-render-graph/src/architecture/renderer/fcose.rs`, `crates/merman-render-graph/src/architecture/renderer/metrics.rs`, `crates/merman-render-graph/src/architecture/renderer/mod.rs`
 - Legal file: `THIRD_PARTY_LICENSES/cytoscape/LICENSE`
 
 ### cytoscape.js-cose-bilkent
@@ -69,7 +69,7 @@ The headless Architecture layout is a modified Rust implementation of FCoSE beha
 - Source path: `.`
 - Relationship: `modified`, `translated`
 - License: `MIT`
-- Local evidence: `crates/manatee`, `crates/merman-render/src/architecture.rs`
+- Local evidence: `crates/manatee`, `crates/merman-render-graph/src/architecture/renderer/fcose.rs`
 - Legal file: `THIRD_PARTY_LICENSES/cytoscape-fcose/LICENSE`
 
 ### d3-hierarchy
@@ -201,7 +201,7 @@ Merman independently implements Mermaid-compatible behavior while translating se
 - Source path: `packages/mermaid`
 - Relationship: `behavior-reference`, `copied`, `fixtures`, `generated`, `modified`, `translated`
 - License: `MIT`
-- Local evidence: `crates/merman-core/src`, `crates/merman-core-flow/src`, `crates/merman-core-graph/src`, `crates/merman-core-preprocess/src`, `crates/merman-core-sequence/src`, `crates/merman-core-structured/src`, `crates/merman-model/src`, `crates/merman-markup/src`, `crates/merman-render/src`, `crates/merman-render/src/svg/parity/architecture/icons.rs`, `crates/merman-render-charts/src`, `crates/merman-render-core/src`, `crates/merman-render-flow/src`, `crates/merman-render-graph/src`, `crates/merman-render-sequence/src`, `crates/merman-render-structured/src`, `fixtures`
+- Local evidence: `crates/merman-core/src`, `crates/merman-core-flow/src`, `crates/merman-core-graph/src`, `crates/merman-core-preprocess/src`, `crates/merman-core-sequence/src`, `crates/merman-core-structured/src`, `crates/merman-model/src`, `crates/merman-markup/src`, `crates/merman-render/src`, `crates/merman-render-graph/src/architecture/renderer/svg/icons.rs`, `crates/merman-render-charts/src`, `crates/merman-render-core/src`, `crates/merman-render-flow/src`, `crates/merman-render-graph/src`, `crates/merman-render-sequence/src`, `crates/merman-render-structured/src`, `fixtures`
 - Legal file: `THIRD_PARTY_LICENSES/mermaid/LICENSE`
 
 ### non-layered-tidy-tree-layout
@@ -213,7 +213,7 @@ Merman's Mindmap tidy-tree layout is a modified Rust translation of the non-laye
 - Source path: `src`
 - Relationship: `modified`, `translated`
 - License: `MIT`
-- Local evidence: `crates/merman-render/src/mindmap/tidy_tree.rs`
+- Local evidence: `crates/merman-render-graph/src/mindmap/tidy_tree.rs`
 - Legal file: `THIRD_PARTY_LICENSES/non-layered-tidy-tree-layout/LICENSE`
 
 ### rough-rs roughr

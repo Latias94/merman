@@ -211,7 +211,7 @@ Architecture layout and styling use source-backed Cytoscape behavior and default
 - Relationship: `behavior-reference`, `translated`
 - License expression: `MIT`
 - Artifact scopes: `cli-default`, `cli-release`, `elk-render`, `ratex-render`, `rust-render-base`, `sdk-full`, `sdk-math`, `sdk-native-full`, `sdk-native-math`, `sdk-native-standard`, `sdk-standard`, `source-archive`, `typst-publish`, `web-full`, `web-render`
-- Local evidence: `crates/manatee`, `crates/merman-render/src/architecture.rs`
+- Local evidence: `crates/manatee`, `crates/merman-render-graph/src/architecture/renderer/fcose.rs`, `crates/merman-render-graph/src/architecture/renderer/metrics.rs`, `crates/merman-render-graph/src/architecture/renderer/mod.rs`
 - Legal files:
   - [`THIRD_PARTY_LICENSES/cytoscape/LICENSE`](THIRD_PARTY_LICENSES/cytoscape/LICENSE) (license, SHA-256 `eb319c6e6f233607f71e8e2f450391751883cfc0eeb3ca7ef574c13d1d9c2203`)
 
@@ -243,7 +243,7 @@ The headless Architecture layout is a modified Rust implementation of FCoSE beha
 - Relationship: `modified`, `translated`
 - License expression: `MIT`
 - Artifact scopes: `cli-default`, `cli-release`, `elk-render`, `ratex-render`, `rust-render-base`, `sdk-full`, `sdk-math`, `sdk-native-full`, `sdk-native-math`, `sdk-native-standard`, `sdk-standard`, `source-archive`, `typst-publish`, `web-full`, `web-render`
-- Local evidence: `crates/manatee`, `crates/merman-render/src/architecture.rs`
+- Local evidence: `crates/manatee`, `crates/merman-render-graph/src/architecture/renderer/fcose.rs`
 - Legal files:
   - [`THIRD_PARTY_LICENSES/cytoscape-fcose/LICENSE`](THIRD_PARTY_LICENSES/cytoscape-fcose/LICENSE) (license, SHA-256 `2837634f403949215760fcdd2fa1ed0c64875d02099ecc8318c704b852f1421d`)
 
@@ -539,7 +539,7 @@ Merman independently implements Mermaid-compatible behavior while translating se
 - Relationship: `behavior-reference`, `copied`, `fixtures`, `generated`, `modified`, `translated`
 - License expression: `MIT`
 - Artifact scopes: `ascii-render`, `cli-default`, `cli-release`, `elk-render`, `playground-reference`, `ratex-render`, `rust-render-base`, `sdk-full`, `sdk-math`, `sdk-native-full`, `sdk-native-math`, `sdk-native-standard`, `sdk-standard`, `source-archive`, `typst-publish`, `web-analysis`, `web-ascii`, `web-editor`, `web-full`, `web-render`
-- Local evidence: `crates/merman-core-flow/src`, `crates/merman-core-graph/src`, `crates/merman-core-preprocess/src`, `crates/merman-core-sequence/src`, `crates/merman-core-structured/src`, `crates/merman-core/src`, `crates/merman-markup/src`, `crates/merman-model/src`, `crates/merman-render-charts/src`, `crates/merman-render-core/src`, `crates/merman-render-flow/src`, `crates/merman-render-graph/src`, `crates/merman-render-sequence/src`, `crates/merman-render-structured/src`, `crates/merman-render/src`, `crates/merman-render/src/svg/parity/architecture/icons.rs`, `fixtures`
+- Local evidence: `crates/merman-core-flow/src`, `crates/merman-core-graph/src`, `crates/merman-core-preprocess/src`, `crates/merman-core-sequence/src`, `crates/merman-core-structured/src`, `crates/merman-core/src`, `crates/merman-markup/src`, `crates/merman-model/src`, `crates/merman-render-charts/src`, `crates/merman-render-core/src`, `crates/merman-render-flow/src`, `crates/merman-render-graph/src`, `crates/merman-render-graph/src/architecture/renderer/svg/icons.rs`, `crates/merman-render-sequence/src`, `crates/merman-render-structured/src`, `crates/merman-render/src`, `fixtures`
 - Legal files:
   - [`THIRD_PARTY_LICENSES/mermaid/LICENSE`](THIRD_PARTY_LICENSES/mermaid/LICENSE) (license, SHA-256 `ec9fb67dcb25eccc416ed56e1aab819222c805a2a4bfe4cb19e7556bf2ffde80`)
 
@@ -603,7 +603,7 @@ Merman's Mindmap tidy-tree layout is a modified Rust translation of the non-laye
 - Relationship: `modified`, `translated`
 - License expression: `MIT`
 - Artifact scopes: `cli-default`, `cli-release`, `elk-render`, `playground-reference`, `ratex-render`, `rust-render-base`, `sdk-full`, `sdk-math`, `sdk-native-full`, `sdk-native-math`, `sdk-native-standard`, `sdk-standard`, `source-archive`, `typst-publish`, `web-full`, `web-render`
-- Local evidence: `crates/merman-render/src/mindmap/tidy_tree.rs`
+- Local evidence: `crates/merman-render-graph/src/mindmap/tidy_tree.rs`
 - Legal files:
   - [`THIRD_PARTY_LICENSES/non-layered-tidy-tree-layout/LICENSE`](THIRD_PARTY_LICENSES/non-layered-tidy-tree-layout/LICENSE) (license, SHA-256 `9e618475934f16f1966a1f47cacea53ec0e8fbf7cb0054a5063b9446794a25df`)
 
