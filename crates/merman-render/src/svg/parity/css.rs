@@ -1,5 +1,7 @@
 use super::*;
 
+#[cfg(all(test, feature = "all-diagrams"))]
+use merman_render_core::svg_css::FragmentDiagramId;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
@@ -7,9 +9,7 @@ use super::*;
     feature = "diagram-usecase"
 ))]
 pub(crate) use merman_render_core::svg_css::PreparedCommonNeoCss;
-pub(super) use merman_render_core::svg_css::{
-    FragmentDiagramId, write_mermaid_base_css_root_rule as write_mermaid_base_css_root_rule_to,
-};
+pub(super) use merman_render_core::svg_css::write_mermaid_base_css_root_rule as write_mermaid_base_css_root_rule_to;
 
 pub(super) fn write_mermaid_paragraph_css_to(
     out: &mut impl SvgOutput,

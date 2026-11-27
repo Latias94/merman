@@ -1255,12 +1255,15 @@ dependencies = [
 name = "merman-render-graph"
 version = "0.11.0"
 dependencies = [
+ "cssparser",
+ "euclid",
  "indexmap",
  "merman-markup",
  "merman-model",
  "merman-render-core",
  "merman-theme-contract",
  "rustc-hash",
+ "serde",
  "serde_json",
 ]
 

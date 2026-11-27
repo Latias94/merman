@@ -539,7 +539,7 @@ remain cumulative. Merge validation follows the selected DB's head-ownership ord
 distinct self-merge diagnostics.
 
 Owners: [parser](../../crates/merman-core/src/diagrams/git_graph.rs),
-[color binding](../../crates/merman-render/src/gitgraph/css_binding.rs), and
+[color binding](../../crates/merman-render-graph/src/gitgraph/css_binding.rs), and
 [12.3 regressions](../../crates/merman-render/tests/gitgraph_mermaid_12_3_regression_test.rs).
 
 ## Ishikawa and Venn
@@ -604,7 +604,7 @@ task markers retain authored people order. Zero task width and height remain val
 configuration, section and task geometry, face placement and activity lines.
 
 Owners: [Journey model](../../crates/merman-model/src/families/journey.rs),
-[layout](../../crates/merman-render/src/journey.rs), and
+[layout](../../crates/merman-render-structured/src/journey/mod.rs), and
 [SVG tests](../../crates/merman-render/tests/journey_svg_test.rs).
 
 ## Requirement and Block

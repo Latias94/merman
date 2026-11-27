@@ -65,6 +65,14 @@ pub use icon_registry::{
     IconRegistryBuilder, IconRegistryResourceLimitDescriptor, IconRegistryResourceLimitId,
     icon_registry_resource_limit_descriptors,
 };
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-class",
+    feature = "diagram-flowchart",
+    feature = "diagram-kanban",
+    feature = "diagram-requirement",
+    feature = "diagram-swimlane"
+))]
 pub(crate) use merman_render_core::svg_css::escape_css_identifier;
 pub use merman_render_core::svg_output::SvgOutputProfile;
 #[cfg(all(

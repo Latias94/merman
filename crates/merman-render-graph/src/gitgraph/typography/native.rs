@@ -2,14 +2,14 @@ use merman_model::families::git_graph::GitGraphDiagramModel;
 use merman_model::presentation::PresentationConfig;
 use merman_model::{OperationControl, OperationControlResult};
 
-use crate::text::is_html_collapsible_ascii_whitespace;
+use merman_render_core::text::is_html_collapsible_ascii_whitespace;
 
 use super::{
     DEFAULT_FONT_SIZE_PX, GitGraphRoleFontSize, commit_label_is_enabled, configured_base_font_size,
 };
 
 /// Checks only role sizes consumed by text geometry in the final GitGraph writer.
-pub(crate) fn unsupported_native_font_size(
+pub fn unsupported_native_font_size(
     model: &GitGraphDiagramModel,
     config: &PresentationConfig,
     control: &OperationControl,
@@ -104,7 +104,7 @@ mod tests {
 
     #[test]
     fn native_size_admission_skips_hidden_merge_and_cherry_pick_commit_labels() {
-        let config = crate::test_support::presentation_config(serde_json::json!({
+        let config = crate::gitgraph::test_config(serde_json::json!({
             "themeVariables": {"commitLabelFontSize": "calc(0px)", "tagLabelFontSize": "1rem"}
         }));
         for (commit_type, custom_id, id) in [

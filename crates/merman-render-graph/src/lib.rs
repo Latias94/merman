@@ -5,3 +5,7 @@
 #[cfg(feature = "diagram-er")]
 #[doc(hidden)]
 pub mod er;
+
+#[cfg(feature = "diagram-git-graph")]
+#[doc(hidden)]
+pub mod gitgraph;

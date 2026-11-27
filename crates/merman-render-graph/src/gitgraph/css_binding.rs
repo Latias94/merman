@@ -1,18 +1,22 @@
-use crate::config::{config_css_number_or_string, config_diagram_look, config_f64, config_string};
-use crate::svg::PreparedCommonCss;
+use merman_render_core::{
+    config::{
+        config_css_number_or_string, config_diagram_look, config_f64, config_string, json_bool,
+    },
+    svg_css::PreparedCommonCss,
+};
 
 /// Mermaid uses a fixed ring for commits/arrows and a theme-dependent ring for branch labels.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct GitGraphColorIndices {
+pub(super) struct GitGraphColorIndices {
     branch_limit: f64,
     avoid_default_color: bool,
 }
 
 impl GitGraphColorIndices {
-    pub(crate) fn resolve(config: &serde_json::Value) -> Self {
+    pub(super) fn resolve(config: &serde_json::Value) -> Self {
         let theme = config_string(config, &["theme"]).unwrap_or_default();
         Self {
-            branch_limit: if super::gitgraph_theme_is_redux_geometry(&theme) {
+            branch_limit: if super::layout::gitgraph_theme_is_redux_geometry(&theme) {
                 config_f64(config, &["themeVariables", "THEME_COLOR_LIMIT"]).unwrap_or(12.0)
             } else {
                 8.0
@@ -21,15 +25,15 @@ impl GitGraphColorIndices {
         }
     }
 
-    pub(crate) fn commit_slot(self, raw_index: i64) -> usize {
+    pub(super) fn commit_slot(self, raw_index: i64) -> usize {
         self.index(raw_index, 8.0) as usize
     }
 
-    pub(crate) fn branch_index(self, raw_index: i64) -> f64 {
+    pub(super) fn branch_index(self, raw_index: i64) -> f64 {
         self.index(raw_index, self.branch_limit)
     }
 
-    pub(crate) fn branch_slot(self, raw_index: i64) -> Option<usize> {
+    pub(super) fn branch_slot(self, raw_index: i64) -> Option<usize> {
         let index = self.branch_index(raw_index);
         (index.is_finite() && index >= 0.0 && index.fract() == 0.0).then_some(index as usize)
     }
@@ -44,39 +48,39 @@ impl GitGraphColorIndices {
 }
 
 #[derive(Debug)]
-pub(crate) struct GitGraphNamedPaint {
-    pub(crate) git: String,
-    pub(crate) branch_label: String,
-    pub(crate) inverse: String,
+pub(super) struct GitGraphNamedPaint {
+    pub(super) git: String,
+    pub(super) branch_label: String,
+    pub(super) inverse: String,
 }
 
 #[derive(Debug)]
-pub(crate) struct GitGraphCssBinding {
-    pub(crate) common: PreparedCommonCss,
-    pub(crate) use_redux_geometry: bool,
-    pub(crate) look_is_neo: bool,
-    pub(crate) sources: GitGraphTerminalPaletteSources,
-    pub(crate) color_indices: GitGraphColorIndices,
-    pub(crate) theme_color_limit: usize,
-    pub(crate) named: [GitGraphNamedPaint; 8],
-    pub(crate) border_color_array: Vec<String>,
-    pub(crate) gradient_start: Option<String>,
-    pub(crate) gradient_stop: Option<String>,
-    pub(crate) secondary_border: Option<String>,
-    pub(crate) commit_line_color: Option<String>,
-    pub(crate) stroke_width: String,
-    pub(crate) note_font_weight: String,
-    pub(crate) drop_shadow: String,
-    pub(crate) commit_label_color: String,
-    pub(crate) commit_label_background: String,
-    pub(crate) tag_label_color: String,
-    pub(crate) tag_label_background: String,
-    pub(crate) tag_label_border: String,
-    pub(crate) primary_color: String,
-    pub(crate) main_bkg: String,
-    pub(crate) node_border: String,
-    pub(crate) primary_border: String,
-    pub(crate) filter_color: String,
+pub(super) struct GitGraphCssBinding {
+    pub(super) common: PreparedCommonCss,
+    pub(super) use_redux_geometry: bool,
+    pub(super) look_is_neo: bool,
+    pub(super) sources: GitGraphTerminalPaletteSources,
+    pub(super) color_indices: GitGraphColorIndices,
+    pub(super) theme_color_limit: usize,
+    pub(super) named: [GitGraphNamedPaint; 8],
+    pub(super) border_color_array: Vec<String>,
+    pub(super) gradient_start: Option<String>,
+    pub(super) gradient_stop: Option<String>,
+    pub(super) secondary_border: Option<String>,
+    pub(super) commit_line_color: Option<String>,
+    pub(super) stroke_width: String,
+    pub(super) note_font_weight: String,
+    pub(super) drop_shadow: String,
+    pub(super) commit_label_color: String,
+    pub(super) commit_label_background: String,
+    pub(super) tag_label_color: String,
+    pub(super) tag_label_background: String,
+    pub(super) tag_label_border: String,
+    pub(super) primary_color: String,
+    pub(super) main_bkg: String,
+    pub(super) node_border: String,
+    pub(super) primary_border: String,
+    pub(super) filter_color: String,
 }
 
 impl GitGraphCssBinding {
@@ -89,7 +93,7 @@ impl GitGraphCssBinding {
                 .unwrap_or_else(|| fallback.to_owned())
         };
         let theme = config_string(config, &["theme"]).unwrap_or_else(|| "default".to_owned());
-        let use_color_gen = super::gitgraph_theme_uses_color_gen(&theme);
+        let use_color_gen = super::layout::gitgraph_theme_uses_color_gen(&theme);
         let theme_color_limit =
             config_f64(config, &["themeVariables", "THEME_COLOR_LIMIT"]).unwrap_or(12.0);
         // Classic normalTheme uses Array.from's floored length; Neo/Redux genColor loops ceil it.
@@ -116,7 +120,7 @@ impl GitGraphCssBinding {
                 font_family.to_owned(),
                 font_size.to_owned(),
             ),
-            use_redux_geometry: super::gitgraph_theme_is_redux_geometry(&theme),
+            use_redux_geometry: super::layout::gitgraph_theme_is_redux_geometry(&theme),
             look_is_neo: config_diagram_look(config).is_neo(),
             color_indices: GitGraphColorIndices::resolve(config),
             sources: GitGraphTerminalPaletteSources {
@@ -129,7 +133,7 @@ impl GitGraphCssBinding {
                 use_color_gen,
                 use_gradient: config
                     .pointer("/themeVariables/useGradient")
-                    .and_then(crate::config::json_bool)
+                    .and_then(json_bool)
                     .unwrap_or(false),
             },
             theme_color_limit,
@@ -162,7 +166,7 @@ impl GitGraphCssBinding {
     /// Resolves the gradient start using the same Mermaid fallback order for defs and CSS.
     ///
     /// An authored empty string is a value and must therefore remain distinct from absence.
-    pub(crate) fn gradient_start(&self) -> &str {
+    pub(super) fn gradient_start(&self) -> &str {
         self.gradient_start
             .as_deref()
             .unwrap_or(&self.primary_border)
@@ -172,7 +176,7 @@ impl GitGraphCssBinding {
     ///
     /// The explicit stop and secondary border preserve their raw CSS spelling, including an
     /// authored empty string; only an absent value falls back to the selected start.
-    pub(crate) fn gradient_stop<'a>(&'a self, start: &'a str) -> &'a str {
+    pub(super) fn gradient_stop<'a>(&'a self, start: &'a str) -> &'a str {
         self.gradient_stop
             .as_deref()
             .or(self.secondary_border.as_deref())
@@ -181,12 +185,12 @@ impl GitGraphCssBinding {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct GitGraphTerminalPaletteSources {
-    pub(crate) use_color_theme: bool,
-    pub(crate) use_neo_theme: bool,
-    pub(crate) use_dark_theme: bool,
-    pub(crate) use_color_gen: bool,
-    pub(crate) use_gradient: bool,
+pub(super) struct GitGraphTerminalPaletteSources {
+    pub(super) use_color_theme: bool,
+    pub(super) use_neo_theme: bool,
+    pub(super) use_dark_theme: bool,
+    pub(super) use_color_gen: bool,
+    pub(super) use_gradient: bool,
 }
 
 fn default_git_color(i: usize) -> &'static str {

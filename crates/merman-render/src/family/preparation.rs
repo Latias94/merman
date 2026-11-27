@@ -811,16 +811,10 @@ fn prepare_gitgraph_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    use crate::gitgraph::GitGraphTypographyThemePlan;
-
-    let typography_theme = match execution.native_family_theme() {
-        Some(theme) => GitGraphTypographyThemePlan::for_native(&meta.effective_config, theme),
-        None => GitGraphTypographyThemePlan::resolve(&meta.effective_config),
-    };
-    let layout = crate::gitgraph::layout_gitgraph_diagram_typed(
+    let (layout, typography_theme) = merman_render_graph::gitgraph::prepare_gitgraph_diagram(
         model,
-        meta.effective_config.as_value(),
-        &typography_theme,
+        &meta.effective_config,
+        execution.native_family_theme(),
         execution.text_measurer(),
     )?;
     Ok(BuiltinFamilyArtifact::GitGraph(Box::new(

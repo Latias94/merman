@@ -128,8 +128,6 @@ pub(crate) use flowchart::{
 };
 #[cfg(feature = "diagram-gantt")]
 mod gantt;
-#[cfg(feature = "diagram-git-graph")]
-mod gitgraph;
 #[cfg(all(test, feature = "diagram-info"))]
 mod info;
 #[cfg(feature = "diagram-journey")]
@@ -1486,15 +1484,27 @@ fn render_builtin_family_artifact_raw(
             )
         }
         #[cfg(feature = "diagram-git-graph")]
-        BuiltinFamilyArtifact::GitGraph(artifact) => gitgraph::render_gitgraph_diagram_svg_model(
-            artifact.pair().layout(),
-            artifact.pair().semantic(),
-            artifact.typography_theme(),
-            effective_config.as_value(),
-            title,
-            measurer,
-            options,
-        ),
+        BuiltinFamilyArtifact::GitGraph(artifact) => {
+            use merman_render_graph::gitgraph::{
+                GitGraphSvgContext, render_gitgraph_diagram_svg_model,
+            };
+
+            let diagram_id = options.diagram_id_or("merman");
+            let context = GitGraphSvgContext {
+                diagram_id,
+                viewport: options.root_viewport(crate::DiagramFamilyId::GIT_GRAPH, diagram_id),
+                work_meter: options.work_meter(),
+            };
+            render_gitgraph_diagram_svg_model(
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
+                artifact.typography_theme(),
+                effective_config.as_value(),
+                title,
+                measurer,
+                &context,
+            )
+        }
         #[cfg(feature = "diagram-tree-view")]
         BuiltinFamilyArtifact::TreeView(artifact) => tree_view::render_tree_view_diagram_svg_model(
             artifact.pair().layout(),

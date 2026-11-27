@@ -1,15 +1,21 @@
 use merman_model::presentation::PresentationConfig;
-
-use crate::config::{config_f64_css_absolute_px, config_font_family_css, config_string};
-use crate::mermaid_style::source_font_size_after_style;
-use crate::mermaid_style::{
-    css_font_size_is_zero, css_font_size_override, parse_style_declaration,
+use merman_render_core::{
+    config::{
+        config_f64_css_absolute_px, config_font_family_css, config_string,
+        mermaid_config_diagram_look,
+    },
+    mermaid_style::{
+        self, css_font_size_is_zero, css_font_size_override, parse_style_declaration,
+        source_font_size_after_style,
+    },
+    text::TextStyle,
 };
-use crate::model::{GitGraphCommitLayout, GitGraphDiagramLayout};
-use crate::text::TextStyle;
+use merman_theme_contract::v2::FamilyTheme;
+
+use super::{GitGraphCommitLayout, GitGraphCssBinding, GitGraphDiagramLayout, GitGraphNativeStyle};
 
 mod native;
-pub(crate) use native::unsupported_native_font_size;
+pub use native::unsupported_native_font_size;
 
 const DEFAULT_FONT_SIZE_PX: f64 = 16.0;
 const DEFAULT_LABEL_FONT_SIZE_PX: f64 = 10.0;
@@ -96,16 +102,16 @@ impl GitGraphRoleFontWeight {
             };
         };
         let declaration = format!("font-weight:{raw}");
-        let parsed = crate::mermaid_style::parse_style_declaration(&declaration);
+        let parsed = mermaid_style::parse_style_declaration(&declaration);
         let measurable = parsed.as_ref().is_some_and(|declaration| {
             declaration.inherits_property_value()
-                || crate::mermaid_style::is_supported_css_font_weight_value(declaration.value())
+                || mermaid_style::is_supported_css_font_weight_value(declaration.value())
         });
         let measured = if measurable {
             let base = TextStyle::default();
-            let mut cascade = crate::mermaid_style::TextStyleCascade::new(
+            let mut cascade = mermaid_style::TextStyleCascade::new(
                 &base,
-                crate::mermaid_style::CssFontSizeContext::uniform(base.font_size),
+                mermaid_style::CssFontSizeContext::uniform(base.font_size),
             );
             cascade.observe_declaration(parsed.as_ref().expect("validated font weight"));
             cascade.finish().font_weight.clone()
@@ -122,15 +128,15 @@ impl GitGraphRoleFontWeight {
 
 /// Final GitGraph typography shared by preparation, layout, stylesheet emission, and text probes.
 #[derive(Debug)]
-pub(crate) struct GitGraphTypographyThemePlan {
-    css_binding: crate::gitgraph::GitGraphCssBinding,
+pub struct GitGraphTypographyThemePlan {
+    css_binding: GitGraphCssBinding,
     font_family_css: String,
     font_size_css: Box<str>,
     font_size_px: f64,
     commit_label_font_size: GitGraphRoleFontSize,
     commit_label_font_weight: GitGraphRoleFontWeight,
     tag_label_font_size: GitGraphRoleFontSize,
-    native: Option<crate::gitgraph::GitGraphNativeStyle>,
+    native: Option<GitGraphNativeStyle>,
 }
 
 fn configured_base_font_size(config: &PresentationConfig) -> Option<f64> {
@@ -139,21 +145,17 @@ fn configured_base_font_size(config: &PresentationConfig) -> Option<f64> {
 }
 
 impl GitGraphTypographyThemePlan {
-    pub(crate) fn for_native(
-        effective_config: &PresentationConfig,
-        theme: &crate::theme::FamilyTheme,
-    ) -> Self {
+    pub(super) fn for_native(effective_config: &PresentationConfig, theme: &FamilyTheme) -> Self {
         let typography = &theme.typography;
         let font_size_px = typography.base_size_px;
         let font_size_css = format!("{font_size_px}px").into_boxed_str();
-        let native = crate::gitgraph::GitGraphNativeStyle::resolve(theme);
-        let mut css_binding = crate::gitgraph::GitGraphCssBinding::resolve(
+        let native = GitGraphNativeStyle::resolve(theme);
+        let mut css_binding = GitGraphCssBinding::resolve(
             &serde_json::Value::Null,
             &native.body_font,
             &font_size_css,
         );
-        css_binding.look_is_neo =
-            crate::config::mermaid_config_diagram_look(effective_config).is_neo();
+        css_binding.look_is_neo = mermaid_config_diagram_look(effective_config).is_neo();
         Self {
             css_binding,
             font_family_css: native.body_font.clone(),
@@ -172,11 +174,11 @@ impl GitGraphTypographyThemePlan {
         }
     }
 
-    pub(crate) const fn native(&self) -> Option<&crate::gitgraph::GitGraphNativeStyle> {
+    pub(super) const fn native(&self) -> Option<&GitGraphNativeStyle> {
         self.native.as_ref()
     }
 
-    pub(crate) fn resolve(effective_config: &PresentationConfig) -> Self {
+    pub(super) fn resolve(effective_config: &PresentationConfig) -> Self {
         let font_family_css = config_font_family_css(effective_config);
         let font_size_px =
             configured_base_font_size(effective_config).unwrap_or(DEFAULT_FONT_SIZE_PX);
@@ -189,7 +191,7 @@ impl GitGraphTypographyThemePlan {
         let tag_label_font_size =
             GitGraphRoleFontSize::from_config(effective_config, "tagLabelFontSize", font_size_px);
 
-        let css_binding = crate::gitgraph::GitGraphCssBinding::resolve(
+        let css_binding = GitGraphCssBinding::resolve(
             effective_config.as_value(),
             &font_family_css,
             &font_size_css,
@@ -214,19 +216,19 @@ impl GitGraphTypographyThemePlan {
         }
     }
 
-    pub(crate) const fn css_binding(&self) -> &crate::gitgraph::GitGraphCssBinding {
+    pub(super) const fn css_binding(&self) -> &GitGraphCssBinding {
         &self.css_binding
     }
 
-    pub(crate) fn font_size_css(&self) -> &str {
+    pub(super) fn font_size_css(&self) -> &str {
         &self.font_size_css
     }
 
-    pub(crate) fn branch_label_style(&self) -> TextStyle {
+    pub(super) fn branch_label_style(&self) -> TextStyle {
         self.text_style(self.font_size_px)
     }
 
-    pub(crate) fn rendered_branch_label_style(&self, slot: Option<usize>) -> TextStyle {
+    pub(super) fn rendered_branch_label_style(&self, slot: Option<usize>) -> TextStyle {
         let mut style = self.branch_label_style();
         if self.css_binding.use_redux_geometry
             && slot.is_some_and(|slot| slot < self.css_binding.theme_color_limit)
@@ -236,30 +238,30 @@ impl GitGraphTypographyThemePlan {
         style
     }
 
-    pub(crate) fn commit_label_font_size_css(&self) -> &str {
+    pub(super) fn commit_label_font_size_css(&self) -> &str {
         self.commit_label_font_size.css()
     }
 
-    pub(crate) fn commit_label_style(&self) -> TextStyle {
+    pub(super) fn commit_label_style(&self) -> TextStyle {
         TextStyle {
             font_weight: self.commit_label_font_weight.measured.clone(),
             ..self.text_style(self.commit_label_font_size.measured_px)
         }
     }
 
-    pub(crate) fn commit_label_font_weight_css(&self) -> Option<&str> {
+    pub(super) fn commit_label_font_weight_css(&self) -> Option<&str> {
         self.commit_label_font_weight.css.as_deref()
     }
 
-    pub(crate) fn tag_label_font_size_css(&self) -> &str {
+    pub(super) fn tag_label_font_size_css(&self) -> &str {
         self.tag_label_font_size.css()
     }
 
-    pub(crate) fn tag_label_style(&self) -> TextStyle {
+    pub(super) fn tag_label_style(&self) -> TextStyle {
         self.text_style(self.tag_label_font_size.measured_px)
     }
 
-    pub(crate) fn title_style(&self) -> TextStyle {
+    pub(super) fn title_style(&self) -> TextStyle {
         if let Some(native) = &self.native {
             return TextStyle {
                 font_family: Some(native.title_font.clone()),
@@ -270,7 +272,7 @@ impl GitGraphTypographyThemePlan {
         self.text_style(TITLE_FONT_SIZE_PX)
     }
 
-    pub(crate) const fn title_font_size_px(&self) -> f64 {
+    pub(super) const fn title_font_size_px(&self) -> f64 {
         if self.native.is_some() {
             self.font_size_px * 1.25
         } else {
@@ -288,7 +290,7 @@ impl GitGraphTypographyThemePlan {
     }
 }
 
-pub(crate) fn gitgraph_commit_label_is_visible(
+pub(super) fn gitgraph_commit_label_is_visible(
     layout: &GitGraphDiagramLayout,
     commit: &GitGraphCommitLayout,
 ) -> bool {
@@ -304,7 +306,7 @@ fn commit_label_is_enabled(show: bool, commit_type: i64, custom_id: Option<bool>
     show && (commit_type != 3 || custom_id.unwrap_or(false)) && commit_type != 4
 }
 
-pub(crate) fn gitgraph_tags_in_output_order(
+pub(super) fn gitgraph_tags_in_output_order(
     commit: &GitGraphCommitLayout,
 ) -> impl ExactSizeIterator<Item = &str> + Clone {
     commit.tags.iter().rev().map(String::as_str)

@@ -58,8 +58,6 @@ pub(crate) use merman_render_core::text::{
 
 #[cfg(feature = "diagram-c4")]
 pub(crate) use merman_render_core::text::is_css_wide_keyword;
-#[cfg(any(feature = "diagram-git-graph", feature = "diagram-treemap"))]
-pub(crate) use merman_render_core::text::trim_start_ecmascript_whitespace;
 pub(crate) use merman_render_core::text::wrap_label_like_mermaid_lines_with_checkpoint;
 pub use merman_render_core::text::{
     FontCatalog, FontCatalogFingerprint, FontSource, FontSourcePolicy, FontSourcePolicyError,
@@ -71,7 +69,7 @@ pub use merman_render_core::text::{
 };
 pub(crate) use merman_render_core::text::{
     is_ecmascript_whitespace, is_html_collapsible_ascii_whitespace, resolve_css_font_weight,
-    trim_ecmascript_whitespace, trim_html_collapsible_ascii_whitespace,
+    trim_html_collapsible_ascii_whitespace,
 };
 pub(crate) use merman_render_core::text::{
     mermaid_xhtml_label_plain_text, mermaid_xhtml_label_text_content,

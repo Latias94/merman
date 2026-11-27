@@ -1,5 +1,43 @@
-use super::super::*;
-use crate::gitgraph::GitGraphCssBinding;
+use std::fmt::Write as _;
+
+use euclid::{
+    default::{Box2D, Point2D, Transform2D, Vector2D},
+    point2, vec2,
+};
+use merman_model::{OperationPhase, families::git_graph::GitGraphDiagramModel};
+use merman_render_core::{
+    Bounds, Error, Result,
+    config::{config_bool, config_f64},
+    number_format::canonical_number as fmt,
+    resources::OperationWorkMeter,
+    root_svg,
+    svg_bounds::svg_emitted_bounds_from_svg,
+    svg_css::{
+        CssSelectorDiagramId, FragmentDiagramId, SvgId, escape_css_identifier, scoped_drop_shadow,
+    },
+    svg_output::{BoundedSvgOutput, SvgOutput, XmlTextOutput},
+    text::{
+        TextMeasurer, TextStyle, svg_text_vertical_extents_px, svg_title_bbox_vertical_extents_px,
+    },
+    xml::{escape_attr, escape_attr_display, escape_xml},
+};
+
+use super::{
+    GitGraphCommitLayout, GitGraphCssBinding, GitGraphDiagramLayout, GitGraphNativeStyle,
+    GitGraphTypographyThemePlan,
+    layout::{
+        REDUX_BRANCH_LABEL_PADDING_Y, gitgraph_branch_label_rows, gitgraph_lr_branch_spine_y,
+        resolve_gitgraph_title,
+    },
+    typography::{gitgraph_commit_label_is_visible, gitgraph_tags_in_output_order},
+};
+
+/// Host-owned SVG ID, viewport policy, and operation budget for GitGraph.
+pub struct GitGraphSvgContext<'a> {
+    pub diagram_id: SvgId<'a>,
+    pub viewport: root_svg::RootViewportContext<'a>,
+    pub work_meter: &'a OperationWorkMeter,
+}
 
 #[derive(Default)]
 struct GitGraphCss {
@@ -17,7 +55,7 @@ enum GitGraphCommitKind {
 }
 
 impl GitGraphCommitKind {
-    fn from_layout(commit: &crate::model::GitGraphCommitLayout) -> Self {
+    fn from_layout(commit: &GitGraphCommitLayout) -> Self {
         match commit.custom_type.unwrap_or(commit.commit_type) {
             1 => Self::Reverse,
             2 => Self::Highlight,
@@ -39,7 +77,7 @@ impl GitGraphCommitKind {
 }
 
 enum GitGraphBranchLabelStyle<'a> {
-    ScopedDropShadow(SvgDiagramId<'a>),
+    ScopedDropShadow(SvgId<'a>),
     Configured(String),
     None,
 }
@@ -96,11 +134,11 @@ where
 fn gitgraph_css(
     diagram_id: &str,
     binding: &GitGraphCssBinding,
-    typography_theme: &crate::gitgraph::GitGraphTypographyThemePlan,
-    work: &crate::resources::OperationWorkMeter,
+    typography_theme: &GitGraphTypographyThemePlan,
+    work: &OperationWorkMeter,
 ) -> Result<GitGraphCss> {
-    let id = crate::svg::escape_css_identifier(diagram_id);
-    let fragment_id = super::super::css::FragmentDiagramId(diagram_id);
+    let id = escape_css_identifier(diagram_id);
+    let fragment_id = FragmentDiagramId(diagram_id);
     let mut css_prefix = String::new();
     binding.common.write_prefix(&mut css_prefix, diagram_id)?;
     let mut root_rule = String::new();
@@ -416,11 +454,11 @@ fn gitgraph_css(
 
 fn write_gitgraph_native_css(
     out: &mut impl SvgOutput,
-    diagram_id: SvgDiagramId<'_>,
-    typography: &crate::gitgraph::GitGraphTypographyThemePlan,
-    theme: &crate::gitgraph::GitGraphNativeStyle,
+    diagram_id: SvgId<'_>,
+    typography: &GitGraphTypographyThemePlan,
+    theme: &GitGraphNativeStyle,
 ) -> Result<()> {
-    let id = super::super::util::css_selector_diagram_id(diagram_id);
+    let id = CssSelectorDiagramId(diagram_id);
     let _ = write!(
         out,
         r#"#{id}{{font-family:{font};font-size:{size};font-weight:{weight};fill:{primary}}}
@@ -473,7 +511,7 @@ fn write_gitgraph_native_css(
 fn gitgraph_commit_tag_label_width_px(
     measurer: &dyn TextMeasurer,
     text: &str,
-    style: &crate::text::TextStyle,
+    style: &TextStyle,
 ) -> f64 {
     measurer
         .measure_svg_raw_text_bbox_width_px(text, style)
@@ -483,7 +521,7 @@ fn gitgraph_commit_tag_label_width_px(
 fn gitgraph_commit_tag_label_height_px(
     measurer: &dyn TextMeasurer,
     text: &str,
-    style: &crate::text::TextStyle,
+    style: &TextStyle,
 ) -> f64 {
     if text.trim_end().is_empty() {
         return 0.0;
@@ -499,13 +537,13 @@ fn gitgraph_commit_tag_label_height_px(
 }
 
 fn include_gitgraph_label_ink(
-    bounds: &mut Option<crate::geom::Box2>,
+    bounds: &mut Option<Bounds>,
     measurer: &dyn TextMeasurer,
     text: &str,
-    style: &crate::text::TextStyle,
-    origin: crate::geom::Point,
+    style: &TextStyle,
+    origin: Point2D<f64>,
     width: f64,
-    transform: crate::geom::Transform,
+    transform: Transform2D<f64>,
 ) {
     if text.trim().is_empty() || style.font_size <= 0.0 {
         return;
@@ -519,44 +557,47 @@ fn include_gitgraph_label_ink(
     let height = measurer
         .measure_svg_raw_text_bbox_height_px(text, style)
         .max(0.0);
-    let ink = crate::geom::Box2::from_min_max(
-        origin.x,
-        origin.y + top,
-        origin.x + width,
-        origin.y + top + height,
+    let ink = Box2D::new(
+        point2(origin.x, origin.y + top),
+        point2(origin.x + width, origin.y + top + height),
     );
-    let ink = crate::geom::Box2(transform.outer_transformed_box(&ink.0));
+    let ink = transform.outer_transformed_box(&ink);
     if let Some(bounds) = bounds {
-        bounds.union(ink);
+        bounds.min_x = bounds.min_x.min(ink.min.x);
+        bounds.min_y = bounds.min_y.min(ink.min.y);
+        bounds.max_x = bounds.max_x.max(ink.max.x);
+        bounds.max_y = bounds.max_y.max(ink.max.y);
     } else {
-        *bounds = Some(ink);
+        *bounds = Some(Bounds {
+            min_x: ink.min.x,
+            min_y: ink.min.y,
+            max_x: ink.max.x,
+            max_y: ink.max.y,
+        });
     }
 }
 
 fn gitgraph_label_rotation(
     degrees: f64,
-    pivot: crate::geom::Point,
-    translation: crate::geom::Vector,
-) -> crate::geom::Transform {
-    crate::geom::Transform::rotation(euclid::Angle::degrees(degrees))
-        .pre_translate(crate::geom::vector(-pivot.x, -pivot.y))
-        .then_translate(crate::geom::vector(pivot.x, pivot.y) + translation)
+    pivot: Point2D<f64>,
+    translation: Vector2D<f64>,
+) -> Transform2D<f64> {
+    Transform2D::rotation(euclid::Angle::degrees(degrees))
+        .pre_translate(vec2(-pivot.x, -pivot.y))
+        .then_translate(vec2(pivot.x, pivot.y) + translation)
 }
 
-#[allow(
-    clippy::too_many_arguments,
-    reason = "The SVG writer takes layout, resolved styles, and accessibility text."
-)]
-pub(crate) fn render_gitgraph_diagram_svg_model(
-    layout: &crate::model::GitGraphDiagramLayout,
-    model: &merman_model::families::git_graph::GitGraphDiagramModel,
-    typography_theme: &crate::gitgraph::GitGraphTypographyThemePlan,
+/// Emits the complete GitGraph document before the facade's terminal policies.
+pub fn render_gitgraph_diagram_svg_model(
+    layout: &GitGraphDiagramLayout,
+    model: &GitGraphDiagramModel,
+    typography_theme: &GitGraphTypographyThemePlan,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
-    options: &SvgExecution<'_>,
+    context: &GitGraphSvgContext<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_title = crate::gitgraph::resolve_gitgraph_title(model, diagram_title);
+    let diagram_title = resolve_gitgraph_title(model, diagram_title);
     let acc_title = model.acc_title.as_deref().filter(|s| !s.is_empty());
     let acc_descr = model.acc_descr.as_deref().filter(|s| !s.is_empty());
 
@@ -568,7 +609,7 @@ pub(crate) fn render_gitgraph_diagram_svg_model(
         effective_config,
         diagram_title,
         measurer,
-        options,
+        context,
     )
 }
 
@@ -577,21 +618,21 @@ pub(crate) fn render_gitgraph_diagram_svg_model(
     reason = "The SVG writer takes layout, resolved styles, and accessibility text."
 )]
 fn render_gitgraph_diagram_svg_with_accessibility(
-    layout: &crate::model::GitGraphDiagramLayout,
+    layout: &GitGraphDiagramLayout,
     acc_title: Option<&str>,
     acc_descr: Option<&str>,
-    typography_theme: &crate::gitgraph::GitGraphTypographyThemePlan,
+    typography_theme: &GitGraphTypographyThemePlan,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
-    options: &SvgExecution<'_>,
+    context: &GitGraphSvgContext<'_>,
 ) -> Result<root_svg::RootedSvg> {
     const PX: f64 = 4.0;
     const PY: f64 = 2.0;
 
     fn include_gitgraph_branch_line_bounds(
         bounds: &mut Bounds,
-        layout: &crate::model::GitGraphDiagramLayout,
+        layout: &GitGraphDiagramLayout,
         use_redux_geometry: bool,
     ) {
         if !layout.show_branches {
@@ -616,8 +657,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                     include_point(bounds, branch.pos, 30.0);
                 }
                 _ => {
-                    let spine_y =
-                        crate::gitgraph::gitgraph_lr_branch_spine_y(branch.pos, use_redux_geometry);
+                    let spine_y = gitgraph_lr_branch_spine_y(branch.pos, use_redux_geometry);
                     include_point(bounds, 0.0, spine_y);
                     include_point(bounds, layout.max_pos, spine_y);
                 }
@@ -625,7 +665,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         }
     }
 
-    let diagram_id = options.diagram_id_or("merman");
+    let diagram_id = context.diagram_id;
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
@@ -644,10 +684,10 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     let use_max_width = config_bool(effective_config, &["gitGraph", "useMaxWidth"]).unwrap_or(true);
     let diagram_padding =
         config_f64(effective_config, &["gitGraph", "diagramPadding"]).unwrap_or(8.0);
-    let mut out = BoundedSvgOutput::new(options.work_meter());
+    let mut out = BoundedSvgOutput::new(context.work_meter);
     let aria_describedby = aria_desc_id.as_deref();
     let aria_labelledby = aria_title_id.as_deref();
-    let root_context = options.root_viewport(crate::DiagramFamilyId::GIT_GRAPH, diagram_id);
+    let root_context = &context.viewport;
     let root_document = root_context.begin_document(
         &mut out,
         root_svg::DeferredRootSpec::mermaid(use_max_width),
@@ -661,7 +701,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
             ..root_svg::RootChrome::new(diagram_id, "gitGraph")
         },
     )?;
-    options.checkpoint_emit()?;
+    context.work_meter.checkpoint(OperationPhase::Emit)?;
 
     if let Some(t) = acc_title {
         let _ = write!(
@@ -693,12 +733,12 @@ fn render_gitgraph_diagram_svg_with_accessibility(
             diagram_id.semantic_str(),
             binding,
             typography_theme,
-            options.work_meter(),
+            context.work_meter,
         )?
     };
     out.push_str("<style>");
     {
-        let mut css_out = super::super::output::XmlTextOutput::new(&mut out);
+        let mut css_out = XmlTextOutput::new(&mut out);
         if let Some(native) = native {
             write_gitgraph_native_css(&mut css_out, diagram_id, typography_theme, native)?;
         } else {
@@ -722,7 +762,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     let branch_border_radius = if use_redux_geometry { 0.0 } else { 4.0 };
     let branch_label_padding_x = if use_redux_geometry { 16.0 } else { 0.0 };
     let branch_label_padding_y = if use_redux_geometry {
-        crate::gitgraph::REDUX_BRANCH_LABEL_PADDING_Y
+        REDUX_BRANCH_LABEL_PADDING_Y
     } else {
         0.0
     };
@@ -774,7 +814,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                     class = branch_class,
                 );
             } else {
-                let spine_y = crate::gitgraph::gitgraph_lr_branch_spine_y(pos, use_redux_geometry);
+                let spine_y = gitgraph_lr_branch_spine_y(pos, use_redux_geometry);
                 let _ = write!(
                     &mut out,
                     r#"<line x1="0" y1="{y1}" x2="{x2}" y2="{y2}" class="{class}"/>"#,
@@ -784,7 +824,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                     class = branch_class,
                 );
             }
-            let rows = crate::gitgraph::gitgraph_branch_label_rows(&b.name);
+            let rows = gitgraph_branch_label_rows(&b.name);
             let (bbox_w, bbox_h) = if use_redux_geometry {
                 // Numbered branch classes acquire noteFontWeight only after prelayout.
                 let style = typography_theme.rendered_branch_label_style(idx);
@@ -878,7 +918,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                 };
                 let x = -bbox_w - 4.0 - rotate_pad;
                 let y = -bbox_h / 2.0 + 10.0;
-                let spine_y = crate::gitgraph::gitgraph_lr_branch_spine_y(pos, use_redux_geometry);
+                let spine_y = gitgraph_lr_branch_spine_y(pos, use_redux_geometry);
                 let _ = write!(
                     &mut out,
                     r#"<rect{data_look} class="{cls}" style="{style}" rx="{radius}" ry="{radius}" x="{x}" y="{y}" width="{w}" height="{h}" transform="translate(-19, {ty})"/>"#,
@@ -1088,14 +1128,14 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     let tag_label_style = typography_theme.tag_label_style();
     let mut label_ink_bounds = None;
     for c in &layout.commits {
-        if crate::gitgraph::gitgraph_commit_label_is_visible(layout, c) {
+        if gitgraph_commit_label_is_visible(layout, c) {
             let bbox_w = gitgraph_commit_tag_label_width_px(measurer, &c.id, &commit_label_style);
             let bbox_h = gitgraph_commit_tag_label_height_px(measurer, &c.id, &commit_label_style);
 
             let mut wrapper_transform: Option<String> = None;
             let mut rect_transform: Option<String> = None;
             let mut text_transform: Option<String> = None;
-            let mut ink_transform = crate::geom::Transform::identity();
+            let mut ink_transform = Transform2D::identity();
 
             let mut rect_x = c.pos_with_offset - bbox_w / 2.0 - PY;
             let mut rect_y = c.y + 13.5;
@@ -1116,11 +1156,8 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                     let t = format!("rotate(-45, {}, {})", fmt(c.x), fmt(c.y));
                     rect_transform = Some(t.clone());
                     text_transform = Some(t);
-                    ink_transform = gitgraph_label_rotation(
-                        -45.0,
-                        crate::geom::point(c.x, c.y),
-                        crate::geom::vector(0.0, 0.0),
-                    );
+                    ink_transform =
+                        gitgraph_label_rotation(-45.0, point2(c.x, c.y), vec2(0.0, 0.0));
                 } else {
                     let r_x = -7.5 - ((bbox_w + 10.0) / 25.0) * 9.5;
                     let r_y = 10.0 + (bbox_w / 25.0) * 8.5;
@@ -1131,11 +1168,8 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                         fmt(c.pos),
                         fmt(c.y)
                     ));
-                    ink_transform = gitgraph_label_rotation(
-                        -45.0,
-                        crate::geom::point(c.pos, c.y),
-                        crate::geom::vector(r_x, r_y),
-                    );
+                    ink_transform =
+                        gitgraph_label_rotation(-45.0, point2(c.pos, c.y), vec2(r_x, r_y));
                 }
             }
             include_gitgraph_label_ink(
@@ -1143,7 +1177,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                 measurer,
                 &c.id,
                 &commit_label_style,
-                crate::geom::point(text_x, text_y),
+                point2(text_x, text_y),
                 bbox_w,
                 ink_transform,
             );
@@ -1169,12 +1203,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
             out.push_str("/>");
 
             out.push_str(r#"<text class="commit-label""#);
-            let _ = write!(
-                &mut out,
-                r#" x="{}" y="{}""#,
-                fmt_display(text_x),
-                fmt_display(text_y)
-            );
+            let _ = write!(&mut out, r#" x="{}" y="{}""#, fmt(text_x), fmt(text_y));
             if let Some(t) = &text_transform {
                 let _ = write!(&mut out, r#" transform="{}""#, escape_attr(t));
             }
@@ -1187,7 +1216,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
             let mut max_w: f64 = 0.0;
             let mut max_h: f64 = 0.0;
             let mut tags = Vec::with_capacity(c.tags.len());
-            for tag_value in crate::gitgraph::gitgraph_tags_in_output_order(c) {
+            for tag_value in gitgraph_tags_in_output_order(c) {
                 let bbox_w =
                     gitgraph_commit_tag_label_width_px(measurer, tag_value, &tag_label_style);
                 let bbox_h =
@@ -1252,13 +1281,9 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                         measurer,
                         tag_value,
                         &tag_label_style,
-                        crate::geom::point(c.x + 5.0, y_origin + 3.0),
+                        point2(c.x + 5.0, y_origin + 3.0),
                         bbox_w,
-                        gitgraph_label_rotation(
-                            45.0,
-                            crate::geom::point(c.x, c.pos),
-                            crate::geom::vector(14.0, 14.0),
-                        ),
+                        gitgraph_label_rotation(45.0, point2(c.x, c.pos), vec2(14.0, 14.0)),
                     );
                 } else {
                     let points = format!(
@@ -1299,9 +1324,9 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                         measurer,
                         tag_value,
                         &tag_label_style,
-                        crate::geom::point(c.pos_with_offset - bbox_w / 2.0, c.y - 16.0 - y_off),
+                        point2(c.pos_with_offset - bbox_w / 2.0, c.y - 16.0 - y_off),
                         bbox_w,
-                        crate::geom::Transform::identity(),
+                        Transform2D::identity(),
                     );
                 }
                 out.checkpoint()?;
@@ -1328,21 +1353,21 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         max_y: vb_min_y + vb_h,
     });
     if let Some(ink) = label_ink_bounds {
-        b.min_x = b.min_x.min(ink.min_x());
-        b.min_y = b.min_y.min(ink.min_y());
-        b.max_x = b.max_x.max(ink.max_x());
-        b.max_y = b.max_y.max(ink.max_y());
+        b.min_x = b.min_x.min(ink.min_x);
+        b.min_y = b.min_y.min(ink.min_y);
+        b.max_x = b.max_x.max(ink.max_x);
+        b.max_y = b.max_y.max(ink.max_y);
     }
     include_gitgraph_branch_line_bounds(&mut b, layout, use_redux_geometry);
     let title_anchor_x = (b.min_x + b.max_x) / 2.0;
     if let Some(title) = title {
         let title_style = typography_theme.title_style();
         let (title_left, title_right) = measurer.measure_svg_title_bbox_x(title, &title_style);
-        let (ascent, descent) = crate::text::svg_text_vertical_extents_px(
+        let (ascent, descent) = svg_text_vertical_extents_px(
             measurer,
             title,
             &title_style,
-            crate::text::svg_title_bbox_vertical_extents_px(&title_style),
+            svg_title_bbox_vertical_extents_px(&title_style),
         );
         let title_min_x = title_anchor_x - title_left;
         let title_max_x = title_anchor_x + title_right;
@@ -1369,16 +1394,16 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         let _ = write!(
             &mut title_element,
             r#"<text text-anchor="middle" x="{x}" y="{y}" class="gitTitleText" xmlns="http://www.w3.org/2000/svg""#,
-            x = fmt_string(title_anchor_x),
+            x = fmt(title_anchor_x).to_string(),
             y = fmt(title_y),
         );
         let _ = write!(&mut title_element, ">{}</text>", escape_xml(title));
-        let close_start =
-            out.as_str()
-                .rfind("</svg>")
-                .ok_or_else(|| crate::Error::InvalidModel {
-                    message: "gitGraph SVG is missing its closing root element".to_string(),
-                })?;
+        let close_start = out
+            .as_str()
+            .rfind("</svg>")
+            .ok_or_else(|| Error::InvalidModel {
+                message: "gitGraph SVG is missing its closing root element".to_string(),
+            })?;
         out.replace_range(close_start..close_start, &title_element)?;
     }
     root_document.complete(out.finish()?)
@@ -1387,37 +1412,34 @@ fn render_gitgraph_diagram_svg_with_accessibility(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::DiagramFamilyId;
+    use merman_model::family::DiagramFamilyId;
 
-    use crate::resources::{
+    use crate::gitgraph::GitGraphBranchLayout;
+    use merman_render_core::resources::{
         RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
     };
+    use merman_render_core::svg_css::SvgDiagramIdProjection;
     use serde_json::json;
     use std::cell::RefCell;
 
-    fn gitgraph_css(
-        diagram_id: &str,
-        typography: &crate::gitgraph::GitGraphTypographyThemePlan,
-    ) -> GitGraphCss {
+    fn gitgraph_css(diagram_id: &str, typography: &GitGraphTypographyThemePlan) -> GitGraphCss {
         super::gitgraph_css(
             diagram_id,
             typography.css_binding(),
             typography,
-            &crate::resources::OperationWorkMeter::new(
+            &merman_render_core::resources::OperationWorkMeter::new(
                 RenderResourcePolicy::unbounded_for_trusted_input(),
             ),
         )
         .unwrap()
     }
 
-    fn typography_plan(config: &serde_json::Value) -> crate::gitgraph::GitGraphTypographyThemePlan {
-        crate::gitgraph::GitGraphTypographyThemePlan::resolve(
-            &crate::test_support::presentation_config(config.clone()),
-        )
+    fn typography_plan(config: &serde_json::Value) -> GitGraphTypographyThemePlan {
+        GitGraphTypographyThemePlan::resolve(&crate::gitgraph::test_config(config.clone()))
     }
 
-    fn lr_merge_layout(commit_y: f64) -> crate::model::GitGraphDiagramLayout {
-        crate::model::GitGraphDiagramLayout {
+    fn lr_merge_layout(commit_y: f64) -> GitGraphDiagramLayout {
+        GitGraphDiagramLayout {
             bounds: Some(Bounds {
                 min_x: -100.0,
                 min_y: -50.0,
@@ -1431,14 +1453,14 @@ mod tests {
             parallel_commits: false,
             diagram_padding: 8.0,
             max_pos: 100.0,
-            branches: vec![crate::model::GitGraphBranchLayout {
+            branches: vec![GitGraphBranchLayout {
                 name: "main".to_string(),
                 index: 0,
                 pos: 0.0,
                 bbox_width: 35.25,
                 bbox_height: 19.0,
             }],
-            commits: vec![crate::model::GitGraphCommitLayout {
+            commits: vec![GitGraphCommitLayout {
                 id: "merge".to_string(),
                 message: "merge".to_string(),
                 seq: 0,
@@ -1459,10 +1481,14 @@ mod tests {
 
     struct FixtureBranchMeasurer;
 
-    impl crate::text::TextMeasurer for FixtureBranchMeasurer {
-        fn measure(&self, text: &str, style: &crate::text::TextStyle) -> crate::text::TextMetrics {
-            crate::text::TextMeasurer::measure(
-                &crate::text::DeterministicTextMeasurer::default(),
+    impl merman_render_core::text::TextMeasurer for FixtureBranchMeasurer {
+        fn measure(
+            &self,
+            text: &str,
+            style: &merman_render_core::text::TextStyle,
+        ) -> merman_render_core::text::TextMetrics {
+            merman_render_core::text::TextMeasurer::measure(
+                &merman_render_core::text::DeterministicTextMeasurer::default(),
                 text,
                 style,
             )
@@ -1471,13 +1497,13 @@ mod tests {
         fn measure_svg_preserved_tspan_text_bbox_width_px(
             &self,
             text: &str,
-            style: &crate::text::TextStyle,
+            style: &merman_render_core::text::TextStyle,
         ) -> f64 {
             if text == "main" {
                 35.25
             } else {
-                crate::text::TextMeasurer::measure_svg_preserved_tspan_text_bbox_width_px(
-                    &crate::text::DeterministicTextMeasurer::default(),
+                merman_render_core::text::TextMeasurer::measure_svg_preserved_tspan_text_bbox_width_px(
+                    &merman_render_core::text::DeterministicTextMeasurer::default(),
                     text,
                     style,
                 )
@@ -1487,13 +1513,13 @@ mod tests {
         fn measure_svg_tspan_text_bbox_height_px(
             &self,
             text: &str,
-            style: &crate::text::TextStyle,
+            style: &merman_render_core::text::TextStyle,
         ) -> f64 {
             if text == "main" {
                 19.0
             } else {
-                crate::text::TextMeasurer::measure_svg_tspan_text_bbox_height_px(
-                    &crate::text::DeterministicTextMeasurer::default(),
+                merman_render_core::text::TextMeasurer::measure_svg_tspan_text_bbox_height_px(
+                    &merman_render_core::text::DeterministicTextMeasurer::default(),
                     text,
                     style,
                 )
@@ -1501,8 +1527,22 @@ mod tests {
         }
     }
 
+    fn with_test_context<T>(
+        policy: RenderResourcePolicy,
+        render: impl FnOnce(&GitGraphSvgContext<'_>) -> T,
+    ) -> T {
+        let work = OperationWorkMeter::new(policy);
+        let projection = SvgDiagramIdProjection::new(&work);
+        let diagram_id = SvgId::new("merman").unwrap().with_projection(&projection);
+        render(&GitGraphSvgContext {
+            diagram_id,
+            viewport: root_svg::RootViewportContext::new(DiagramFamilyId::GIT_GRAPH, diagram_id),
+            work_meter: &work,
+        })
+    }
+
     fn render_geometry_fixture(
-        layout: &crate::model::GitGraphDiagramLayout,
+        layout: &GitGraphDiagramLayout,
         config: &serde_json::Value,
     ) -> String {
         render_geometry_fixture_with_policy(
@@ -1516,30 +1556,23 @@ mod tests {
     }
 
     fn render_geometry_fixture_with_policy(
-        layout: &crate::model::GitGraphDiagramLayout,
+        layout: &GitGraphDiagramLayout,
         config: &serde_json::Value,
         policy: RenderResourcePolicy,
-    ) -> crate::Result<root_svg::RootedSvg> {
-        let request = SvgRenderOptions::default();
-        let debug = SvgDebugOptions::default();
-        let session = crate::environment::RenderEnvironment::deterministic()
-            .with_resource_policy(policy)
-            .begin_session()
-            .expect("render session");
-        let execution =
-            SvgExecution::unthemed_for_test(&request, &debug, &session, DiagramFamilyId::GIT_GRAPH)
-                .expect("SVG execution");
+    ) -> Result<root_svg::RootedSvg> {
         let typography_theme = typography_plan(config);
-        render_gitgraph_diagram_svg_with_accessibility(
-            layout,
-            None,
-            None,
-            &typography_theme,
-            config,
-            None,
-            &FixtureBranchMeasurer,
-            &execution,
-        )
+        with_test_context(policy, |context| {
+            render_gitgraph_diagram_svg_with_accessibility(
+                layout,
+                None,
+                None,
+                &typography_theme,
+                config,
+                None,
+                &FixtureBranchMeasurer,
+                context,
+            )
+        })
     }
 
     #[test]
@@ -1590,7 +1623,7 @@ mod tests {
                 .expect("valid below-exact gitGraph SVG ceiling"),
         )
         .expect_err("one byte below the gitGraph SVG size must fail");
-        let crate::Error::ResourceLimitExceeded(limit) = error else {
+        let Error::ResourceLimitExceeded(limit) = error else {
             panic!("expected gitGraph MaxSvgBytes rejection, got {error}");
         };
         assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
@@ -1621,7 +1654,7 @@ mod tests {
                 .expect("valid GitGraph work ceiling");
             let error = render_geometry_fixture_with_policy(&layout, &config, policy)
                 .expect_err("enormous GitGraph palette must fail at the SVG byte ceiling");
-            let crate::Error::ResourceLimitExceeded(limit) = error else {
+            let Error::ResourceLimitExceeded(limit) = error else {
                 panic!("expected {theme} MaxSvgBytes rejection, got {error}");
             };
             assert_eq!(limit.cause, ResourceLimitCause::Ceiling, "{theme}");
@@ -1640,13 +1673,13 @@ mod tests {
     fn commit_and_tag_measurements_route_raw_width_and_shape_specific_height() {
         struct OperationProbe;
 
-        impl crate::text::TextMeasurer for OperationProbe {
+        impl merman_render_core::text::TextMeasurer for OperationProbe {
             fn measure(
                 &self,
                 _text: &str,
-                _style: &crate::text::TextStyle,
-            ) -> crate::text::TextMetrics {
-                crate::text::TextMetrics {
+                _style: &merman_render_core::text::TextStyle,
+            ) -> merman_render_core::text::TextMetrics {
+                merman_render_core::text::TextMetrics {
                     width: 0.0,
                     height: 0.0,
                     line_count: 1,
@@ -1656,7 +1689,7 @@ mod tests {
             fn measure_svg_raw_text_bbox_width_px(
                 &self,
                 _text: &str,
-                _style: &crate::text::TextStyle,
+                _style: &merman_render_core::text::TextStyle,
             ) -> f64 {
                 41.25
             }
@@ -1664,7 +1697,7 @@ mod tests {
             fn measure_svg_simple_text_bbox_height_px(
                 &self,
                 _text: &str,
-                _style: &crate::text::TextStyle,
+                _style: &merman_render_core::text::TextStyle,
             ) -> f64 {
                 7.75
             }
@@ -1672,13 +1705,13 @@ mod tests {
             fn measure_svg_tspan_text_bbox_height_px(
                 &self,
                 _text: &str,
-                _style: &crate::text::TextStyle,
+                _style: &merman_render_core::text::TextStyle,
             ) -> f64 {
                 22.5
             }
         }
 
-        let style = crate::text::TextStyle {
+        let style = merman_render_core::text::TextStyle {
             font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
             font_size: 10.0,
             font_weight: None,
@@ -1694,7 +1727,7 @@ mod tests {
                 gitgraph_commit_tag_label_height_px(&OperationProbe, label, &style),
                 7.75
             );
-            let larger_style = crate::text::TextStyle {
+            let larger_style = merman_render_core::text::TextStyle {
                 font_size: 18.0,
                 ..style.clone()
             };
@@ -1742,19 +1775,18 @@ mod tests {
             warning_facts: Vec::new(),
         };
 
-        let request = SvgRenderOptions::default();
         let layout = lr_merge_layout(-2.0);
         let config = json!({});
         let typography_theme = typography_plan(&config);
-        let svg = with_test_svg_execution(DiagramFamilyId::GIT_GRAPH, &request, |options| {
+        let svg = with_test_context(RenderResourcePolicy::interactive(), |context| {
             render_gitgraph_diagram_svg_model(
                 &layout,
                 &model,
                 &typography_theme,
                 &config,
                 Some("Metadata Title"),
-                &crate::text::DeterministicTextMeasurer::default(),
-                options,
+                &merman_render_core::text::DeterministicTextMeasurer::default(),
+                context,
             )
         })
         .expect("render typed gitGraph SVG");
@@ -1769,19 +1801,19 @@ mod tests {
     fn gitgraph_commit_tag_and_title_measurements_share_the_resolved_family_plan() {
         #[derive(Default)]
         struct RecordingMeasurer {
-            calls: RefCell<Vec<(String, crate::text::TextStyle)>>,
+            calls: RefCell<Vec<(String, merman_render_core::text::TextStyle)>>,
         }
 
         impl TextMeasurer for RecordingMeasurer {
             fn measure(
                 &self,
                 text: &str,
-                style: &crate::text::TextStyle,
-            ) -> crate::text::TextMetrics {
+                style: &merman_render_core::text::TextStyle,
+            ) -> merman_render_core::text::TextMetrics {
                 self.calls
                     .borrow_mut()
                     .push((text.to_string(), style.clone()));
-                crate::text::TextMetrics {
+                merman_render_core::text::TextMetrics {
                     width: 40.0,
                     height: 12.0,
                     line_count: 1,
@@ -1808,9 +1840,8 @@ mod tests {
             "#git-measure .commit-id,#git-measure .commit-msg,#git-measure .branch-label{fill:lightgrey;color:lightgrey;font-family:'trebuchet ms',verdana,arial,sans-serif;font-family:GitGraphMeasure;}"
         ));
         let measurer = RecordingMeasurer::default();
-        let request = SvgRenderOptions::default();
 
-        with_test_svg_execution(DiagramFamilyId::GIT_GRAPH, &request, |options| {
+        with_test_context(RenderResourcePolicy::interactive(), |context| {
             render_gitgraph_diagram_svg_with_accessibility(
                 &layout,
                 None,
@@ -1819,7 +1850,7 @@ mod tests {
                 &config,
                 Some("Graph title"),
                 &measurer,
-                options,
+                context,
             )
         })
         .expect("render GitGraph measurement fixture");
@@ -2127,7 +2158,7 @@ mod tests {
 
     #[test]
     fn gitgraph_root_emits_gradient_for_non_neo_theme_when_enabled() {
-        let layout = crate::model::GitGraphDiagramLayout {
+        let layout = GitGraphDiagramLayout {
             bounds: Some(Bounds {
                 min_x: 0.0,
                 min_y: 0.0,
@@ -2154,8 +2185,7 @@ mod tests {
             }
         });
         let typography_theme = typography_plan(&config);
-        let request = SvgRenderOptions::default();
-        let svg = with_test_svg_execution(DiagramFamilyId::GIT_GRAPH, &request, |options| {
+        let svg = with_test_context(RenderResourcePolicy::interactive(), |context| {
             render_gitgraph_diagram_svg_with_accessibility(
                 &layout,
                 None,
@@ -2163,8 +2193,8 @@ mod tests {
                 &typography_theme,
                 &config,
                 None,
-                &crate::text::DeterministicTextMeasurer::default(),
-                options,
+                &merman_render_core::text::DeterministicTextMeasurer::default(),
+                context,
             )
         })
         .expect("render gitGraph SVG");

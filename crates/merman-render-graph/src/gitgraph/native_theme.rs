@@ -1,27 +1,26 @@
-use merman_theme_contract::v2::DataPalette;
-
-use crate::theme::{Color, FamilyTheme, font_family_css};
+use merman_render_core::mermaid_style::font_family_css;
+use merman_theme_contract::v2::{Color, DataPalette, FamilyTheme};
 
 #[derive(Debug)]
-pub(crate) struct GitGraphNativeStyle {
-    pub(crate) data: DataPalette,
-    pub(crate) node: Color,
-    pub(crate) callout: Color,
-    pub(crate) border: Color,
-    pub(crate) primary: Color,
-    pub(crate) muted: Color,
-    pub(crate) title: Color,
-    pub(crate) callout_text: Color,
-    pub(crate) connector_width: f64,
-    pub(crate) stroke_width: f64,
-    pub(crate) body_font: String,
-    pub(crate) label_weight: String,
-    pub(crate) title_font: String,
-    pub(crate) title_weight: String,
+pub(super) struct GitGraphNativeStyle {
+    pub(super) data: DataPalette,
+    pub(super) node: Color,
+    pub(super) callout: Color,
+    pub(super) border: Color,
+    pub(super) primary: Color,
+    pub(super) muted: Color,
+    pub(super) title: Color,
+    pub(super) callout_text: Color,
+    pub(super) connector_width: f64,
+    pub(super) stroke_width: f64,
+    pub(super) body_font: String,
+    pub(super) label_weight: String,
+    pub(super) title_font: String,
+    pub(super) title_weight: String,
 }
 
 impl GitGraphNativeStyle {
-    pub(crate) fn resolve(theme: &FamilyTheme) -> Self {
+    pub(super) fn resolve(theme: &FamilyTheme) -> Self {
         let roles = &theme.roles;
         let typography = &theme.typography;
         Self {
@@ -42,7 +41,7 @@ impl GitGraphNativeStyle {
         }
     }
 
-    pub(crate) fn slot(&self, branch: i64) -> usize {
+    pub(super) fn slot(&self, branch: i64) -> usize {
         branch.rem_euclid(self.data.ink.len() as i64) as usize
     }
 }

@@ -821,7 +821,7 @@ impl<'parsed> SankeyFamilyArtifact<'parsed> {
 #[cfg(feature = "diagram-git-graph")]
 pub(crate) struct GitGraphFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::git_graph::GitGraphDiagramModel, GitGraphDiagramLayout>,
-    typography_theme: crate::gitgraph::GitGraphTypographyThemePlan,
+    typography_theme: merman_render_graph::gitgraph::GitGraphTypographyThemePlan,
 }
 
 #[cfg(feature = "diagram-git-graph")]
@@ -833,7 +833,9 @@ impl<'parsed> GitGraphFamilyArtifact<'parsed> {
         &self.pair
     }
 
-    pub(crate) const fn typography_theme(&self) -> &crate::gitgraph::GitGraphTypographyThemePlan {
+    pub(crate) const fn typography_theme(
+        &self,
+    ) -> &merman_render_graph::gitgraph::GitGraphTypographyThemePlan {
         &self.typography_theme
     }
 }
