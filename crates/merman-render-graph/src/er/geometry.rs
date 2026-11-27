@@ -214,7 +214,7 @@ pub fn er_layout_bounds(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bo
 // parity layer: rendered-path change detection and five-decimal placement belong to
 // `svg::parity::edge_label_geometry`, while this function only supplies a missing Dagre/ELK anchor.
 #[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
-pub fn calc_label_position(points: &[LayoutPoint]) -> Option<(f64, f64)> {
+pub(super) fn calc_label_position(points: &[LayoutPoint]) -> Option<(f64, f64)> {
     if points.is_empty() {
         return None;
     }

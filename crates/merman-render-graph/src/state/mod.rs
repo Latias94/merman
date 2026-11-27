@@ -6,6 +6,8 @@ mod compatibility;
 mod config;
 #[cfg(feature = "layout-dagre")]
 mod dagre;
+#[cfg(feature = "layout-elk")]
+mod elk;
 mod geometry;
 mod layout_input;
 mod measure;
@@ -27,6 +29,8 @@ pub use dagre::{
     debug_build_state_diagram_dagre_graph, debug_extract_state_diagram_cluster_graph,
     layout as layout_dagre,
 };
+#[cfg(feature = "layout-elk")]
+pub use elk::layout as layout_elk;
 use geometry::RectWithTitleGeometry;
 pub use geometry::StateDiagramLayout;
 pub use layout_input::{

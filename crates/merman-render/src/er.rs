@@ -8,8 +8,6 @@ use serde_json::Value;
 use std::collections::HashSet;
 use std::sync::Arc;
 
-#[cfg(feature = "layout-elk")]
-mod elk;
 #[cfg(feature = "layout-shoal")]
 mod shoal;
 mod swimlane;
@@ -24,15 +22,11 @@ use merman_render_graph::er::{
     ErPreparedRelationshipLabel, er_layout_bounds, er_subgraph_title_metrics,
     er_swimlane_title_metrics,
 };
-#[cfg(feature = "layout-elk")]
-use merman_render_graph::er::{
-    calc_label_position, er_rel_idx_from_edge_id as parse_er_rel_idx_from_edge_name,
-};
 
 pub(crate) type ErEntity = merman_model::families::er::ErEntity;
 #[cfg(all(test, feature = "layout-shoal"))]
 type ErRelationship = merman_model::families::er::ErRelationship;
-#[cfg(any(feature = "layout-elk", feature = "layout-shoal"))]
+#[cfg(feature = "layout-shoal")]
 pub(crate) type ErSubgraph = merman_model::families::er::ErSubgraph;
 
 #[cfg(test)]
@@ -152,20 +146,31 @@ pub(crate) fn layout_er_diagram_typed(
             route_contract: RouteContract::Swimlane,
         }),
         #[cfg(feature = "layout-elk")]
-        GraphLayoutBackend::Elk(algorithm) => elk::layout(
-            model,
-            effective_config,
-            algorithm,
-            measurer,
-            settings,
-            prepared_labels,
-            operation_seed,
-            &mut work_control,
-        )
-        .map(|layout| ErPreparedLayout {
-            layout,
-            route_contract: RouteContract::ElkParity,
-        }),
+        GraphLayoutBackend::Elk(algorithm) => {
+            let layout = merman_render_graph::er::layout_elk(
+                model,
+                effective_config,
+                algorithm.algorithm(),
+                measurer,
+                settings,
+                &prepared_labels,
+                operation_seed,
+                &mut work_control,
+            )?;
+            Ok(ErPreparedLayout {
+                layout: ErDiagramLayout {
+                    nodes: layout.nodes,
+                    // ELK's canonical edges already form the SVG-facing projection.
+                    render_edges: Vec::new(),
+                    swimlane: None,
+                    edges: layout.edges,
+                    clusters: layout.clusters,
+                    bounds: layout.bounds,
+                    prepared_labels,
+                },
+                route_contract: RouteContract::ElkParity,
+            })
+        }
         _ => Err(backend.unavailable_for("er")),
     }
 }

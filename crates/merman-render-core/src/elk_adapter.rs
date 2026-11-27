@@ -2,17 +2,21 @@
 //! Source: Mermaid 12 elk/render.ts and createGraph.ts at the pinned baseline.
 
 use crate::Result;
-use crate::elk_hierarchy::{
-    HierarchyIndex, charge_adapter_work, checked_adapter_add, checked_adapter_mul,
-};
 use crate::layout_work::OperationLayoutWorkControl;
+use hierarchy::{HierarchyIndex, charge_adapter_work, checked_adapter_add, checked_adapter_mul};
 use merman_layout_elk as elk;
 use std::collections::HashMap;
+
+#[cfg(feature = "css-style")]
+pub mod feedback_edges;
+pub mod hierarchy;
+#[cfg(feature = "css-style")]
+pub mod options;
 
 /// Pin the true entry of each source-less weak component in its direct parent scope.
 /// Callers own the configuration switch and supply final node and edge declaration order.
 /// Work rejection leaves all node constraints unchanged.
-pub(crate) fn apply_cyclic_entry_constraints<'a>(
+pub fn apply_cyclic_entry_constraints<'a>(
     nodes: &mut [elk::Node],
     edges: impl ExactSizeIterator<Item = (&'a str, &'a str)>,
     work: &mut Option<&mut OperationLayoutWorkControl>,
@@ -127,7 +131,7 @@ pub(crate) fn apply_cyclic_entry_constraints<'a>(
 
 /// Resolve a node's own direction, then its nearest ancestor's, then the diagram default.
 /// The input is independent of measured ELK nodes because shapes need direction during sizing.
-pub(crate) fn resolved_node_directions<'a>(
+pub fn resolved_node_directions<'a>(
     nodes: impl Iterator<Item = (&'a str, Option<&'a str>, Option<elk::Direction>)> + Clone,
     item_capacity: usize,
     root: elk::Direction,
@@ -155,7 +159,7 @@ pub(crate) fn resolved_node_directions<'a>(
 }
 
 /// Stable Mermaid paint order: groups by ascending depth, followed by leaves in model order.
-pub(crate) fn parent_first_order(
+pub fn parent_first_order(
     nodes: &[elk::Node],
     work: &mut Option<&mut OperationLayoutWorkControl>,
 ) -> Result<Vec<usize>> {
@@ -189,11 +193,11 @@ pub(crate) fn parent_first_order(
 /// A painted group rectangle, expressed as center coordinates in the provider's absolute space.
 /// This is a projection only: provider node origins and routed edge points remain immutable.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct GroupFrame {
-    pub(crate) x: f64,
-    pub(crate) y: f64,
-    pub(crate) width: f64,
-    pub(crate) height: f64,
+pub struct GroupFrame {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
 }
 
 impl From<&elk::NodeLayout> for GroupFrame {
@@ -253,7 +257,7 @@ fn include_bounds(bounds: &mut Option<Bounds>, addition: Bounds) {
 /// return only drawn rectangles so a shifted frame never changes an edge owner's routing origin.
 /// Internal lane bounds accumulate at the lowest strict common ancestor and propagate bottom-up;
 /// this avoids rescanning every edge or materializing every descendant set for every container.
-pub(crate) fn drawing_group_frames<'a>(
+pub fn drawing_group_frames<'a>(
     graph: &'a elk::Graph,
     provider: &elk::LayoutResult,
     title_width: impl Fn(&elk::Node) -> f64,
@@ -404,7 +408,7 @@ pub(crate) fn drawing_group_frames<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+    use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
     use std::sync::Arc;
 
     fn node(id: &str, parent: Option<&str>, kind: elk::NodeKind) -> elk::Node {
@@ -451,7 +455,7 @@ mod tests {
     fn limited_work(units: usize) -> OperationLayoutWorkControl {
         OperationLayoutWorkControl::new(Arc::new(OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input()
-                .with_limit(crate::ResourceLimitId::MaxLayoutWorkUnits, units)
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, units)
                 .unwrap(),
         )))
     }

@@ -83,7 +83,7 @@ diagram-usecase = [
 layout-shoal = ["dep:kurbo", "merman-render-core?/route-paint"]
 layout-cytoscape = ["dep:indexmap", "dep:manatee", "merman-render-core?/layout-cytoscape"]
 layout-dagre = ["dep:dugong", "merman-render-core?/layout-dagre"]
-layout-elk = ["dep:merman-layout-elk"]
+layout-elk = ["dep:merman-layout-elk", "merman-render-core?/layout-elk"]
 benchmark-stages = ["merman-model?/benchmark-stages"]
 
 [dependencies]

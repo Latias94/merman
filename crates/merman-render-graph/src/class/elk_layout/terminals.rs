@@ -3,9 +3,8 @@
 //! Source: mermaid@12.1.0, rendering-util/layout-algorithms/elk/render.ts:
 //! followMovedEndpoints, slideTerminalLabelsOffFrames, putTerminalLabelsOnTheirSide.
 
-use crate::Result;
-use crate::model::{LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint as P};
 use merman_layout_elk::TerminalLabelKey as Key;
+use merman_render_core::{LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint as P, Result};
 
 #[derive(Default)]
 pub(super) struct PlacedTerminals {
@@ -534,11 +533,11 @@ mod tests {
         let nodes = [node("frame", 50.0, 0.0, 20.0, 100.0, true)];
         let mut remaining = 12usize;
         let result = slide_off_frames(&mut edges, &placed, &nodes, |units| {
-            remaining = remaining
-                .checked_sub(units)
-                .ok_or_else(|| crate::Error::InvalidModel {
+            remaining = remaining.checked_sub(units).ok_or_else(|| {
+                merman_render_core::Error::InvalidModel {
                     message: "cancelled".into(),
-                })?;
+                }
+            })?;
             Ok(())
         });
         assert!(result.is_err());

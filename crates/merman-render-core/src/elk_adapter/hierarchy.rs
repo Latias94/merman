@@ -6,7 +6,7 @@ use crate::layout_work::OperationLayoutWorkControl;
 use crate::resources::OperationWorkMeter;
 use std::collections::{HashMap, HashSet, hash_map::Entry};
 
-pub(crate) fn charge_adapter_work(
+pub(super) fn charge_adapter_work(
     work_control: &mut Option<&mut OperationLayoutWorkControl>,
     units: usize,
 ) -> Result<()> {
@@ -16,7 +16,7 @@ pub(crate) fn charge_adapter_work(
     }
 }
 
-pub(crate) fn checked_adapter_add(
+pub(super) fn checked_adapter_add(
     work_control: &Option<&mut OperationLayoutWorkControl>,
     left: usize,
     right: usize,
@@ -35,7 +35,7 @@ pub(crate) fn checked_adapter_add(
     })
 }
 
-pub(crate) fn checked_adapter_mul(
+pub(super) fn checked_adapter_mul(
     work_control: &Option<&mut OperationLayoutWorkControl>,
     left: usize,
     right: usize,
@@ -56,19 +56,20 @@ pub(crate) fn checked_adapter_mul(
 
 // Heavy-light decomposition keeps hierarchy preprocessing and retained memory linear while making
 // repeated common-ancestor queries logarithmic in branching depth (and constant on a heavy chain).
-pub(crate) struct HierarchyIndex<'a> {
+pub struct HierarchyIndex<'a> {
     ids: Vec<&'a str>,
     index_by_id: HashMap<&'a str, usize>,
     parent: Vec<Option<usize>>,
     depth: Vec<usize>,
     root: Vec<usize>,
     chain_head: Vec<usize>,
+    #[cfg(feature = "css-style")]
     heavy_child: Vec<Option<usize>>,
     preorder: Vec<usize>,
 }
 
 impl<'a> HierarchyIndex<'a> {
-    pub(crate) fn build(
+    pub fn build(
         nodes: impl Iterator<Item = (&'a str, Option<&'a str>)> + Clone,
         item_capacity: usize,
         work_control: &mut Option<&mut OperationLayoutWorkControl>,
@@ -170,43 +171,46 @@ impl<'a> HierarchyIndex<'a> {
             depth,
             root,
             chain_head,
+            #[cfg(feature = "css-style")]
             heavy_child,
             preorder,
         })
     }
 
-    pub(crate) fn len(&self) -> usize {
+    pub(super) fn len(&self) -> usize {
         self.ids.len()
     }
 
-    pub(crate) fn index_of(&self, id: &str) -> Option<usize> {
+    pub(super) fn index_of(&self, id: &str) -> Option<usize> {
         self.index_by_id.get(id).copied()
     }
 
-    pub(crate) fn parent_node_index(&self, id: &str) -> Option<usize> {
+    #[cfg(feature = "css-style")]
+    pub(super) fn parent_node_index(&self, id: &str) -> Option<usize> {
         self.index_of(id)
             .filter(|&index| self.heavy_child[index].is_some())
     }
 
-    pub(crate) fn parent_index(&self, index: usize) -> Option<usize> {
+    pub(super) fn parent_index(&self, index: usize) -> Option<usize> {
         self.parent[index]
     }
 
-    pub(crate) fn parent_first_indices(&self) -> &[usize] {
+    pub(super) fn parent_first_indices(&self) -> &[usize] {
         &self.preorder
     }
 
-    pub(crate) fn depth(&self, index: usize) -> usize {
+    pub(super) fn depth(&self, index: usize) -> usize {
         self.depth[index]
     }
 
-    pub(crate) fn id(&self, index: usize) -> &'a str {
+    pub(super) fn id(&self, index: usize) -> &'a str {
         self.ids[index]
     }
 
     /// Resolve the direct child on a descendant-to-ancestor path. None is the synthetic root.
     /// The caller obtains the ancestor from this index, so each branch stays in the same tree.
-    pub(crate) fn child_on_path(
+    #[cfg(feature = "css-style")]
+    pub(super) fn child_on_path(
         &self,
         mut descendant: usize,
         ancestor: Option<usize>,
@@ -232,7 +236,7 @@ impl<'a> HierarchyIndex<'a> {
             .expect("a same-chain strict descendant follows its ancestor's heavy child"))
     }
 
-    pub(crate) fn common_ancestor_index(
+    pub(super) fn common_ancestor_index(
         &self,
         left: &str,
         right: &str,
@@ -274,8 +278,8 @@ impl<'a> HierarchyIndex<'a> {
         }))
     }
 
-    #[cfg(test)]
-    pub(crate) fn common_ancestor_id(
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn common_ancestor_id(
         &self,
         left: &str,
         right: &str,
@@ -323,7 +327,7 @@ impl UnmarkedHierarchyPaths {
 /// Mermaid render.ts configureCrossHierarchyEdges/setIncludeChildrenPolicy. Both endpoints
 /// and their common ancestor are included; only containers on those paths lose isolation.
 /// Callers retain ownership of parent normalization and explicit algorithm metadata.
-pub(crate) fn include_children<'a>(
+pub fn include_children<'a>(
     nodes: impl Iterator<Item = (&'a str, Option<&'a str>)> + Clone,
     node_count: usize,
     edges: impl ExactSizeIterator<Item = (&'a str, &'a str)>,
@@ -404,7 +408,7 @@ fn mark_include_children_path<'a>(
     Ok(())
 }
 
-pub(crate) fn apply_to_graph(
+pub fn apply_to_graph(
     graph: &mut merman_layout_elk::Graph,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<()> {
@@ -450,7 +454,7 @@ pub(crate) fn apply_to_graph(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::resources::RenderResourcePolicy;
+    use crate::resources::{RenderResourcePolicy, ResourceLimitId};
     use merman_layout_elk::{Direction, Edge, Graph, HierarchyHandling, Node, NodeKind};
     use std::sync::Arc;
 
@@ -562,7 +566,7 @@ mod tests {
         let before = graph.clone();
         let meter = OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input()
-                .with_limit(crate::ResourceLimitId::MaxLayoutWorkUnits, 1)
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 1)
                 .expect("valid work limit"),
         );
         let mut limited = OperationLayoutWorkControl::new(Arc::new(meter));

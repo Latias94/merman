@@ -12,7 +12,7 @@ use crate::layout_backend::GraphLayoutBackend;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::StateDiagramLayout;
 use merman_render_graph::state::state_layout_adapter_work;
-#[cfg(any(feature = "layout-elk", feature = "layout-shoal"))]
+#[cfg(feature = "layout-shoal")]
 pub(super) use merman_render_graph::state::{
     note_group_owner_id, state_hidden_prefixes, validate_state_parent_cycles,
 };
@@ -53,13 +53,14 @@ pub(crate) fn layout_state_diagram_typed_with_work_meter(
         )
         .map(|layout| (layout, RouteContract::DagreParity)),
         #[cfg(feature = "layout-elk")]
-        GraphLayoutBackend::Elk(algorithm) => super::elk::layout(
+        GraphLayoutBackend::Elk(algorithm) => merman_render_graph::state::layout_elk(
             model,
             effective_config,
-            algorithm,
+            algorithm.algorithm(),
             style_plan,
             label_sidecar,
-            execution,
+            execution.text_measurer(),
+            execution.elk_operation_seed(),
             &mut work_control,
         )
         .map(|layout| (layout, RouteContract::ElkParity)),

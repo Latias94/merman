@@ -10,6 +10,9 @@ across layout and SVG emission. The renderer supplies that meter to the Dagre, E
 Cytoscape adapters selected by its layout features.
 `svg-output` provides bounded SVG writing, XML text serialization, base styles, and shared render
 errors. `root-svg` provides viewport planning and emission for family SVG documents.
+`layout-elk` provides shared Mermaid ELK hierarchy and group frame projection. With `css-style`,
+it also provides ELK option projection and feedback edge handling. ELK endpoint paint geometry
+is available through `svg-output` for families that consume routes without the solver.
 `paint-scene` provides an internal typed scene and bounded SVG writer for resolved geometry and
 paint. The writer does not select an output profile or replace terminal SVG admission.
 `svg-parse` provides lexical scanning, XML stylesheet decoding, and SVG structure

@@ -29,46 +29,22 @@ use merman_render_core::{config, mermaid_style, number_format};
 #[cfg(feature = "diagram-cynefin")]
 pub mod cynefin;
 #[cfg(feature = "layout-elk")]
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
-    )
-)]
-mod elk_adapter;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
-    )
-)]
-mod elk_edge_geometry;
+#[cfg_attr(not(feature = "all-diagrams"), allow(unused_imports))]
+use merman_render_core::elk_adapter;
 #[cfg(feature = "layout-elk")]
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
-    )
-)]
-mod elk_feedback_edges;
-#[cfg(feature = "diagram-class")]
-use merman_render_core::graph_layout::elk_geometry;
+#[cfg_attr(not(feature = "all-diagrams"), allow(unused_imports))]
+use merman_render_core::elk_adapter::feedback_edges as elk_feedback_edges;
 #[cfg(feature = "layout-elk")]
+#[cfg_attr(not(feature = "all-diagrams"), allow(unused_imports))]
+use merman_render_core::elk_adapter::hierarchy as elk_hierarchy;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
-        dead_code,
         unused_imports,
         reason = "Shared rendering utilities have different callers in each diagram selection."
     )
 )]
-mod elk_hierarchy;
+use merman_render_core::elk_edge_geometry;
 #[cfg(feature = "layout-elk")]
 #[cfg_attr(
     not(feature = "all-diagrams"),
@@ -80,14 +56,9 @@ mod elk_hierarchy;
 )]
 mod elk_options;
 #[cfg(any(
-    test,
     feature = "diagram-agentflow",
     feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    all(
-        feature = "layout-elk",
-        any(feature = "diagram-class", feature = "diagram-state")
-    )
+    feature = "diagram-swimlane"
 ))]
 use merman_render_core::graph_layout::elk_terminal_jogs;
 pub mod environment;

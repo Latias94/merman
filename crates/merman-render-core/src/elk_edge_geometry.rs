@@ -2,13 +2,12 @@
 //!
 //! Provider routes remain immutable. These helpers operate on the separate paint projection.
 
-use crate::model::{LayoutNode, LayoutPoint as P};
-
-pub(crate) use merman_render_core::shape_intersection::Outline;
-use merman_render_core::shape_intersection::intersect_node_outline;
+pub use crate::shape_intersection::Outline;
+use crate::shape_intersection::intersect_node_outline;
+use crate::{LayoutNode, LayoutPoint as P};
 
 #[derive(Clone, Copy)]
-pub(crate) struct Shape<'a> {
+pub struct Shape<'a> {
     pub node: &'a LayoutNode,
     pub outline: Outline,
     pub intersection: Option<&'a dyn Fn(&P) -> P>,
@@ -22,7 +21,7 @@ impl Shape<'_> {
         }
     }
 
-    pub(crate) fn intersect(self, point: &P) -> P {
+    pub fn intersect(self, point: &P) -> P {
         if let Some(intersection) = self.intersection {
             return intersection(point);
         }
@@ -278,7 +277,7 @@ fn cutter(points: &[P], start: Shape<'_>, end: Shape<'_>) -> Vec<P> {
     out
 }
 
-pub(crate) fn sanitize(points: &[P], start: Shape<'_>, end: Shape<'_>) -> Vec<P> {
+pub fn sanitize(points: &[P], start: Shape<'_>, end: Shape<'_>) -> Vec<P> {
     if points.is_empty() {
         return Vec::new();
     }
@@ -348,12 +347,7 @@ pub(crate) fn sanitize(points: &[P], start: Shape<'_>, end: Shape<'_>) -> Vec<P>
         .collect()
 }
 
-pub(crate) fn marker_segment(
-    points: &mut Vec<P>,
-    shape: Shape<'_>,
-    marker: Option<&str>,
-    start: bool,
-) {
+pub fn marker_segment(points: &mut Vec<P>, shape: Shape<'_>, marker: Option<&str>, start: bool) {
     let offset: f64 = match marker {
         Some("arrow_point") => 4.0,
         Some("arrow_barb_neo") => 5.5,
@@ -379,9 +373,6 @@ pub(crate) fn marker_segment(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::layout_work::OperationLayoutWorkControl;
-    use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
-    use std::sync::Arc;
 
     fn node(x: f64, y: f64, width: f64, height: f64, group: bool) -> LayoutNode {
         LayoutNode {
@@ -530,8 +521,14 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "graph-layout")]
     #[test]
     fn terminal_jog_is_rejected_when_it_adds_a_crossing() {
+        use crate::graph_layout::elk_terminal_jogs::straighten_edge_terminals;
+        use crate::layout_work::OperationLayoutWorkControl;
+        use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+        use std::sync::Arc;
+
         let raw = points(&[
             (193.0, 116.25),
             (218.0, 116.25),
@@ -544,10 +541,7 @@ mod tests {
         let mut work = OperationLayoutWorkControl::new(Arc::new(OperationWorkMeter::new(
             RenderResourcePolicy::default(),
         )));
-        crate::elk_terminal_jogs::straighten_edge_terminals(&mut routes, |units| {
-            work.charge_adapter(units)
-        })
-        .unwrap();
+        straighten_edge_terminals(&mut routes, |units| work.charge_adapter(units)).unwrap();
         assert_eq!(coordinates(&routes[0]), coordinates(&raw));
     }
 

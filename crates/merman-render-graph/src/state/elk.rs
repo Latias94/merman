@@ -3,21 +3,26 @@
 //! Keep semantic IDs, hierarchy and self loops intact: Dagre's recursive extraction and
 //! cyclic-special nodes belong only to its own adapter.
 
-use super::StateDiagramModel;
 use super::config::{StateConfigView, normalize_dir, state_node_is_effective_group};
-use super::layout::{note_group_owner_id, state_hidden_prefixes, validate_state_parent_cycles};
+use super::layout_input::{
+    note_group_owner_id, state_hidden_prefixes, validate_state_parent_cycles,
+};
 use super::measure::{
     edge_label_metrics, state_fork_join_painted_dimensions, state_node_dimensions,
     title_label_metrics,
 };
-use crate::graph_layout::ir::{Direction, direction_from_rank};
-use crate::layout_backend::ElkRootAlgorithm;
-use crate::layout_work::OperationLayoutWorkControl;
-use crate::model::{
-    Bounds, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, StateDiagramLayout,
-};
-use crate::{Error, LayoutExecution, Result};
+use super::{StateDiagramLayout, StateLabelSidecarBuilder, StateStylePlan};
 use merman_layout_elk as elk;
+use merman_model::families::state::StateDiagramRenderModel as StateDiagramModel;
+use merman_render_core::config::config_bool;
+use merman_render_core::elk_adapter::{self, feedback_edges, hierarchy, options};
+use merman_render_core::elk_edge_geometry::{self as geometry, Outline, Shape};
+use merman_render_core::graph_layout::{Direction, direction_from_rank, elk_terminal_jogs};
+use merman_render_core::layout_work::OperationLayoutWorkControl;
+use merman_render_core::text::{TextMeasurer, line_break::mermaid_html_breaks_to_newlines};
+use merman_render_core::{
+    Bounds, Error, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, Result,
+};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -43,17 +48,22 @@ fn elk_direction(direction: Direction) -> elk::Direction {
     }
 }
 
-pub(super) fn layout(
+/// Runs the registered State ELK adapter with the operation's admitted work control.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The facade passes the selected provider, host text measurer, seed, and sidecar directly."
+)]
+pub fn layout(
     model: &StateDiagramModel,
     config: &Value,
-    algorithm: ElkRootAlgorithm,
-    style_plan: &super::StateStylePlan,
-    label_sidecar: Option<&super::StateLabelSidecarBuilder>,
-    execution: &LayoutExecution<'_>,
+    algorithm: elk::Algorithm,
+    style_plan: &StateStylePlan,
+    label_sidecar: Option<&StateLabelSidecarBuilder>,
+    measurer: &dyn TextMeasurer,
+    operation_seed: elk::ElkOperationSeed,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<StateDiagramLayout> {
     validate_state_parent_cycles(model)?;
-    let measurer = execution.text_measurer();
     let hidden = state_hidden_prefixes(model);
     let settings =
         StateConfigView::new(config).layout_settings(&model.direction, style_plan.compatibility());
@@ -81,7 +91,7 @@ pub(super) fn layout(
         .collect();
     let canonical =
         |id: &str| -> String { canonical_groups.get(id).copied().unwrap_or(id).to_owned() };
-    let resolved_directions = crate::elk_adapter::resolved_node_directions(
+    let resolved_directions = elk_adapter::resolved_node_directions(
         model.nodes.iter().map(|node| {
             (
                 node.id.as_str(),
@@ -198,7 +208,7 @@ pub(super) fn layout(
         {
             continue;
         }
-        let label = crate::text::mermaid_html_breaks_to_newlines(&edge.label);
+        let label = mermaid_html_breaks_to_newlines(&edge.label);
         let (width, height) = edge_label_metrics(
             &edge.id,
             &label,
@@ -228,10 +238,10 @@ pub(super) fn layout(
             layer_layer: settings.rank_spacing,
             ..Default::default()
         },
-        options: crate::elk_options::layout_options(config, algorithm),
+        options: options::layout_options(config, algorithm),
     };
-    if crate::config::config_bool(config, &["elk", "keepEntryNodeOnTop"]).unwrap_or(false) {
-        crate::elk_adapter::apply_cyclic_entry_constraints(
+    if config_bool(config, &["elk", "keepEntryNodeOnTop"]).unwrap_or(false) {
+        elk_adapter::apply_cyclic_entry_constraints(
             &mut graph.nodes,
             graph
                 .edges
@@ -240,22 +250,19 @@ pub(super) fn layout(
             &mut Some(&mut *work),
         )?;
     }
-    crate::elk_hierarchy::apply_to_graph(&mut graph, work)?;
-    let oriented = crate::elk_feedback_edges::orient_feedback_edges(
-        &mut graph,
-        config,
-        &mut Some(&mut *work),
-    )?;
-    let mut placed = crate::layout_work::measure_layout_solve!(
-        elk::layout_with_operation_seed_and_work_control(
-            oriented.graph(),
-            execution.elk_operation_seed(),
-            work,
-        )
-    )
-    .map_err(|error| work.map_elk_error_with_context(error, "State ELK"))?;
+    hierarchy::apply_to_graph(&mut graph, work)?;
+    let oriented =
+        feedback_edges::orient_feedback_edges(&mut graph, config, &mut Some(&mut *work))?;
+    let solved = {
+        #[cfg(feature = "benchmark-stages")]
+        let _stage = merman_model::benchmark_stages::enter(
+            merman_model::benchmark_stages::Stage::LayoutSolve,
+        );
+        elk::layout_with_operation_seed_and_work_control(oriented.graph(), operation_seed, work)
+    };
+    let mut placed = solved.map_err(|error| work.map_elk_error_with_context(error, "State ELK"))?;
     oriented.restore(&mut placed, &mut Some(&mut *work))?;
-    let frames = crate::elk_adapter::drawing_group_frames(
+    let frames = elk_adapter::drawing_group_frames(
         &graph,
         &placed,
         |node| {
@@ -401,7 +408,6 @@ fn prepare_paint_paths(
     config: &Value,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<()> {
-    use crate::elk_edge_geometry::{self as geometry, Outline, Shape};
     let indices: HashMap<_, _> = layout
         .nodes
         .iter()
@@ -503,14 +509,12 @@ fn prepare_paint_paths(
         let mut labelled_routes: Vec<_> = paths
             .iter_mut()
             .zip(layout.edges.iter_mut())
-            .map(
-                |(points, edge)| crate::elk_terminal_jogs::LabeledTerminalRoute {
-                    points,
-                    label: edge.label.as_mut(),
-                },
-            )
+            .map(|(points, edge)| elk_terminal_jogs::LabeledTerminalRoute {
+                points,
+                label: edge.label.as_mut(),
+            })
             .collect();
-        crate::elk_terminal_jogs::straighten_edge_terminals(&mut labelled_routes, |units| {
+        elk_terminal_jogs::straighten_edge_terminals(&mut labelled_routes, |units| {
             work.charge_adapter(units)
         })?;
     }
@@ -524,7 +528,7 @@ fn prepare_paint_paths(
         }
         layout.elk_edge_paths.insert(edge.id.clone(), points);
     }
-    crate::elk_terminal_jogs::separate_opposite_edge_labels(
+    elk_terminal_jogs::separate_opposite_edge_labels(
         layout
             .edges
             .iter_mut()

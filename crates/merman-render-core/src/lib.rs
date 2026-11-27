@@ -8,6 +8,12 @@ pub mod config;
 #[cfg(all(feature = "euclid-geometry", feature = "layout-dagre"))]
 #[doc(hidden)]
 pub mod dagre_geometry;
+#[cfg(feature = "layout-elk")]
+#[doc(hidden)]
+pub mod elk_adapter;
+#[cfg(feature = "svg-output")]
+#[doc(hidden)]
+pub mod elk_edge_geometry;
 #[cfg(feature = "svg-output")]
 #[doc(hidden)]
 pub mod entities;

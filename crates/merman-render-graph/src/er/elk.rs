@@ -1,44 +1,51 @@
 //! ELK graph construction and projection of solved ER geometry.
 
 use super::{
-    ErEntity, ErLayoutSettings, ErPreparedLabels, ErPreparedRelationshipLabel, ErSubgraph,
-    calc_label_position, er_layout_bounds, er_marker_id, er_subgraph_title_metrics,
-    parse_er_rel_idx_from_edge_name,
+    ErLayoutSettings, ErPreparedLabels, ErPreparedRelationshipLabel, calc_label_position,
+    er_layout_bounds, er_marker_id, er_rel_idx_from_edge_id, er_subgraph_title_metrics,
 };
-use crate::elk_options::layout_options;
-use crate::graph_layout::ir::Direction;
-use crate::layout_backend::ElkRootAlgorithm;
-use crate::layout_work::OperationLayoutWorkControl;
-use crate::model::{ErDiagramLayout, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint};
-use crate::text::TextMeasurer;
-use crate::{Error, Result};
 use merman_layout_elk as elk;
-use merman_model::families::er::ErDiagramModel;
+use merman_model::families::er::{ErDiagramModel, ErEntity, ErSubgraph};
+use merman_render_core::elk_adapter::{self, feedback_edges, options::layout_options};
+use merman_render_core::graph_layout::Direction;
+use merman_render_core::layout_work::OperationLayoutWorkControl;
+use merman_render_core::text::TextMeasurer;
+use merman_render_core::{
+    Bounds, Error, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, Result,
+};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+
+/// Solved ELK geometry in ER's layout projection. The SVG writer also uses these edges.
+#[derive(Debug)]
+pub struct ErElkLayout {
+    pub nodes: Vec<LayoutNode>,
+    pub edges: Vec<LayoutEdge>,
+    pub clusters: Vec<LayoutCluster>,
+    pub bounds: Option<Bounds>,
+}
 
 #[allow(
     clippy::too_many_arguments,
     reason = "The ER adapter consumes the selected ELK algorithm and the family's prepared measurements."
 )]
-pub(super) fn layout(
+pub fn layout(
     model: &ErDiagramModel,
     effective_config: &Value,
-    algorithm: ElkRootAlgorithm,
+    algorithm: elk::Algorithm,
     measurer: &dyn TextMeasurer,
     settings: ErLayoutSettings,
-    prepared_labels: Arc<ErPreparedLabels>,
+    prepared_labels: &ErPreparedLabels,
     operation_seed: elk::ElkOperationSeed,
     work_control: &mut OperationLayoutWorkControl,
-) -> Result<ErDiagramLayout> {
+) -> Result<ErElkLayout> {
     let mut elk_graph = er_elk_graph(
         model,
         effective_config,
         algorithm,
         measurer,
         &settings,
-        &prepared_labels,
+        prepared_labels,
         &mut Some(&mut *work_control),
     )?;
     let subgraph_by_id: HashMap<&str, &ErSubgraph> = model
@@ -60,19 +67,24 @@ pub(super) fn layout(
             (metrics.width.max(0.0), metrics.height.max(0.0)),
         );
     }
-    let oriented = crate::elk_feedback_edges::orient_feedback_edges(
+    let oriented = feedback_edges::orient_feedback_edges(
         &mut elk_graph,
         effective_config,
         &mut Some(&mut *work_control),
     )?;
-    let mut elk_layout = crate::layout_work::measure_layout_solve!(
+    let solved = {
+        #[cfg(feature = "benchmark-stages")]
+        let _stage = merman_model::benchmark_stages::enter(
+            merman_model::benchmark_stages::Stage::LayoutSolve,
+        );
         elk::layout_with_operation_seed_and_work_control(
             oriented.graph(),
             operation_seed,
             work_control,
         )
-    )
-    .map_err(|error| work_control.map_elk_error_with_context(error, "ER ELK"))?;
+    };
+    let mut elk_layout =
+        solved.map_err(|error| work_control.map_elk_error_with_context(error, "ER ELK"))?;
     oriented.restore(&mut elk_layout, &mut Some(&mut *work_control))?;
     let source_edge_by_id = elk_graph
         .edges
@@ -80,14 +92,14 @@ pub(super) fn layout(
         .map(|edge| (edge.id.as_str(), edge))
         .collect::<HashMap<_, _>>();
 
-    let frames = crate::elk_adapter::drawing_group_frames(
+    let frames = elk_adapter::drawing_group_frames(
         &elk_graph,
         &elk_layout,
         |node| node.label.map_or(0.0, |label| label.width) + node.container.padding,
         &mut Some(&mut *work_control),
     )?;
     let paint_order =
-        crate::elk_adapter::parent_first_order(&elk_graph.nodes, &mut Some(&mut *work_control))?;
+        elk_adapter::parent_first_order(&elk_graph.nodes, &mut Some(&mut *work_control))?;
     let paint_index_by_id: HashMap<&str, usize> = paint_order
         .iter()
         .enumerate()
@@ -128,7 +140,7 @@ pub(super) fn layout(
             width: title_width,
             height: title_height,
         };
-        clusters.push(crate::model::LayoutCluster {
+        clusters.push(LayoutCluster {
             id: node.id.clone(),
             x: node.x,
             y: node.y,
@@ -156,7 +168,7 @@ pub(super) fn layout(
                 message: format!("ELK layout returned unknown ER edge {}", edge.id),
             });
         };
-        let Some(index) = parse_er_rel_idx_from_edge_name(&edge.id) else {
+        let Some(index) = er_rel_idx_from_edge_id(&edge.id) else {
             return Err(Error::InvalidModel {
                 message: format!("ELK layout returned malformed ER edge id {}", edge.id),
             });
@@ -216,22 +228,18 @@ pub(super) fn layout(
     // Mermaid paints groups by stable ancestor depth, then paints leaf nodes above them.
     clusters.sort_by_key(|cluster| paint_index_by_id.get(cluster.id.as_str()).copied());
     let bounds = er_layout_bounds(&out_nodes, &out_edges);
-    Ok(ErDiagramLayout {
+    Ok(ErElkLayout {
         nodes: out_nodes,
-        // ELK's canonical edges already form the SVG-facing projection.
-        render_edges: Vec::new(),
-        swimlane: None,
         edges: out_edges,
         clusters,
         bounds,
-        prepared_labels,
     })
 }
 
 fn er_elk_graph(
     model: &ErDiagramModel,
     effective_config: &Value,
-    algorithm: ElkRootAlgorithm,
+    algorithm: elk::Algorithm,
     measurer: &dyn TextMeasurer,
     settings: &ErLayoutSettings,
     prepared_labels: &ErPreparedLabels,
@@ -338,9 +346,10 @@ fn er_elk_graph(
         .collect::<Result<Vec<_>>>()?;
     nodes.extend(entity_nodes);
 
-    if crate::config::config_bool(effective_config, &["elk", "keepEntryNodeOnTop"]).unwrap_or(false)
+    if merman_render_core::config::config_bool(effective_config, &["elk", "keepEntryNodeOnTop"])
+        .unwrap_or(false)
     {
-        crate::elk_adapter::apply_cyclic_entry_constraints(
+        elk_adapter::apply_cyclic_entry_constraints(
             &mut nodes,
             model.relationships.iter().map(|relationship| {
                 (
@@ -415,16 +424,16 @@ fn er_elk_direction(direction: &str) -> Option<elk::Direction> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ElkRootAlgorithm, layout_options};
-    use crate::er::{ErEntity, ErSubgraph, prepare_er_labels, test_layout_settings};
-    use crate::text::DeterministicTextMeasurer;
-    use merman_model::families::er::ErRelationship;
+    use super::{elk, layout_options};
+    use crate::er::{ErConfigView, labels::prepare_er_labels};
+    use merman_model::families::er::{ErEntity, ErRelationship, ErSubgraph};
+    use merman_render_core::text::DeterministicTextMeasurer;
 
     #[test]
     fn er_elk_keeps_the_source_default_nonzero_seed() {
         let config = serde_json::Value::Null;
         assert_eq!(
-            layout_options(&config, ElkRootAlgorithm::for_diagnostic(&config))
+            layout_options(&config, elk::Algorithm::Layered)
                 .layered
                 .random_seed,
             1
@@ -459,13 +468,14 @@ mod tests {
             });
 
         let effective_config = serde_json::json!({ "layout": "elk.box" });
-        let settings = test_layout_settings(&effective_config, &model.direction, false);
+        let settings =
+            ErConfigView::new(&effective_config).layout_settings_for_test(&model.direction, false);
         let measurer = DeterministicTextMeasurer::default();
         let prepared_labels = prepare_er_labels(&model, &effective_config, &measurer, false);
         let mut graph = super::er_elk_graph(
             &model,
             &effective_config,
-            ElkRootAlgorithm::Layered,
+            elk::Algorithm::Layered,
             &measurer,
             &settings,
             &prepared_labels,
@@ -523,13 +533,14 @@ mod tests {
                 }
                 for enabled in [false, true] {
                     let config = serde_json::json!({ "layout": "elk", "elk": { "keepEntryNodeOnTop": enabled } });
-                    let settings = test_layout_settings(&config, &model.direction, false);
+                    let settings = ErConfigView::new(&config)
+                        .layout_settings_for_test(&model.direction, false);
                     let measurer = DeterministicTextMeasurer::default();
                     let labels = prepare_er_labels(&model, &config, &measurer, false);
                     let graph = super::er_elk_graph(
                         &model,
                         &config,
-                        ElkRootAlgorithm::for_diagnostic(&config),
+                        elk::Algorithm::Layered,
                         &measurer,
                         &settings,
                         &labels,

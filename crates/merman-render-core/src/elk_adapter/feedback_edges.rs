@@ -1,31 +1,31 @@
 //! Mermaid 12.1 compound feedback-edge orientation around an immutable provider invocation.
 //! Source: elk/subgraphFeedbackEdges.ts and elk/render.ts at 21f72f07ea22c0af48a3149c550654e80d8e40cb.
 
-use crate::Result;
-use crate::elk_hierarchy::{
+use super::hierarchy::{
     HierarchyIndex, charge_adapter_work, checked_adapter_add, checked_adapter_mul,
 };
+use crate::Result;
 use crate::layout_work::OperationLayoutWorkControl;
 use merman_layout_elk as elk;
 use std::collections::{HashMap, HashSet};
 
 /// Own the temporary provider orientation and restore semantic endpoints on every exit path.
 /// Borrowing the graph exclusively prevents a prepared graph from escaping in its reversed state.
-pub(crate) struct FeedbackOrientation<'a> {
+pub struct FeedbackOrientation<'a> {
     graph: &'a mut elk::Graph,
     reversed: Vec<usize>,
     order_swaps: Vec<(usize, usize)>,
 }
 
 impl FeedbackOrientation<'_> {
-    pub(crate) fn graph(&self) -> &elk::Graph {
+    pub fn graph(&self) -> &elk::Graph {
         self.graph
     }
 
     /// Restore provider routes to semantic direction before frame/shape projection. Labels are
     /// absolute geometry; their positions, terminal keys and TAIL/HEAD placement never swap.
     /// This matches upstream's endpoint-only reversal, including terminal-label ownership.
-    pub(crate) fn restore(
+    pub fn restore(
         self,
         provider: &mut elk::LayoutResult,
         work: &mut Option<&mut OperationLayoutWorkControl>,
@@ -73,12 +73,12 @@ impl Drop for FeedbackOrientation<'_> {
 
 /// Apply after semantic entry constraints and hierarchy policy, immediately before the provider.
 /// On success consume the guard with `restore`; on an error Drop restores the graph automatically.
-pub(crate) fn orient_feedback_edges<'a>(
+pub fn orient_feedback_edges<'a>(
     graph: &'a mut elk::Graph,
     config: &(impl crate::config::ConfigLookup + ?Sized),
     work: &mut Option<&mut OperationLayoutWorkControl>,
 ) -> Result<FeedbackOrientation<'a>> {
-    let reversed = if crate::elk_options::orient_feedback_edges(config) {
+    let reversed = if super::options::orient_feedback_edges(config) {
         find_subgraph_feedback_edges(graph, work)?
     } else {
         Vec::new()
@@ -308,7 +308,7 @@ fn find_subgraph_feedback_edges(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+    use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
     use std::sync::Arc;
 
     fn graph(parents: &[(&str, &str)], pairs: &[(&str, &str)]) -> elk::Graph {
@@ -370,7 +370,7 @@ mod tests {
     fn limited_work(limit: usize) -> OperationLayoutWorkControl {
         OperationLayoutWorkControl::new(Arc::new(OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input()
-                .with_limit(crate::ResourceLimitId::MaxLayoutWorkUnits, limit)
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, limit)
                 .unwrap(),
         )))
     }
