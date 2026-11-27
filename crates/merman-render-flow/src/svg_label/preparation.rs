@@ -125,6 +125,17 @@ enum PreparedMathMeasurement {
 }
 
 impl FlowchartSvgLabelSidecarBuilder {
+    #[cfg(feature = "layout-grid")]
+    pub(crate) fn check_prepared_label_errors(&self) -> Result<()> {
+        if let Some(error) = self.prepared_work_error.borrow().as_ref() {
+            return Err(error.clone().into());
+        }
+        if let Some(error) = self.prepared_resource_error.borrow().as_ref() {
+            return Err(error.clone().into());
+        }
+        Ok(())
+    }
+
     pub fn new_with_work_meter(work_meter: Arc<OperationWorkMeter>) -> Self {
         Self {
             work_meter: Some(work_meter),

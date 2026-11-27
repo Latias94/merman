@@ -158,6 +158,47 @@ fn grid_label_rect_measures_only_the_style_it_emits() {
     assert!(!large_style.contains("96px"));
 }
 
+#[test]
+fn grid_reports_the_prepared_text_ceiling_before_placement_conflicts() {
+    let source = "\
+---
+config:
+  layout: grid
+  htmlLabels: false
+  grid:
+    placements:
+      A: { row: 1, column: 1, verticalAlign: top }
+      B: { row: 1, column: 1, verticalAlign: bottom }
+---
+flowchart LR
+A[Request] --> B[Answer]
+";
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let policy = RenderResourcePolicy::unbounded_for_trusted_input();
+    let session = |policy| {
+        RenderEnvironment::deterministic()
+            .with_resource_policy(policy)
+            .begin_session()
+            .unwrap()
+    };
+    let options = LayoutOptions::default();
+    assert!(matches!(
+        prepare(&parsed, &options, session(policy)),
+        Err(Error::InvalidModel { message }) if message.contains("GRID_CELL_ALIGNMENT_CONFLICT")
+    ));
+    let limited = policy
+        .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, 1)
+        .unwrap();
+    assert!(matches!(
+        prepare(&parsed, &options, session(limited)),
+        Err(Error::ResourceLimitExceeded(error)) if error.limit == "max_prepared_text_retained_bytes"
+    ));
+}
+
 #[cfg(feature = "diagram-agentflow")]
 #[test]
 fn grid_retains_agentflow_geometry_and_family_identity() {

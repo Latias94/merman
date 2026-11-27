@@ -133,6 +133,14 @@ impl<'a> FlowchartMeasurement<'a> {
     }
 
     #[cfg(feature = "layout-grid")]
+    pub(crate) fn check_grid_measurement<T>(&self, result: Result<T>) -> Result<T> {
+        if let Some(labels) = self.svg_label_sidecar {
+            labels.check_prepared_label_errors()?;
+        }
+        result
+    }
+
+    #[cfg(feature = "layout-grid")]
     pub(crate) fn grid_subgraph_title(
         &self,
         group: &FlowSubgraph,
