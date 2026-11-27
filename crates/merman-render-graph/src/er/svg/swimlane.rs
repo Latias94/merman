@@ -5,7 +5,7 @@ use line_hops::{LineHopConfig, LineHopEdge, LineHopStyle};
 use merman_render_core::{LayoutLabel, SwimlaneDirection, SwimlaneLaneLayout};
 use std::collections::HashMap;
 
-use super::super::swimlane::ErRelationshipLabelRect;
+use crate::label_rect::LabelRect;
 
 pub(super) fn render_cluster(
     out: &mut impl SvgOutput,
@@ -343,46 +343,16 @@ pub(super) fn write_relationship_label_rect(
     out: &mut impl SvgOutput,
     label: &LayoutLabel,
     label_id: &str,
-    prepared: &ErRelationshipLabelRect,
+    prepared: &LabelRect,
     context: ErSubgraphRenderContext<'_>,
 ) -> Result<()> {
-    let grid_bbox_top = prepared.grid_svg_bbox_top();
-    let _ = write!(
+    prepared.write(
         out,
-        r#"<g class="label edgeLabel" id="{}" transform="translate({}, {})"><rect width="0.1" height="0.1"/><g class="label" style="" transform="translate({}, {})"><rect/>"#,
-        escape_attr(label_id),
-        fmt(label.x + context.translate_x),
-        fmt(label.y + context.translate_y),
-        fmt(-label.width / 2.0),
-        fmt(-label.height / 2.0 - grid_bbox_top.unwrap_or(0.0)),
-    );
-    if let Some((fragment, wrapper_style)) = prepared.html() {
-        let _ = write!(
-            out,
-            r#"<foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel">{}</span></div></foreignObject>"#,
-            fmt(label.width),
-            fmt(label.height),
-            html_label_overflow_attr(context.allow_html_label_overflow, label.width, label.height),
-            escape_attr(wrapper_style),
-            fragment,
-        );
-    } else {
-        let lines = prepared.svg_lines().ok_or_else(|| Error::InvalidModel {
-            message: format!("missing prepared ER SVG rows for label `{label_id}`"),
-        })?;
-        if grid_bbox_top.is_some() {
-            out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
-        } else {
-            write_er_svg_label_background(out);
-        }
-        label::write_svg_text_source_word_lines_with_style(out, lines, "", false, None);
-        if grid_bbox_top.is_some() {
-            out.push_str("</g>");
-        }
-    }
-    out.push_str("</g></g>");
-    out.checkpoint()?;
-    Ok(())
+        label,
+        label_id,
+        (context.translate_x, context.translate_y),
+        context.allow_html_label_overflow,
+    )
 }
 
 pub(super) fn relationship_label_dom_id(edge: &LayoutEdge, dom_id: &str) -> String {

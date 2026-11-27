@@ -24,6 +24,8 @@ mod css_binding;
 mod dagre;
 #[cfg(feature = "layout-elk")]
 mod elk;
+#[cfg(feature = "layout-grid")]
+mod grid;
 mod html_label;
 mod native_theme;
 mod source_typography;
@@ -33,6 +35,8 @@ mod theme;
 pub use config::RequirementConfigView;
 pub use css_binding::RequirementCssBinding;
 use css_binding::requirement_color_indices;
+#[cfg(feature = "layout-grid")]
+pub use grid::layout as layout_grid;
 use html_label::RequirementHtmlLabel;
 pub use html_label::sanitize_label_with_sink;
 use native_theme::RequirementNativeStyle;
@@ -138,6 +142,8 @@ pub struct RequirementPreparedArtifact {
     nodes: HashMap<String, RequirementNodeRenderPlan>,
     edges: RequirementEdgeLabels,
     measurement_binding: Option<RequirementLabelMeasurementBinding>,
+    #[cfg(feature = "layout-grid")]
+    grid: Option<grid::RequirementGridPaint>,
 }
 
 impl RequirementPreparedArtifact {
@@ -162,6 +168,8 @@ impl RequirementPreparedArtifact {
             nodes,
             edges,
             measurement_binding,
+            #[cfg(feature = "layout-grid")]
+            grid: None,
         }
     }
 
@@ -1052,7 +1060,11 @@ pub fn requirement_layout_node(id: String, rect: Rect) -> LayoutNode {
     }
 }
 
-#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
+#[cfg(any(
+    feature = "layout-dagre",
+    feature = "layout-elk",
+    feature = "layout-grid"
+))]
 fn requirement_layout_node_from_center(
     id: String,
     x: f64,
@@ -1071,7 +1083,11 @@ fn requirement_layout_node_from_center(
     )
 }
 
-#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
+#[cfg(any(
+    feature = "layout-dagre",
+    feature = "layout-elk",
+    feature = "layout-grid"
+))]
 fn bounds_for_nodes_edges(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> {
     if nodes.is_empty() && edges.is_empty() {
         return None;

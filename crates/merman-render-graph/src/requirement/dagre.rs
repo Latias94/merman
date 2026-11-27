@@ -182,6 +182,8 @@ pub fn layout(
         nodes: prepared_nodes,
         edges: prepared_edges,
         measurement_binding,
+        #[cfg(feature = "layout-grid")]
+        grid: None,
     })
 }
 

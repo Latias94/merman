@@ -76,6 +76,7 @@ pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
     not(any(
         feature = "layout-dagre",
         feature = "layout-elk",
+        feature = "layout-grid",
         feature = "layout-shoal"
     )),
     allow(
@@ -97,6 +98,20 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
     work_meter
         .policy()
         .check_model_complexity(ModelComplexity::from_requirement(model))?;
+    #[cfg(feature = "layout-grid")]
+    if backend == GraphLayoutBackend::Grid {
+        return Ok(RequirementPreparedArtifact {
+            prepared: graph::layout_grid(
+                model,
+                config,
+                &css_binding.layout,
+                text_measurer,
+                work_meter,
+            )?,
+            #[cfg(feature = "layout-shoal")]
+            route_contract: crate::graph_layout::RouteContract::default(),
+        });
+    }
     if backend == GraphLayoutBackend::Shoal {
         #[cfg(feature = "layout-shoal")]
         return shoal::layout(

@@ -1,11 +1,10 @@
 //! Prepared ER entity, attribute, relationship and title labels.
 
-#[cfg(any(test, feature = "layout-grid"))]
-use super::ErConfigView;
 use super::{
-    ErEntityMeasurementSettings, ErEntitySourceStyle, ErLayoutSettings,
-    compile_er_entity_source_style, swimlane,
+    ErConfigView, ErEntityMeasurementSettings, ErEntitySourceStyle, ErLayoutSettings,
+    compile_er_entity_source_style,
 };
+use crate::label_rect::LabelRect;
 use merman_model::families::er::{ErEntity, ErSubgraph};
 use merman_render_core::{
     Bounds, Error, Result,
@@ -565,7 +564,7 @@ enum ErRelationshipLabelTerminal {
         xhtml_fragment: String,
         svg: Option<ErPreparedSvgRelationshipLabel>,
     },
-    LabelRect(swimlane::ErRelationshipLabelRect),
+    LabelRect(LabelRect),
 }
 
 #[derive(Clone, Copy)]
@@ -655,7 +654,7 @@ impl ErPreparedRelationshipLabel {
         self.metrics.width >= MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX
     }
 
-    pub(super) fn label_rect(&self) -> Option<&swimlane::ErRelationshipLabelRect> {
+    pub(super) fn label_rect(&self) -> Option<&LabelRect> {
         match &self.terminal {
             ErRelationshipLabelTerminal::LabelRect(label) => Some(label),
             ErRelationshipLabelTerminal::Markdown { .. } => None,
@@ -672,12 +671,15 @@ impl ErPreparedRelationshipLabel {
         style: &TextStyle,
         preparation: ErLabelRectPreparation<'_>,
     ) -> Self {
-        let label = swimlane::ErRelationshipLabelRect::prepare(
+        let wrapping_width =
+            ErConfigView::new(preparation.config.as_value()).swimlane_relationship_wrapping_width();
+        let label = LabelRect::prepare(
             text,
             measurer,
             style,
             preparation.html_labels,
             preparation.config,
+            wrapping_width,
             preparation.grid,
         );
         Self {

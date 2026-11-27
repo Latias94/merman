@@ -284,6 +284,21 @@ pub fn render_requirement_diagram_svg_model(
     let native = binding.native.as_ref();
     let edge_style = binding.edge_style();
     let render_settings = requirement_config.render_settings_with_binding(binding);
+    #[cfg(feature = "layout-grid")]
+    let grid_paint = prepared.grid.as_ref().map(|grid| {
+        let mut settings = grid.settings;
+        if matches!(
+            edge_style,
+            Some(EdgeStyle::Orthogonal | EdgeStyle::Straight)
+        ) {
+            settings.curve = "linear";
+        }
+        settings
+    });
+    #[cfg(feature = "layout-grid")]
+    let uses_grid = grid_paint.is_some();
+    #[cfg(not(feature = "layout-grid"))]
+    let uses_grid = false;
     #[cfg(feature = "layout-shoal")]
     let canonical_paint = options.canonical_routes.map(|paint| {
         let width = binding.canonical_stroke_width(&requirement_config);
@@ -336,6 +351,12 @@ pub fn render_requirement_diagram_svg_model(
                 ),
             })?;
         let compatibility_path = || -> Result<String> {
+            #[cfg(feature = "layout-grid")]
+            if let Some(settings) = grid_paint
+                && edge_style != Some(EdgeStyle::Sketch)
+            {
+                return crate::grid_edges::shaft(&edge.points, settings, options.work_meter);
+            }
             Ok(match edge_style {
                 Some(EdgeStyle::Orthogonal) => curve::curve_step_path_d_and_bounds(&edge.points).0,
                 Some(EdgeStyle::Straight) => curve::curve_linear_path_d(&edge.points),
@@ -389,7 +410,7 @@ pub fn render_requirement_diagram_svg_model(
                 x: label.x,
                 y: label.y,
             };
-            Some(if uses_canonical_routes {
+            Some(if uses_canonical_routes || uses_grid {
                 anchor
             } else {
                 edge_label_geometry::position_edge_label(
@@ -457,6 +478,14 @@ pub fn render_requirement_diagram_svg_model(
     } else {
         std::collections::HashMap::new()
     };
+    #[cfg(feature = "layout-grid")]
+    let hop_paths = if let Some(settings) = grid_paint
+        && edge_style != Some(EdgeStyle::Sketch)
+    {
+        crate::grid_edges::line_hop_paths(&layout.edges, settings, options.work_meter)?
+    } else {
+        hop_paths
+    };
 
     // Mermaid derives the root viewport from the rendered SVG subtree. Reconstruct those bounds
     // from final paths and post-path label positions instead of stale Dagre label anchors.
@@ -486,7 +515,7 @@ pub fn render_requirement_diagram_svg_model(
             max_y = max_y.max(canonical.bounds.max_y);
         } else if let Some(path) = hop_paths
             .get(edge.id.as_str())
-            .or_else(|| native.map(|_| &painted.d))
+            .or_else(|| (uses_grid || native.is_some()).then_some(&painted.d))
         {
             options.work_meter.charge(path.len())?;
             if let Some(bounds) = svg_path_bounds_from_d(path) {
@@ -671,7 +700,7 @@ pub fn render_requirement_diagram_svg_model(
     out.push_str(r#"<g class="root">"#);
     out.push_str(r#"<g class="clusters"/>"#);
 
-    out.push_str(if prepared.uses_elk() {
+    out.push_str(if prepared.uses_elk() || uses_grid {
         r#"<g class="edges edgePaths">"#
     } else {
         r#"<g class="edgePaths">"#
@@ -768,7 +797,12 @@ pub fn render_requirement_diagram_svg_model(
     out.push_str("</g>");
 
     out.push_str(r#"<g class="edgeLabels">"#);
-    for e in &layout.edges {
+    let regular_labels = if uses_grid {
+        &[]
+    } else {
+        layout.edges.as_slice()
+    };
+    for e in regular_labels {
         let identity = RequirementEdgeIdentity::from(e);
         let prepared_label = prepared_edges
             .get(&identity)
@@ -1362,6 +1396,38 @@ pub fn render_requirement_diagram_svg_model(
         }
 
         out.push_str("</g>");
+    }
+    #[cfg(feature = "layout-grid")]
+    if let Some(grid) = &prepared.grid {
+        let prefix = format!("{diagram_id}-");
+        for (edge, label) in layout.edges.iter().zip(&grid.labels) {
+            options.work_meter.checkpoint(OperationPhase::Emit)?;
+            let placement = edge.label.as_ref().ok_or_else(|| Error::InvalidModel {
+                message: format!("missing Requirement Grid label geometry for `{}`", edge.id),
+            })?;
+            options.work_meter.charge_emit_work(edge.id.len())?;
+            options.work_meter.charge_emit_work(edge.from.len())?;
+            options.work_meter.charge_emit_work(edge.to.len())?;
+            let id = available_local_svg_id(
+                format!("edge-label-{}-{}-{}", edge.from, edge.to, edge.id),
+                layout.nodes.len(),
+                |candidate| {
+                    let local_id = if has_diagram_id {
+                        candidate.strip_prefix(&prefix)
+                    } else {
+                        Some(candidate)
+                    };
+                    candidate == diagram_id.semantic_str()
+                        || local_id.is_some_and(|id| {
+                            req_by_id.contains_key(id) || el_by_id.contains_key(id)
+                        })
+                },
+                options.work_meter,
+            )?;
+            label
+                .terminal
+                .write(&mut out, placement, &id, (0.0, 0.0), false)?;
+        }
     }
     out.push_str("</g>");
 

@@ -18,6 +18,7 @@ mod svg;
 mod swimlane;
 mod theme;
 
+pub use crate::label_rect::label_rect_html_source as swimlane_relationship_html_source;
 pub use binding::ErCssBinding;
 pub use config::{ErConfigView, ErEntityMeasurementSettings, ErLayoutSettings, ErRenderSettings};
 #[cfg(feature = "layout-dagre")]
@@ -49,7 +50,5 @@ pub use stylesheet::{
 #[cfg(feature = "layout-shoal")]
 pub use svg::{ErCanonicalEdge, ErCanonicalEdgePainter};
 pub use svg::{ErPreparedSvgLayout, ErSvgContext, render_er_diagram_svg_model};
-pub use swimlane::{
-    ErSwimlanePaintLayout, relationship_html_source as swimlane_relationship_html_source,
-};
+pub use swimlane::ErSwimlanePaintLayout;
 pub use theme::ErEntityThemePlan;
