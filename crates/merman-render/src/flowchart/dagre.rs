@@ -491,7 +491,7 @@ pub(crate) fn layout_flowchart_typed_with_work_meter(
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     work_meter: Arc<OperationWorkMeter>,
 ) -> Result<FlowchartLayout> {
-    let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
+    let edge_style_plan = crate::test_support::prepare_flowchart_edge_style_plan(
         model,
         effective_config,
         false,

@@ -100,7 +100,7 @@ pub(crate) fn layout_flowchart_elk_typed_with_operation_seed(
     operation_seed: elk::ElkOperationSeed,
     work_meter: Arc<OperationWorkMeter>,
 ) -> Result<FlowchartLayout> {
-    let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
+    let edge_style_plan = crate::test_support::prepare_flowchart_edge_style_plan(
         model,
         effective_config,
         false,
@@ -358,7 +358,7 @@ fn build_flowchart_elk_graph_with_render_labels(
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Result<elk::Graph> {
-    let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
+    let edge_style_plan = crate::test_support::prepare_flowchart_edge_style_plan(
         model,
         effective_config,
         false,
@@ -388,7 +388,7 @@ fn build_flowchart_elk_graph_with_work_control(
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     work_control: Option<&mut OperationLayoutWorkControl>,
 ) -> Result<elk::Graph> {
-    let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
+    let edge_style_plan = crate::test_support::prepare_flowchart_edge_style_plan(
         model,
         effective_config,
         false,

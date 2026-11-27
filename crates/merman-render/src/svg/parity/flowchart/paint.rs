@@ -805,7 +805,7 @@ mod tests {
         let context = parsed.render_context().flowchart_render_context().unwrap();
         let layout = layout.unwrap_or_else(|| {
             let session = environment.begin_session().unwrap();
-            let style = FlowchartEdgeStylePlan::prepare_for_model(
+            let style = crate::test_support::prepare_flowchart_edge_style_plan(
                 model,
                 &parsed.metadata().effective_config,
                 false,
@@ -858,7 +858,7 @@ mod tests {
             layout.route_contract.is_elk_parity(),
             None,
         );
-        let style = FlowchartEdgeStylePlan::prepare_for_model(
+        let style = crate::test_support::prepare_flowchart_edge_style_plan(
             model,
             &parsed.metadata().effective_config,
             layout.route_contract.is_elk_parity(),

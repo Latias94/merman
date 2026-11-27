@@ -384,7 +384,7 @@ fn render_flowchart_node_label_with_wrapper(
 
         let compiled_styles = common.label_emission.compiled_styles;
         let mut authored_div_style;
-        let div_style = if compiled_styles.label_div_decls.is_empty() {
+        let div_style = if !compiled_styles.has_label_div_declarations() {
             div_style_scratch.clear();
             div_style_scratch
         } else {

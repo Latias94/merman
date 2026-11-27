@@ -15,7 +15,6 @@ mod defs;
 mod edge;
 mod edge_fill;
 mod edge_geom;
-mod edge_style_plan;
 mod hierarchy;
 mod label;
 mod node_inventory;
@@ -25,7 +24,7 @@ pub(crate) use node_inventory::{FlowchartNodeLayoutView, FlowchartPreparedNodes}
 mod render;
 mod render_input;
 mod step;
-mod style;
+use merman_render_flow::style::compiled as style;
 mod swimlane;
 mod types;
 mod util;
@@ -42,9 +41,9 @@ use edge::*;
 pub(in crate::svg::parity::flowchart) use edge_geom::{
     FlowchartEdgePathGeomRequest, flowchart_compute_edge_path_geom,
 };
-pub(crate) use edge_style_plan::FlowchartEdgeStylePlan;
 use hierarchy::*;
 pub(super) use label::*;
+pub(crate) use merman_render_flow::style::FlowchartEdgeStylePlan;
 pub(crate) use render_config::{FlowchartRenderConfig, prepare_flowchart_render_config};
 pub(super) use style::*;
 
@@ -77,12 +76,6 @@ use util::OptionalStyleAttr;
 #[inline]
 fn escape_attr(text: &str) -> super::util::EscapeAttrDisplay<&str> {
     escape_attr_display(text)
-}
-
-pub(in crate::svg::parity::flowchart) fn flowchart_config_diagram_look(
-    config: &merman_model::presentation::PresentationConfig,
-) -> crate::config::DiagramLook<'_> {
-    crate::config::mermaid_config_diagram_look(config)
 }
 
 // Entry points (split from parity.rs).

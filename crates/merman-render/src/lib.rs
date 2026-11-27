@@ -722,7 +722,7 @@ pub(crate) fn layout_flowchart_typed_by_engine(
     effective_config: &merman_model::presentation::PresentationConfig,
     options: &LayoutExecution<'_>,
 ) -> Result<model::FlowchartLayout> {
-    let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
+    let edge_style_plan = crate::test_support::prepare_flowchart_edge_style_plan(
         model,
         effective_config,
         false,

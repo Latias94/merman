@@ -547,7 +547,7 @@ mod integration_tests {
             layout.route_contract.is_elk_parity(),
             sidecar.base_typography(),
         );
-        let edge_style_plan = FlowchartEdgeStylePlan::prepare_for_model(
+        let edge_style_plan = crate::test_support::prepare_flowchart_edge_style_plan(
             &model,
             &metadata.effective_config,
             false,
@@ -710,7 +710,7 @@ mod integration_tests {
                 layout.route_contract.is_elk_parity(),
                 sidecar.base_typography(),
             );
-            let edge_style_plan = FlowchartEdgeStylePlan::prepare_for_model(
+            let edge_style_plan = crate::test_support::prepare_flowchart_edge_style_plan(
                 &model,
                 &metadata.effective_config,
                 false,

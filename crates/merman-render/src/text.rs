@@ -2,7 +2,6 @@ mod flowchart_parity;
 mod metrics;
 
 pub use flowchart_parity::flowchart_html_has_inline_style_tags;
-pub(crate) use line_break::mermaid_html_breaks_to_newlines;
 pub use line_break::split_html_br_lines;
 pub use merman_render_core::text::flowchart_html_line_height_px;
 pub(crate) use merman_render_core::text::html_wrap::{self, HtmlWhiteSpace};

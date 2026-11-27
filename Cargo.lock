@@ -2802,6 +2802,7 @@ name = "merman-render-flow"
 version = "0.11.0"
 dependencies = [
  "base64 0.23.1",
+ "cssparser",
  "dugong",
  "indexmap",
  "kurbo 0.13.1",

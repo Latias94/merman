@@ -104,7 +104,7 @@ benchmark-stages = ["merman-model/benchmark-stages", "merman-render-core/benchma
 layout-cytoscape = ["dep:manatee", "merman-render-core/layout-cytoscape", "merman-render-graph?/layout-cytoscape"]
 layout-dagre = ["dep:dugong", "merman-render-core/layout-dagre", "merman-render-flow?/layout-dagre", "merman-render-graph?/layout-dagre"]
 layout-elk = ["dep:merman-layout-elk", "merman-render-core/layout-elk", "merman-render-graph?/layout-elk"]
-layout-shoal = ["dep:merman-layout-shoal", "merman-render-core/shoal-bridge", "merman-render-graph?/layout-shoal"]
+layout-shoal = ["dep:merman-layout-shoal", "merman-render-core/shoal-bridge", "merman-render-flow?/canonical-edge-paint", "merman-render-graph?/layout-shoal"]
 math = ["merman-render-core/math", "merman-render-sequence?/math"]
 
 [dependencies]

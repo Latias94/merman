@@ -149,7 +149,7 @@ fn dagre_nonempty_subgraph_title_reuses_its_prepared_layout_measurement() {
     let meter = Arc::new(OperationWorkMeter::new(
         RenderResourcePolicy::unbounded_for_trusted_input(),
     ));
-    let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
+    let edge_style_plan = crate::test_support::prepare_flowchart_edge_style_plan(
         model,
         &parsed.metadata().effective_config,
         false,

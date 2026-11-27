@@ -1,3 +1,8 @@
+pub mod compiled;
+mod edge_plan;
+
+pub use edge_plan::{FlowchartEdgeAnimationResolution, FlowchartEdgeStylePlan};
+
 use indexmap::{IndexMap, map::Entry};
 use merman_render_core::{
     mermaid_style::{

@@ -759,7 +759,7 @@ mod source_typography_tests {
         let work = std::sync::Arc::new(OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input(),
         ));
-        let edge_style = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
+        let edge_style = crate::test_support::prepare_flowchart_edge_style_plan(
             &model,
             &metadata.effective_config,
             false,
@@ -868,7 +868,7 @@ mod source_typography_tests {
         let layout_work = std::sync::Arc::new(OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input(),
         ));
-        let edge_style = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
+        let edge_style = crate::test_support::prepare_flowchart_edge_style_plan(
             &model,
             &metadata.effective_config,
             false,

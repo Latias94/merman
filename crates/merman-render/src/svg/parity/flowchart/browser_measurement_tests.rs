@@ -1,7 +1,6 @@
 //! Controlled browser measurements isolate the endpoint renderer from font/layout drift.
 //! The companion integration test runs the provider; xtask binds this matrix to source hashes.
 
-use super::FlowchartEdgeStylePlan;
 use super::svg_emit::{FlowchartSvgModelRequest, render_flowchart_svg_model};
 use crate::environment::RenderEnvironment;
 use crate::model::{FlowchartLayout, LayoutPoint};
@@ -493,7 +492,7 @@ fn flowchart_browser_measured_terminals_preserve_upstream_geometry() {
             layout.route_contract.is_elk_parity(),
             sidecar.base_typography(),
         );
-        let edge_style_plan = FlowchartEdgeStylePlan::prepare_for_model(
+        let edge_style_plan = crate::test_support::prepare_flowchart_edge_style_plan(
             &model,
             &metadata.effective_config,
             false,

@@ -1,8 +1,8 @@
 //! Flowchart edge class attributes and class-definition stylesheet access.
 
-pub(super) use merman_render_flow::stylesheet::flowchart_classdef_cssom_string;
+use merman_render_flow::style::FlowchartEdgeAnimationResolution;
 
-use super::{FlowchartEdgeAnimationResolution, SvgOutput};
+use super::SvgOutput;
 
 #[inline]
 pub(super) fn write_flowchart_edge_class_attr(

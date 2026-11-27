@@ -270,7 +270,7 @@ fn elk_cluster_title_keeps_complete_prepared_math_height() {
     ));
     let builder =
         FlowchartSvgLabelSidecarBuilder::default().with_math_backend(Some(&backend), &config);
-    let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
+    let edge_style_plan = crate::test_support::prepare_flowchart_edge_style_plan(
         &model,
         &config,
         false,
@@ -358,7 +358,7 @@ A -->|boundary| D
     ));
     let builder =
         FlowchartSvgLabelSidecarBuilder::default().with_math_backend(Some(&backend), &config);
-    let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
+    let edge_style_plan = crate::test_support::prepare_flowchart_edge_style_plan(
         model,
         &config,
         false,
@@ -450,7 +450,7 @@ fn elk_adapter_binds_prepared_labels_to_original_semantic_indices() {
     let session = environment.begin_session().expect("deterministic session");
     let measurer = session.text_measurer(crate::environment::TextMeasurementPhase::Layout);
     let builder = FlowchartSvgLabelSidecarBuilder::default();
-    let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
+    let edge_style_plan = crate::test_support::prepare_flowchart_edge_style_plan(
         &model,
         &config,
         false,
