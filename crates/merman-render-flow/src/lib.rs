@@ -109,6 +109,9 @@ pub mod layout_config;
 pub mod projection;
 #[doc(hidden)]
 pub mod shapes;
+#[cfg(feature = "layout-swimlane")]
+#[doc(hidden)]
+pub mod swimlane;
 
 #[cfg(any(
     feature = "diagram-agentflow",
