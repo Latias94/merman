@@ -222,7 +222,10 @@ pub fn parse_yaml_ordered_document_controlled(
         },
         control,
     )?;
-    Ok(captured.value.ok().map(|_| ordered_document))
+    Ok(captured.value.ok().map(|value| {
+        drop_value_nonrecursive(value);
+        ordered_document
+    }))
 }
 
 fn parse_yaml_controlled(
@@ -361,23 +364,19 @@ fn parse_yaml_controlled(
             && !fields.contains_key(insert_order.request.insert_key)
         {
             let request = insert_order.request;
-            let order = if request
-                .routes
-                .iter()
-                .any(|(key, _)| fields.contains_key(*key))
-            {
-                match builder.frontmatter_insert_order(
-                    request.routes,
-                    request.max_bytes,
-                    request.max_depth,
-                    control,
-                )? {
-                    Some(json) => YamlInsertOrder::Captured(json.into()),
-                    None => YamlInsertOrder::ExceededBudget,
+            let mut order = YamlInsertOrder::NoRoutes;
+            for (index, (key, _)) in request.routes.iter().enumerate() {
+                if index.is_multiple_of(64) {
+                    control.checkpoint()?;
                 }
-            } else {
-                YamlInsertOrder::NoRoutes
-            };
+                if fields.contains_key(*key) {
+                    order = match builder.frontmatter_insert_order(request, control)? {
+                        Some(json) => YamlInsertOrder::Captured(json.into()),
+                        None => YamlInsertOrder::ExceededBudget,
+                    };
+                    break;
+                }
+            }
             *insert_order.output = Some(order);
         }
         if let Some(order) = capture.root_key_order {
@@ -806,20 +805,23 @@ impl YamlValueBuilder {
             if index.is_multiple_of(64) {
                 control.checkpoint()?;
             }
-            let Some(key) = allowed_keys
-                .iter()
-                .copied()
-                .find(|allowed| *allowed == key.as_str())
-            else {
-                continue;
-            };
             if matches!(
                 self.arena[node.0],
                 YamlNode::Sequence(_) | YamlNode::Mapping(_)
             ) {
-                // JSON text is externally visible for these fields. Use the already validated
-                // YAML arena to retain source order through alias expansion and nested objects.
-                text.insert(key, write_ordered_yaml_json(&self.arena, *node, control)?);
+                for (index, &allowed) in allowed_keys.iter().enumerate() {
+                    if index != 0 && index.is_multiple_of(64) {
+                        control.checkpoint()?;
+                    }
+                    if allowed == key.as_str() {
+                        // Preserve authored order through aliases and nested objects.
+                        text.insert(
+                            allowed,
+                            write_ordered_yaml_json(&self.arena, *node, control)?,
+                        );
+                        break;
+                    }
+                }
             }
         }
         Ok(text)
@@ -828,44 +830,50 @@ impl YamlValueBuilder {
     #[cfg(feature = "yaml-editor")]
     fn frontmatter_insert_order(
         &self,
-        routes: &[(&'static str, &'static str)],
-        max_bytes: usize,
-        max_depth: usize,
+        request: YamlInsertOrderRequest<'_>,
         control: &OperationControl,
     ) -> OperationControlResult<Option<String>> {
         let Some(YamlNode::Mapping(entries)) = self.root.map(|root| &self.arena[root.0]) else {
             return Ok(None);
         };
-        let mut selected = BTreeMap::new();
+        let mut roots = BTreeMap::new();
         for (index, (key, node)) in entries.iter().enumerate() {
             if index.is_multiple_of(64) {
                 control.checkpoint()?;
             }
-            if routes.iter().any(|(source, _)| *source == key.as_str()) {
-                selected.insert(key.as_str(), *node);
-            }
+            roots.insert(key.as_str(), *node);
         }
-        let mut projected: Vec<(String, NodeId)> = Vec::new();
-        for &(source, namespace) in routes {
-            let Some(&node) = selected.get(source) else {
+        let mut projected: Vec<(&str, NodeId)> = Vec::new();
+        let mut projected_indices: BTreeMap<&str, usize> = BTreeMap::new();
+        let mut minimum_bytes = 2usize;
+        for (index, &(source, namespace)) in request.routes.iter().enumerate() {
+            if index.is_multiple_of(64) {
+                control.checkpoint()?;
+            }
+            let Some(&node) = roots.get(source) else {
                 continue;
             };
-            if let Some((_, previous)) = projected
-                .iter_mut()
-                .find(|(key, _)| key.as_str() == namespace)
-            {
-                *previous = node;
+            if let Some(&previous) = projected_indices.get(namespace) {
+                projected[previous].1 = node;
             } else {
-                projected.push((namespace.to_owned(), node));
+                // Count two key quotes, a colon, the shortest value, and any comma.
+                minimum_bytes = minimum_bytes
+                    .saturating_add(namespace.len())
+                    .saturating_add(4 + usize::from(!projected.is_empty()));
+                if minimum_bytes > request.max_bytes {
+                    return Ok(None);
+                }
+                projected_indices.insert(namespace, projected.len());
+                projected.push((namespace, node));
             }
         }
         let mut json = String::from("{");
         let written = append_ordered_yaml_json::<true>(
             &self.arena,
-            JsonTask::Mapping(projected.iter(), false),
+            JsonTask::Mapping(JsonMappingEntries::Projected(projected.iter()), false),
             &mut json,
-            max_bytes,
-            max_depth,
+            request.max_bytes,
+            request.max_depth,
             control,
         )?;
         Ok(written.then_some(json))
@@ -906,7 +914,25 @@ enum YamlNode {
 enum JsonTask<'a> {
     Visit(NodeId),
     Sequence(std::slice::Iter<'a, NodeId>, bool),
-    Mapping(std::slice::Iter<'a, (String, NodeId)>, bool),
+    Mapping(JsonMappingEntries<'a>, bool),
+}
+
+enum JsonMappingEntries<'a> {
+    Source(std::slice::Iter<'a, (String, NodeId)>),
+    #[cfg(feature = "yaml-editor")]
+    Projected(std::slice::Iter<'a, (&'a str, NodeId)>),
+}
+
+impl<'a> Iterator for JsonMappingEntries<'a> {
+    type Item = (&'a str, NodeId);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::Source(entries) => entries.next().map(|(key, node)| (key.as_str(), *node)),
+            #[cfg(feature = "yaml-editor")]
+            Self::Projected(entries) => entries.next().copied(),
+        }
+    }
 }
 
 fn write_ordered_yaml_json(
@@ -966,7 +992,10 @@ fn append_ordered_yaml_json<'a, const BOUNDED: bool>(
                 }
                 YamlNode::Mapping(entries) => {
                     output.push('{');
-                    tasks.push(JsonTask::Mapping(entries.iter(), false));
+                    tasks.push(JsonTask::Mapping(
+                        JsonMappingEntries::Source(entries.iter()),
+                        false,
+                    ));
                 }
             },
             JsonTask::Sequence(mut items, comma) => {
@@ -990,7 +1019,7 @@ fn append_ordered_yaml_json<'a, const BOUNDED: bool>(
                     }
                     output.push(':');
                     tasks.push(JsonTask::Mapping(entries, true));
-                    tasks.push(JsonTask::Visit(*value));
+                    tasks.push(JsonTask::Visit(value));
                 } else {
                     output.push('}');
                 }
@@ -1601,6 +1630,42 @@ mod tests {
         );
         assert_eq!(parse("config: null\n", expected.len()).1, None);
         assert_eq!(parse("{legacy: 1}\n", expected.len()).1, None);
+    }
+
+    #[cfg(feature = "yaml-editor")]
+    #[test]
+    fn yaml_capture_checks_cancellation_while_skipping_selector_entries() {
+        let mut builder = YamlValueBuilder::new(16, 4096, false);
+        builder.arena.push(YamlNode::Sequence(Vec::new()));
+        builder
+            .arena
+            .push(YamlNode::Mapping(vec![("present".into(), NodeId(0))]));
+        builder.root = Some(NodeId(1));
+
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(1);
+        assert!(
+            builder
+                .capture_collection_text(&["absent"; 129], &control)
+                .is_err()
+        );
+
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(3);
+        let routes = [("absent", "unused"); 129];
+        assert!(
+            builder
+                .frontmatter_insert_order(
+                    YamlInsertOrderRequest {
+                        routes: &routes,
+                        insert_key: "config",
+                        max_bytes: 4096,
+                        max_depth: 16,
+                    },
+                    &control,
+                )
+                .is_err()
+        );
     }
 
     #[test]

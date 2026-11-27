@@ -19,6 +19,15 @@ struct SourceConfigPathNode {
     depth: usize,
 }
 
+impl Drop for SourceConfigPathNode {
+    fn drop(&mut self) {
+        let mut parent = self.parent.take();
+        while let Some(mut node) = parent.and_then(Arc::into_inner) {
+            parent = node.parent.take();
+        }
+    }
+}
+
 impl SourceConfigPath {
     pub const fn root() -> Self {
         Self {
@@ -130,3 +139,27 @@ impl PartialEq for SourceConfigPath {
 }
 
 impl Eq for SourceConfigPath {}
+
+#[cfg(test)]
+mod tests {
+    use super::SourceConfigPath;
+
+    #[test]
+    fn deep_shared_paths_drop_on_a_small_stack() {
+        std::thread::Builder::new()
+            .stack_size(128 * 1024)
+            .spawn(|| {
+                let mut path = SourceConfigPath::root().child("root".into());
+                for _ in 0..10_000 {
+                    path = path.child("child".into());
+                }
+                let sibling = path.child("sibling".into());
+                drop(path);
+                assert_eq!(sibling.first(), Some("root"));
+                drop(sibling);
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+}
