@@ -7,7 +7,7 @@ use euclid::{
 use merman_model::{OperationPhase, families::git_graph::GitGraphDiagramModel};
 use merman_render_core::{
     Bounds, Error, Result,
-    config::{config_f64, json_bool, value_at},
+    config::{ConfigLookup, config_f64, json_bool, value_at},
     number_format::canonical_number as fmt,
     resources::OperationWorkMeter,
     root_svg,
@@ -592,7 +592,7 @@ pub fn render_gitgraph_diagram_svg_model(
     layout: &GitGraphDiagramLayout,
     model: &GitGraphDiagramModel,
     typography_theme: &GitGraphTypographyThemePlan,
-    effective_config: &serde_json::Value,
+    effective_config: &dyn ConfigLookup,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     context: &GitGraphSvgContext<'_>,
@@ -622,7 +622,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     acc_title: Option<&str>,
     acc_descr: Option<&str>,
     typography_theme: &GitGraphTypographyThemePlan,
-    effective_config: &serde_json::Value,
+    effective_config: &dyn ConfigLookup,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     context: &GitGraphSvgContext<'_>,

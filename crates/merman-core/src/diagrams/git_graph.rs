@@ -269,8 +269,7 @@ impl GitGraphDb {
             .unwrap_or("main")
             .to_string();
         let main_order = config
-            .as_value()
-            .pointer("/gitGraph/mainBranchOrder")
+            .get_path(&["gitGraph", "mainBranchOrder"])
             .and_then(serde_json::Value::as_f64)
             .unwrap_or(0.0);
         self.curr_branch = main.clone();
@@ -663,16 +662,10 @@ impl GitGraphDb {
     }
 }
 
-fn config_i64(config: &MermaidConfig, dotted_path: &str) -> Option<i64> {
-    let mut cur = config.as_value();
-    for seg in dotted_path.split('.') {
-        cur = cur.as_object()?.get(seg)?;
-    }
-    cur.as_i64()
-}
-
 fn seeded_gitgraph_prng(config: &MermaidConfig) -> Option<XorShift64Star> {
-    config_i64(config, "gitGraph.seed")
+    config
+        .get_path(&["gitGraph", "seed"])
+        .and_then(serde_json::Value::as_i64)
         .and_then(|v| u64::try_from(v).ok())
         .filter(|v| *v != 0)
         .map(XorShift64Star::new)

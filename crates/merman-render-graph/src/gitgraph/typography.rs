@@ -76,8 +76,7 @@ impl GitGraphRoleFontSize {
 
     fn from_config(config: &PresentationConfig, key: &str, base_font_size_px: f64) -> Self {
         Self::resolve(
-            config_string(config.as_value(), &["themeVariables", key])
-                .unwrap_or_else(|| "10px".to_owned()),
+            config_string(config, &["themeVariables", key]).unwrap_or_else(|| "10px".to_owned()),
             base_font_size_px,
         )
     }
@@ -140,7 +139,7 @@ pub struct GitGraphTypographyThemePlan {
 }
 
 fn configured_base_font_size(config: &PresentationConfig) -> Option<f64> {
-    config_f64_css_absolute_px(config.as_value(), &["themeVariables", "fontSize"])
+    config_f64_css_absolute_px(config, &["themeVariables", "fontSize"])
         .filter(|size| size.is_finite() && *size >= 0.0)
 }
 
@@ -191,11 +190,8 @@ impl GitGraphTypographyThemePlan {
         let tag_label_font_size =
             GitGraphRoleFontSize::from_config(effective_config, "tagLabelFontSize", font_size_px);
 
-        let css_binding = GitGraphCssBinding::resolve(
-            effective_config.as_value(),
-            &font_family_css,
-            &font_size_css,
-        );
+        let css_binding =
+            GitGraphCssBinding::resolve(effective_config, &font_family_css, &font_size_css);
         // Mermaid attaches .commit-label before getBBox(); branch prelayout and tags
         // use different classes and must keep their inherited measurement weight.
         let commit_label_font_weight = GitGraphRoleFontWeight::resolve(
