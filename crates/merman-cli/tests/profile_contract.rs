@@ -241,7 +241,8 @@ fn compiled_capabilities_for_auto_detection() -> Vec<&'static str> {
                 feature = "diagram-swimlane",
                 feature = "diagram-agentflow",
                 feature = "diagram-er",
-                feature = "diagram-mindmap"
+                feature = "diagram-mindmap",
+                feature = "diagram-requirement"
             )
         ))]
         "layout-grid",
@@ -250,7 +251,8 @@ fn compiled_capabilities_for_auto_detection() -> Vec<&'static str> {
             any(
                 feature = "diagram-flowchart",
                 feature = "diagram-swimlane",
-                feature = "diagram-agentflow"
+                feature = "diagram-agentflow",
+                feature = "diagram-mindmap"
             )
         ))]
         "layout-layered",
@@ -1128,6 +1130,12 @@ fn workflow_grid() {
                 "mindmap\n  root((Start))\n    Done\n",
                 "MindmapDiagram",
             ),
+            #[cfg(feature = "diagram-requirement")]
+            (
+                "requirement",
+                "requirementDiagram\n  requirement checkout {\n    id: 1\n  }\n",
+                "RequirementDiagram",
+            ),
         ],
     );
     #[cfg(not(feature = "layout-grid"))]
@@ -1136,7 +1144,17 @@ fn workflow_grid() {
 
 fn workflow_layered() {
     #[cfg(feature = "layout-layered")]
-    workflow_mermaid_layout("layered", &[]);
+    workflow_mermaid_layout(
+        "layered",
+        &[
+            #[cfg(feature = "diagram-mindmap")]
+            (
+                "mindmap",
+                "mindmap\n  root((Start))\n    Done\n",
+                "MindmapDiagram",
+            ),
+        ],
+    );
     #[cfg(not(feature = "layout-layered"))]
     panic!("Layered matrix case lacks layout-layered");
 }

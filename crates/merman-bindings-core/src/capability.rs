@@ -9,8 +9,64 @@ use crate::key_set::KeySet;
 
 include!("generated/capability_surface.rs");
 
+/// Adds the Mermaid layout engines selected by the artifact owner's Cargo features.
+///
+/// Expand this at the owner so dependency feature unification cannot supply either gate.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! mermaid_layout_capabilities {
+    ($($(#[$attribute:meta])* $capability:path),* $(,)?) => {
+        &[
+            $($(#[$attribute])* $capability,)*
+            #[cfg(all(
+                feature = "layout-grid",
+                any(
+                    feature = "diagram-flowchart",
+                    feature = "diagram-agentflow",
+                    feature = "diagram-swimlane",
+                    feature = "diagram-er",
+                    feature = "diagram-mindmap",
+                    feature = "diagram-requirement"
+                )
+            ))]
+            $crate::CapabilityKey::LayoutGrid,
+            #[cfg(all(
+                feature = "layout-layered",
+                any(
+                    feature = "diagram-flowchart",
+                    feature = "diagram-agentflow",
+                    feature = "diagram-swimlane",
+                    feature = "diagram-mindmap"
+                )
+            ))]
+            $crate::CapabilityKey::LayoutLayered,
+        ]
+    };
+}
+
+#[cfg(feature = "svg")]
+const fn compiled_mermaid_layout_capability_bits() -> u64 {
+    let selected: &[CapabilityKey] = crate::mermaid_layout_capabilities![];
+    let mut bits = 0;
+    let mut index = 0;
+    while index < selected.len() {
+        let capability = selected[index];
+        let available = match capability {
+            CapabilityKey::LayoutGrid => merman::svg::layout_grid_available(),
+            CapabilityKey::LayoutLayered => merman::svg::layout_layered_available(),
+            _ => false,
+        };
+        if available {
+            bits |= capability.compact_bit();
+        }
+        index += 1;
+    }
+    bits
+}
+
 #[cfg(feature = "svg")]
 const COMPILED_SVG_CAPABILITY_BITS: u64 = CapabilityKey::Svg.compact_bit()
+    | compiled_mermaid_layout_capability_bits()
     | if merman::svg::layout_cytoscape_available() {
         CapabilityKey::LayoutCytoscape.compact_bit()
     } else {

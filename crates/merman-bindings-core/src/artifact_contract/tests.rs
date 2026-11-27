@@ -850,6 +850,112 @@ fn compiled_dagre_requires_an_artifact_declaration() {
     }
 }
 
+#[cfg(any(feature = "layout-grid", feature = "layout-layered"))]
+#[test]
+fn mermaid_layouts_require_artifact_admission() {
+    const SVG_ARTIFACT: ArtifactContractSpec =
+        ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
+            .with_operations(&[
+                OperationKey::LayoutJson,
+                OperationKey::Svg,
+                OperationKey::SvgPlanJson,
+            ]);
+    const LAYOUTS: &[CapabilityKey] = crate::mermaid_layout_capabilities![];
+    const OMITTED: ValidatedArtifactContract = SVG_ARTIFACT.materialize();
+    const SELECTED: ValidatedArtifactContract = SVG_ARTIFACT
+        .with_supplemental_capabilities(LAYOUTS)
+        .materialize();
+    const SHARED_DIAGRAMS: &[(&str, &str, &[u8])] = &[
+        #[cfg(feature = "diagram-flowchart")]
+        (
+            "flowchart-v2",
+            "FlowchartV2",
+            b"flowchart LR\nA[Start] -->|Approved| B[Done]\n",
+        ),
+        #[cfg(feature = "diagram-agentflow")]
+        (
+            "agentflow",
+            "AgentflowDiagram",
+            b"agentflow LR\nA[Start] -->|Approved| B[Done]\n",
+        ),
+        #[cfg(feature = "diagram-swimlane")]
+        (
+            "swimlane",
+            "FlowchartV2",
+            b"swimlane-beta LR\nA[Start] -->|Approved| B[Done]\n",
+        ),
+        #[cfg(feature = "diagram-mindmap")]
+        (
+            "mindmap",
+            "MindmapDiagram",
+            b"mindmap\n  root((Start))\n    Done\n",
+        ),
+    ];
+    const GRID_ONLY_DIAGRAMS: &[(&str, &str, &[u8])] = &[
+        #[cfg(feature = "diagram-er")]
+        (
+            "er",
+            "ErDiagram",
+            b"erDiagram\n  CUSTOMER ||--o{ ORDER : places\n",
+        ),
+        #[cfg(feature = "diagram-requirement")]
+        (
+            "requirement",
+            "RequirementDiagram",
+            b"requirementDiagram\n  requirement checkout {\n    id: 1\n  }\n",
+        ),
+    ];
+
+    for &capability in LAYOUTS {
+        let id = capability.id();
+        let backend = id.strip_prefix("layout-").unwrap();
+        let options = format!(r#"{{"site_config":{{"layout":"{backend}"}}}}"#);
+        let omitted = OMITTED.create_engine(options.as_bytes()).unwrap();
+        let selected = SELECTED.create_engine(options.as_bytes()).unwrap();
+        assert!(
+            DEFAULT_ARTIFACT_SNAPSHOT
+                .runtime_capabilities()
+                .has_capability(id)
+        );
+        assert!(!OMITTED.runtime_capabilities().has_capability(id));
+
+        let grid_diagrams = if capability == CapabilityKey::LayoutGrid {
+            GRID_ONLY_DIAGRAMS
+        } else {
+            &[]
+        };
+        for &(diagram_type, variant, source) in SHARED_DIAGRAMS.iter().chain(grid_diagrams) {
+            for (engine, ready) in [(&omitted, false), (&selected, true)] {
+                let plan: serde_json::Value =
+                    serde_json::from_slice(&engine.svg_plan_json(source).unwrap()).unwrap();
+                assert_eq!(plan["diagram_type"], diagram_type);
+                assert_eq!(plan["required_capability_ids"], serde_json::json!([id]));
+                let missing = if ready {
+                    serde_json::json!([])
+                } else {
+                    serde_json::json!([id])
+                };
+                assert_eq!(plan["missing_capability_ids"], missing);
+                assert_eq!(plan["ready"], ready);
+            }
+            for error in [
+                omitted.render_svg(source).unwrap_err(),
+                omitted.layout_json(source).unwrap_err(),
+            ] {
+                assert_eq!(error.status(), crate::BindingStatus::UnsupportedOperation);
+                assert_eq!(error.kind(), crate::BindingErrorKind::MissingCapability);
+                assert_eq!(error.capability_id(), Some(id));
+            }
+            let geometry: serde_json::Value =
+                serde_json::from_slice(&selected.layout_json(source).unwrap()).unwrap();
+            assert_eq!(geometry["meta"]["diagram_type"], diagram_type);
+            assert_eq!(geometry["meta"]["effective_config"]["layout"], backend);
+            assert!(geometry["layout"][variant].is_object());
+            assert!(selected.render_svg(source).unwrap().starts_with(b"<svg"));
+        }
+    }
+}
+
 #[cfg(all(feature = "layout-dagre", feature = "diagram-flowchart"))]
 #[test]
 fn resource_free_font_stack_remains_available_without_embedded_fonts() {

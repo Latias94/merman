@@ -2,7 +2,7 @@
 
 # Capability Surface v1
 
-Semantic digest: `sha256:e088aabad0eef6435f1c4ad1b4c0a4f7528620a55b4a931bb7b6ce9f44c77026`
+Semantic digest: `sha256:2a88bd488f79037eb314b77ba637357e4574576fe70c49174cdf2fe9b1ff5e72`
 
 ## Public Leaves
 
@@ -17,8 +17,8 @@ Semantic digest: `sha256:e088aabad0eef6435f1c4ad1b4c0a4f7528620a55b4a931bb7b6ce9
 | `layout-cytoscape` | `Engine` | `native`, `web`, `typst` | `svg` | Enable Mermaid Cytoscape-backed layout behavior. |
 | `layout-dagre` | `Engine` | `native`, `web`, `typst` | `svg` | Enable Mermaid Dagre-backed SVG graph layout. |
 | `layout-elk` | `Engine` | `native`, `web`, `typst` | `svg` | Enable Mermaid ELK-backed layout behavior. |
-| `layout-grid` | `Engine` | `native`, `web` | `svg` | Select Mermaid Grid for Flowchart, Swimlane, Agentflow, ER, and Mindmap SVG layout. |
-| `layout-layered` | `Engine` | `native`, `web` | `svg` | Select Mermaid Layered for Flowchart, Swimlane, and Agentflow SVG layout. |
+| `layout-grid` | `Engine` | `native`, `web` | `svg` | Select Mermaid Grid for Flowchart, Swimlane, Agentflow, ER, Mindmap, and Requirement SVG layout. |
+| `layout-layered` | `Engine` | `native`, `web` | `svg` | Select Mermaid Layered for Flowchart, Swimlane, Agentflow, and Mindmap SVG layout. |
 | `layout-shoal` | `Engine` | `native`, `web` | `svg` | Select the experimental Shoal layout for Flowchart, Agentflow, Architecture, C4, Class, State, ER, Requirement, Swimlane, and Usecase diagrams, or route Block edges on the existing grid. |
 | `markdown` | `Tool` | `native` | none | Compile CLI Markdown batch conversion. |
 | `math` | `Engine` | `native`, `web` | `svg` | Render Mermaid math labels with the selected math engine. |

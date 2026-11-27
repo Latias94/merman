@@ -13,7 +13,8 @@ fn grid_availability_requires_the_facade_feature_and_a_supported_family() {
                 feature = "diagram-swimlane",
                 feature = "diagram-agentflow",
                 feature = "diagram-er",
-                feature = "diagram-mindmap"
+                feature = "diagram-mindmap",
+                feature = "diagram-requirement"
             )
         ))
     );
@@ -24,7 +25,8 @@ fn grid_availability_requires_the_facade_feature_and_a_supported_family() {
     feature = "diagram-swimlane",
     feature = "diagram-agentflow",
     feature = "diagram-er",
-    feature = "diagram-mindmap"
+    feature = "diagram-mindmap",
+    feature = "diagram-requirement"
 ))]
 mod families {
     use super::layout_grid_available;
@@ -63,6 +65,11 @@ mod families {
         (
             DiagramFamilyId::MINDMAP,
             "mindmap\n  root((Start))\n    Done\n",
+        ),
+        #[cfg(feature = "diagram-requirement")]
+        (
+            DiagramFamilyId::REQUIREMENT,
+            "requirementDiagram\n  requirement checkout {\n    id: 1\n  }\n",
         ),
     ];
 

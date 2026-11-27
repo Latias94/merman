@@ -486,7 +486,8 @@ pub(crate) const fn layout_grid_available() -> bool {
             feature = "diagram-swimlane",
             feature = "diagram-agentflow",
             feature = "diagram-er",
-            feature = "diagram-mindmap"
+            feature = "diagram-mindmap",
+            feature = "diagram-requirement"
         )
     )) && merman::svg::layout_grid_available()
 }
@@ -498,7 +499,8 @@ pub(crate) const fn layout_layered_available() -> bool {
         any(
             feature = "diagram-flowchart",
             feature = "diagram-swimlane",
-            feature = "diagram-agentflow"
+            feature = "diagram-agentflow",
+            feature = "diagram-mindmap"
         )
     )) && merman::svg::layout_layered_available()
 }
