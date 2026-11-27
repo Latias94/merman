@@ -46,6 +46,11 @@ pub(in crate::svg) fn resolve_flowchart_edge_label_position(
         x: label.x + ctx.tx - origin_x,
         y: label.y + ctx.ty - origin_y,
     };
+    #[cfg(feature = "layout-grid")]
+    if ctx.layout.route_contract.grid_paint().is_some() {
+        // Grid positions the measured labelRect helper during layout. Shaft paint has no say.
+        return layout_anchor;
+    }
     if let Some(geom) = edge_cache
         .get(&key)
         .filter(|entry| {
@@ -89,7 +94,7 @@ pub(in crate::svg) fn resolve_flowchart_edge_label_position(
     layout_anchor
 }
 
-fn render_native_label_background(
+pub(super) fn render_native_label_background(
     out: &mut impl crate::svg::SvgOutput,
     ctx: &FlowchartRenderCtx<'_>,
     hierarchy: &FlowchartHierarchyPlan<'_>,
@@ -168,7 +173,7 @@ impl ContainerLabelLayers {
                 (body.union(title), Some(title))
             } else {
                 if !ctx.subgraph_has_children(id)
-                    && !super::flowchart_elk_renders_empty_subgraph_as_cluster(ctx)
+                    && !super::flowchart_renders_empty_subgraph_as_cluster(ctx)
                 {
                     continue;
                 }
@@ -405,6 +410,8 @@ mod tests {
             data_points: points.clone(),
             pre_hop_dash_mask_length: None,
             line_hop_applied: false,
+            #[cfg(feature = "layout-grid")]
+            grid_hopped_d: None,
             original_label_path_points: points.clone(),
             label_path_points: points,
             label_anchor: None,

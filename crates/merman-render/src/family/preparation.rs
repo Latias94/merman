@@ -42,10 +42,12 @@ fn prepare_flowchart_artifact<'parsed, L>(
     let native = execution.native_family_theme();
     let work_meter = execution.work_meter();
     let class_defs = crate::flowchart::FlowchartClassDefinitions::new(&semantic.class_defs);
+    let grid = execution.layout_backend() == GraphLayoutBackend::Grid;
+    let label_rect = swimlane || grid;
     let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_with_class_definitions(
         &semantic,
         effective_config,
-        swimlane,
+        label_rect,
         &class_defs,
         work_meter.as_ref(),
     )?;
@@ -112,8 +114,12 @@ fn prepare_flowchart_artifact<'parsed, L>(
     if let Some(native) = &prepared_theme.native {
         render_config.apply_native(native, &semantic, effective_config, uses_elk);
     }
-    edge_style_plan
-        .bind_terminal_typography(&render_config.text_style, node_layout.is_swimlane())?;
+    let terminal_base = if grid && render_config.node_html_labels {
+        &render_config.html_label_text_style
+    } else {
+        &render_config.text_style
+    };
+    edge_style_plan.bind_terminal_typography(terminal_base, label_rect)?;
     let prepare_node_paint = preparation != FamilyPreparation::Layout;
     let prepared_nodes = crate::svg::FlowchartPreparedNodes::prepare(
         &semantic,
@@ -357,7 +363,34 @@ fn prepare_flowchart_family<'parsed>(
     execution: &LayoutExecution<'_>,
     preparation: FamilyPreparation,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
+    let prepare_flow_layout = |render_context| {
+        prepare_flowchart_artifact(
+            std::borrow::Cow::Borrowed(model),
+            render_context,
+            execution,
+            &meta.effective_config,
+            false,
+            preparation,
+            crate::model::FlowchartLayout::node_layout_view,
+            |model, render_context, class_defs, svg_label_sidecar, edge_style_plan| {
+                crate::layout_flowchart_typed_with_render_labels_by_engine(
+                    model,
+                    render_context,
+                    class_defs,
+                    &meta.effective_config,
+                    execution,
+                    svg_label_sidecar,
+                    edge_style_plan,
+                    preparation != FamilyPreparation::Layout,
+                )
+            },
+        )
+    };
     match execution.family_id() {
+        #[cfg(all(feature = "diagram-swimlane", feature = "layout-grid"))]
+        DiagramFamilyId::SWIMLANE if execution.layout_backend() == GraphLayoutBackend::Grid => {
+            prepare_flow_layout(render_context).map(BuiltinFamilyArtifact::SwimlaneGrid)
+        }
         DiagramFamilyId::SWIMLANE => {
             Ok(BuiltinFamilyArtifact::Swimlane(prepare_flowchart_artifact(
                 std::borrow::Cow::Borrowed(model),
@@ -379,29 +412,9 @@ fn prepare_flowchart_family<'parsed>(
                 },
             )?))
         }
-        DiagramFamilyId::FLOWCHART => Ok(BuiltinFamilyArtifact::Flowchart(
-            prepare_flowchart_artifact(
-                std::borrow::Cow::Borrowed(model),
-                render_context,
-                execution,
-                &meta.effective_config,
-                false,
-                preparation,
-                crate::model::FlowchartLayout::node_layout_view,
-                |model, render_context, class_defs, svg_label_sidecar, edge_style_plan| {
-                    crate::layout_flowchart_typed_with_render_labels_by_engine(
-                        model,
-                        render_context,
-                        class_defs,
-                        &meta.effective_config,
-                        execution,
-                        svg_label_sidecar,
-                        edge_style_plan,
-                        preparation != FamilyPreparation::Layout,
-                    )
-                },
-            )?,
-        )),
+        DiagramFamilyId::FLOWCHART => {
+            prepare_flow_layout(render_context).map(BuiltinFamilyArtifact::Flowchart)
+        }
         planned_family => Err(Error::InvalidModel {
             message: format!(
                 "planned render family {planned_family} cannot consume a Flowchart model"

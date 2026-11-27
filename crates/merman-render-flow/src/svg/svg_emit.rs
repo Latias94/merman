@@ -173,6 +173,10 @@ pub fn render_parity(
             drop(_g_viewbox);
             let _g_render_svg = render_timing.section(&mut timings.render_svg);
 
+            let swimlane_styles = swimlane_layout.is_some();
+            #[cfg(feature = "layout-grid")]
+            let swimlane_styles = swimlane_styles
+                || diagram_type == "swimlane" && ctx.layout.route_contract.grid_paint().is_some();
             let document = document.write(
                 services.work_meter,
                 FlowchartStylesheetRequest {
@@ -186,7 +190,7 @@ pub fn render_parity(
                     font_family,
                     font_size,
                     class_defs: &model.class_defs,
-                    swimlane: swimlane_layout.is_some(),
+                    swimlane: swimlane_styles,
                     allow_deferred_palette: services.defer_palette_stylesheet,
                 },
                 |out| {

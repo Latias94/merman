@@ -8,6 +8,7 @@ use super::{
         FlowchartCompiledStyles, FlowchartEdgeSourceStyleBytes, FlowchartPreparedClassStyles,
         flowchart_compile_prepared_styles,
     },
+    first_label_rect_style,
 };
 use crate::{
     class_style::FlowchartClassDefinitions, projection::FlowchartEdgeKey,
@@ -73,7 +74,7 @@ struct PreparedEdgeLabelTypography {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum EdgeLabelTypographyPurpose {
     Ordinary,
-    SwimlaneLabelRect,
+    LabelRect,
 }
 
 impl PreparedEdgeLabelTypography {
@@ -219,7 +220,7 @@ struct PreparedEdgeStyles {
     artifact: Arc<FlowchartEdgeStyleArtifact>,
     path_sources: OnceCell<FlowchartEdgePathSourceFacets>,
     animation: FlowchartEdgeAnimationResolution,
-    swimlane_label: Option<Arc<FlowchartCompiledStyles>>,
+    label_rect: Option<Arc<FlowchartCompiledStyles>>,
     // The outer option records preparation. The inner option holds the numeric CSS width.
     stroke_width: Option<Option<f32>>,
 }
@@ -239,7 +240,7 @@ impl FlowchartEdgeStylePlan {
     pub fn prepare_with_class_definitions(
         model: &FlowchartModel,
         effective_config: &merman_model::presentation::PresentationConfig,
-        swimlane: bool,
+        label_rect: bool,
         class_defs: &FlowchartClassDefinitions<'_>,
         work_meter: &resources::OperationWorkMeter,
     ) -> Result<Self> {
@@ -252,7 +253,7 @@ impl FlowchartEdgeStylePlan {
             &model.edges,
             default_edge_style,
             config::mermaid_config_diagram_look(effective_config).is_hand_drawn(),
-            swimlane,
+            label_rect,
             work_meter,
         )?;
         if !model.edges.is_empty() {
@@ -267,7 +268,7 @@ impl FlowchartEdgeStylePlan {
         edges: &[FlowEdge],
         default_edge_style: &[String],
         hand_drawn: bool,
-        swimlane: bool,
+        label_rect: bool,
         work_meter: &resources::OperationWorkMeter,
     ) -> Result<Self> {
         let class_styles = FlowchartPreparedClassStyles::prepare(
@@ -289,7 +290,7 @@ impl FlowchartEdgeStylePlan {
         > = FxHashMap::default();
 
         let empty_class_styles = FlowchartPreparedClassStyles::default();
-        let shared_swimlane_label = swimlane
+        let default_label_rect = label_rect
             .then(|| default_edge_style.first())
             .flatten()
             .map(|style| {
@@ -302,9 +303,9 @@ impl FlowchartEdgeStylePlan {
                 )
             })
             .transpose()?
-            .map(FlowchartCompiledStyles::into_swimlane_edge_label_artifact)
+            .map(FlowchartCompiledStyles::into_label_rect_artifact)
             .map(Arc::new);
-        let mut shared_swimlane_labels: FxHashMap<&str, Arc<FlowchartCompiledStyles>> =
+        let mut shared_label_rects: FxHashMap<&str, Arc<FlowchartCompiledStyles>> =
             FxHashMap::default();
 
         for edge in edges {
@@ -342,12 +343,12 @@ impl FlowchartEdgeStylePlan {
                 shared_edge_artifacts.insert(cache_key, Arc::clone(&artifact));
                 artifact
             };
-            let swimlane_label = if !swimlane {
+            let prepared_label_rect = if !label_rect {
                 None
-            } else if let Some(shared) = &shared_swimlane_label {
+            } else if let Some(shared) = &default_label_rect {
                 Some(Arc::clone(shared))
-            } else if let Some(style) = edge.style.first() {
-                if let Some(shared) = shared_swimlane_labels.get(style.as_str()) {
+            } else if let Some(style) = first_label_rect_style(default_edge_style, &edge.style) {
+                if let Some(shared) = shared_label_rects.get(style.as_str()) {
                     Some(Arc::clone(shared))
                 } else {
                     let compiled = flowchart_compile_prepared_styles(
@@ -357,9 +358,9 @@ impl FlowchartEdgeStylePlan {
                         &[],
                         Some(work_meter),
                     )?
-                    .into_swimlane_edge_label_artifact();
+                    .into_label_rect_artifact();
                     let compiled = Arc::new(compiled);
-                    shared_swimlane_labels.insert(style.as_str(), Arc::clone(&compiled));
+                    shared_label_rects.insert(style.as_str(), Arc::clone(&compiled));
                     Some(compiled)
                 }
             } else {
@@ -367,8 +368,8 @@ impl FlowchartEdgeStylePlan {
             };
             let prepared = PreparedEdgeStyles {
                 has_label: edge.label.as_deref().is_some_and(|label| !label.is_empty()),
-                typography_purpose: if swimlane {
-                    EdgeLabelTypographyPurpose::SwimlaneLabelRect
+                typography_purpose: if label_rect {
+                    EdgeLabelTypographyPurpose::LabelRect
                 } else {
                     EdgeLabelTypographyPurpose::Ordinary
                 },
@@ -378,7 +379,7 @@ impl FlowchartEdgeStylePlan {
                 animation: FlowchartEdgeAnimationResolution::resolve(edge, &artifact.emission),
                 artifact,
                 path_sources: OnceCell::new(),
-                swimlane_label,
+                label_rect: prepared_label_rect,
             };
             #[cfg(test)]
             prepared_edges.insert(edge.id.clone(), prepared.clone());
@@ -570,12 +571,12 @@ impl FlowchartEdgeStylePlan {
         Ok(resolved)
     }
 
-    pub fn swimlane_edge_label_text_style_for<'a>(
+    pub(crate) fn label_rect_text_style_for<'a>(
         &'a self,
         key: FlowchartEdgeKey,
         base: &'a text::TextStyle,
     ) -> Result<FlowchartTextStyleResolution<'a>> {
-        let mut resolved = match self.occurrence(key)?.swimlane_label.as_deref() {
+        let mut resolved = match self.label_rect_for(key)? {
             Some(styles) => styles.effective_edge_label_text_style_with_provenance(base),
             None => FlowchartTextStyleResolution::borrowed(base),
         };
@@ -583,7 +584,7 @@ impl FlowchartEdgeStylePlan {
             key,
             base,
             resolved.as_ref(),
-            EdgeLabelTypographyPurpose::SwimlaneLabelRect,
+            EdgeLabelTypographyPurpose::LabelRect,
         )?;
         let prepared = self
             .occurrence(key)?
@@ -620,14 +621,14 @@ impl FlowchartEdgeStylePlan {
         Ok(())
     }
 
-    pub fn bind_terminal_typography(&self, base: &text::TextStyle, swimlane: bool) -> Result<()> {
+    pub fn bind_terminal_typography(&self, base: &text::TextStyle, label_rect: bool) -> Result<()> {
         for occurrence in &self.edge_occurrences {
             if !occurrence.has_label && occurrence.layout_typography.get().is_none() {
                 continue;
             }
             debug_assert_eq!(
-                occurrence.typography_purpose == EdgeLabelTypographyPurpose::SwimlaneLabelRect,
-                swimlane
+                occurrence.typography_purpose == EdgeLabelTypographyPurpose::LabelRect,
+                label_rect
             );
             if let Some(terminal) = occurrence.terminal_typography.get() {
                 debug_assert!(terminal.matches_base(base));
@@ -640,8 +641,8 @@ impl FlowchartEdgeStylePlan {
             {
                 Arc::clone(layout)
             } else {
-                let style = if swimlane {
-                    occurrence.swimlane_label.as_deref().map_or_else(
+                let style = if label_rect {
+                    occurrence.label_rect.as_deref().map_or_else(
                         || base.clone(),
                         |source| source.effective_edge_label_text_style(base).into_owned(),
                     )
@@ -700,11 +701,11 @@ impl FlowchartEdgeStylePlan {
         })
     }
 
-    pub fn swimlane_label_for(
+    pub(crate) fn label_rect_for(
         &self,
         key: FlowchartEdgeKey,
     ) -> Result<Option<&FlowchartCompiledStyles>> {
-        Ok(self.occurrence(key)?.swimlane_label.as_deref())
+        Ok(self.occurrence(key)?.label_rect.as_deref())
     }
 
     #[cfg(test)]
@@ -908,7 +909,7 @@ mod tests {
             ..Default::default()
         };
         let key = FlowchartEdgeKey::new(0);
-        let measured = plan.swimlane_edge_label_text_style_for(key, &base).unwrap();
+        let measured = plan.label_rect_text_style_for(key, &base).unwrap();
         assert_eq!(measured.as_ref().font_size, 30.0);
         plan.bind_terminal_typography(&base, true).unwrap();
         assert!(std::ptr::eq(
@@ -1240,15 +1241,12 @@ mod tests {
         assert!(Arc::ptr_eq(&first.artifact, &second.artifact));
         assert!(!Arc::ptr_eq(&first.artifact, &third.artifact));
         assert!(Arc::ptr_eq(
-            first.swimlane_label.as_ref().expect("first Swimlane label"),
-            second
-                .swimlane_label
-                .as_ref()
-                .expect("second Swimlane label"),
+            first.label_rect.as_ref().expect("first Swimlane label"),
+            second.label_rect.as_ref().expect("second Swimlane label"),
         ));
         assert!(Arc::ptr_eq(
-            first.swimlane_label.as_ref().expect("first Swimlane label"),
-            third.swimlane_label.as_ref().expect("third Swimlane label"),
+            first.label_rect.as_ref().expect("first Swimlane label"),
+            third.label_rect.as_ref().expect("third Swimlane label"),
         ));
 
         let projected = plan

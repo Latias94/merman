@@ -10,6 +10,7 @@ pub(crate) enum GraphLayoutBackend {
     Native,
     Dagre,
     Elk(ElkRootAlgorithm),
+    Grid,
     CoseBilkent,
     Shoal,
     Swimlane,
@@ -32,6 +33,7 @@ impl GraphLayoutBackend {
                 ElkRootAlgorithm::Rectpacking => "elk.rectpacking",
             },
             Self::CoseBilkent => "cytoscape",
+            Self::Grid => "grid",
             Self::Shoal => "shoal",
             Self::Swimlane => "swimlane",
             Self::TidyTree => "tidy-tree",
@@ -43,6 +45,7 @@ impl GraphLayoutBackend {
             Self::Native | Self::Swimlane | Self::TidyTree => None,
             Self::Dagre => Some(RenderCapability::LayoutDagre),
             Self::Elk(_) => Some(RenderCapability::LayoutElk),
+            Self::Grid => Some(RenderCapability::LayoutGrid),
             Self::CoseBilkent => Some(RenderCapability::LayoutCytoscape),
             Self::Shoal => Some(RenderCapability::LayoutShoal),
         }
@@ -186,6 +189,15 @@ pub(crate) fn resolve(
     use GraphLayoutBackend as Backend;
 
     let requested = requested_layout(config);
+    if requested == "grid"
+        && crate::layout_grid_available()
+        && matches!(
+            family,
+            DiagramFamilyId::FLOWCHART | DiagramFamilyId::AGENTFLOW | DiagramFamilyId::SWIMLANE
+        )
+    {
+        return Ok(Backend::Grid);
+    }
     if let Some(backend) = unsupported_mermaid_layout(family, requested) {
         return Err(Error::UnsupportedLayoutBackend {
             backend,
@@ -350,6 +362,21 @@ mod tests {
                 (DiagramFamilyId::SWIMLANE, "swimlane"),
                 (DiagramFamilyId::USECASE, "usecase"),
             ] {
+                if requested == "grid"
+                    && crate::layout_grid_available()
+                    && matches!(
+                        family,
+                        DiagramFamilyId::FLOWCHART
+                            | DiagramFamilyId::AGENTFLOW
+                            | DiagramFamilyId::SWIMLANE
+                    )
+                {
+                    assert_eq!(
+                        resolve(family, diagram_type, &config).unwrap(),
+                        Backend::Grid
+                    );
+                    continue;
+                }
                 assert!(matches!(
                     resolve(family, diagram_type, &config),
                     Err(Error::UnsupportedLayoutBackend { backend, diagram_type: actual })

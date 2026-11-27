@@ -355,6 +355,8 @@ pub(in crate::svg) fn finish_edge_route(
         data_points: points_for_data_points.clone(),
         pre_hop_dash_mask_length: None,
         line_hop_applied: false,
+        #[cfg(feature = "layout-grid")]
+        grid_hopped_d: None,
         original_label_path_points,
         label_path_points,
         label_anchor: label.map(|label| merman_render_core::LayoutPoint {

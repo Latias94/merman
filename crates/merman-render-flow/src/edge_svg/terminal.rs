@@ -101,6 +101,16 @@ impl FlowchartEdgeTerminal<'_> {
         geometry: FlowchartEdgeSvgGeometry<'_>,
         scratch: &mut FlowchartEdgeSvgScratch,
     ) -> Result<()> {
+        self.append_with_grid_hop(out, geometry, None, scratch)
+    }
+
+    pub(crate) fn append_with_grid_hop(
+        self,
+        out: &mut impl SvgOutput,
+        geometry: FlowchartEdgeSvgGeometry<'_>,
+        grid_hopped_d: Option<&str>,
+        scratch: &mut FlowchartEdgeSvgScratch,
+    ) -> Result<()> {
         let ctx = &self.context;
         let FlowchartRenderEdgeRef { key, edge } = self.edge_ref;
         let data_look = ctx.compatibility.look;
@@ -119,7 +129,9 @@ impl FlowchartEdgeTerminal<'_> {
         } else {
             None
         };
-        let d = geometry.emitted_d_for_label.unwrap_or(geometry.d);
+        let d = grid_hopped_d
+            .or(geometry.emitted_d_for_label)
+            .unwrap_or(geometry.d);
 
         scratch.class_attr.clear();
         write_flowchart_edge_class_attr(
@@ -159,7 +171,11 @@ impl FlowchartEdgeTerminal<'_> {
             repeat_inline,
             adaptive_ink: ctx.adaptive_ink,
             neo_edge_mask,
-            line_hop_applied: geometry.line_hop_applied,
+            line_hop_phase: if grid_hopped_d.is_some() {
+                Some(OperationPhase::Emit)
+            } else {
+                geometry.line_hop_applied.then_some(OperationPhase::Layout)
+            },
         };
         ctx.work_meter.checkpoint(OperationPhase::Emit)?;
         let rewritten_style = path.append_to(out, source_style_svg_bytes, ctx.work_meter)?;

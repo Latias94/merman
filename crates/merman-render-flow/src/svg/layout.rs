@@ -6,6 +6,11 @@ use merman_render_core::{
 };
 use rustc_hash::FxHashSet;
 
+#[cfg(feature = "layout-grid")]
+pub use merman_render_core::graph_layout::mermaid_grid::{
+    GridLineHops, GridPaint as FlowchartGridPaint,
+};
+
 use crate::projection::FlowchartEdgeOwners;
 
 #[cfg(feature = "canonical-edge-paint")]
@@ -29,11 +34,42 @@ pub enum FlowchartSvgRoute<'a> {
     DagreParity,
     ElkParity,
     Swimlane,
+    /// Original Grid points and label anchors, in materialized layout edges keyed by occurrence.
+    #[cfg(feature = "layout-grid")]
+    Grid(FlowchartGridPaint),
     CanonicalAxis(&'a AxisRoutes),
     Legacy,
 }
 
+/// The DOM structures selected by Flow's layout adapters.
+#[derive(Clone, Copy)]
+pub enum FlowchartLayoutDom {
+    Nested,
+    Elk,
+    #[cfg(feature = "layout-grid")]
+    Grid,
+}
+
+impl FlowchartLayoutDom {
+    pub const fn is_flat(self) -> bool {
+        !matches!(self, Self::Nested)
+    }
+
+    pub const fn is_elk(self) -> bool {
+        matches!(self, Self::Elk)
+    }
+}
+
 impl<'a> FlowchartSvgRoute<'a> {
+    pub const fn dom(self) -> FlowchartLayoutDom {
+        match self {
+            Self::ElkParity => FlowchartLayoutDom::Elk,
+            #[cfg(feature = "layout-grid")]
+            Self::Grid(_) => FlowchartLayoutDom::Grid,
+            _ => FlowchartLayoutDom::Nested,
+        }
+    }
+
     pub const fn is_canonical_axis(self) -> bool {
         matches!(self, Self::CanonicalAxis(_))
     }
@@ -42,7 +78,23 @@ impl<'a> FlowchartSvgRoute<'a> {
         matches!(self, Self::ElkParity)
     }
 
+    /// Identifies Grid's materialized edges and returns their shared paint settings.
+    /// Their `LayoutEdge::label` positions and sizes belong to the measured label helpers.
+    #[cfg(feature = "layout-grid")]
+    pub const fn grid_paint(self) -> Option<FlowchartGridPaint> {
+        match self {
+            Self::Grid(settings) => Some(settings),
+            _ => None,
+        }
+    }
+
     pub const fn uses_projected_edges(self) -> bool {
+        // Grid, like the other projected providers, retains entire semantic edges in source
+        // order. The storage for those edges is still materialized.
+        #[cfg(feature = "layout-grid")]
+        if self.grid_paint().is_some() {
+            return true;
+        }
         self.is_elk_parity() || self.is_canonical_axis()
     }
 

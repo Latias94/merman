@@ -58,6 +58,8 @@ fn svg_layout(layout: &FlowchartLayout) -> FlowchartSvgLayout<'_> {
         RouteContract::DagreParity => FlowchartSvgRoute::DagreParity,
         #[cfg(feature = "layout-elk")]
         RouteContract::ElkParity => FlowchartSvgRoute::ElkParity,
+        #[cfg(feature = "layout-grid")]
+        RouteContract::Grid(settings) => FlowchartSvgRoute::Grid(*settings),
         RouteContract::Swimlane => FlowchartSvgRoute::Swimlane,
         #[cfg(any(feature = "layout-shoal", test))]
         RouteContract::CanonicalAxis(routes) => FlowchartSvgRoute::CanonicalAxis(routes),

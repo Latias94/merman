@@ -1,6 +1,6 @@
 //! Measured leaf shapes and edge labels shared by Flowchart graph adapters.
 
-#[cfg(feature = "layout-shoal")]
+#[cfg(any(feature = "layout-grid", feature = "layout-shoal"))]
 use merman_model::families::flowchart::FlowSubgraph;
 use merman_model::{
     families::flowchart::{FlowEdge, FlowNode},
@@ -15,9 +15,13 @@ use merman_render_core::{
         literal_label::FlowchartSvgWidthMode, measure_wrapped_markdown_with_inline_styles,
     },
 };
-#[cfg(feature = "layout-shoal")]
+#[cfg(any(feature = "layout-grid", feature = "layout-shoal"))]
 use merman_render_core::{config::config_diagram_look, text::TextMetrics};
 
+#[cfg(feature = "layout-shoal")]
+use crate::node_geometry::PreparedFlowchartNodeGeometry;
+#[cfg(any(feature = "layout-grid", feature = "layout-shoal"))]
+use crate::style::flowchart_effective_text_style_for_classes_with_provenance;
 use crate::{
     bpmn,
     class_style::{
@@ -37,11 +41,6 @@ use crate::{
         measure_flowchart_svg_label_for_layout_with_metrics_and_source_style,
         measure_flowchart_svg_label_for_layout_with_source_style,
     },
-};
-#[cfg(feature = "layout-shoal")]
-use crate::{
-    node_geometry::PreparedFlowchartNodeGeometry,
-    style::flowchart_effective_text_style_for_classes_with_provenance,
 };
 
 pub struct MeasuredLabel {
@@ -118,7 +117,6 @@ impl<'a> FlowchartMeasurement<'a> {
         index: usize,
         charge: impl FnMut(usize) -> Result<()>,
     ) -> Result<TextMetrics> {
-        let title = self.model.subgraph_title_for_render(index, group);
         let label_type = group.label_type.as_deref().unwrap_or("text");
         let collapsed = self.model.is_subgraph_collapsed(&group.id);
         let mode = if collapsed {
@@ -126,6 +124,43 @@ impl<'a> FlowchartMeasurement<'a> {
         } else {
             self.settings.cluster_wrap_mode
         };
+        let max_width_px = if collapsed {
+            Some(self.settings.wrapping_width)
+        } else {
+            (label_type == "markdown").then_some(self.settings.cluster_title_wrapping_width)
+        };
+        self.measure_subgraph_title(group, index, mode, max_width_px, charge)
+    }
+
+    #[cfg(feature = "layout-grid")]
+    pub(crate) fn grid_subgraph_title(
+        &self,
+        group: &FlowSubgraph,
+        index: usize,
+        charge: impl FnMut(usize) -> Result<()>,
+    ) -> Result<TextMetrics> {
+        // Grid uses createGraph's default measureGroupLabel and the normal labelHelper width.
+        self.measure_subgraph_title(
+            group,
+            index,
+            self.settings.node_wrap_mode,
+            Some(self.settings.wrapping_width),
+            charge,
+        )
+    }
+
+    #[cfg(any(feature = "layout-grid", feature = "layout-shoal"))]
+    fn measure_subgraph_title(
+        &self,
+        group: &FlowSubgraph,
+        index: usize,
+        mode: WrapMode,
+        max_width_px: Option<f64>,
+        charge: impl FnMut(usize) -> Result<()>,
+    ) -> Result<TextMetrics> {
+        let title = self.model.subgraph_title_for_render(index, group);
+        let label_type = group.label_type.as_deref().unwrap_or("text");
+        let collapsed = self.model.is_subgraph_collapsed(&group.id);
         let (classes, styles) = self.model.effective_subgraph_css(index, group);
         let structural = collapsed
             .then(|| {
@@ -158,11 +193,6 @@ impl<'a> FlowchartMeasurement<'a> {
         if let Some(structural) = structural {
             structural.apply_to_content(&mut style.style);
         }
-        let max_width_px = if collapsed {
-            Some(self.settings.wrapping_width)
-        } else {
-            (label_type == "markdown").then_some(self.settings.cluster_title_wrapping_width)
-        };
         let mut metrics = measure_flowchart_svg_label_for_layout_with_source_style(
             self.svg_label_sidecar,
             Some(FlowchartSvgLabelOwner::SubgraphTitle(index)),
@@ -191,6 +221,48 @@ impl<'a> FlowchartMeasurement<'a> {
             );
         }
         Ok(metrics)
+    }
+
+    #[cfg(feature = "layout-grid")]
+    pub(crate) fn grid_edge_label(
+        &self,
+        edge: &FlowEdge,
+        key: FlowchartEdgeKey,
+    ) -> Result<Option<MeasuredLabel>> {
+        let Some(label) = self
+            .model
+            .edge_label_for_render(key.semantic_index(), edge)
+            .filter(|label| !label.is_empty())
+        else {
+            return Ok(None);
+        };
+        // Grid turns an edge label into its own labelRect node. It inherits node label mode and
+        // wrapping width. The helper has no labelType field or ordinary edge-label padding.
+        let mode = self.settings.node_wrap_mode;
+        let style = self
+            .edge_style_plan
+            .label_rect_text_style_for(key, self.label_base_style(mode))?;
+        let metrics = measure_flowchart_svg_label_for_layout_with_source_style(
+            self.svg_label_sidecar,
+            Some(FlowchartSvgLabelOwner::Edge(key.semantic_index())),
+            Some(edge.id.as_str()),
+            FlowchartLabelMetricsRequest {
+                measurer: self.measurer,
+                raw_label: label,
+                label_type: "text",
+                style: style.as_ref(),
+                max_width_px: Some(self.settings.wrapping_width),
+                wrap_mode: mode,
+                config: self.effective_config,
+                math_renderer: self.math_renderer,
+            },
+            Some(&style),
+            FlowchartSvgWidthMode::Bbox,
+        );
+        Ok(Some(MeasuredLabel {
+            width: metrics.width.max(0.1),
+            height: metrics.height.max(0.1),
+        }))
     }
 
     pub fn node(

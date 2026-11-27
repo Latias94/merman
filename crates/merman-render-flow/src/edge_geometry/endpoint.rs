@@ -200,7 +200,44 @@ pub fn force_intersect_for_layout_shape(layout_shape: Option<&str>) -> bool {
     ) || is_polygon_layout_shape(layout_shape)
 }
 
-fn intersect_rect(node: &BoundaryNode, point: &LayoutPoint) -> LayoutPoint {
+#[derive(Clone, Copy)]
+pub(crate) struct EndpointQuery<'a> {
+    pub(crate) adjacent: &'a LayoutPoint,
+    pub(crate) line_origin: Option<&'a LayoutPoint>,
+    pub(crate) label_metrics: Option<TextMetrics>,
+}
+
+impl<'a> EndpointQuery<'a> {
+    const fn from_center(adjacent: &'a LayoutPoint) -> Self {
+        Self {
+            adjacent,
+            line_origin: None,
+            label_metrics: None,
+        }
+    }
+
+    fn label_metrics(
+        self,
+        ctx: &FlowchartEndpointContext<'_>,
+        node_id: &str,
+    ) -> Option<TextMetrics> {
+        self.label_metrics
+            .or_else(|| compute_node_label_metrics_for_intersection(ctx, node_id))
+    }
+}
+
+fn intersect_rect(node: &BoundaryNode, query: EndpointQuery<'_>) -> LayoutPoint {
+    if query.line_origin.is_some() {
+        let corners = [
+            (0.0, 0.0),
+            (node.width, 0.0),
+            (node.width, node.height),
+            (0.0, node.height),
+        ]
+        .map(|(x, y)| LayoutPoint { x, y });
+        return intersect_polygon(node, &corners, query);
+    }
+    let point = query.adjacent;
     let dx = point.x - node.x;
     let dy = point.y - node.y;
     let half_width = node.width / 2.0;
@@ -226,11 +263,38 @@ fn intersect_rect(node: &BoundaryNode, point: &LayoutPoint) -> LayoutPoint {
     }
 }
 
-fn intersect_circle(node: &BoundaryNode, radius: f64, point: &LayoutPoint) -> LayoutPoint {
+fn intersect_circle(node: &BoundaryNode, radius: f64, query: EndpointQuery<'_>) -> LayoutPoint {
+    let point = query.adjacent;
     // Mermaid's intersect.circle retains the radius captured while painting the shape.
     // The browser's measured bounds can differ, especially for rounded or rough paths.
     let rx = radius;
     let ry = radius;
+    if let Some(origin) = query.line_origin {
+        // Mermaid 12.4 intersect-ellipse.js chooses the intersection nearest the adjacent point.
+        let origin_x = origin.x - node.x;
+        let origin_y = origin.y - node.y;
+        let delta_x = point.x - origin.x;
+        let delta_y = point.y - origin.y;
+        let rx_squared = rx * rx;
+        let ry_squared = ry * ry;
+        let a = delta_x * delta_x / rx_squared + delta_y * delta_y / ry_squared;
+        let b = 2.0 * origin_x * delta_x / rx_squared + 2.0 * origin_y * delta_y / ry_squared;
+        let c = origin_x * origin_x / rx_squared + origin_y * origin_y / ry_squared - 1.0;
+        let discriminant = b * b - 4.0 * a * c;
+        if a > 0.0 && discriminant >= 0.0 {
+            let root = discriminant.sqrt();
+            let parameters = [(-b + root) / (2.0 * a), (-b - root) / (2.0 * a)];
+            if let Some(t) = parameters
+                .into_iter()
+                .find(|value| (0.0..=1.0).contains(value))
+            {
+                return LayoutPoint {
+                    x: origin.x + t * delta_x,
+                    y: origin.y + t * delta_y,
+                };
+            }
+        }
+    }
     let px = node.x - point.x;
     let py = node.y - point.y;
     let det = (rx * rx * py * py + ry * ry * px * px).sqrt();
@@ -250,7 +314,16 @@ fn intersect_circle(node: &BoundaryNode, radius: f64, point: &LayoutPoint) -> La
     }
 }
 
-fn intersect_diamond(node: &BoundaryNode, point: &LayoutPoint) -> LayoutPoint {
+fn intersect_diamond(node: &BoundaryNode, query: EndpointQuery<'_>) -> LayoutPoint {
+    if query.line_origin.is_some() {
+        // question.ts passes an unshifted square polygon sized from bounds.width.
+        let size = node.width;
+        let half = size / 2.0;
+        let points = [(half, 0.0), (size, -half), (half, -size), (0.0, -half)]
+            .map(|(x, y)| LayoutPoint { x, y });
+        return intersect_polygon(node, &points, query);
+    }
+    let point = query.adjacent;
     let vx = point.x - node.x;
     let vy = point.y - node.y;
     if !(vx.is_finite() && vy.is_finite()) {
@@ -281,11 +354,12 @@ fn intersect_diamond(node: &BoundaryNode, point: &LayoutPoint) -> LayoutPoint {
     }
 }
 
-fn intersect_cylinder(node: &BoundaryNode, point: &LayoutPoint) -> LayoutPoint {
+fn intersect_cylinder(node: &BoundaryNode, query: EndpointQuery<'_>) -> LayoutPoint {
+    let point = query.adjacent;
     // Port of Mermaid `cylinder.ts` intersection logic (11.12.2):
     // - start from `intersect.rect(node, point)`,
     // - then adjust y when the intersection hits the curved top/bottom ellipses.
-    let mut pos = intersect_rect(node, point);
+    let mut pos = intersect_rect(node, query);
     let x = pos.x - node.x;
 
     let w = node.width.max(1.0);
@@ -313,11 +387,12 @@ fn intersect_cylinder(node: &BoundaryNode, point: &LayoutPoint) -> LayoutPoint {
     pos
 }
 
-fn intersect_tilted_cylinder(node: &BoundaryNode, point: &LayoutPoint) -> LayoutPoint {
+fn intersect_tilted_cylinder(node: &BoundaryNode, query: EndpointQuery<'_>) -> LayoutPoint {
+    let point = query.adjacent;
     // Port of Mermaid `tiltedCylinder.ts` intersection logic (11.12.2):
     // - start from `intersect.rect(node, point)`,
     // - then adjust x when the intersection hits the curved ends.
-    let mut pos = intersect_rect(node, point);
+    let mut pos = intersect_rect(node, query);
     let y = pos.y - node.y;
     let top_or_bottom_center =
         (point.x - node.x).abs() < 1e-6 && (pos.x - node.x).abs() < 1e-6 && {
@@ -405,8 +480,9 @@ fn intersect_line(
 fn intersect_polygon(
     node: &BoundaryNode,
     poly_points: &[LayoutPoint],
-    point: &LayoutPoint,
+    query: EndpointQuery<'_>,
 ) -> LayoutPoint {
+    let point = query.adjacent;
     // Port of Mermaid 12 `rendering-elements/intersect/intersect-polygon.js`.
     let x1 = node.x;
     let y1 = node.y;
@@ -421,6 +497,8 @@ fn intersect_polygon(
     let left = x1 - node.width / 2.0 - min_x;
     let top = y1 - node.height / 2.0 - min_y;
 
+    let center = LayoutPoint { x: x1, y: y1 };
+    let origin = query.line_origin.unwrap_or(&center);
     let mut intersections: Vec<LayoutPoint> = Vec::new();
     for i in 0..poly_points.len() {
         let p1 = &poly_points[i];
@@ -433,7 +511,7 @@ fn intersect_polygon(
             x: left + p2.x,
             y: top + p2.y,
         };
-        if let Some(inter) = intersect_line(LayoutPoint { x: x1, y: y1 }, point.clone(), q1, q2) {
+        if let Some(inter) = intersect_line(origin.clone(), point.clone(), q1, q2) {
             intersections.push(inter);
         }
     }
@@ -459,7 +537,7 @@ fn intersect_polygon(
     intersections[0].clone()
 }
 
-fn intersect_polygon_hourglass(node: &BoundaryNode, point: &LayoutPoint) -> LayoutPoint {
+fn intersect_polygon_hourglass(node: &BoundaryNode, query: EndpointQuery<'_>) -> LayoutPoint {
     let poly_points = [
         LayoutPoint { x: 0.0, y: 0.0 },
         LayoutPoint {
@@ -477,7 +555,7 @@ fn intersect_polygon_hourglass(node: &BoundaryNode, point: &LayoutPoint) -> Layo
     ];
 
     // `hourglass.ts` uses the same polygon intersection as other shapes.
-    intersect_polygon(node, &poly_points, point)
+    intersect_polygon(node, &poly_points, query)
 }
 
 fn folder_tab_height_from_total_height(total_height: f64) -> f64 {
@@ -735,7 +813,7 @@ fn intersect_wave_rectangle(
     node: &BoundaryNode,
     width: f64,
     height: f64,
-    point: &LayoutPoint,
+    query: EndpointQuery<'_>,
 ) -> LayoutPoint {
     // `waveRectangle.ts` intersects the two sampled sine waves, rather than their bbox.
     let amplitude = height / 8.0;
@@ -752,7 +830,7 @@ fn intersect_wave_rectangle(
                 .map(|(x, y)| LayoutPoint { x, y }),
         );
     }
-    intersect_polygon(node, &points, point)
+    intersect_polygon(node, &points, query)
 }
 
 fn compute_node_label_metrics_for_intersection(
@@ -818,7 +896,7 @@ fn intersect_curly_brace(
     label_height: f64,
     padding: f64,
     look_is_neo: bool,
-    point: &LayoutPoint,
+    query: EndpointQuery<'_>,
 ) -> LayoutPoint {
     let polygon = curly_brace_comment_intersection_points(
         shape,
@@ -834,10 +912,10 @@ fn intersect_curly_brace(
         .into_iter()
         .map(|(x, y)| LayoutPoint { x, y })
         .collect();
-    intersect_polygon(node, &points, point)
+    intersect_polygon(node, &points, query)
 }
 
-fn intersect_notched_rectangle(node: &BoundaryNode, point: &LayoutPoint) -> LayoutPoint {
+fn intersect_notched_rectangle(node: &BoundaryNode, query: EndpointQuery<'_>) -> LayoutPoint {
     let width = node.width.max(1.0);
     let height = node.height.max(1.0);
     let notch = 12.0;
@@ -865,7 +943,7 @@ fn intersect_notched_rectangle(node: &BoundaryNode, point: &LayoutPoint) -> Layo
             y: -half_height + notch,
         },
     ];
-    intersect_polygon(node, &points, point)
+    intersect_polygon(node, &points, query)
 }
 
 fn stacked_rectangle_intersection_points(
@@ -905,10 +983,10 @@ fn intersect_stacked_rectangle(
     ctx: &FlowchartEndpointContext<'_>,
     node_id: &str,
     node: &BoundaryNode,
-    point: &LayoutPoint,
+    query: EndpointQuery<'_>,
 ) -> LayoutPoint {
-    let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
-        return intersect_rect(node, point);
+    let Some(metrics) = query.label_metrics(ctx, node_id) else {
+        return intersect_rect(node, query);
     };
     let points = stacked_rectangle_intersection_points(
         metrics.width,
@@ -916,7 +994,7 @@ fn intersect_stacked_rectangle(
         ctx.node_padding,
         mermaid_config_diagram_look(ctx.config).is_neo(),
     );
-    intersect_polygon(node, &points, point)
+    intersect_polygon(node, &points, query)
 }
 
 pub fn intersect_for_layout_shape(
@@ -926,6 +1004,22 @@ pub fn intersect_for_layout_shape(
     layout_shape: Option<&str>,
     point: &LayoutPoint,
 ) -> LayoutPoint {
+    intersect_for_layout_shape_with_query(
+        ctx,
+        node_id,
+        node,
+        layout_shape,
+        EndpointQuery::from_center(point),
+    )
+}
+
+pub(crate) fn intersect_for_layout_shape_with_query(
+    ctx: &FlowchartEndpointContext<'_>,
+    node_id: &str,
+    node: &BoundaryNode,
+    layout_shape: Option<&str>,
+    query: EndpointQuery<'_>,
+) -> LayoutPoint {
     if let Some(shape) = layout_shape.and_then(BpmnShape::resolve) {
         return shape.intersect(
             &LayoutPoint {
@@ -934,7 +1028,7 @@ pub fn intersect_for_layout_shape(
             },
             node.width,
             node.height,
-            point,
+            query.adjacent,
             false,
         );
     }
@@ -1018,13 +1112,13 @@ pub fn intersect_for_layout_shape(
         ctx: &FlowchartEndpointContext<'_>,
         node_id: &str,
         node: &BoundaryNode,
-        point: &LayoutPoint,
+        query: EndpointQuery<'_>,
     ) -> LayoutPoint {
         // Port of Mermaid@11.12.2 `stadium.ts` intersection behavior:
         // - `points` are generated from the theoretical render dimensions,
         // - `node.width/height` used by `intersect.polygon(...)` come from `updateNodeBounds(...)`.
-        let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
-            return intersect_rect(node, point);
+        let Some(metrics) = query.label_metrics(ctx, node_id) else {
+            return intersect_rect(node, query);
         };
         let geometry = StadiumGeometry::from_label(
             metrics.width,
@@ -1037,17 +1131,17 @@ pub fn intersect_for_layout_shape(
             .into_iter()
             .map(|(x, y)| LayoutPoint { x, y })
             .collect();
-        intersect_polygon(node, &points, point)
+        intersect_polygon(node, &points, query)
     }
 
     fn intersect_folder(
         ctx: &FlowchartEndpointContext<'_>,
         node_id: &str,
         node: &BoundaryNode,
-        point: &LayoutPoint,
+        query: EndpointQuery<'_>,
     ) -> LayoutPoint {
-        let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
-            return intersect_polygon(node, &folder_polygon_points(node), point);
+        let Some(metrics) = query.label_metrics(ctx, node_id) else {
+            return intersect_polygon(node, &folder_polygon_points(node), query);
         };
         let (render_w, render_h) = flowchart_node_render_dimensions(
             Some("folder"),
@@ -1087,17 +1181,17 @@ pub fn intersect_for_layout_shape(
                 y: total_height / 2.0,
             },
         ];
-        intersect_polygon(node, &points, point)
+        intersect_polygon(node, &points, query)
     }
 
     fn intersect_bucket(
         ctx: &FlowchartEndpointContext<'_>,
         node_id: &str,
         node: &BoundaryNode,
-        point: &LayoutPoint,
+        query: EndpointQuery<'_>,
     ) -> LayoutPoint {
-        let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
-            return intersect_polygon(node, &bucket_polygon_points(node), point);
+        let Some(metrics) = query.label_metrics(ctx, node_id) else {
+            return intersect_polygon(node, &bucket_polygon_points(node), query);
         };
         let (render_w, render_h) = flowchart_node_render_dimensions(
             Some("bucket"),
@@ -1108,17 +1202,17 @@ pub fn intersect_for_layout_shape(
         let width = render_w.max(node.width).max(1.0);
         let total_height = render_h.max(node.height).max(1.0);
         let points = bucket_polygon_points_for_dimensions(width, total_height);
-        intersect_polygon(node, &points, point)
+        intersect_polygon(node, &points, query)
     }
 
     fn intersect_person(
         ctx: &FlowchartEndpointContext<'_>,
         node_id: &str,
         node: &BoundaryNode,
-        point: &LayoutPoint,
+        query: EndpointQuery<'_>,
     ) -> LayoutPoint {
-        let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
-            return intersect_polygon(node, &person_polygon_points(node), point);
+        let Some(metrics) = query.label_metrics(ctx, node_id) else {
+            return intersect_polygon(node, &person_polygon_points(node), query);
         };
         let (render_w, render_h) = flowchart_node_render_dimensions(
             Some("person"),
@@ -1129,18 +1223,18 @@ pub fn intersect_for_layout_shape(
         let width = render_w.max(node.width).max(1.0);
         let total_height = render_h.max(node.height).max(1.0);
         let points = person_polygon_points_for_dimensions(width, total_height);
-        intersect_polygon(node, &points, point)
+        intersect_polygon(node, &points, query)
     }
 
     fn intersect_hexagon(
         ctx: &FlowchartEndpointContext<'_>,
         node_id: &str,
         node: &BoundaryNode,
-        point: &LayoutPoint,
+        query: EndpointQuery<'_>,
     ) -> LayoutPoint {
         let neo = mermaid_config_diagram_look(ctx.config).is_neo();
         // Source points precede updateNodeBounds; prefer the measured label when available.
-        let geometry = match compute_node_label_metrics_for_intersection(ctx, node_id) {
+        let geometry = match query.label_metrics(ctx, node_id) {
             Some(metrics) => {
                 HexagonGeometry::from_label(metrics.width, metrics.height, ctx.node_padding, neo)
             }
@@ -1151,17 +1245,17 @@ pub fn intersect_for_layout_shape(
             .into_iter()
             .map(|(x, y)| LayoutPoint { x, y })
             .collect();
-        intersect_polygon(node, &points, point)
+        intersect_polygon(node, &points, query)
     }
 
     fn intersect_curved_trapezoid(
         ctx: &FlowchartEndpointContext<'_>,
         node_id: &str,
         node: &BoundaryNode,
-        point: &LayoutPoint,
+        query: EndpointQuery<'_>,
     ) -> LayoutPoint {
-        let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
-            return intersect_rect(node, point);
+        let Some(metrics) = query.label_metrics(ctx, node_id) else {
+            return intersect_rect(node, query);
         };
         let geometry = DisplayGeometry::from_label(
             metrics.width,
@@ -1174,17 +1268,17 @@ pub fn intersect_for_layout_shape(
             .into_iter()
             .map(|(x, y)| LayoutPoint { x, y })
             .collect();
-        intersect_polygon(node, &points, point)
+        intersect_polygon(node, &points, query)
     }
 
     fn intersect_bow_tie_rect(
         ctx: &FlowchartEndpointContext<'_>,
         node_id: &str,
         node: &BoundaryNode,
-        point: &LayoutPoint,
+        query: EndpointQuery<'_>,
     ) -> LayoutPoint {
-        let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
-            return intersect_rect(node, point);
+        let Some(metrics) = query.label_metrics(ctx, node_id) else {
+            return intersect_rect(node, query);
         };
 
         let p = ctx.node_padding;
@@ -1246,17 +1340,17 @@ pub fn intersect_for_layout_shape(
             height: (max_y - min_y).max(0.0),
         };
 
-        intersect_polygon(&render_node, &points, point)
+        intersect_polygon(&render_node, &points, query)
     }
 
     fn intersect_tagged_document(
         ctx: &FlowchartEndpointContext<'_>,
         node_id: &str,
         node: &BoundaryNode,
-        point: &LayoutPoint,
+        query: EndpointQuery<'_>,
     ) -> LayoutPoint {
-        let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
-            return intersect_rect(node, point);
+        let Some(metrics) = query.label_metrics(ctx, node_id) else {
+            return intersect_rect(node, query);
         };
 
         let p = ctx.node_padding;
@@ -1288,17 +1382,17 @@ pub fn intersect_for_layout_shape(
             y: -final_h / 2.0,
         });
 
-        intersect_polygon(node, &points, point)
+        intersect_polygon(node, &points, query)
     }
 
     fn intersect_tagged_rect(
         ctx: &FlowchartEndpointContext<'_>,
         node_id: &str,
         node: &BoundaryNode,
-        point: &LayoutPoint,
+        query: EndpointQuery<'_>,
     ) -> LayoutPoint {
-        let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
-            return intersect_rect(node, point);
+        let Some(metrics) = query.label_metrics(ctx, node_id) else {
+            return intersect_rect(node, query);
         };
 
         let p = ctx.node_padding;
@@ -1330,17 +1424,17 @@ pub fn intersect_for_layout_shape(
             },
         ];
 
-        intersect_polygon(node, &points, point)
+        intersect_polygon(node, &points, query)
     }
 
     fn intersect_wave_document(
         ctx: &FlowchartEndpointContext<'_>,
         node_id: &str,
         node: &BoundaryNode,
-        point: &LayoutPoint,
+        query: EndpointQuery<'_>,
     ) -> LayoutPoint {
-        let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
-            return intersect_rect(node, point);
+        let Some(metrics) = query.label_metrics(ctx, node_id) else {
+            return intersect_rect(node, query);
         };
 
         let p = ctx.node_padding;
@@ -1375,17 +1469,17 @@ pub fn intersect_for_layout_shape(
             y: -final_h / 2.0,
         });
 
-        intersect_polygon(node, &points, point)
+        intersect_polygon(node, &points, query)
     }
 
     fn intersect_lined_wave_document(
         ctx: &FlowchartEndpointContext<'_>,
         node_id: &str,
         node: &BoundaryNode,
-        point: &LayoutPoint,
+        query: EndpointQuery<'_>,
     ) -> LayoutPoint {
-        let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
-            return intersect_rect(node, point);
+        let Some(metrics) = query.label_metrics(ctx, node_id) else {
+            return intersect_rect(node, query);
         };
 
         let look_is_neo = mermaid_config_diagram_look(ctx.config).is_neo();
@@ -1435,17 +1529,17 @@ pub fn intersect_for_layout_shape(
             y: -final_h / 2.0,
         });
 
-        intersect_polygon(node, &points, point)
+        intersect_polygon(node, &points, query)
     }
 
     fn intersect_delay(
         ctx: &FlowchartEndpointContext<'_>,
         node_id: &str,
         node: &BoundaryNode,
-        point: &LayoutPoint,
+        query: EndpointQuery<'_>,
     ) -> LayoutPoint {
-        let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
-            return intersect_rect(node, point);
+        let Some(metrics) = query.label_metrics(ctx, node_id) else {
+            return intersect_rect(node, query);
         };
         let geometry = DelayGeometry::from_label(
             metrics.width,
@@ -1458,17 +1552,17 @@ pub fn intersect_for_layout_shape(
             .into_iter()
             .map(|(x, y)| LayoutPoint { x, y })
             .collect();
-        intersect_polygon(node, &points, point)
+        intersect_polygon(node, &points, query)
     }
 
     fn intersect_notched_pentagon(
         ctx: &FlowchartEndpointContext<'_>,
         node_id: &str,
         node: &BoundaryNode,
-        point: &LayoutPoint,
+        query: EndpointQuery<'_>,
     ) -> LayoutPoint {
-        let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
-            return intersect_rect(node, point);
+        let Some(metrics) = query.label_metrics(ctx, node_id) else {
+            return intersect_rect(node, query);
         };
 
         let p = ctx.node_padding;
@@ -1504,17 +1598,17 @@ pub fn intersect_for_layout_shape(
             },
         ];
 
-        intersect_polygon(node, &points, point)
+        intersect_polygon(node, &points, query)
     }
 
     fn intersect_multi_wave_edged_rect(
         ctx: &FlowchartEndpointContext<'_>,
         node_id: &str,
         node: &BoundaryNode,
-        point: &LayoutPoint,
+        query: EndpointQuery<'_>,
     ) -> LayoutPoint {
-        let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
-            return intersect_rect(node, point);
+        let Some(metrics) = query.label_metrics(ctx, node_id) else {
+            return intersect_rect(node, query);
         };
 
         let geometry = flowchart_stacked_document_geometry(
@@ -1529,10 +1623,10 @@ pub fn intersect_for_layout_shape(
             .map(|(x, y)| LayoutPoint { x, y })
             .collect();
 
-        intersect_polygon(node, &points, point)
+        intersect_polygon(node, &points, query)
     }
 
-    fn intersect_lightning_bolt(node: &BoundaryNode, point: &LayoutPoint) -> LayoutPoint {
+    fn intersect_lightning_bolt(node: &BoundaryNode, query: EndpointQuery<'_>) -> LayoutPoint {
         let width = 35.0;
         let height = 35.0;
         let gap = 7.0;
@@ -1560,17 +1654,17 @@ pub fn intersect_for_layout_shape(
             },
         ];
 
-        intersect_polygon(node, &points, point)
+        intersect_polygon(node, &points, query)
     }
 
     fn intersect_window_pane(
         ctx: &FlowchartEndpointContext<'_>,
         node_id: &str,
         node: &BoundaryNode,
-        point: &LayoutPoint,
+        query: EndpointQuery<'_>,
     ) -> LayoutPoint {
-        let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
-            return intersect_rect(node, point);
+        let Some(metrics) = query.label_metrics(ctx, node_id) else {
+            return intersect_rect(node, query);
         };
 
         let p = ctx.node_padding;
@@ -1598,13 +1692,13 @@ pub fn intersect_for_layout_shape(
             },
         ];
 
-        intersect_polygon(node, &points, point)
+        intersect_polygon(node, &points, query)
     }
 
     match layout_shape {
         Some(shape @ ("brace" | "brace-l" | "comment" | "brace-r" | "braces")) => {
-            let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
-                return intersect_rect(node, point);
+            let Some(metrics) = query.label_metrics(ctx, node_id) else {
+                return intersect_rect(node, query);
             };
             intersect_curly_brace(
                 node,
@@ -1613,12 +1707,12 @@ pub fn intersect_for_layout_shape(
                 metrics.height,
                 ctx.node_padding,
                 mermaid_config_diagram_look(ctx.config).is_neo(),
-                point,
+                query,
             )
         }
         Some(shape @ ("circle" | "circ" | "doublecircle" | "dbl-circ" | "double-circle")) => {
-            let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
-                return intersect_circle(node, node.width / 2.0, point);
+            let Some(metrics) = query.label_metrics(ctx, node_id) else {
+                return intersect_circle(node, node.width / 2.0, query);
             };
             let (diameter, _) = flowchart_node_render_dimensions(
                 Some(shape),
@@ -1626,29 +1720,29 @@ pub fn intersect_for_layout_shape(
                 ctx.node_padding,
                 mermaid_config_diagram_look(ctx.config).is_neo(),
             );
-            intersect_circle(node, diameter / 2.0, point)
+            intersect_circle(node, diameter / 2.0, query)
         }
         // These RoughJS shapes capture a fixed radius before measuring their painted bounds.
-        Some("anchor") => intersect_circle(node, 1.0, point),
-        Some("f-circ" | "junction" | "filled-circle") => intersect_circle(node, 7.0, point),
+        Some("anchor") => intersect_circle(node, 1.0, query),
+        Some("f-circ" | "junction" | "filled-circle") => intersect_circle(node, 7.0, query),
         Some("cross-circ" | "summary" | "crossed-circle") => {
-            intersect_circle(node, CROSSED_CIRCLE_RADIUS, point)
+            intersect_circle(node, CROSSED_CIRCLE_RADIUS, query)
         }
         Some("sm-circ" | "small-circle" | "start" | "fr-circ" | "framed-circle" | "stop") => {
-            intersect_circle(node, node.width / 2.0, point)
+            intersect_circle(node, node.width / 2.0, query)
         }
         Some("choice") => {
             let half = node.width.max(28.0) / 2.0;
             let points = [(0.0, half), (half, 0.0), (0.0, -half), (-half, 0.0)]
                 .map(|(x, y)| LayoutPoint { x, y });
-            intersect_polygon(node, &points, point)
+            intersect_polygon(node, &points, query)
         }
-        Some("cylinder" | "cyl" | "db" | "database") => intersect_cylinder(node, point),
-        Some("lin-cyl" | "disk" | "lined-cylinder") => intersect_cylinder(node, point),
-        Some("h-cyl" | "das" | "horizontal-cylinder") => intersect_tilted_cylinder(node, point),
-        Some("hourglass" | "collate") => intersect_polygon_hourglass(node, point),
-        Some("diamond" | "diam" | "question" | "decision") => intersect_diamond(node, point),
-        Some("stadium" | "terminal" | "pill") => intersect_stadium(ctx, node_id, node, point),
+        Some("cylinder" | "cyl" | "db" | "database") => intersect_cylinder(node, query),
+        Some("lin-cyl" | "disk" | "lined-cylinder") => intersect_cylinder(node, query),
+        Some("h-cyl" | "das" | "horizontal-cylinder") => intersect_tilted_cylinder(node, query),
+        Some("hourglass" | "collate") => intersect_polygon_hourglass(node, query),
+        Some("diamond" | "diam" | "question" | "decision") => intersect_diamond(node, query),
+        Some("stadium" | "terminal" | "pill") => intersect_stadium(ctx, node_id, node, query),
         Some("imageSquare") => ctx
             .svg_label_sidecar
             .and_then(|labels| {
@@ -1656,22 +1750,22 @@ pub fn intersect_for_layout_shape(
             })
             .and_then(ImageSquareGeometry::labeled_outline)
             .map_or_else(
-                || intersect_rect(node, point),
-                |outline| intersect_polygon(node, &outline, point),
+                || intersect_rect(node, query),
+                |outline| intersect_polygon(node, &outline, query),
             ),
-        Some("hexagon" | "hex" | "prepare") => intersect_hexagon(ctx, node_id, node, point),
+        Some("hexagon" | "hex" | "prepare") => intersect_hexagon(ctx, node_id, node, query),
         Some("curv-trap" | "display" | "curved-trapezoid") => {
-            intersect_curved_trapezoid(ctx, node_id, node, point)
+            intersect_curved_trapezoid(ctx, node_id, node, query)
         }
         Some("bow-rect" | "stored-data" | "bow-tie-rectangle") => {
-            intersect_bow_tie_rect(ctx, node_id, node, point)
+            intersect_bow_tie_rect(ctx, node_id, node, query)
         }
         Some("tag-rect" | "tagged-rectangle" | "tag-proc" | "tagged-process") => {
-            intersect_tagged_rect(ctx, node_id, node, point)
+            intersect_tagged_rect(ctx, node_id, node, query)
         }
         Some("paper-tape" | "flag") => {
-            let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
-                return intersect_rect(node, point);
+            let Some(metrics) = query.label_metrics(ctx, node_id) else {
+                return intersect_rect(node, query);
             };
             let look_is_neo = mermaid_config_diagram_look(ctx.config).is_neo();
             let padding_x = if look_is_neo { 16.0 } else { ctx.node_padding };
@@ -1680,47 +1774,47 @@ pub fn intersect_for_layout_shape(
                 node,
                 (metrics.width + 2.0 * padding_x).max(0.0),
                 (metrics.height + padding_y).max(0.0),
-                point,
+                query,
             )
         }
         Some("notch-rect" | "notched-rectangle" | "card") => {
-            intersect_notched_rectangle(node, point)
+            intersect_notched_rectangle(node, query)
         }
         Some("st-rect" | "procs" | "processes" | "stacked-rectangle") => {
-            intersect_stacked_rectangle(ctx, node_id, node, point)
+            intersect_stacked_rectangle(ctx, node_id, node, query)
         }
-        Some("doc" | "document") => intersect_wave_document(ctx, node_id, node, point),
+        Some("doc" | "document") => intersect_wave_document(ctx, node_id, node, query),
         Some("lin-doc" | "lined-document") => {
-            intersect_lined_wave_document(ctx, node_id, node, point)
+            intersect_lined_wave_document(ctx, node_id, node, query)
         }
-        Some("delay" | "half-rounded-rectangle") => intersect_delay(ctx, node_id, node, point),
+        Some("delay" | "half-rounded-rectangle") => intersect_delay(ctx, node_id, node, query),
         Some("notch-pent" | "loop-limit" | "notched-pentagon") => {
-            intersect_notched_pentagon(ctx, node_id, node, point)
+            intersect_notched_pentagon(ctx, node_id, node, query)
         }
         Some("docs" | "documents" | "st-doc" | "stacked-document") => {
-            intersect_multi_wave_edged_rect(ctx, node_id, node, point)
+            intersect_multi_wave_edged_rect(ctx, node_id, node, query)
         }
-        Some("tag-doc" | "tagged-document") => intersect_tagged_document(ctx, node_id, node, point),
-        Some("bolt" | "com-link" | "lightning-bolt") => intersect_lightning_bolt(node, point),
+        Some("tag-doc" | "tagged-document") => intersect_tagged_document(ctx, node_id, node, query),
+        Some("bolt" | "com-link" | "lightning-bolt") => intersect_lightning_bolt(node, query),
         Some("win-pane" | "internal-storage" | "window-pane") => {
-            intersect_window_pane(ctx, node_id, node, point)
+            intersect_window_pane(ctx, node_id, node, query)
         }
-        Some("folder" | "directory") => intersect_folder(ctx, node_id, node, point),
-        Some("bucket") => intersect_bucket(ctx, node_id, node, point),
-        Some("person") => intersect_person(ctx, node_id, node, point),
+        Some("folder" | "directory") => intersect_folder(ctx, node_id, node, query),
+        Some("bucket") => intersect_bucket(ctx, node_id, node, query),
+        Some("person") => intersect_person(ctx, node_id, node, query),
         Some(s) if is_polygon_layout_shape(Some(s)) => polygon_points_for_layout_shape(s, node)
-            .map(|pts| intersect_polygon(node, &pts, point))
-            .unwrap_or_else(|| intersect_rect(node, point)),
-        _ => intersect_rect(node, point),
+            .map(|pts| intersect_polygon(node, &pts, query))
+            .unwrap_or_else(|| intersect_rect(node, query)),
+        _ => intersect_rect(node, query),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        BoundaryNode, force_intersect_for_layout_shape, intersect_circle, intersect_curly_brace,
-        intersect_line, intersect_notched_rectangle, intersect_polygon,
-        intersect_polygon_hourglass, intersect_wave_rectangle,
+        BoundaryNode, EndpointQuery, force_intersect_for_layout_shape, intersect_circle,
+        intersect_curly_brace, intersect_diamond, intersect_line, intersect_notched_rectangle,
+        intersect_polygon, intersect_polygon_hourglass, intersect_wave_rectangle,
         stacked_rectangle_intersection_points,
     };
     use merman_render_core::{LayoutPoint, text::TextMetrics};
@@ -1741,11 +1835,38 @@ mod tests {
             width: 40.0,
             height: 20.0,
         };
-        let actual = intersect_circle(&node, 20.0, &point(100.0, 100.0));
+        let actual = intersect_circle(
+            &node,
+            20.0,
+            EndpointQuery::from_center(&point(100.0, 100.0)),
+        );
         assert!((actual.x - 14.142135623730951).abs() < 1e-12, "{actual:?}");
         assert!((actual.y - 14.142135623730951).abs() < 1e-12, "{actual:?}");
-        let center = intersect_circle(&node, 20.0, &point(0.0, 0.0));
+        let center = intersect_circle(&node, 20.0, EndpointQuery::from_center(&point(0.0, 0.0)));
         assert!(center.x.is_nan() && center.y.is_nan());
+    }
+
+    #[test]
+    fn grid_outline_queries_follow_the_terminal_axis_on_diamonds_and_circles() {
+        let node = BoundaryNode {
+            x: 100.0,
+            y: 100.0,
+            width: 80.0,
+            height: 80.0,
+        };
+        let adjacent = point(80.0, 20.0);
+        let origin = point(80.0, 181.0);
+        let query = EndpointQuery {
+            adjacent: &adjacent,
+            line_origin: Some(&origin),
+            label_metrics: None,
+        };
+        let diamond = intersect_diamond(&node, query);
+        assert_eq!((diamond.x, diamond.y), (80.0, 80.0));
+        let circle = intersect_circle(&node, 25.0, query);
+        assert_eq!((circle.x, circle.y), (80.0, 85.0));
+        let legacy = intersect_diamond(&node, EndpointQuery::from_center(&adjacent));
+        assert_eq!((legacy.x, legacy.y), (92.0, 68.0));
     }
 
     #[test]
@@ -1767,7 +1888,8 @@ mod tests {
             (point(-500.0, 0.0), point(-66.0, 0.0)),
             (point(500.0, 0.0), point(66.0, 0.0)),
         ] {
-            let actual = intersect_wave_rectangle(&node, 132.0, 40.0, &target);
+            let actual =
+                intersect_wave_rectangle(&node, 132.0, 40.0, EndpointQuery::from_center(&target));
             assert!((actual.x - expected.x).abs() < 1e-9, "{actual:?}");
             assert!((actual.y - expected.y).abs() < 1e-9, "{actual:?}");
         }
@@ -1795,7 +1917,11 @@ mod tests {
                 height,
             };
             let points = stacked_rectangle_intersection_points(100.0, 20.0, 15.0, neo);
-            let actual = intersect_polygon(&node, &points, &point(-width * 5.0, -height * 5.0));
+            let actual = intersect_polygon(
+                &node,
+                &points,
+                EndpointQuery::from_center(&point(-width * 5.0, -height * 5.0)),
+            );
             // The upper-left ray hits a layer step before the bounding-box corner.
             assert!((actual.x - expected_x).abs() < 1e-9, "{actual:?}");
             assert!((actual.y - expected_y).abs() < 1e-9, "{actual:?}");
@@ -1812,7 +1938,10 @@ mod tests {
                 width: 156.0,
                 height: 68.0,
             };
-            let actual = intersect_notched_rectangle(&node, &point(-780.0, -340.0));
+            let actual = intersect_notched_rectangle(
+                &node,
+                EndpointQuery::from_center(&point(-780.0, -340.0)),
+            );
             // The diagonal clips the twelve-pixel notch, before the bounding-box corner.
             assert!((actual.x - (-69.64285714285714)).abs() < 1e-9, "{actual:?}");
             assert!(
@@ -1855,7 +1984,7 @@ mod tests {
                         25.0,
                         15.0,
                         false,
-                        &point(center_x + dx, center_y + dy),
+                        EndpointQuery::from_center(&point(center_x + dx, center_y + dy)),
                     );
                     assert!(
                         (actual.x - center_x - expected_x).abs() < 1e-9
@@ -1890,7 +2019,7 @@ mod tests {
                     0.0,
                     padding,
                     false,
-                    &point(0.0, 500.0),
+                    EndpointQuery::from_center(&point(0.0, 500.0)),
                 );
                 // The empty left brace's visible path widens the measured
                 // box beyond rectPoints; pinned polygon normalization keeps
@@ -1919,7 +2048,7 @@ mod tests {
                     20.0,
                     15.0,
                     true,
-                    &point(0.0, direction * 500.0),
+                    EndpointQuery::from_center(&point(0.0, direction * 500.0)),
                 );
                 assert!(
                     actual.x.abs() < 1e-9 && (actual.y - direction * neo_height / 2.0).abs() < 1e-9,
@@ -1963,7 +2092,7 @@ mod tests {
                 (point(10.0, -500.0), point(10.0, top)),
                 (point(10.0, 500.0), point(10.0, bottom)),
             ] {
-                let actual = intersect_polygon(&node, &polygon, &query);
+                let actual = intersect_polygon(&node, &polygon, EndpointQuery::from_center(&query));
                 assert!(
                     (actual.x - expected.x).abs() < 1e-9 && (actual.y - expected.y).abs() < 1e-9,
                     "neo={neo}: {actual:?}"
@@ -2023,7 +2152,10 @@ mod tests {
             height: 30.0,
         };
         for (query_y, expected_y) in [(50.0, 35.0), (-10.0, 5.0)] {
-            let intersection = intersect_polygon_hourglass(&node, &point(10.0, query_y));
+            let intersection = intersect_polygon_hourglass(
+                &node,
+                EndpointQuery::from_center(&point(10.0, query_y)),
+            );
             assert_eq!((intersection.x, intersection.y), (10.0, expected_y));
         }
     }

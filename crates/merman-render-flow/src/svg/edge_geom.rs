@@ -19,6 +19,8 @@ mod boundary;
 mod canonical;
 mod compute;
 mod elk_points;
+#[cfg(feature = "layout-grid")]
+mod grid;
 mod intersect;
 #[cfg(test)]
 mod line_with_offset;
@@ -54,6 +56,8 @@ pub(super) use compute::dagre_linear_painted_route;
 ))]
 pub(super) use compute::elk_straight_painted_route;
 pub(super) use compute::{finish_edge_route, prepare_edge_route};
+#[cfg(feature = "layout-grid")]
+pub(super) use grid::apply_grid_line_hops;
 pub(super) use terminal_jogs::{separate_edge_labels, straighten_edge_terminals};
 
 pub(super) use crate::edge_svg::arrow_types_for_edge;
@@ -90,6 +94,10 @@ pub(in crate::svg) fn flowchart_compute_edge_path_geom(
     #[cfg(feature = "canonical-edge-paint")]
     if let FlowchartSvgRoute::CanonicalAxis(axis) = request.ctx.layout.route_contract {
         return canonical::paint(request, axis, scratch);
+    }
+    #[cfg(feature = "layout-grid")]
+    if let Some(settings) = request.ctx.layout.route_contract.grid_paint() {
+        return grid::paint(request, settings, scratch, measure_neo_length);
     }
     Ok(prepare_edge_route(request, scratch)
         .and_then(|route| finish_edge_route(request, route, scratch, measure_neo_length)))

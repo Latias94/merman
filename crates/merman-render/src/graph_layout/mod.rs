@@ -93,6 +93,15 @@ pub(crate) enum RouteContract {
     DagreParity,
     #[cfg(feature = "layout-elk")]
     ElkParity,
+    #[cfg(all(
+        feature = "layout-grid",
+        any(
+            feature = "diagram-flowchart",
+            feature = "diagram-swimlane",
+            feature = "diagram-agentflow"
+        )
+    ))]
+    Grid(merman_render_flow::svg::FlowchartGridPaint),
     #[cfg(any(
         feature = "diagram-flowchart",
         feature = "diagram-swimlane",
@@ -187,6 +196,8 @@ impl RouteContract {
             return true;
         }
         match self {
+            #[cfg(feature = "layout-grid")]
+            Self::Grid(_) => true,
             #[cfg(any(feature = "layout-shoal", test))]
             Self::CanonicalAxis(_) => true,
             _ => false,

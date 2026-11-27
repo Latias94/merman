@@ -112,7 +112,7 @@ impl FlowchartNodeRootSchedule {
 
 /// The existing node schedule and admitted, occurrence-keyed render inputs.
 pub struct FlowchartHierarchyInputs<'a> {
-    pub uses_elk_adapter_dom: bool,
+    pub uses_flat_adapter_dom: bool,
     pub node_schedule: &'a FlowchartNodeRootSchedule,
     pub edge_order: &'a [FlowchartRenderEdgeRef<'a>],
     pub subgraphs_by_id: &'a FxHashMap<&'a str, &'a FlowSubgraph>,
@@ -256,7 +256,7 @@ impl<'a> FlowchartRenderedClusterBuckets<'a> {
         Ok(buckets)
     }
 
-    fn prepare_elk(
+    fn prepare_flat(
         ctx: &FlowchartHierarchyInputs<'a>,
         cluster_ids: impl Iterator<Item = &'a str>,
     ) -> Result<Self> {
@@ -363,7 +363,7 @@ impl<'a> FlowchartRootEmission<'a> {
 }
 
 pub struct FlowchartHierarchyPlan<'a> {
-    pub(super) uses_elk_adapter_dom: bool,
+    pub(super) uses_flat_adapter_dom: bool,
     top_root: FlowchartRootEmission<'a>,
     nested_roots: FxHashMap<&'a str, FlowchartRootEmission<'a>>,
     ordered_edges: Option<Vec<FlowchartRenderEdgeRef<'a>>>,
@@ -388,7 +388,7 @@ impl<'a> FlowchartHierarchyPlan<'a> {
         let (root_offsets, extra_recursive_root_y) =
             flowchart_prepare_root_offsets(&ctx, effective_parents)?;
 
-        if ctx.uses_elk_adapter_dom {
+        if ctx.uses_flat_adapter_dom {
             ctx.work_meter.charge(ctx.edge_order.len())?;
             let edges = ctx.edge_order.to_vec();
             let mut edge_root_by_key = FxHashMap::default();
@@ -405,7 +405,7 @@ impl<'a> FlowchartHierarchyPlan<'a> {
                 .map(String::as_str)
                 .collect::<Vec<_>>();
             let mut cluster_buckets =
-                FlowchartRenderedClusterBuckets::prepare_elk(&ctx, cluster_ids)?;
+                FlowchartRenderedClusterBuckets::prepare_flat(&ctx, cluster_ids)?;
             let clusters = cluster_buckets.take(None);
             let retained_refs = edges
                 .len()
@@ -414,7 +414,7 @@ impl<'a> FlowchartHierarchyPlan<'a> {
                 .ok_or_else(|| ctx.work_meter.arithmetic_overflow())?;
             ctx.work_meter.charge(retained_refs)?;
             return Ok(Self {
-                uses_elk_adapter_dom: true,
+                uses_flat_adapter_dom: true,
                 ordered_edges: None,
                 top_root: FlowchartRootEmission {
                     edges,
@@ -530,7 +530,7 @@ impl<'a> FlowchartHierarchyPlan<'a> {
             });
         }
         Ok(Self {
-            uses_elk_adapter_dom: false,
+            uses_flat_adapter_dom: false,
             top_root,
             nested_roots,
             ordered_edges,

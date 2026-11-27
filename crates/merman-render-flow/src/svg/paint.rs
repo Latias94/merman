@@ -333,7 +333,8 @@ pub(super) fn charged_edge_route_request<'a>(
         trace_enabled: false,
     };
     if let Some(layout_edge) = ctx.layout_edges_by_key.get(&edge.key) {
-        ctx.work_meter.charge(layout_edge.points().len().max(2))?;
+        ctx.work_meter
+            .charge_work(layout_edge.points().len().max(2), edge_paint_phase(ctx))?;
     }
     Ok((request, offsets))
 }
@@ -421,13 +422,23 @@ pub(super) fn prepare_elk_clipped_routes<'a>(
         }))
 }
 
+pub(super) fn edge_paint_phase(ctx: &FlowchartRenderCtx<'_>) -> merman_model::OperationPhase {
+    use merman_model::OperationPhase;
+    match ctx.layout.route_contract {
+        #[cfg(feature = "layout-grid")]
+        FlowchartSvgRoute::Grid(_) => OperationPhase::Emit,
+        _ => OperationPhase::Layout,
+    }
+}
+
 pub fn prepare_edge_routes(
     ctx: &FlowchartRenderCtx<'_>,
     render_edges: &[FlowchartRenderEdge<'_>],
     hierarchy: &FlowchartHierarchyPlan<'_>,
     measure_neo_length: bool,
 ) -> Result<FxHashMap<crate::projection::FlowchartEdgeKey, FlowchartEdgePathCacheEntry>> {
-    ctx.work_meter.charge(render_edges.len())?;
+    let phase = edge_paint_phase(ctx);
+    ctx.work_meter.charge_work(render_edges.len(), phase)?;
     let mut cache = FxHashMap::with_capacity_and_hasher(render_edges.len(), Default::default());
     let mut scratch = FlowchartEdgeDataPointsScratch::default();
     if ctx.uses_elk_adapter_dom {
@@ -463,6 +474,12 @@ pub fn prepare_edge_routes(
                 );
             }
         }
+    }
+    #[cfg(feature = "layout-grid")]
+    if let Some(settings) = ctx.layout.route_contract.grid_paint() {
+        edge_geom::apply_grid_line_hops(&mut cache, render_edges, settings, ctx.work_meter)?;
+        ctx.work_meter.checkpoint(phase)?;
+        return Ok(cache);
     }
     let preserve_dash_mask_length = |edge: &FlowchartRenderEdge<'_>| {
         ctx.compatibility.look.is_neo()

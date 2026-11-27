@@ -156,7 +156,7 @@ pub fn diagram_type_presentation_family_id(
     let family = diagram_type_family_id(diagram_type)?;
     Some(match (family, layout) {
         (DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE, Some("swimlane"))
-        | (DiagramFamilyId::SWIMLANE, Some("shoal")) => DiagramFamilyId::SWIMLANE,
+        | (DiagramFamilyId::SWIMLANE, Some("shoal" | "grid")) => DiagramFamilyId::SWIMLANE,
         (DiagramFamilyId::SWIMLANE, _) => DiagramFamilyId::FLOWCHART,
         _ => family,
     })

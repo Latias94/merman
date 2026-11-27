@@ -16,7 +16,7 @@ impl FlowchartLayout {
             dom_node_order_by_root: &self.dom_node_order_by_root,
             edge_owners: &self.edge_owners,
             solved_parents: self.route_contract.group_parents(),
-            uses_elk_adapter_dom: self.route_contract.is_elk_parity(),
+            dom: super::svg_layout(self).route_contract.dom(),
             uses_projected_edges: self.route_contract.uses_projected_edges(),
             canonical: super::svg_layout(self).route_contract.is_canonical_axis(),
         }

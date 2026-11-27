@@ -272,6 +272,8 @@ mod tests {
                 data_points: points,
                 pre_hop_dash_mask_length: None,
                 line_hop_applied: false,
+                #[cfg(feature = "layout-grid")]
+                grid_hopped_d: None,
                 original_label_path_points: label_path_points.clone(),
                 label_path_points,
                 label_anchor: None,

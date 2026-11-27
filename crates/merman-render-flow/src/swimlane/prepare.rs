@@ -279,7 +279,7 @@ fn measure_edge_label(
     };
     let style = ctx
         .edge_style_plan
-        .swimlane_edge_label_text_style_for(key, base_style)?;
+        .label_rect_text_style_for(key, base_style)?;
     let label = render_label;
     let semantic_label = edge.label.as_deref().unwrap_or_default();
     let label_type = "text";

@@ -316,7 +316,7 @@ impl FlowchartCompiledStyles {
         self
     }
 
-    pub(crate) fn into_swimlane_edge_label_artifact(mut self) -> Self {
+    pub(crate) fn into_label_rect_artifact(mut self) -> Self {
         self.edge_class_declarations = Vec::new();
         self.stroke_source = None;
         self.inline_stroke_source = None;

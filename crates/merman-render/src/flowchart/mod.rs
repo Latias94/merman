@@ -71,3 +71,36 @@ pub(crate) use style::{
     flowchart_effective_node_class_names, flowchart_insert_style_by_spelling,
     flowchart_split_mermaid_style_decls,
 };
+
+#[cfg(feature = "layout-grid")]
+pub(crate) fn grid_layout(
+    model: &FlowchartModel,
+    context: &FlowchartRenderContext,
+    classes: &FlowchartClassDefinitions<'_>,
+    config: &merman_model::presentation::PresentationConfig,
+    execution: &crate::LayoutExecution<'_>,
+    labels: Option<&FlowchartSvgLabelSidecarBuilder>,
+    edge_style: &style::FlowchartEdgeStylePlan,
+) -> crate::Result<crate::model::FlowchartLayout> {
+    let grid = merman_render_flow::grid::layout(
+        FlowchartRenderModelRef::new(model, context),
+        classes,
+        config,
+        execution.text_measurer(),
+        execution.math_renderer(),
+        labels,
+        edge_style,
+        execution.work_meter_ref(),
+    )?;
+    Ok(crate::model::FlowchartLayout {
+        nodes: grid.nodes,
+        edges: grid.edges,
+        edge_owners: FlowchartEdgeOwners::new(grid.edge_keys),
+        clusters: grid.clusters,
+        bounds: grid.bounds,
+        dom_node_order_by_root: grid.dom_node_order_by_root,
+        route_contract: crate::graph_layout::RouteContract::Grid(grid.paint),
+        placement: Default::default(),
+        uses_elk_adapter_dom: false,
+    })
+}

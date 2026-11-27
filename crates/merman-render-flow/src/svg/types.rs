@@ -221,6 +221,8 @@ pub struct FlowchartEdgeDataPointsScratch {
     pub(in crate::svg) tmp_points_a: Vec<merman_render_core::LayoutPoint>,
     pub(in crate::svg) tmp_points_b: Vec<merman_render_core::LayoutPoint>,
     pub(in crate::svg) tmp_points_c: Vec<merman_render_core::LayoutPoint>,
+    #[cfg(feature = "layout-grid")]
+    pub(in crate::svg) grid_points: Vec<kurbo::Point>,
     pub(in crate::svg) tmp_points_rev: Vec<merman_render_core::LayoutPoint>,
     #[cfg(feature = "canonical-edge-paint")]
     pub(in crate::svg) canonical_points: Vec<merman_render_core::route_types::RoutePoint>,
@@ -240,6 +242,9 @@ pub struct FlowchartEdgePathGeom {
     pub(in crate::svg) pre_hop_dash_mask_length: Option<f64>,
     /// A crossing triggered after-paint path rewriting, even if its visible jump was suppressed.
     pub(in crate::svg) line_hop_applied: bool,
+    /// Grid's after-paint shaft, independent of the original path used by labels and Step marks.
+    #[cfg(feature = "layout-grid")]
+    pub(in crate::svg) grid_hopped_d: Option<String>,
     /// Input to insertEdge after layout postprocessing, before paint-time clipping.
     pub(in crate::svg) original_label_path_points: Vec<merman_render_core::LayoutPoint>,
     /// Label polyline after endpoint/cluster clipping and before curve preprocessing.
