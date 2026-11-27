@@ -59,12 +59,12 @@ all-diagrams = [
 ]
 diagram-architecture = ["merman-model/diagram-architecture", "dep:merman-core-graph", "merman-core-graph/diagram-architecture"]
 diagram-block = ["merman-model/diagram-block", "dep:merman-core-structured", "merman-core-structured/diagram-block"]
-diagram-c4 = ["merman-model/diagram-c4"]
+diagram-c4 = ["merman-model/diagram-c4", "dep:merman-core-graph", "merman-core-graph/diagram-c4"]
 diagram-class = ["merman-model/diagram-class", "dep:merman-core-graph", "merman-core-graph/diagram-class"]
 diagram-cynefin = ["merman-model/diagram-cynefin", "dep:merman-core-structured", "merman-core-structured/diagram-cynefin"]
 diagram-er = ["merman-model/diagram-er", "dep:merman-core-graph", "merman-core-graph/diagram-er"]
 diagram-event-modeling = ["merman-model/diagram-event-modeling", "dep:merman-core-structured", "merman-core-structured/diagram-event-modeling"]
-diagram-agentflow = ["merman-model/diagram-agentflow", "dep:rustc-hash", "dep:indexmap", "dep:merman-core-flow", "merman-core-flow/diagram-agentflow"]
+diagram-agentflow = ["merman-model/diagram-agentflow", "dep:merman-core-flow", "merman-core-flow/diagram-agentflow"]
 diagram-usecase = ["merman-model/diagram-usecase", "dep:merman-core-graph", "merman-core-graph/diagram-usecase"]
 diagram-flowchart = ["merman-model/diagram-flowchart", "dep:merman-core-flow", "merman-core-flow/diagram-flowchart"]
 diagram-gantt = ["merman-model/diagram-gantt", "dep:merman-core-structured", "merman-core-structured/diagram-gantt"]
@@ -72,7 +72,7 @@ diagram-git-graph = ["merman-model/diagram-git-graph", "dep:merman-core-graph", 
 diagram-info = ["merman-model/diagram-info", "dep:merman-core-structured", "merman-core-structured/diagram-info"]
 diagram-ishikawa = ["merman-model/diagram-ishikawa", "dep:merman-core-structured", "merman-core-structured/diagram-ishikawa"]
 diagram-journey = ["merman-model/diagram-journey", "dep:merman-core-structured", "merman-core-structured/diagram-journey"]
-diagram-kanban = ["merman-model/diagram-kanban", "dep:ryu-js"]
+diagram-kanban = ["merman-model/diagram-kanban", "dep:merman-core-structured", "merman-core-structured/diagram-kanban"]
 diagram-mindmap = ["merman-model/diagram-mindmap", "dep:merman-core-graph", "merman-core-graph/diagram-mindmap"]
 diagram-packet = ["merman-model/diagram-packet", "dep:merman-core-structured", "merman-core-structured/diagram-packet", "dep:ryu-js"]
 diagram-pie = ["merman-model/diagram-pie", "dep:merman-core-structured", "merman-core-structured/diagram-pie"]
@@ -112,14 +112,13 @@ merman-markup = { workspace = true, features = ["html", "url"] }
 merman-model = { workspace = true, features = ["html-entities"] }
 cssparser.workspace = true
 ryu-js = { workspace = true, optional = true }
-indexmap = { workspace = true, features = ["serde"], optional = true }
 serde.workspace = true
 serde_json = { workspace = true, features = ["float_roundtrip"] }
 json5.workspace = true
 thiserror.workspace = true
-rustc-hash = { workspace = true, optional = true }
 
 [dev-dependencies]
+merman-core-flow = { workspace = true, features = ["test-support"] }
 merman-core-graph = { workspace = true, features = ["test-support"] }
 merman-core-structured = { workspace = true, features = ["test-support"] }
 merman-core-preprocess = { workspace = true, features = ["test-support"] }

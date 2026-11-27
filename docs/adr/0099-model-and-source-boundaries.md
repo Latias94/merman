@@ -71,10 +71,9 @@ terminal resource and font checks.
 
 ### Flow diagrams
 
-`merman-core-flow` owns Flowchart and Swimlane tokenization, predictive parsing, and model
-construction, along with the shared presentation lexer used by Agentflow. `merman-core` owns
-source mapping, diagnostics, and editor recovery. It observes the syntax before the provider
-consumes it to build the model.
+`merman-core-flow` owns Flowchart, Swimlane, and Agentflow tokenization, parsing, and model
+construction. `merman-core` owns source mapping, diagnostics, and editor recovery. It receives
+the syntax observations from the provider before projecting editor facts.
 
 `merman-render-flow` owns the shared layout settings and shape geometry for Flowchart, Swimlane,
 and Agentflow. It resolves family defaults, typography and density overlays, and the Agentflow
@@ -91,7 +90,7 @@ SVG policy.
 ### Structured diagrams
 
 `merman-core-structured` owns parsing and model construction for Block, Cynefin, Event Modeling,
-Gantt, Info, Ishikawa, Journey, Packet, Pie, Quadrant Chart, Radar, Railroad, Sankey, Timeline,
+Gantt, Info, Ishikawa, Journey, Kanban, Packet, Pie, Quadrant Chart, Radar, Railroad, Sankey, Timeline,
 Tree View, Treemap, Venn, Wardley, and XY Chart. It uses shared scanners in `merman-core-preprocess`.
 `merman-core` prepares the source, supplies config-dependent sanitization, and maps models and
 syntax diagnostics into public parse results with optional editor facts.
@@ -104,7 +103,7 @@ policies, and owns final canvas and SVG admission.
 
 ### Graph syntax
 
-`merman-core-graph` owns Architecture, Class, ER, GitGraph, Mindmap, Requirement, State, and Usecase
+`merman-core-graph` owns Architecture, C4, Class, ER, GitGraph, Mindmap, Requirement, State, and Usecase
 syntax and model construction.
 It reuses the controlled token cursor and pinned Mermaid Unicode rules in
 `merman-core-preprocess`. `merman-core` owns source mapping, diagnostic projection, resource

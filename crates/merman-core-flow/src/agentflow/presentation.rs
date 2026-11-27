@@ -1,10 +1,11 @@
-use super::{AgentflowAuthoredStyles, Declaration, ParseFailure, Parser};
-use crate::SourceSpan;
 #[cfg(feature = "editor-facts")]
-use crate::{EditorSemanticKind, EditorSemanticSymbol};
-use merman_core_flow::flowchart::{
+use super::AgentflowIdentifierKind;
+use super::{AgentflowAuthoredStyles, Declaration, ParseFailure, Parser};
+use crate::flowchart::{
     ClickAction, LinkStylePos, PresentationStatement, lex_presentation_statement,
 };
+use merman_markup::{sanitize::sanitize_text, url::format_url};
+use merman_model::SourceSpan;
 use merman_model::families::flowchart::FlowEdgeDefaults;
 use serde_json::{Map, Value};
 
@@ -123,15 +124,11 @@ impl Parser<'_> {
                         class: None,
                     });
                     #[cfg(feature = "editor-facts")]
-                    {
-                        let reference = self.declared_entities.contains(&style.target);
-                        self.push_symbol(
-                            &style.target,
-                            EditorSemanticKind::Object,
-                            id_span,
-                            reference,
-                        );
-                    }
+                    self.observe_identifier(
+                        &style.target,
+                        AgentflowIdentifierKind::NodeReferenceIfDeclared,
+                        id_span,
+                    );
                     self.authored
                         .nodes
                         .get_mut(&style.target)
@@ -165,17 +162,11 @@ impl Parser<'_> {
                         .or_default()
                         .extend(class.styles.iter().cloned());
                     #[cfg(feature = "editor-facts")]
-                    if let Some(facts) = &mut self.facts {
-                        let span =
-                            SourceSpan::new(start + source_span.start, start + source_span.end);
-                        facts.push_symbol(EditorSemanticSymbol::class_definition(
-                            id,
-                            None,
-                            EditorSemanticKind::Class,
-                            span,
-                            span,
-                        ));
-                    }
+                    self.observe_identifier(
+                        &id,
+                        AgentflowIdentifierKind::ClassDefinition,
+                        SourceSpan::new(start + source_span.start, start + source_span.end),
+                    );
                 }
             }
             PresentationStatement::ClassAssign(class) => {
@@ -205,7 +196,11 @@ impl Parser<'_> {
                     {
                         let span =
                             SourceSpan::new(start + source_span.start, start + source_span.end);
-                        self.push_symbol(&target, EditorSemanticKind::Object, span, true);
+                        self.observe_identifier(
+                            &target,
+                            AgentflowIdentifierKind::NodeReference,
+                            span,
+                        );
                     }
                 }
             }
@@ -233,16 +228,15 @@ impl Parser<'_> {
                         };
                         self.control.checkpoint().map_err(ParseFailure::Cancelled)?;
                         if let Some(tooltip) = &click.tooltip {
-                            self.authored.tooltips.insert(
-                                id.to_string(),
-                                crate::sanitize::sanitize_text(tooltip, self.config),
-                            );
+                            self.authored
+                                .tooltips
+                                .insert(id.to_string(), sanitize_text(tooltip, self.config));
                         }
                         self.assign_class(id, "clickable");
                         if let Some(node) = self.authored.nodes.get_mut(id) {
                             match &click.action {
                                 ClickAction::Link { href, target } => {
-                                    node.link = crate::utils::format_url(href, self.config);
+                                    node.link = format_url(href, self.config);
                                     node.link_target = target.clone();
                                 }
                                 ClickAction::Callback => {
@@ -259,7 +253,7 @@ impl Parser<'_> {
                             }
                         }
                         #[cfg(feature = "editor-facts")]
-                        self.push_symbol(id, EditorSemanticKind::Object, span, true);
+                        self.observe_identifier(id, AgentflowIdentifierKind::NodeReference, span);
                     }
                 }
             }

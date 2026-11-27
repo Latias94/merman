@@ -7,8 +7,9 @@ data and scenario blocks. `diagram-gantt` scans Gantt statements, resolves dates
 operation context, and builds typed task models. `diagram-info` scans Info
 headers and statements and builds the typed model.
 `diagram-ishikawa` scans effects and causes and builds the flat cause tree. `diagram-journey`
-parses Journey statements and builds the typed task and section model. `diagram-packet` scans
-Packet headers and fields and expands them into bounded rows. `diagram-pie` parses chart
+parses Journey statements and builds the typed task and section model. `diagram-kanban` parses
+sections, cards, and metadata and builds the board model. `diagram-packet` scans Packet headers
+and fields and expands them into bounded rows. `diagram-pie` parses chart
 statements and builds the ordered slice model. `diagram-quadrant-chart` builds axes, points,
 and their styles. `diagram-radar` resolves axes, curves, and options. `diagram-railroad`
 parses Railroad IR, EBNF, ABNF, and PEG into `merman-model` values. `diagram-sankey` parses

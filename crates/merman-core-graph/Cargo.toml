@@ -18,6 +18,7 @@ third-party-bundle = true
 [features]
 default = []
 diagram-architecture = ["merman-model/diagram-architecture", "dep:merman-core-preprocess"]
+diagram-c4 = ["merman-model/diagram-c4", "dep:merman-core-preprocess", "dep:merman-markup", "merman-markup/html", "dep:serde_json"]
 diagram-class = ["merman-model/diagram-class", "dep:indexmap", "dep:merman-core-preprocess", "merman-core-preprocess/mermaid-unicode", "dep:merman-markup", "merman-markup/html", "merman-markup/url", "dep:serde_json"]
 diagram-er = ["merman-model/diagram-er", "dep:indexmap", "dep:merman-core-preprocess"]
 diagram-git-graph = ["merman-model/diagram-git-graph", "dep:merman-core-preprocess", "dep:merman-markup", "merman-markup/html"]

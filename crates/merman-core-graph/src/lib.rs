@@ -5,6 +5,9 @@
 #[cfg(feature = "diagram-architecture")]
 #[doc(hidden)]
 pub mod architecture;
+#[cfg(feature = "diagram-c4")]
+#[doc(hidden)]
+pub mod c4;
 #[cfg(feature = "diagram-class")]
 pub mod class;
 #[cfg(feature = "diagram-er")]

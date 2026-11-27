@@ -1,10 +1,6 @@
 //! Shared Mermaid source and scalar normalization.
 
-#[cfg(feature = "diagram-agentflow")]
-pub(crate) use merman_markup::url::format_url;
-
 #[cfg(any(
-    feature = "diagram-kanban",
     feature = "diagram-packet",
     all(feature = "diagram-radar", feature = "editor-facts")
 ))]

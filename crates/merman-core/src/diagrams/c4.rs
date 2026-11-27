@@ -1,38 +1,28 @@
+//! C4 source projections and public diagnostic adaptation.
+
 #[cfg(feature = "presentation")]
 use crate::SourcePresentationMetadata;
-use crate::diagrams::scan::{LineCursor, is_ecmascript_whitespace, leading_whitespace_len};
+#[cfg(any(feature = "editor-facts", all(test, feature = "compat-json")))]
+use crate::SourceSpan;
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
-use crate::sanitize::sanitize_text;
+use crate::family::SemanticConstruction;
 #[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol,
 };
-use crate::{Error, MermaidConfig, OperationControl, OperationControlResult, Result, SourceSpan};
-use serde_json::{Map, Value, json};
-#[cfg(test)]
-use std::cell::Cell;
-
-#[cfg(test)]
-thread_local! {
-    static C4_SYNTAX_CONSTRUCTION_COUNT: Cell<usize> = const { Cell::new(0) };
-}
-
-#[cfg(test)]
-pub(crate) fn reset_c4_syntax_construction_count() {
-    C4_SYNTAX_CONSTRUCTION_COUNT.set(0);
-}
-
-#[cfg(test)]
-pub(crate) fn c4_syntax_construction_count() -> usize {
-    C4_SYNTAX_CONSTRUCTION_COUNT.get()
-}
-
-pub(crate) use merman_model::families::c4::{
-    C4Boundary, C4DiagramModel, C4LayoutConfig, C4Relation, C4RelationOffset, C4Shape, C4Text,
-    parse_integer_prefix,
+use crate::{Error, MermaidConfig, OperationControl, OperationControlResult, Result};
+use merman_core_graph::c4::{C4Diagnostic, C4DiagnosticLocation, parse_c4_model_controlled};
+#[cfg(feature = "editor-facts")]
+use merman_core_graph::c4::{
+    C4EntityOccurrence, C4Observation, C4ObservedFailure, parse_c4_model_observed_controlled,
 };
+#[cfg(test)]
+use merman_core_graph::c4::{c4_syntax_construction_count, reset_c4_syntax_construction_count};
+pub(crate) use merman_model::families::c4::C4DiagramModel;
+#[cfg(any(test, feature = "compat-json"))]
+use serde_json::Value;
 
 pub(crate) fn sanitize_common_db_fields(model: &mut C4DiagramModel, config: &crate::MermaidConfig) {
     crate::common_db::sanitize_optional_title(&mut model.title, config);
@@ -40,318 +30,182 @@ pub(crate) fn sanitize_common_db_fields(model: &mut C4DiagramModel, config: &cra
     crate::common_db::sanitize_optional_acc_descr(&mut model.acc_descr, config);
 }
 
-#[derive(Debug, Default)]
-struct C4Db {
-    c4_type: String,
-    title: String,
-    acc_descr: String,
-    wrap_enabled: bool,
-
-    boundaries: Vec<C4Boundary>,
-
-    shapes: Vec<C4Shape>,
-
-    rels: Vec<C4RelationRecord>,
-
-    c4_shape_in_row: f64,
-    c4_boundary_in_row: f64,
-}
-
-#[derive(Debug, Clone)]
-struct SpannedText {
-    text: String,
-    span: SourceSpan,
-}
-
-struct SpannedAccDescr {
-    value: SpannedText,
-    closed: bool,
-}
-
-#[derive(Debug, Clone)]
-struct SpannedNamedArg {
-    key: String,
-    value: SpannedText,
-}
-
-#[derive(Debug, Clone)]
-enum SpannedArgValue {
-    Text(SpannedText),
-    Named(SpannedNamedArg),
-}
-
-#[derive(Debug, Clone)]
-struct SpannedArg {
-    value: SpannedArgValue,
-}
-
-impl SpannedArg {
-    #[cfg(feature = "editor-facts")]
-    fn text(&self) -> &str {
-        match &self.value {
-            SpannedArgValue::Text(value) => value.text.as_str(),
-            SpannedArgValue::Named(value) => value.value.text.as_str(),
+fn c4_error(diagram_type: &str, diagnostic: C4Diagnostic) -> Error {
+    let diagram_type = diagnostic.diagram_type(diagram_type);
+    match diagnostic.location {
+        C4DiagnosticLocation::Exact(span) => {
+            Error::diagram_parse_exact(diagram_type, diagnostic.message, span)
         }
-    }
-
-    fn span(&self) -> SourceSpan {
-        match &self.value {
-            SpannedArgValue::Text(value) => value.span,
-            SpannedArgValue::Named(value) => value.value.span,
+        C4DiagnosticLocation::InsertionPoint(offset) => {
+            Error::diagram_parse_insertion_point(diagram_type, diagnostic.message, offset)
         }
-    }
-
-    #[cfg(feature = "editor-facts")]
-    fn key(&self) -> Option<&str> {
-        match &self.value {
-            SpannedArgValue::Text(_) => None,
-            SpannedArgValue::Named(value) => Some(value.key.as_str()),
+        C4DiagnosticLocation::Fallback => {
+            Error::diagram_parse_fallback(diagram_type, diagnostic.message)
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum C4Arg {
-    Text(String),
-    Named { key: String, value: String },
-}
-
-impl C4Arg {
-    fn from_spanned(arg: &SpannedArg) -> Self {
-        match &arg.value {
-            SpannedArgValue::Text(value) => Self::Text(value.text.clone()),
-            SpannedArgValue::Named(named) => Self::Named {
-                key: named.key.clone(),
-                value: named.value.text.clone(),
-            },
-        }
-    }
-
-    fn value(&self) -> &str {
-        match self {
-            Self::Text(value) | Self::Named { value, .. } => value,
-        }
-    }
-
-    fn key_or<'a>(&'a self, positional_key: &'a str) -> &'a str {
-        match self {
-            Self::Text(_) => positional_key,
-            Self::Named { key, .. } => key,
-        }
-    }
-
-    fn to_value(&self) -> Value {
-        match self {
-            Self::Text(value) => json!(value),
-            Self::Named { key, value } => {
-                let mut map = Map::new();
-                map.insert(key.clone(), json!(value));
-                Value::Object(map)
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-struct SpannedMacroStmt {
-    name: String,
-    args: Vec<SpannedArg>,
-    span: SourceSpan,
-    args_span: SourceSpan,
-    has_lbrace: bool,
-}
-
-#[derive(Debug)]
-enum C4SemanticStatement {
-    SetTitle(String),
-    SetAccDescription(String),
-    Macro(SpannedMacroStmt),
-    Boundary(C4BoundaryId),
-}
-
-#[derive(Debug, Clone, Copy)]
-struct C4BoundaryId(usize);
-
-#[derive(Debug)]
-struct C4BoundaryRecord {
-    declaration: SpannedMacroStmt,
-    statements: Vec<C4SemanticStatement>,
-}
-
-#[derive(Debug)]
-struct C4BoundaryFrame {
-    boundary: C4BoundaryId,
-    has_diagram_statement: bool,
-    is_valid: bool,
-}
-
-impl C4BoundaryFrame {
-    fn new(declaration: SpannedMacroStmt, records: &mut Vec<C4BoundaryRecord>) -> Self {
-        let boundary = C4BoundaryId(records.len());
-        // Incomplete and completed boundaries share flat ownership from construction onward.
-        records.push(C4BoundaryRecord {
-            declaration,
-            statements: Vec::new(),
-        });
-        Self {
-            boundary,
-            has_diagram_statement: false,
-            is_valid: true,
-        }
-    }
-}
-
-fn push_c4_semantic_statement(
-    root: &mut Vec<C4SemanticStatement>,
-    boundaries: &mut [C4BoundaryFrame],
-    records: &mut [C4BoundaryRecord],
-    statement: C4SemanticStatement,
-    is_diagram_statement: bool,
-) {
-    if let Some(boundary) = boundaries.last_mut() {
-        boundary.has_diagram_statement |= is_diagram_statement;
-        records[boundary.boundary.0].statements.push(statement);
-    } else {
-        root.push(statement);
-    }
-}
-
-fn c4_other_statement_is_allowed(
-    boundaries: &mut [C4BoundaryFrame],
-    issues: &mut Vec<C4ParseIssue>,
+fn parse_c4_source_model_controlled(
+    code: &str,
     diagram_type: &str,
-    span: SourceSpan,
-) -> bool {
-    let Some(boundary) = boundaries.last_mut() else {
-        return true;
-    };
-    if boundary.has_diagram_statement {
-        return true;
-    }
-    if boundary.is_valid {
-        issues.push(c4_parse_issue(
-            Error::diagram_parse_exact(
-                diagram_type.to_string(),
-                "C4 boundary must start with a diagram statement".to_string(),
-                span,
-            ),
+    config: &MermaidConfig,
+    control: &OperationControl,
+) -> OperationControlResult<Result<C4DiagramModel>> {
+    Ok(parse_c4_model_controlled(code, config, control)?
+        .map_err(|diagnostic| c4_error(diagram_type, diagnostic)))
+}
+
+#[cfg(feature = "editor-facts")]
+fn project_c4_observation(facts: &mut EditorSemanticFacts, observation: C4Observation<'_>) {
+    match observation {
+        C4Observation::CaptureStarted => {
+            #[cfg(test)]
+            crate::editor::test_work::record_collection();
+        }
+        C4Observation::DirectivePrefix(prefix) => facts.push_directive_prefix(prefix),
+        C4Observation::Entity {
+            text,
             span,
-        ));
-        boundary.is_valid = false;
-    }
-    false
-}
-
-struct C4SemanticSource {
-    db: C4Db,
-    #[cfg(feature = "editor-facts")]
-    editor_facts: Option<EditorSemanticFacts>,
-}
-
-struct C4ParseIssue {
-    error: Error,
-    span: SourceSpan,
-}
-
-struct C4ParseOutcome {
-    source: C4SemanticSource,
-    issues: Vec<C4ParseIssue>,
-}
-
-impl C4ParseOutcome {
-    fn into_strict_source(self) -> Result<C4SemanticSource> {
-        if let Some(issue) = self.issues.into_iter().next() {
-            return Err(issue.error);
-        }
-        Ok(self.source)
-    }
-
-    fn into_semantic_construction(
-        self,
-        #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
-    ) -> crate::family::SemanticConstruction<C4SemanticSource> {
-        #[cfg(feature = "editor-facts")]
-        {
-            let mut this = self;
-
-            if editor_demand == EditorFactsDemand::Omit {
-                return crate::family::SemanticConstruction {
-                    model: this.into_strict_source(),
-                    editor_facts: None,
-                };
+            detail,
+            occurrence,
+        } => {
+            if text.is_empty() {
+                facts.push_expected_syntax(EditorExpectedSyntax::new(
+                    EditorExpectedSyntaxKind::NodeIdentifier,
+                    span,
+                ));
+                return;
             }
-            let mut editor_facts = this
-                .source
-                .editor_facts
-                .take()
-                .expect("requested editor facts");
-            let mut first_error = None;
-            for issue in this.issues {
-                editor_facts.mark_recovered_from_parse_error(
-                    format!("c4 parser recovered after parse error: {}", issue.error),
-                    Some(issue.span),
-                );
-                if first_error.is_none() {
-                    first_error = Some(issue.error);
+            let detail = Some(detail.to_string());
+            let kind = EditorSemanticKind::Object;
+            let symbol = match occurrence {
+                C4EntityOccurrence::Definition => {
+                    EditorSemanticSymbol::new(text, detail, kind, span, span)
                 }
-            }
-            crate::family::SemanticConstruction {
-                model: match first_error {
-                    Some(error) => Err(error),
-                    None => Ok(this.source),
-                },
-                editor_facts: Some(editor_facts),
+                C4EntityOccurrence::Reference => {
+                    EditorSemanticSymbol::reference(text, detail, kind, span, span)
+                }
+            };
+            facts.push_symbol(symbol);
+        }
+        C4Observation::Payload {
+            text,
+            span,
+            detail,
+            argument_name,
+        } => {
+            facts.push_expected_syntax(EditorExpectedSyntax::new(
+                EditorExpectedSyntaxKind::Payload,
+                span,
+            ));
+            if !text.is_empty() {
+                let detail =
+                    argument_name.map_or_else(|| detail.to_string(), |name| format!("c4 {name}"));
+                facts.push_symbol(EditorSemanticSymbol::payload(
+                    text,
+                    Some(detail),
+                    EditorSemanticKind::String,
+                    span,
+                    span,
+                ));
             }
         }
-        #[cfg(not(feature = "editor-facts"))]
-        {
-            crate::family::SemanticConstruction {
-                model: self.into_strict_source(),
-            }
+        C4Observation::DirectionValue(span) => {
+            facts.push_expected_syntax(EditorExpectedSyntax::new(
+                EditorExpectedSyntaxKind::CardinalDirectionValue,
+                span,
+            ));
         }
     }
+}
 
-    #[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
+fn parse_c4_with_editor_facts_controlled(
+    code: &str,
+    diagram_type: &str,
+    config: &MermaidConfig,
+    capture_rich: bool,
+    control: &OperationControl,
+) -> OperationControlResult<SemanticConstruction<C4DiagramModel>> {
+    let mut facts = EditorSemanticFacts::new();
+    let result = parse_c4_model_observed_controlled(
+        code,
+        config,
+        capture_rich,
+        &mut |observation| project_c4_observation(&mut facts, observation),
+        control,
+    )?;
+    let model = match result {
+        Ok(model) => Ok(model),
+        Err(C4ObservedFailure::Model(diagnostic)) => Err(c4_error(diagram_type, diagnostic)),
+        Err(C4ObservedFailure::Source { first, remaining }) => {
+            let mut record_issue = |error: &Error, span: SourceSpan| {
+                facts.mark_recovered_from_parse_error(
+                    format!("c4 parser recovered after parse error: {error}"),
+                    Some(span),
+                );
+            };
+            let first_error = c4_error(diagram_type, first.diagnostic);
+            record_issue(&first_error, first.recovery_span);
+            for issue in remaining {
+                record_issue(
+                    &c4_error(diagram_type, issue.diagnostic),
+                    issue.recovery_span,
+                );
+            }
+            Err(first_error)
+        }
+    };
+    Ok(SemanticConstruction {
+        model,
+        editor_facts: Some(facts),
+    })
+}
+
+pub(crate) fn parse_c4_semantic_model_controlled(
+    code: &str,
+    meta: &crate::SemanticMetadata,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
+    control: &OperationControl,
+) -> OperationControlResult<SemanticConstruction<C4DiagramModel>> {
+    let config = &meta.semantic_config;
+    let sanitize = |mut model| {
+        sanitize_common_db_fields(&mut model, config);
+        model
+    };
     #[cfg(feature = "editor-facts")]
-    fn into_combined(
-        self,
-        meta: &SourcePresentationMetadata,
-    ) -> crate::family::CombinedSemanticParse {
-        let construction = self.into_semantic_construction(EditorFactsDemand::Capture);
-        let editor_facts = construction.editor_facts.unwrap_or_default();
-        let construction = match construction.model {
-            Ok(source) => Ok((source, editor_facts)),
-            Err(error) => Err(crate::family::CombinedSemanticFailure::new(
-                error,
-                Some(editor_facts),
-            )),
-        };
-        crate::family::CombinedSemanticParse::from_construction(
-            construction,
-            |(source, editor_facts)| (source.db.into_compat_json(meta), editor_facts),
-            crate::family::CombinedSemanticFailure::into_parts,
-        )
+    if editor_demand.needs_recovery() {
+        return Ok(parse_c4_with_editor_facts_controlled(
+            code,
+            &meta.diagram_type,
+            config,
+            editor_demand.captures_rich(),
+            control,
+        )?
+        .map_model(sanitize));
     }
+    Ok(SemanticConstruction {
+        model: parse_c4_source_model_controlled(code, &meta.diagram_type, config, control)?
+            .map(sanitize),
+        #[cfg(feature = "editor-facts")]
+        editor_facts: None,
+    })
 }
 
 #[cfg(feature = "compat-json")]
 pub(crate) fn parse_c4(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
-    let source = construct_c4_semantic_source_controlled(code, meta, &OperationControl::new())
-        .expect("a private parse control cannot be cancelled")
-        .into_strict_source()?;
-    source.db.into_compat_json(meta)
+    let model = parse_c4_model_for_render_controlled(code, meta, &OperationControl::new())
+        .expect("a private parse control cannot be cancelled")?;
+    render_model_to_compat_json(&model, meta)
 }
 
-#[cfg(all(test, feature = "presentation"))]
+#[cfg(all(test, feature = "compat-json"))]
 pub(crate) fn parse_c4_model_for_render(
     code: &str,
     meta: &SourcePresentationMetadata,
 ) -> Result<C4DiagramModel> {
-    construct_c4_semantic_source_controlled(code, meta, &OperationControl::new())
+    parse_c4_model_for_render_controlled(code, meta, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
-        .into_strict_source()?
-        .db
-        .into_model()
 }
 
 #[cfg(feature = "presentation")]
@@ -360,27 +214,35 @@ pub(crate) fn parse_c4_model_for_render_controlled(
     meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<C4DiagramModel>> {
-    let outcome = construct_c4_semantic_source_controlled(code, meta, control)?;
-    Ok(outcome
-        .into_strict_source()
-        .and_then(|source| source.db.into_model()))
+    parse_c4_source_model_controlled(
+        code,
+        &meta.diagram_type,
+        meta.effective_config.as_config(),
+        control,
+    )
 }
 
-#[cfg(feature = "compat-json")]
-#[cfg(feature = "editor-facts")]
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) fn parse_c4_json_and_editor_facts(
     code: &str,
     meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
-    Ok(construct_c4_source_controlled(
+    let construction = parse_c4_with_editor_facts_controlled(
         code,
         &meta.diagram_type,
         meta.effective_config.as_config(),
-        EditorFactsDemand::Capture,
+        true,
         control,
-    )?
-    .into_combined(meta))
+    )?;
+    let model = construction
+        .model
+        .and_then(|model| render_model_to_compat_json(&model, meta))
+        .map(|value| crate::family::FamilySemanticModel::Json(value.into()));
+    Ok(crate::family::CombinedSemanticParse::from_parts(
+        model,
+        construction.editor_facts.unwrap_or_default(),
+    ))
 }
 
 #[cfg(feature = "compat-json")]
@@ -392,2233 +254,9 @@ pub(crate) fn render_model_to_compat_json(
         .map_err(crate::Error::from)
 }
 
-fn is_c4_header(line: &str) -> bool {
-    matches!(
-        line.trim(),
-        "C4Context" | "C4Container" | "C4Component" | "C4Dynamic" | "C4Deployment"
-    )
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg(feature = "editor-facts")]
-enum C4EntityOccurrence {
-    Definition,
-    Reference,
-}
-
-#[cfg(feature = "editor-facts")]
-fn push_c4_entity_fact(
-    facts: &mut Option<EditorSemanticFacts>,
-    value: &SpannedText,
-    detail: impl Into<String>,
-    occurrence: C4EntityOccurrence,
-) {
-    let Some(facts) = facts.as_mut() else {
-        return;
-    };
-    if value.text.is_empty() {
-        facts.push_expected_syntax(EditorExpectedSyntax::new(
-            EditorExpectedSyntaxKind::NodeIdentifier,
-            value.span,
-        ));
-        return;
-    }
-
-    let detail = Some(detail.into());
-    let symbol = match occurrence {
-        C4EntityOccurrence::Definition => EditorSemanticSymbol::new(
-            value.text.clone(),
-            detail,
-            EditorSemanticKind::Object,
-            value.span,
-            value.span,
-        ),
-        C4EntityOccurrence::Reference => EditorSemanticSymbol::reference(
-            value.text.clone(),
-            detail,
-            EditorSemanticKind::Object,
-            value.span,
-            value.span,
-        ),
-    };
-    facts.push_symbol(symbol);
-}
-
-#[cfg(feature = "editor-facts")]
-fn push_c4_payload_fact(
-    facts: &mut Option<EditorSemanticFacts>,
-    value: &SpannedText,
-    detail: impl Into<String>,
-) {
-    let Some(facts) = facts.as_mut() else {
-        return;
-    };
-    facts.push_expected_syntax(EditorExpectedSyntax::new(
-        EditorExpectedSyntaxKind::Payload,
-        value.span,
-    ));
-    if value.text.is_empty() {
-        return;
-    }
-    facts.push_symbol(EditorSemanticSymbol::payload(
-        value.text.clone(),
-        Some(detail.into()),
-        EditorSemanticKind::String,
-        value.span,
-        value.span,
-    ));
-}
-
-#[cfg(feature = "editor-facts")]
-fn push_c4_payload_arg(
-    facts: &mut Option<EditorSemanticFacts>,
-    arg: &SpannedArg,
-    fallback_detail: &str,
-) {
-    if facts.is_none() {
-        return;
-    }
-    let detail = arg
-        .key()
-        .map(|key| format!("c4 {key}"))
-        .unwrap_or_else(|| fallback_detail.to_string());
-    let value = SpannedText {
-        text: arg.text().to_string(),
-        span: arg.span(),
-    };
-    push_c4_payload_fact(facts, &value, detail);
-}
-
-#[cfg(feature = "editor-facts")]
-fn push_c4_entity_arg(
-    facts: &mut Option<EditorSemanticFacts>,
-    arg: &SpannedArg,
-    detail: &str,
-    occurrence: C4EntityOccurrence,
-) {
-    if facts.is_none() {
-        return;
-    }
-    let value = SpannedText {
-        text: arg.text().to_string(),
-        span: arg.span(),
-    };
-    push_c4_entity_fact(facts, &value, detail.to_string(), occurrence);
-}
-
-fn parse_title_spanned_c4(line: &str, line_start: usize) -> Option<SpannedText> {
-    let trimmed = line.trim_start();
-    let rest = trimmed.strip_prefix("title")?;
-    let ws = rest.chars().next()?;
-    if !ws.is_whitespace() {
-        return None;
-    }
-    let keyword_start = line_start + line.len() - trimmed.len();
-    let rest_start = keyword_start + "title".len();
-    let value = spanned_trimmed_c4(rest, rest_start);
-    Some(value)
-}
-
-fn parse_acc_title_spanned_c4(line: &str, line_start: usize) -> Option<SpannedText> {
-    let trimmed = line.trim_start();
-    let after_keyword = trimmed.strip_prefix("accTitle")?;
-    let whitespace = leading_whitespace_len(after_keyword);
-    let rest = after_keyword.trim_start().strip_prefix(':')?;
-    let keyword_start = line_start + line.len() - trimmed.len();
-    let keyword_end = keyword_start + "accTitle".len();
-    let colon = keyword_end + whitespace;
-    let value = spanned_trimmed_c4(rest, colon + 1);
-    Some(value)
-}
-
-fn parse_acc_description_stmt_spanned_c4(line: &str, line_start: usize) -> Option<SpannedText> {
-    let trimmed = line.trim_start();
-    let rest = trimmed.strip_prefix("accDescription")?;
-    let ws = rest.chars().next()?;
-    if !ws.is_whitespace() {
-        return None;
-    }
-    let keyword_start = line_start + line.len() - trimmed.len();
-    let rest_start = keyword_start + "accDescription".len();
-    let value = spanned_trimmed_c4(rest, rest_start);
-    Some(value)
-}
-
-fn spanned_trimmed_c4(source: &str, source_start: usize) -> SpannedText {
-    let leading = leading_whitespace_len(source);
-    let value = source[leading..].trim_end();
-    let start = if value.is_empty() {
-        source_start + source.len()
-    } else {
-        source_start + leading
-    };
-    SpannedText {
-        text: value.to_string(),
-        span: SourceSpan::new(start, start + value.len()),
-    }
-}
-
-fn parse_acc_descr_spanned_c4(
-    lines: &mut LineCursor<'_>,
-    line: &str,
-    line_start: usize,
-    control: &OperationControl,
-) -> OperationControlResult<Option<SpannedAccDescr>> {
-    control.checkpoint()?;
-    let trimmed = line.trim_start();
-    let keyword_start = line_start + line.len() - trimmed.len();
-    let keyword_end = keyword_start + "accDescr".len();
-    let Some(after_keyword) = trimmed.strip_prefix("accDescr") else {
-        return Ok(None);
-    };
-    let whitespace = leading_whitespace_len(after_keyword);
-    let rest = &after_keyword[whitespace..];
-    let rest_start = keyword_end + whitespace;
-    if let Some(after) = rest.strip_prefix(':') {
-        let value = spanned_trimmed_c4(after, rest_start + 1);
-        return Ok(Some(SpannedAccDescr {
-            value,
-            closed: true,
-        }));
-    }
-
-    let Some(rest) = rest.strip_prefix('{') else {
-        return Ok(None);
-    };
-    let content_start = rest_start + 1;
-    if let Some(end) = rest.find('}') {
-        let value = spanned_trimmed_c4(&rest[..end], content_start);
-        lines.resume_same_line_at(content_start + end + 1);
-        return Ok(Some(SpannedAccDescr {
-            value,
-            closed: true,
-        }));
-    }
-
-    let mut parts = Vec::new();
-    let mut span_start = None;
-    let mut span_end = None;
-
-    let first = spanned_trimmed_c4(rest, content_start);
-    if !first.text.is_empty() {
-        parts.push(first.text);
-        span_start = Some(first.span.start);
-        span_end = Some(first.span.end);
-    }
-
-    let mut closed = false;
-    while let Some((next_line, segment_start)) = lines.next_line() {
-        control.checkpoint()?;
-        if let Some(close_pos) = next_line.find('}') {
-            let before = spanned_trimmed_c4(&next_line[..close_pos], segment_start);
-            if !before.text.is_empty() {
-                parts.push(before.text);
-                span_start.get_or_insert(before.span.start);
-                span_end = Some(before.span.end);
-            }
-            lines.resume_same_line_at(segment_start + close_pos + 1);
-            closed = true;
-            break;
-        }
-
-        let text = spanned_trimmed_c4(next_line, segment_start);
-        if text.text.is_empty() {
-            continue;
-        }
-        parts.push(text.text);
-        span_start.get_or_insert(text.span.start);
-        span_end = Some(text.span.end);
-    }
-
-    let start = span_start.unwrap_or(content_start);
-    let end = span_end.unwrap_or(start);
-    Ok(Some(SpannedAccDescr {
-        value: SpannedText {
-            text: parts.join("\n"),
-            span: SourceSpan::new(start, end),
-        },
-        closed,
-    }))
-}
-
-fn parse_direction_stmt_facts_c4(
-    line: &str,
-    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
-    #[cfg(feature = "editor-facts")] line_start: usize,
-    #[cfg(feature = "editor-facts")] facts: &mut Option<EditorSemanticFacts>,
-) -> Option<bool> {
-    let trimmed = line.trim_start();
-    let rest = trimmed.strip_prefix("direction")?;
-    if rest.chars().next().is_some_and(|ch| !ch.is_whitespace()) {
-        return None;
-    }
-
-    #[cfg(feature = "editor-facts")]
-    let keyword_start = line_start + line.len() - trimmed.len();
-    #[cfg(feature = "editor-facts")]
-    let keyword_end = keyword_start + "direction".len();
-    let whitespace = leading_whitespace_len(rest);
-    let value = &rest[whitespace..];
-    if value.is_empty() {
-        #[cfg(feature = "editor-facts")]
-        if let Some(facts) = facts.as_mut().filter(|_| editor_demand.captures_rich()) {
-            facts.push_expected_syntax(EditorExpectedSyntax::new(
-                EditorExpectedSyntaxKind::CardinalDirectionValue,
-                SourceSpan::new(keyword_end, keyword_end),
-            ));
-        }
-        return Some(false);
-    }
-
-    let token = value.split_whitespace().next().unwrap_or(value);
-    #[cfg(feature = "editor-facts")]
-    let value_start = keyword_end + whitespace;
-    #[cfg(feature = "editor-facts")]
-    let value_span = SourceSpan::new(value_start, value_start + token.len());
-    #[cfg(feature = "editor-facts")]
-    if let Some(facts) = facts.as_mut().filter(|_| editor_demand.captures_rich()) {
-        facts.push_expected_syntax(EditorExpectedSyntax::new(
-            EditorExpectedSyntaxKind::CardinalDirectionValue,
-            value_span,
-        ));
-    }
-    Some(matches!(token, "TB" | "BT" | "LR" | "RL"))
-}
-
-fn parse_macro_stmt_facts_c4(
-    stmt: &SpannedMacroStmt,
-    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
-    #[cfg(feature = "editor-facts")] facts: &mut Option<EditorSemanticFacts>,
-) -> Result<()> {
-    #[cfg(feature = "editor-facts")]
-    let mut omitted_facts = None;
-    #[cfg(feature = "editor-facts")]
-    let facts = if editor_demand.captures_rich() {
-        facts
-    } else {
-        &mut omitted_facts
-    };
-    match stmt.name.as_str() {
-        "Person" | "Person_Ext" | "System" | "SystemDb" | "SystemQueue" | "System_Ext"
-        | "SystemDb_Ext" | "SystemQueue_Ext" => {
-            #[cfg(feature = "editor-facts")]
-            if let Some(alias) = stmt.args.first() {
-                push_c4_entity_arg(
-                    facts,
-                    alias,
-                    c4_shape_detail(&stmt.name),
-                    C4EntityOccurrence::Definition,
-                );
-            }
-            #[cfg(feature = "editor-facts")]
-            if let Some(label) = stmt.args.get(1) {
-                push_c4_payload_arg(facts, label, "c4 label");
-            }
-            #[cfg(feature = "editor-facts")]
-            if let Some(descr) = stmt.args.get(2) {
-                push_c4_payload_arg(facts, descr, "c4 description");
-            }
-            #[cfg(feature = "editor-facts")]
-            for arg in stmt.args.iter().skip(3) {
-                push_c4_payload_arg(facts, arg, "c4 value");
-            }
-            Ok(())
-        }
-        "Container" | "ContainerDb" | "ContainerQueue" | "Container_Ext" | "ContainerDb_Ext"
-        | "ContainerQueue_Ext" | "Component" | "ComponentDb" | "ComponentQueue"
-        | "Component_Ext" | "ComponentDb_Ext" | "ComponentQueue_Ext" => {
-            #[cfg(feature = "editor-facts")]
-            if let Some(alias) = stmt.args.first() {
-                push_c4_entity_arg(
-                    facts,
-                    alias,
-                    c4_shape_detail(&stmt.name),
-                    C4EntityOccurrence::Definition,
-                );
-            }
-            #[cfg(feature = "editor-facts")]
-            if let Some(label) = stmt.args.get(1) {
-                push_c4_payload_arg(facts, label, "c4 label");
-            }
-            #[cfg(feature = "editor-facts")]
-            if let Some(techn) = stmt.args.get(2) {
-                push_c4_payload_arg(facts, techn, "c4 technology");
-            }
-            #[cfg(feature = "editor-facts")]
-            if let Some(descr) = stmt.args.get(3) {
-                push_c4_payload_arg(facts, descr, "c4 description");
-            }
-            #[cfg(feature = "editor-facts")]
-            for arg in stmt.args.iter().skip(4) {
-                push_c4_payload_arg(facts, arg, "c4 value");
-            }
-            Ok(())
-        }
-        "Boundary" | "Enterprise_Boundary" | "System_Boundary" | "Container_Boundary" => {
-            #[cfg(feature = "editor-facts")]
-            if let Some(alias) = stmt.args.first() {
-                push_c4_entity_arg(facts, alias, "c4 boundary", C4EntityOccurrence::Definition);
-            }
-            #[cfg(feature = "editor-facts")]
-            if let Some(label) = stmt.args.get(1) {
-                push_c4_payload_arg(facts, label, "c4 label");
-            }
-            #[cfg(feature = "editor-facts")]
-            if let Some(boundary_type) = stmt.args.get(2) {
-                push_c4_payload_arg(facts, boundary_type, "c4 boundary type");
-            }
-            #[cfg(feature = "editor-facts")]
-            for arg in stmt.args.iter().skip(3) {
-                push_c4_payload_arg(facts, arg, "c4 value");
-            }
-            Ok(())
-        }
-        "Node" | "Deployment_Node" | "Node_L" | "Node_R" => {
-            #[cfg(feature = "editor-facts")]
-            if let Some(alias) = stmt.args.first() {
-                push_c4_entity_arg(
-                    facts,
-                    alias,
-                    "c4 deployment node",
-                    C4EntityOccurrence::Definition,
-                );
-            }
-            #[cfg(feature = "editor-facts")]
-            if let Some(label) = stmt.args.get(1) {
-                push_c4_payload_arg(facts, label, "c4 label");
-            }
-            #[cfg(feature = "editor-facts")]
-            if let Some(node_type) = stmt.args.get(2) {
-                push_c4_payload_arg(facts, node_type, "c4 node type");
-            }
-            #[cfg(feature = "editor-facts")]
-            if let Some(descr) = stmt.args.get(3) {
-                push_c4_payload_arg(facts, descr, "c4 description");
-            }
-            #[cfg(feature = "editor-facts")]
-            for arg in stmt.args.iter().skip(4) {
-                push_c4_payload_arg(facts, arg, "c4 value");
-            }
-            Ok(())
-        }
-        "Rel" | "BiRel" | "Rel_U" | "Rel_Up" | "Rel_D" | "Rel_Down" | "Rel_L" | "Rel_Left"
-        | "Rel_R" | "Rel_Right" | "Rel_Back" => {
-            let Some(_from) = stmt.args.first() else {
-                return Err(Error::diagram_parse_fallback(
-                    "c4".to_string(),
-                    "missing relation source".to_string(),
-                ));
-            };
-            #[cfg(feature = "editor-facts")]
-            push_c4_entity_arg(
-                facts,
-                _from,
-                "c4 relation source",
-                C4EntityOccurrence::Reference,
-            );
-            let Some(_to) = stmt.args.get(1) else {
-                return Err(Error::diagram_parse_fallback(
-                    "c4".to_string(),
-                    "missing relation target".to_string(),
-                ));
-            };
-            #[cfg(feature = "editor-facts")]
-            push_c4_entity_arg(
-                facts,
-                _to,
-                "c4 relation target",
-                C4EntityOccurrence::Reference,
-            );
-            #[cfg(feature = "editor-facts")]
-            if let Some(label) = stmt.args.get(2) {
-                push_c4_payload_arg(facts, label, "c4 relation label");
-            } else {
-                return Ok(());
-            }
-            #[cfg(feature = "editor-facts")]
-            if let Some(techn) = stmt.args.get(3) {
-                push_c4_payload_arg(facts, techn, "c4 technology");
-            }
-            #[cfg(feature = "editor-facts")]
-            if let Some(descr) = stmt.args.get(4) {
-                push_c4_payload_arg(facts, descr, "c4 description");
-            }
-            #[cfg(feature = "editor-facts")]
-            for arg in stmt.args.iter().skip(5) {
-                push_c4_payload_arg(facts, arg, "c4 value");
-            }
-            Ok(())
-        }
-        "RelIndex" => {
-            let Some(_index) = stmt.args.first() else {
-                return Err(Error::diagram_parse_fallback(
-                    "c4".to_string(),
-                    "missing relation index".to_string(),
-                ));
-            };
-            #[cfg(feature = "editor-facts")]
-            push_c4_payload_arg(facts, _index, "c4 relation index");
-            let Some(_from) = stmt.args.get(1) else {
-                return Err(Error::diagram_parse_fallback(
-                    "c4".to_string(),
-                    "missing relation source".to_string(),
-                ));
-            };
-            #[cfg(feature = "editor-facts")]
-            push_c4_entity_arg(
-                facts,
-                _from,
-                "c4 relation source",
-                C4EntityOccurrence::Reference,
-            );
-            let Some(_to) = stmt.args.get(2) else {
-                return Err(Error::diagram_parse_fallback(
-                    "c4".to_string(),
-                    "missing relation target".to_string(),
-                ));
-            };
-            #[cfg(feature = "editor-facts")]
-            push_c4_entity_arg(
-                facts,
-                _to,
-                "c4 relation target",
-                C4EntityOccurrence::Reference,
-            );
-            #[cfg(feature = "editor-facts")]
-            if let Some(label) = stmt.args.get(3) {
-                push_c4_payload_arg(facts, label, "c4 relation label");
-            } else {
-                return Ok(());
-            }
-            #[cfg(feature = "editor-facts")]
-            if let Some(techn) = stmt.args.get(4) {
-                push_c4_payload_arg(facts, techn, "c4 technology");
-            }
-            #[cfg(feature = "editor-facts")]
-            if let Some(descr) = stmt.args.get(5) {
-                push_c4_payload_arg(facts, descr, "c4 description");
-            }
-            #[cfg(feature = "editor-facts")]
-            for arg in stmt.args.iter().skip(6) {
-                push_c4_payload_arg(facts, arg, "c4 value");
-            }
-            Ok(())
-        }
-        "UpdateElementStyle" => {
-            let Some(_target) = stmt.args.first() else {
-                return Err(Error::diagram_parse_fallback(
-                    "c4".to_string(),
-                    "missing style target".to_string(),
-                ));
-            };
-            #[cfg(feature = "editor-facts")]
-            push_c4_entity_arg(
-                facts,
-                _target,
-                "c4 style target",
-                C4EntityOccurrence::Reference,
-            );
-            #[cfg(feature = "editor-facts")]
-            for arg in stmt.args.iter().skip(1) {
-                push_c4_payload_arg(facts, arg, "c4 style value");
-            }
-            Ok(())
-        }
-        "UpdateRelStyle" => {
-            let Some(_from) = stmt.args.first() else {
-                return Err(Error::diagram_parse_fallback(
-                    "c4".to_string(),
-                    "missing relation style source".to_string(),
-                ));
-            };
-            #[cfg(feature = "editor-facts")]
-            push_c4_entity_arg(
-                facts,
-                _from,
-                "c4 relation style source",
-                C4EntityOccurrence::Reference,
-            );
-            let Some(_to) = stmt.args.get(1) else {
-                return Err(Error::diagram_parse_fallback(
-                    "c4".to_string(),
-                    "missing relation style target".to_string(),
-                ));
-            };
-            #[cfg(feature = "editor-facts")]
-            push_c4_entity_arg(
-                facts,
-                _to,
-                "c4 relation style target",
-                C4EntityOccurrence::Reference,
-            );
-            #[cfg(feature = "editor-facts")]
-            for arg in stmt.args.iter().skip(2) {
-                push_c4_payload_arg(facts, arg, "c4 relation style value");
-            }
-            Ok(())
-        }
-        "UpdateLayoutConfig" => {
-            #[cfg(feature = "editor-facts")]
-            for arg in &stmt.args {
-                push_c4_payload_arg(facts, arg, "c4 layout value");
-            }
-            Ok(())
-        }
-        other => Err(Error::diagram_parse_fallback(
-            "c4".to_string(),
-            format!("unsupported C4 macro: {other}"),
-        )),
-    }
-}
-
-fn semantic_c4_args(args: &[SpannedArg]) -> Vec<C4Arg> {
-    args.iter().map(C4Arg::from_spanned).collect()
-}
-
-fn c4_missing_arg(stmt: &SpannedMacroStmt, message: &'static str) -> Error {
-    let offset = stmt
-        .args
-        .last()
-        .map(|arg| arg.span().end)
-        .unwrap_or(stmt.args_span.start);
-    Error::diagram_parse_insertion_point("c4".to_string(), message.to_string(), offset)
-}
-
-fn validate_c4_macro_args(stmt: &SpannedMacroStmt) -> Result<()> {
-    match stmt.name.as_str() {
-        name if is_boundary_macro(name) && stmt.args.is_empty() => {
-            return Err(c4_missing_arg(stmt, "missing boundary alias"));
-        }
-        "Rel" | "BiRel" | "Rel_U" | "Rel_Up" | "Rel_D" | "Rel_Down" | "Rel_L" | "Rel_Left"
-        | "Rel_R" | "Rel_Right" | "Rel_Back" => {
-            if stmt.args.is_empty() {
-                return Err(c4_missing_arg(stmt, "missing relation source"));
-            }
-            if stmt.args.len() < 2 {
-                return Err(c4_missing_arg(stmt, "missing relation target"));
-            }
-        }
-        "RelIndex" => {
-            if stmt.args.is_empty() {
-                return Err(c4_missing_arg(stmt, "missing relation index"));
-            }
-            if stmt.args.len() < 2 {
-                return Err(c4_missing_arg(stmt, "missing relation source"));
-            }
-            if stmt.args.len() < 3 {
-                return Err(c4_missing_arg(stmt, "missing relation target"));
-            }
-        }
-        "UpdateElementStyle" if stmt.args.is_empty() => {
-            return Err(c4_missing_arg(stmt, "missing style target"));
-        }
-        "UpdateRelStyle" => {
-            if stmt.args.is_empty() {
-                return Err(c4_missing_arg(stmt, "missing relation style source"));
-            }
-            if stmt.args.len() < 2 {
-                return Err(c4_missing_arg(stmt, "missing relation style target"));
-            }
-        }
-        _ => {}
-    }
-    Ok(())
-}
-
-#[cfg(feature = "editor-facts")]
-fn c4_shape_detail(name: &str) -> &'static str {
-    match name {
-        "Person" | "Person_Ext" => "c4 person",
-        "System" | "SystemDb" | "SystemQueue" | "System_Ext" | "SystemDb_Ext"
-        | "SystemQueue_Ext" => "c4 system",
-        "Container" | "ContainerDb" | "ContainerQueue" | "Container_Ext" | "ContainerDb_Ext"
-        | "ContainerQueue_Ext" => "c4 container",
-        "Component" | "ComponentDb" | "ComponentQueue" | "Component_Ext" | "ComponentDb_Ext"
-        | "ComponentQueue_Ext" => "c4 component",
-        _ => "c4 element",
-    }
-}
-
-fn c4_macro_statement_source<'a>(
-    code: &'a str,
-    stmt_start: usize,
-    control: &OperationControl,
-) -> OperationControlResult<&'a str> {
-    let source = &code[stmt_start..];
-    let bytes = source.as_bytes();
-    let mut in_quotes = false;
-    for (index, &byte) in bytes.iter().enumerate() {
-        if index > 0 && index.is_multiple_of(1024) {
-            control.checkpoint()?;
-        }
-        match byte {
-            b'"' => in_quotes = !in_quotes,
-            b'\n' if in_quotes => control.checkpoint()?,
-            b'\n' => return Ok(&source[..index]),
-            b'%' if !in_quotes && bytes.get(index + 1) == Some(&b'%') => {
-                return Ok(&source[..index]);
-            }
-            _ => {}
-        }
-    }
-    Ok(source)
-}
-
-fn parse_macro_stmt_spanned(t: &str, stmt_start: usize) -> Result<Option<SpannedMacroStmt>> {
-    let t = t.trim_end();
-    let Some(paren) = t.find('(') else {
-        return Ok(None);
-    };
-    let name = t[..paren].trim().to_string();
-    if name.is_empty() {
-        return Ok(None);
-    }
-
-    let after = &t[paren + 1..];
-    let args_start = stmt_start + paren + 1;
-    let Some(end_paren) = find_c4_closing_paren(after) else {
-        return Err(Error::diagram_parse_fallback(
-            "c4".to_string(),
-            format!("unterminated macro call: {t}"),
-        ));
-    };
-
-    let args_raw = &after[..end_paren];
-    let parsed_args = parse_args_csv_spanned(args_raw, args_start);
-
-    let trailing_raw = &after[end_paren + 1..];
-    let trailing_whitespace = leading_whitespace_len(trailing_raw);
-    let rest = &trailing_raw[trailing_whitespace..];
-    let mut has_lbrace = false;
-    if let Some(after) = rest.strip_prefix('{') {
-        if after.trim().is_empty() {
-            has_lbrace = true;
-        } else {
-            return Err(Error::diagram_parse_fallback(
-                "c4".to_string(),
-                format!("unexpected tokens after '{{' in macro: {t}"),
-            ));
-        }
-    } else if !rest.is_empty() {
-        return Err(Error::diagram_parse_fallback(
-            "c4".to_string(),
-            format!("unexpected trailing tokens in macro: {t}"),
-        ));
-    }
-
-    let args = parsed_args?;
-    Ok(Some(SpannedMacroStmt {
-        name,
-        args,
-        span: SourceSpan::new(stmt_start, stmt_start + t.len()),
-        args_span: SourceSpan::new(
-            stmt_start + paren + 1,
-            stmt_start + paren + 1 + args_raw.len(),
-        ),
-        has_lbrace,
-    }))
-}
-
-fn find_c4_closing_paren(input: &str) -> Option<usize> {
-    let mut in_quotes = false;
-    for (index, ch) in input.char_indices() {
-        match ch {
-            '"' => in_quotes = !in_quotes,
-            ')' if !in_quotes => return Some(index),
-            _ => {}
-        }
-    }
-    None
-}
-
-fn parse_args_csv_spanned(input: &str, base_offset: usize) -> Result<Vec<SpannedArg>> {
-    let mut out = Vec::new();
-    let mut cur = input;
-    let mut cursor = base_offset;
-    loop {
-        if cur.trim().is_empty() {
-            break;
-        }
-        let (seg, comma) = split_next_arg(cur);
-        out.push(parse_arg_spanned(seg, cursor)?);
-        let Some((comma_offset, rest)) = comma else {
-            break;
-        };
-        cursor += comma_offset + 1;
-        cur = rest;
-    }
-    Ok(out)
-}
-
-fn parse_arg_spanned(seg: &str, seg_base: usize) -> Result<SpannedArg> {
-    let trimmed_start = seg
-        .char_indices()
-        .find(|(_, ch)| !ch.is_whitespace())
-        .map(|(idx, _)| idx)
-        .unwrap_or(seg.len());
-    let trimmed_end = seg
-        .char_indices()
-        .rev()
-        .find(|(_, ch)| !ch.is_whitespace())
-        .map(|(idx, ch)| idx + ch.len_utf8())
-        .unwrap_or(trimmed_start);
-    let trimmed = &seg[trimmed_start..trimmed_end];
-    let value_base = seg_base + trimmed_start;
-
-    if trimmed.is_empty() {
-        return Ok(SpannedArg {
-            value: SpannedArgValue::Text(SpannedText {
-                text: String::new(),
-                span: SourceSpan::new(value_base, seg_base + trimmed_end),
-            }),
-        });
-    }
-
-    if let Some(value) = try_parse_kv_spanned(trimmed, value_base)? {
-        return Ok(value);
-    }
-
-    if trimmed.starts_with('"') {
-        return Ok(SpannedArg {
-            value: SpannedArgValue::Text(parse_quoted_spanned(trimmed, value_base)?),
-        });
-    }
-
-    if trimmed.contains('\n') {
-        return Err(Error::diagram_parse_fallback(
-            "c4".to_string(),
-            "unexpected newline in unquoted C4 argument".to_string(),
-        ));
-    }
-
-    Ok(SpannedArg {
-        value: SpannedArgValue::Text(SpannedText {
-            text: trimmed.to_string(),
-            span: SourceSpan::new(value_base, value_base + trimmed.len()),
-        }),
-    })
-}
-
-fn try_parse_kv_spanned(seg: &str, seg_base: usize) -> Result<Option<SpannedArg>> {
-    if !seg.starts_with('$') {
-        return Ok(None);
-    }
-    let rest = &seg[1..];
-    let Some(eq) = rest.find('=') else {
-        return Err(Error::diagram_parse_fallback(
-            "c4".to_string(),
-            format!("invalid attribute kv: {seg}"),
-        ));
-    };
-    let key_source = spanned_trimmed_c4(&rest[..eq], seg_base + 1);
-    let key = key_source.text.as_str();
-    if key.is_empty() || rest[..eq].contains('\n') {
-        return Err(Error::diagram_parse_fallback(
-            "c4".to_string(),
-            format!("invalid attribute kv key: {seg}"),
-        ));
-    }
-    let equals = seg_base + 1 + eq;
-
-    let val_raw = rest[eq + 1..].trim_start();
-    let leading_ws = rest[eq + 1..]
-        .char_indices()
-        .find(|(_, ch)| !ch.is_whitespace())
-        .map(|(idx, _)| idx)
-        .unwrap_or(rest[eq + 1..].len());
-    let value = parse_quoted_spanned(val_raw, equals + 1 + leading_ws)?;
-    Ok(Some(SpannedArg {
-        value: SpannedArgValue::Named(SpannedNamedArg {
-            key: key.to_string(),
-            value,
-        }),
-    }))
-}
-
-fn parse_quoted_spanned(input: &str, input_base: usize) -> Result<SpannedText> {
-    let input = input.trim();
-    let Some(rest) = input.strip_prefix('"') else {
-        return Err(Error::diagram_parse_fallback(
-            "c4".to_string(),
-            format!("expected quoted string, got: {input}"),
-        ));
-    };
-    let Some(end) = rest.find('"') else {
-        return Err(Error::diagram_parse_fallback(
-            "c4".to_string(),
-            "unterminated string".to_string(),
-        ));
-    };
-    let value = &rest[..end];
-    let value_span = SourceSpan::new(input_base + 1, input_base + 1 + value.len());
-    let closing_quote = value_span.end;
-    let trailing_raw = &rest[end + 1..];
-    let trailing = spanned_trimmed_c4(trailing_raw, closing_quote + 1);
-    if !trailing.text.is_empty() {
-        return Err(Error::diagram_parse_fallback(
-            "c4".to_string(),
-            format!("unexpected trailing tokens after string: {}", trailing.text),
-        ));
-    }
-    Ok(SpannedText {
-        // The grammar trims STR and STR_VALUE, but editor ranges still own the authored body.
-        text: value.trim_matches(is_ecmascript_whitespace).to_string(),
-        span: value_span,
-    })
-}
-
-impl C4Db {
-    fn new(config: &MermaidConfig) -> Self {
-        // Mermaid captures the root `wrap` directive while parsing and stores it on
-        // each C4 source object. The renderer's diagram-local `c4.wrap` setting is
-        // applied later as the second half of the `object.wrap && conf.wrap` check.
-        let wrap_enabled = config.get_bool("wrap").unwrap_or(false);
-        let mut db = Self {
-            wrap_enabled,
-            c4_shape_in_row: 4.0,
-            c4_boundary_in_row: 2.0,
-            ..Default::default()
-        };
-        db.add_global_boundary();
-        db
-    }
-
-    fn add_global_boundary(&mut self) {
-        self.boundaries.push(C4Boundary {
-            alias: "global".to_string(),
-            label: C4Text::Wrapped {
-                text: Value::from("global"),
-            },
-            ty: Some(C4Text::Wrapped {
-                text: Value::from("global"),
-            }),
-            ..Default::default()
-        });
-    }
-
-    fn ensure_shape(&mut self, alias: &str) -> &mut C4Shape {
-        if let Some(index) = self.shapes.iter().position(|shape| shape.alias == alias) {
-            return &mut self.shapes[index];
-        }
-        self.shapes.push(C4Shape {
-            alias: alias.to_string(),
-            ..Default::default()
-        });
-        self.shapes.last_mut().expect("shape was just inserted")
-    }
-
-    fn ensure_boundary(&mut self, alias: &str) -> &mut C4Boundary {
-        if let Some(index) = self
-            .boundaries
-            .iter()
-            .position(|boundary| boundary.alias == alias)
-        {
-            return &mut self.boundaries[index];
-        }
-        self.boundaries.push(C4Boundary {
-            alias: alias.to_string(),
-            ..Default::default()
-        });
-        self.boundaries
-            .last_mut()
-            .expect("boundary was just inserted")
-    }
-
-    fn ensure_relation(&mut self, from: &str, to: &str) -> &mut C4RelationRecord {
-        if let Some(index) = self
-            .rels
-            .iter()
-            .position(|rel| rel.matches_endpoints(from, to))
-        {
-            return &mut self.rels[index];
-        }
-        self.rels.push(C4RelationRecord::default());
-        self.rels.last_mut().expect("relation was just inserted")
-    }
-
-    fn set_c4_type(&mut self, raw: &str, config: &MermaidConfig) {
-        self.c4_type = sanitize_text(raw, config);
-    }
-
-    fn set_title(&mut self, raw: &str, config: &MermaidConfig) {
-        self.title = sanitize_text(raw, config);
-    }
-
-    fn set_acc_description(&mut self, raw: &str) {
-        self.acc_descr = raw.to_string();
-    }
-
-    fn add_person_or_system(
-        &mut self,
-        type_c4_shape: &str,
-        args: &[C4Arg],
-        parent_boundary: &str,
-    ) -> Result<()> {
-        let alias = positional_arg_to_string(args.first())?;
-        let label = c4_arg_value_or_empty(args.get(1));
-
-        let wrap_enabled = self.wrap_enabled;
-        let obj = self.ensure_shape(&alias);
-        obj.assign("label", wrap_text(label));
-        assign_text_argument(obj, "descr", args.get(2), "");
-        assign_optional_argument(obj, "sprite", args.get(3));
-        assign_optional_argument(obj, "tags", args.get(4));
-        assign_optional_argument(obj, "link", args.get(5));
-        obj.assign("typeC4Shape", wrap_text(json!(type_c4_shape)));
-        obj.assign("parentBoundary", json!(parent_boundary));
-        obj.assign("wrap", json!(wrap_enabled));
-        Ok(())
-    }
-
-    fn add_container(
-        &mut self,
-        type_c4_shape: &str,
-        args: &[C4Arg],
-        parent_boundary: &str,
-    ) -> Result<()> {
-        let alias = positional_arg_to_string(args.first())?;
-        let label = c4_arg_value_or_empty(args.get(1));
-
-        let wrap_enabled = self.wrap_enabled;
-        let obj = self.ensure_shape(&alias);
-        obj.assign("label", wrap_text(label));
-        assign_text_argument(obj, "techn", args.get(2), "");
-        assign_text_argument(obj, "descr", args.get(3), "");
-        assign_optional_argument(obj, "sprite", args.get(4));
-        assign_optional_argument(obj, "tags", args.get(5));
-        assign_optional_argument(obj, "link", args.get(6));
-        obj.assign("wrap", json!(wrap_enabled));
-        obj.assign("typeC4Shape", wrap_text(json!(type_c4_shape)));
-        obj.assign("parentBoundary", json!(parent_boundary));
-        Ok(())
-    }
-
-    fn add_component(
-        &mut self,
-        type_c4_shape: &str,
-        args: &[C4Arg],
-        parent_boundary: &str,
-    ) -> Result<()> {
-        self.add_container(type_c4_shape, args, parent_boundary)
-    }
-
-    fn add_person_or_system_boundary(
-        &mut self,
-        args: &[C4Arg],
-        parent_boundary: &str,
-    ) -> Result<String> {
-        let alias = positional_arg_to_string(args.first())?;
-        let label = c4_arg_value_or_empty(args.get(1));
-
-        let wrap_enabled = self.wrap_enabled;
-        let obj = self.ensure_boundary(&alias);
-        obj.assign("label", wrap_text(label));
-        assign_text_argument(obj, "type", args.get(2), "system");
-
-        assign_optional_argument(obj, "tags", args.get(3));
-        assign_optional_argument(obj, "link", args.get(4));
-
-        obj.assign("parentBoundary", json!(parent_boundary));
-        obj.assign("wrap", json!(wrap_enabled));
-
-        Ok(alias)
-    }
-
-    fn add_container_boundary(&mut self, args: &[C4Arg], parent_boundary: &str) -> Result<String> {
-        let alias = positional_arg_to_string(args.first())?;
-        let label = c4_arg_value_or_empty(args.get(1));
-
-        let wrap_enabled = self.wrap_enabled;
-        let obj = self.ensure_boundary(&alias);
-        obj.assign("label", wrap_text(label));
-        assign_text_argument(obj, "type", args.get(2), "container");
-        assign_optional_argument(obj, "tags", args.get(3));
-        assign_optional_argument(obj, "link", args.get(4));
-        obj.assign("parentBoundary", json!(parent_boundary));
-        obj.assign("wrap", json!(wrap_enabled));
-
-        Ok(alias)
-    }
-
-    fn add_deployment_node(
-        &mut self,
-        node_type: &str,
-        args: &[C4Arg],
-        parent_boundary: &str,
-    ) -> Result<String> {
-        let alias = positional_arg_to_string(args.first())?;
-        let label = c4_arg_value_or_empty(args.get(1));
-
-        let wrap_enabled = self.wrap_enabled;
-        let obj = self.ensure_boundary(&alias);
-        obj.assign("label", wrap_text(label));
-
-        assign_text_argument(obj, "type", args.get(2), "node");
-        assign_text_argument(obj, "descr", args.get(3), "");
-        assign_optional_argument(obj, "tags", args.get(5));
-        assign_optional_argument(obj, "link", args.get(6));
-
-        obj.assign("nodeType", json!(node_type));
-        obj.assign("parentBoundary", json!(parent_boundary));
-        obj.assign("wrap", json!(wrap_enabled));
-
-        Ok(alias)
-    }
-
-    fn add_rel(&mut self, rel_type: &str, args: &[C4Arg]) -> Result<()> {
-        let from = positional_arg_to_string(args.first())?;
-        let to = positional_arg_to_string(args.get(1))?;
-        let Some(label) = args.get(2).map(C4Arg::to_value) else {
-            return Ok(());
-        };
-
-        let wrap_enabled = self.wrap_enabled;
-        let rel = self.ensure_relation(&from, &to);
-
-        rel.assign("type", json!(rel_type));
-        rel.assign("from", json!(from));
-        rel.assign("to", json!(to));
-        rel.assign("label", wrap_text(label));
-
-        assign_text_argument(rel, "techn", args.get(3), "");
-        assign_text_argument(rel, "descr", args.get(4), "");
-
-        assign_optional_argument(rel, "sprite", args.get(5));
-        assign_optional_argument(rel, "tags", args.get(6));
-        assign_optional_argument(rel, "link", args.get(7));
-        rel.assign("wrap", json!(wrap_enabled));
-        Ok(())
-    }
-
-    fn update_el_style(&mut self, args: &[C4Arg]) -> Result<()> {
-        let element_name = positional_arg_to_string(args.first())?;
-        if let Some(target) = self
-            .shapes
-            .iter_mut()
-            .find(|element| element.alias == element_name)
-        {
-            apply_element_style_arguments(target, args);
-        } else if let Some(target) = self
-            .boundaries
-            .iter_mut()
-            .find(|element| element.alias == element_name)
-        {
-            apply_element_style_arguments(target, args);
-        }
-        Ok(())
-    }
-
-    fn update_rel_style(&mut self, args: &[C4Arg]) -> Result<()> {
-        let from = positional_arg_to_string(args.first())?;
-        let to = positional_arg_to_string(args.get(1))?;
-
-        let Some(target) = self
-            .rels
-            .iter_mut()
-            .find(|rel| rel.matches_endpoints(&from, &to))
-        else {
-            return Ok(());
-        };
-
-        apply_relation_style_argument(target, "textColor", args.get(2));
-        apply_relation_style_argument(target, "lineColor", args.get(3));
-        apply_relation_style_argument(target, "offsetX", args.get(4));
-        apply_relation_style_argument(target, "offsetY", args.get(5));
-        Ok(())
-    }
-
-    fn update_layout_config(&mut self, args: &[C4Arg]) -> Result<()> {
-        if let Some(arg) = args.first()
-            && let Some(parsed) = parse_integer_prefix(arg.value())
-            && parsed >= 1.0
-        {
-            self.c4_shape_in_row = parsed;
-        }
-        if let Some(arg) = args.get(1)
-            && let Some(parsed) = parse_integer_prefix(arg.value())
-            && parsed >= 1.0
-        {
-            self.c4_boundary_in_row = parsed;
-        }
-        Ok(())
-    }
-
-    #[cfg(feature = "compat-json")]
-    fn into_compat_json(self, meta: &SourcePresentationMetadata) -> Result<Value> {
-        render_model_to_compat_json(&self.into_model()?, meta)
-    }
-
-    fn into_model(self) -> Result<C4DiagramModel> {
-        Ok(C4DiagramModel {
-            c4_type: self.c4_type,
-            title: (!self.title.is_empty()).then_some(self.title),
-            acc_title: None,
-            acc_descr: (!self.acc_descr.is_empty()).then_some(self.acc_descr),
-            wrap: self.wrap_enabled,
-            layout: C4LayoutConfig {
-                c4_shape_in_row: self.c4_shape_in_row,
-                c4_boundary_in_row: self.c4_boundary_in_row,
-            },
-            shapes: self.shapes,
-            boundaries: self.boundaries,
-            rels: self
-                .rels
-                .into_iter()
-                .map(C4RelationRecord::into_model)
-                .collect::<Result<_>>()?,
-        })
-    }
-}
-
-// C4 permits named attributes to rewrite fields outside their positional slots.
-// Interpret that dynamic assignment once, at the typed database owner.
-trait C4Attributes {
-    fn assign(&mut self, key: &str, value: Value);
-    fn has_text_attribute(&self, key: &str) -> bool;
-}
-
-impl C4Attributes for C4Shape {
-    fn assign(&mut self, key: &str, value: Value) {
-        match key {
-            "alias" => self.alias = c4_string_argument(value),
-            "parentBoundary" => self.parent_boundary = c4_string_argument(value),
-            "typeC4Shape" => self.type_c4_shape = c4_text_from_value(value),
-            "label" => self.label = c4_text_from_value(value),
-            "wrap" => self.wrap = c4_truthy(&value),
-            "type" => self.ty = Some(c4_text_from_value(value)),
-            "techn" => self.techn = Some(c4_text_from_value(value)),
-            "descr" => self.descr = Some(c4_text_from_value(value)),
-            "sprite" => self.sprite = Some(value),
-            "tags" => self.tags = Some(value),
-            "link" => self.link = Some(value),
-            "bgColor" => self.bg_color = Some(c4_string_argument(value)),
-            "borderColor" => self.border_color = Some(c4_string_argument(value)),
-            "fontColor" => self.font_color = Some(c4_string_argument(value)),
-            "shadowing" => self.shadowing = Some(value),
-            "shape" => self.shape = Some(value),
-            "legendText" => self.legend_text = Some(value),
-            "legendSprite" => self.legend_sprite = Some(value),
-            _ => {}
-        }
-    }
-
-    fn has_text_attribute(&self, key: &str) -> bool {
-        match key {
-            "type" => self.ty.is_some(),
-            "techn" => self.techn.is_some(),
-            "descr" => self.descr.is_some(),
-            _ => false,
-        }
-    }
-}
-
-impl C4Attributes for C4Boundary {
-    fn assign(&mut self, key: &str, value: Value) {
-        match key {
-            "alias" => self.alias = c4_string_argument(value),
-            "parentBoundary" => self.parent_boundary = c4_string_argument(value),
-            "label" => self.label = c4_text_from_value(value),
-            "type" => self.ty = Some(c4_text_from_value(value)),
-            "descr" => self.descr = Some(c4_text_from_value(value)),
-            "wrap" => self.wrap = Some(c4_truthy(&value)),
-            "sprite" => self.sprite = Some(value),
-            "tags" => self.tags = Some(value),
-            "link" => self.link = Some(value),
-            "nodeType" => self.node_type = Some(c4_string_argument(value)),
-            "bgColor" => self.bg_color = Some(c4_string_argument(value)),
-            "borderColor" => self.border_color = Some(c4_string_argument(value)),
-            "fontColor" => self.font_color = Some(c4_string_argument(value)),
-            "shadowing" => self.shadowing = Some(value),
-            "shape" => self.shape = Some(value),
-            "techn" => self.techn = Some(value),
-            "legendText" => self.legend_text = Some(value),
-            "legendSprite" => self.legend_sprite = Some(value),
-            _ => {}
-        }
-    }
-
-    fn has_text_attribute(&self, key: &str) -> bool {
-        match key {
-            "type" => self.ty.is_some(),
-            "techn" => self.techn.is_some(),
-            "descr" => self.descr.is_some(),
-            _ => false,
-        }
-    }
-}
-
-#[derive(Debug, Default)]
-struct C4RelationRecord {
-    model: C4Relation,
-    // A named text argument can temporarily replace the required string type with {text: ...}.
-    // Later redeclarations/style assignments may repair it before final model validation.
-    invalid_type: Option<Value>,
-    invalid_string_fields: std::collections::BTreeMap<String, Value>,
-}
-
-impl C4RelationRecord {
-    fn matches_endpoints(&self, from: &str, to: &str) -> bool {
-        // Upstream uses strict equality: a numeric endpoint cannot match an authored alias.
-        !self.invalid_string_fields.contains_key("from")
-            && !self.invalid_string_fields.contains_key("to")
-            && self.model.from_alias == from
-            && self.model.to_alias == to
-    }
-
-    fn into_model(self) -> Result<C4Relation> {
-        if let Some(value) = self.invalid_type {
-            return Err(Error::diagram_parse_fallback(
-                "c4".to_string(),
-                format!("expected string field `type`, got {value:?}"),
-            ));
-        }
-        if let Some((key, value)) = self.invalid_string_fields.into_iter().next() {
-            return Err(Error::diagram_parse_fallback(
-                "c4".to_string(),
-                format!("expected string field `{key}`, got {value:?}"),
-            ));
-        }
-        Ok(self.model)
-    }
-}
-
-impl C4Attributes for C4RelationRecord {
-    fn assign(&mut self, key: &str, value: Value) {
-        if matches!(key, "from" | "to" | "lineColor" | "textColor") {
-            if !value.is_string() {
-                self.invalid_string_fields.insert(key.to_string(), value);
-                return;
-            }
-            self.invalid_string_fields.remove(key);
-        }
-        match key {
-            "from" => self.model.from_alias = c4_string_argument(value),
-            "to" => self.model.to_alias = c4_string_argument(value),
-            "type" => match value {
-                Value::String(value) => {
-                    self.model.rel_type = value;
-                    self.invalid_type = None;
-                }
-                value => self.invalid_type = Some(value),
-            },
-            "label" => self.model.label = c4_text_from_value(value),
-            "techn" => self.model.techn = Some(c4_text_from_value(value)),
-            "descr" => self.model.descr = Some(c4_text_from_value(value)),
-            "wrap" => self.model.wrap = c4_truthy(&value),
-            "sprite" => self.model.sprite = Some(value),
-            "tags" => self.model.tags = Some(value),
-            "link" => self.model.link = Some(value),
-            "offsetX" => self.model.offset_x = c4_relation_offset(value),
-            "offsetY" => self.model.offset_y = c4_relation_offset(value),
-            "lineColor" => self.model.line_color = Some(c4_string_argument(value)),
-            "textColor" => self.model.text_color = Some(c4_string_argument(value)),
-            _ => {}
-        }
-    }
-
-    fn has_text_attribute(&self, key: &str) -> bool {
-        match key {
-            "type" => true,
-            "techn" => self.model.techn.is_some(),
-            "descr" => self.model.descr.is_some(),
-            _ => false,
-        }
-    }
-}
-
-fn c4_string_argument(value: Value) -> String {
-    let Value::String(value) = value else {
-        unreachable!("C4 string fields receive string macro arguments")
-    };
-    value
-}
-
-fn c4_truthy(value: &Value) -> bool {
-    match value {
-        Value::Null => false,
-        Value::Bool(value) => *value,
-        Value::Number(value) => value.as_f64().is_some_and(|value| value != 0.0),
-        Value::String(value) => !value.is_empty(),
-        Value::Array(_) | Value::Object(_) => true,
-    }
-}
-
-fn c4_text_from_value(value: Value) -> C4Text {
-    match value {
-        Value::Object(mut map) if map.contains_key("text") => C4Text::Wrapped {
-            text: map.remove("text").expect("text key was checked"),
-        },
-        Value::String(value) => C4Text::String(value),
-        value => C4Text::Value(value),
-    }
-}
-
-fn wrap_text(value: Value) -> Value {
-    json!({"text": value})
-}
-
-fn apply_element_style_arguments(target: &mut impl C4Attributes, args: &[C4Arg]) {
-    for (key, arg) in [
-        "bgColor",
-        "fontColor",
-        "borderColor",
-        "shadowing",
-        "shape",
-        "sprite",
-        "techn",
-        "legendText",
-        "legendSprite",
-    ]
-    .into_iter()
-    .zip(args.iter().skip(1))
-    {
-        apply_update_argument(target, key, Some(arg));
-    }
-}
-
-fn positional_arg_to_string(arg: Option<&C4Arg>) -> Result<String> {
-    match arg {
-        None => Ok(String::new()),
-        Some(C4Arg::Text(value)) => Ok(value.clone()),
-        Some(C4Arg::Named { key, .. }) => Err(Error::diagram_parse_fallback(
-            "c4".to_string(),
-            format!("expected positional string argument, got named argument `${key}`"),
-        )),
-    }
-}
-
-fn c4_arg_value_or_empty(arg: Option<&C4Arg>) -> Value {
-    arg.map(C4Arg::to_value).unwrap_or_else(|| json!(""))
-}
-
-fn assign_text_argument(
-    obj: &mut impl C4Attributes,
-    positional_key: &str,
-    arg: Option<&C4Arg>,
-    missing_value: &str,
-) {
-    match arg {
-        None => {
-            // Boundary type defaults reset on redeclaration; text descriptions do not.
-            if positional_key == "type" {
-                obj.assign(positional_key, wrap_text(json!(missing_value)));
-            } else {
-                if !obj.has_text_attribute(positional_key) {
-                    obj.assign(positional_key, wrap_text(json!(missing_value)));
-                }
-            }
-        }
-        Some(C4Arg::Text(value)) => {
-            obj.assign(positional_key, wrap_text(json!(value)));
-        }
-        Some(C4Arg::Named { key, value }) => assign_named_argument(obj, key, value),
-    }
-}
-
-fn assign_optional_argument(
-    obj: &mut impl C4Attributes,
-    positional_key: &str,
-    arg: Option<&C4Arg>,
-) {
-    match arg {
-        // A named argument may occupy an earlier positional slot.  A later
-        // missing positional value must not clobber the named value that was
-        // already applied to the object.
-        None => {}
-        Some(C4Arg::Text(value)) => {
-            obj.assign(positional_key, json!(value));
-        }
-        Some(C4Arg::Named { key, value }) => assign_named_argument(obj, key, value),
-    }
-}
-
-fn assign_named_argument(obj: &mut impl C4Attributes, key: &str, value: &str) {
-    let value = json!(value);
-    let value = if matches!(key, "label" | "descr" | "techn" | "type") {
-        wrap_text(value)
-    } else {
-        value
-    };
-    obj.assign(key, value);
-}
-
-fn apply_update_argument(obj: &mut impl C4Attributes, positional_key: &str, arg: Option<&C4Arg>) {
-    let Some(arg) = arg else {
-        return;
-    };
-
-    obj.assign(arg.key_or(positional_key), json!(arg.value()));
-}
-
-fn apply_relation_style_argument(
-    obj: &mut C4RelationRecord,
-    positional_key: &str,
-    arg: Option<&C4Arg>,
-) {
-    let Some(arg) = arg else {
-        return;
-    };
-
-    let key = arg.key_or(positional_key);
-    if matches!(key, "offsetX" | "offsetY") {
-        let offset = if matches!(positional_key, "offsetX" | "offsetY") {
-            C4RelationOffset::Number(parse_integer_prefix(arg.value()).unwrap_or(f64::NAN))
-        } else {
-            C4RelationOffset::String(arg.value().to_string())
-        };
-        match key {
-            "offsetX" => obj.model.offset_x = Some(offset),
-            _ => obj.model.offset_y = Some(offset),
-        }
-    } else {
-        let value = if matches!(positional_key, "offsetX" | "offsetY") {
-            // Conversion belongs to the argument slot, even when a named argument
-            // targets another property such as wrap, label, or tags.
-            let parsed = parse_integer_prefix(arg.value()).unwrap_or(f64::NAN);
-            if key == "wrap" {
-                // JSON's null projection would lose Infinity's truthiness.
-                obj.model.wrap = !parsed.is_nan() && parsed != 0.0;
-                return;
-            }
-            merman_model::json::number_value(parsed)
-        } else {
-            json!(arg.value())
-        };
-        obj.assign(key, value);
-    }
-}
-
-fn c4_relation_offset(value: Value) -> Option<C4RelationOffset> {
-    match value {
-        Value::Number(number) => number.as_f64().map(C4RelationOffset::Number),
-        Value::String(text) => Some(C4RelationOffset::String(text)),
-        _ => None,
-    }
-}
-
-#[cfg(all(test, feature = "compat-json"))]
-fn construct_c4_semantic_source(code: &str, meta: &SourcePresentationMetadata) -> C4ParseOutcome {
-    construct_c4_source_controlled(
-        code,
-        &meta.diagram_type,
-        meta.effective_config.as_config(),
-        #[cfg(feature = "editor-facts")]
-        EditorFactsDemand::Capture,
-        &OperationControl::new(),
-    )
-    .expect("a private parse control cannot be cancelled")
-}
-
-#[cfg(feature = "presentation")]
-fn construct_c4_semantic_source_controlled(
-    code: &str,
-    meta: &SourcePresentationMetadata,
-    control: &OperationControl,
-) -> OperationControlResult<C4ParseOutcome> {
-    construct_c4_source_controlled(
-        code,
-        &meta.diagram_type,
-        meta.effective_config.as_config(),
-        #[cfg(feature = "editor-facts")]
-        EditorFactsDemand::Omit,
-        control,
-    )
-}
-
-pub(crate) fn parse_c4_semantic_model_controlled(
-    code: &str,
-    meta: &crate::SemanticMetadata,
-    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
-    control: &OperationControl,
-) -> OperationControlResult<crate::family::SemanticConstruction<C4DiagramModel>> {
-    let construction = construct_c4_source_controlled(
-        code,
-        &meta.diagram_type,
-        &meta.semantic_config,
-        #[cfg(feature = "editor-facts")]
-        editor_demand,
-        control,
-    )?
-    .into_semantic_construction(
-        #[cfg(feature = "editor-facts")]
-        editor_demand,
-    );
-    Ok(crate::family::SemanticConstruction {
-        model: construction
-            .model
-            .and_then(|source| source.db.into_model())
-            .map(|mut model| {
-                sanitize_common_db_fields(&mut model, &meta.semantic_config);
-                model
-            }),
-        #[cfg(feature = "editor-facts")]
-        editor_facts: construction.editor_facts,
-    })
-}
-
-fn construct_c4_source_controlled(
-    code: &str,
-    diagram_type: &str,
-    config: &MermaidConfig,
-    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
-    control: &OperationControl,
-) -> OperationControlResult<C4ParseOutcome> {
-    control.checkpoint()?;
-    #[cfg(test)]
-    C4_SYNTAX_CONSTRUCTION_COUNT.set(C4_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
-    parse_c4_semantic_source(
-        code,
-        diagram_type,
-        config,
-        #[cfg(feature = "editor-facts")]
-        editor_demand,
-        control,
-    )
-}
-
-fn parse_c4_semantic_source(
-    code: &str,
-    diagram_type: &str,
-    config: &MermaidConfig,
-    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
-    control: &OperationControl,
-) -> OperationControlResult<C4ParseOutcome> {
-    control.checkpoint()?;
-    let mut db = C4Db::new(config);
-    #[cfg(feature = "editor-facts")]
-    let mut editor_facts = editor_demand.needs_recovery().then(|| {
-        #[cfg(test)]
-        crate::editor::test_work::record_collection();
-        EditorSemanticFacts::new()
-    });
-    let mut issues = Vec::new();
-    let mut semantic_statements = Vec::new();
-    let mut boundary_records = Vec::new();
-    let mut boundary_frames = Vec::new();
-    let mut pending_boundary = None;
-    let mut saw_statement_after_header = false;
-
-    let mut lines = LineCursor::new(code);
-    let mut saw_header_line = false;
-    while let Some((raw, line_start)) = lines.next_line() {
-        control.checkpoint()?;
-        let line = strip_inline_comment(raw);
-        let header = line.trim();
-        if header.is_empty() {
-            continue;
-        }
-        saw_header_line = true;
-        let start = line_start + line.len() - line.trim_start().len();
-        let span = SourceSpan::new(start, start + header.len());
-        if is_c4_header(header) {
-            db.set_c4_type(header, config);
-        } else {
-            issues.push(c4_parse_issue(
-                Error::diagram_parse_exact(
-                    diagram_type.to_string(),
-                    format!("unexpected C4 header: {header}"),
-                    span,
-                ),
-                span,
-            ));
-        }
-        break;
-    }
-    if !saw_header_line {
-        let span = SourceSpan::new(code.len(), code.len());
-        issues.push(c4_parse_issue(
-            Error::diagram_parse_insertion_point(
-                diagram_type.to_string(),
-                "expected C4 header",
-                span.start,
-            ),
-            span,
-        ));
-    }
-
-    while let Some((raw, line_start)) = lines.next_line() {
-        control.checkpoint()?;
-        let raw = strip_inline_comment(raw);
-        let t = raw.trim();
-        if t.is_empty() {
-            continue;
-        }
-        saw_statement_after_header = true;
-
-        let statement_start = line_start + raw.len() - raw.trim_start().len();
-        if let Some(declaration) = pending_boundary.take() {
-            if t == "{" {
-                boundary_frames.push(C4BoundaryFrame::new(declaration, &mut boundary_records));
-                continue;
-            }
-            issues.push(c4_parse_issue(
-                Error::diagram_parse_insertion_point(
-                    diagram_type.to_string(),
-                    "expected '{' after boundary",
-                    declaration.span.end,
-                ),
-                SourceSpan::new(declaration.span.end, declaration.span.end),
-            ));
-        }
-
-        if t == "}" {
-            let closing_span = SourceSpan::new(statement_start, statement_start + 1);
-            let Some(frame) = boundary_frames.pop() else {
-                issues.push(c4_parse_issue(
-                    Error::diagram_parse_exact(
-                        diagram_type.to_string(),
-                        "unexpected '}' without open C4 boundary".to_string(),
-                        closing_span,
-                    ),
-                    closing_span,
-                ));
-                continue;
-            };
-            if !frame.has_diagram_statement {
-                issues.push(c4_parse_issue(
-                    Error::diagram_parse_exact(
-                        diagram_type.to_string(),
-                        "C4 boundary must contain at least one diagram statement".to_string(),
-                        closing_span,
-                    ),
-                    closing_span,
-                ));
-                continue;
-            }
-            if !frame.is_valid {
-                continue;
-            }
-            push_c4_semantic_statement(
-                &mut semantic_statements,
-                &mut boundary_frames,
-                &mut boundary_records,
-                C4SemanticStatement::Boundary(frame.boundary),
-                true,
-            );
-            continue;
-        }
-
-        if let Some(title) = parse_title_spanned_c4(raw, line_start) {
-            if c4_other_statement_is_allowed(
-                &mut boundary_frames,
-                &mut issues,
-                diagram_type,
-                title.span,
-            ) {
-                push_c4_semantic_statement(
-                    &mut semantic_statements,
-                    &mut boundary_frames,
-                    &mut boundary_records,
-                    C4SemanticStatement::SetTitle(title.text.clone()),
-                    false,
-                );
-            }
-            #[cfg(feature = "editor-facts")]
-            if let Some(facts) = editor_facts
-                .as_mut()
-                .filter(|_| editor_demand.captures_rich())
-            {
-                facts.push_directive_prefix("title");
-            }
-            #[cfg(feature = "editor-facts")]
-            if editor_demand.captures_rich() {
-                push_c4_payload_fact(&mut editor_facts, &title, "c4 title");
-            }
-            continue;
-        }
-
-        if let Some(acc_title) = parse_acc_title_spanned_c4(raw, line_start) {
-            // Mermaid's C4 grammar maps accTitle to the diagram title.
-            if c4_other_statement_is_allowed(
-                &mut boundary_frames,
-                &mut issues,
-                diagram_type,
-                acc_title.span,
-            ) {
-                push_c4_semantic_statement(
-                    &mut semantic_statements,
-                    &mut boundary_frames,
-                    &mut boundary_records,
-                    C4SemanticStatement::SetTitle(acc_title.text.clone()),
-                    false,
-                );
-            }
-            #[cfg(feature = "editor-facts")]
-            if let Some(facts) = editor_facts
-                .as_mut()
-                .filter(|_| editor_demand.captures_rich())
-            {
-                facts.push_directive_prefix("accTitle");
-            }
-            #[cfg(feature = "editor-facts")]
-            if editor_demand.captures_rich() {
-                push_c4_payload_fact(&mut editor_facts, &acc_title, "c4 accessibility title");
-            }
-            continue;
-        }
-
-        if let Some(acc_description) = parse_acc_description_stmt_spanned_c4(raw, line_start) {
-            if c4_other_statement_is_allowed(
-                &mut boundary_frames,
-                &mut issues,
-                diagram_type,
-                acc_description.span,
-            ) {
-                push_c4_semantic_statement(
-                    &mut semantic_statements,
-                    &mut boundary_frames,
-                    &mut boundary_records,
-                    C4SemanticStatement::SetAccDescription(acc_description.text.clone()),
-                    false,
-                );
-            }
-            #[cfg(feature = "editor-facts")]
-            if let Some(facts) = editor_facts
-                .as_mut()
-                .filter(|_| editor_demand.captures_rich())
-            {
-                facts.push_directive_prefix("accDescription");
-            }
-            #[cfg(feature = "editor-facts")]
-            if editor_demand.captures_rich() {
-                push_c4_payload_fact(
-                    &mut editor_facts,
-                    &acc_description,
-                    "c4 accessibility description",
-                );
-            }
-            continue;
-        }
-
-        if let Some(acc_descr) = parse_acc_descr_spanned_c4(&mut lines, raw, line_start, control)? {
-            if c4_other_statement_is_allowed(
-                &mut boundary_frames,
-                &mut issues,
-                diagram_type,
-                acc_descr.value.span,
-            ) {
-                push_c4_semantic_statement(
-                    &mut semantic_statements,
-                    &mut boundary_frames,
-                    &mut boundary_records,
-                    C4SemanticStatement::SetAccDescription(acc_descr.value.text.clone()),
-                    false,
-                );
-            }
-            #[cfg(feature = "editor-facts")]
-            if let Some(facts) = editor_facts
-                .as_mut()
-                .filter(|_| editor_demand.captures_rich())
-            {
-                facts.push_directive_prefix("accDescr");
-            }
-            #[cfg(feature = "editor-facts")]
-            if editor_demand.captures_rich() {
-                push_c4_payload_fact(
-                    &mut editor_facts,
-                    &acc_descr.value,
-                    "c4 accessibility description",
-                );
-            }
-            if !acc_descr.closed {
-                let error = Error::diagram_parse_insertion_point(
-                    diagram_type.to_string(),
-                    "unterminated C4 accDescr block",
-                    code.len(),
-                );
-                issues.push(c4_parse_issue(error, acc_descr.value.span));
-            }
-            continue;
-        }
-
-        let stmt_start = statement_start;
-        let statement_span = SourceSpan::new(stmt_start, stmt_start + t.len());
-        if let Some(_valid) = parse_direction_stmt_facts_c4(
-            raw,
-            #[cfg(feature = "editor-facts")]
-            editor_demand,
-            #[cfg(feature = "editor-facts")]
-            line_start,
-            #[cfg(feature = "editor-facts")]
-            &mut editor_facts,
-        ) {
-            issues.push(c4_parse_issue(
-                Error::diagram_parse_exact(
-                    diagram_type.to_string(),
-                    format!("unsupported C4 statement: {t}"),
-                    statement_span,
-                ),
-                statement_span,
-            ));
-            continue;
-        }
-        // Only quoted macro tokens can carry a physical LF into the next line. Borrow the
-        // original span so comments, CRLF and UTF-8 offsets survive without reconstruction.
-        let macro_source = if t.contains('(') {
-            c4_macro_statement_source(code, stmt_start, control)?
-        } else {
-            t
-        };
-        let stmt = match parse_macro_stmt_spanned(macro_source, stmt_start) {
-            Ok(Some(stmt)) => stmt,
-            Ok(None) => {
-                issues.push(c4_parse_issue(
-                    Error::diagram_parse_exact(
-                        diagram_type.to_string(),
-                        format!("unsupported C4 statement: {t}"),
-                        statement_span,
-                    ),
-                    statement_span,
-                ));
-                continue;
-            }
-            Err(error) => {
-                issues.push(c4_parse_issue(error, statement_span));
-                continue;
-            }
-        };
-        // Commit lookahead only after syntax succeeds; malformed strings must not consume
-        // later safe lines that recovery can still parse independently.
-        while lines.offset() < stmt.span.end {
-            if lines.next_line().is_none() {
-                break;
-            }
-            control.checkpoint()?;
-        }
-        if let Err(error) = validate_c4_macro_args(&stmt) {
-            issues.push(c4_parse_issue(error, stmt.span));
-            continue;
-        }
-        if let Err(error) = parse_macro_stmt_facts_c4(
-            &stmt,
-            #[cfg(feature = "editor-facts")]
-            editor_demand,
-            #[cfg(feature = "editor-facts")]
-            &mut editor_facts,
-        ) {
-            issues.push(c4_parse_issue(error, stmt.span));
-            continue;
-        }
-        if stmt.has_lbrace && !is_boundary_macro(&stmt.name) {
-            let lbrace = SourceSpan::new(stmt.span.end.saturating_sub(1), stmt.span.end);
-            issues.push(c4_parse_issue(
-                Error::diagram_parse_exact(
-                    diagram_type.to_string(),
-                    "unexpected '{' after non-boundary C4 statement".to_string(),
-                    lbrace,
-                ),
-                lbrace,
-            ));
-            continue;
-        }
-        if is_boundary_macro(&stmt.name) {
-            if stmt.has_lbrace {
-                boundary_frames.push(C4BoundaryFrame::new(stmt, &mut boundary_records));
-            } else {
-                pending_boundary = Some(stmt);
-            }
-        } else {
-            push_c4_semantic_statement(
-                &mut semantic_statements,
-                &mut boundary_frames,
-                &mut boundary_records,
-                C4SemanticStatement::Macro(stmt),
-                true,
-            );
-        }
-    }
-
-    if let Some(declaration) = pending_boundary {
-        issues.push(c4_parse_issue(
-            Error::diagram_parse_insertion_point(
-                diagram_type.to_string(),
-                "expected '{' after boundary",
-                declaration.span.end,
-            ),
-            SourceSpan::new(declaration.span.end, declaration.span.end),
-        ));
-    }
-
-    while boundary_frames.pop().is_some() {
-        let eof = SourceSpan::new(code.len(), code.len());
-        issues.push(c4_parse_issue(
-            Error::diagram_parse_insertion_point(
-                diagram_type.to_string(),
-                "expected '}' before end of C4 diagram",
-                code.len(),
-            ),
-            eof,
-        ));
-    }
-
-    if saw_header_line && !saw_statement_after_header {
-        let eof = SourceSpan::new(code.len(), code.len());
-        issues.push(c4_parse_issue(
-            Error::diagram_parse_insertion_point(
-                diagram_type.to_string(),
-                "expected at least one C4 statement",
-                code.len(),
-            ),
-            eof,
-        ));
-    }
-
-    apply_c4_semantic_statements(
-        &mut db,
-        &semantic_statements,
-        &boundary_records,
-        diagram_type,
-        config,
-        &mut issues,
-        control,
-    )?;
-    issues.sort_by_key(|issue| issue.span.start);
-
-    control.checkpoint()?;
-    Ok(C4ParseOutcome {
-        source: C4SemanticSource {
-            db,
-            #[cfg(feature = "editor-facts")]
-            editor_facts,
-        },
-        issues,
-    })
-}
-
-fn apply_c4_semantic_statements(
-    db: &mut C4Db,
-    statements: &[C4SemanticStatement],
-    boundaries: &[C4BoundaryRecord],
-    diagram_type: &str,
-    config: &MermaidConfig,
-    issues: &mut Vec<C4ParseIssue>,
-    control: &OperationControl,
-) -> OperationControlResult<()> {
-    struct ReplayFrame<'a> {
-        statements: &'a [C4SemanticStatement],
-        next_statement: usize,
-        parent_boundary: String,
-    }
-
-    let mut frames = vec![ReplayFrame {
-        statements,
-        next_statement: 0,
-        parent_boundary: "global".to_string(),
-    }];
-    while let Some(frame) = frames.last_mut() {
-        control.checkpoint()?;
-        if frame.next_statement == frame.statements.len() {
-            frames.pop();
-            continue;
-        }
-        let statement = &frame.statements[frame.next_statement];
-        frame.next_statement += 1;
-        let parent_boundary = frame.parent_boundary.clone();
-        match statement {
-            C4SemanticStatement::SetTitle(title) => {
-                db.set_title(title, config);
-            }
-            C4SemanticStatement::SetAccDescription(description) => {
-                db.set_acc_description(description);
-            }
-            C4SemanticStatement::Macro(statement) => {
-                if let Err(error) = apply_c4_macro(db, statement, diagram_type, &parent_boundary) {
-                    issues.push(c4_parse_issue(error, statement.span));
-                }
-            }
-            C4SemanticStatement::Boundary(boundary) => {
-                let C4BoundaryRecord {
-                    declaration,
-                    statements,
-                } = &boundaries[boundary.0];
-                match apply_c4_macro(db, declaration, diagram_type, &parent_boundary) {
-                    Ok(Some(alias)) => {
-                        frames.push(ReplayFrame {
-                            statements,
-                            next_statement: 0,
-                            parent_boundary: alias,
-                        });
-                    }
-                    Ok(None) => issues.push(c4_parse_issue(
-                        Error::diagram_parse_exact(
-                            diagram_type.to_string(),
-                            "expected C4 boundary declaration".to_string(),
-                            declaration.span,
-                        ),
-                        declaration.span,
-                    )),
-                    Err(error) => issues.push(c4_parse_issue(error, declaration.span)),
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
-fn apply_c4_macro(
-    db: &mut C4Db,
-    stmt: &SpannedMacroStmt,
-    diagram_type: &str,
-    parent_boundary: &str,
-) -> Result<Option<String>> {
-    let name = stmt.name.as_str();
-    let mut args = semantic_c4_args(&stmt.args);
-
-    if is_boundary_macro(name) {
-        match name {
-            "Enterprise_Boundary" => {
-                args.insert(args.len().min(2), C4Arg::Text("ENTERPRISE".to_string()))
-            }
-            "System_Boundary" => args.insert(args.len().min(2), C4Arg::Text("SYSTEM".to_string())),
-            "Container_Boundary" => {
-                args.insert(args.len().min(2), C4Arg::Text("CONTAINER".to_string()))
-            }
-            _ => {}
-        }
-
-        let alias = match name {
-            "Boundary" | "Enterprise_Boundary" | "System_Boundary" => {
-                db.add_person_or_system_boundary(&args, parent_boundary)?
-            }
-            "Container_Boundary" => db.add_container_boundary(&args, parent_boundary)?,
-            "Node" | "Deployment_Node" => db.add_deployment_node("node", &args, parent_boundary)?,
-            "Node_L" => db.add_deployment_node("nodeL", &args, parent_boundary)?,
-            "Node_R" => db.add_deployment_node("nodeR", &args, parent_boundary)?,
-            other => {
-                return Err(Error::diagram_parse_fallback(
-                    diagram_type.to_string(),
-                    format!("unsupported boundary macro: {other}"),
-                ));
-            }
-        };
-
-        return Ok(Some(alias));
-    }
-
-    match name {
-        "Person" => db.add_person_or_system("person", &args, parent_boundary)?,
-        "Person_Ext" => db.add_person_or_system("external_person", &args, parent_boundary)?,
-        "System" => db.add_person_or_system("system", &args, parent_boundary)?,
-        "SystemDb" => db.add_person_or_system("system_db", &args, parent_boundary)?,
-        "SystemQueue" => db.add_person_or_system("system_queue", &args, parent_boundary)?,
-        "System_Ext" => db.add_person_or_system("external_system", &args, parent_boundary)?,
-        "SystemDb_Ext" => db.add_person_or_system("external_system_db", &args, parent_boundary)?,
-        "SystemQueue_Ext" => {
-            db.add_person_or_system("external_system_queue", &args, parent_boundary)?
-        }
-        "Container" => db.add_container("container", &args, parent_boundary)?,
-        "ContainerDb" => db.add_container("container_db", &args, parent_boundary)?,
-        "ContainerQueue" => db.add_container("container_queue", &args, parent_boundary)?,
-        "Container_Ext" => db.add_container("external_container", &args, parent_boundary)?,
-        "ContainerDb_Ext" => db.add_container("external_container_db", &args, parent_boundary)?,
-        "ContainerQueue_Ext" => {
-            db.add_container("external_container_queue", &args, parent_boundary)?
-        }
-        "Component" => db.add_component("component", &args, parent_boundary)?,
-        "ComponentDb" => db.add_component("component_db", &args, parent_boundary)?,
-        "ComponentQueue" => db.add_component("component_queue", &args, parent_boundary)?,
-        "Component_Ext" => db.add_component("external_component", &args, parent_boundary)?,
-        "ComponentDb_Ext" => db.add_component("external_component_db", &args, parent_boundary)?,
-        "ComponentQueue_Ext" => {
-            db.add_component("external_component_queue", &args, parent_boundary)?
-        }
-        "Rel" => db.add_rel("rel", &args)?,
-        "BiRel" => db.add_rel("birel", &args)?,
-        "Rel_U" | "Rel_Up" => db.add_rel("rel_u", &args)?,
-        "Rel_D" | "Rel_Down" => db.add_rel("rel_d", &args)?,
-        "Rel_L" | "Rel_Left" => db.add_rel("rel_l", &args)?,
-        "Rel_R" | "Rel_Right" => db.add_rel("rel_r", &args)?,
-        "Rel_Back" => db.add_rel("rel_b", &args)?,
-        "RelIndex" => db.add_rel("rel", &args[1..])?,
-        "UpdateElementStyle" => db.update_el_style(&args)?,
-        "UpdateRelStyle" => db.update_rel_style(&args)?,
-        "UpdateLayoutConfig" => db.update_layout_config(&args)?,
-        other => {
-            return Err(Error::diagram_parse_fallback(
-                diagram_type.to_string(),
-                format!("unsupported C4 macro: {other}"),
-            ));
-        }
-    }
-    Ok(None)
-}
-
-fn c4_parse_issue(error: Error, fallback: SourceSpan) -> C4ParseIssue {
-    let span = match &error {
-        Error::DiagramParse { diagnostic, .. } => diagnostic.span().unwrap_or(fallback),
-        _ => fallback,
-    };
-    C4ParseIssue { error, span }
-}
-
-fn strip_inline_comment(line: &str) -> &str {
-    let mut in_quotes = false;
-    let mut idx = 0usize;
-    let bytes = line.as_bytes();
-    while idx < bytes.len() {
-        let b = bytes[idx];
-        if b == b'"' {
-            in_quotes = !in_quotes;
-            idx += 1;
-            continue;
-        }
-        if !in_quotes && b == b'%' && idx + 1 < bytes.len() && bytes[idx + 1] == b'%' {
-            return &line[..idx];
-        }
-        idx += 1;
-    }
-    line
-}
-
-fn is_boundary_macro(name: &str) -> bool {
-    matches!(
-        name,
-        "Boundary"
-            | "Enterprise_Boundary"
-            | "System_Boundary"
-            | "Container_Boundary"
-            | "Node"
-            | "Deployment_Node"
-            | "Node_L"
-            | "Node_R"
-    )
-}
-
-fn split_next_arg(input: &str) -> (&str, Option<(usize, &str)>) {
-    let mut in_quotes = false;
-    for (i, c) in input.char_indices() {
-        match c {
-            '"' => in_quotes = !in_quotes,
-            ',' if !in_quotes => {
-                return (&input[..i], Some((i, &input[i + 1..])));
-            }
-            _ => {}
-        }
-    }
-    (input, None)
-}
-
 #[cfg(test)]
 mod semantic_tests {
     use super::*;
-
-    #[test]
-    fn c4_quoted_trim_matches_javascript_and_keeps_the_authored_body_range() {
-        for (body, expected) in [
-            (" \t\u{feff}Alice\nSmith\u{feff}\t ", "Alice\nSmith"),
-            ("\u{0085}Alice\u{0085}", "\u{0085}Alice\u{0085}"),
-            (" \t\n\u{feff}", ""),
-        ] {
-            for prefix in ["", "$tags="] {
-                let input = format!("{prefix}\"{body}\"");
-                let arg = parse_arg_spanned(&input, 10).unwrap();
-                let value = C4Arg::from_spanned(&arg);
-                assert_eq!(value.value(), expected);
-                let start = 10 + prefix.len() + 1;
-                assert_eq!(arg.span(), SourceSpan::new(start, start + body.len()));
-            }
-        }
-    }
 
     #[test]
     fn c4_quoted_arguments_trim_semantics_across_macros() {
@@ -2724,57 +362,6 @@ mod semantic_tests {
     }
 
     #[test]
-    fn c4_unterminated_quoted_macro_lookahead_keeps_later_safe_statements() {
-        let source = concat!(
-            "C4Context\r\n",
-            "Person(broken, \"Unclosed\r\n",
-            "System(after, \"Later\")\r\n",
-            "Rel(after, )\r\n",
-            "Person(next, \"Next\r\nLine\")\r\n",
-        );
-        reset_c4_syntax_construction_count();
-        let outcome = construct_c4_source_controlled(
-            source,
-            "c4",
-            &MermaidConfig::empty_object(),
-            #[cfg(feature = "editor-facts")]
-            EditorFactsDemand::Capture,
-            &OperationControl::new(),
-        )
-        .unwrap();
-        assert_eq!(c4_syntax_construction_count(), 1);
-        assert_eq!(outcome.issues.len(), 2);
-        assert!(
-            outcome.issues[0]
-                .error
-                .to_string()
-                .contains("unterminated macro call")
-        );
-        assert_eq!(
-            outcome.issues[0].span,
-            SourceSpan::new("C4Context\r\n".len(), source.find("\r\nSystem").unwrap())
-        );
-        assert!(
-            outcome.issues[1]
-                .error
-                .to_string()
-                .contains("missing relation target")
-        );
-        let model = outcome.source.db.into_model().unwrap();
-        assert_eq!(model.shapes.len(), 2);
-        assert_eq!(model.shapes[0].alias, "after");
-        assert_eq!(model.shapes[1].label.as_str(), "Next\r\nLine");
-        #[cfg(feature = "editor-facts")]
-        {
-            let facts = outcome.source.editor_facts.unwrap();
-            for name in ["after", "Later", "next", "Next\r\nLine"] {
-                assert!(facts.symbols.iter().any(|symbol| symbol.name == name));
-            }
-            assert!(!facts.symbols.iter().any(|symbol| symbol.name == "broken"));
-        }
-    }
-
-    #[test]
     #[cfg(feature = "editor-facts")]
     fn c4_trimmed_multiline_facts_retain_authored_utf8_crlf_ranges() {
         use crate::{EditorSemanticCompleteness, EditorSemanticRole};
@@ -2840,18 +427,6 @@ mod semantic_tests {
             expected.kind == EditorExpectedSyntaxKind::Payload
                 && expected.span == SourceSpan::new(start, start + empty_body.len())
         }));
-    }
-
-    #[test]
-    fn c4_macro_scanning_observes_cancellation_inside_long_quoted_tokens() {
-        for body in ["row\n".repeat(32), "x".repeat(16 * 1024)] {
-            let source = format!("Person(a, \"{body}\")\n");
-            let control = OperationControl::new().for_phase(crate::OperationPhase::Parse);
-            control.cancel_after_checkpoints(1);
-            let cancelled = c4_macro_statement_source(&source, 0, &control).unwrap_err();
-            assert_eq!(cancelled.reason, crate::CancelReason::Requested);
-            assert_eq!(cancelled.phase, crate::OperationPhase::Parse);
-        }
     }
 
     #[test]
@@ -3057,17 +632,6 @@ mod tests {
         }
     }
 
-    fn recovered_model_and_errors(text: &str) -> (Value, Vec<String>) {
-        let outcome = construct_c4_semantic_source(text, &meta());
-        let errors = outcome
-            .issues
-            .iter()
-            .map(|issue| issue.error.to_string())
-            .collect();
-        let model = outcome.source.db.into_compat_json(&meta()).unwrap();
-        (model, errors)
-    }
-
     fn meta() -> SourcePresentationMetadata {
         SourcePresentationMetadata {
             diagram_type: "c4".to_string(),
@@ -3075,87 +639,6 @@ mod tests {
             effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
         }
-    }
-
-    fn boundary_chain(depth: usize) -> String {
-        let mut source = String::from("C4Context\n");
-        for level in 0..depth {
-            source.push_str(&format!("Boundary(b{level}, \"B{level}\") {{\n"));
-        }
-        source.push_str("System(leaf, \"Leaf\")\n");
-        for _ in 0..depth {
-            source.push_str("}\n");
-        }
-        source
-    }
-
-    #[test]
-    fn c4_cancellation_during_boundary_closure_releases_partial_fragments() {
-        std::thread::Builder::new()
-            .name("c4-deep-closure-cancellation".into())
-            .stack_size(2 * 1024 * 1024)
-            .spawn(|| {
-                const DEPTH: usize = 15_000;
-                let source = boundary_chain(DEPTH);
-                let control = OperationControl::new().for_phase(crate::OperationPhase::Parse);
-                // Construction entry/header use three checkpoints; each macro uses two. Cancel
-                // halfway through the closers, after completed inner boundaries belong to an
-                // open frame. Nextest isolates this named unit in its own OS subprocess.
-                control.cancel_after_checkpoints(3 + 2 * (DEPTH + 1) + DEPTH / 2);
-
-                let cancelled =
-                    match construct_c4_semantic_source_controlled(&source, &meta(), &control) {
-                        Ok(_) => panic!("closure construction must observe cancellation"),
-                        Err(cancelled) => cancelled,
-                    };
-                assert_eq!(cancelled.reason, crate::CancelReason::Requested);
-                assert_eq!(cancelled.phase, crate::OperationPhase::Parse);
-                assert_eq!(control.checkpoint().unwrap_err(), cancelled);
-                assert!(
-                    parse_c4_model_for_render("C4Context\nSystem(after, \"After\")\n", &meta())
-                        .is_ok()
-                );
-                println!(
-                    "depth={DEPTH} worker_stack_bytes=2097152 phase=after-small-operation status=done"
-                );
-            })
-            .expect("spawn 2 MiB C4 closure-cancellation worker")
-            .join()
-            .expect("C4 closure cancellation releases completed inner frames");
-    }
-
-    #[test]
-    fn c4_cancellation_during_boundary_replay_releases_partial_fragments() {
-        std::thread::Builder::new()
-            .name("c4-deep-replay-cancellation".into())
-            .stack_size(2 * 1024 * 1024)
-            .spawn(|| {
-                const DEPTH: usize = 15_000;
-                let source = boundary_chain(DEPTH);
-                let control = OperationControl::new().for_phase(crate::OperationPhase::Parse);
-                // Consume construction and all closers, then enter half the nested replay
-                // frames. Nextest isolates this named unit in its own OS subprocess.
-                control.cancel_after_checkpoints(3 + 2 * (DEPTH + 1) + DEPTH + DEPTH / 2);
-
-                let cancelled =
-                    match construct_c4_semantic_source_controlled(&source, &meta(), &control) {
-                        Ok(_) => panic!("boundary replay must observe cancellation"),
-                        Err(cancelled) => cancelled,
-                    };
-                assert_eq!(cancelled.reason, crate::CancelReason::Requested);
-                assert_eq!(cancelled.phase, crate::OperationPhase::Parse);
-                assert_eq!(control.checkpoint().unwrap_err(), cancelled);
-                assert!(
-                    parse_c4_model_for_render("C4Context\nSystem(after, \"After\")\n", &meta())
-                        .is_ok()
-                );
-                println!(
-                    "depth={DEPTH} worker_stack_bytes=2097152 phase=after-small-operation status=done"
-                );
-            })
-            .expect("spawn 2 MiB C4 replay-cancellation worker")
-            .join()
-            .expect("C4 replay cancellation releases completed boundary records");
     }
 
     #[test]
@@ -3220,77 +703,6 @@ Rel(after, sibling_shape, "After relation")
                 .collect::<Vec<_>>(),
             ["Inside relation", "After relation"]
         );
-    }
-
-    #[test]
-    fn c4_completed_inner_boundary_is_discarded_with_unclosed_outer() {
-        let source = r#"C4Context
-title Root title
-System(before, "Before")
-Boundary(open, "Open") {
-  Boundary(completed, "Completed") {
-    System(inside, "Inside")
-  }
-  title Unfinished title
-"#;
-        let outcome = construct_c4_semantic_source(source, &meta());
-        assert_eq!(outcome.issues.len(), 1);
-        assert_eq!(
-            outcome.issues[0].span,
-            SourceSpan::new(source.len(), source.len())
-        );
-        assert!(
-            outcome.issues[0]
-                .error
-                .to_string()
-                .contains("expected '}' before end")
-        );
-        let model = outcome
-            .source
-            .db
-            .into_model()
-            .expect("safe recovered model");
-        assert_eq!(model.boundaries.len(), 1);
-        assert_eq!(model.shapes.len(), 1);
-        assert_eq!(model.shapes[0].alias, "before");
-        assert_eq!(model.title.as_deref(), Some("Root title"));
-        #[cfg(feature = "editor-facts")]
-        assert!(
-            outcome
-                .source
-                .editor_facts
-                .as_ref()
-                .expect("requested editor facts")
-                .symbols
-                .iter()
-                .any(|symbol| symbol.name == "inside")
-        );
-    }
-
-    #[test]
-    fn c4_empty_nested_boundary_does_not_publish_or_change_sibling_context() {
-        let (model, errors) = recovered_model_and_errors(
-            r#"C4Context
-Boundary(outer, "Outer") {
-  System(before, "Before")
-  Boundary(empty, "Empty") {
-  }
-  Boundary(sibling, "Sibling") {
-    System(inside, "Inside")
-  }
-  System(after, "After")
-}
-System(root_after, "Root After")
-"#,
-        );
-        assert_eq!(errors.len(), 1);
-        assert!(errors[0].contains("boundary must contain"));
-        assert_eq!(model["boundaries"].as_array().unwrap().len(), 3);
-        assert_eq!(model["boundaries"][2]["alias"], json!("sibling"));
-        assert_eq!(model["boundaries"][2]["parentBoundary"], json!("outer"));
-        for (index, parent) in ["outer", "sibling", "outer", "global"].iter().enumerate() {
-            assert_eq!(model["shapes"][index]["parentBoundary"], json!(parent));
-        }
     }
 
     #[test]
@@ -3956,6 +1368,21 @@ UpdateRelStyle(c, b, $lineColor="red")
         let source = "C4Dynamic\nRel(a, b, \"label\", $type=\"custom\")\n";
         let error = parse_err(source);
         assert!(error.message().contains("expected string field `type`"));
+        #[cfg(feature = "editor-facts")]
+        {
+            let strict_error = parse_c4(source, &meta()).unwrap_err();
+            let (model, facts) =
+                parse_c4_json_and_editor_facts(source, &meta(), &OperationControl::new())
+                    .unwrap()
+                    .into_parts();
+            assert_eq!(
+                model.err().map(|error| error.to_string()),
+                Some(strict_error.to_string())
+            );
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+            assert!(facts.diagnostics.is_empty());
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "label"));
+        }
         let repaired = format!("{source}UpdateRelStyle(a, b, $type=\"custom\")\n");
         assert_eq!(parse(&repaired)["rels"][0]["type"], json!("custom"));
     }
@@ -4022,103 +1449,26 @@ Boundary(b1, "B")
 
     #[test]
     fn c4_non_boundary_macro_cannot_open_a_boundary_body() {
-        let source = r#"C4Context
-Person(p, "P") {
-"#;
-        let (model, errors) = recovered_model_and_errors(source);
-
-        assert!(model["shapes"].as_array().unwrap().is_empty());
+        let source = "C4Context\nPerson(p, \"P\") {\n";
+        let diagnostic = parse_err(source);
         assert!(
-            errors
-                .iter()
-                .any(|error| error.contains("unexpected '{' after non-boundary"))
-        );
-        parse_err(source);
-    }
-
-    #[test]
-    fn c4_boundary_must_start_with_a_diagram_statement() {
-        let (model, errors) = recovered_model_and_errors(
-            r#"C4Context
-Boundary(b, "B") {
-  title Invalid inside boundary
-  Person(p, "P")
-}
-"#,
-        );
-
-        assert_eq!(model["boundaries"].as_array().unwrap().len(), 1);
-        assert!(model["shapes"].as_array().unwrap().is_empty());
-        assert!(model["title"].is_null());
-        assert!(
-            errors
-                .iter()
-                .any(|error| error.contains("must start with a diagram statement"))
+            diagnostic
+                .message()
+                .contains("unexpected '{' after non-boundary")
         );
     }
 
     #[test]
-    fn c4_boundary_without_validated_brace_does_not_mutate_db_or_parent() {
-        let (model, errors) = recovered_model_and_errors(
-            r#"C4Context
-Boundary(bank, "Bank")
-Person(after, "After")
-"#,
+    #[cfg(feature = "editor-facts")]
+    fn c4_unclosed_boundary_editor_facts_keep_lexical_declarations_at_eof() {
+        let source = "C4Context\nBoundary(open, \"Open\") {\n  Person(inside, \"Inside\")\n";
+        let facts = crate::family::test_support::editor_facts(
+            parse_c4_json_and_editor_facts,
+            source,
+            &meta(),
         );
-
-        assert!(
-            errors
-                .iter()
-                .any(|error| error.contains("expected '{' after boundary"))
-        );
-        assert_eq!(model["boundaries"].as_array().unwrap().len(), 1);
-        assert_eq!(model["shapes"][0]["alias"], json!("after"));
-        assert_eq!(model["shapes"][0]["parentBoundary"], json!("global"));
-    }
-
-    #[test]
-    fn c4_empty_boundary_is_rejected_and_rolled_back() {
-        let (model, errors) = recovered_model_and_errors(
-            r#"C4Context
-Boundary(empty, "Empty") {
-}
-"#,
-        );
-
-        assert!(
-            errors
-                .iter()
-                .any(|error| error.contains("boundary must contain"))
-        );
-        assert_eq!(model["boundaries"].as_array().unwrap().len(), 1);
-    }
-
-    #[test]
-    fn c4_unclosed_boundary_is_rejected_and_rolled_back_at_eof() {
-        let source = r#"C4Context
-Boundary(open, "Open") {
-  Person(inside, "Inside")
-"#;
-        let (model, errors) = recovered_model_and_errors(source);
-
-        assert!(
-            errors
-                .iter()
-                .any(|error| error.contains("expected '}' before end"))
-        );
-        assert_eq!(model["boundaries"].as_array().unwrap().len(), 1);
-        assert!(model["shapes"].as_array().unwrap().is_empty());
-
-        #[cfg(feature = "editor-facts")]
-        {
-            let facts = crate::family::test_support::editor_facts(
-                parse_c4_json_and_editor_facts,
-                source,
-                &meta(),
-            );
-            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-            assert!(facts.symbols.iter().any(|symbol| symbol.name == "inside"));
-        }
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "inside"));
     }
 
     #[test]
@@ -4134,23 +1484,6 @@ Boundary(open, "Open") {
                 "render projection accepted structurally invalid C4 source: {source:?}"
             );
         }
-    }
-
-    #[test]
-    fn c4_unmatched_closing_brace_does_not_change_safe_sibling_parent() {
-        let (model, errors) = recovered_model_and_errors(
-            r#"C4Context
-Boundary(bank, "Bank") {
-  Person(inside, "Inside")
-}
-}
-Person(after, "After")
-"#,
-        );
-
-        assert!(errors.iter().any(|error| error.contains("unexpected '}'")));
-        assert_eq!(model["shapes"][1]["alias"], json!("after"));
-        assert_eq!(model["shapes"][1]["parentBoundary"], json!("global"));
     }
 
     #[test]
@@ -4716,25 +2049,27 @@ UpdateRelStyle(customer, system, $lineColor="blue")
     #[cfg(feature = "editor-facts")]
     fn c4_entity_occurrence_role_does_not_depend_on_display_detail() {
         let span = SourceSpan::new(0, "node".len());
-        let value = SpannedText {
-            text: "node".to_string(),
-            span,
-        };
-        let mut facts = Some(EditorSemanticFacts::new());
-        push_c4_entity_fact(
-            &mut facts,
-            &value,
-            "reference-looking definition",
-            C4EntityOccurrence::Definition,
-        );
-        push_c4_entity_fact(
-            &mut facts,
-            &value,
-            "definition-looking reference",
-            C4EntityOccurrence::Reference,
-        );
-
-        let facts = facts.unwrap();
+        let mut facts = EditorSemanticFacts::new();
+        for (detail, occurrence) in [
+            (
+                "reference-looking definition",
+                C4EntityOccurrence::Definition,
+            ),
+            (
+                "definition-looking reference",
+                C4EntityOccurrence::Reference,
+            ),
+        ] {
+            project_c4_observation(
+                &mut facts,
+                C4Observation::Entity {
+                    text: "node",
+                    span,
+                    detail,
+                    occurrence,
+                },
+            );
+        }
         assert_eq!(facts.symbols[0].role, EditorSemanticRole::Entity);
         assert_eq!(facts.symbols[1].role, EditorSemanticRole::Reference);
     }

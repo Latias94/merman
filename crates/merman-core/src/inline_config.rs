@@ -1,15 +1,10 @@
-#[cfg(any(
-    test,
-    feature = "diagram-agentflow",
-    feature = "diagram-kanban",
-    feature = "diagram-sequence"
-))]
+#[cfg(any(test, feature = "diagram-kanban", feature = "diagram-sequence"))]
 use crate::yaml_config::{
     YamlCollectionText, mermaid_inline_yaml, parse_yaml_with_capture_controlled,
 };
 use serde_json::Value;
 
-#[cfg(any(test, feature = "diagram-agentflow", feature = "diagram-sequence"))]
+#[cfg(any(test, feature = "diagram-sequence"))]
 pub(crate) fn parse_mermaid_inline_object_controlled(
     input: &str,
     control: &crate::OperationControl,
@@ -18,12 +13,7 @@ pub(crate) fn parse_mermaid_inline_object_controlled(
     Ok(parsed.map(|(value, _)| value))
 }
 
-#[cfg(any(
-    test,
-    feature = "diagram-agentflow",
-    feature = "diagram-kanban",
-    feature = "diagram-sequence"
-))]
+#[cfg(any(test, feature = "diagram-kanban", feature = "diagram-sequence"))]
 pub(crate) fn parse_mermaid_inline_object_with_text_controlled(
     input: &str,
     collection_text_keys: &[&'static str],
