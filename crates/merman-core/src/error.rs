@@ -35,7 +35,7 @@ pub enum ParseDiagnosticSpanKind {
     Fallback,
 }
 
-/// Structured parser diagnostic carried by [`Error::DiagramParse`].
+/// Structured parser diagnostic carried by [`Error::DiagramParse`] or [`Error::SourceConfig`].
 ///
 /// `message()` is the human-readable text that older callers previously matched through a
 /// top-level `Error::DiagramParse { message, .. }` field. Prefer the structured accessors when an
@@ -97,6 +97,15 @@ mod tests {
         assert_eq!(diagnostic.span(), Some(span));
         assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
         assert_eq!(diagnostic.code(), Some("merman.test"));
+    }
+
+    #[test]
+    fn source_config_displays_the_diagnostic_message() {
+        let error = Error::SourceConfig {
+            diagnostic: ParseDiagnostic::new("invalid Grid row"),
+        };
+
+        assert_eq!(error.to_string(), "invalid Grid row");
     }
 }
 
@@ -185,6 +194,12 @@ pub enum Error {
         diagram_type: String,
         diagnostic: ParseDiagnostic,
     },
+
+    /// Authored source configuration failure before the diagram body is parsed.
+    ///
+    /// A diagnostic span refers to bytes in the original diagram source.
+    #[error("{}", diagnostic.message())]
+    SourceConfig { diagnostic: ParseDiagnostic },
 
     #[error(
         "Malformed YAML front-matter. If you were trying to use a YAML front-matter, please ensure that you've correctly opened and closed the YAML front-matter with un-indented `---` blocks"

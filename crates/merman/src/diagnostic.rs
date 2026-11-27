@@ -73,6 +73,7 @@ impl TerminalDiagnostic {
             merman_core::Error::DetectType(_)
             | merman_core::Error::UnsupportedDiagram { .. }
             | merman_core::Error::DiagramParse { .. }
+            | merman_core::Error::SourceConfig { .. }
             | merman_core::Error::MalformedFrontMatter
             | merman_core::Error::InvalidDirectiveJson { .. }
             | merman_core::Error::InvalidFrontMatterYaml { .. } => TerminalDiagnosticClass::Parse,
@@ -113,6 +114,7 @@ impl TerminalDiagnostic {
             merman_core::Error::DetectType(_) => "detect_type",
             merman_core::Error::UnsupportedDiagram { .. } => "unsupported_diagram",
             merman_core::Error::DiagramParse { .. } => "diagram_parse",
+            merman_core::Error::SourceConfig { .. } => "source_config",
             merman_core::Error::MalformedFrontMatter => "front_matter",
             merman_core::Error::InvalidDirectiveJson { .. } => "directive",
             merman_core::Error::InvalidFrontMatterYaml { .. } => "front_matter",
@@ -246,6 +248,9 @@ fn safe_parse_error(error: &merman_core::Error) -> String {
             "): ",
             diagnostic.message(),
         ),
+        merman_core::Error::SourceConfig { diagnostic } => {
+            normalize_terminal_diagnostic(diagnostic.message())
+        }
         merman_core::Error::MalformedFrontMatter => {
             "Malformed YAML front-matter. If you were trying to use a YAML front-matter, please ensure that you've correctly opened and closed the YAML front-matter with un-indented `---` blocks".to_string()
         }
@@ -300,14 +305,11 @@ fn safe_parse_details(error: &merman_core::Error) -> TerminalDiagnosticDetails {
             diagram_type,
             diagnostic,
         } => {
-            details.code = diagnostic
-                .code()
-                .map(normalize_terminal_diagnostic)
-                .filter(|code| !code.is_empty())
-                .unwrap_or_else(|| "merman.parse.diagram_parse".to_string());
-            details.span = diagnostic.span();
-            details.span_kind = diagnostic.span().map(|_| diagnostic.span_kind());
+            apply_parse_diagnostic_details(&mut details, diagnostic, "merman.parse.diagram_parse");
             details.diagram_type = Some(normalize_terminal_diagnostic(diagram_type));
+        }
+        merman_core::Error::SourceConfig { diagnostic } => {
+            apply_parse_diagnostic_details(&mut details, diagnostic, "merman.parse.source_config");
         }
         merman_core::Error::MalformedFrontMatter => {
             details.code = "merman.parse.front_matter.malformed".to_string();
@@ -326,6 +328,20 @@ fn safe_parse_details(error: &merman_core::Error) -> TerminalDiagnosticDetails {
         }
     }
     details
+}
+
+fn apply_parse_diagnostic_details(
+    details: &mut TerminalDiagnosticDetails,
+    diagnostic: &merman_core::ParseDiagnostic,
+    fallback_code: &str,
+) {
+    details.code = diagnostic
+        .code()
+        .map(normalize_terminal_diagnostic)
+        .filter(|code| !code.is_empty())
+        .unwrap_or_else(|| fallback_code.to_string());
+    details.span = diagnostic.span();
+    details.span_kind = details.span.map(|_| diagnostic.span_kind());
 }
 
 fn runtime_policy_details() -> TerminalDiagnosticDetails {
@@ -417,6 +433,47 @@ mod tests {
             },
         ));
         assert_eq!(detect_error.to_string(), "No Mermaid diagram type detected");
+    }
+
+    #[test]
+    fn source_config_projection_is_bounded_and_preserves_structured_context() {
+        let span = merman_model::SourceSpan::new(42, 45);
+        let diagnostic = merman_core::ParseDiagnostic::new(format!(
+            "invalid Grid row\u{7}: {}",
+            "x".repeat(16 * 1024)
+        ))
+        .with_span(span, merman_core::ParseDiagnosticSpanKind::Exact)
+        .with_code("GRID_INVALID_COORDINATE");
+        let error = TerminalDiagnostic::from(merman_core::Error::SourceConfig { diagnostic });
+
+        let display = error.to_string();
+        assert!(display.starts_with("invalid Grid row\\u{7}: "));
+        assert!(display.ends_with("..."));
+        assert!(display.len() <= 4 * 1024);
+        assert!(!format!("{error:?}").contains('\u{7}'));
+        assert_eq!(error.class(), TerminalDiagnosticClass::Parse);
+        assert!(!error.is_missing_diagram());
+
+        let details = error.terminal_diagnostic_details();
+        assert_eq!(details.code, "GRID_INVALID_COORDINATE");
+        assert_eq!(details.span, Some(span));
+        assert_eq!(
+            details.span_kind,
+            Some(merman_core::ParseDiagnosticSpanKind::Exact)
+        );
+        assert_eq!(details.diagram_type, None);
+    }
+
+    #[test]
+    fn source_config_projection_supplies_a_default_code() {
+        let error = TerminalDiagnostic::from(merman_core::Error::SourceConfig {
+            diagnostic: merman_core::ParseDiagnostic::new("invalid source configuration"),
+        });
+
+        let details = error.terminal_diagnostic_details();
+        assert_eq!(details.code, "merman.parse.source_config");
+        assert_eq!(details.span, None);
+        assert_eq!(details.span_kind, None);
     }
 
     #[test]

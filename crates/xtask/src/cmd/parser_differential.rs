@@ -456,6 +456,7 @@ fn local(case: &Case) -> Result<Outcome, XtaskError> {
         }),
         Err(
             error @ (merman_core::Error::DiagramParse { .. }
+            | merman_core::Error::SourceConfig { .. }
             | merman_core::Error::DetectType(_)
             | merman_core::Error::MalformedFrontMatter
             | merman_core::Error::InvalidDirectiveJson { .. }
