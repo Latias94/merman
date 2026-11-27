@@ -123,20 +123,15 @@ follows the vertical renderer boundary in [ADR-0103](0103-vertical-workspace-cra
 
 ### Chart rendering
 
-`merman-render-charts` owns typed layout, style binding, and complete SVG emission for Pie,
-Sankey, and Treemap. It uses the shared text measurement, CSS, XML escaping, and theme paint
-writers in `merman-render-core`. `merman-render` supplies the operation's measurer and viewport
-context and owns terminal SVG policy. For XY Chart, the chart crate owns typed layout, plot
-geometry, and bar label placement.
+`merman-render-charts` owns preparation, typed layout, style binding, and complete SVG emission
+for Pie, Quadrant Chart, Radar, Sankey, Treemap, Venn, Wardley, and XY Chart. It uses the shared
+text measurement, CSS, XML escaping, and theme paint writers in `merman-render-core`.
+`merman-render` supplies the operation's selected theme, measurement, work meter, and viewport
+context and applies terminal SVG policy.
 
-The chart crate owns Quadrant Chart geometry, paint binding, and SVG content. It also owns Radar
-layout and its point and radius codecs, Venn layout and its solver, and Wardley layout and
-annotation boxes. `merman-render` supplies theme precedence, the operation work meter, and
-document assembly for those families.
-
-For Treemap, the chart crate owns hierarchy layout, style binding, label fitting, and complete
-SVG emission. The facade supplies theme precedence, the operation's measurement routes and
-viewport context, and applies terminal SVG policy.
+`merman-render-structured` owns the Gantt task and time-axis layout, style and font admission,
+and complete SVG emission. The facade supplies the time and time-zone services from the render
+session and retains the public layout model paths and terminal SVG policy.
 
 ### Frozen presentation is distinct from engine initialization
 
