@@ -10,17 +10,13 @@ use merman_model::families::flowchart::{FlowchartModel, FlowchartRenderContext};
 use merman_model::presentation::PresentationConfig;
 #[cfg(test)]
 use merman_model::presentation::{PresentationDiagram, RenderSemanticModel};
-use merman_render_core::elk_adapter::hierarchy::{
-    charge_adapter_work, checked_adapter_add, checked_adapter_mul,
-};
+use merman_render_flow::elk::build_flowchart_elk_graph_with_render_labels_and_work_control;
 use std::sync::Arc;
 
 use super::{FlowchartClassDefinitions, FlowchartSvgLabelSidecarBuilder};
 
-mod input;
 mod projection;
 
-use input::build_flowchart_elk_graph_with_render_labels_and_work_control;
 use projection::flowchart_layout_from_elk_with_render_labels_and_work_control;
 
 pub(crate) struct FlowchartElkLayoutExecution<'a> {
@@ -139,7 +135,7 @@ pub(crate) fn layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
         render_label_sources,
         class_defs,
         effective_config,
-        execution.algorithm,
+        execution.algorithm.algorithm(),
         execution.measurer,
         execution.math_renderer,
         execution.svg_label_sidecar,
@@ -374,7 +370,7 @@ fn build_flowchart_elk_graph_with_render_labels(
         render_label_sources,
         &FlowchartClassDefinitions::new(&model.class_defs),
         effective_config,
-        ElkRootAlgorithm::for_diagnostic(effective_config),
+        ElkRootAlgorithm::for_diagnostic(effective_config).algorithm(),
         measurer,
         math_renderer,
         None,
@@ -404,7 +400,7 @@ fn build_flowchart_elk_graph_with_work_control(
         &FlowchartRenderContext::default(),
         &FlowchartClassDefinitions::new(&model.class_defs),
         effective_config,
-        ElkRootAlgorithm::for_diagnostic(effective_config),
+        ElkRootAlgorithm::for_diagnostic(effective_config).algorithm(),
         measurer,
         math_renderer,
         None,

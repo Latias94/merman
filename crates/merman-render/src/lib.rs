@@ -30,13 +30,7 @@ use merman_render_core::{config, mermaid_style, number_format};
 pub mod cynefin;
 #[cfg(feature = "layout-elk")]
 #[cfg_attr(not(feature = "all-diagrams"), allow(unused_imports))]
-use merman_render_core::elk_adapter;
-#[cfg(feature = "layout-elk")]
-#[cfg_attr(not(feature = "all-diagrams"), allow(unused_imports))]
 use merman_render_core::elk_adapter::feedback_edges as elk_feedback_edges;
-#[cfg(feature = "layout-elk")]
-#[cfg_attr(not(feature = "all-diagrams"), allow(unused_imports))]
-use merman_render_core::elk_adapter::hierarchy as elk_hierarchy;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -45,7 +39,7 @@ use merman_render_core::elk_adapter::hierarchy as elk_hierarchy;
     )
 )]
 use merman_render_core::elk_edge_geometry;
-#[cfg(feature = "layout-elk")]
+#[cfg(all(test, feature = "layout-elk"))]
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(

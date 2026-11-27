@@ -1,24 +1,43 @@
-use crate::config::config_bool;
-use crate::elk_options::layout_options as elk_layout_options;
-use crate::flowchart::measured::FlowchartMeasurement;
-use crate::flowchart::{
-    FlowchartClassDefinitions, FlowchartLabelMetricsRequest, FlowchartRenderModelRef,
-    FlowchartSvgLabelOwner, FlowchartSvgLabelSidecarBuilder, FlowchartSvgWidthMode,
-    flowchart_effective_text_style_for_classes_with_provenance,
-    measure_flowchart_svg_label_for_layout_with_source_style,
-};
-use crate::layout_backend::ElkRootAlgorithm;
-use crate::layout_work::OperationLayoutWorkControl;
-use crate::math::MathRenderer;
-use crate::text::{TextMeasurer, TextStyle, WrapMode};
-use crate::{Error, Result};
-use merman_layout_elk as elk;
-use merman_model::families::flowchart::{FlowSubgraph, FlowchartModel, FlowchartRenderContext};
-use merman_model::presentation::PresentationConfig;
-use merman_render_flow::elk::canonical_subgraphs;
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use super::{charge_adapter_work, checked_adapter_add, checked_adapter_mul};
+use merman_layout_elk as elk;
+use merman_model::{
+    families::flowchart::{FlowSubgraph, FlowchartModel, FlowchartRenderContext},
+    presentation::PresentationConfig,
+};
+use merman_render_core::{
+    Error, Result,
+    config::{config_bool, config_diagram_look},
+    elk_adapter::{
+        apply_cyclic_entry_constraints,
+        hierarchy::{
+            charge_adapter_work, checked_adapter_add, checked_adapter_mul, include_children,
+        },
+        options::layout_options as elk_layout_options,
+        resolved_node_directions,
+    },
+    layout_work::OperationLayoutWorkControl,
+    math::MathRenderer,
+    text::{
+        TextMeasurer, TextStyle, WrapMode, create_text_html::FlowchartLabelMetricsRequest,
+        literal_label::FlowchartSvgWidthMode,
+    },
+};
+
+use super::canonical_subgraphs;
+use crate::{
+    class_style::{
+        FlowchartClassDefinitions, FlowchartLabelDom, FlowchartStructuralLabelTypography,
+    },
+    measured::FlowchartMeasurement,
+    node_geometry::{validate_flowchart_model_shapes, validate_flowchart_node_asset_dimensions},
+    projection::{FlowchartEdgeKey, FlowchartRenderModelRef, project_flowchart_edge},
+    style::{FlowchartEdgeStylePlan, flowchart_effective_text_style_for_classes_with_provenance},
+    svg_label::{
+        FlowchartSvgLabelOwner, FlowchartSvgLabelSidecarBuilder,
+        measure_flowchart_svg_label_for_layout_with_source_style,
+    },
+};
 
 struct ProjectedFlowchartModel {
     model: FlowchartModel,
@@ -30,16 +49,16 @@ struct ProjectedFlowchartModel {
     clippy::too_many_arguments,
     reason = "ELK preparation keeps renderer dependencies and operation controls explicit"
 )]
-pub(super) fn build_flowchart_elk_graph_with_render_labels_and_work_control(
+pub fn build_flowchart_elk_graph_with_render_labels_and_work_control(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderContext,
     class_defs: &FlowchartClassDefinitions<'_>,
     effective_config: &PresentationConfig,
-    algorithm: ElkRootAlgorithm,
+    algorithm: elk::Algorithm,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     svg_label_sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
-    edge_style_plan: &crate::svg::FlowchartEdgeStylePlan,
+    edge_style_plan: &FlowchartEdgeStylePlan,
     mut work_control: Option<&mut OperationLayoutWorkControl>,
 ) -> Result<elk::Graph> {
     // Mermaid's FlowDB projects collapsed subgraphs before handing data to any layout backend.
@@ -132,7 +151,7 @@ fn project_collapsed_flowchart_model(
         .iter()
         .enumerate()
         .filter_map(|(owner_index, edge)| {
-            crate::flowchart::project_flowchart_edge(edge, render_label_sources).map(|projected| {
+            project_flowchart_edge(edge, render_label_sources).map(|projected| {
                 edge_owner_indices.push(owner_index);
                 projected.into_render_edge().into_owned()
             })
@@ -176,11 +195,11 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
     render_label_sources: &FlowchartRenderContext,
     class_defs: &FlowchartClassDefinitions<'_>,
     effective_config: &PresentationConfig,
-    algorithm: ElkRootAlgorithm,
+    algorithm: elk::Algorithm,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     svg_label_sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
-    edge_style_plan: &crate::svg::FlowchartEdgeStylePlan,
+    edge_style_plan: &FlowchartEdgeStylePlan,
     node_owner_indices: Option<&[usize]>,
     edge_owner_indices: Option<&[usize]>,
     mut work_control: Option<&mut OperationLayoutWorkControl>,
@@ -190,7 +209,7 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
     // Shape validation only walks nodes. Charge that tranche before the validation scan; the
     // hierarchy and edge tranches are charged by their actual owners below.
     charge_adapter_work(&mut work_control, model.nodes.len())?;
-    crate::flowchart::validate_flowchart_model_shapes(model)?;
+    validate_flowchart_model_shapes(model)?;
     let measurement = FlowchartMeasurement::new(
         render_model,
         class_defs,
@@ -238,7 +257,7 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
     let include_children_groups = include_children_groups(model, &parent_by_id, &mut work_control)?;
     let direction_item_count =
         checked_adapter_add(&work_control, model.nodes.len(), model.subgraphs.len())?;
-    let node_directions = crate::elk_adapter::resolved_node_directions(
+    let node_directions = resolved_node_directions(
         model
             .nodes
             .iter()
@@ -297,7 +316,7 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
         if subgraph_ids.contains(node.id.as_str()) || !inserted_ids.insert(node.id.as_str()) {
             continue;
         }
-        crate::flowchart::validate_flowchart_node_asset_dimensions(node)?;
+        validate_flowchart_node_asset_dimensions(node)?;
         let owner_index = node_owner_indices
             .and_then(|indices| indices.get(node_index).copied())
             .unwrap_or(node_index);
@@ -336,7 +355,7 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
     }
 
     if config_bool(effective_config, &["elk", "keepEntryNodeOnTop"]).unwrap_or(false) {
-        crate::elk_adapter::apply_cyclic_entry_constraints(
+        apply_cyclic_entry_constraints(
             &mut graph.nodes,
             model
                 .edges
@@ -353,7 +372,7 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
             .and_then(|indices| indices.get(edge_index).copied())
             .unwrap_or(edge_index);
         let label = measurement
-            .edge_label(edge, crate::flowchart::FlowchartEdgeKey::new(owner_index))?
+            .edge_label(edge, FlowchartEdgeKey::new(owner_index))?
             .map(|label| elk::Label {
                 width: label.width,
                 height: label.height,
@@ -398,7 +417,7 @@ fn dir_to_elk_direction(dir: &str) -> elk::Direction {
     }
 }
 
-pub(super) fn parent_by_id(
+pub fn parent_by_id(
     model: &FlowchartModel,
     work_control: &mut Option<&mut OperationLayoutWorkControl>,
 ) -> Result<HashMap<String, String>> {
@@ -559,7 +578,7 @@ fn include_children_groups<'a>(
         return Ok(HashSet::new());
     }
     let item_count = checked_adapter_add(work_control, model.nodes.len(), model.subgraphs.len())?;
-    crate::elk_hierarchy::include_children(
+    include_children(
         model
             .nodes
             .iter()
@@ -587,20 +606,18 @@ fn subgraph_label(
     let (classes, styles) = ctx.model.effective_subgraph_css(declaration_ordinal, sg);
     let collapsed = ctx.model.is_subgraph_collapsed(sg.id.as_str());
     let structural = if collapsed {
-        Some(
-            crate::flowchart::FlowchartStructuralLabelTypography::prepare(
-                ctx.class_defs,
-                ctx.class_html_labels,
-                crate::flowchart::FlowchartLabelDom::node(
-                    "collapsedGroup",
-                    title,
-                    label_type,
-                    ctx.cluster_wrap_mode == WrapMode::HtmlLike,
-                    crate::config::config_diagram_look(ctx.effective_config).is_hand_drawn(),
-                ),
-                |units| charge_adapter_work(work_control, units),
-            )?,
-        )
+        Some(FlowchartStructuralLabelTypography::prepare(
+            ctx.class_defs,
+            ctx.class_html_labels,
+            FlowchartLabelDom::node(
+                "collapsedGroup",
+                title,
+                label_type,
+                ctx.cluster_wrap_mode == WrapMode::HtmlLike,
+                config_diagram_look(ctx.effective_config).is_hand_drawn(),
+            ),
+            |units| charge_adapter_work(work_control, units),
+        )?)
     } else {
         None
     };

@@ -1,4 +1,3 @@
-use super::input::parent_by_id;
 use super::projection::{align_degenerate_node_to_anchor, mermaid_elk_paint_order};
 use super::*;
 use crate::elk_options::layout_options as elk_layout_options;
@@ -10,6 +9,8 @@ use merman_core::{MermaidEngine, ParseOptions};
 use merman_model::families::flowchart::{
     FlowEdge, FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNode, FlowSubgraph,
 };
+use merman_render_core::elk_adapter::hierarchy::HierarchyIndex;
+use merman_render_flow::elk::parent_by_id;
 use serde_json::json;
 use std::collections::{HashMap, HashSet};
 
@@ -283,7 +284,7 @@ fn elk_cluster_title_keeps_complete_prepared_math_height() {
         &FlowchartRenderContext::default(),
         &FlowchartClassDefinitions::new(&model.class_defs),
         &config,
-        ElkRootAlgorithm::for_diagnostic(&config),
+        ElkRootAlgorithm::for_diagnostic(&config).algorithm(),
         &measurer,
         None,
         Some(&builder),
@@ -370,7 +371,7 @@ A -->|boundary| D
         render_context,
         &FlowchartClassDefinitions::new(&model.class_defs),
         &config,
-        ElkRootAlgorithm::for_diagnostic(&config),
+        ElkRootAlgorithm::for_diagnostic(&config).algorithm(),
         &measurer,
         None,
         Some(&builder),
@@ -463,7 +464,7 @@ fn elk_adapter_binds_prepared_labels_to_original_semantic_indices() {
         &FlowchartRenderContext::default(),
         &FlowchartClassDefinitions::new(&model.class_defs),
         &config,
-        ElkRootAlgorithm::for_diagnostic(&config),
+        ElkRootAlgorithm::for_diagnostic(&config).algorithm(),
         &measurer,
         None,
         Some(&builder),
@@ -1352,7 +1353,7 @@ fn flowchart_elk_lca_matches_mermaid_endpoint_inclusive_semantics() {
     ));
     let mut no_work_control = None;
     let parent_by_id = parent_by_id(&model, &mut no_work_control).unwrap();
-    let hierarchy = crate::elk_hierarchy::HierarchyIndex::build(
+    let hierarchy = HierarchyIndex::build(
         model
             .nodes
             .iter()
