@@ -212,3 +212,17 @@ The WASM binary and receipt live under `target/bench/node-shoal/artifacts/node-w
 `target/bench/node-shoal/wasm-packages/node-wasm/dist/index.mjs` for the workload collector or
 pack and install that package in a fresh consumer. On each transport, use the same local
 artifact for the family-default and Shoal runs so the comparison isolates the layout choice.
+
+### Local Grid and Layered builds
+
+Use `--local-grid` or `--local-layered` on `build-candidate.mjs`, `assemble-packages.mjs`, and
+`verify-packages.mjs` with the same target and selection throughout. Choose one local layout per
+artifact. The private native pair uses `target/bench/node-grid/packages` or
+`target/bench/node-layered/packages`. The private Node-WASM package uses `wasm-packages` under the
+same engine directory. Build inputs and receipts live under its `artifacts` directory.
+
+Set `config.layout` to `grid` or `layered` in Mermaid frontmatter, or supply the same value as
+`site_config.layout` in Options JSON. The runtime catalog identifies the compiled engine and
+`svgPlanJson()` checks admission for the particular source. Use the matching `--local-grid` or
+`--local-layered` flag with `smoke-installed-package.mjs` to verify the installed package's plan,
+layout JSON, and SVG.

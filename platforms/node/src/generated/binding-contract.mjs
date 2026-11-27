@@ -55,6 +55,18 @@ export const CAPABILITY_SPECS = [
     ]
   },
   {
+    "id": "layout-grid",
+    "implication_ids": [
+      "svg"
+    ]
+  },
+  {
+    "id": "layout-layered",
+    "implication_ids": [
+      "svg"
+    ]
+  },
+  {
     "id": "layout-shoal",
     "implication_ids": [
       "svg"

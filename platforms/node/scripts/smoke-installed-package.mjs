@@ -6,6 +6,8 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { resolveNodeTarget } from "../src/native-loader.mjs";
+import { localLayoutCapability, nodePackageLocalLayout } from "../src/transport-contract.mjs";
+import { readLocalLayoutFlag } from "./local-layout.mjs";
 import { assertMathSvg, runThemeAuthoringSmoke } from "./theme-authoring-smoke.mjs";
 import { runIconRegistrySmoke } from "./icon-registry-smoke.mjs";
 
@@ -18,9 +20,10 @@ async function main() {
   const project = valueAfter(args, "--project");
   const expectedVersion = valueAfter(args, "--version");
   const expectedTarget = valueAfter(args, "--target");
+  const localLayout = readLocalLayoutFlag(args);
   if (!project || !expectedVersion || !expectedTarget) {
     throw new Error(
-      "usage: node smoke-installed-package.mjs --project <dir> --version <version> --target <target>",
+      "usage: node smoke-installed-package.mjs --project <dir> --version <version> --target <target> [--local-grid | --local-layered | --local-shoal]",
     );
   }
 
@@ -38,6 +41,7 @@ async function main() {
     await readFile(path.resolve(path.dirname(entrypoint), "..", "package.json"), "utf8"),
   );
   assert.equal(packageManifest.version, expectedVersion);
+  if (localLayout !== null) assert.equal(nodePackageLocalLayout(packageManifest), localLayout);
 
   const module = await import(pathToFileURL(entrypoint));
   const engine = await module.createNodeEngine();
@@ -62,6 +66,7 @@ async function main() {
     const theme = await runThemeAuthoringSmoke(module, engine);
     const iconRegistry = await runIconRegistrySmoke(module);
     await runMathSmoke(module, engine);
+    if (localLayout === "grid" || localLayout === "layered") await runLocalLayoutSmoke(engine, localLayout);
     console.log(
       JSON.stringify({
         package: packageName,
@@ -79,6 +84,23 @@ async function main() {
   } finally {
     await engine.dispose();
   }
+}
+
+async function runLocalLayoutSmoke(engine, localLayout) {
+  const capability = localLayoutCapability(localLayout);
+  assert.ok(engine.runtimeCatalog.capabilities.capability_ids.includes(capability));
+  const source = `flowchart LR\nA[Start] -->|Approved| B[Done]\n`;
+  const optionsJson = JSON.stringify({ site_config: { layout: localLayout } });
+  const plan = JSON.parse(await engine.svgPlanJson(source, { optionsJson }));
+  assert.equal(plan.ready, true);
+  assert.deepEqual(plan.required_capability_ids, [capability]);
+  const layout = await engine.executeOperation({ operationId: "layout-json", source, optionsJson });
+  const geometry = JSON.parse(layout.data);
+  assert.equal(geometry.meta.effective_config.layout, localLayout);
+  assert.ok(geometry.layout.FlowchartV2);
+  const svg = await engine.renderSvg(source, { optionsJson });
+  assert.match(svg, /^<svg\b/);
+  assert.equal(engine.renderSvgSync(source, { optionsJson }), svg);
 }
 
 async function runMathSmoke(module, engine) {

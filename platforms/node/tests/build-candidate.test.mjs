@@ -16,6 +16,7 @@ import {
   validateCandidateCargoMetadata,
   validateCandidatePackageVersions,
 } from "../scripts/build-candidate.mjs";
+import { readLocalLayoutFlag } from "../scripts/local-layout.mjs";
 import { NODE_WIRE_CONTRACT } from "../src/errors.mjs";
 
 const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -90,31 +91,43 @@ test("candidate builds project diagram selection, capabilities, and one transpor
   assert.equal(resolveCandidateRecipe("napi", "linux-arm64-musl").rustTarget, "aarch64-unknown-linux-musl");
 });
 
-test("each local Shoal recipe adds one feature and keeps its transport and profile", () => {
+test("each local layout recipe adds one feature and keeps its transport and profile", () => {
   const baselineContract = resolveCandidateRuntimeContract();
   for (const [candidate, target] of [["napi", "darwin-arm64"], ["node-wasm", null]]) {
     const baseline = resolveCandidateRecipe(candidate, target);
-    const local = resolveCandidateRecipe(candidate, target, { localShoal: true });
     const baselineBuild = candidateBuildInvocation(baseline, "/tmp/merman-node-candidate");
-    const localBuild = candidateBuildInvocation(local, "/tmp/merman-node-candidate");
-    assert.equal(local.cargoProfile, baseline.cargoProfile);
-    assert.deepEqual(local.cargoFeatures, [...baseline.cargoFeatures, "layout-shoal"].sort());
-    const expectedArgs = [...baselineBuild.args];
-    expectedArgs[expectedArgs.indexOf("--features") + 1] = local.cargoFeatures.join(",");
-    assert.deepEqual(localBuild, { ...baselineBuild, args: expectedArgs });
-    assert.deepEqual(resolveCandidateRuntimeContract(local), {
-      ...baselineContract,
-      capabilityRecipe: {
-        ...baselineContract.capabilityRecipe,
-        capabilities: local.capabilityFeatures,
-      },
-      capabilityIds: local.capabilityFeatures,
-    });
-    assert.equal(candidateArtifactDirectory(local), path.join(
-      repositoryRoot, "target", "bench", "node-shoal", "artifacts", target ?? candidate,
-    ));
-    assert.notEqual(candidateArtifactDirectory(local), candidateArtifactDirectory(baseline));
+    for (const localLayout of ["grid", "layered", "shoal"]) {
+      const local = resolveCandidateRecipe(candidate, target, { localLayout });
+      const localBuild = candidateBuildInvocation(local, "/tmp/merman-node-candidate");
+      assert.equal(local.cargoProfile, baseline.cargoProfile);
+      assert.deepEqual(local.cargoFeatures, [...baseline.cargoFeatures, `layout-${localLayout}`].sort());
+      const expectedArgs = [...baselineBuild.args];
+      expectedArgs[expectedArgs.indexOf("--features") + 1] = local.cargoFeatures.join(",");
+      assert.deepEqual(localBuild, { ...baselineBuild, args: expectedArgs });
+      assert.deepEqual(resolveCandidateRuntimeContract(local), {
+        ...baselineContract,
+        capabilityRecipe: {
+          ...baselineContract.capabilityRecipe,
+          capabilities: local.capabilityFeatures,
+        },
+        capabilityIds: local.capabilityFeatures,
+      });
+      assert.equal(candidateArtifactDirectory(local), path.join(
+        repositoryRoot, "target", "bench", `node-${localLayout}`, "artifacts", target ?? candidate,
+      ));
+      assert.notEqual(candidateArtifactDirectory(local), candidateArtifactDirectory(baseline));
+    }
   }
+});
+
+test("private layout flags accept one matching recipe", () => {
+  assert.equal(readLocalLayoutFlag([]), null);
+  for (const layout of ["grid", "layered", "shoal"]) {
+    assert.equal(readLocalLayoutFlag([`--local-${layout}`]), layout);
+  }
+  assert.throws(() => readLocalLayoutFlag(["--local-grid", "--local-layered"]), /select one/i);
+  assert.throws(() => readLocalLayoutFlag(["--local-grid", "--local-grid"]), /select one/i);
+  assert.throws(() => readLocalLayoutFlag(["--local-elk"]), /unknown local node layout/i);
 });
 
 test("full candidate parser families match the core artifact contract", async () => {
@@ -206,6 +219,8 @@ test("merman-node forwards every candidate capability leaf without a private agg
   for (const feature of [
     ...descriptor.cargo.features,
     ...descriptor.capability_recipe.capabilities,
+    "layout-grid",
+    "layout-layered",
     "layout-shoal",
     "transport-napi",
     "transport-wasm",
@@ -252,7 +267,7 @@ test("workspace dependency evidence follows the selected tree and rejects transp
     "merman-bindings-core", "merman-node-candidate", "wasm-bindgen",
   ]);
   for (const [recipe, baselineTree] of [[napi, napiTree], [wasm, wasmTree]]) {
-    const local = resolveCandidateRecipe(recipe.candidate, recipe.targetId, { localShoal: true });
+    const local = resolveCandidateRecipe(recipe.candidate, recipe.targetId, { localLayout: "shoal" });
     assert.ok(closure(local, ...baselineTree, "shoal").packages.some((item) => item.name === "merman-layout-shoal"));
     assert.throws(() => closure(recipe, ...baselineTree, "shoal"), /contain Shoal only/);
     assert.throws(() => closure(local, ...baselineTree), /contain Shoal only/);
@@ -266,6 +281,7 @@ test("candidate source receipt covers runtime wrappers and generated package con
   const entries = collectLocalInputEntries({ packages: [] });
   for (const relativePath of [
     "Cargo.lock",
+    "platforms/node/scripts/local-layout.mjs",
     "platforms/node/src/candidates/native.mjs",
     "platforms/node/src/candidates/wasm.mjs",
     "platforms/node/src/candidates/wrap-engine.mjs",
@@ -315,13 +331,11 @@ test("candidate Cargo packages stay aligned with the private package surface ver
 });
 
 test("real locked Cargo metadata and tree match the default and local candidate recipes", () => {
-  for (const recipe of [
-    resolveCandidateRecipe("node-wasm", null),
-    resolveCandidateRecipe("napi", "linux-x64-gnu"),
-    resolveCandidateRecipe("napi", "linux-x64-gnu", { localShoal: true }),
-    resolveCandidateRecipe("node-wasm", null, { localShoal: true }),
-  ]) {
-    assert.equal(validateCandidateCargoMetadata(recipe), PACKAGE_VERSION);
+  for (const localLayout of [null, "shoal", "grid", "layered"]) {
+    for (const [candidate, target] of [["node-wasm", null], ["napi", "linux-x64-gnu"]]) {
+      const recipe = resolveCandidateRecipe(candidate, target, { localLayout });
+      assert.equal(validateCandidateCargoMetadata(recipe), PACKAGE_VERSION);
+    }
   }
 });
 

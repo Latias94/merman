@@ -262,36 +262,42 @@ test("assembled native packages pass real npm pack ownership inspection", async 
   }
 });
 
-test("local Shoal assembly packs a private loader and platform pair", async (context) => {
-  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "merman-node-shoal-test-"));
-  context.after(() => rm(temporaryRoot, { recursive: true, force: true }));
-  const binary = path.join(temporaryRoot, "merman.node");
-  const output = path.join(temporaryRoot, "packages");
-  const target = "darwin-arm64";
-  const packageName = `@mermanjs/node-${target}`;
-  await writeFile(binary, "synthetic Shoal candidate");
-  assembleNativePackages(target, output, binary, {
-    localShoal: true,
-    readReceipt(artifact, { localShoal }) {
-      assert.equal(artifact, binary);
-      assert.equal(localShoal, true);
-      return { candidate: "napi", target };
-    },
-  });
-  const loaderRoot = path.join(output, "node");
-  const loader = JSON.parse(await readFile(path.join(loaderRoot, "package.json"), "utf8"));
-  assert.deepEqual(loader.optionalDependencies, { [packageName]: loader.version });
-  const assembledLoader = await import(pathToFileURL(path.join(loaderRoot, "dist", "native-loader.mjs")));
-  assert.equal(assembledLoader.nodeLoaderUsesLocalShoal(), true);
+for (const layout of ["shoal", "grid", "layered"]) {
+  test(`local ${layout} assembly packs a private loader and platform pair`, async (context) => {
+    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "merman-node-shoal-test-"));
+    context.after(() => rm(temporaryRoot, { recursive: true, force: true }));
+    const binary = path.join(temporaryRoot, "merman.node");
+    const output = path.join(temporaryRoot, "packages");
+    const target = "darwin-arm64";
+    const packageName = `@mermanjs/node-${target}`;
+    await writeFile(binary, "synthetic Shoal candidate");
+    assembleNativePackages(target, output, binary, {
+      localLayout: layout,
+      readReceipt(artifact, { localLayout }) {
+        assert.equal(artifact, binary);
+        assert.equal(localLayout, layout);
+        return { candidate: "napi", target };
+      },
+    });
+    const loaderRoot = path.join(output, "node");
+    const loader = JSON.parse(await readFile(path.join(loaderRoot, "package.json"), "utf8"));
+    assert.deepEqual(loader.optionalDependencies, { [packageName]: loader.version });
+    const assembledLoader = await import(pathToFileURL(path.join(loaderRoot, "dist", "native-loader.mjs")));
+    assert.equal(assembledLoader.nodeLoaderLocalLayout(), layout);
 
-  const verify = path.join(nodeRoot, "scripts", "verify-packages.mjs");
-  const flags = [verify, "--packed-root", output];
-  const release = spawnSync(process.execPath, flags, { encoding: "utf8" });
-  assert.equal(release.status, 1, release.error?.message);
-  assert.match(release.stderr, /private package.*release verification/i);
-  const local = spawnSync(process.execPath, [...flags, "--local-shoal"], { encoding: "utf8" });
-  assert.equal(local.status, 0, local.error?.message ?? local.stderr);
-});
+    const verify = path.join(nodeRoot, "scripts", "verify-packages.mjs");
+    const flags = [verify, "--packed-root", output];
+    const release = spawnSync(process.execPath, flags, { encoding: "utf8" });
+    assert.equal(release.status, 1, release.error?.message);
+    assert.match(release.stderr, /private package.*release verification/i);
+    const wrongLayout = layout === "grid" ? "layered" : "grid";
+    const wrong = spawnSync(process.execPath, [...flags, `--local-${wrongLayout}`], { encoding: "utf8" });
+    assert.equal(wrong.status, 1, wrong.error?.message);
+    assert.match(wrong.stderr, /must match the .* local layout recipe/i);
+    const local = spawnSync(process.execPath, [...flags, `--local-${layout}`], { encoding: "utf8" });
+    assert.equal(local.status, 0, local.error?.message ?? local.stderr);
+  });
+}
 
 test("assembled Node WASM package owns only its explicit Node artifacts", async () => {
   const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "merman-node-wasm-pack-test-"));
@@ -335,10 +341,10 @@ test("local Node WASM packages require private verification", async (context) =>
   await writeFile(wasm, "synthetic Shoal WASM candidate");
   await writeFile(path.join(temporaryRoot, "merman_node.js"), "module.exports = {};\n");
   assembleWasmPackage(output, wasm, {
-    localShoal: true,
-    readReceipt(artifact, { localShoal }) {
+    localLayout: "shoal",
+    readReceipt(artifact, { localLayout }) {
       assert.equal(artifact, wasm);
-      assert.equal(localShoal, true);
+      assert.equal(localLayout, "shoal");
       return { candidate: "node-wasm", target: null };
     },
   });

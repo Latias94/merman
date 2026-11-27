@@ -20,7 +20,8 @@ import { validateTransportIdentityJson } from "../src/errors.mjs";
 import { BINDING_OPTIONS_SCHEMA_VERSION } from "../src/generated/binding-contract.mjs";
 import { nodeLoaderPackageVersion, resolveNodeTarget } from "../src/native-loader.mjs";
 import { validateRuntimeCatalog } from "../src/engine.mjs";
-import { NODE_LOCAL_SHOAL_CAPABILITY, NODE_WIRE_CONTRACT } from "../src/transport-contract.mjs";
+import { NODE_WIRE_CONTRACT, localLayoutCapability, nodeWireContract } from "../src/transport-contract.mjs";
+import { readLocalLayoutFlag } from "./local-layout.mjs";
 import { replaceDirectory } from "./replace-directory.mjs";
 import { svgTransportEvidence } from "./benchmark/svg-signature.mjs";
 import { digestJson, stableJson } from "./stable-json.mjs";
@@ -40,7 +41,6 @@ const capabilitySurface = readJson(capabilityDescriptorPath);
 const artifactsRoot = path.join(nodeRoot, "artifacts");
 const cargoPackage = "merman-node-candidate";
 export const cargoLockPath = path.join(repositoryRoot, "Cargo.lock");
-export const localShoalRoot = path.join(repositoryRoot, "target", "bench", "node-shoal");
 const requireFromBuild = createRequire(import.meta.url);
 const WINDOWS_MSVC_REPRODUCIBLE_LINK_CONFIG =
   'target.x86_64-pc-windows-msvc.rustflags=["-C","link-arg=/Brepro"]';
@@ -55,9 +55,9 @@ if (isMainModule()) {
   }
 }
 
-export function buildCandidate({ candidate, target = null, localShoal = false }) {
+export function buildCandidate({ candidate, target = null, localLayout = null }) {
   const resolvedTarget = candidate === "napi" ? target ?? resolveNodeTarget() : null;
-  const recipe = resolveCandidateRecipe(candidate, resolvedTarget, { localShoal });
+  const recipe = resolveCandidateRecipe(candidate, resolvedTarget, { localLayout });
   validateCandidateBuildHost(recipe, candidate === "napi" ? resolveNodeTarget() : null);
   const dependencyClosure = resolveCargoClosure(recipe);
   const before = collectLocalInputEntries(dependencyClosure);
@@ -91,9 +91,16 @@ export function buildCandidate({ candidate, target = null, localShoal = false })
 }
 
 export function candidateArtifactDirectory(recipe) {
-  if (recipe.localShoal) return path.join(localShoalRoot, "artifacts", recipe.targetId ?? recipe.candidate);
+  if (recipe.localLayout !== null) {
+    return path.join(localArtifactRoot(recipe.localLayout), "artifacts", recipe.targetId ?? recipe.candidate);
+  }
   if (recipe.candidate === "napi") return path.join(artifactsRoot, "napi", recipe.targetId);
   return path.join(artifactsRoot, "node-wasm");
+}
+
+export function localArtifactRoot(localLayout) {
+  if (localLayoutCapability(localLayout) === null) throw new Error("A local layout is required.");
+  return path.join(repositoryRoot, "target", "bench", `node-${localLayout}`);
 }
 
 function buildNapi(stage, recipe) {
@@ -314,7 +321,7 @@ export function probeCandidateRuntime(stage, recipe) {
   validateTransportIdentityJson(binding.transportIdentityJson(), {
     expectedPackageVersion: nodeLoaderPackageVersion(),
     expectedTransport: recipe.candidate === "napi" ? "napi" : "wasm",
-    localShoal: recipe.localShoal,
+    localLayout: recipe.localLayout,
   });
   const Engine = recipe.candidate === "napi"
     ? binding?.NativeEngine ?? binding?.default?.NativeEngine
@@ -448,7 +455,7 @@ export function probeCandidateRuntime(stage, recipe) {
       source: "---\nconfig:\n  layout: shoal\n---\nflowchart LR\nA --> B\nB --> A",
     };
     const shoal = parseWireResponse(engine.executeSync(JSON.stringify(shoalRequest)));
-    if (recipe.localShoal) {
+    if (recipe.localLayout === "shoal") {
       if (
         shoal.ok !== true || shoal.result?.media_type !== "image/svg+xml" ||
         typeof shoal.result.data !== "string" ||
@@ -460,9 +467,12 @@ export function probeCandidateRuntime(stage, recipe) {
       }
     } else if (
       shoal.ok !== false || shoal.error?.kind !== "missing-capability" ||
-      shoal.error?.capability_id !== NODE_LOCAL_SHOAL_CAPABILITY
+      shoal.error?.capability_id !== "layout-shoal"
     ) {
-      throw new Error("The default Node candidate must report Shoal as a missing capability.");
+      throw new Error("The Node candidate must report unselected Shoal as a missing capability.");
+    }
+    if (recipe.localLayout === "grid" || recipe.localLayout === "layered") {
+      probeLocalMermaidLayout(engine, recipe, svgRequest);
     }
     const svgEvidence = svgTransportEvidence(success.result.data);
     const math = parseWireResponse(engine.executeSync(JSON.stringify({
@@ -539,6 +549,40 @@ export function probeCandidateRuntime(stage, recipe) {
   }
 }
 
+function probeLocalMermaidLayout(engine, recipe, svgRequest) {
+  const { localLayout } = recipe;
+  const capability = localLayoutCapability(localLayout);
+  const source = `---\nconfig:\n  layout: ${localLayout}\n---\nflowchart LR\nA[Start] -->|Approved| B[Done]\n`;
+  const request = { ...svgRequest, source };
+  const execute = (operationId, mediaType) => {
+    const response = parseWireResponse(engine.executeSync(JSON.stringify({
+      ...request,
+      operation_id: operationId,
+    })));
+    if (
+      response.ok !== true || response.result?.operation_id !== operationId ||
+      response.result?.media_type !== mediaType || typeof response.result.data !== "string"
+    ) {
+      throw new Error(`The local Node ${localLayout} candidate failed ${operationId}.`);
+    }
+    return response.result.data;
+  };
+  const plan = JSON.parse(execute("svg-plan-json", "application/json"));
+  const layout = JSON.parse(execute("layout-json", "application/json"));
+  if (
+    plan?.ready !== true || stableJson(plan.required_capability_ids) !== stableJson([capability]) ||
+    stableJson(plan.missing_capability_ids) !== "[]" ||
+    layout?.meta?.effective_config?.layout !== localLayout || !layout.layout?.FlowchartV2
+  ) {
+    throw new Error(`The local Node ${localLayout} candidate did not select the requested layout.`);
+  }
+  const svg = execute("svg", "image/svg+xml");
+  svgTransportEvidence(svg);
+  if (recipe.candidate === "napi" && engine.executeSvgSync(source, request.options_json) !== svg) {
+    throw new Error(`The native ${localLayout} direct SVG differs from the wire response.`);
+  }
+}
+
 function assertDisposedCandidateEngine(engine, candidate, requestJson) {
   for (const [method, invoke] of [
     ["executeSync", () => engine.executeSync(requestJson)],
@@ -577,7 +621,7 @@ function probeCandidateAsyncLifecycle(artifact, recipe, requestJson) {
       recipe.candidate,
       "--request-json",
       requestJson,
-      ...(recipe.localShoal ? ["--local-shoal"] : []),
+      ...(recipe.localLayout === null ? [] : [`--local-${recipe.localLayout}`]),
     ],
     {
       cwd: nodeRoot,
@@ -681,6 +725,7 @@ export function collectLocalInputEntries(dependencyClosure) {
     path.join(nodeRoot, "package-lock.json"),
     path.join(nodeRoot, "scripts", "benchmark", "svg-signature.mjs"),
     path.join(nodeRoot, "scripts", "build-candidate.mjs"),
+    path.join(nodeRoot, "scripts", "local-layout.mjs"),
     path.join(nodeRoot, "scripts", "probe-candidate-async.mjs"),
     path.join(nodeRoot, "scripts", "replace-directory.mjs"),
     path.join(nodeRoot, "scripts", "stable-json.mjs"),
@@ -713,9 +758,9 @@ function artifactEntries(stage) {
     .sort((left, right) => left.path.localeCompare(right.path));
 }
 
-export function resolveCandidateRecipe(candidate, target, { localShoal = false } = {}) {
+export function resolveCandidateRecipe(candidate, target, { localLayout = null } = {}) {
   assertDescriptor();
-  const capabilityFeatures = candidateCapabilityFeatures(localShoal);
+  const capabilityFeatures = candidateCapabilityFeatures(localLayout);
   if (candidate === "node-wasm") {
     const wasm = descriptor.candidates["node-wasm"];
     return completeCandidateRecipe(
@@ -724,7 +769,7 @@ export function resolveCandidateRecipe(candidate, target, { localShoal = false }
         targetId: null,
         rustTarget: wasm.rust_target,
         cargoProfile: wasm.profile,
-        localShoal,
+        localLayout,
         transportFeature: wasm.transport_feature,
         wasmPackTarget: wasm.wasm_pack_target,
         glibcFloor: null,
@@ -741,7 +786,7 @@ export function resolveCandidateRecipe(candidate, target, { localShoal = false }
       targetId: target,
       rustTarget: nativeTarget.rust_target,
       cargoProfile: descriptor.candidates.napi.profile,
-      localShoal,
+      localLayout,
       transportFeature: descriptor.candidates.napi.transport_feature,
       wasmPackTarget: null,
       glibcFloor: nativeTarget.glibc_floor ?? null,
@@ -773,7 +818,7 @@ function completeCandidateRecipe(recipe, capabilityFeatures) {
   };
 }
 
-function candidateCapabilityFeatures(localShoal) {
+function candidateCapabilityFeatures(localLayout) {
   const recipe = descriptor.capability_recipe;
   if (
     capabilitySurface.schema_version !== 1 ||
@@ -783,17 +828,10 @@ function candidateCapabilityFeatures(localShoal) {
   ) {
     throw new Error("Capability surface descriptor is invalid.");
   }
-  const baseline = recipe.capabilities;
-  if (
-    !Array.isArray(baseline) ||
-    baseline.length === 0 ||
-    baseline.some((capability) => typeof capability !== "string" || capability.length === 0) ||
-    stableJson(baseline) !== stableJson([...new Set(baseline)].sort()) ||
-    baseline.includes(NODE_LOCAL_SHOAL_CAPABILITY)
-  ) {
-    throw new Error("Default candidate capabilities must be sorted, unique, non-empty strings and exclude Shoal.");
+  if (stableJson(recipe.capabilities) !== stableJson(NODE_WIRE_CONTRACT.artifact.capability_ids)) {
+    throw new Error("The default Node candidate recipe must match the canonical wire capabilities.");
   }
-  const capabilities = localShoal ? [...baseline, NODE_LOCAL_SHOAL_CAPABILITY].sort() : baseline;
+  const capabilities = nodeWireContract(localLayout).artifact.capability_ids;
   const known = new Map(
     capabilitySurface.capabilities.map((capability) => [capability?.id, capability]),
   );
@@ -824,8 +862,8 @@ function candidateDiagramFamilies() {
   return families;
 }
 
-export function resolveCandidateRuntimeContract({ localShoal = false } = {}) {
-  const capabilityIds = candidateCapabilityFeatures(localShoal);
+export function resolveCandidateRuntimeContract({ localLayout = null } = {}) {
+  const capabilityIds = candidateCapabilityFeatures(localLayout);
   const target = descriptor.capability_recipe.target;
   if (
     !Array.isArray(capabilitySurface.outputs) ||
@@ -974,7 +1012,7 @@ export function validateCandidatePackageVersions(metadata) {
   return packageSurface.version;
 }
 
-export function validateCandidateDependencyPackages(packages, { candidate, localShoal = false }) {
+export function validateCandidateDependencyPackages(packages, { candidate, localLayout = null }) {
   if (
     !Array.isArray(packages) ||
     packages.length === 0 ||
@@ -1015,7 +1053,7 @@ export function validateCandidateDependencyPackages(packages, { candidate, local
     }
   }
   const shoal = packages.filter((item) => item.name === "merman-layout-shoal");
-  if (localShoal
+  if (localLayout === "shoal"
     ? shoal.length !== 1 || shoal[0].source !== "path:crates/merman-layout-shoal"
     : shoal.length !== 0
   ) {
@@ -1057,11 +1095,11 @@ function comparePackageIdentities(left, right) {
 
 function parseArgs(args) {
   if (args.includes("--help") || args.includes("-h")) {
-    console.log("usage: node scripts/build-candidate.mjs --candidate <node-wasm|napi> [--target <target-id>] [--local-shoal]");
+    console.log("usage: node scripts/build-candidate.mjs --candidate <node-wasm|napi> [--target <target-id>] [--local-grid | --local-layered | --local-shoal]");
     process.exit(0);
   }
-  const localShoal = args.includes("--local-shoal");
-  args = args.filter((arg) => arg !== "--local-shoal");
+  const localLayout = readLocalLayoutFlag(args);
+  args = args.filter((arg) => !arg.startsWith("--local-"));
   const candidate = valueAfter(args, "--candidate");
   const target = valueAfter(args, "--target");
   const known = new Set(["--candidate", "--target"]);
@@ -1074,7 +1112,7 @@ function parseArgs(args) {
   if (candidate === "node-wasm" && target !== null) {
     throw new Error("--target applies only to the napi candidate.");
   }
-  return { candidate, target, localShoal };
+  return { candidate, target, localLayout };
 }
 
 function assertDescriptor() {

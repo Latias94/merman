@@ -6,16 +6,42 @@ const contract = requireFromModule("./generated/node-wire-contract.json");
 validateContract(contract);
 
 export const NODE_WIRE_CONTRACT = deepFreeze(contract);
-export const NODE_LOCAL_SHOAL_CAPABILITY = "layout-shoal";
-export const NODE_LOCAL_SHOAL_WIRE_CONTRACT = deepFreeze({
-  ...NODE_WIRE_CONTRACT,
-  artifact: {
-    ...NODE_WIRE_CONTRACT.artifact,
-    capability_ids: [...NODE_WIRE_CONTRACT.artifact.capability_ids, NODE_LOCAL_SHOAL_CAPABILITY].sort(),
-  },
-});
 export const NODE_TRANSPORT_LIMITS = NODE_WIRE_CONTRACT.documents;
 export const NODE_TRANSPORT_FIELD_LIMITS = NODE_WIRE_CONTRACT.fields;
+
+export function localLayoutCapability(localLayout) {
+  if (localLayout === null) return null;
+  if (!["grid", "layered", "shoal"].includes(localLayout)) {
+    throw new Error(`Unknown local Node layout: ${JSON.stringify(localLayout)}.`);
+  }
+  return `layout-${localLayout}`;
+}
+
+export function nodeWireContract(localLayout = null) {
+  const capability = localLayoutCapability(localLayout);
+  if (capability === null) return NODE_WIRE_CONTRACT;
+  return deepFreeze({
+    ...NODE_WIRE_CONTRACT,
+    artifact: {
+      ...NODE_WIRE_CONTRACT.artifact,
+      capability_ids: [...NODE_WIRE_CONTRACT.artifact.capability_ids, capability].sort(),
+    },
+  });
+}
+
+export function nodePackageLocalLayout(manifest) {
+  const hasShoal = Object.hasOwn(manifest, "mermanLocalShoal");
+  const hasLayout = Object.hasOwn(manifest, "mermanLocalLayout");
+  if (!hasShoal && !hasLayout) return null;
+  if (
+    manifest.private !== true || Object.hasOwn(manifest, "publishConfig") ||
+    (hasShoal && (hasLayout || manifest.mermanLocalShoal !== true)) ||
+    (hasLayout && !["grid", "layered"].includes(manifest.mermanLocalLayout))
+  ) {
+    throw new Error("The Node package has an invalid private local layout marker.");
+  }
+  return hasShoal ? "shoal" : manifest.mermanLocalLayout;
+}
 
 function validateContract(value) {
   if (

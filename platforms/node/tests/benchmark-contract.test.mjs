@@ -1268,35 +1268,41 @@ test("a build receipt is bound to the exact measured artifact", (context) => {
   assert.throws(() => readReceipt(), /Cargo profile.*canonical Node recipe/i);
   writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(receipt));
 
-  assert.throws(() => readBuildReceipt(artifact, { localShoal: true }), /capability recipe.*canonical/i);
-  const shoalReceipt = structuredClone(receipt);
-  const shoalRuntime = resolveCandidateRuntimeContract({ localShoal: true });
-  shoalReceipt.config.capability_recipe = shoalRuntime.capabilityRecipe;
-  shoalReceipt.config.features = [...receipt.config.features, "layout-shoal"].sort();
-  shoalReceipt.runtime.catalog.capabilities.capability_ids = shoalRuntime.capabilityIds;
-  shoalReceipt.runtime.catalog_digest = digestJson(shoalReceipt.runtime.catalog);
-  shoalReceipt.dependency_closure.packages.splice(1, 0, {
-    name: "merman-layout-shoal", version: PACKAGE_VERSION, source: "path:crates/merman-layout-shoal",
-  });
-  shoalReceipt.dependency_closure.digest = digestJson(shoalReceipt.dependency_closure.packages);
-  shoalReceipt.input_digest = digestJson({
-    cargo_lock_digest: shoalReceipt.cargo_lock_digest,
-    config: shoalReceipt.config,
-    dependency_closure_digest: shoalReceipt.dependency_closure.digest,
-    source_digest: shoalReceipt.source_digest,
-    tools: shoalReceipt.tools,
-  });
-  writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(shoalReceipt));
-  assert.throws(() => readReceipt(), /capability recipe.*canonical/i);
-  assert.equal(readBuildReceipt(artifact, {
-    localShoal: true,
-    probeCurrentRuntime: () => shoalReceipt.runtime,
-    resolveCurrentEvidence: () => ({
-      ...currentEvidence,
-      dependency_closure_digest: shoalReceipt.dependency_closure.digest,
-    }),
-  }).runtime_catalog_digest, shoalReceipt.runtime.catalog_digest);
-  writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(receipt));
+  for (const localLayout of ["shoal", "grid", "layered"]) {
+    assert.throws(() => readBuildReceipt(artifact, { localLayout }), /capability recipe.*canonical/i);
+    const localReceipt = structuredClone(receipt);
+    const localRuntime = resolveCandidateRuntimeContract({ localLayout });
+    localReceipt.config.capability_recipe = localRuntime.capabilityRecipe;
+    localReceipt.config.features = [...receipt.config.features, `layout-${localLayout}`].sort();
+    localReceipt.runtime.catalog.capabilities.capability_ids = localRuntime.capabilityIds;
+    localReceipt.runtime.catalog_digest = digestJson(localReceipt.runtime.catalog);
+    if (localLayout === "shoal") {
+      localReceipt.dependency_closure.packages.splice(1, 0, {
+        name: "merman-layout-shoal", version: PACKAGE_VERSION, source: "path:crates/merman-layout-shoal",
+      });
+    }
+    localReceipt.dependency_closure.digest = digestJson(localReceipt.dependency_closure.packages);
+    localReceipt.input_digest = digestJson({
+      cargo_lock_digest: localReceipt.cargo_lock_digest,
+      config: localReceipt.config,
+      dependency_closure_digest: localReceipt.dependency_closure.digest,
+      source_digest: localReceipt.source_digest,
+      tools: localReceipt.tools,
+    });
+    writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(localReceipt));
+    assert.throws(() => readReceipt(), /capability recipe.*canonical/i);
+    const wrongLayout = localLayout === "grid" ? "layered" : "grid";
+    assert.throws(() => readBuildReceipt(artifact, { localLayout: wrongLayout }), /capability recipe.*canonical/i);
+    assert.equal(readBuildReceipt(artifact, {
+      localLayout,
+      probeCurrentRuntime: () => localReceipt.runtime,
+      resolveCurrentEvidence: () => ({
+        ...currentEvidence,
+        dependency_closure_digest: localReceipt.dependency_closure.digest,
+      }),
+    }).runtime_catalog_digest, localReceipt.runtime.catalog_digest);
+    writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(receipt));
+  }
 
   const wrongTarget = structuredClone(receipt);
   wrongTarget.config.rust_target = "x86_64-apple-darwin";

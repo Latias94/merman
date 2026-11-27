@@ -7,10 +7,10 @@ import {
 } from "./generated/binding-contract.mjs";
 import { CAPABILITY_DESCRIPTOR_DIGEST } from "./generated/capability-surface.mjs";
 import {
-  NODE_LOCAL_SHOAL_WIRE_CONTRACT,
   NODE_TRANSPORT_FIELD_LIMITS,
   NODE_TRANSPORT_LIMITS,
   NODE_WIRE_CONTRACT,
+  nodeWireContract,
 } from "./transport-contract.mjs";
 
 const BINDING_RESULT_SCHEMA = BINDING_PAYLOAD_SCHEMAS.find(
@@ -464,7 +464,7 @@ export function parseRuntimeCatalogJsonText(value, label = "runtime catalog") {
 
 export function validateTransportIdentityJson(
   value,
-  { expectedTransport, expectedPackageVersion, localShoal = false },
+  { expectedTransport, expectedPackageVersion, localLayout = null },
 ) {
   const identity = parseTransportJsonText(
     value,
@@ -482,7 +482,7 @@ export function validateTransportIdentityJson(
     identity.binding_result_payload_version !==
       NODE_WIRE_CONTRACT.binding_result_payload_version ||
     identity.capability_descriptor_digest !== CAPABILITY_DESCRIPTOR_DIGEST ||
-    !sameJsonValue(identity.wire_contract, localShoal ? NODE_LOCAL_SHOAL_WIRE_CONTRACT : NODE_WIRE_CONTRACT)
+    !sameJsonValue(identity.wire_contract, nodeWireContract(localLayout))
   ) {
     throw new MermanInvalidTransportError(
       "The Merman candidate module identity is incompatible with this loader package.",
@@ -503,7 +503,7 @@ export function validateTransportIdentityJson(
 
 export function validateTransportIdentityExport(
   readIdentity,
-  { expectedTransport, expectedPackageVersion, label, localShoal = false },
+  { expectedTransport, expectedPackageVersion, label, localLayout = null },
 ) {
   if (typeof readIdentity !== "function") {
     throw new MermanInvalidTransportError(
@@ -522,7 +522,7 @@ export function validateTransportIdentityExport(
   return validateTransportIdentityJson(value, {
     expectedPackageVersion,
     expectedTransport,
-    localShoal,
+    localLayout,
   });
 }
 
