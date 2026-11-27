@@ -80,12 +80,12 @@ and Agentflow. It resolves family defaults, typography and density overlays, and
 configuration projection before layout. It also resolves shape aliases and image and icon
 dimensions, and supplies organic outlines and BPMN connector intersections. It parses authored
 styles, prepares the operation-local class styles shared by layout and paint, and emits the
-complete Flow diagram stylesheet. It writes the root, graph and edge-label groups, markers,
-edge paths, container shells, and the extracted node shape bodies. It also owns the physical and effective
-ancestry indexes for SVG emission. Its Dagre adapter owns compound graph assembly, cluster
-anchor selection and extraction, and the associated work accounting. `merman-render`
-selects routes and graph traversal order, measures labels, admits assets, and applies final
-SVG policy.
+complete Flow diagram stylesheet. It writes the root, graph and edge-label groups, ordinary SVG
+edge labels, markers, edge paths, container shells, and the extracted node shape bodies. It also
+owns the physical and effective ancestry indexes for SVG emission. Its Dagre adapter owns compound
+graph assembly, cluster anchor selection and extraction, and the associated work accounting.
+`merman-render` selects routes and graph traversal order, measures labels, admits assets, and
+applies final SVG policy.
 
 ### Structured diagrams
 

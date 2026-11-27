@@ -77,11 +77,6 @@ use util::OptionalStyleAttr;
 
 // Flowchart SVG renderer implementation (split from parity.rs).
 
-// Mermaid's `createText(...)` defaults its `width` argument to 200. Flowchart edge labels call
-// `createText(...)` without overriding that width, so keep edge label wrapping/max-width fixed at
-// 200px (independent of `flowchart.wrappingWidth`).
-pub(in crate::svg::parity::flowchart) const FLOWCHART_EDGE_LABEL_WRAP_WIDTH: f64 = 200.0;
-
 // In flowchart SVG emission, many attribute payloads are known to be short-lived (colors, inline
 // `d` strings, etc). Avoid allocating an owned `String` for attribute escaping by default.
 #[inline]

@@ -1,6 +1,8 @@
-//! Balanced Mermaid edge-label layers for the Flow families.
+//! Mermaid edge-label layers and complete SVG edge labels for the Flow families.
 
 use merman_render_core::{Result, svg_output::SvgOutput};
+
+pub mod svg;
 
 const EMPTY_BACKGROUND: &str = r#"<g><rect class="background" style="stroke: none"/></g>"#;
 

@@ -62,18 +62,6 @@ pub(in crate::svg::parity) fn flowchart_label_plain_text(
     crate::flowchart::flowchart_label_plain_text_for_layout(label, label_type, html_labels)
 }
 
-pub(in crate::svg::parity) fn write_flowchart_empty_svg_text_centered(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    include_style: bool,
-) {
-    crate::svg::parity::label::write_svg_text_source_word_lines(
-        out,
-        &[Vec::new()],
-        include_style,
-        true,
-    );
-}
-
 pub(in crate::svg::parity) fn write_flowchart_svg_source_word_lines(
     out: &mut impl crate::svg::parity::SvgOutput,
     lines: &[Vec<String>],
@@ -110,17 +98,6 @@ pub(crate) fn write_flowchart_svg_label_plan_with_style(
     }
 }
 
-pub(crate) fn write_flowchart_svg_label_plan_centered_with_style(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    plan: &crate::flowchart::FlowchartSvgLabelRenderPlan<'_>,
-    style: &str,
-) {
-    let lines = plan.wrapped_lines();
-    crate::svg::parity::label::write_svg_text_source_word_lines_with_style(
-        out, &lines, style, true, None,
-    );
-}
-
 #[cfg(test)]
 pub(in crate::svg::parity) fn wrap_flowchart_svg_source_word_lines(
     measurer: &dyn crate::text::TextMeasurer,
@@ -148,37 +125,6 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown(
         markdown,
         include_style,
     );
-}
-
-pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped_centered(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    markdown: &str,
-    include_style: bool,
-    measurer: &dyn crate::text::TextMeasurer,
-    style: &crate::text::TextStyle,
-    max_width_px: Option<f64>,
-    extra_style: Option<&str>,
-) {
-    if let Some(extra_style) = extra_style {
-        crate::svg::parity::label::write_svg_text_markdown_wrapped_from_create_text_source_with_style(
-            out,
-            markdown,
-            extra_style,
-            measurer,
-            style,
-            max_width_px,
-            true,
-        );
-    } else {
-        crate::svg::parity::label::write_svg_text_markdown_wrapped_centered_from_create_text_source(
-            out,
-            markdown,
-            include_style,
-            measurer,
-            style,
-            max_width_px,
-        );
-    }
 }
 
 pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped(
