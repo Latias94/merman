@@ -87,12 +87,13 @@ traversal, text measurement, asset policy, layout output projection, and SVG bod
 
 ### Structured diagrams
 
-`merman-core-structured` owns Info syntax, Ishikawa syntax and cause-tree construction, Packet
-field scanning and bounded row expansion, Railroad dialect parsing and recovery, Sankey CSV
-parsing and graph construction, and Treemap row parsing and hierarchy construction. It also owns
-Journey and Timeline parsing and model construction, using shared scanners in
-`merman-core-preprocess`. `merman-core` prepares the source, supplies config-dependent sanitization,
-and maps models and syntax diagnostics into public parse results with optional editor facts.
+`merman-core-structured` owns Info syntax and model construction, Ishikawa syntax and cause-tree
+construction, Packet field scanning and bounded row expansion, Railroad dialect parsing and
+recovery, Sankey CSV parsing and graph construction, and Treemap row parsing and hierarchy
+construction. It also owns Journey and Timeline parsing and model construction, using shared
+scanners in `merman-core-preprocess`. `merman-core` prepares the source, supplies config-dependent
+sanitization, and maps models and syntax diagnostics into public parse results with optional editor
+facts.
 
 `merman-render-structured` owns the typed layout and complete SVG emission for Cynefin, Info,
 Ishikawa, Packet, and Railroad. It uses the shared root SVG, CSS,

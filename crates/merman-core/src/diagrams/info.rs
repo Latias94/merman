@@ -14,9 +14,9 @@ use crate::{
 use crate::{Error, family};
 #[cfg(feature = "presentation")]
 use crate::{Result, SourcePresentationMetadata};
-use merman_core_structured::info::{
-    InfoHeader, InfoStatement, info_body_start_controlled, parse_info_statement,
-};
+#[cfg(feature = "editor-facts")]
+use merman_core_structured::info::InfoObservation;
+use merman_core_structured::info::{InfoBodyIssue, InfoHeader, info_body_start_controlled};
 #[cfg(feature = "compat-json")]
 use serde_json::Value;
 
@@ -182,7 +182,7 @@ fn construct_info_semantic_source_controlled(
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("info");
 
-    let mut offset = match header {
+    let body = match header {
         InfoHeader::Empty => {
             return Ok(Ok(InfoSemanticSource {
                 model: InfoDiagramModel::default(),
@@ -205,7 +205,7 @@ fn construct_info_semantic_source_controlled(
                     .then(EditorSemanticFacts::new),
             )));
         }
-        InfoHeader::Body { offset } => offset,
+        InfoHeader::Body(body) => body,
     };
     #[cfg(feature = "editor-facts")]
     let mut editor_facts = match editor_demand {
@@ -217,98 +217,67 @@ fn construct_info_semantic_source_controlled(
             Some(EditorSemanticFacts::new())
         }
     };
-    let mut show_info = false;
-    let mut common_seen = false;
-    let mut first_error = None;
-
-    while offset < code.len() {
-        control.checkpoint()?;
-        let statement = parse_info_statement(code, offset, !show_info && !common_seen)
-            .expect("the Info parser advances over complete source tokens");
-        match statement {
-            InfoStatement::Common(parsed) => {
-                if let Some(diagnostic) = &parsed.diagnostic {
-                    #[cfg(feature = "editor-facts")]
-                    if let Some(facts) = &mut editor_facts {
-                        push_langium_common_recovery(facts, diagnostic);
-                    }
-                    first_error.get_or_insert_with(|| {
-                        Error::diagram_parse_insertion_point(
-                            diagram_type.to_string(),
-                            diagnostic.message.clone(),
-                            diagnostic.span.start,
-                        )
-                    });
-                }
-                #[cfg(feature = "editor-facts")]
-                if let Some(facts) = editor_facts
-                    .as_mut()
-                    .filter(|_| editor_demand.captures_rich())
-                {
-                    push_langium_common_editor_fact(facts, &parsed.fact, "info");
-                }
-                common_seen = true;
-                offset += parsed.consumed;
-            }
-            InfoStatement::ShowInfo {
-                #[cfg(feature = "editor-facts")]
-                span,
-                consumed,
-                ..
-            } => {
-                show_info = true;
-                #[cfg(feature = "editor-facts")]
-                if let Some(facts) = editor_facts
-                    .as_mut()
-                    .filter(|_| editor_demand.captures_rich())
-                {
-                    push_show_info_editor_fact(facts, span);
-                }
-                offset += consumed;
-            }
-            InfoStatement::Empty { next_offset } => offset = next_offset,
-            InfoStatement::Unexpected {
-                ch,
-                skipped,
-                bad_offset,
-                #[cfg(feature = "editor-facts")]
-                span,
-                next_offset,
-                ..
-            } => {
-                #[cfg(feature = "editor-facts")]
-                if let Some(facts) = &mut editor_facts {
-                    facts.mark_recovered_from_parse_error("unexpected info statement", Some(span));
-                }
-                first_error.get_or_insert_with(|| {
-                    Error::diagram_parse_fallback(
-                        diagram_type.to_string(),
-                        format!(
-                            "Parsing failed: unexpected character: ->{ch}<- at offset: {bad_offset}, skipped {skipped} characters."
-                        ),
-                    )
-                });
-                offset = next_offset;
-            }
-        }
-    }
-
-    if let Some(error) = first_error {
-        return Ok(Err(family::CombinedSemanticFailure::new(
-            error,
+    #[cfg(feature = "editor-facts")]
+    let mut observe = editor_facts.as_mut().map(|facts| {
+        move |observation: InfoObservation<'_>| project_info_observation(facts, observation)
+    });
+    let parsed = body.parse_controlled(
+        #[cfg(feature = "editor-facts")]
+        editor_demand.captures_rich(),
+        #[cfg(feature = "editor-facts")]
+        observe
+            .as_mut()
+            .map(|observe| observe as &mut dyn FnMut(InfoObservation<'_>)),
+        control,
+    )?;
+    Ok(match parsed {
+        Ok(model) => Ok(InfoSemanticSource {
+            model,
+            #[cfg(feature = "presentation")]
+            output_data: InfoOutputData::Model,
             #[cfg(feature = "editor-facts")]
             editor_facts,
-        )));
-    }
+        }),
+        Err(issue) => Err(family::CombinedSemanticFailure::new(
+            info_body_error(diagram_type, issue),
+            #[cfg(feature = "editor-facts")]
+            editor_facts,
+        )),
+    })
+}
 
-    control.checkpoint()?;
-    Ok(Ok(InfoSemanticSource {
-        model: InfoDiagramModel { show_info },
-        #[cfg(feature = "presentation")]
-        output_data: InfoOutputData::Model,
-        #[cfg(feature = "editor-facts")]
-        editor_facts,
-    }))
+fn info_body_error(diagram_type: &str, issue: InfoBodyIssue) -> Error {
+    match issue {
+        InfoBodyIssue::Common(diagnostic) => Error::diagram_parse_insertion_point(
+            diagram_type,
+            diagnostic.message,
+            diagnostic.span.start,
+        ),
+        InfoBodyIssue::Unexpected {
+            ch,
+            skipped,
+            bad_offset,
+        } => Error::diagram_parse_fallback(
+            diagram_type,
+            format!(
+                "Parsing failed: unexpected character: ->{ch}<- at offset: {bad_offset}, skipped {skipped} characters."
+            ),
+        ),
+    }
+}
+
+#[cfg(feature = "editor-facts")]
+fn project_info_observation(facts: &mut EditorSemanticFacts, observation: InfoObservation<'_>) {
+    match observation {
+        InfoObservation::CommonRecovery(diagnostic) => {
+            push_langium_common_recovery(facts, diagnostic)
+        }
+        InfoObservation::Common(fact) => push_langium_common_editor_fact(facts, fact, "info"),
+        InfoObservation::ShowInfo(span) => push_show_info_editor_fact(facts, span),
+        InfoObservation::Unexpected(span) => {
+            facts.mark_recovered_from_parse_error("unexpected info statement", Some(span));
+        }
+    }
 }
 
 #[cfg(feature = "editor-facts")]

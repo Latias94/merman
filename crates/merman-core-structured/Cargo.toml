@@ -18,7 +18,7 @@ third-party-bundle = true
 [features]
 default = []
 diagram-gantt = ["dep:merman-core-preprocess", "dep:merman-markup", "merman-model/diagram-gantt"]
-diagram-info = ["dep:merman-core-preprocess"]
+diagram-info = ["dep:merman-core-preprocess", "merman-model/diagram-info"]
 diagram-ishikawa = ["merman-model/diagram-ishikawa"]
 diagram-journey = ["dep:merman-core-preprocess", "merman-model/diagram-journey"]
 diagram-packet = ["merman-model/diagram-packet"]

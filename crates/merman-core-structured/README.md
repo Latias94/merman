@@ -2,13 +2,13 @@
 
 Source parsing and semantic construction for structured Mermaid diagrams. The `diagram-gantt`
 feature scans Gantt statements, resolves dates with the supplied operation context, and builds
-typed task models. `diagram-info` scans Info headers and statements. `diagram-ishikawa` scans
-effects and causes and builds the flat cause tree. `diagram-journey` parses Journey statements
-and builds the typed task and section model. `diagram-packet` scans Packet headers and fields
-and expands them into bounded rows. `diagram-railroad` parses Railroad IR, EBNF, ABNF, and PEG
-into `merman-model` values. `diagram-sankey` parses CSV and builds the canonical graph, and
-`diagram-treemap` parses rows and builds the Treemap hierarchy. `editor-facts` enables syntax spans
-for editor consumers.
+typed task models. `diagram-info` scans Info headers and statements and builds the typed model.
+`diagram-ishikawa` scans effects and causes and builds the flat cause tree. `diagram-journey`
+parses Journey statements and builds the typed task and section model. `diagram-packet` scans
+Packet headers and fields and expands them into bounded rows. `diagram-railroad` parses Railroad
+IR, EBNF, ABNF, and PEG into `merman-model` values. `diagram-sankey` parses CSV and builds the
+canonical graph. `diagram-treemap` parses rows and builds the Treemap hierarchy. `editor-facts`
+enables syntax spans for editor consumers.
 
 This crate exposes a workspace-internal service provider interface (SPI). It is published in
 lockstep with Merman and expects an exact version match with the Merman crates that use it.
