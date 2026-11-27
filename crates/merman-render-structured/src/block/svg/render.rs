@@ -12,7 +12,7 @@ use merman_render_core::{
         paths::roughjs_paths_for_svg_path,
     },
     svg_bounds::{svg_emitted_bounds_from_svg, svg_path_bounds_from_d},
-    svg_css::{SvgId as SvgDiagramId, write_mermaid_base_css_root_rule},
+    svg_css::{SvgId as SvgDiagramId, available_local_svg_id, write_mermaid_base_css_root_rule},
     svg_edge_parity::{
         curve,
         markers::{self, BaseEdgeMarkerKind},
@@ -702,14 +702,40 @@ pub fn render_block_diagram_svg_model_with_theme(
                 .ok_or_else(|| Error::InvalidModel {
                     message: format!("missing Block shape geometry for node `{}`", n.id),
                 })?;
-        let id_attr = if options.shoal {
-            format!(
-                r#" id="{diagram_id}-block-node-{node_index}" data-et="node" data-id="{}""#,
-                escape_attr(&n.id)
-            )
+        let disambiguated = if !options.shoal
+            && node_theme
+                .look_defs
+                .as_ref()
+                .is_some_and(|defs| defs.defines_local_id(&n.id, true))
+        {
+            Some(available_local_svg_id(
+                format!("block-node-{node_index}"),
+                nodes_by_id.len().saturating_add(layout.edges.len()),
+                |id| {
+                    nodes_by_id.contains_key(id)
+                        || id
+                            .strip_prefix(diagram_id.semantic_str())
+                            .and_then(|suffix| suffix.strip_prefix('-'))
+                            .is_some_and(|edge_id| layout_edges_by_id.get(edge_id).is_some())
+                },
+                options.work_meter,
+            )?)
         } else {
-            format!(r#" id="{}""#, escape_attr(&dom_id(diagram_id, &n.id)))
+            None
         };
+        let mut id_attr = if options.shoal {
+            format!(r#" id="{diagram_id}-block-node-{node_index}""#)
+        } else {
+            let id = disambiguated.as_deref().unwrap_or(&n.id);
+            format!(r#" id="{}""#, escape_attr(&dom_id(diagram_id, id)))
+        };
+        if options.shoal || disambiguated.is_some() {
+            let _ = write!(
+                id_attr,
+                r#" data-et="node" data-id="{}""#,
+                escape_attr(&n.id)
+            );
+        }
         options.checkpoint_emit()?;
         let _ = write!(
             &mut out,

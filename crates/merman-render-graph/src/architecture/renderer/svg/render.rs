@@ -352,8 +352,14 @@ pub fn render_architecture_diagram_svg_typed_with_config(
         use_max_width,
     )?;
     let look_defs = PreparedLookDefs::new(effective_config);
+    let emit_shadow_defs = typography
+        .css_binding()
+        .common
+        .references_builtin_drop_shadow();
     #[cfg(feature = "layout-shoal")]
-    if shoal_geometry.is_some() && effective_config.get_str("look") == Some("neo") {
+    let emit_shadow_defs = emit_shadow_defs
+        || (shoal_geometry.is_some() && effective_config.get_str("look") == Some("neo"));
+    if emit_shadow_defs {
         look_defs.write_shadow_defs(&mut out, diagram_id)?;
     }
     if look_defs.uses_gradient() {

@@ -35,28 +35,8 @@ impl std::fmt::Display for StateScopedDomId<'_, '_> {
             formatter,
             "{}-{}",
             self.diagram_id,
-            escape_xml_display(self.id)
+            escape_attr_display(self.id)
         )
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(super) struct StateScopedDomIdAttr<'a, 'b>(StateScopedDomId<'a, 'b>);
-
-impl std::fmt::Display for StateScopedDomIdAttr<'_, '_> {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            formatter,
-            "{}-{}",
-            self.0.diagram_id,
-            escape_attr_display(self.0.id)
-        )
-    }
-}
-
-impl<'a, 'b> StateScopedDomId<'a, 'b> {
-    pub(super) fn attr(self) -> StateScopedDomIdAttr<'a, 'b> {
-        StateScopedDomIdAttr(self)
     }
 }
 

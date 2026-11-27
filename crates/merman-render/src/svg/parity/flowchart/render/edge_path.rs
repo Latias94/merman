@@ -254,7 +254,7 @@ mod tests {
             IndexMap::from([("accent".to_string(), vec!["stroke:#2563eb".to_string()])]);
         let default_edge_style = vec!["opacity:0.5".to_string()];
         let mut edge = edge("arrow_open", "dotted");
-        edge.id = "\u{8fb9}#quot;&<]\u{1}]>".to_string();
+        edge.id = "边#quot;&<]\u{1}]>\t\r\n\"'".to_string();
         edge.classes.push("accent".to_string());
         edge.style.push("stroke:#ef4444".to_string());
         let emitted_styles =
@@ -291,7 +291,7 @@ mod tests {
             neo_edge_mask: Some(neo_edge_mask),
             line_hop_applied: false,
         };
-        let expected_edge = r##"<path d="M0,0L16,0" id="diagram-merman-flowchart-document-edge-12-segment-2" class="edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 2 2 2 2 2 2 2 2 0; stroke-dashoffset: 0;stroke:#2563eb;opacity:0.5;stroke:#ef4444;;;opacity:0.5;stroke:#ef4444" data-edge="true" data-et="edge" data-id="边&quot;&amp;&lt;]]&gt;" data-points="W3sieCI6MH1d" data-look="neo" marker-start="url(#diagram-flowchart-v2-circleStart)" marker-end="url(#diagram-flowchart-v2-pointEnd)" />"##;
+        let expected_edge = r##"<path d="M0,0L16,0" id="diagram-merman-flowchart-document-edge-12-segment-2" class="edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 2 2 2 2 2 2 2 2 0; stroke-dashoffset: 0;stroke:#2563eb;opacity:0.5;stroke:#ef4444;;;opacity:0.5;stroke:#ef4444" data-edge="true" data-et="edge" data-id="边#quot;&amp;&lt;]]>&#9;&#13;&#10;&quot;&#39;" data-points="W3sieCI6MH1d" data-look="neo" marker-start="url(#diagram-flowchart-v2-circleStart)" marker-end="url(#diagram-flowchart-v2-pointEnd)" />"##;
         let initial = "prefix";
         let probe_meter = crate::resources::OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input(),
@@ -307,6 +307,16 @@ mod tests {
         assert_eq!(exact.finish().unwrap(), format!("{initial}{expected_edge}"));
         assert_eq!(exact_meter.used(), 4);
         assert_eq!(exact_meter.projected_svg_bytes(), projected_style_bytes);
+
+        let mut svg = format!("<svg>{expected_edge}");
+        merman_render_flow::edge_labels::svg::write_empty_svg_edge_label(&mut svg, &edge.id);
+        svg.push_str("</svg>");
+        let document = crate::xml_dom::Document::parse(&svg).unwrap();
+        let data_ids: Vec<_> = document
+            .descendants()
+            .filter_map(|node| node.attribute("data-id"))
+            .collect();
+        assert_eq!(data_ids, ["边#quot;&<]]>\t\r\n\"'"; 2]);
 
         for maximum in [exact_bytes - 1, initial.len() + expected_edge.len() / 2] {
             let short_svg_meter = meter_with_limits(maximum, 5);

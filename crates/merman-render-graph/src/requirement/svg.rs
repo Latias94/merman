@@ -16,7 +16,8 @@ use merman_render_core::{
     },
     svg_bounds::svg_path_bounds_from_d,
     svg_css::{
-        CssSelectorDiagramId, PreparedLookDefs, SvgDiagramIdValue, SvgId, escape_css_identifier,
+        CssSelectorDiagramId, PreparedLookDefs, SvgDiagramIdValue, SvgId, available_local_svg_id,
+        escape_css_identifier,
     },
     svg_edge_parity::{
         curve, edge_label_geometry, edge_path, line_hops,
@@ -610,7 +611,8 @@ pub fn render_requirement_diagram_svg_model(
         css_out.checkpoint()?;
     }
     out.push_str("</style>");
-    let look_defs = PreparedLookDefs::new(effective_config);
+    let look_defs =
+        PreparedLookDefs::new(effective_config).with_shadow_flood_color(binding.shadow_flood_color);
     if look_defs.uses_gradient() {
         out.push_str("<defs>");
         look_defs.write_gradient(&mut out, diagram_id)?;
@@ -877,6 +879,7 @@ pub fn render_requirement_diagram_svg_model(
     out.push_str("</g>");
 
     out.push_str(r#"<g class="nodes">"#);
+    let mut legacy_edge_ids = None;
     for (node_index, n) in layout.nodes.iter().enumerate() {
         let cx = n.x + n.width / 2.0;
         let cy = n.y + n.height / 2.0;
@@ -941,12 +944,35 @@ pub fn render_requirement_diagram_svg_model(
         } else {
             format!("node {}", node_classes.join(" "))
         };
+        let disambiguated = if !uses_canonical_routes
+            && has_diagram_id
+            && look_defs.defines_local_id(&n.id, true)
+        {
+            if legacy_edge_ids.is_none() {
+                options.work_meter.charge(prepared_edges.len())?;
+            }
+            let edge_ids = legacy_edge_ids.get_or_insert_with(|| {
+                prepared_edges
+                    .values()
+                    .map(|edge| edge.rendered_id.as_str())
+                    .collect::<std::collections::HashSet<_>>()
+            });
+            Some(available_local_svg_id(
+                format!("requirement-node-{node_index}"),
+                prepared_nodes.len().saturating_add(edge_ids.len()),
+                |id| prepared_nodes.contains_key(id) || edge_ids.contains(id),
+                options.work_meter,
+            )?)
+        } else {
+            None
+        };
+        let node_id = disambiguated.as_deref().unwrap_or(&n.id);
         let id_attr = if uses_canonical_routes {
             format!(r#" id="{diagram_id}-requirement-node-{node_index}""#)
         } else if has_diagram_id {
-            format!(r#" id="{diagram_id}-{}""#, escape_attr_display(&n.id))
+            format!(r#" id="{diagram_id}-{}""#, escape_attr_display(node_id))
         } else {
-            format!(r#" id="{}""#, escape_attr_display(&n.id))
+            format!(r#" id="{}""#, escape_attr_display(node_id))
         };
         options.work_meter.checkpoint(OperationPhase::Emit)?;
         let color_id_attr = color_indices
@@ -954,7 +980,7 @@ pub fn render_requirement_diagram_svg_model(
             .and_then(|index| requirement_color_id(border_colors, *index))
             .map(|color_id| format!(r#" data-color-id="{}""#, escape_attr_display(&color_id)))
             .unwrap_or_default();
-        let semantic_id_attr = if uses_canonical_routes {
+        let semantic_id_attr = if uses_canonical_routes || disambiguated.is_some() {
             format!(
                 r#" data-et="node" data-id="{}""#,
                 escape_attr_display(&n.id)
@@ -1354,11 +1380,7 @@ pub fn render_requirement_diagram_svg_model(
         out.checkpoint()?;
     }
 
-    push_requirement_shadow_defs(
-        &mut out,
-        diagram_id.semantic_str(),
-        binding.shadow_flood_color,
-    );
+    look_defs.write_shadow_defs(&mut out, diagram_id)?;
 
     out.push_str("</svg>\n");
     let viewport_padding = render_settings.viewport_padding;
@@ -1379,14 +1401,6 @@ pub fn render_requirement_diagram_svg_model(
         }),
     )?;
     root_document.complete(out.finish()?)
-}
-
-fn push_requirement_shadow_defs(out: &mut impl SvgOutput, diagram_id: &str, flood_color: &str) {
-    let _ = write!(
-        out,
-        r#"<defs><filter id="{}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs><defs><filter id="{}-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
-        diagram_id, flood_color, diagram_id, flood_color
-    );
 }
 
 #[cfg(test)]

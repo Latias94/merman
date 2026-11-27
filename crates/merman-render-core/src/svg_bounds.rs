@@ -638,6 +638,11 @@ fn svg_emitted_bounds_from_svg_inner(
                     maybe_record_dbg(&mut dbg, tag, attrs, b.clone());
                 }
                 bounds.include(b);
+                // The foreignObject viewport is in this coordinate space. Its HTML subtree
+                // can contain inline SVG with an independent viewport and transforms.
+                let _ = scanner.matching_end_with_checkpoints(scanned, &mut || {
+                    Ok::<(), std::convert::Infallible>(())
+                });
             }
             _ => {}
         }
@@ -744,6 +749,20 @@ mod svg_bbox_tests {
         let bounds = svg_emitted_bounds_from_svg(svg).unwrap();
         assert_eq!((bounds.min_x, bounds.min_y), (5.0, 7.0));
         assert_eq!((bounds.max_x, bounds.max_y), (15.0, 27.0));
+    }
+
+    #[test]
+    fn svg_emitted_bounds_counts_the_foreign_object_viewport_and_not_its_nested_svg() {
+        let svg = concat!(
+            r#"<svg><g transform="translate(20, 30)">"#,
+            r#"<foreignObject width="50" height="30"><div xmlns="http://www.w3.org/1999/xhtml">"#,
+            r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject width="400" height="300"/>"#,
+            r#"<rect width="99" height="99"/></svg></div></foreignObject >"#,
+            r#"<rect x="60" y="40" width="7" height="3"/></g></svg>"#,
+        );
+        let bounds = svg_emitted_bounds_from_svg(svg).unwrap();
+        assert_eq!((bounds.min_x, bounds.min_y), (20.0, 30.0));
+        assert_eq!((bounds.max_x, bounds.max_y), (87.0, 73.0));
     }
 
     #[test]

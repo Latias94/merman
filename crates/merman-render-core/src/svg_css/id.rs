@@ -9,6 +9,9 @@ use crate::{
     resources::{OperationWorkMeter, ResourceLimitPhase},
 };
 
+pub(super) const DROP_SHADOW_ID: &str = "drop-shadow";
+pub(super) const DROP_SHADOW_URL: &str = "url(#drop-shadow)";
+
 /// Cumulative operation admission for diagram ID occurrences.
 pub struct SvgDiagramIdProjection<'a> {
     work_meter: &'a OperationWorkMeter,
@@ -211,6 +214,30 @@ pub fn scoped_svg_id<I>(diagram_id: I, local_id: &str) -> ScopedSvgId<'_, I> {
     }
 }
 
+#[cfg(feature = "css-style")]
+/// Chooses a fresh diagram-local ID from a stem unique to the element being renamed.
+pub fn available_local_svg_id(
+    stem: String,
+    occupied_count: usize,
+    is_occupied: impl Fn(&str) -> bool,
+    work_meter: &OperationWorkMeter,
+) -> Result<String> {
+    work_meter.charge(stem.len())?;
+    if !is_occupied(&stem) {
+        return Ok(stem);
+    }
+    for suffix in 0..=occupied_count {
+        let candidate = format!("{stem}-{suffix}");
+        work_meter.charge(candidate.len())?;
+        if !is_occupied(&candidate) {
+            return Ok(candidate);
+        }
+    }
+    Err(Error::InvalidModel {
+        message: "exhausted local SVG IDs".into(),
+    })
+}
+
 #[derive(Clone, Copy)]
 pub struct ScopedSvgUrl<'a, I> {
     diagram_id: I,
@@ -247,13 +274,13 @@ where
     I: Copy + std::fmt::Display,
 {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut parts = self.source.split("url(#drop-shadow)");
+        let mut parts = self.source.split(DROP_SHADOW_URL);
         formatter.write_str(parts.next().unwrap_or_default())?;
         for suffix in parts {
             write!(
                 formatter,
                 "{}",
-                scoped_svg_url(self.diagram_id, "drop-shadow")
+                scoped_svg_url(self.diagram_id, DROP_SHADOW_ID)
             )?;
             formatter.write_str(suffix)?;
         }

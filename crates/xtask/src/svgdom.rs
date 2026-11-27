@@ -870,6 +870,63 @@ fn has_class_token(node: roxmltree::Node<'_, '_>, token: &str) -> bool {
         .is_some_and(|class| class.split_whitespace().any(|value| value == token))
 }
 
+// Pinned Mermaid can emit the same ID on a C4 shape and a definition. Project the
+// renderer's typed alias to that historical spelling before sorting shape wrappers.
+fn c4_disambiguated_shape_id(node: roxmltree::Node<'_, '_>) -> Option<String> {
+    if !node.has_tag_name("g")
+        || node.attribute("data-et") != Some("node")
+        || !has_class_token(node, "node")
+        || !has_class_token(node, "c4-shape")
+    {
+        return None;
+    }
+    let alias = node.attribute("data-id").filter(|id| !id.is_empty())?;
+    let root = node
+        .ancestors()
+        .find(|ancestor| matches!(ancestor.tag_name().name(), "svg" | "defs" | "foreignObject"))?;
+    if !root.has_tag_name("svg")
+        || root.attribute("aria-roledescription") != Some("c4")
+        || node.tag_name().namespace() != root.tag_name().namespace()
+    {
+        return None;
+    }
+    let scope = root.attribute("id").filter(|id| !id.is_empty())?;
+    let generated_id = node.attribute("id")?;
+    let ordinal = generated_id
+        .strip_prefix(scope)?
+        .strip_prefix("-c4-node-")?;
+    if !ordinal
+        .splitn(2, '-')
+        .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
+    {
+        return None;
+    }
+
+    let historical_id = format!("{scope}-{alias}");
+    // Require a unique generated ID and a single historical ID owned by a definition.
+    let mut occupants = root.descendants().filter(|candidate| {
+        *candidate != node
+            && candidate
+                .attribute("id")
+                .is_some_and(|id| id == historical_id || id == generated_id)
+    });
+    let definition = occupants.next()?;
+    let defs = definition.parent_element()?;
+    (definition.attribute("id") == Some(historical_id.as_str())
+        && occupants.next().is_none()
+        && matches!(
+            definition.tag_name().name(),
+            "symbol" | "marker" | "filter" | "linearGradient" | "clipPath"
+        )
+        && definition.tag_name().namespace() == root.tag_name().namespace()
+        && defs.has_tag_name("defs")
+        && defs
+            .ancestors()
+            .find(|ancestor| ancestor.has_tag_name("svg"))
+            == Some(root))
+    .then_some(historical_id)
+}
+
 fn is_flowchart_node_shell(node: roxmltree::Node<'_, '_>) -> bool {
     is_flowchart_diagram(node)
         && node.tag_name().name() == "g"
@@ -2180,9 +2237,19 @@ fn build_node(
             has_plot && has_bar_plot
         }
 
+        let c4_shape_id = if mode != DomMode::Strict {
+            c4_disambiguated_shape_id(n)
+        } else {
+            None
+        };
         for a in n.attributes() {
             let key = a.name().to_string();
-            let mut val = a.value().to_string();
+            let mut val = match (a.namespace(), a.name(), c4_shape_id.as_deref()) {
+                (None, "data-et" | "data-id", Some(_)) => continue,
+                (None, "id", Some(id)) => id,
+                _ => a.value(),
+            }
+            .to_string();
 
             if is_flowchart_step_animation(n) {
                 if key == "begin" {
@@ -4997,6 +5064,78 @@ mod tests {
         let bare_dom = dom_signature(bare, DomMode::Parity, 3).unwrap();
 
         assert_eq!(prefixed_dom, bare_dom);
+    }
+
+    fn c4_shape_collision_svg(shape_id: &str) -> String {
+        format!(
+            r##"<svg id="diag" aria-roledescription="c4">
+                <defs><symbol id="diag-database"/></defs>
+                <g transform="translate(10 20)"><g class="node c4-shape c4-container" id="diag-container"><rect/></g></g>
+                <g transform="translate(30 40)"><g class="node c4-shape c4-container_db" {shape_id}><path d="M0 0L1 1"/></g></g>
+                <use href="#diag-database"/>
+            </svg>"##
+        )
+    }
+
+    #[test]
+    fn c4_disambiguated_shapes_sort_by_the_historical_alias() {
+        let upstream = c4_shape_collision_svg(r#"id="diag-database""#);
+        let local =
+            c4_shape_collision_svg(r#"id="diag-c4-node-1-0" data-et="node" data-id="database""#);
+        for mode in [DomMode::Structure, DomMode::Parity, DomMode::ParityRoot] {
+            let expected = dom_signature(&upstream, mode, 3).unwrap();
+            assert_eq!(
+                expected,
+                dom_signature(&local, mode, 3).unwrap(),
+                "{mode:?}"
+            );
+            for (from, to) in [
+                ("href=\"#diag-database\"", "href=\"#diag-container\""),
+                (r#"<path d="M0 0L1 1"/>"#, "<ellipse/>"),
+            ] {
+                let changed = local.replace(from, to);
+                assert_ne!(
+                    expected,
+                    dom_signature(&changed, mode, 3).unwrap(),
+                    "{mode:?}: {from}"
+                );
+            }
+        }
+        assert_ne!(
+            dom_signature(&upstream, DomMode::Strict, 3).unwrap(),
+            dom_signature(&local, DomMode::Strict, 3).unwrap()
+        );
+    }
+
+    #[test]
+    fn c4_alias_projection_requires_a_typed_shape_and_a_definition_collision() {
+        let upstream = c4_shape_collision_svg(r#"id="diag-database""#);
+        let local =
+            c4_shape_collision_svg(r#"id="diag-c4-node-1" data-et="node" data-id="database""#);
+        for (from, to) in [
+            (
+                r#"aria-roledescription="c4""#,
+                r#"aria-roledescription="other""#,
+            ),
+            ("node c4-shape c4-container_db", "node c4-container_db"),
+            (
+                r#"<defs><symbol id="diag-database"/></defs>"#,
+                r#"<g><symbol id="diag-database"/></g>"#,
+            ),
+            (r#"id="diag-container""#, r#"id="diag-c4-node-1""#),
+            (r#"data-et="node""#, r#"data-et="edge""#),
+            (r#"data-id="database""#, r#"data-id="clock""#),
+            ("diag-c4-node-1", "other-c4-node-1"),
+            ("diag-c4-node-1", "diag-c4-node-1-extra"),
+        ] {
+            let upstream = upstream.replace(from, to);
+            let local = local.replace(from, to);
+            assert_ne!(
+                dom_signature(&upstream, DomMode::Parity, 3).unwrap(),
+                dom_signature(&local, DomMode::Parity, 3).unwrap(),
+                "{from} -> {to}"
+            );
+        }
     }
 
     #[test]

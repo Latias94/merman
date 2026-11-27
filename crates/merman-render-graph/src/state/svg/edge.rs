@@ -15,7 +15,7 @@ use merman_render_core::{
     svg_output::{FALLBACK_BACKGROUND_FILL_DATA_ATTR, FALLBACK_OCCURRENCE_DATA_ATTR},
     text::{MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, line_break::mermaid_html_breaks_to_newlines},
     theme_svg::edge_label_background::{adaptive_text_ink, literal_fill, write_backplate},
-    xml::escape_xml_into,
+    xml::escape_attr_into,
 };
 use merman_theme_contract::v2::{Color, EdgeLabelBackground};
 
@@ -766,21 +766,21 @@ fn write_state_edge_path(
     out.push_str(r#"<path d=""#);
     out.push_str(rendered_d);
     out.push_str(r#"" id=""#);
-    let _ = write!(out, "{}", state_scoped_dom_id(ctx, edge_id).attr());
+    let _ = write!(out, "{}", state_scoped_dom_id(ctx, edge_id));
     out.push_str(r#"" class=""#);
-    escape_xml_into(out, classes);
+    escape_attr_into(out, classes);
     out.push_str(r#"" style=""#);
-    merman_render_core::xml::escape_attr_into(out, &style);
+    escape_attr_into(out, &style);
     out.push_str(r#"" data-edge="true" data-et="edge" data-id=""#);
-    escape_xml_into(out, edge_id);
+    escape_attr_into(out, edge_id);
     out.push_str(r#"" data-points=""#);
     out.push_str(&scratch.base64);
     out.push_str(r#"" data-look=""#);
-    escape_xml_into(out, look);
+    escape_attr_into(out, look);
     out.push('"');
     if let Some(marker_end) = marker_end {
         out.push_str(r#" marker-end=""#);
-        escape_xml_into(out, marker_end);
+        escape_attr_into(out, marker_end);
         out.push('"');
     }
     out.push_str("/>");

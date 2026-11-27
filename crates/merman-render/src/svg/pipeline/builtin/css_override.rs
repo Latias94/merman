@@ -450,6 +450,15 @@ mod tests {
     }
 
     #[test]
+    fn css_override_keeps_the_encoded_opening_of_adjacent_priority_comments() {
+        let svg = "<svg><style>.x{fill:red !/* first */&#47;* second */important;}</style></svg>";
+        assert_eq!(
+            strip(svg),
+            "<svg><style>.x{fill:red/* first */&#47;* second */;}</style></svg>"
+        );
+    }
+
+    #[test]
     fn css_override_stops_at_the_css_nesting_limit() {
         let svg = format!(
             "<svg><style>{}.x{{fill:red !important;}}{}</style></svg>",

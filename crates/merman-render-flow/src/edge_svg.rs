@@ -13,7 +13,7 @@ use merman_render_core::{
     svg_edge_parity::path_numbers::json_stringify_points_into,
     svg_edge_parity::{edge_path::neo_marker_mask_offset, line_hops::rewrite_style_after_line_hop},
     svg_output::SvgOutput,
-    xml::{escape_attr_display, escape_xml_display, escaped_xml_len},
+    xml::{escape_attr_display, escaped_attr_len},
 };
 
 use crate::{document::FlowchartDocumentId, source_style::FlowchartStyleDeclaration};
@@ -223,9 +223,9 @@ impl FlowchartEdgeSvgEmission<'_> {
             .and_then(|bytes| bytes.checked_add(self.edge_dom_id.serialized_len()))
             .and_then(|bytes| bytes.checked_add(self.class_attr.len()))
             .and_then(|bytes| bytes.checked_add(projected_style_bytes))
-            .and_then(|bytes| bytes.checked_add(escaped_xml_len(&self.edge.id)))
+            .and_then(|bytes| bytes.checked_add(escaped_attr_len(&self.edge.id)))
             .and_then(|bytes| bytes.checked_add(self.data_points_b64.len()))
-            .and_then(|bytes| bytes.checked_add(escaped_xml_len(self.data_look.as_str())))
+            .and_then(|bytes| bytes.checked_add(escaped_attr_len(self.data_look.as_str())))
             .and_then(|bytes| bytes.checked_add(self.marker_attrs.len()));
         let Some(bytes) = bytes else {
             work_meter.check_svg_append(usize::MAX, 1)?;
@@ -276,11 +276,11 @@ impl FlowchartEdgeSvgEmission<'_> {
             out.write_str(HAND_DRAWN_ATTRIBUTES)?;
         }
         out.write_str(DATA_ID_ATTRIBUTE)?;
-        write!(out, "{}", escape_xml_display(&self.edge.id))?;
+        write!(out, "{}", escape_attr_display(&self.edge.id))?;
         out.write_str(DATA_POINTS_ATTRIBUTE)?;
         out.write_str(self.data_points_b64)?;
         out.write_str(DATA_LOOK_ATTRIBUTE)?;
-        write!(out, "{}", escape_xml_display(self.data_look.as_str()))?;
+        write!(out, "{}", escape_attr_display(self.data_look.as_str()))?;
         out.write_str(ATTRIBUTE_END)?;
         out.write_str(self.marker_attrs)?;
         out.write_str(PATH_END)

@@ -5,7 +5,7 @@ use std::fmt;
 use merman_render_core::{
     svg_edge_parity::markers::{BaseEdgeMarkerKind, hierarchy_edge_marker_body},
     theme_svg::marker::arrow_path,
-    xml::{escape_xml, escape_xml_display},
+    xml::{escape_attr, escape_attr_display},
 };
 use merman_theme_contract::v2::MarkerStyle;
 
@@ -74,10 +74,10 @@ impl FlowchartMarkerPaint {
         match self {
             Self::None => {}
             Self::Stroke => {
-                let _ = write!(out, r#" stroke="{}""#, escape_xml_display(color));
+                let _ = write!(out, r#" stroke="{}""#, escape_attr_display(color));
             }
             Self::StrokeAndFill => {
-                let color = escape_xml_display(color);
+                let color = escape_attr_display(color);
                 let _ = write!(out, r#" stroke="{color}" fill="{color}""#);
             }
         }
@@ -431,8 +431,8 @@ pub fn push_base_markers(
     marker_style: MarkerStyle,
     bpmn_markers: bool,
 ) {
-    let id = escape_xml(diagram_id);
-    let ty = escape_xml(diagram_type);
+    let id = escape_attr(diagram_id);
+    let ty = escape_attr(diagram_type);
     for spec in FLOWCHART_MARKER_SHAPE_SPECS {
         let _ = write!(
             out,
@@ -468,11 +468,11 @@ fn push_bpmn_markers(out: &mut impl fmt::Write, diagram_id: &str, diagram_type: 
         let _ = write!(
             out,
             r#"<marker id="{}_{}-{}" class="{} {}"{}/></marker>"#,
-            escape_xml_display(diagram_id),
-            escape_xml_display(diagram_type),
+            escape_attr_display(diagram_id),
+            escape_attr_display(diagram_type),
             spec.base.id_suffix(),
             spec.marker_class,
-            escape_xml_display(diagram_type),
+            escape_attr_display(diagram_type),
             spec.shape,
         );
     }
@@ -487,9 +487,9 @@ pub fn write_flowchart_marker_id_xml(
     margin: bool,
     color_id: Option<&str>,
 ) {
-    let _ = write!(out, "{}", escape_xml_display(diagram_id));
+    let _ = write!(out, "{}", escape_attr_display(diagram_id));
     let _ = out.write_char('_');
-    let _ = write!(out, "{}", escape_xml_display(diagram_type));
+    let _ = write!(out, "{}", escape_attr_display(diagram_type));
     let _ = out.write_char('-');
     let _ = out.write_str(base.id_suffix());
     if margin {
@@ -527,7 +527,7 @@ pub fn push_colored_marker(
         out,
         r#"" class="{} {}""#,
         spec.marker_class,
-        escape_xml_display(diagram_type)
+        escape_attr_display(diagram_type)
     );
     write_marker_shape(out, spec, marker_style);
     if let Some(color) = color {

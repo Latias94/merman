@@ -18,7 +18,7 @@ use merman_render_core::{
         closed_path_d_from_points, operation_randomness,
         paths::roughjs_hand_drawn_stroke_path_for_svg_path,
     },
-    svg_css::{PreparedLookDefs, SvgId, scoped_svg_id, scoped_svg_url},
+    svg_css::{PreparedLookDefs, SvgId, available_local_svg_id, scoped_svg_id, scoped_svg_url},
     svg_output::{BoundedSvgOutput, SvgOutput, XmlTextOutput},
     text::line_break::split_mermaid_common_br_lines,
     xml::{escape_attr, escape_attr_display, escape_xml, escape_xml_display},
@@ -359,47 +359,24 @@ fn write_c4_relation_defs(
     out.checkpoint()
 }
 
-fn available_local_id(
-    base: String,
-    shapes: &std::collections::HashMap<&str, &C4SvgModelShape>,
-    reserved: impl Fn(&str) -> bool,
-    work: &OperationWorkMeter,
-) -> Result<String> {
-    work.charge(base.len())?;
-    if !shapes.contains_key(base.as_str()) && !reserved(&base) {
-        return Ok(base);
-    }
-    // At most the authored aliases and two accessibility IDs can occupy this node prefix.
-    for suffix in 0..=shapes.len().saturating_add(2) {
-        let candidate = format!("{base}-{suffix}");
-        work.charge(candidate.len())?;
-        if !shapes.contains_key(candidate.as_str()) && !reserved(&candidate) {
-            return Ok(candidate);
-        }
-    }
-    Err(Error::InvalidModel {
-        message: "c4: exhausted local SVG IDs".into(),
-    })
-}
-
-fn reserved_definition_id(id: &str) -> bool {
+fn reserved_definition_id(id: &str, indexed_relations: bool, label_cutouts: bool) -> bool {
     matches!(
         id,
-        "computer"
-            | "database"
-            | "clock"
-            | "arrowhead"
-            | "arrowend"
-            | "crosshead"
-            | "filled-head"
-            | "gradient"
-            | "drop-shadow"
-            | "drop-shadow-small"
-    ) || id
-        .strip_prefix("arrowhead-")
-        .or_else(|| id.strip_prefix("arrowend-"))
-        .or_else(|| id.strip_prefix("c4-rel-")?.strip_suffix("-label-cutout"))
-        .is_some_and(|index| !index.is_empty() && index.bytes().all(|b| b.is_ascii_digit()))
+        "computer" | "database" | "clock" | "arrowhead" | "arrowend" | "crosshead" | "filled-head"
+    ) || (indexed_relations
+        && id
+            .strip_prefix("arrowhead-")
+            .or_else(|| id.strip_prefix("arrowend-"))
+            .is_some_and(is_relation_index))
+        || (label_cutouts
+            && id
+                .strip_prefix("c4-rel-")
+                .and_then(|part| part.strip_suffix("-label-cutout"))
+                .is_some_and(is_relation_index))
+}
+
+fn is_relation_index(index: &str) -> bool {
+    !index.is_empty() && index.bytes().all(|b| b.is_ascii_digit())
 }
 
 fn c4_shape_classes(type_c4_shape: &str) -> String {
@@ -941,6 +918,10 @@ pub fn render_c4_diagram_svg_typed(
     let use_max_width = layout.use_max_width;
     let look_defs = PreparedLookDefs::new(effective_config);
     let has_gradient = look_defs.uses_gradient();
+    let emit_shadow_defs = typography_theme
+        .common_css()
+        .references_builtin_drop_shadow()
+        || (is_shoal && look.is_neo());
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: diagram_margin_x,
@@ -1041,11 +1022,9 @@ pub fn render_c4_diagram_svg_typed(
             .strip_prefix('-')
     });
     let reserved = |alias: &str| {
-        if is_shoal || native.is_some() {
-            reserved_definition_id(alias) || a11y_suffixes.contains(&Some(alias))
-        } else {
-            has_gradient && alias == "gradient"
-        }
+        reserved_definition_id(alias, is_shoal || native.is_some(), is_shoal)
+            || look_defs.defines_local_id(alias, emit_shadow_defs)
+            || a11y_suffixes.contains(&Some(alias))
     };
 
     let mut out = BoundedSvgOutput::new(context.work_meter);
@@ -1094,7 +1073,7 @@ pub fn render_c4_diagram_svg_typed(
     out.checkpoint()?;
     out.push_str("<g/>");
     out.checkpoint()?;
-    if is_shoal && look == C4Look::Neo {
+    if emit_shadow_defs {
         look_defs.write_shadow_defs(&mut out, diagram_id)?;
     }
     if has_gradient {
@@ -1168,10 +1147,10 @@ pub fn render_c4_diagram_svg_typed(
                 let classes = c4_shape_classes(s.type_c4_shape.as_str());
                 let disambiguated = reserved(&s.alias)
                     .then(|| {
-                        available_local_id(
+                        available_local_svg_id(
                             format!("c4-node-{index}"),
-                            &shape_meta,
-                            reserved,
+                            shape_meta.len().saturating_add(a11y_suffixes.len()),
+                            |id| shape_meta.contains_key(id) || reserved(id),
                             context.work_meter,
                         )
                     })
@@ -1188,7 +1167,7 @@ pub fn render_c4_diagram_svg_typed(
                 if look != C4Look::Classic {
                     let _ = write!(out, r#" data-look="{}""#, look.as_str());
                 }
-                if is_shoal {
+                if is_shoal || disambiguated.is_some() {
                     let _ = write!(
                         out,
                         r#" data-et="node" data-id="{}""#,

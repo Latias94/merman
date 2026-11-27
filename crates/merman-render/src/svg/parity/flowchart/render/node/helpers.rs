@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 
+use merman_render_core::xml::escape_attr_into;
 use merman_render_flow::node_body;
 
 use crate::svg::icon_registry::{
@@ -9,8 +10,8 @@ use crate::svg::icon_registry::{
 };
 use crate::svg::parity::flowchart::document_ids::FlowchartDocumentId;
 use crate::svg::parity::flowchart::types::{FlowchartRenderCtx, FlowchartRenderDetails};
+use crate::svg::parity::fmt_display;
 use crate::svg::parity::util::escape_attr_display;
-use crate::svg::parity::{escape_xml_display, escape_xml_into, fmt_display};
 use crate::svg_security::{
     MermaidNavigationSecurity, SerializedMermaidNavigationHref, prepare_mermaid_navigation_href,
 };
@@ -79,7 +80,7 @@ pub(super) fn try_render_self_loop_label_placeholder(
         out,
         r#"<g class="label edgeLabel" id="{}" data-id="{}" data-et="edge-label" transform="translate({},{})"><rect width="0.1" height="0.1"/><g class="label" style="" transform="translate(0,0)"><rect/>"#,
         dom_id,
-        escape_xml_display(node_id),
+        escape_attr_display(node_id),
         fmt_display(x),
         fmt_display(y)
     );
@@ -121,18 +122,18 @@ impl<'a> NodeWrapperClasses<'a> {
     }
 
     fn write(self, out: &mut impl crate::svg::parity::SvgOutput) {
-        escape_xml_into(out, self.base);
+        escape_attr_into(out, self.base);
         for c in self.assigned {
             let t = c.trim();
             if t.is_empty() {
                 continue;
             }
             out.push(' ');
-            escape_xml_into(out, t);
+            escape_attr_into(out, t);
         }
         if let Some(extra) = self.extra {
             out.push(' ');
-            escape_xml_into(out, extra);
+            escape_attr_into(out, extra);
         }
     }
 }
@@ -184,7 +185,7 @@ pub(super) fn open_node_wrapper(
             out.push('"');
             if let Some(target) = target {
                 out.push_str(r#" target=""#);
-                escape_xml_into(out, target);
+                escape_attr_into(out, target);
                 out.push('"');
             }
             out.push_str(r#" transform="translate("#);
@@ -192,7 +193,7 @@ pub(super) fn open_node_wrapper(
             out.push(',');
             crate::svg::parity::util::fmt_into(out, y);
             out.push_str(r#")" data-look=""#);
-            escape_xml_into(out, look);
+            escape_attr_into(out, look);
             out.push_str(r#"">"#);
         } else {
             out.push_str(r#"<a transform="translate("#);
@@ -200,7 +201,7 @@ pub(super) fn open_node_wrapper(
             out.push(',');
             crate::svg::parity::util::fmt_into(out, y);
             out.push_str(r#")" data-look=""#);
-            escape_xml_into(out, look);
+            escape_attr_into(out, look);
             out.push_str(r#"">"#);
         }
         out.push_str(r#"<g class=""#);
@@ -208,7 +209,7 @@ pub(super) fn open_node_wrapper(
         out.push_str(r#"" id=""#);
         let _ = write!(out, "{dom_id}");
         out.push_str(r#"" data-id=""#);
-        escape_xml_into(out, data_id);
+        escape_attr_into(out, data_id);
         out.push_str(r#"" data-et="node""#);
     } else {
         out.push_str(r#"<g class=""#);
@@ -220,9 +221,9 @@ pub(super) fn open_node_wrapper(
         out.push(',');
         crate::svg::parity::util::fmt_into(out, y);
         out.push_str(r#")" data-look=""#);
-        escape_xml_into(out, look);
+        escape_attr_into(out, look);
         out.push_str(r#"" data-id=""#);
-        escape_xml_into(out, data_id);
+        escape_attr_into(out, data_id);
         out.push_str(r#"" data-et="node""#);
     }
     if tooltip_enabled {

@@ -745,7 +745,7 @@ fn render_state_root(
             let x = left - origin_x;
             let y = top - origin_y;
             let dom_id = state_node_scoped_dom_id(ctx, cluster_id);
-            let _ = write!(out, r#"<g id="{}" class="note-cluster""#, dom_id.attr());
+            let _ = write!(out, r#"<g id="{}" class="note-cluster""#, dom_id);
             if ctx.uses_canonical_routes() {
                 let _ = write!(
                     out,
@@ -952,7 +952,7 @@ fn render_state_root(
                     let _ = write!(
                         out,
                         r#"<g class="label edgeLabel" id="{}" transform="translate({}, {})"><rect width="0.1" height="0.1"/><g class="label" style="" transform="translate(0, 0)"><rect/><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 10px; text-align: center;"><span class="nodeLabel"></span></div></foreignObject></g></g>"#,
-                        escape_xml_display(&id),
+                        escape_attr_display(&id),
                         fmt_display(cx),
                         fmt_display(cy),
                     );
@@ -960,7 +960,7 @@ fn render_state_root(
                     let _ = write!(
                         out,
                         r#"<g class="label edgeLabel" id="{}" transform="translate({}, {})"><rect width="0.1" height="0.1"/><g class="label" style="" transform="translate(0, 0)"><rect/></g></g>"#,
-                        escape_xml_display(&id),
+                        escape_attr_display(&id),
                         fmt_display(cx),
                         fmt_display(cy),
                     );
@@ -1085,7 +1085,7 @@ fn render_state_cluster(
     if is_cluster_depth {
         out.push_str(r#" data-state-depth="cluster""#);
     } else {
-        let _ = write!(out, r#" id="{}""#, dom_id.attr());
+        let _ = write!(out, r#" id="{}""#, dom_id);
         if uses_canonical_routes {
             let element = if shape == "divider" {
                 "divider"

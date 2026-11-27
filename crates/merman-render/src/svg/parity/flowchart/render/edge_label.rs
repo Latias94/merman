@@ -578,7 +578,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_label(
                 r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({},{})">"#,
                 fmt_display(x),
                 fmt_display(y),
-                escape_xml_display(&edge.id),
+                escape_attr_display(&edge.id),
                 fmt_display(-width / 2.0),
                 fmt_display(-height / 2.0),
             );
@@ -643,7 +643,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_label(
                 r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({},{})"><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"{}>{}</span></div></foreignObject></g></g>"#,
                 fmt_display(x),
                 fmt_display(y),
-                escape_xml_display(&edge.id),
+                escape_attr_display(&edge.id),
                 fmt_display(-width / 2.0),
                 fmt_display(-height / 2.0),
                 fmt_display(width),
@@ -660,7 +660,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_label(
     let _ = write!(
         out,
         r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0,0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"{}></span></div></foreignObject></g></g>"#,
-        escape_xml_display(&edge.id),
+        escape_attr_display(&edge.id),
         escape_attr_display(&div_style_prefix),
         span_style_attr
     );
@@ -760,7 +760,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
         out,
         r#"<g class="label edgeLabel" id="{}" data-id="{}" data-et="edge-label" transform="translate({}, {})"><rect width="0.1" height="0.1"/><g class="label"{} transform="translate({}, {})"><rect/>"#,
         edge_label_dom_id,
-        escape_xml_display(&edge.id),
+        escape_attr_display(&edge.id),
         fmt_display(x),
         fmt_display(y),
         OptionalStyleAttr(swimlane_group_style.as_ref()),

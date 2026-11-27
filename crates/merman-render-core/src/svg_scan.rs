@@ -770,7 +770,9 @@ impl<'a> XmlCssSource<'a> {
         if matches!(self.logical, Cow::Borrowed(_)) {
             for (index, edit) in edits.iter().enumerate() {
                 checkpoint_loop(index, checkpoint)?;
-                visit(index, edit.clone());
+                if !edit.is_empty() {
+                    visit(index, edit.clone());
+                }
             }
             return Ok(());
         }
@@ -780,6 +782,10 @@ impl<'a> XmlCssSource<'a> {
         visit_css_xml_fragments(self.source, self.location, checkpoint, |source, text| {
             let logical_end = logical_start + text.len();
             while let Some(edit) = edits.get(index).filter(|edit| edit.start < logical_end) {
+                if edit.is_empty() {
+                    index += 1;
+                    continue;
+                }
                 // References and normalized line endings are each one logical character.
                 let range = if source.len() == text.len() {
                     let start = edit.start.max(logical_start) - logical_start;
