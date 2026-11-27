@@ -4,7 +4,7 @@ mod captions;
 mod comb;
 mod gutters;
 
-use gutters::{LaneUse, card_channel, gutter_route};
+use gutters::{GutterSpan, LaneUse, card_channel, gutter_route};
 
 use super::*;
 use crate::geom::Bounds;
@@ -1275,6 +1275,10 @@ pub(crate) fn draw(
                 let to = plan.sites[part.to.site];
                 let start = context.lead(from, part.from.inner);
                 let end = context.lead(to, part.to.inner);
+                let gutter_span = GutterSpan {
+                    leads: [start, end],
+                    contacts: [from.at, to.at],
+                };
                 let early_gutters = card_grid && position(start.0) != position(end.0);
                 let labelled = part.labels.iter().any(Option::is_some);
                 has_captions |= labelled;
@@ -1310,7 +1314,7 @@ pub(crate) fn draw(
                     && early_gutters
                     && let Some(path) = card_channel(
                         &router,
-                        [start, end],
+                        gutter_span,
                         scope_bounds,
                         gutters.tracks(scope),
                         &lanes,
@@ -1345,7 +1349,7 @@ pub(crate) fn draw(
                 {
                     card_channel(
                         &router,
-                        [start, end],
+                        gutter_span,
                         scope_bounds,
                         gutters.tracks(scope),
                         &lanes,
@@ -1360,7 +1364,7 @@ pub(crate) fn draw(
                     Some(points) => Some(points),
                     None => gutter_route(
                         &router,
-                        [start, end],
+                        gutter_span,
                         scope_bounds,
                         gutters.tracks(scope),
                         work,

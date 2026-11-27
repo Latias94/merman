@@ -76,11 +76,14 @@ impl AdjacentLines {
 
     pub(super) fn insert(&mut self, cross: f64, work: &mut Work<'_>) -> LayoutResult<()> {
         work.visit(1)?;
-        if cross < self.range[0] || cross > self.range[1] {
+        if !(self.range[0]..=self.range[1]).contains(&cross) {
             return Ok(());
         }
         let offset = (cross - self.anchor).abs();
         let bucket = (offset / MERGE_DISTANCE).floor();
+        if !bucket.is_finite() {
+            return Ok(());
+        }
         self.sides[usize::from(cross > self.anchor)].insert(
             Candidate {
                 cross,
@@ -117,6 +120,19 @@ impl AdjacentLines {
 mod tests {
     use super::*;
     use crate::NoopWorkControl;
+
+    #[test]
+    fn nonfinite_offsets_do_not_enter_adjacent_lines() {
+        let mut noop = NoopWorkControl;
+        let mut work = Work::new(&mut noop);
+        let mut lines = AdjacentLines::new(0.0, [f64::NEG_INFINITY, f64::INFINITY]);
+        for at in [f64::NAN, -2.0, f64::INFINITY, f64::MAX, 3.0] {
+            lines.insert(at, &mut work).unwrap();
+        }
+        let mut seats = Vec::new();
+        lines.collect(&mut seats, &mut work).unwrap();
+        assert_eq!(seats, [-2.0, 3.0]);
+    }
 
     #[test]
     fn lines_are_bounded_merged_and_independent_of_obstacle_order() {

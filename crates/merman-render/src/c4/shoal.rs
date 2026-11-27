@@ -867,6 +867,31 @@ C4Context
         }
     }
 
+    fn assert_simple_orthogonal_shaft(id: &str, path: &BezPath) {
+        let legs: Vec<_> = path
+            .segments()
+            .filter_map(|segment| {
+                let kurbo::PathSeg::Line(line) = segment else {
+                    panic!("{id} has a non-linear shaft");
+                };
+                assert!(line.p0.x == line.p1.x || line.p0.y == line.p1.y, "{id}");
+                (line.p0 != line.p1).then(|| line.bounding_box())
+            })
+            .collect();
+        for (i, leg) in legs.iter().enumerate() {
+            for (j, previous) in legs[..i].iter().enumerate() {
+                let dx = leg.x1.min(previous.x1) - leg.x0.max(previous.x0);
+                let dy = leg.y1.min(previous.y1) - leg.y0.max(previous.y0);
+                let overlaps = dx >= 0.0 && dy >= 0.0 && (dx > 0.0 || dy > 0.0);
+                let touches = dx >= 0.0 && dy >= 0.0;
+                assert!(
+                    !overlaps && (i == j + 1 || !touches),
+                    "{id} intersects itself at shaft legs {j} and {i}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn c4_shoal_reserves_caption_corridors_in_dense_boundaries() {
         use std::fmt::Write;
@@ -945,7 +970,11 @@ C4Context
             );
             let paths: Vec<_> = routes
                 .iter()
-                .map(|route| BezPath::from_svg(&route.path).unwrap())
+                .map(|route| {
+                    let path = BezPath::from_svg(&route.path).unwrap();
+                    assert_simple_orthogonal_shaft(&route.id, &path);
+                    path
+                })
                 .collect();
             let settings = C4ConfigView::new(config.as_value()).layout_settings();
             let measure = C4Measurement {
@@ -955,6 +984,7 @@ C4Context
                 work: execution.work_meter_ref(),
             };
             for (idx, (route, relation)) in routes.iter().zip(&mut layout.rels).enumerate() {
+                assert!(route.label_reference.is_none(), "{} is exterior", route.id);
                 let origin = route.label_origin.as_ref().unwrap();
                 let (ink, _) = measure_c4_relation_label(relation, &measure)
                     .unwrap()

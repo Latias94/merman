@@ -71,17 +71,24 @@ fn lane_bounds(segment: OrthoSegment) -> Bounds {
     }
 }
 
+#[derive(Clone, Copy)]
+pub(super) struct GutterSpan {
+    pub(super) leads: [(RoutePoint, Side); 2],
+    pub(super) contacts: [Point; 2],
+}
+
 /// Card placement already supplies clear lanes between its rows and columns. Try a straight
 /// approach or an elbow matching the endpoint normals before using those measured lanes.
 pub(super) fn card_channel(
     router: &OrthoRouter,
-    [start, end]: [(RoutePoint, Side); 2],
+    span: GutterSpan,
     bounds: Rect,
     gutters: [&[f64]; 2],
     used: &LaneUse,
     pitch: f64,
     work: &mut Work<'_>,
 ) -> LayoutResult<Option<Vec<RoutePoint>>> {
+    let [start, end] = span.leads;
     let [a, b] = [start.0, end.0];
     let sides = [start.1, end.1];
     if position(a) == position(b) {
@@ -120,8 +127,7 @@ pub(super) fn card_channel(
     // geometry against the same walls and record actual shaft intervals, not lane IDs.
     for offset in [0.0, 0.5, -0.5, 1.0, -1.0, 1.5, -1.5, 2.0, -2.0] {
         work.visit(1)?;
-        if let Some(path) =
-            trace_gutter(router, [start, end], bounds, &lines, offset * pitch, work)?
+        if let Some(path) = trace_gutter(router, span, bounds, &lines, offset * pitch, work)?
             && used.vacant(&path, work)?
         {
             return Ok(Some(path));
@@ -211,16 +217,16 @@ impl Lines<'_> {
 /// Tries the neighboring free tracks and scope perimeter in deterministic order. The input
 /// gutters are sorted drawing coordinates on x and y. Every emitted leg is checked in the
 /// same obstacle index used by visibility routing.
-pub(crate) fn gutter_route(
+pub(super) fn gutter_route(
     router: &OrthoRouter,
-    [start, end]: [(RoutePoint, Side); 2],
+    span: GutterSpan,
     bounds: Rect,
     gutters: [&[f64]; 2],
     work: &mut Work<'_>,
 ) -> LayoutResult<Option<Vec<RoutePoint>>> {
     trace_gutter(
         router,
-        [start, end],
+        span,
         bounds,
         &Lines::new(gutters, bounds),
         0.0,
@@ -230,12 +236,13 @@ pub(crate) fn gutter_route(
 
 fn trace_gutter(
     router: &OrthoRouter,
-    [start, end]: [(RoutePoint, Side); 2],
+    span: GutterSpan,
     bounds: Rect,
     lines: &Lines<'_>,
     shift: f64,
     work: &mut Work<'_>,
 ) -> LayoutResult<Option<Vec<RoutePoint>>> {
+    let [start, end] = span.leads;
     let a = [start.0.x, start.0.y];
     let b = [end.0.x, end.0.y];
     let (axis_a, _) = normal(start.1);
@@ -250,6 +257,10 @@ fn trace_gutter(
     };
     let sides = [start.1, end.1];
     let knot = |coords| super::knot(point(coords), Axis::Horizontal);
+    let usable = |path: &[RoutePoint], work: &mut Work<'_>| -> LayoutResult<bool> {
+        work.visit(path.len())?;
+        Ok(simple_candidate(path, span.contacts) && clear(router, path, bounds, sides, work)?)
+    };
     for from in first.into_iter().flatten() {
         let mut p = a;
         p[axis_a] = from;
@@ -261,7 +272,16 @@ fn trace_gutter(
                 let mut turn = p;
                 turn[axis_b] = to;
                 let candidate = [start.0, knot(p), knot(turn), knot(q), end.0];
-                if clear(router, &candidate, bounds, sides, work)? {
+                if usable(&candidate, work)? {
+                    return Ok(Some(super::copy_points(&candidate)?));
+                }
+                continue;
+            }
+            if from == to {
+                // Both approaches already reach the same track. An excursion to a third
+                // line would double back along it.
+                let candidate = [start.0, knot(p), knot(q), end.0];
+                if usable(&candidate, work)? {
                     return Ok(Some(super::copy_points(&candidate)?));
                 }
                 continue;
@@ -271,11 +291,99 @@ fn trace_gutter(
                 u[cross] = track;
                 v[cross] = track;
                 let candidate = [start.0, knot(p), knot(u), knot(v), knot(q), end.0];
-                if clear(router, &candidate, bounds, sides, work)? {
+                if usable(&candidate, work)? {
                     return Ok(Some(super::copy_points(&candidate)?));
                 }
             }
         }
     }
     Ok(None)
+}
+
+/// Candidate spans have at most five legs between their two reserved terminal leads.
+fn simple_candidate(path: &[RoutePoint], [start, end]: [Point; 2]) -> bool {
+    let mut legs: [Option<OrthoSegment>; 7] = [None; 7];
+    let mut count = 0;
+    let mut from = knot(start, Axis::Horizontal);
+    for to in path.iter().copied().chain([knot(end, Axis::Horizontal)]) {
+        if position(from) == position(to) {
+            continue;
+        }
+        let Some(leg) = OrthoSegment::between(from, to) else {
+            return false;
+        };
+        let extent = lane_bounds(leg);
+        for (i, &previous) in legs[..count].iter().flatten().enumerate() {
+            if i + 1 == count {
+                // Adjacent legs may share a knot, but cannot travel back over each other.
+                if leg.axis == previous.axis
+                    && leg.min.max(previous.min) < leg.max.min(previous.max)
+                {
+                    return false;
+                }
+            } else if extent.overlaps(lane_bounds(previous)) {
+                return false;
+            }
+        }
+        legs[count] = Some(leg);
+        count += 1;
+        from = to;
+    }
+    true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::NoopWorkControl;
+
+    #[test]
+    fn facing_leads_on_one_track_use_a_short_z() {
+        let mut control = NoopWorkControl;
+        let mut work = Work::new(&mut control);
+        let router = OrthoRouter::new(&[], 1.0, 0, &mut work).unwrap();
+        let bounds = Rect {
+            width: 12.0,
+            height: 8.0,
+            ..Rect::default()
+        };
+        let a = RoutePoint::new(1.0, 2.0, Axis::Horizontal);
+        let b = RoutePoint::new(11.0, 5.0, Axis::Horizontal);
+        let span = GutterSpan {
+            leads: [(a, Side::Right), (b, Side::Left)],
+            contacts: [point([0.0, 2.0]), point([12.0, 5.0])],
+        };
+        let path = gutter_route(&router, span, bounds, [&[6.0], &[1.0]], &mut work)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            path.iter().map(|&knot| position(knot)).collect::<Vec<_>>(),
+            [
+                position(a),
+                point([6.0, 2.0]),
+                point([6.0, 5.0]),
+                position(b)
+            ]
+        );
+    }
+
+    #[test]
+    fn gutter_candidate_cannot_cross_its_own_terminal_lead() {
+        let path = [
+            [10.0, 5.0],
+            [0.0, 5.0],
+            [0.0, 3.0],
+            [15.0, 3.0],
+            [15.0, 25.0],
+        ]
+        .map(|at| knot(point(at), Axis::Horizontal));
+        assert!(simple_candidate(
+            &path,
+            [position(path[0]), position(path[4])]
+        ));
+        assert!(!simple_candidate(
+            &path,
+            [point([10.0, 0.0]), point([15.0, 30.0])]
+        ));
+    }
 }
