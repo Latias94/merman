@@ -339,6 +339,7 @@ impl FlowchartPreparedNodes {
             render_config,
             prepared_theme.native.as_ref(),
         );
+        let mut node_classes = super::style::FlowchartNodeClassStyles::new(class_defs.source);
         let mut terminals = FxHashMap::default();
         let mut admitted_nodes = FxHashSet::default();
         // Any typography missing from the label sidecar still reserves retained bytes.
@@ -453,6 +454,7 @@ impl FlowchartPreparedNodes {
                 };
             let terminal = super::node_style::PreparedNodeTerminal::prepare(
                 class_defs,
+                &mut node_classes,
                 (classes, styles, include_default_class),
                 terminal_shape,
                 &structural,
@@ -474,6 +476,7 @@ impl FlowchartPreparedNodes {
                 });
             }
         }
+        drop(node_classes);
         let cluster_ids = prepared_cluster_ids(model, layout, &input, &schedule)?;
         let render_model = crate::flowchart::FlowchartRenderModelRef::new(model, render_context);
         let class_styles = FlowchartPreparedClassStyles::prepare(

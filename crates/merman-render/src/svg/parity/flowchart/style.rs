@@ -49,6 +49,29 @@ struct PreparedClassStyles {
     has_rejected_color: bool,
 }
 
+impl PreparedClassStyles {
+    fn parse(
+        declarations: &[String],
+        work_meter: Option<&crate::resources::OperationWorkMeter>,
+    ) -> std::result::Result<Self, crate::resources::OperationWorkError> {
+        let mut prepared = Self::default();
+        for raw_group in declarations {
+            charge_style_scan(work_meter, raw_group.len())?;
+            for raw in crate::flowchart::flowchart_split_mermaid_style_decls(raw_group) {
+                charge_style_work(work_meter, 1)?;
+                prepared.declaration_count += 1;
+                if let Some(declaration) = FlowchartStyleDeclaration::parse(raw) {
+                    prepared.declarations.push(Arc::new(declaration));
+                } else if is_source_color(raw) {
+                    // A rejected color still belongs to the author for fallback selection.
+                    prepared.has_rejected_color = true;
+                }
+            }
+        }
+        Ok(prepared)
+    }
+}
+
 impl FlowchartPreparedClassStyles {
     pub(in crate::svg::parity::flowchart) fn prepare<'a>(
         class_defs: &IndexMap<String, Vec<String>>,
@@ -78,23 +101,11 @@ impl FlowchartPreparedClassStyles {
         #[cfg(test)]
         let mut parsed_declaration_count = 0usize;
         for (_, class_id, declarations) in selected_definitions {
-            let mut prepared = PreparedClassStyles::default();
-            for raw_group in declarations {
-                charge_style_scan(work_meter, raw_group.len())?;
-                for raw in crate::flowchart::flowchart_split_mermaid_style_decls(raw_group) {
-                    charge_style_work(work_meter, 1)?;
-                    prepared.declaration_count += 1;
-                    #[cfg(test)]
-                    {
-                        parsed_declaration_count = parsed_declaration_count.saturating_add(1);
-                    }
-                    if let Some(declaration) = FlowchartStyleDeclaration::parse(raw) {
-                        prepared.declarations.push(Arc::new(declaration));
-                    } else if is_source_color(raw) {
-                        // A rejected color still belongs to the author for fallback selection.
-                        prepared.has_rejected_color = true;
-                    }
-                }
+            let prepared = PreparedClassStyles::parse(declarations, work_meter)?;
+            #[cfg(test)]
+            {
+                parsed_declaration_count =
+                    parsed_declaration_count.saturating_add(prepared.declaration_count);
             }
             classes.insert(class_id.clone(), prepared);
         }
@@ -108,6 +119,62 @@ impl FlowchartPreparedClassStyles {
     #[cfg(test)]
     pub(in crate::svg::parity::flowchart) const fn parsed_declaration_count(&self) -> usize {
         self.parsed_declaration_count
+    }
+}
+
+/// Lazily prepares the assigned classes reached by the node paint pass.
+pub(super) struct FlowchartNodeClassStyles<'a> {
+    source: &'a IndexMap<String, Vec<String>>,
+    prepared: FlowchartPreparedClassStyles,
+}
+
+impl<'a> FlowchartNodeClassStyles<'a> {
+    pub(super) fn new(source: &'a IndexMap<String, Vec<String>>) -> Self {
+        Self {
+            source,
+            prepared: FlowchartPreparedClassStyles::default(),
+        }
+    }
+
+    pub(super) fn compile(
+        &mut self,
+        classes: &[String],
+        inline_styles: &[String],
+        include_default_class: bool,
+    ) -> FlowchartCompiledStyles {
+        if include_default_class {
+            let classes =
+                crate::flowchart::flowchart_effective_node_class_names(self.source, classes);
+            self.compile_for_names(classes, inline_styles)
+        } else {
+            self.compile_for_names(classes.iter().map(String::as_str), inline_styles)
+        }
+    }
+
+    fn compile_for_names<'b>(
+        &mut self,
+        classes: impl Iterator<Item = &'b str> + Clone,
+        inline_styles: &[String],
+    ) -> FlowchartCompiledStyles {
+        // The node paint compiler has no meter of its own. The separate bulk preparation for
+        // edges and clusters still charges class selection and parsing in definition order.
+        for name in classes.clone() {
+            if !self.prepared.classes.contains_key(name)
+                && let Some((name, declarations)) = self.source.get_key_value(name)
+            {
+                let prepared = PreparedClassStyles::parse(declarations, None)
+                    .expect("unmetered class style preparation cannot fail");
+                self.prepared.classes.insert(name.clone(), prepared);
+            }
+        }
+        flowchart_compile_prepared_styles_for_class_names(
+            &self.prepared,
+            classes,
+            inline_styles,
+            &[],
+            None,
+        )
+        .expect("unmetered node style compilation cannot fail")
     }
 }
 
@@ -513,29 +580,17 @@ fn projected_joined_style_bytes(a: &[String], b: &[String]) -> Option<usize> {
         })
 }
 
+#[cfg(test)]
 pub(in crate::svg::parity) fn flowchart_compile_styles(
     class_defs: &IndexMap<String, Vec<String>>,
     classes: &[String],
     inline_styles_a: &[String],
     inline_styles_b: &[String],
 ) -> FlowchartCompiledStyles {
-    flowchart_compile_styles_for_class_names(
-        class_defs,
-        classes.iter().map(String::as_str),
-        inline_styles_a,
-        inline_styles_b,
-    )
-}
-
-fn flowchart_compile_styles_for_class_names<'a>(
-    class_defs: &IndexMap<String, Vec<String>>,
-    classes: impl Iterator<Item = &'a str> + Clone,
-    inline_styles_a: &[String],
-    inline_styles_b: &[String],
-) -> FlowchartCompiledStyles {
-    let prepared_classes = FlowchartPreparedClassStyles::prepare(class_defs, classes.clone(), None)
-        .expect("unmetered source style preparation cannot fail");
-    flowchart_compile_prepared_styles_for_class_names(
+    let prepared_classes =
+        FlowchartPreparedClassStyles::prepare(class_defs, classes.iter().map(String::as_str), None)
+            .expect("unmetered source style preparation cannot fail");
+    flowchart_compile_prepared_styles(
         &prepared_classes,
         classes,
         inline_styles_a,
@@ -766,20 +821,6 @@ pub(super) fn admitted_flowchart_source_stroke_width(value: &str) -> Option<f32>
     (value <= f32::MAX as f64).then_some(value as f32)
 }
 
-pub(in crate::svg::parity) fn flowchart_compile_node_styles(
-    class_defs: &IndexMap<String, Vec<String>>,
-    classes: &[String],
-    inline_styles_a: &[String],
-    inline_styles_b: &[String],
-) -> FlowchartCompiledStyles {
-    flowchart_compile_styles_for_class_names(
-        class_defs,
-        crate::flowchart::flowchart_effective_node_class_names(class_defs, classes),
-        inline_styles_a,
-        inline_styles_b,
-    )
-}
-
 pub(in crate::svg::parity) fn flowchart_label_div_style_prefix(
     styles: &FlowchartCompiledStyles,
     color_as_rgb: bool,
@@ -865,6 +906,48 @@ mod tests {
                 .contains(r"--brand\:accent:#22c55e !important")
         );
         assert!(!styles.node_style.contains("--brand:accent:"));
+    }
+
+    #[test]
+    fn node_class_styles_reuse_parsing_and_preserve_each_node_cascade() {
+        let definitions = IndexMap::from([
+            ("node".into(), vec!["fill:#222222,color:#222222".into()]),
+            ("default".into(), vec!["fill:#111111,stroke:#111111".into()]),
+            ("hot".into(), vec!["fill:#aabbcc !important".into()]),
+            ("cold".into(), vec!["fill:#ddeeff !important".into()]),
+            ("rejected".into(), vec!["color:url(bad.svg)".into()]),
+            ("unused".into(), vec!["fill:#ffffff".into()]),
+        ]);
+        let mut cache = FlowchartNodeClassStyles::new(&definitions);
+        let assigned = cache.compile(&[], &[], true);
+        assert_eq!(assigned.fill.as_deref(), Some("#222222"));
+        assert_eq!(assigned.stroke.as_deref(), Some("#111111"));
+
+        let repeated = cache.compile(
+            &["hot", "missing", "cold", "hot"].map(str::to_owned),
+            &["fill:#123456,stroke:#010203".into()],
+            true,
+        );
+        assert_eq!(repeated.fill.as_deref(), Some("#aabbcc"));
+        assert_eq!(repeated.stroke.as_deref(), Some("#010203"));
+
+        let explicit = cache.compile(&["hot", "cold", "rejected"].map(str::to_owned), &[], false);
+        assert_eq!(explicit.fill.as_deref(), Some("#ddeeff"));
+        assert!(explicit.stroke.is_none());
+        assert!(explicit.label_style.is_empty());
+        assert!(explicit.has_source_label_foreground());
+        assert_eq!(cache.prepared.classes.len(), 5);
+
+        let shared_hot = &explicit.edge_class_declarations[0];
+        assert_eq!(shared_hot.value(), "#aabbcc");
+        assert_eq!(
+            repeated
+                .edge_class_declarations
+                .iter()
+                .filter(|declaration| Arc::ptr_eq(declaration, shared_hot))
+                .count(),
+            2
+        );
     }
 
     #[test]
