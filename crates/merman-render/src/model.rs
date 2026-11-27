@@ -11,7 +11,7 @@ use serde::Serialize;
 use std::sync::Arc;
 
 pub use merman_render_core::{
-    Bounds, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
+    Bounds, EdgePaintGeometry, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
 };
 
 #[cfg(feature = "diagram-class")]
@@ -20,31 +20,6 @@ pub use merman_render_graph::class::{
     ClassPreparedHtmlNodeLabels, ClassRenderItem, ClassRenderRoot, ClassRenderRootId,
     ClassRenderTree,
 };
-
-/// Edge geometry prepared by the same family-local route and label decisions as SVG.
-///
-/// `LayoutEdge::points` precedes endpoint clipping. This projection refines those routes without
-/// serializing SVG. It reports the `data-points` polyline, before later cluster path clipping,
-/// rather than the complete visible curve.
-///
-/// Coordinates are in the **same space as `LayoutEdge::points`** (layout coordinates), so a
-/// consumer can treat this as a refinement of the layout projection rather than a second,
-/// unrelated geometry system.
-#[derive(Debug, Clone, Serialize)]
-pub struct EdgePaintGeometry {
-    /// Matches `LayoutEdge::id`.
-    pub id: String,
-    /// Edge polyline after clipping to the endpoint shapes' ink, and after any swimlane line
-    /// hops. This is the exact point list emitted as the `data-points` attribute.
-    ///
-    /// `None` when the renderer produced no path for this edge (for example an edge with fewer
-    /// than two layout points).
-    pub points: Option<Vec<LayoutPoint>>,
-    /// Center of the edge label after paint-time positioning, in layout coordinates.
-    ///
-    /// `None` when the edge has no positioned label.
-    pub label_position: Option<LayoutPoint>,
-}
 
 /// Versioned container for [`EdgePaintGeometry`].
 ///

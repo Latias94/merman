@@ -113,7 +113,7 @@ mod xml_chars;
 pub use geometry::{Bounds, LayoutPoint};
 #[doc(hidden)]
 pub use layout::measure_layout_bounds;
-pub use layout::{LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode};
+pub use layout::{EdgePaintGeometry, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode};
 #[doc(hidden)]
 pub use layout::{
     SwimlaneDirection, SwimlaneEdgeLayout, SwimlaneLaneLayout, SwimlaneNodeLayout,

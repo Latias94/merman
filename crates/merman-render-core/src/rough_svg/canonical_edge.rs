@@ -1,12 +1,14 @@
-use crate::graph_layout::{Marker, route_paint::LEAD};
 use crate::resources::OperationWorkMeter;
+use crate::route_paint::LEAD;
+use crate::route_types::Marker;
 use kurbo::Point;
-use merman_render_core::rough_svg::{controlled, ops_to_svg_path_d};
+use roughr::PathSegment;
 use roughr::core::{Op, OpType, OptionsBuilder, RoughRandomness};
 use roughr::work::WorkError;
-use svgtypes::PathSegment;
 
-pub(super) fn constrained_rough_edge_path(
+use super::{controlled, ops_to_svg_path_d};
+
+pub fn constrained_rough_edge_path(
     path: &str,
     markers: (Marker, Marker),
     meter: &OperationWorkMeter,

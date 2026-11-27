@@ -75,6 +75,24 @@ pub struct LayoutEdge {
     pub stroke_dasharray: Option<String>,
 }
 
+/// Edge geometry prepared by the same family-local route and label decisions as SVG.
+///
+/// `LayoutEdge::points` precedes endpoint clipping. This projection reports the `data-points`
+/// polyline in layout coordinates before later cluster path clipping.
+#[derive(Debug, Clone, Serialize)]
+pub struct EdgePaintGeometry {
+    /// Matches `LayoutEdge::id`.
+    pub id: String,
+    /// Edge polyline after clipping to the endpoint shapes' ink, and after any swimlane line
+    /// hops. This is the exact point list emitted as the `data-points` attribute.
+    ///
+    /// `None` when the renderer produced no path for this edge (for example an edge with fewer
+    /// than two layout points).
+    pub points: Option<Vec<LayoutPoint>>,
+    /// Center of the edge label in layout coordinates, when the renderer positioned a label.
+    pub label_position: Option<LayoutPoint>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SwimlaneDirection {
     #[serde(rename = "TB")]
