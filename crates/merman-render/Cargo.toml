@@ -111,7 +111,7 @@ math = ["merman-render-core/math", "merman-render-sequence?/math"]
 merman-markup = { workspace = true, features = ["html", "color"] }
 merman-model = { workspace = true, features = ["presentation-data", "compat-json", "html-entities"] }
 merman-render-charts = { workspace = true, optional = true }
-merman-render-core = { workspace = true, features = ["error-diagram", "euclid-geometry", "icon-registry", "math-labels", "styled-html-labels", "svg-bounds", "svg-identity", "svg-validation", "theme-svg"] }
+merman-render-core = { workspace = true, features = ["error-diagram", "euclid-geometry", "icon-registry", "prepared-math-svg", "styled-html-labels", "svg-bounds", "svg-identity", "svg-validation", "theme-svg"] }
 merman-render-flow = { workspace = true, optional = true }
 merman-render-graph = { workspace = true, optional = true }
 merman-render-sequence = { workspace = true, optional = true }
@@ -131,7 +131,6 @@ rustc-hash.workspace = true
 quick-xml.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sha2.workspace = true
 svgtypes.workspace = true
 thiserror.workspace = true
 roughr = { workspace = true, default-features = false, optional = true }
@@ -148,3 +147,4 @@ merman-fixture-render-context = { path = "../merman-fixture-render-context" }
 merman-render-core = { workspace = true, features = ["graph-layout", "route-paint", "svg-edge-parity", "test-support"] }
 merman-render-flow = { workspace = true, features = ["canonical-edge-paint", "test-support"] }
 regex.workspace = true
+sha2.workspace = true

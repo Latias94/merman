@@ -17,9 +17,9 @@ use merman_model::OperationPhase;
 
 pub use id_rebase::SvgIdRebase;
 pub use resource_closure::SvgResourceClosure;
-pub use terminal::{
-    InlineRasterSources, SvgReferencePlan, TerminalSvgValidation, plan_svg_occurrences_for_receipt,
-};
+#[cfg(feature = "prepared-math-svg")]
+pub(crate) use terminal::plan_svg_occurrences_for_receipt;
+pub use terminal::{InlineRasterSources, SvgReferencePlan, TerminalSvgValidation};
 pub use text_tracking::SvgFontSeal;
 
 /// Borrows the operation's existing budget and cancellation ledger for postprocess validation.

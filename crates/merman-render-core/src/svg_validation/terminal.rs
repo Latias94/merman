@@ -306,7 +306,8 @@ fn check_svg_resource_budget_with_controls(
 
 /// Reuses the ordinary XML reference collector for occurrence validation. This does not
 /// certify native compatibility or replace the finalizer's resource-policy checks.
-pub fn plan_svg_occurrences_for_receipt(svg: &str) -> Result<SvgReferencePlan> {
+#[cfg(feature = "prepared-math-svg")]
+pub(crate) fn plan_svg_occurrences_for_receipt(svg: &str) -> Result<SvgReferencePlan> {
     let mut facts = SvgReferenceFacts::default();
     let mut stack = Vec::new();
     let mut checkpoint = || Ok(());

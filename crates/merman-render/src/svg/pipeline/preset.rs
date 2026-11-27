@@ -6,14 +6,13 @@ use super::builtin::{
         apply_strip_foreign_objects, drop_native_duplicate_fallbacks_with_checkpoints,
     },
     id_suffix::apply_lower_id_suffix_selectors,
-    prepared_math::project_prepared_math_with_checkpoints,
     quadrant_resvg_fallback::resolve_quadrant_resvg_fallbacks_with_checkpoints,
     timeline_marker::resolve_timeline_marker_references,
 };
 use super::context::{SvgPostprocessExecution, SvgPostprocessMetadata};
 use crate::Result;
 use crate::environment::TextMeasurementPhase;
-use crate::math::PreparedMathEvidenceLease;
+use crate::math::{PreparedMathEvidenceLease, project_prepared_math_with_checkpoints};
 use merman_render_core::svg_safety::sanitize_element_attributes_cow_with_checkpoints;
 use std::borrow::Cow;
 

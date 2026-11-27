@@ -200,7 +200,7 @@ impl PreparedMathEvidenceLease {
     }
 }
 
-fn update_len_prefixed(hasher: &mut Sha256, bytes: &[u8]) {
+pub(super) fn update_len_prefixed(hasher: &mut Sha256, bytes: &[u8]) {
     hasher.update((bytes.len() as u64).to_le_bytes());
     hasher.update(bytes);
 }

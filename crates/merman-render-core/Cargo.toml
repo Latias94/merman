@@ -39,6 +39,7 @@ math = [
 ]
 math-labels = ["html", "text-layout", "dep:sha2"]
 paint-scene = ["css-style", "svg-output"]
+prepared-math-svg = ["math-labels", "svg-validation"]
 resources = ["dep:merman-model", "dep:thiserror"]
 resources-agentflow = ["resources", "merman-model/diagram-agentflow"]
 resources-class = ["resources", "merman-model/diagram-class"]

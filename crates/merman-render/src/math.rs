@@ -1,9 +1,6 @@
 //! Shared math preparation and whole-document terminal evidence.
 
-mod terminal;
-
 pub(crate) use merman_render_core::math::*;
-pub(crate) use terminal::PreparedMathTerminalReceipt;
 
 #[cfg(all(test, feature = "math", feature = "diagram-flowchart"))]
 mod tests {
