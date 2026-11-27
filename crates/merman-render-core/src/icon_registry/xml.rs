@@ -811,9 +811,80 @@ fn plan_xml_rewrites(
             "icon body could not be represented as strict XML",
         )
     })?;
+    let defs = document
+        .descendants()
+        .filter(|node| is_svg_defs(*node) && !node.ancestors().skip(1).any(is_svg_defs))
+        .map(|node| node.range());
+    let attributes = document
+        .descendants()
+        .filter(roxmltree::Node::is_element)
+        .flat_map(|node| node.attributes())
+        .map(|attribute| RewriteAttribute {
+            namespace: attribute.namespace(),
+            name: attribute.name(),
+            value: attribute.value(),
+            value_range: attribute.range_value(),
+        });
+    let style_text = document
+        .descendants()
+        .filter(|node| {
+            node.is_text()
+                && node.parent().is_some_and(|parent| {
+                    parent.is_element()
+                        && parent.tag_name().namespace() == Some(SVG_NAMESPACE)
+                        && parent.tag_name().name() == "style"
+                })
+        })
+        .map(|node| (node.range(), node.text().unwrap_or_default()));
+    plan_rewrites(
+        body,
+        defs,
+        attributes,
+        style_text,
+        pack_index,
+        limits,
+        XmlAdmissionUsage {
+            retained_plan_bytes: retained_plan_bytes_used,
+            build_work_units: build_work_units_used,
+        },
+    )
+}
+
+fn is_svg_defs(node: roxmltree::Node<'_, '_>) -> bool {
+    node.is_element()
+        && node.tag_name().namespace() == Some(SVG_NAMESPACE)
+        && node.tag_name().name() == "defs"
+}
+
+struct RewriteAttribute<'xml> {
+    namespace: Option<&'xml str>,
+    name: &'xml str,
+    value: &'xml str,
+    value_range: Range<usize>,
+}
+
+impl RewriteAttribute<'_> {
+    fn is_id(&self) -> bool {
+        self.namespace.is_none() && self.name == "id"
+    }
+}
+
+fn plan_rewrites<'xml>(
+    body: &str,
+    defs_ranges: impl Iterator<Item = Range<usize>>,
+    attributes: impl Iterator<Item = RewriteAttribute<'xml>> + Clone,
+    style_text: impl Iterator<Item = (Range<usize>, &'xml str)>,
+    pack_index: usize,
+    limits: &IconRegistryBuildLimits,
+    prior_usage: XmlAdmissionUsage,
+) -> Result<(Vec<IdEdit>, Vec<DefsRange>), IconRegistryBuildError> {
+    let XmlAdmissionUsage {
+        retained_plan_bytes: retained_plan_bytes_used,
+        build_work_units: build_work_units_used,
+    } = prior_usage;
     let defs = plan_defs_ranges(
         body,
-        &document,
+        defs_ranges,
         pack_index,
         limits,
         retained_plan_bytes_used,
@@ -821,17 +892,12 @@ fn plan_xml_rewrites(
     let mut id_indexes = HashMap::<String, usize>::new();
     let mut edits = Vec::new();
 
-    for attribute in document
-        .descendants()
-        .filter(roxmltree::Node::is_element)
-        .flat_map(|node| node.attributes())
-        .filter(|attribute| attribute.namespace().is_none() && attribute.name() == "id")
-    {
-        let Some(value_range) = body_source_range(attribute.range_value(), body.len(), pack_index)?
+    for attribute in attributes.clone().filter(RewriteAttribute::is_id) {
+        let Some(value_range) = body_source_range(attribute.value_range, body.len(), pack_index)?
         else {
             continue;
         };
-        let id = attribute.value();
+        let id = attribute.value;
         let next_index = id_indexes.len();
         if id_indexes.insert(id.to_owned(), next_index).is_some() {
             return Err(invalid_xml_error(
@@ -865,21 +931,14 @@ fn plan_xml_rewrites(
     }
 
     if !id_indexes.is_empty() {
-        for attribute in document
-            .descendants()
-            .filter(roxmltree::Node::is_element)
-            .flat_map(|node| node.attributes())
-        {
-            if attribute.namespace().is_none() && attribute.name() == "id" {
-                continue;
-            }
+        for attribute in attributes.filter(|attribute| !attribute.is_id()) {
             let Some(value_range) =
-                body_source_range(attribute.range_value(), body.len(), pack_index)?
+                body_source_range(attribute.value_range.clone(), body.len(), pack_index)?
             else {
                 continue;
             };
             let semantic_edits = attribute_reference_edits(
-                attribute,
+                &attribute,
                 &id_indexes,
                 edits.len(),
                 limits.max_id_rewrite_edits_per_body,
@@ -891,7 +950,7 @@ fn plan_xml_rewrites(
             let raw_value = &body[value_range.clone()];
             let mapped = decoded_ranges_to_raw(
                 raw_value,
-                attribute.value(),
+                attribute.value,
                 &semantic_edits,
                 DecodeMode::Attribute,
             )
@@ -916,20 +975,12 @@ fn plan_xml_rewrites(
             }
         }
 
-        for node in document.descendants().filter(|node| {
-            node.is_text()
-                && node.parent().is_some_and(|parent| {
-                    parent.is_element()
-                        && parent.tag_name().namespace() == Some(SVG_NAMESPACE)
-                        && parent.tag_name().name() == "style"
-                })
-        }) {
-            let Some(node_range) = body_source_range(node.range(), body.len(), pack_index)? else {
+        for (node_range, text) in style_text {
+            let Some(node_range) = body_source_range(node_range, body.len(), pack_index)? else {
                 continue;
             };
             let (content_range, mode) = style_text_content_range(body, node_range, pack_index)?;
             let raw_text = &body[content_range.clone()];
-            let text = node.text().unwrap_or_default();
             let semantic_edits = url_reference_edits(
                 text,
                 &id_indexes,
@@ -1036,23 +1087,14 @@ fn push_id_edit(
 
 fn plan_defs_ranges(
     body: &str,
-    document: &roxmltree::Document<'_>,
+    ranges: impl Iterator<Item = Range<usize>>,
     pack_index: usize,
     limits: &IconRegistryBuildLimits,
     retained_plan_bytes_used: usize,
 ) -> Result<Vec<DefsRange>, IconRegistryBuildError> {
     let mut source_ranges = Vec::<(Range<usize>, Range<usize>)>::new();
-    for node in document.descendants().filter(|node| {
-        node.is_element()
-            && node.tag_name().namespace() == Some(SVG_NAMESPACE)
-            && node.tag_name().name() == "defs"
-            && !node.ancestors().skip(1).any(|ancestor| {
-                ancestor.is_element()
-                    && ancestor.tag_name().namespace() == Some(SVG_NAMESPACE)
-                    && ancestor.tag_name().name() == "defs"
-            })
-    }) {
-        let Some(full) = body_source_range(node.range(), body.len(), pack_index)? else {
+    for range in ranges {
+        let Some(full) = body_source_range(range, body.len(), pack_index)? else {
             continue;
         };
         let content = defs_content_range(body, full.clone(), pack_index)?;
@@ -1251,16 +1293,16 @@ struct SemanticEdit {
 }
 
 fn attribute_reference_edits(
-    attribute: roxmltree::Attribute<'_, '_>,
+    attribute: &RewriteAttribute<'_>,
     id_indexes: &HashMap<String, usize>,
     base_count: usize,
     maximum: usize,
     pack_index: usize,
 ) -> Result<Vec<SemanticEdit>, IconRegistryBuildError> {
-    if let Some(namespace) = attribute.namespace() {
-        if namespace == XLINK_NAMESPACE && attribute.name() == "href" {
+    if let Some(namespace) = attribute.namespace {
+        if namespace == XLINK_NAMESPACE && attribute.name == "href" {
             return fragment_reference_edits(
-                attribute.value(),
+                attribute.value,
                 id_indexes,
                 base_count,
                 maximum,
@@ -1270,21 +1312,13 @@ fn attribute_reference_edits(
         return Ok(Vec::new());
     }
 
-    match attribute.name() {
-        "href" => fragment_reference_edits(
-            attribute.value(),
-            id_indexes,
-            base_count,
-            maximum,
-            pack_index,
-        ),
-        "begin" | "end" => smil_reference_edits(
-            attribute.value(),
-            id_indexes,
-            base_count,
-            maximum,
-            pack_index,
-        ),
+    match attribute.name {
+        "href" => {
+            fragment_reference_edits(attribute.value, id_indexes, base_count, maximum, pack_index)
+        }
+        "begin" | "end" => {
+            smil_reference_edits(attribute.value, id_indexes, base_count, maximum, pack_index)
+        }
         "aria-activedescendant"
         | "aria-controls"
         | "aria-describedby"
@@ -1292,21 +1326,13 @@ fn attribute_reference_edits(
         | "aria-errormessage"
         | "aria-flowto"
         | "aria-labelledby"
-        | "aria-owns" => idref_list_edits(
-            attribute.value(),
-            id_indexes,
-            base_count,
-            maximum,
-            pack_index,
-        ),
+        | "aria-owns" => {
+            idref_list_edits(attribute.value, id_indexes, base_count, maximum, pack_index)
+        }
         "clip-path" | "color-profile" | "cursor" | "fill" | "filter" | "marker" | "marker-end"
-        | "marker-mid" | "marker-start" | "mask" | "stroke" | "style" => url_reference_edits(
-            attribute.value(),
-            id_indexes,
-            base_count,
-            maximum,
-            pack_index,
-        ),
+        | "marker-mid" | "marker-start" | "mask" | "stroke" | "style" => {
+            url_reference_edits(attribute.value, id_indexes, base_count, maximum, pack_index)
+        }
         _ => Ok(Vec::new()),
     }
 }
