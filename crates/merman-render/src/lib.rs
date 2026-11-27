@@ -1623,6 +1623,33 @@ id1(Start)-->id2(Stop)
     }
 
     #[test]
+    fn pending_mermaid_layout_requests_fail_during_planning_and_preparation() {
+        for requested in ["grid", "layered"] {
+            for body in ["flowchart LR\nA --> B", "agentflow LR\nA --> B"] {
+                let source = format!("---\nconfig:\n  layout: {requested}\n---\n{body}\n");
+                let parsed = MermaidEngine::new()
+                    .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                    .unwrap()
+                    .unwrap()
+                    .into_presentation();
+                let session = crate::environment::RenderEnvironment::deterministic()
+                    .begin_session()
+                    .unwrap();
+                for error in [
+                    family::plan_render(&parsed, &session).err(),
+                    family::prepare(&parsed, &LayoutOptions::default(), session).err(),
+                ] {
+                    assert!(matches!(
+                        error,
+                        Some(Error::UnsupportedLayoutBackend { backend, diagram_type })
+                            if backend == requested && diagram_type == parsed.metadata().diagram_type
+                    ));
+                }
+            }
+        }
+    }
+
+    #[test]
     fn shoal_respects_scoped_source_site_and_keyword_selection() {
         use merman_core::presentation::SourcePresentationConfig;
         let engine = MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(
