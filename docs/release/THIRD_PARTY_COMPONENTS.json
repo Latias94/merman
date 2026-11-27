@@ -1723,7 +1723,7 @@
         "path": "src/lib.rs"
       },
       "relationships": ["linked"],
-      "local_paths": ["Cargo.lock", "crates/merman-render/Cargo.toml", "crates/merman-render-core/Cargo.toml", "vendor/usvg/Cargo.toml"],
+      "local_paths": ["Cargo.lock", "crates/merman-render/Cargo.toml", "crates/merman-render-core/Cargo.toml", "crates/merman-render-graph/Cargo.toml", "vendor/usvg/Cargo.toml"],
       "license_expression": "ISC",
       "license_files": [
         {

@@ -754,7 +754,7 @@ fn prepare_er_family<'parsed>(
         theme.zip(native),
         relationship_html_labels,
         model,
-        &layout,
+        layout.svg_layout(),
         execution.work_meter_ref(),
     )?;
     Ok(BuiltinFamilyArtifact::Er(Box::new(ErFamilyArtifact {

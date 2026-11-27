@@ -1266,6 +1266,7 @@ dependencies = [
  "merman-render-core",
  "merman-theme-contract",
  "roughr-merman",
+ "roxmltree 0.21.2",
  "rustc-hash",
  "ryu-js",
  "serde",

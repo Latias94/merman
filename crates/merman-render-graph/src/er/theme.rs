@@ -1,15 +1,21 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use crate::resources::{OperationWorkError, OperationWorkMeter, PreparedTextRetainedReservation};
-use merman_render_graph::er::{
-    ErCssBinding, ErEntitySourceStyle, ErSubgraphSourceStyles, prepare_er_source_visuals,
-    prepare_er_subgraph_source_styles,
+use merman_render_core::{
+    resources::{OperationWorkError, OperationWorkMeter, PreparedTextRetainedReservation},
+    text::mermaid_markdown_to_xhtml_label_fragment,
+    xml::escape_xml,
+};
+use merman_theme_contract::v2::FamilyTheme;
+
+use super::{
+    ErCssBinding, ErEntitySourceStyle, ErNativeStyle, ErPreparedLabels, ErPreparedSvgLayout,
+    ErSubgraphSourceStyles, prepare_er_source_visuals, prepare_er_subgraph_source_styles,
 };
 
 /// Prepared HTML title and its retained text reservation.
 #[derive(Debug)]
-pub(crate) struct ErPreparedHtmlSubgraphLabel {
+pub(super) struct ErPreparedHtmlSubgraphLabel {
     fragment: String,
     _retained: PreparedTextRetainedReservation,
 }
@@ -46,14 +52,14 @@ impl ErPreparedHtmlSubgraphLabel {
         ))
     }
 
-    pub(crate) fn fragment(&self) -> &str {
+    pub(super) fn fragment(&self) -> &str {
         &self.fragment
     }
 }
 
 /// Prepared styles for ER entities and subgraphs, shared by the SVG paths.
 #[derive(Debug)]
-pub(crate) struct ErEntityThemePlan {
+pub struct ErEntityThemePlan {
     css_binding: ErCssBinding,
     entity_indices: BTreeMap<String, usize>,
     entity_source_styles: Vec<ErEntitySourceStyle>,
@@ -61,16 +67,16 @@ pub(crate) struct ErEntityThemePlan {
     html_subgraph_labels: BTreeMap<String, ErPreparedHtmlSubgraphLabel>,
     relationship_html_labels: bool,
     // Drop shared source views before their counted prepared-label owner.
-    _prepared_labels: Arc<crate::er::ErPreparedLabels>,
+    _prepared_labels: Arc<ErPreparedLabels>,
 }
 
 impl ErEntityThemePlan {
-    pub(crate) fn resolve(
+    pub fn resolve(
         config: &merman_model::presentation::PresentationConfig,
-        native: Option<(&crate::theme::FamilyTheme, crate::er::ErNativeStyle)>,
+        native: Option<(&FamilyTheme, ErNativeStyle)>,
         relationship_html_labels: bool,
         model: &merman_model::families::er::ErDiagramModel,
-        layout: &crate::model::ErDiagramLayout,
+        layout: ErPreparedSvgLayout<'_>,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let entity_indices = model
@@ -99,7 +105,7 @@ impl ErEntityThemePlan {
         let ErSubgraphSourceStyles {
             subgraphs,
             styles: subgraph_source_styles,
-        } = prepare_er_subgraph_source_styles(model, &layout.clusters, work_meter)?;
+        } = prepare_er_subgraph_source_styles(model, layout.geometry.clusters, work_meter)?;
         let config = super::ErConfigView::new(config);
         // Only top-level lanes use flowchart.htmlLabels and unconditional Markdown titles.
         // Nested groups retain the ordinary cluster writer's root mode and label type.
@@ -111,7 +117,7 @@ impl ErEntityThemePlan {
             .map(|lane| (lane.id.as_str(), lane))
             .collect::<BTreeMap<_, _>>();
         let mut html_subgraph_labels = BTreeMap::new();
-        for cluster in &layout.clusters {
+        for cluster in layout.geometry.clusters {
             let lane = swimlane_lanes.get(cluster.id.as_str());
             if !config.subgraph_html_labels(lane.is_some(), relationship_html_labels)
                 || html_subgraph_labels.contains_key(&cluster.id)
@@ -136,9 +142,9 @@ impl ErEntityThemePlan {
             let (key, label) =
                 ErPreparedHtmlSubgraphLabel::prepare(&cluster.id, retained_meter, || {
                     if markdown {
-                        crate::text::mermaid_markdown_to_xhtml_label_fragment(title, true)
+                        mermaid_markdown_to_xhtml_label_fragment(title, true)
                     } else {
-                        crate::svg::escape_xml(title)
+                        escape_xml(title)
                     }
                 })?;
             work_meter.charge(
@@ -155,7 +161,7 @@ impl ErEntityThemePlan {
             subgraph_source_styles,
             html_subgraph_labels,
             relationship_html_labels,
-            _prepared_labels: Arc::clone(&layout.prepared_labels),
+            _prepared_labels: Arc::clone(layout.prepared_labels),
         };
         prepare_er_source_visuals(
             &plan.css_binding,
@@ -167,27 +173,27 @@ impl ErEntityThemePlan {
         Ok(plan)
     }
 
-    pub(crate) fn index_for_entity_id(&self, entity_id: &str) -> Option<usize> {
+    pub(super) fn index_for_entity_id(&self, entity_id: &str) -> Option<usize> {
         self.entity_indices.get(entity_id).copied()
     }
 
-    pub(crate) fn css_binding(&self) -> &ErCssBinding {
+    pub fn css_binding(&self) -> &ErCssBinding {
         &self.css_binding
     }
 
-    pub(crate) const fn relationship_html_labels(&self) -> bool {
+    pub(super) const fn relationship_html_labels(&self) -> bool {
         self.relationship_html_labels
     }
 
-    pub(crate) fn source_style(&self, entity_index: usize) -> Option<&ErEntitySourceStyle> {
+    pub(super) fn source_style(&self, entity_index: usize) -> Option<&ErEntitySourceStyle> {
         self.entity_source_styles.get(entity_index)
     }
 
-    pub(crate) fn subgraph_source_style(&self, id: &str) -> Option<&ErEntitySourceStyle> {
+    pub(super) fn subgraph_source_style(&self, id: &str) -> Option<&ErEntitySourceStyle> {
         self.subgraph_source_styles.get(id)
     }
 
-    pub(crate) fn html_subgraph_label(&self, id: &str) -> Option<&ErPreparedHtmlSubgraphLabel> {
+    pub(super) fn html_subgraph_label(&self, id: &str) -> Option<&ErPreparedHtmlSubgraphLabel> {
         self.html_subgraph_labels.get(id)
     }
 }
@@ -199,7 +205,7 @@ mod tests {
     #[test]
     fn html_subgraph_retained_capacity_is_shared_until_the_last_owner_drops() {
         let meter = Arc::new(OperationWorkMeter::new(
-            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            merman_render_core::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         ));
         let (key, label) = ErPreparedHtmlSubgraphLabel::prepare("Lane", &meter, || {
             let mut fragment = String::with_capacity(4096);
@@ -223,7 +229,7 @@ mod tests {
 
     #[test]
     fn html_subgraph_retained_preflight_and_exact_capacity_limit() {
-        use crate::resources::{RenderResourcePolicy, ResourceLimitId};
+        use merman_render_core::resources::{RenderResourcePolicy, ResourceLimitId};
         let prepare = |meter: &Arc<OperationWorkMeter>, projected: &std::cell::Cell<bool>| {
             ErPreparedHtmlSubgraphLabel::prepare("Lane", meter, || {
                 projected.set(true);

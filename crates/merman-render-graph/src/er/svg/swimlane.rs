@@ -1,9 +1,8 @@
 //! Paint the selected provider's prepared lanes and label waypoints.
 
 use super::*;
-use crate::er::ErSwimlanePaintLayout;
-use crate::model::{LayoutEdge, SwimlaneDirection, SwimlaneLaneLayout};
-use crate::svg::parity::line_hops::{LineHopConfig, LineHopEdge, LineHopStyle};
+use line_hops::{LineHopConfig, LineHopEdge, LineHopStyle};
+use merman_render_core::{SwimlaneDirection, SwimlaneLaneLayout};
 use std::collections::HashMap;
 
 pub(super) fn render_cluster(
@@ -11,7 +10,7 @@ pub(super) fn render_cluster(
     cluster: &LayoutCluster,
     lane: &SwimlaneLaneLayout,
     paint: &ErSwimlanePaintLayout,
-    subgraph: Option<&crate::er::ErSubgraph>,
+    subgraph: Option<&ErSubgraph>,
     context: ErSubgraphRenderContext<'_>,
 ) -> Result<()> {
     let binding = context.theme.css_binding();
@@ -58,13 +57,13 @@ pub(super) fn render_cluster(
     let is_lr = paint.direction == SwimlaneDirection::Lr;
     let (title_rect, body_rect) = if is_lr {
         (
-            crate::geom::Box2::from_min_max(
+            kurbo::Rect::new(
                 left,
                 top,
                 left + geometry.title_band_width,
                 top + geometry.height,
             ),
-            crate::geom::Box2::from_min_max(
+            kurbo::Rect::new(
                 left + geometry.title_band_width,
                 top,
                 (left + geometry.width).max(left + geometry.title_band_width),
@@ -73,13 +72,13 @@ pub(super) fn render_cluster(
         )
     } else {
         (
-            crate::geom::Box2::from_min_max(
+            kurbo::Rect::new(
                 left,
                 top,
                 left + geometry.width,
                 top + geometry.title_band_height,
             ),
-            crate::geom::Box2::from_min_max(
+            kurbo::Rect::new(
                 left,
                 top + geometry.title_band_height,
                 left + geometry.width,
@@ -156,7 +155,7 @@ pub(super) fn render_cluster(
         out.push_str("<g>");
         write_er_svg_label_background(out);
         let _ = write!(out, r#"<g transform="translate({}, 0)">"#, fmt(width / 2.0));
-        crate::svg::parity::label::write_svg_text_markdown_wrapped_centered_with_style(
+        label::write_svg_text_markdown_wrapped_centered_with_style(
             out,
             &lane.title,
             "",
@@ -173,10 +172,10 @@ pub(super) fn render_cluster(
 fn write_lane_rect(
     out: &mut impl SvgOutput,
     class: &str,
-    rect: crate::geom::Box2,
+    rect: kurbo::Rect,
     fill: Option<&str>,
     style_attr: &str,
-    source: Option<&crate::er::ErEntitySourceStyle>,
+    source: Option<&super::super::ErEntitySourceStyle>,
     context: ErSubgraphRenderContext<'_>,
 ) -> Result<()> {
     let stroke = source
@@ -218,13 +217,13 @@ fn write_lane_rect(
         let options = builder.build().map_err(|error| Error::InvalidModel {
             message: format!("invalid ER Swimlane rough rectangle options: {error}"),
         })?;
-        let drawable = crate::svg::parity::roughjs_common::controlled::generate(
+        let drawable = merman_render_core::rough_svg::controlled::generate(
             context.work_meter,
             merman_model::OperationPhase::Emit,
             |control| {
                 roughr::generator::Generator::default().rectangle_with_control::<f64>(
-                    rect.min_x(),
-                    rect.min_y(),
+                    rect.x0,
+                    rect.y0,
                     rect.width(),
                     rect.height(),
                     &Some(options),
@@ -240,7 +239,7 @@ fn write_lane_rect(
             } else {
                 fill.unwrap_or("none")
             };
-            let path = crate::svg::parity::roughjs_common::ops_to_svg_path_d(&set);
+            let path = merman_render_core::rough_svg::ops_to_svg_path_d(&set);
             let _ = write!(
                 out,
                 r#"<path d="{}" stroke="{}" stroke-width="{}" stroke-dasharray="{}" fill="none"/>"#,
@@ -261,8 +260,8 @@ fn write_lane_rect(
             r#"<rect class="{}" {} x="{}" y="{}" width="{}" height="{}" fill="{}" stroke="{}"/>"#,
             escape_attr(class),
             style_attr,
-            fmt(rect.min_x()),
-            fmt(rect.min_y()),
+            fmt(rect.x0),
+            fmt(rect.y0),
             fmt(rect.width()),
             fmt(rect.height()),
             escape_attr(fill.unwrap_or("none")),
@@ -280,16 +279,15 @@ pub(super) fn render_relationship_label(
     out: &mut impl SvgOutput,
     edge: &LayoutEdge,
     index: usize,
-    model: &merman_model::families::er::ErDiagramModel,
-    layout: &ErDiagramLayout,
+    model: &ErDiagramModel,
+    prepared_labels: &ErPreparedLabels,
     context: ErSubgraphRenderContext<'_>,
 ) -> Result<()> {
     let Some(label) = &edge.label else {
         return Ok(());
     };
     let prepared_label =
-        layout
-            .prepared_labels
+        prepared_labels
             .relationship(index)
             .ok_or_else(|| Error::InvalidModel {
                 message: format!("missing prepared Swimlane relationship label {index}"),
@@ -325,9 +323,7 @@ pub(super) fn render_relationship_label(
             message: format!("missing prepared Swimlane SVG rows for relationship {index}"),
         })?;
         write_er_svg_label_background(out);
-        crate::svg::parity::label::write_svg_text_source_word_lines_with_style(
-            out, lines, "", false, None,
-        );
+        label::write_svg_text_source_word_lines_with_style(out, lines, "", false, None);
     }
     out.push_str("</g></g>");
     out.checkpoint()?;
@@ -337,9 +333,9 @@ pub(super) fn render_relationship_label(
 pub(super) fn line_hop_paths<'a>(
     config: &serde_json::Value,
     edges: &[LineHopEdge<'a>],
-    work_meter: &crate::resources::OperationWorkMeter,
+    work_meter: &OperationWorkMeter,
 ) -> Result<HashMap<&'a str, String>> {
-    let paths = crate::svg::parity::line_hops::line_hop_overrides(
+    let paths = line_hops::line_hop_overrides(
         edges,
         LineHopConfig {
             jump_radius: 6.0,

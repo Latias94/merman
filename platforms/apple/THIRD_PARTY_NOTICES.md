@@ -718,7 +718,7 @@ Both roxmltree releases identify their tree structure as derived from ego-tree u
 - Relationship: `linked`
 - License expression: `ISC`
 - Artifact scopes: `cli-default`, `cli-release`, `elk-render`, `pdf-export`, `raster-export`, `ratex-render`, `rust-render-base`, `sdk-full`, `sdk-math`, `sdk-native-full`, `sdk-native-math`, `sdk-native-standard`, `sdk-standard`, `source-archive`, `typst-publish`, `web-full`, `web-render`
-- Local evidence: `Cargo.lock`, `crates/merman-render-core/Cargo.toml`, `crates/merman-render/Cargo.toml`, `vendor/usvg/Cargo.toml`
+- Local evidence: `Cargo.lock`, `crates/merman-render-core/Cargo.toml`, `crates/merman-render-graph/Cargo.toml`, `crates/merman-render/Cargo.toml`, `vendor/usvg/Cargo.toml`
 - Legal files:
   - [`THIRD_PARTY_LICENSES/roxmltree-ego-tree/LICENSE-ISC`](THIRD_PARTY_LICENSES/roxmltree-ego-tree/LICENSE-ISC) (license, SHA-256 `c6a4ae2a0565d17ac7fccae808275596fc5959ffdf507107d001bc4669189e45`)
 

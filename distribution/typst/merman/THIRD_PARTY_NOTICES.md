@@ -249,7 +249,7 @@ Both roxmltree releases identify their tree structure as derived from ego-tree u
 - Source path: `src/lib.rs`
 - Relationship: `linked`
 - License: `ISC`
-- Local evidence: `Cargo.lock`, `crates/merman-render/Cargo.toml`, `crates/merman-render-core/Cargo.toml`, `vendor/usvg/Cargo.toml`
+- Local evidence: `Cargo.lock`, `crates/merman-render/Cargo.toml`, `crates/merman-render-core/Cargo.toml`, `crates/merman-render-graph/Cargo.toml`, `vendor/usvg/Cargo.toml`
 - Legal file: `THIRD_PARTY_LICENSES/roxmltree-ego-tree/LICENSE-ISC`
 
 ### sanitize-url

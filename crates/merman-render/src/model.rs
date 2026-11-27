@@ -489,6 +489,24 @@ pub struct ErDiagramLayout {
     pub(crate) prepared_labels: Arc<crate::er::ErPreparedLabels>,
 }
 
+#[cfg(feature = "diagram-er")]
+impl ErDiagramLayout {
+    pub(crate) fn svg_layout(&self) -> merman_render_graph::er::ErPreparedSvgLayout<'_> {
+        use merman_render_graph::er::{ErPreparedSvgLayout, ErSvgLayoutView};
+
+        ErPreparedSvgLayout {
+            geometry: ErSvgLayoutView {
+                clusters: &self.clusters,
+                nodes: &self.nodes,
+                edges: &self.edges,
+                render_edges: &self.render_edges,
+            },
+            swimlane: self.swimlane.as_ref(),
+            prepared_labels: &self.prepared_labels,
+        }
+    }
+}
+
 #[cfg(feature = "diagram-sequence")]
 pub use merman_render_sequence::frame::{SequenceFrameLayout, SequenceFrameSectionLayout};
 

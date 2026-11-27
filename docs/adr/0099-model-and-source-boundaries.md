@@ -100,14 +100,14 @@ policies, and owns final canvas and SVG admission.
 
 ### Graph syntax
 
-`merman-core-graph` owns Class, ER, and State tokenization and parsing. Its outputs are Class
-grammar actions, the canonical ER model, and the nested State syntax document. It reuses the
-controlled token cursor and pinned Mermaid Unicode rules in `merman-core-preprocess`.
-`merman-core` owns Class and State model construction, source mapping, error messages, resource
-admission, and the editor and compatibility projections.
+`merman-core-graph` owns Class, ER, and State tokenization, parsing, and model construction.
+It reuses the controlled token cursor and pinned Mermaid Unicode rules in
+`merman-core-preprocess`. `merman-core` owns source mapping, diagnostic projection, resource
+admission, and editor and compatibility projections.
 
-`merman-render-graph` owns ER relationship marker geometry, names, and SVG definitions.
-`merman-render` resolves source styles and provides the operation's bounded SVG sink.
+`merman-render-graph` owns ER label preparation, styling, and complete SVG emission.
+`merman-render` selects the layout backend, supplies the route geometry and operation context,
+and applies terminal SVG policies.
 
 ### Sequence diagrams
 

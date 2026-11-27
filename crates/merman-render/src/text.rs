@@ -56,6 +56,7 @@ pub(crate) use merman_render_core::text::{
 
 #[cfg(feature = "diagram-c4")]
 pub(crate) use merman_render_core::text::is_css_wide_keyword;
+pub(crate) use merman_render_core::text::mermaid_xhtml_label_plain_text;
 pub(crate) use merman_render_core::text::wrap_label_like_mermaid_lines_with_checkpoint;
 pub use merman_render_core::text::{
     FontCatalog, FontCatalogFingerprint, FontSource, FontSourcePolicy, FontSourcePolicyError,
@@ -68,9 +69,6 @@ pub use merman_render_core::text::{
 pub(crate) use merman_render_core::text::{
     is_html_collapsible_ascii_whitespace, resolve_css_font_weight,
     trim_html_collapsible_ascii_whitespace,
-};
-pub(crate) use merman_render_core::text::{
-    mermaid_xhtml_label_plain_text, mermaid_xhtml_label_text_content,
 };
 pub(crate) use merman_render_core::text::{
     svg_text_vertical_extents_px, svg_title_bbox_vertical_extents_px,

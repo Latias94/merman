@@ -143,7 +143,7 @@ CRATE_COMPONENTS = {
         "venn-js",
     ),
     "crates/merman-render-flow": ("mermaid",),
-    "crates/merman-render-graph": ("mermaid",),
+    "crates/merman-render-graph": ("mermaid", "roxmltree-ego-tree"),
     "crates/merman-render-sequence": ("mermaid",),
     "crates/merman-render-structured": ("mermaid",),
     "crates/merman-unicode-linebreak": ("unicode-linebreak",),

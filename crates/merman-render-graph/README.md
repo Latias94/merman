@@ -1,9 +1,9 @@
 # merman-render-graph
 
 Rendering for Mermaid graph diagrams. The `diagram-er` feature owns ER configuration, theme
-binding, authored styles, the SVG stylesheet, and relationship markers. `merman-render` owns
-backend selection, label preparation, and SVG document emission. `layout-shoal` adds marker
-footprints for routing and viewport geometry.
+binding, label preparation, and complete SVG emission. `merman-render` selects the layout backend,
+supplies canonical routes and the operation context, and applies terminal SVG policies.
+`layout-shoal` adds marker footprints for routing and viewport geometry.
 
 The `diagram-git-graph` feature owns GitGraph preparation, layout, theme binding, and
 complete SVG emission. `merman-render` supplies routed measurement, viewport context,

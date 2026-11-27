@@ -18,9 +18,11 @@ third-party-bundle = true
 [features]
 default = []
 diagram-er = [
-    "dep:indexmap", "dep:merman-markup", "dep:merman-model", "dep:merman-render-core",
-    "dep:merman-theme-contract", "dep:rustc-hash", "dep:serde_json", "merman-model/diagram-er",
-    "merman-render-core/css-style", "merman-render-core/graph-layout",
+    "dep:base64", "dep:indexmap", "dep:kurbo", "dep:merman-markup", "dep:merman-model",
+    "dep:merman-render-core", "dep:merman-theme-contract", "dep:roxmltree", "dep:roughr",
+    "dep:rustc-hash", "dep:ryu-js", "dep:serde_json", "merman-markup/html", "merman-model/diagram-er",
+    "merman-render-core/css-style", "merman-render-core/graph-layout", "merman-render-core/markdown-labels",
+    "merman-render-core/root-svg", "merman-render-core/rough-svg", "merman-render-core/svg-edge-parity",
     "merman-render-core/theme-svg",
 ]
 diagram-git-graph = [
@@ -48,6 +50,7 @@ merman-markup = { workspace = true, features = ["color"], optional = true }
 merman-model = { workspace = true, features = ["presentation-data"], optional = true }
 merman-render-core = { workspace = true, optional = true }
 merman-theme-contract = { workspace = true, optional = true }
+roxmltree = { workspace = true, optional = true }
 roughr = { workspace = true, optional = true }
 rustc-hash = { workspace = true, optional = true }
 ryu-js = { workspace = true, optional = true }
