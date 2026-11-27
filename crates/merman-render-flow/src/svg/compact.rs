@@ -424,9 +424,14 @@ fn append_plain_node_items<'a>(
     let mut start = 0;
     for (index, words) in wrapped.iter().enumerate() {
         let end = start + words.iter().map(|word| word.len() + 1).sum::<usize>() - 1;
+        let row_y = if index == 0 {
+            label_top
+        } else {
+            label_top + index as f64 * line_step
+        };
         items.push(SceneItem::Text(SceneText {
             text: &label[start..end],
-            position: [x, label_top + index as f64 * line_step],
+            position: [x, row_y],
             dy: font.size,
             anchor: SceneTextAnchor::Middle,
             baseline: SceneTextBaseline::Alphabetic,
