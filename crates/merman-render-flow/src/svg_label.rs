@@ -1,12 +1,18 @@
 //! Prepared SVG label rows for the Flow families.
 
 mod occurrence;
+mod preparation;
 mod terminal;
 
 pub use occurrence::{
     FLOWCHART_RENDER_ID_RECORD_BYTES, FlowchartPreparedLabelResolution, FlowchartSvgLabelOwner,
     FlowchartSvgLabelRenderPlan, FlowchartSvgLabelSidecar, PendingFlowchartSvgLabels,
     PreparedFlowchartHtmlLabel, PreparedFlowchartMathLabel,
+};
+pub use preparation::{
+    FlowchartSvgLabelSidecarBuilder,
+    measure_flowchart_svg_label_for_layout_with_metrics_and_source_style,
+    measure_flowchart_svg_label_for_layout_with_source_style,
 };
 pub use terminal::{
     OptionalStyleAttr, append_native_label_color, flowchart_label_html_with_prepared_label,

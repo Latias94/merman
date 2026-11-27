@@ -3,7 +3,11 @@
 #[cfg(all(feature = "markdown-labels", feature = "math-labels"))]
 mod metrics;
 #[cfg(all(feature = "markdown-labels", feature = "math-labels"))]
+mod source;
+#[cfg(all(feature = "markdown-labels", feature = "math-labels"))]
 pub use metrics::{flowchart_label_plain_text_for_layout, measure_flowchart_html_label};
+#[cfg(all(feature = "markdown-labels", feature = "math-labels"))]
+pub use source::measure_flowchart_label_for_layout;
 
 use super::{TextMeasurer, html_label_box::HtmlLabelBox};
 

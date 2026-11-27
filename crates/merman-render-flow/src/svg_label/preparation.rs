@@ -1,34 +1,47 @@
-//! Operation-local preparation for Flowchart SVG rows and sanitized HTML labels.
+//! Operation-local preparation for Flow SVG rows and sanitized HTML labels.
 
-use std::borrow::Cow;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use std::cell::Cell;
-use std::cell::RefCell;
-use std::sync::Arc;
+use std::{borrow::Cow, cell::RefCell, sync::Arc};
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
+use merman_model::presentation::PresentationConfig;
+use merman_render_core::{
+    Result,
+    config::ConfigLookup,
+    math::{ConfiguredMathBackend, PreparedMathLabel},
+    mermaid_style::HtmlTextGeometryDeclarations,
+    resources::{
+        OperationWorkError, OperationWorkMeter, RenderResourcePolicy, ResourceLimitExceeded,
+    },
+    text::{
+        TextMetrics, TextStyle, WrapMode, analyze_mermaid_markdown,
+        create_text_html::FlowchartLabelMetricsRequest,
+        html_label_layout::measure_flowchart_label_for_layout,
+        literal_label::{
+            FlowchartSvgLabelSource, FlowchartSvgWidthMode,
+            flowchart_non_markdown_svg_source_word_lines,
+        },
+        mermaid_markdown_is_plain_text,
+    },
+};
+#[cfg(any(test, feature = "test-support"))]
 use rustc_hash::FxHashMap;
 
-use crate::math::{ConfiguredMathBackend, PreparedMathLabel};
-#[cfg(test)]
-use crate::math::{MathPreparationOutcome, MathPreparationUnavailable};
-use crate::mermaid_style::HtmlTextGeometryDeclarations;
-use crate::resources::{OperationWorkError, OperationWorkMeter, ResourceLimitExceeded};
-use crate::text::{TextMetrics, TextStyle, WrapMode};
-use merman_render_flow::svg_label::{
+use super::{
     FLOWCHART_PREPARED_OWNER_SLOT_BYTES, FLOWCHART_RENDER_ID_RECORD_BYTES,
     FlowchartNodeSourceTypography, FlowchartSvgLabelMeasurementRequest, FlowchartSvgLabelOwner,
     FlowchartSvgLabelSidecar, FlowchartSvgLabelSourceEntry, PendingFlowchartSvgLabels,
     PreparedFlowchartHtmlLabel, PreparedFlowchartMathLabel,
 };
-#[cfg(test)]
-use merman_render_flow::svg_label::{
-    FlowchartPreparedLabelResolution, FlowchartSvgLabelRenderPlan,
-};
-
-use super::label::{
-    FlowchartLabelMetricsRequest, FlowchartSvgLabelSource, FlowchartSvgWidthMode,
-    flowchart_label_metrics_for_layout,
+use crate::{
+    layout_config::{FlowchartBaseTypographyPlan, FlowchartLayoutSettings},
+    node_geometry::PreparedFlowchartNodeGeometry,
+    style::{
+        FlowchartTerminalForeground, FlowchartTerminalForegroundProvenance,
+        FlowchartTextStyleResolution,
+    },
+    theme::FlowchartCompatibilityBinding,
 };
 
 /// Mutable preparation state used only while one Flowchart family artifact is laid out.
@@ -37,62 +50,62 @@ use super::label::{
 /// after its operation-scoped terminal style and backend outcome are bound to the owner; native
 /// text preparation remains independently governed by its existing catalog ledger.
 #[derive(Debug, Default)]
-pub(crate) struct FlowchartSvgLabelSidecarBuilder {
+pub struct FlowchartSvgLabelSidecarBuilder {
     pending: RefCell<PendingFlowchartSvgLabels>,
-    base_typography: Option<super::FlowchartBaseTypographyPlan>,
+    base_typography: Option<FlowchartBaseTypographyPlan>,
     native_density: Option<merman_theme_contract::v2::Density>,
     math_backend: Option<ConfiguredMathBackend>,
     work_meter: Option<Arc<OperationWorkMeter>>,
     prepared_resource_error: RefCell<Option<ResourceLimitExceeded>>,
     prepared_work_error: RefCell<Option<OperationWorkError>>,
     math_terminal_style: FlowchartMathTerminalStylePlan,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     prepared_hits: Cell<usize>,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     source_plans_by_owner: RefCell<FxHashMap<FlowchartSvgLabelOwner, usize>>,
 }
 
 #[derive(Debug, Clone)]
 struct FlowchartMathTerminalStylePlan {
-    node: super::FlowchartTerminalForeground,
-    title: super::FlowchartTerminalForeground,
+    node: FlowchartTerminalForeground,
+    title: FlowchartTerminalForeground,
 }
 
 impl Default for FlowchartMathTerminalStylePlan {
     fn default() -> Self {
         Self {
-            node: super::FlowchartTerminalForeground::new(
+            node: FlowchartTerminalForeground::new(
                 "#333",
-                super::FlowchartTerminalForegroundProvenance::ThemeNode,
+                FlowchartTerminalForegroundProvenance::ThemeNode,
             ),
-            title: super::FlowchartTerminalForeground::new(
+            title: FlowchartTerminalForeground::new(
                 "#333",
-                super::FlowchartTerminalForegroundProvenance::ThemeTitle,
+                FlowchartTerminalForegroundProvenance::ThemeTitle,
             ),
         }
     }
 }
 
 impl FlowchartMathTerminalStylePlan {
-    #[cfg(test)]
-    fn from_config(config: &merman_model::presentation::PresentationConfig) -> Self {
-        Self::from_binding(&super::FlowchartCompatibilityBinding::resolve(config))
+    #[cfg(any(test, feature = "test-support"))]
+    fn from_config(config: &PresentationConfig) -> Self {
+        Self::from_binding(&FlowchartCompatibilityBinding::resolve(config))
     }
 
-    fn from_binding(binding: &super::FlowchartCompatibilityBinding) -> Self {
+    fn from_binding(binding: &FlowchartCompatibilityBinding) -> Self {
         Self {
-            node: super::FlowchartTerminalForeground::new(
+            node: FlowchartTerminalForeground::new(
                 &binding.node_text_color,
-                super::FlowchartTerminalForegroundProvenance::ThemeNode,
+                FlowchartTerminalForegroundProvenance::ThemeNode,
             ),
-            title: super::FlowchartTerminalForeground::new(
+            title: FlowchartTerminalForeground::new(
                 &binding.title_color,
-                super::FlowchartTerminalForegroundProvenance::ThemeTitle,
+                FlowchartTerminalForegroundProvenance::ThemeTitle,
             ),
         }
     }
 
-    fn for_owner(&self, owner: FlowchartSvgLabelOwner) -> &super::FlowchartTerminalForeground {
+    fn for_owner(&self, owner: FlowchartSvgLabelOwner) -> &FlowchartTerminalForeground {
         match owner {
             FlowchartSvgLabelOwner::SubgraphTitle(_)
             | FlowchartSvgLabelOwner::SwimlaneGroupTitle(_) => &self.title,
@@ -112,19 +125,19 @@ enum PreparedMathMeasurement {
 }
 
 impl FlowchartSvgLabelSidecarBuilder {
-    pub(crate) fn new_with_work_meter(work_meter: Arc<OperationWorkMeter>) -> Self {
+    pub fn new_with_work_meter(work_meter: Arc<OperationWorkMeter>) -> Self {
         Self {
             work_meter: Some(work_meter),
             ..Self::default()
         }
     }
 
-    pub(crate) fn with_base_typography(mut self, plan: super::FlowchartBaseTypographyPlan) -> Self {
+    pub fn with_base_typography(mut self, plan: FlowchartBaseTypographyPlan) -> Self {
         self.base_typography = Some(plan);
         self
     }
 
-    pub(crate) fn with_native_density(
+    pub fn with_native_density(
         mut self,
         density: Option<merman_theme_contract::v2::Density>,
     ) -> Self {
@@ -132,58 +145,53 @@ impl FlowchartSvgLabelSidecarBuilder {
         self
     }
 
-    pub(crate) const fn native_density(&self) -> Option<merman_theme_contract::v2::Density> {
+    pub const fn native_density(&self) -> Option<merman_theme_contract::v2::Density> {
         self.native_density
     }
 
-    pub(crate) fn layout_settings(
+    pub fn layout_settings(
         &self,
-        effective_config: &(impl crate::config::ConfigLookup + ?Sized),
-    ) -> super::FlowchartLayoutSettings {
-        super::FlowchartLayoutSettings::resolve(
+        effective_config: &(impl ConfigLookup + ?Sized),
+    ) -> FlowchartLayoutSettings {
+        FlowchartLayoutSettings::resolve(
             effective_config,
             self.base_typography.as_ref(),
             self.native_density,
         )
     }
 
-    #[cfg(test)]
-    pub(crate) fn with_math_backend(
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn with_math_backend(
         mut self,
         math_backend: Option<&ConfiguredMathBackend>,
-        config: &merman_model::presentation::PresentationConfig,
+        config: &PresentationConfig,
     ) -> Self {
         self.math_backend = math_backend.cloned();
         self.math_terminal_style = FlowchartMathTerminalStylePlan::from_config(config);
         if self.work_meter.is_none() {
             self.work_meter = Some(Arc::new(OperationWorkMeter::new(
-                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+                RenderResourcePolicy::unbounded_for_trusted_input(),
             )));
         }
         self
     }
 
-    pub(crate) fn with_prepared_math_backend(
+    pub fn with_prepared_math_backend(
         mut self,
         math_backend: Option<&ConfiguredMathBackend>,
-        binding: &super::FlowchartCompatibilityBinding,
+        binding: &FlowchartCompatibilityBinding,
     ) -> Self {
         self.math_backend = math_backend.cloned();
         self.math_terminal_style = FlowchartMathTerminalStylePlan::from_binding(binding);
         if self.work_meter.is_none() {
             self.work_meter = Some(Arc::new(OperationWorkMeter::new(
-                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+                RenderResourcePolicy::unbounded_for_trusted_input(),
             )));
         }
         self
     }
 
-    #[cfg(feature = "layout-elk")]
-    pub(crate) fn has_prepared_math(
-        &self,
-        owner: FlowchartSvgLabelOwner,
-        raw_source: &str,
-    ) -> bool {
+    pub fn has_prepared_math(&self, owner: FlowchartSvgLabelOwner, raw_source: &str) -> bool {
         self.pending.borrow().math.get(owner).is_some_and(|entry| {
             entry.source() == raw_source && entry.outcome().prepared().is_some()
         })
@@ -264,7 +272,7 @@ impl FlowchartSvgLabelSidecarBuilder {
     }
 
     #[cfg(test)]
-    pub(crate) fn measure_for_layout(
+    fn measure_for_layout(
         &self,
         owner: FlowchartSvgLabelOwner,
         render_id: &str,
@@ -288,7 +296,7 @@ impl FlowchartSvgLabelSidecarBuilder {
         owner: FlowchartSvgLabelOwner,
         render_id: &str,
         request: FlowchartLabelMetricsRequest<'_>,
-        source_style: Option<&super::FlowchartTextStyleResolution<'_>>,
+        source_style: Option<&FlowchartTextStyleResolution<'_>>,
         break_long_words: bool,
         width_mode: FlowchartSvgWidthMode,
     ) -> TextMetrics {
@@ -306,7 +314,7 @@ impl FlowchartSvgLabelSidecarBuilder {
 
     #[allow(clippy::too_many_arguments)]
     #[cfg(test)]
-    pub(crate) fn measure_for_layout_with_metrics_style(
+    fn measure_for_layout_with_metrics_style(
         &self,
         owner: FlowchartSvgLabelOwner,
         render_id: &str,
@@ -333,7 +341,7 @@ impl FlowchartSvgLabelSidecarBuilder {
         render_id: &str,
         request: FlowchartLabelMetricsRequest<'_>,
         metrics_style: &TextStyle,
-        source_style: Option<&super::FlowchartTextStyleResolution<'_>>,
+        source_style: Option<&FlowchartTextStyleResolution<'_>>,
         break_long_words: bool,
         width_mode: FlowchartSvgWidthMode,
     ) -> TextMetrics {
@@ -380,7 +388,7 @@ impl FlowchartSvgLabelSidecarBuilder {
             render_id,
             &request,
             metrics_style,
-            source_style.and_then(super::FlowchartTextStyleResolution::terminal_foreground),
+            source_style.and_then(FlowchartTextStyleResolution::terminal_foreground),
         ) {
             PreparedMathMeasurement::Prepared(metrics) => return metrics,
             PreparedMathMeasurement::Unavailable => {
@@ -409,10 +417,14 @@ impl FlowchartSvgLabelSidecarBuilder {
             );
         }
         if !supports_svg_source_preparation(owner, &request) {
-            return flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
-                style: metrics_style,
-                ..request
-            });
+            return measure_flowchart_label_for_layout(
+                FlowchartLabelMetricsRequest {
+                    style: metrics_style,
+                    ..request
+                },
+                HtmlTextGeometryDeclarations::default(),
+                true,
+            );
         }
 
         let svg_measurement = FlowchartSvgLabelMeasurementRequest::new(
@@ -442,7 +454,7 @@ impl FlowchartSvgLabelSidecarBuilder {
                     .get(owner)
                     .and_then(|prepared| svg_measurement.matching_metrics(prepared))
             {
-                #[cfg(test)]
+                #[cfg(any(test, feature = "test-support"))]
                 self.prepared_hits
                     .set(self.prepared_hits.get().saturating_add(1));
                 return metrics;
@@ -460,7 +472,7 @@ impl FlowchartSvgLabelSidecarBuilder {
             |measured| (None, measured),
         );
 
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         if new_source.is_some() {
             let mut source_plans = self.source_plans_by_owner.borrow_mut();
             let owner_plans = source_plans.entry(owner).or_default();
@@ -521,7 +533,7 @@ impl FlowchartSvgLabelSidecarBuilder {
         render_id: &str,
         request: &FlowchartLabelMetricsRequest<'_>,
         metrics_style: &TextStyle,
-        terminal_foreground: Option<&super::FlowchartTerminalForeground>,
+        terminal_foreground: Option<&FlowchartTerminalForeground>,
     ) -> PreparedMathMeasurement {
         if request.wrap_mode != WrapMode::HtmlLike || !request.raw_label.contains("$$") {
             return PreparedMathMeasurement::NotApplicable;
@@ -539,7 +551,7 @@ impl FlowchartSvgLabelSidecarBuilder {
                     request.wrap_mode,
                 )
             }) {
-                #[cfg(test)]
+                #[cfg(any(test, feature = "test-support"))]
                 self.prepared_hits
                     .set(self.prepared_hits.get().saturating_add(1));
                 return match prepared.outcome().prepared() {
@@ -585,11 +597,11 @@ impl FlowchartSvgLabelSidecarBuilder {
         }
     }
 
-    pub(crate) fn record_node_geometry(
+    pub fn record_node_geometry(
         &self,
         owner: FlowchartSvgLabelOwner,
-        geometry: super::PreparedFlowchartNodeGeometry,
-    ) -> crate::Result<()> {
+        geometry: PreparedFlowchartNodeGeometry,
+    ) -> Result<()> {
         if let Some(work) = &self.work_meter {
             work.charge(1)?;
         }
@@ -600,36 +612,32 @@ impl FlowchartSvgLabelSidecarBuilder {
         Ok(())
     }
 
-    #[cfg(all(
-        feature = "layout-shoal",
-        any(feature = "diagram-flowchart", feature = "diagram-swimlane")
-    ))]
-    pub(crate) fn measured_node_geometry(
+    pub fn measured_node_geometry(
         &self,
         owner: FlowchartSvgLabelOwner,
-    ) -> Option<super::PreparedFlowchartNodeGeometry> {
+    ) -> Option<PreparedFlowchartNodeGeometry> {
         self.pending.borrow().node_geometry.get(owner).copied()
     }
 
-    pub(crate) fn finish(self) -> FlowchartSvgLabelSidecar {
+    pub fn finish(self) -> FlowchartSvgLabelSidecar {
         let sidecar = FlowchartSvgLabelSidecar::new(
             self.pending.into_inner(),
             self.base_typography,
             self.prepared_resource_error.into_inner(),
             self.prepared_work_error.into_inner(),
         );
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         let sidecar = sidecar.with_source_plan_counts(self.source_plans_by_owner.into_inner());
         sidecar
     }
 
-    #[cfg(test)]
-    pub(crate) fn prepared_count(&self) -> usize {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn prepared_count(&self) -> usize {
         self.pending.borrow().prepared.entry_count()
     }
 
-    #[cfg(all(test, feature = "layout-dagre"))]
-    pub(crate) fn prepared_hit_count(&self) -> usize {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn prepared_hit_count(&self) -> usize {
         self.prepared_hits.get()
     }
 }
@@ -643,7 +651,7 @@ fn failed_prepared_metrics() -> TextMetrics {
 }
 
 #[cfg(test)]
-pub(crate) fn measure_flowchart_svg_label_for_layout(
+fn measure_flowchart_svg_label_for_layout(
     sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
     owner: Option<FlowchartSvgLabelOwner>,
     render_id: Option<&str>,
@@ -655,12 +663,12 @@ pub(crate) fn measure_flowchart_svg_label_for_layout(
     )
 }
 
-pub(crate) fn measure_flowchart_svg_label_for_layout_with_source_style(
+pub fn measure_flowchart_svg_label_for_layout_with_source_style(
     sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
     owner: Option<FlowchartSvgLabelOwner>,
     render_id: Option<&str>,
     request: FlowchartLabelMetricsRequest<'_>,
-    source_style: Option<&super::FlowchartTextStyleResolution<'_>>,
+    source_style: Option<&FlowchartTextStyleResolution<'_>>,
     width_mode: FlowchartSvgWidthMode,
 ) -> TextMetrics {
     match sidecar.zip(owner).zip(render_id) {
@@ -679,19 +687,14 @@ pub(crate) fn measure_flowchart_svg_label_for_layout_with_source_style(
     }
 }
 
-#[cfg(any(
-    feature = "layout-dagre",
-    feature = "layout-elk",
-    feature = "layout-shoal"
-))]
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn measure_flowchart_svg_label_for_layout_with_metrics_and_source_style(
+pub fn measure_flowchart_svg_label_for_layout_with_metrics_and_source_style(
     sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
     owner: Option<FlowchartSvgLabelOwner>,
     render_id: Option<&str>,
     request: FlowchartLabelMetricsRequest<'_>,
     metrics_style: &TextStyle,
-    source_style: Option<&super::FlowchartTextStyleResolution<'_>>,
+    source_style: Option<&FlowchartTextStyleResolution<'_>>,
     width_mode: FlowchartSvgWidthMode,
 ) -> TextMetrics {
     match sidecar.zip(owner).zip(render_id) {
@@ -732,14 +735,14 @@ fn supports_svg_source_preparation(
 }
 
 fn markdown_matches_non_markdown_svg_source(raw_label: &str) -> bool {
-    if !crate::text::mermaid_markdown_is_plain_text(raw_label) {
+    if !mermaid_markdown_is_plain_text(raw_label) {
         return false;
     }
-    let markdown = crate::text::analyze_mermaid_markdown(raw_label, true);
+    let markdown = analyze_mermaid_markdown(raw_label, true);
     if !markdown.all_runs_normal() {
         return false;
     }
-    let svg_lines = crate::flowchart::flowchart_non_markdown_svg_source_word_lines(raw_label);
+    let svg_lines = flowchart_non_markdown_svg_source_word_lines(raw_label);
     markdown.lines.len() == svg_lines.len()
         && markdown.lines.iter().zip(svg_lines).all(|(markdown, svg)| {
             markdown.len() == svg.len()
@@ -771,12 +774,13 @@ fn measure_svg_label_without_sidecar_with_metrics_style(
     geometry: HtmlTextGeometryDeclarations,
 ) -> TextMetrics {
     if request.wrap_mode != WrapMode::SvgLike || request.label_type == "markdown" {
-        return crate::graph_label::flowchart_label_metrics_with_html_geometry(
+        return measure_flowchart_label_for_layout(
             FlowchartLabelMetricsRequest {
                 style: metrics_style,
                 ..request
             },
             geometry,
+            true,
         );
     }
     let source = FlowchartSvgLabelSource::new(request.raw_label);
@@ -787,28 +791,73 @@ fn measure_svg_label_without_sidecar_with_metrics_style(
 
 #[cfg(test)]
 mod tests {
-    use std::cell::{Cell, RefCell};
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use crate::environment::{RenderEnvironment, TextMeasurementPhase};
+    use merman_model::{
+        MermaidConfig, OperationControl,
+        resources::{InputResourcePolicy, ResourceProfile},
+    };
+    use merman_render_core::{
+        math::{
+            MathPreparationOutcome, MathPreparationUnavailable, MathRenderer, NoopMathRenderer,
+        },
+        resources::ResourceLimitId,
+        text::{
+            DeterministicTextMeasurer, TextMeasurer,
+            measurement::{
+                HostMeasurementResult, HostTextMeasurementRequest, HostTextMeasurer,
+                MeasurementProfileId, RoutedTextMeasurer, TextMeasurementOperation,
+                TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfile,
+                TextMeasurementProfileIdentity, TextMeasurementSession, TextMeasurementSummary,
+                measurement_reuse_key,
+            },
+        },
+    };
+    use quick_xml::events::Event;
 
-    use crate::math::MathRenderer;
-
-    use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
-    use merman_model::presentation::PresentationConfig;
-
+    use super::super::{FlowchartPreparedLabelResolution, FlowchartSvgLabelRenderPlan};
     use super::*;
+
+    fn presentation_config(value: serde_json::Value) -> PresentationConfig {
+        PresentationConfig::from_config_controlled(
+            MermaidConfig::from_value(value),
+            &InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput),
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap()
+    }
+
+    struct TestMeasurementSession {
+        measurement: TextMeasurementSession,
+        work: OperationWorkMeter,
+    }
+
+    impl TestMeasurementSession {
+        fn new(policy: TextMeasurementPolicy) -> Self {
+            Self {
+                measurement: TextMeasurementSession::new(policy),
+                work: OperationWorkMeter::new(RenderResourcePolicy::interactive()),
+            }
+        }
+
+        fn deterministic() -> Self {
+            Self::new(TextMeasurementPolicy::deterministic())
+        }
+
+        fn text_measurer(&self, phase: TextMeasurementPhase) -> RoutedTextMeasurer<'_> {
+            self.measurement.routed(&self.work, phase, None)
+        }
+    }
 
     #[test]
     fn recovered_html_is_prepared_once_borrowed_by_terminal_and_releases_retained_bytes() {
         let work = Arc::new(OperationWorkMeter::new(
-            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            RenderResourcePolicy::unbounded_for_trusted_input(),
         ));
         let builder = FlowchartSvgLabelSidecarBuilder::new_with_work_meter(Arc::clone(&work));
-        let measurer = crate::text::DeterministicTextMeasurer::default();
-        let config = crate::test_support::presentation_config(
-            serde_json::json!({ "securityLevel": "loose" }),
-        );
+        let measurer = DeterministicTextMeasurer::default();
+        let config = presentation_config(serde_json::json!({ "securityLevel": "loose" }));
         let style = TextStyle::default();
         let owner = FlowchartSvgLabelOwner::Node(0);
         let source = "<b><i>API</b> tail</i>";
@@ -846,14 +895,20 @@ mod tests {
             panic!("HTML label must be prepared before terminal emission")
         };
         let wrapped = format!("<root>{}</root>", prepared.xhtml());
-        let document = roxmltree::Document::parse(&wrapped).expect("prepared label is valid XHTML");
-        assert_eq!(
-            document
-                .descendants()
-                .filter(|node| node.has_tag_name("i"))
-                .count(),
-            2
-        );
+        let mut reader = quick_xml::Reader::from_str(&wrapped);
+        let mut italic_elements = 0;
+        loop {
+            match reader.read_event().expect("prepared label is valid XHTML") {
+                Event::Start(tag) | Event::Empty(tag) if tag.name().as_ref() == "i" => {
+                    italic_elements += 1;
+                }
+                Event::End(tag) if tag.name().as_ref() == "root" => break,
+                Event::Eof => panic!("prepared XHTML must close the root"),
+                _ => {}
+            }
+        }
+        assert!(matches!(reader.read_event().unwrap(), Event::Eof));
+        assert_eq!(italic_elements, 2);
         assert_eq!(
             work.used(),
             parse_work,
@@ -865,19 +920,17 @@ mod tests {
 
     #[test]
     fn html_preparation_records_parser_work_rejection_and_cancellation() {
-        let config = crate::test_support::presentation_config(
-            serde_json::json!({ "securityLevel": "loose" }),
-        );
+        let config = presentation_config(serde_json::json!({ "securityLevel": "loose" }));
         let style = TextStyle::default();
-        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let measurer = DeterministicTextMeasurer::default();
         for cancel in [false, true] {
             let control = merman_model::OperationControl::new();
             let policy = if cancel {
                 control.cancel_after_checkpoints(16);
-                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
+                RenderResourcePolicy::unbounded_for_trusted_input()
             } else {
-                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
-                    .with_limit(crate::resources::ResourceLimitId::MaxLayoutWorkUnits, 1)
+                RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 1)
                     .unwrap()
             };
             let work = Arc::new(OperationWorkMeter::new_with_control(policy, control));
@@ -917,7 +970,6 @@ mod tests {
 
     #[test]
     fn source_typography_fallback_reserves_and_releases_its_owned_fonts() {
-        use crate::resources::{RenderResourcePolicy, ResourceLimitId};
         let policy = RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, 1)
             .unwrap();
@@ -947,7 +999,6 @@ mod tests {
 
     #[test]
     fn render_id_budget_is_single_owned_across_source_and_math() {
-        use crate::resources::RenderResourcePolicy;
         fn retained_for(render_id: &str, math: bool, owner: FlowchartSvgLabelOwner) -> usize {
             let work = Arc::new(OperationWorkMeter::new(
                 RenderResourcePolicy::unbounded_for_trusted_input(),
@@ -955,8 +1006,7 @@ mod tests {
             let config = PresentationConfig::default();
             let builder = FlowchartSvgLabelSidecarBuilder::new_with_work_meter(Arc::clone(&work));
             let style = TextStyle::default();
-            let environment = RenderEnvironment::deterministic();
-            let session = environment.begin_session().unwrap();
+            let session = TestMeasurementSession::deterministic();
             let measurer = session.text_measurer(TextMeasurementPhase::Layout);
             builder.measure_for_layout(
                 owner,
@@ -1100,12 +1150,13 @@ mod tests {
         }
     }
 
-    fn report_call_count(session: &crate::environment::RenderSession) -> u64 {
+    fn report_call_count(session: &TestMeasurementSession) -> u64 {
         session
-            .text_measurement_report()
+            .measurement
+            .report()
             .entries()
             .iter()
-            .map(crate::environment::TextMeasurementSummary::count)
+            .map(TextMeasurementSummary::count)
             .sum()
     }
 
@@ -1173,12 +1224,10 @@ mod tests {
         let backend = ConfiguredMathBackend::external(Arc::new(
             StyleDependentPreparedMathRenderer::default(),
         ));
-        let config = crate::test_support::presentation_config(
-            serde_json::json!({ "securityLevel": "loose" }),
-        );
+        let config = presentation_config(serde_json::json!({ "securityLevel": "loose" }));
         let builder =
             FlowchartSvgLabelSidecarBuilder::default().with_math_backend(Some(&backend), &config);
-        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let measurer = DeterministicTextMeasurer::default();
         let owner = FlowchartSvgLabelOwner::Node(0);
         for font_size in [16.0, 24.0] {
             let style = TextStyle {
@@ -1223,7 +1272,7 @@ mod tests {
             render_calls: Arc::clone(&render_calls),
             measure_calls: Arc::clone(&measure_calls),
         }));
-        let config = crate::test_support::presentation_config(serde_json::json!({
+        let config = presentation_config(serde_json::json!({
             "themeVariables": { "nodeTextColor": "#e5e7eb" }
         }));
         let builder =
@@ -1232,7 +1281,7 @@ mod tests {
             font_size: 24.0,
             ..TextStyle::default()
         };
-        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let measurer = DeterministicTextMeasurer::default();
         let request = |max_width_px| FlowchartLabelMetricsRequest {
             measurer: &measurer,
             raw_label: "$$x^2$$",
@@ -1277,7 +1326,7 @@ mod tests {
 
     #[test]
     fn declined_flowchart_math_terminal_is_retained_as_native_unavailable_evidence() {
-        let backend = ConfiguredMathBackend::external(Arc::new(crate::math::NoopMathRenderer));
+        let backend = ConfiguredMathBackend::external(Arc::new(NoopMathRenderer));
         let config = PresentationConfig::default();
         let builder =
             FlowchartSvgLabelSidecarBuilder::default().with_math_backend(Some(&backend), &config);
@@ -1288,7 +1337,7 @@ mod tests {
                 .expect("math sidecar operation work meter"),
         );
         let style = TextStyle::default();
-        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let measurer = DeterministicTextMeasurer::default();
         let owner = FlowchartSvgLabelOwner::Node(0);
 
         builder.measure_for_layout(
@@ -1338,7 +1387,7 @@ mod tests {
         let builder =
             FlowchartSvgLabelSidecarBuilder::default().with_math_backend(Some(&backend), &config);
         let style = TextStyle::default();
-        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let measurer = DeterministicTextMeasurer::default();
         let owner = FlowchartSvgLabelOwner::Node(0);
 
         let metrics = builder.measure_for_layout(
@@ -1375,19 +1424,19 @@ mod tests {
             render_calls: Arc::new(AtomicUsize::new(0)),
             measure_calls: Arc::new(AtomicUsize::new(0)),
         }));
-        let config = crate::test_support::presentation_config(serde_json::json!({
+        let config = presentation_config(serde_json::json!({
             "themeVariables": { "nodeTextColor": "#111827" }
         }));
         let builder =
             FlowchartSvgLabelSidecarBuilder::default().with_math_backend(Some(&backend), &config);
         let style = TextStyle::default();
-        let terminal_foreground = super::super::FlowchartTerminalForeground::new(
+        let terminal_foreground = FlowchartTerminalForeground::new(
             "#f43f5e",
-            super::super::FlowchartTerminalForegroundProvenance::InlineStyle,
+            FlowchartTerminalForegroundProvenance::InlineStyle,
         );
-        let mut source_style = crate::flowchart::FlowchartTextStyleResolution::borrowed(&style);
+        let mut source_style = FlowchartTextStyleResolution::borrowed(&style);
         source_style.terminal_foreground = Some(terminal_foreground);
-        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let measurer = DeterministicTextMeasurer::default();
         let owner = FlowchartSvgLabelOwner::Node(0);
 
         builder.measure_for_layout_with_source_style(
@@ -1417,7 +1466,7 @@ mod tests {
                 .expect("source-colored occurrence")
                 .foreground()
                 .provenance(),
-            super::super::FlowchartTerminalForegroundProvenance::InlineStyle
+            FlowchartTerminalForegroundProvenance::InlineStyle
         );
 
         let sidecar = builder.finish();
@@ -1523,9 +1572,9 @@ mod tests {
             font_family: Some("Catalog Sans".to_string()),
             ..TextStyle::default()
         };
-        let foreground = super::super::FlowchartTerminalForeground::new(
+        let foreground = FlowchartTerminalForeground::new(
             "#334155",
-            super::super::FlowchartTerminalForegroundProvenance::ThemeNode,
+            FlowchartTerminalForegroundProvenance::ThemeNode,
         );
         let outcome =
             MathPreparationOutcome::Unavailable(MathPreparationUnavailable::BackendDeclined);
@@ -1613,7 +1662,11 @@ mod tests {
                 config: &config,
                 math_renderer: None,
             };
-            let legacy = flowchart_label_metrics_for_layout(request());
+            let legacy = measure_flowchart_label_for_layout(
+                request(),
+                HtmlTextGeometryDeclarations::default(),
+                true,
+            );
             assert_eq!(legacy.width, expected_width);
             assert_eq!(legacy.line_count, line_count);
 
@@ -1660,7 +1713,7 @@ mod tests {
                 max_width_px: Some(96.0),
                 wrap_mode: WrapMode::SvgLike,
                 config: &config,
-                math_renderer: Some(&crate::math::NoopMathRenderer),
+                math_renderer: Some(&NoopMathRenderer),
             },
             FlowchartSvgWidthMode::ComputedLength,
         );
@@ -1703,8 +1756,7 @@ mod tests {
 
     #[test]
     fn routed_builtin_measurement_is_reused_during_svg_emission() {
-        let environment = RenderEnvironment::deterministic();
-        let session = environment.begin_session().expect("deterministic session");
+        let session = TestMeasurementSession::deterministic();
         let layout_measurer = session.text_measurer(TextMeasurementPhase::Layout);
         let config = PresentationConfig::default();
         let style = TextStyle::default();
@@ -1768,8 +1820,7 @@ mod tests {
 
     #[test]
     fn svg_math_source_keeps_computed_length_preparation() {
-        let environment = RenderEnvironment::deterministic();
-        let session = environment.begin_session().expect("deterministic session");
+        let session = TestMeasurementSession::deterministic();
         let measurer = session.text_measurer(TextMeasurementPhase::Layout);
         let config = PresentationConfig::default();
         let style = TextStyle::default();
@@ -1787,7 +1838,7 @@ mod tests {
                 max_width_px: Some(120.0),
                 wrap_mode: WrapMode::SvgLike,
                 config: &config,
-                math_renderer: Some(&crate::math::NoopMathRenderer),
+                math_renderer: Some(&NoopMathRenderer),
             },
             true,
             FlowchartSvgWidthMode::ComputedLength,
@@ -1839,11 +1890,6 @@ mod tests {
 
     #[test]
     fn prepared_wrapping_requires_an_exact_wrapping_binding() {
-        use crate::environment::{
-            HostMeasurementResult, HostTextMeasurementRequest, HostTextMeasurer,
-            MeasurementProfileId, TextMeasurementPolicy, TextMeasurementProfileIdentity,
-        };
-
         struct UnexpectedHost;
 
         impl HostTextMeasurer for UnexpectedHost {
@@ -1852,8 +1898,7 @@ mod tests {
             }
         }
 
-        let environment = RenderEnvironment::deterministic();
-        let session = environment.begin_session().expect("deterministic session");
+        let session = TestMeasurementSession::deterministic();
         let measurer = session.text_measurer(TextMeasurementPhase::Layout);
         let config = PresentationConfig::default();
         let style = TextStyle::default();
@@ -1947,14 +1992,11 @@ mod tests {
             (TextMeasurementPhase::Wrap, true),
             (TextMeasurementPhase::ComputedLength, false),
         ] {
-            let mixed = RenderEnvironment::deterministic()
-                .with_text_measurement_policy(TextMeasurementPolicy::host_display(
-                    host_identity.clone(),
-                    Arc::new(UnexpectedHost),
-                    [host_phase],
-                ))
-                .begin_session()
-                .unwrap();
+            let mixed = TestMeasurementSession::new(TextMeasurementPolicy::host_display(
+                host_identity.clone(),
+                Arc::new(UnexpectedHost),
+                [host_phase],
+            ));
             let measurer = mixed.text_measurer(TextMeasurementPhase::Layout);
             let plan = FlowchartSvgLabelRenderPlan::new(
                 Some(&sidecar),
@@ -1990,13 +2032,6 @@ mod tests {
 
     #[test]
     fn streaming_state_without_builtin_carriers_is_not_cached() {
-        use crate::environment::{
-            MeasurementProfileId, TextMeasurementOperation, TextMeasurementPolicy,
-            TextMeasurementProfile, TextMeasurementProfileIdentity, TextMeasurementSummary,
-        };
-        use crate::text::DeterministicTextMeasurer;
-        use merman_render_core::text::measurement::measurement_reuse_key;
-
         let direct = DeterministicTextMeasurer::default();
         let wrap_profile = TextMeasurementProfile::new(
             TextMeasurementProfileIdentity::new(
@@ -2006,20 +2041,17 @@ mod tests {
             .unwrap(),
             Arc::new(DeterministicTextMeasurer::default()),
         );
-        let session = RenderEnvironment::deterministic()
-            .with_text_measurement_policy(
-                TextMeasurementPolicy::deterministic()
-                    .with_profile_for_phase(TextMeasurementPhase::Wrap, wrap_profile),
-            )
-            .begin_session()
-            .unwrap();
+        let session = TestMeasurementSession::new(
+            TextMeasurementPolicy::deterministic()
+                .with_profile_for_phase(TextMeasurementPhase::Wrap, wrap_profile),
+        );
         let routed = session.text_measurer(TextMeasurementPhase::Layout);
         assert!(measurement_reuse_key(&direct, TextMeasurementOperation::ComputedLength).is_none());
         assert!(measurement_reuse_key(&routed, TextMeasurementOperation::ComputedLength).is_some());
         assert!(measurement_reuse_key(&routed, TextMeasurementOperation::Wrapped).is_none());
 
         let literal_bbox_calls = || {
-            let report = session.text_measurement_report();
+            let report = session.measurement.report();
             assert!(!report.entries().iter().any(|entry| {
                 matches!(
                     entry.provenance().operation,
@@ -2113,8 +2145,7 @@ mod tests {
 
     #[test]
     fn duplicate_subgraph_ids_resolve_to_the_first_semantic_owner() {
-        let environment = RenderEnvironment::deterministic();
-        let session = environment.begin_session().expect("deterministic session");
+        let session = TestMeasurementSession::deterministic();
         let measurer = session.text_measurer(TextMeasurementPhase::Layout);
         let config = PresentationConfig::default();
         let style = TextStyle::default();
@@ -2148,8 +2179,7 @@ mod tests {
 
     #[test]
     fn self_loop_render_id_resolves_to_the_original_edge_owner() {
-        let environment = RenderEnvironment::deterministic();
-        let session = environment.begin_session().expect("deterministic session");
+        let session = TestMeasurementSession::deterministic();
         let measurer = session.text_measurer(TextMeasurementPhase::Layout);
         let config = PresentationConfig::default();
         let style = TextStyle::default();
@@ -2178,8 +2208,7 @@ mod tests {
 
     #[test]
     fn sparse_semantic_indices_retain_only_real_label_entries() {
-        let environment = RenderEnvironment::deterministic();
-        let session = environment.begin_session().expect("deterministic session");
+        let session = TestMeasurementSession::deterministic();
         let measurer = session.text_measurer(TextMeasurementPhase::Layout);
         let config = PresentationConfig::default();
         let style = TextStyle::default();
@@ -2217,8 +2246,7 @@ mod tests {
 
     #[test]
     fn edge_preparation_wraps_with_base_style_and_measures_with_final_style() {
-        let environment = RenderEnvironment::deterministic();
-        let session = environment.begin_session().expect("deterministic session");
+        let session = TestMeasurementSession::deterministic();
         let measurer = session.text_measurer(TextMeasurementPhase::Layout);
         let config = PresentationConfig::default();
         let wrap_style = TextStyle::default();
