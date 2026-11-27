@@ -1,50 +1,51 @@
-use crate::config::{
-    config_bool, config_diagram_look, config_f64_css_px, config_string, config_string_vec,
-};
-use crate::svg::PreparedCommonCss;
+use super::{ErConfigView, ErNativeStyle, ErRenderSettings};
 use merman_markup::theme_color::{ColorChannel, ColorError, ThemeColor, rgba};
+use merman_render_core::config::{
+    self, config_bool, config_diagram_look, config_f64_css_px, config_string, config_string_vec,
+};
+use merman_render_core::svg_css::PreparedCommonCss;
+use merman_theme_contract::v2::FamilyTheme;
 
 #[derive(Debug)]
-pub(crate) struct ErCssBinding {
-    pub(crate) render_settings: super::super::config::ErRenderSettings,
-    pub(crate) native: Option<crate::er::ErNativeStyle>,
-    pub(crate) common: PreparedCommonCss,
-    pub(crate) font_family: String,
+pub struct ErCssBinding {
+    pub render_settings: ErRenderSettings,
+    pub native: Option<ErNativeStyle>,
+    pub(super) common: PreparedCommonCss,
+    pub(super) font_family: String,
     source_fill_owns_odd_rows: bool,
-    pub(crate) redux_border_colors: Vec<String>,
-    pub(crate) redux_background_colors: Vec<String>,
-    pub(crate) text_color: String,
-    pub(crate) line_color: String,
-    pub(crate) main_bkg: String,
-    pub(crate) node_border: String,
-    pub(crate) cluster_bkg: String,
-    pub(crate) cluster_border: String,
-    pub(crate) title_color: String,
-    pub(crate) node_text_color: String,
-    pub(crate) tertiary_color: String,
-    pub(crate) edge_label_background: String,
-    pub(crate) label_background: Result<String, ColorError>,
-    pub(crate) neo_label_background: Result<String, ColorError>,
-    pub(crate) stroke_width: String,
-    pub(crate) neo_marker_stroke_width: f64,
-    pub(crate) row_odd: Option<String>,
-    pub(crate) row_even: Option<String>,
-    pub(crate) shadow_flood: &'static str,
-    pub(crate) gradient: Option<(String, String)>,
+    pub redux_border_colors: Vec<String>,
+    pub(super) redux_background_colors: Vec<String>,
+    pub(super) text_color: String,
+    pub(super) line_color: String,
+    pub main_bkg: String,
+    pub node_border: String,
+    pub cluster_bkg: String,
+    pub cluster_border: String,
+    pub(super) title_color: String,
+    pub(super) node_text_color: String,
+    pub(super) tertiary_color: String,
+    pub(super) edge_label_background: String,
+    pub(super) label_background: Result<String, ColorError>,
+    pub(super) neo_label_background: Result<String, ColorError>,
+    pub(super) stroke_width: String,
+    pub neo_marker_stroke_width: f64,
+    pub(super) row_odd: Option<String>,
+    pub(super) row_even: Option<String>,
+    pub shadow_flood: &'static str,
+    pub gradient: Option<(String, String)>,
 }
 
 impl ErCssBinding {
-    pub(super) fn from_native(
-        theme: &crate::theme::FamilyTheme,
-        native: crate::er::ErNativeStyle,
+    pub fn from_native(
+        theme: &FamilyTheme,
+        native: ErNativeStyle,
         config: &serde_json::Value,
     ) -> Self {
         let roles = &theme.roles;
-        let render_settings = super::super::ErConfigView::new(config)
-            .render_settings_with_resolved_typography(
-                native.body_family.as_deref(),
-                native.font_size,
-            );
+        let render_settings = ErConfigView::new(config).render_settings_with_resolved_typography(
+            native.body_family.as_deref(),
+            native.font_size,
+        );
         let font_family = render_settings.font_family.clone();
         let text_color = roles.text_primary.to_string();
         let line_color = roles.stroke_connector.first_color().to_string();
@@ -95,8 +96,8 @@ impl ErCssBinding {
         }
     }
 
-    pub(super) fn title_color_source(config: &serde_json::Value) -> (Option<&'static str>, &str) {
-        crate::config::selected_config_string(
+    fn title_color_source(config: &serde_json::Value) -> (Option<&'static str>, &str) {
+        config::selected_config_string(
             config,
             &["themeVariables.titleColor", "themeVariables.textColor"],
         )
@@ -114,7 +115,7 @@ impl ErCssBinding {
         self.source_fill_owns_odd_rows
     }
 
-    pub(crate) fn resolve(config: &serde_json::Value) -> Self {
+    pub fn resolve(config: &serde_json::Value) -> Self {
         let option = |key: &str| config_string(config, &["themeVariables", key]);
         let color = |key: &str, fallback: &str| option(key).unwrap_or_else(|| fallback.to_owned());
         let theme_name = config_string(config, &["theme"]).unwrap_or_else(|| "default".into());
@@ -142,18 +143,18 @@ impl ErCssBinding {
                     .unwrap_or_else(|| start.clone());
                 (start, stop)
             });
-        let font_family = crate::config::config_font_family_css(config);
-        let font_size = crate::config::configured_theme_or_root_font_size_px(config)
+        let font_family = config::config_font_family_css(config);
+        let font_size = config::configured_theme_or_root_font_size_px(config)
             .map(|(size, _)| size)
             .or_else(|| config_f64_css_px(config, &["er", "fontSize"]).filter(|size| *size >= 0.0))
             .unwrap_or(16.0);
         Self {
             native: None,
-            render_settings: super::super::ErConfigView::new(config)
+            render_settings: ErConfigView::new(config)
                 .render_settings_with_resolved_typography(None, None),
             common: PreparedCommonCss::with_resolved_typography(
                 config,
-                crate::config::normalize_css_font_family(&font_family),
+                config::normalize_css_font_family(&font_family),
                 format!("{font_size}px"),
             )
             .with_configured_root_font_family(config),
@@ -186,11 +187,8 @@ impl ErCssBinding {
             label_background,
             neo_label_background: faded,
             stroke_width: if config_diagram_look(config).is_neo() {
-                crate::config::config_css_number_or_string(
-                    config,
-                    &["themeVariables", "strokeWidth"],
-                )
-                .unwrap_or_else(|| "1px".into())
+                config::config_css_number_or_string(config, &["themeVariables", "strokeWidth"])
+                    .unwrap_or_else(|| "1px".into())
             } else {
                 "1px".into()
             },

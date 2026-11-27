@@ -606,8 +606,7 @@ mod tests {
             ..Default::default()
         };
         let measurer = DeterministicTextMeasurer::default();
-        let settings = super::super::ErConfigView::new(&config)
-            .layout_settings_for_test(&model.direction, true);
+        let settings = super::super::test_layout_settings(&config, &model.direction, true);
         let labels = super::super::prepare_er_labels(&model, &config, &measurer, true);
         let policy = RenderResourcePolicy::interactive()
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 100_000)

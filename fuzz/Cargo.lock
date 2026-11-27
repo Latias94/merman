@@ -1251,7 +1251,12 @@ dependencies = [
 name = "merman-render-graph"
 version = "0.11.0"
 dependencies = [
+ "indexmap",
+ "merman-markup",
+ "merman-model",
  "merman-render-core",
+ "merman-theme-contract",
+ "serde_json",
 ]
 
 [[package]]

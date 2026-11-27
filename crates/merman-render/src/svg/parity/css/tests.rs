@@ -1,5 +1,6 @@
 use super::*;
 use crate::svg::PreparedCommonCss;
+use merman_render_graph::er::er_css_with_resolved_typography;
 use std::collections::BTreeMap;
 
 fn er_binding(config: &serde_json::Value) -> crate::er::ErCssBinding {

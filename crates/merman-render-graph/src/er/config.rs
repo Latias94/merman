@@ -1,6 +1,8 @@
-use crate::config::{config_bool, config_diagram_look, config_f64, config_f64_css_px};
-use crate::graph_layout::ir::{Direction, direction_from_rank};
-use crate::text::{TextStyle, WrapMode};
+use merman_render_core::config::{
+    self, config_bool, config_diagram_look, config_f64, config_f64_css_px,
+};
+use merman_render_core::graph_layout::{Direction, direction_from_rank};
+use merman_render_core::text::{TextStyle, WrapMode};
 use serde_json::Value;
 
 const DEFAULT_NODE_SPACING: f64 = 140.0;
@@ -13,14 +15,14 @@ const DEFAULT_FONT_SIZE: f64 = 16.0;
 const DEFAULT_RELATIONSHIP_FONT_SIZE: f64 = 14.0;
 const DEFAULT_TITLE_TOP_MARGIN: f64 = 25.0;
 
-pub(crate) struct ErConfigView<'a> {
+pub struct ErConfigView<'a> {
     effective_config: &'a Value,
     er_config: &'a Value,
     flowchart_config: &'a Value,
 }
 
 impl<'a> ErConfigView<'a> {
-    pub(crate) fn new(effective_config: &'a Value) -> Self {
+    pub fn new(effective_config: &'a Value) -> Self {
         Self {
             effective_config,
             er_config: effective_config.get("er").unwrap_or(&Value::Null),
@@ -34,7 +36,7 @@ impl<'a> ErConfigView<'a> {
         direction: &str,
         swimlane: bool,
     ) -> ErLayoutSettings {
-        self.layout_settings_with_resolved_typography(
+        self.layout_settings_with_native_style(
             direction,
             None,
             None,
@@ -42,7 +44,7 @@ impl<'a> ErConfigView<'a> {
         )
     }
 
-    pub(crate) fn layout_settings_with_native_style(
+    pub fn layout_settings_with_native_style(
         &self,
         direction: &str,
         font_family_css: Option<&str>,
@@ -100,15 +102,7 @@ impl<'a> ErConfigView<'a> {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn render_settings_with_font_family(
-        &self,
-        font_family_override: Option<&str>,
-    ) -> ErRenderSettings {
-        self.render_settings_with_resolved_typography(font_family_override, None)
-    }
-
-    pub(crate) fn render_settings_with_resolved_typography(
+    pub fn render_settings_with_resolved_typography(
         &self,
         font_family_override: Option<&str>,
         font_size_override: Option<f64>,
@@ -142,7 +136,7 @@ impl<'a> ErConfigView<'a> {
         }
     }
 
-    pub(crate) fn entity_measurement_settings(&self) -> ErEntityMeasurementSettings {
+    pub fn entity_measurement_settings(&self) -> ErEntityMeasurementSettings {
         ErEntityMeasurementSettings {
             html_labels_raw: self.root_bool("htmlLabels").unwrap_or(false),
             label_wrap_mode: self.entity_html_label_wrap_mode(),
@@ -163,15 +157,7 @@ impl<'a> ErConfigView<'a> {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn text_style_with_font_family(
-        &self,
-        font_family_override: Option<&str>,
-    ) -> TextStyle {
-        self.text_style_with_resolved_typography(font_family_override, None)
-    }
-
-    pub(crate) fn text_style_with_resolved_typography(
+    fn text_style_with_resolved_typography(
         &self,
         font_family_override: Option<&str>,
         font_size_override: Option<f64>,
@@ -188,7 +174,7 @@ impl<'a> ErConfigView<'a> {
         }
     }
 
-    pub(crate) fn relationship_html_labels(&self, swimlane: bool) -> bool {
+    pub fn relationship_html_labels(&self, swimlane: bool) -> bool {
         if swimlane {
             return Self::evaluate_html_labels(self.effective_config.get("htmlLabels"));
         }
@@ -205,7 +191,7 @@ impl<'a> ErConfigView<'a> {
             .unwrap_or(true)
     }
 
-    pub(crate) fn entity_html_label_wrap_mode(&self) -> WrapMode {
+    pub fn entity_html_label_wrap_mode(&self) -> WrapMode {
         // Mermaid's ER box painter reads the root config directly. This deliberately does
         // not use `getEffectiveHtmlLabels`: `flowchart.htmlLabels` controls relationship
         // labels, but does not override ER entity, attribute, or subgraph labels.
@@ -217,19 +203,19 @@ impl<'a> ErConfigView<'a> {
     }
 
     fn font_family_css(&self) -> String {
-        crate::config::config_font_family_css(self.effective_config)
+        config::config_font_family_css(self.effective_config)
     }
 
     fn calculation_text_style(&self) -> TextStyle {
         // erBox passes the root config to calculateTextWidth, independently of label CSS.
         TextStyle {
-            font_family: Some(crate::config::normalize_css_font_family(
-                &crate::config::config_string(self.effective_config, &["fontFamily"])
-                    .unwrap_or_else(|| crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS.to_owned()),
+            font_family: Some(config::normalize_css_font_family(
+                &config::config_string(self.effective_config, &["fontFamily"])
+                    .unwrap_or_else(|| config::MERMAID_DEFAULT_FONT_FAMILY_CSS.to_owned()),
             )),
             font_size: config_f64_css_px(self.effective_config, &["fontSize"])
                 .unwrap_or(DEFAULT_FONT_SIZE),
-            font_weight: crate::config::config_css_number_or_string(
+            font_weight: config::config_css_number_or_string(
                 self.effective_config,
                 &["fontWeight"],
             ),
@@ -240,7 +226,7 @@ impl<'a> ErConfigView<'a> {
     fn font_size(&self) -> f64 {
         // Mermaid ER unified renderer inherits the root SVG font-size, so
         // `themeVariables.fontSize` wins when present (including Mermaid's common `"NNpx"` form).
-        crate::config::config_theme_or_root_font_size_px_opt(self.effective_config)
+        config::config_theme_or_root_font_size_px_opt(self.effective_config)
             .or_else(|| {
                 config_f64_css_px(self.er_config, &["fontSize"]).filter(|size| *size >= 0.0)
             })
@@ -262,17 +248,17 @@ impl<'a> ErConfigView<'a> {
             .unwrap_or(DEFAULT_TITLE_TOP_MARGIN)
     }
 
-    pub(crate) fn swimlane_relationship_wrapping_width(&self) -> f64 {
+    pub fn swimlane_relationship_wrapping_width(&self) -> f64 {
         self.flowchart_f64("wrappingWidth")
             .unwrap_or(DEFAULT_WRAPPING_WIDTH)
     }
 
-    pub(crate) fn swimlane_title_html_labels(&self) -> bool {
+    pub fn swimlane_title_html_labels(&self) -> bool {
         // The Swimlane cluster shape reads evaluate(flowchart.htmlLabels) directly.
         Self::evaluate_html_labels(self.flowchart_config.get("htmlLabels"))
     }
 
-    pub(crate) fn subgraph_html_labels(
+    pub fn subgraph_html_labels(
         &self,
         is_swimlane_lane: bool,
         relationship_html_labels: bool,
@@ -329,47 +315,74 @@ impl<'a> ErConfigView<'a> {
     }
 }
 
-pub(crate) struct ErLayoutSettings {
-    pub(super) direction: Direction,
-    pub(super) node_spacing: f64,
-    pub(super) rank_spacing: f64,
-    pub(super) label_style: TextStyle,
-    pub(super) attr_style: TextStyle,
-    pub(super) code_family: Option<String>,
-    pub(super) calculation_style: TextStyle,
-    pub(super) relationship_label_style: TextStyle,
-    pub(super) relationship_html_labels: bool,
-    pub(super) entity_measurement: ErEntityMeasurementSettings,
+pub struct ErLayoutSettings {
+    pub direction: Direction,
+    pub node_spacing: f64,
+    pub rank_spacing: f64,
+    pub label_style: TextStyle,
+    pub attr_style: TextStyle,
+    pub code_family: Option<String>,
+    pub calculation_style: TextStyle,
+    pub relationship_label_style: TextStyle,
+    pub relationship_html_labels: bool,
+    pub entity_measurement: ErEntityMeasurementSettings,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ErEntityMeasurementSettings {
-    pub(crate) html_labels_raw: bool,
-    pub(crate) label_wrap_mode: WrapMode,
-    pub(crate) diagram_padding: f64,
-    pub(crate) entity_padding: f64,
-    pub(crate) min_entity_width: f64,
-    pub(crate) wrapping_width_px: i64,
+pub struct ErEntityMeasurementSettings {
+    pub html_labels_raw: bool,
+    pub label_wrap_mode: WrapMode,
+    pub diagram_padding: f64,
+    pub entity_padding: f64,
+    pub min_entity_width: f64,
+    pub wrapping_width_px: i64,
 }
 
 #[derive(Debug)]
-pub(crate) struct ErRenderSettings {
-    pub(crate) diagram_look: String,
-    pub(crate) font_family: String,
-    pub(crate) font_size: f64,
-    pub(crate) title_top_margin: f64,
-    pub(crate) insert_title_top_margin: f64,
-    pub(crate) use_max_width: bool,
-    pub(crate) label_style: TextStyle,
-    pub(crate) entity_html_label_wrap_mode: WrapMode,
-    pub(crate) entity_measurement: ErEntityMeasurementSettings,
-    pub(crate) hand_drawn_seed: f64,
+pub struct ErRenderSettings {
+    pub diagram_look: String,
+    pub font_family: String,
+    pub font_size: f64,
+    pub title_top_margin: f64,
+    pub insert_title_top_margin: f64,
+    pub use_max_width: bool,
+    pub label_style: TextStyle,
+    pub entity_html_label_wrap_mode: WrapMode,
+    pub entity_measurement: ErEntityMeasurementSettings,
+    pub hand_drawn_seed: f64,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn er_font_family_css_uses_mermaid_default_fallback_for_raw_config() {
+        assert_eq!(
+            ErConfigView::new(&json!({}))
+                .text_style_with_resolved_typography(None, None)
+                .font_family
+                .as_deref(),
+            Some(config::MERMAID_DEFAULT_FONT_FAMILY_CSS)
+        );
+    }
+
+    #[test]
+    fn er_font_family_css_prefers_theme_variables() {
+        assert_eq!(
+            ErConfigView::new(&json!({
+                "fontFamily": "Courier, monospace",
+                "themeVariables": {
+                    "fontFamily": "\"IBM Plex Sans\", Arial, sans-serif"
+                }
+            }))
+            .text_style_with_resolved_typography(None, None)
+            .font_family
+            .as_deref(),
+            Some(r#""IBM Plex Sans",Arial,sans-serif"#)
+        );
+    }
 
     #[test]
     fn er_label_probe_keeps_root_typography_and_flowchart_default_width() {
@@ -531,7 +544,7 @@ mod tests {
             }
         });
 
-        let settings = ErConfigView::new(&cfg).render_settings_with_font_family(None);
+        let settings = ErConfigView::new(&cfg).render_settings_with_resolved_typography(None, None);
 
         assert_eq!(settings.diagram_look, "handDrawn");
         assert_eq!(settings.hand_drawn_seed, 7.0);
@@ -543,7 +556,7 @@ mod tests {
         let flowchart_fallback = ErConfigView::new(&json!({
             "flowchart": { "htmlLabels": false }
         }))
-        .render_settings_with_font_family(None);
+        .render_settings_with_resolved_typography(None, None);
         assert_eq!(
             flowchart_fallback.entity_html_label_wrap_mode,
             WrapMode::HtmlLike
@@ -557,7 +570,7 @@ mod tests {
         let root_fallback = ErConfigView::new(&json!({
             "titleTopMargin": 33
         }))
-        .render_settings_with_font_family(None);
+        .render_settings_with_resolved_typography(None, None);
         assert_eq!(root_fallback.title_top_margin, 33.0);
         assert_eq!(
             root_fallback.insert_title_top_margin,

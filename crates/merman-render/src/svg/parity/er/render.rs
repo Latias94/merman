@@ -1,6 +1,8 @@
-use super::super::css::er_css_with_resolved_typography;
 use super::super::*;
-use merman_render_graph::er::{ErMarkerDefs, er_unified_marker_id, write_er_marker_definitions};
+use merman_render_graph::er::{
+    ErMarkerDefs, er_color_indices, er_redux_color_id, er_unified_marker_id,
+    write_er_marker_definitions, write_er_stylesheet,
+};
 #[cfg(feature = "layout-shoal")]
 mod canonical;
 mod swimlane;
@@ -45,130 +47,6 @@ fn er_edge_path_d(
         ]);
     }
     curve_basis_path_d(points)
-}
-
-fn er_redux_color_id(border_colors: &[String], color_index: usize) -> Option<String> {
-    (!border_colors.is_empty()).then(|| format!("color-{}", color_index % border_colors.len()))
-}
-
-fn er_color_indices(
-    model: &merman_model::families::er::ErDiagramModel,
-) -> std::collections::HashMap<String, usize> {
-    fn insertion_index(id: &str) -> Option<usize> {
-        id.rsplit_once('-')?.1.parse().ok()
-    }
-
-    let mut entities: Vec<_> = model.entities.values().collect();
-    entities.sort_by(|left, right| {
-        (insertion_index(&left.id), left.id.as_str())
-            .cmp(&(insertion_index(&right.id), right.id.as_str()))
-    });
-    entities
-        .into_iter()
-        .enumerate()
-        .map(|(index, entity)| (entity.id.clone(), index))
-        .collect()
-}
-
-fn write_er_redux_color_css(
-    out: &mut impl SvgOutput,
-    diagram_id: &str,
-    data_look: &str,
-    border_colors: &[String],
-    background_colors: &[String],
-) -> Result<()> {
-    let diagram_id = crate::svg::escape_css_identifier(diagram_id);
-    for (index, border_color) in border_colors.iter().enumerate() {
-        let border_color = border_color.trim();
-        let fill = if background_colors.is_empty() {
-            String::new()
-        } else {
-            format!(
-                "fill:{};",
-                background_colors[index % background_colors.len()].trim()
-            )
-        };
-        let _ = write!(
-            out,
-            r#"#{} [data-look="{}"][data-color-id="color-{}"].node path{{stroke:{};{}}}#{} [data-look="{}"][data-color-id="color-{}"].node rect{{stroke:{};{}}}"#,
-            diagram_id.as_ref(),
-            escape_xml(data_look),
-            index,
-            border_color,
-            fill,
-            diagram_id.as_ref(),
-            escape_xml(data_look),
-            index,
-            border_color,
-            fill,
-        );
-        out.checkpoint()?;
-    }
-    Ok(())
-}
-
-fn er_redux_color_css_insertion_point(css: &str, diagram_id: &str) -> usize {
-    let escaped_id = crate::svg::escape_css_identifier(diagram_id);
-    let family_rule = format!("#{escaped_id} .entityBox");
-    let root_rule = format!("#{escaped_id} :root");
-    css.find(&family_rule)
-        .or_else(|| css.find(&root_rule))
-        .unwrap_or(css.len())
-}
-
-#[allow(
-    clippy::too_many_arguments,
-    reason = "The SVG writer receives prepared geometry, styles, and operation inputs."
-)]
-fn write_er_style_with_font_family(
-    out: &mut impl SvgOutput,
-    diagram_id: &str,
-    data_look: &str,
-    binding: &crate::er::ErCssBinding,
-    border_colors: &[String],
-    background_colors: &[String],
-) -> Result<()> {
-    let css = er_css_with_resolved_typography(diagram_id, binding)?;
-    let insertion_point = er_redux_color_css_insertion_point(&css, diagram_id);
-
-    out.push_str("<style>");
-    {
-        let mut css_out = super::super::output::XmlTextOutput::new(out);
-        css_out.push_str(&css[..insertion_point]);
-        css_out.checkpoint()?;
-        write_er_redux_color_css(
-            &mut css_out,
-            diagram_id,
-            data_look,
-            border_colors,
-            background_colors,
-        )?;
-        css_out.push_str(&css[insertion_point..]);
-        if let Some(native) = &binding.native {
-            let id = crate::svg::escape_css_identifier(diagram_id);
-            let code_family = &native.code_family;
-            let title_family = native
-                .title_family
-                .as_deref()
-                .unwrap_or(&binding.font_family);
-            let title_weight = &native.title_weight;
-            let text = &binding.node_text_color;
-            let title = &binding.title_color;
-            let border = native.border_width;
-            let heading_ink = &native.heading_ink;
-            let _ = write!(
-                &mut css_out,
-                "#{id} .node .label{{fill:{text};}}\
-                 #{id} .label.attribute-type{{font-family:{code_family};}}\
-                 #{id} .erDiagramTitleText{{font-family:{title_family};font-weight:{title_weight};fill:{title};}}\
-                 #{id} .node > .basic.label-container{{stroke-width:{border};}}\
-                 #{id} .node[data-native-er-heading] > .label.name,#{id} .node[data-native-er-heading] > .basic + .label{{fill:{heading_ink};color:{heading_ink};}}"
-            );
-        }
-    }
-    out.push_str("</style>");
-    out.checkpoint()?;
-    Ok(())
 }
 
 fn write_er_svg_box_label(out: &mut impl SvgOutput, label: &crate::er::ErBoxLabel) {
@@ -305,7 +183,7 @@ fn render_er_subgraph_cluster(
                 subgraph.id
             ),
         })?;
-    let visual = &source_style.visual;
+    let visual = source_style.visual();
     let rect_style_attr = &visual.rect_style_attr;
     let text_style_attr = &visual.source_text_attr;
     let class_attr = if subgraph.classes.is_empty() {
@@ -486,7 +364,6 @@ pub(crate) fn render_er_diagram_svg_model(
     let rounded_layout = is_elk_layout || is_swimlane_layout;
     let data_look = er_render_settings.diagram_look.as_str();
     let redux_border_colors = &binding.redux_border_colors;
-    let redux_background_colors = &binding.redux_background_colors;
     let color_indices = er_color_indices(model);
     let node_border = &binding.node_border;
     let main_bkg = &binding.main_bkg;
@@ -733,14 +610,7 @@ pub(crate) fn render_er_diagram_svg_model(
     }
     out.checkpoint()?;
 
-    write_er_style_with_font_family(
-        &mut out,
-        diagram_id.semantic_str(),
-        data_look,
-        binding,
-        redux_border_colors,
-        redux_background_colors,
-    )?;
+    write_er_stylesheet(&mut out, diagram_id.semantic_str(), data_look, binding)?;
 
     // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
     out.push_str("<g>");
@@ -1244,7 +1114,7 @@ pub(crate) fn render_er_diagram_svg_model(
                         entity.id
                     ),
                 })?;
-        let visual = &source_style.visual;
+        let visual = source_style.visual();
         let source_label_style =
             source_style.label_style(matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike));
         let label_div_style_prefix = format!(
@@ -1993,13 +1863,12 @@ mod tests {
     use indexmap::IndexMap;
     use merman_model::families::er::{ErDiagramModel, ErEntity};
     use serde_json::json;
-    use std::fmt;
-    use std::ops::Range;
 
     #[test]
     fn er_unstyled_unwrapped_svg_labels_preserve_terminal_bytes() {
         let config = json!({ "htmlLabels": false, "flowchart": { "wrappingWidth": 1000 } });
-        let settings = crate::er::ErConfigView::new(&config).render_settings_with_font_family(None);
+        let settings = crate::er::ErConfigView::new(&config)
+            .render_settings_with_resolved_typography(None, None);
         let measurer = crate::text::DeterministicTextMeasurer::default();
         for source in [
             "Account",
@@ -2029,147 +1898,6 @@ mod tests {
             );
             assert_eq!(actual, previous, "unchanged unwrapped label: {source}");
         }
-    }
-
-    #[derive(Default)]
-    struct RejectAfterFirstWrite {
-        write_attempts: usize,
-        rejected: bool,
-        retained: String,
-    }
-
-    impl RejectAfterFirstWrite {
-        fn record_write(&mut self, value: &str) -> fmt::Result {
-            self.write_attempts += 1;
-            if self.write_attempts == 1 {
-                self.rejected = true;
-                return Err(fmt::Error);
-            }
-            self.retained.push_str(value);
-            Ok(())
-        }
-    }
-
-    impl fmt::Write for RejectAfterFirstWrite {
-        fn write_str(&mut self, value: &str) -> fmt::Result {
-            self.record_write(value)
-        }
-    }
-
-    impl super::SvgOutput for RejectAfterFirstWrite {
-        fn push_str(&mut self, value: &str) {
-            let _ = self.record_write(value);
-        }
-
-        fn push(&mut self, value: char) {
-            let mut encoded = [0u8; 4];
-            let _ = self.record_write(value.encode_utf8(&mut encoded));
-        }
-
-        fn len(&self) -> usize {
-            self.retained.len()
-        }
-
-        fn as_str(&self) -> &str {
-            self.retained.as_str()
-        }
-
-        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()> {
-            self.retained.replace_range(range, replacement);
-            Ok(())
-        }
-
-        fn checkpoint(&mut self) -> crate::Result<()> {
-            if self.rejected {
-                Err(crate::Error::InvalidModel {
-                    message: "test SVG sink rejected the first write".to_string(),
-                })
-            } else {
-                Ok(())
-            }
-        }
-    }
-
-    #[test]
-    fn er_redux_color_css_stops_after_the_first_svg_sink_failure() {
-        let border_colors = vec!["#e879f9".to_string(), "#2dd4bf".to_string()];
-        let background_colors = vec!["#fdf4ff".to_string(), "#f0fdfa".to_string()];
-        let mut out = RejectAfterFirstWrite::default();
-
-        let error = super::write_er_redux_color_css(
-            &mut out,
-            "er",
-            "classic",
-            &border_colors,
-            &background_colors,
-        )
-        .expect_err("the rejecting sink must stop ER Redux color CSS emission");
-
-        assert!(matches!(error, crate::Error::InvalidModel { .. }));
-        assert_eq!(
-            out.write_attempts, 1,
-            "ER Redux color CSS emission must stop at the first failed sink checkpoint"
-        );
-    }
-
-    #[test]
-    fn er_redux_color_theme_emits_per_entity_color_rules() {
-        let config = json!({
-            "theme": "redux-color",
-            "themeVariables": {
-                "borderColorArray": ["#e879f9", "#2dd4bf"],
-                "bkgColorArray": ["#fdf4ff", "#f0fdfa"],
-                "THEME_COLOR_LIMIT": 2
-            }
-        });
-        let theme = crate::er::ErCssBinding::resolve(&config);
-        let borders = &theme.redux_border_colors;
-        let backgrounds = &theme.redux_background_colors;
-
-        assert_eq!(
-            super::er_redux_color_id(borders, 0).as_deref(),
-            Some("color-0")
-        );
-        assert_eq!(
-            super::er_redux_color_id(borders, 3).as_deref(),
-            Some("color-1")
-        );
-        assert_eq!(
-            super::er_redux_color_id(&[], 0),
-            None,
-            "an empty color palette must not produce a modulo-by-zero color id"
-        );
-
-        let mut css = String::new();
-        super::write_er_redux_color_css(&mut css, "er", "classic", borders, backgrounds).unwrap();
-        assert!(css.contains(
-            r##"#er [data-look="classic"][data-color-id="color-0"].node path{stroke:#e879f9;fill:#fdf4ff;}"##
-        ));
-        assert!(css.contains(
-            r##"#er [data-look="classic"][data-color-id="color-1"].node rect{stroke:#2dd4bf;fill:#f0fdfa;}"##
-        ));
-
-        let mut dark_css = String::new();
-        super::write_er_redux_color_css(&mut dark_css, "er", "classic", borders, &[]).unwrap();
-        assert!(dark_css.contains(
-            r##"#er [data-look="classic"][data-color-id="color-0"].node path{stroke:#e879f9;}"##
-        ));
-        assert!(!dark_css.contains("fill:"), "{dark_css}");
-
-        let mut merged = String::new();
-        super::write_er_style_with_font_family(
-            &mut merged,
-            "er",
-            "classic",
-            &theme,
-            borders,
-            backgrounds,
-        )
-        .unwrap();
-        let colors = merged.find("[data-color-id=").unwrap();
-        let family = merged.find("#er .entityBox").unwrap();
-        let root = merged.find("#er :root").unwrap();
-        assert!(colors < family && family < root, "{merged}");
     }
 
     #[test]
@@ -2208,7 +1936,8 @@ mod tests {
         assert_eq!(color_indices.get(&zeta.id), Some(&0));
         assert_eq!(color_indices.get(&alpha.id), Some(&1));
         let measurer = crate::text::DeterministicTextMeasurer::default();
-        let settings = crate::er::ErConfigView::new(&config).render_settings_with_font_family(None);
+        let settings = crate::er::ErConfigView::new(&config)
+            .render_settings_with_resolved_typography(None, None);
         let measure = |entity: &ErEntity| {
             crate::er::measure_entity_box(
                 entity,
@@ -2293,32 +2022,5 @@ mod tests {
         assert!(svg.contains(zeta_dom), "{svg}");
         assert!(svg.contains(alpha_dom), "{svg}");
         assert!(svg.find(zeta_dom).unwrap() < svg.find(alpha_dom).unwrap());
-    }
-
-    #[test]
-    fn er_font_family_css_uses_mermaid_default_fallback_for_raw_config() {
-        assert_eq!(
-            crate::er::ErConfigView::new(&json!({}))
-                .text_style_with_font_family(None)
-                .font_family
-                .as_deref(),
-            Some(crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS)
-        );
-    }
-
-    #[test]
-    fn er_font_family_css_prefers_theme_variables() {
-        assert_eq!(
-            crate::er::ErConfigView::new(&json!({
-                "fontFamily": "Courier, monospace",
-                "themeVariables": {
-                    "fontFamily": "\"IBM Plex Sans\", Arial, sans-serif"
-                }
-            }))
-            .text_style_with_font_family(None)
-            .font_family
-            .as_deref(),
-            Some(r#""IBM Plex Sans",Arial,sans-serif"#)
-        );
     }
 }

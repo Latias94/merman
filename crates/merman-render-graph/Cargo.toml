@@ -17,9 +17,19 @@ third-party-bundle = true
 
 [features]
 default = []
-diagram-er = ["dep:merman-render-core", "merman-render-core/svg-output"]
+diagram-er = [
+    "dep:indexmap", "dep:merman-markup", "dep:merman-model", "dep:merman-render-core",
+    "dep:merman-theme-contract", "dep:serde_json", "merman-model/diagram-er",
+    "merman-render-core/css-style", "merman-render-core/graph-layout",
+    "merman-render-core/theme-svg",
+]
 layout-shoal = ["dep:kurbo"]
 
 [dependencies]
+indexmap = { workspace = true, optional = true }
 kurbo = { workspace = true, optional = true }
+merman-markup = { workspace = true, features = ["color"], optional = true }
+merman-model = { workspace = true, features = ["presentation-data"], optional = true }
 merman-render-core = { workspace = true, optional = true }
+merman-theme-contract = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }

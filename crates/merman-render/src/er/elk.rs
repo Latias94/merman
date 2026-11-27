@@ -416,7 +416,9 @@ fn er_elk_direction(direction: &str) -> Option<elk::Direction> {
 #[cfg(test)]
 mod tests {
     use super::{ElkRootAlgorithm, layout_options};
-    use crate::er::{ErConfigView, ErEntity, ErRelationship, ErSubgraph, prepare_er_labels};
+    use crate::er::{
+        ErEntity, ErRelationship, ErSubgraph, prepare_er_labels, test_layout_settings,
+    };
     use crate::text::DeterministicTextMeasurer;
 
     #[test]
@@ -458,8 +460,7 @@ mod tests {
             });
 
         let effective_config = serde_json::json!({ "layout": "elk.box" });
-        let settings =
-            ErConfigView::new(&effective_config).layout_settings_for_test(&model.direction, false);
+        let settings = test_layout_settings(&effective_config, &model.direction, false);
         let measurer = DeterministicTextMeasurer::default();
         let prepared_labels = prepare_er_labels(&model, &effective_config, &measurer, false);
         let mut graph = super::er_elk_graph(
@@ -523,8 +524,7 @@ mod tests {
                 }
                 for enabled in [false, true] {
                     let config = serde_json::json!({ "layout": "elk", "elk": { "keepEntryNodeOnTop": enabled } });
-                    let settings = ErConfigView::new(&config)
-                        .layout_settings_for_test(&model.direction, false);
+                    let settings = test_layout_settings(&config, &model.direction, false);
                     let measurer = DeterministicTextMeasurer::default();
                     let labels = prepare_er_labels(&model, &config, &measurer, false);
                     let graph = super::er_elk_graph(
