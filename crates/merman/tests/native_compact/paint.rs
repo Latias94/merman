@@ -53,7 +53,7 @@ pub(super) fn assert_cyberpunk_shadows(root: Node<'_, '_>, surfaces: usize) {
     let [left, top, width, height] = view_box[..] else {
         panic!("invalid scene viewBox {view_box:?}");
     };
-    for pair in layers.chunks_exact(2) {
+    for pair in layers.as_chunks::<2>().0 {
         for (&layer, fill) in pair.iter().zip(["#FF4564", "#29F3EC"]) {
             assert!(layer.has_tag_name("rect"));
             assert_eq!(layer.attribute("fill"), Some(fill));
