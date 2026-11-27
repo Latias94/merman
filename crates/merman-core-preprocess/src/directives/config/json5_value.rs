@@ -4,7 +4,7 @@ use serde::de::{Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde_json::{Map, Value};
 use std::fmt;
 
-pub(crate) fn parse_json5_value(input: &str) -> Option<Value> {
+pub(super) fn parse_json5_value(input: &str) -> Option<Value> {
     json5::from_str::<LiteralJson5>(input)
         .ok()
         .map(|value| value.0)

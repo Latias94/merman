@@ -1,34 +1,40 @@
-//! Mermaid directive config evaluation and source evidence.
+//! Core policy for decoded frontmatter and directives.
 
 mod sanitize;
 
-use super::config_scan::{MAX_CONFIG_NESTING_DEPTH, config_nesting_exceeds_limit_controlled};
 #[cfg(feature = "editor-facts")]
-use super::source_config::{self, SourceAppearanceCapture, SourceAppearanceOwner};
+use super::rewrite_order::FrontmatterInsertOrder;
+#[cfg(feature = "editor-facts")]
+use super::source_config::{SourceAppearanceCapture, SourceAppearanceOwner};
 #[cfg(feature = "editor-facts")]
 use super::{
-    LocalConfigKeyEvidence, PreprocessedSource, SourceConfigCaptureMode, SourceConfigEvidence,
-    SourceConfigKeyEvidence, SourceConfigOrigin, SourceDirectiveEvidence,
+    FrontmatterSourceEvidence, LocalConfigKeyEvidence, PreprocessedSource, SourceConfigCaptureMode,
+    SourceConfigEvidence, SourceConfigKeyEvidence, SourceConfigOrigin, SourceDirectiveEvidence,
 };
 #[cfg(feature = "editor-facts")]
 use crate::SourceSpan;
 use crate::{
     Error, MermaidConfig, OperationControl, OperationControlResult, Result, diagram::CapturedPanic,
 };
+#[cfg(feature = "editor-facts")]
+use merman_core_preprocess::directives::decode_directive_with_evidence_controlled;
 use merman_core_preprocess::directives::{
-    DirectiveArgument, DirectiveBlock, ScannedDirective, normalize_directive_quotes_controlled,
-    scan_directive_body,
+    DirectiveBlock, decode_directive_controlled, remove_directive_blocks_controlled,
 };
-#[cfg(test)]
-use merman_core_preprocess::directives::{DirectiveRecoveryMode, directive_blocks_controlled};
-use merman_core_preprocess::scan::controlled::{ControlledScanCheckpoints, push_str_controlled};
+#[cfg(feature = "editor-facts")]
+use merman_core_preprocess::frontmatter::decode_frontmatter_with_evidence_controlled;
+use merman_core_preprocess::frontmatter::{
+    FrontmatterByteSpan, decode_frontmatter_controlled, frontmatter_config_routes,
+};
+#[cfg(feature = "editor-facts")]
+use merman_core_preprocess::yaml::YamlConfigKeyEvidence;
 #[cfg(test)]
 pub(super) use sanitize::sanitize_directive;
+#[cfg(feature = "editor-facts")]
 pub(super) use sanitize::sanitize_directive_controlled;
+#[cfg(not(feature = "editor-facts"))]
+use sanitize::sanitize_directive_controlled;
 use serde_json::Value;
-use std::borrow::Cow;
-
-pub(super) const MAX_DIRECTIVE_CONFIG_PARSE_BYTES: usize = 1024 * 1024;
 
 pub(super) type DiagramTypeDetector<'a> =
     dyn Fn(&str, &OperationControl) -> OperationControlResult<Result<&'static str>> + 'a;
@@ -167,29 +173,28 @@ pub(super) fn process_directives_controlled(
             #[cfg(not(feature = "editor-facts"))]
             continue;
         }
-        let parsed = parse_directive_like_upstream_capture_controlled(
-            &input[block.raw.clone()],
-            #[cfg(feature = "editor-facts")]
-            capture_mode,
-            #[cfg(feature = "editor-facts")]
-            block.complete,
-            control,
-        )?;
+        let raw = &input[block.raw.clone()];
+        #[cfg(not(feature = "editor-facts"))]
+        let parsed = decode_directive_controlled(raw, control)?;
+        #[cfg(feature = "editor-facts")]
+        let parsed = if capture_mode.collects() {
+            decode_directive_with_evidence_controlled(raw, block.complete, control)?
+        } else {
+            decode_directive_controlled(raw, control)?
+        };
         if let Some(directive) = parsed.directive {
-            #[cfg(feature = "editor-facts")]
-            let mut directive = directive;
             #[cfg(feature = "editor-facts")]
             if matches!(directive.ty.as_str(), "init" | "initialize") {
                 appearance_complete &= directive.arguments_complete;
             }
             #[cfg(feature = "editor-facts")]
-            if capture_mode.collects() {
-                directive.appearance_owner = Some(SourceAppearanceOwner {
+            let appearance_owner = if capture_mode.collects() {
+                let owner = SourceAppearanceOwner {
                     origin: SourceConfigOrigin::Directive {
                         directive_index: evidence.len(),
                     },
                     construct_span: SourceSpan::new(block.range.start, block.range.end),
-                });
+                };
                 let raw_start = block.raw.start;
                 let keyword_span = SourceSpan::new(
                     raw_start.saturating_add(directive.keyword_span.start),
@@ -217,13 +222,23 @@ pub(super) fn process_directives_controlled(
                     rewrite_safe: block.complete && directive.rewrite_safe,
                     keys,
                 });
-            }
+                Some(owner)
+            } else {
+                None
+            };
             if block.complete && parsed.error.is_none() {
-                directives.push(directive);
+                directives.push(Directive {
+                    ty: directive.ty,
+                    args: directive.args,
+                    #[cfg(feature = "editor-facts")]
+                    appearance_owner,
+                });
             }
         }
         if block.complete && first_error.is_none() {
-            first_error = parsed.error;
+            first_error = parsed
+                .error
+                .map(|message| Error::InvalidDirectiveJson { message });
         }
         if first_error.is_some() {
             #[cfg(feature = "editor-facts")]
@@ -356,7 +371,7 @@ pub(super) fn process_directives_controlled(
     })
 }
 
-pub(super) fn detect_init_controlled(
+fn detect_init_controlled(
     directives: &[Directive],
     input: &str,
     detector: &DiagramTypeDetector<'_>,
@@ -430,343 +445,216 @@ pub(super) fn detect_init_controlled(
     Ok(Ok(merged))
 }
 
-#[derive(Debug, Clone)]
-pub(super) struct Directive {
+struct Directive {
     ty: String,
-    pub(super) args: Option<Value>,
-    #[cfg(feature = "editor-facts")]
-    keyword_span: std::ops::Range<usize>,
-    #[cfg(feature = "editor-facts")]
-    config_keys: Vec<source_config::Json5ConfigKeyEvidence>,
-    #[cfg(feature = "editor-facts")]
-    rewrite_safe: bool,
+    args: Option<Value>,
     #[cfg(feature = "editor-facts")]
     appearance_owner: Option<SourceAppearanceOwner>,
-    #[cfg(feature = "editor-facts")]
-    arguments_complete: bool,
 }
 
-fn remove_directive_blocks_controlled<'a>(
-    input: &'a str,
-    blocks: &[DirectiveBlock],
+#[cfg(feature = "editor-facts")]
+pub(super) fn append_frontmatter_evidence(
+    source: &PreprocessedSource,
+    captured: &FrontmatterCapture,
+    evidence: &mut SourceConfigEvidence,
     control: &OperationControl,
-) -> OperationControlResult<Cow<'a, str>> {
-    if blocks.is_empty() {
-        control.checkpoint()?;
-        return Ok(Cow::Borrowed(input));
+) -> OperationControlResult<()> {
+    let frontmatter = captured
+        .full
+        .zip(captured.body)
+        .and_then(|(full, local_body)| {
+            let full = source.try_map_span(SourceSpan::new(full.start, full.end))?;
+            let body = source.try_map_span(SourceSpan::new(local_body.start, local_body.end))?;
+            let insert = SourceSpan::new(body.end, body.end);
+            Some(FrontmatterSourceEvidence::new(
+                full,
+                body,
+                captured.indent.clone(),
+                captured.has_config,
+                captured.rewrite_safe,
+                captured.fields.clone(),
+                captured.insert_order.clone(),
+            ))
+            .map(|frontmatter| (frontmatter, insert))
+        });
+    if let Some((frontmatter, insert)) = frontmatter {
+        evidence.set_config_insert_span(insert);
+        evidence.set_frontmatter(frontmatter);
+    } else if captured.full.is_some() {
+        evidence.mark_rewrite_unsafe();
     }
 
-    let mut retained_bytes = input.len();
-    for (index, block) in blocks.iter().enumerate() {
-        if index.is_multiple_of(32) {
+    for (index, key) in captured.keys.iter().enumerate() {
+        if index.is_multiple_of(128) {
             control.checkpoint()?;
         }
-        retained_bytes = retained_bytes.saturating_sub(block.range.len());
-    }
-    let mut output = String::with_capacity(retained_bytes);
-    let mut checkpoints = ControlledScanCheckpoints::new(control)?;
-    let mut cursor = 0usize;
-    for block in blocks {
-        push_str_controlled(
-            &mut output,
-            &input[cursor..block.range.start],
-            &mut checkpoints,
-        )?;
-        cursor = block.range.end;
-    }
-    push_str_controlled(&mut output, &input[cursor..], &mut checkpoints)?;
-    checkpoints.finish()?;
-    Ok(Cow::Owned(output))
-}
-
-#[cfg(test)]
-pub(super) fn parse_directive_like_upstream(raw: &str) -> Result<Option<Directive>> {
-    let control = OperationControl::new();
-    parse_directive_like_upstream_controlled(
-        raw,
-        #[cfg(feature = "editor-facts")]
-        SourceConfigCaptureMode::Omit,
-        &control,
-    )
-    .expect("a private parse control cannot be cancelled")
-}
-
-#[cfg(test)]
-fn parse_directive_like_upstream_controlled(
-    raw: &str,
-    #[cfg(feature = "editor-facts")] capture_mode: SourceConfigCaptureMode,
-    control: &OperationControl,
-) -> OperationControlResult<Result<Option<Directive>>> {
-    let captured = parse_directive_like_upstream_capture_controlled(
-        raw,
-        #[cfg(feature = "editor-facts")]
-        capture_mode,
-        #[cfg(feature = "editor-facts")]
-        true,
-        control,
-    )?;
-    Ok(match captured.error {
-        Some(error) => Err(error),
-        None => Ok(captured.directive),
-    })
-}
-
-struct DirectiveParseCapture {
-    directive: Option<Directive>,
-    error: Option<Error>,
-}
-
-fn parse_directive_like_upstream_capture_controlled(
-    raw: &str,
-    #[cfg(feature = "editor-facts")] capture_mode: SourceConfigCaptureMode,
-    #[cfg(feature = "editor-facts")] parse_arguments: bool,
-    control: &OperationControl,
-) -> OperationControlResult<DirectiveParseCapture> {
-    // Incomplete authoring evidence only needs the directive keyword. Avoid walking an
-    // arbitrarily large unfinished argument merely to normalize quotes that will not be parsed.
-    #[cfg(feature = "editor-facts")]
-    if !parse_arguments {
-        return parse_directive_capture_controlled(raw, capture_mode, false, control);
-    }
-    let normalized = normalize_directive_quotes_controlled(raw, control)?;
-    parse_directive_capture_controlled(
-        normalized.as_ref(),
-        #[cfg(feature = "editor-facts")]
-        capture_mode,
-        #[cfg(feature = "editor-facts")]
-        true,
-        control,
-    )
-}
-
-#[cfg(test)]
-pub(super) fn detect_directives(input: &str) -> Result<Vec<Directive>> {
-    let control = OperationControl::new();
-    let blocks = directive_blocks_controlled(input, DirectiveRecoveryMode::Strict, &control)
-        .expect("a private parse control cannot be cancelled");
-    let mut directives = Vec::new();
-    for block in blocks {
-        if !block.complete {
+        let Some(local_span) = &key.span else {
             continue;
-        }
-        if let Some(directive) = parse_directive_like_upstream(&input[block.raw])? {
-            directives.push(directive);
-        }
+        };
+        let local_span = SourceSpan::new(local_span.start, local_span.end);
+        let exact_span = source.try_map_span(local_span);
+        let Some(span) = exact_span.or_else(|| source.try_map_enclosing_span(local_span)) else {
+            continue;
+        };
+        evidence.push_key(SourceConfigKeyEvidence::new(
+            SourceConfigOrigin::Frontmatter,
+            key.path.clone(),
+            span,
+            evidence.keys().len(),
+            key.rewrite_safe && exact_span.is_some(),
+        ));
     }
-    Ok(directives)
+    control.checkpoint()
 }
 
-fn parse_directive_capture_controlled(
-    raw: &str,
-    #[cfg(feature = "editor-facts")] capture_mode: SourceConfigCaptureMode,
-    #[cfg(feature = "editor-facts")] parse_arguments: bool,
-    control: &OperationControl,
-) -> OperationControlResult<DirectiveParseCapture> {
-    let mut checkpoints = ControlledScanCheckpoints::new(control)?;
-    #[cfg(not(feature = "editor-facts"))]
-    let parse_arguments = true;
-    let Some(ScannedDirective {
-        keyword: ty,
-        #[cfg(feature = "editor-facts")]
-        keyword_span,
-        argument,
-        ..
-    }) = scan_directive_body(raw, parse_arguments, &mut checkpoints)?
-    else {
-        checkpoints.finish()?;
-        return Ok(DirectiveParseCapture {
-            directive: None,
-            error: None,
-        });
-    };
-
-    #[cfg(feature = "editor-facts")]
-    if !parse_arguments {
-        checkpoints.finish()?;
-        return Ok(DirectiveParseCapture {
-            directive: Some(Directive {
-                ty,
-                args: None,
-                keyword_span,
-                config_keys: Vec::new(),
-                rewrite_safe: false,
-                appearance_owner: None,
-                arguments_complete: false,
-            }),
-            error: None,
-        });
-    }
-
-    #[cfg(feature = "editor-facts")]
-    let mut config_keys = Vec::new();
-    #[cfg(feature = "editor-facts")]
-    let mut rewrite_safe = true;
-    #[cfg(feature = "editor-facts")]
-    let mut arguments_complete = true;
-
-    let args = match argument {
-        Some(DirectiveArgument::Structured {
-            source: rest,
-            #[cfg(feature = "editor-facts")]
-                offset: rest_offset,
-            ..
-        }) => {
-            if rest.len() > MAX_DIRECTIVE_CONFIG_PARSE_BYTES {
-                return Ok(DirectiveParseCapture {
-                    directive: Some(Directive {
-                        ty,
-                        args: None,
-                        #[cfg(feature = "editor-facts")]
-                        keyword_span,
-                        #[cfg(feature = "editor-facts")]
-                        config_keys,
-                        #[cfg(feature = "editor-facts")]
-                        rewrite_safe: false,
-                        #[cfg(feature = "editor-facts")]
-                        appearance_owner: None,
-                        #[cfg(feature = "editor-facts")]
-                        arguments_complete: false,
-                    }),
-                    error: Some(Error::InvalidDirectiveJson {
-                        message: format!(
-                            "directive config exceeds the safe parser budget of {MAX_DIRECTIVE_CONFIG_PARSE_BYTES} bytes"
-                        ),
-                    }),
-                });
-            }
-            if config_nesting_exceeds_limit_controlled(rest, control)? {
-                return Ok(DirectiveParseCapture {
-                    directive: Some(Directive {
-                        ty,
-                        args: None,
-                        #[cfg(feature = "editor-facts")]
-                        keyword_span,
-                        #[cfg(feature = "editor-facts")]
-                        config_keys,
-                        #[cfg(feature = "editor-facts")]
-                        rewrite_safe: false,
-                        #[cfg(feature = "editor-facts")]
-                        appearance_owner: None,
-                        #[cfg(feature = "editor-facts")]
-                        arguments_complete: false,
-                    }),
-                    error: Some(Error::InvalidDirectiveJson {
-                        message: format!(
-                            "config nesting exceeds {MAX_CONFIG_NESTING_DEPTH} levels"
-                        ),
-                    }),
-                });
-            }
-            checkpoints.finish()?;
-            let captured = parse_directive_config_value_controlled(
-                rest,
-                #[cfg(feature = "editor-facts")]
-                capture_mode,
-                control,
-            )?;
-            #[cfg(feature = "editor-facts")]
-            {
-                arguments_complete = captured.value.is_some();
-            }
-            #[cfg(feature = "editor-facts")]
-            {
-                rewrite_safe &= captured.rewrite_safe;
-            }
-            #[cfg(feature = "editor-facts")]
-            {
-                config_keys = captured
-                    .keys
-                    .into_iter()
-                    .map(|mut key| {
-                        key.span = key.span.map(|span| {
-                            rest_offset.saturating_add(span.start)
-                                ..rest_offset.saturating_add(span.end)
-                        });
-                        key
-                    })
-                    .collect();
-            }
-            captured.value
-        }
-        Some(DirectiveArgument::Literal(value)) => {
-            #[cfg(feature = "editor-facts")]
-            {
-                rewrite_safe = false;
-            }
-            Some(Value::String(value))
-        }
-        None => None,
-    };
-
-    checkpoints.finish()?;
-    Ok(DirectiveParseCapture {
-        directive: Some(Directive {
-            ty,
-            args,
-            #[cfg(feature = "editor-facts")]
-            keyword_span,
-            #[cfg(feature = "editor-facts")]
-            config_keys,
-            #[cfg(feature = "editor-facts")]
-            rewrite_safe,
-            #[cfg(feature = "editor-facts")]
-            appearance_owner: None,
-            #[cfg(feature = "editor-facts")]
-            arguments_complete,
-        }),
-        error: None,
-    })
+pub(super) struct ProcessedFrontmatter {
+    pub(super) title: Option<String>,
+    pub(super) config: MermaidConfig,
 }
 
-struct DirectiveConfigCapture {
-    value: Option<Value>,
+pub(super) struct FrontmatterCapture {
+    pub(super) result: Result<ProcessedFrontmatter>,
+    pub(super) full: Option<FrontmatterByteSpan>,
     #[cfg(feature = "editor-facts")]
-    keys: Vec<source_config::Json5ConfigKeyEvidence>,
+    body: Option<FrontmatterByteSpan>,
+    #[cfg(feature = "editor-facts")]
+    indent: String,
+    #[cfg(feature = "editor-facts")]
+    pub(super) keys: Vec<YamlConfigKeyEvidence>,
+    #[cfg(feature = "editor-facts")]
+    has_config: bool,
     #[cfg(feature = "editor-facts")]
     rewrite_safe: bool,
+    #[cfg(feature = "editor-facts")]
+    fields: Option<MermaidConfig>,
+    #[cfg(feature = "editor-facts")]
+    insert_order: Option<FrontmatterInsertOrder>,
 }
 
-fn parse_directive_config_value_controlled(
+pub(super) fn process_frontmatter_controlled(
     input: &str,
     #[cfg(feature = "editor-facts")] capture_mode: SourceConfigCaptureMode,
     control: &OperationControl,
-) -> OperationControlResult<DirectiveConfigCapture> {
-    control.checkpoint()?;
-    // `json5` has no cancellation hook. The caller enforces a hard input and nesting bound, so
-    // this is a bounded atomic parser region rather than an unbounded cancellation gap.
-    let captured = {
-        #[cfg(feature = "editor-facts")]
-        {
-            if capture_mode.collects() {
-                let captured = source_config::parse_json5_config(input);
-                DirectiveConfigCapture {
-                    value: captured.value,
-                    keys: captured.keys,
-                    #[cfg(feature = "editor-facts")]
-                    rewrite_safe: captured.rewrite_safe,
-                }
-            } else {
-                let value = crate::source_json::parse_json5_value(input);
-                DirectiveConfigCapture {
-                    #[cfg(feature = "editor-facts")]
-                    rewrite_safe: value.is_some(),
-                    value,
-                    keys: Vec::new(),
-                }
-            }
-        }
-        #[cfg(not(feature = "editor-facts"))]
-        {
-            DirectiveConfigCapture {
-                value: crate::source_json::parse_json5_value(input),
-            }
+) -> OperationControlResult<FrontmatterCapture> {
+    #[cfg(not(feature = "editor-facts"))]
+    let decoded = decode_frontmatter_controlled(input, control)?;
+    #[cfg(feature = "editor-facts")]
+    let decoded = if capture_mode.collects() {
+        decode_frontmatter_with_evidence_controlled(input, control)?
+    } else {
+        decode_frontmatter_controlled(input, control)?
+    };
+    let Some(decoded) = decoded else {
+        return Ok(FrontmatterCapture {
+            result: Ok(ProcessedFrontmatter {
+                title: None,
+                config: MermaidConfig::empty_object(),
+            }),
+            full: None,
+            #[cfg(feature = "editor-facts")]
+            body: None,
+            #[cfg(feature = "editor-facts")]
+            indent: String::new(),
+            #[cfg(feature = "editor-facts")]
+            keys: Vec::new(),
+            #[cfg(feature = "editor-facts")]
+            has_config: false,
+            #[cfg(feature = "editor-facts")]
+            rewrite_safe: true,
+            #[cfg(feature = "editor-facts")]
+            fields: None,
+            #[cfg(feature = "editor-facts")]
+            insert_order: None,
+        });
+    };
+    let parsed = match decoded.result {
+        Ok(parsed) => parsed,
+        Err(message) => {
+            return Ok(FrontmatterCapture {
+                result: Err(Error::InvalidFrontMatterYaml { message }),
+                full: Some(decoded.full),
+                #[cfg(feature = "editor-facts")]
+                body: Some(decoded.body),
+                #[cfg(feature = "editor-facts")]
+                indent: decoded.indent.to_string(),
+                #[cfg(feature = "editor-facts")]
+                has_config: decoded
+                    .keys
+                    .iter()
+                    .any(|key| key.path.first() == Some("config")),
+                #[cfg(feature = "editor-facts")]
+                keys: decoded.keys,
+                #[cfg(feature = "editor-facts")]
+                rewrite_safe: false,
+                #[cfg(feature = "editor-facts")]
+                fields: None,
+                #[cfg(feature = "editor-facts")]
+                insert_order: None,
+            });
         }
     };
-    if let Err(cancelled) = control.checkpoint() {
-        if let Some(value) = captured.value {
-            crate::json_value::drop_value_nonrecursive(value);
-        }
-        return Err(cancelled);
+    #[cfg(feature = "editor-facts")]
+    let insert_order = decoded.insert_order.and_then(|order| {
+        FrontmatterInsertOrder::from_yaml_capture(order, parsed.display_mode.as_deref())
+    });
+
+    let mut config = MermaidConfig::empty_object();
+    merge_top_level_frontmatter_diagram_configs(&parsed.fields, &mut config);
+    if let Some(v) = parsed.config() {
+        config.deep_merge(v);
     }
-    Ok(captured)
+    crate::config::mirror_legacy_font_family_into_theme_variables(&mut config);
+    if let Some(dm) = parsed.display_mode {
+        config.set_value("gantt.displayMode", Value::String(dm));
+    }
+
+    #[cfg(feature = "editor-facts")]
+    let has_config = parsed.fields.contains_key("config");
+    #[cfg(feature = "editor-facts")]
+    let fields = if capture_mode.collects() && has_config && decoded.rewrite_safe {
+        Some(MermaidConfig::from_value(Value::Object(parsed.fields)))
+    } else {
+        crate::json_value::drop_value_nonrecursive(Value::Object(parsed.fields));
+        None
+    };
+    #[cfg(not(feature = "editor-facts"))]
+    crate::json_value::drop_value_nonrecursive(Value::Object(parsed.fields));
+    control.checkpoint()?;
+    Ok(FrontmatterCapture {
+        result: Ok(ProcessedFrontmatter {
+            title: parsed.title,
+            config,
+        }),
+        full: Some(decoded.full),
+        #[cfg(feature = "editor-facts")]
+        body: Some(decoded.body),
+        #[cfg(feature = "editor-facts")]
+        indent: decoded.indent.to_string(),
+        #[cfg(feature = "editor-facts")]
+        keys: decoded.keys,
+        #[cfg(feature = "editor-facts")]
+        has_config,
+        #[cfg(feature = "editor-facts")]
+        rewrite_safe: decoded.rewrite_safe,
+        #[cfg(feature = "editor-facts")]
+        fields,
+        #[cfg(feature = "editor-facts")]
+        insert_order,
+    })
+}
+
+fn merge_top_level_frontmatter_diagram_configs(
+    parsed_obj: &serde_json::Map<String, Value>,
+    config: &mut MermaidConfig,
+) {
+    // Mermaid upstream only consumes `config`, but users commonly read docs examples as allowing
+    // diagram config namespaces at the YAML root. Keep this compatibility narrow and explicit.
+    for &(key, namespace) in frontmatter_config_routes() {
+        if let Some(value) = parsed_obj.get(key) {
+            config.set_value(
+                namespace,
+                crate::json_value::clone_value_nonrecursive(value),
+            );
+        }
+    }
 }

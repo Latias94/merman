@@ -1,12 +1,32 @@
 //! Controlled lexical depth scans for Mermaid configuration.
 
 use merman_model::OperationControlResult;
+#[cfg(feature = "directive-config")]
+use merman_model::{MAX_DIAGRAM_NESTING_DEPTH, OperationControl};
 
 use super::controlled::{
     ControlledScanCheckpoints, find_newline_controlled, trim_start_whitespace_controlled,
     trim_whitespace_bounds_controlled,
 };
 use super::langium::is_ecmascript_line_terminator;
+
+#[cfg(feature = "directive-config")]
+pub(crate) fn config_nesting_exceeds_limit_controlled(
+    text: &str,
+    control: &OperationControl,
+) -> OperationControlResult<bool> {
+    let mut checkpoints = ControlledScanCheckpoints::new(control)?;
+    if max_flow_collection_depth_controlled::<false>(text, &mut checkpoints)?
+        > MAX_DIAGRAM_NESTING_DEPTH
+    {
+        checkpoints.finish()?;
+        return Ok(true);
+    }
+    let exceeds =
+        max_yaml_indent_depth_controlled(text, &mut checkpoints)? > MAX_DIAGRAM_NESTING_DEPTH;
+    checkpoints.finish()?;
+    Ok(exceeds)
+}
 
 /// Counts flow collection nesting, optionally skipping JSON5 comments.
 pub fn max_flow_collection_depth_controlled<const JSON5_COMMENTS: bool>(
@@ -150,5 +170,65 @@ fn yaml_inline_sequence_indicator_count_controlled(
         count += 1;
         let trimmed_start = trim_start_whitespace_controlled(after_dash, checkpoints)?;
         text = &after_dash[trimmed_start..];
+    }
+}
+
+#[cfg(all(test, feature = "directive-config"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn config_nesting_counts_inline_yaml_sequence_indicators() {
+        let yaml = format!(
+            "config:\n  {}\"leaf\"",
+            "- ".repeat(MAX_DIAGRAM_NESTING_DEPTH + 1)
+        );
+        assert!(config_nesting_exceeds_limit_controlled(&yaml, &OperationControl::new()).unwrap());
+    }
+
+    #[test]
+    fn controlled_config_nesting_preserves_existing_depth_semantics() {
+        let deep_flow = "[".repeat(MAX_DIAGRAM_NESTING_DEPTH + 1);
+        for (yaml, expected) in [
+            ("title: '[not, nesting]'\n", false),
+            ("config:\r\n  theme: dark\r\n", false),
+            ("# [ignored]\nconfig: { theme: dark }\n", false),
+            (deep_flow.as_str(), true),
+        ] {
+            let controlled =
+                config_nesting_exceeds_limit_controlled(yaml, &OperationControl::new())
+                    .expect("an active parse control must not cancel");
+
+            assert_eq!(controlled, expected, "yaml: {yaml:?}");
+        }
+    }
+
+    #[test]
+    fn config_nesting_flow_scan_cancels_deterministically_on_a_long_line() {
+        let yaml = format!("title: \"{}\"", "x".repeat(16 * 1024));
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(2);
+
+        assert!(config_nesting_exceeds_limit_controlled(&yaml, &control).is_err());
+    }
+
+    #[test]
+    fn config_nesting_indent_scan_cancels_deterministically_on_a_long_line() {
+        let yaml = format!("{}key: value", " ".repeat(16 * 1024));
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(2);
+        let mut checkpoints = ControlledScanCheckpoints::new(&control).unwrap();
+
+        assert!(max_yaml_indent_depth_controlled(&yaml, &mut checkpoints).is_err());
+    }
+
+    #[test]
+    fn config_nesting_trim_cancels_deterministically_on_long_whitespace() {
+        let line = format!("{}value{}", " ".repeat(16 * 1024), " ".repeat(16 * 1024));
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(2);
+        let mut checkpoints = ControlledScanCheckpoints::new(&control).unwrap();
+
+        assert!(trim_whitespace_bounds_controlled(&line, &mut checkpoints).is_err());
     }
 }

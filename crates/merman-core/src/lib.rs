@@ -69,12 +69,10 @@ pub mod presentation;
 mod resource_tests;
 mod runtime;
 pub mod semantic;
-mod source_json;
 mod source_span;
 #[cfg(feature = "presentation")]
 mod theme;
 mod utils;
-use merman_core_preprocess::yaml as yaml_config;
 
 #[cfg(feature = "presentation")]
 pub use detect::{ConfigDetectorFn, Detector, DetectorConfig, DetectorRegistry};
@@ -132,6 +130,7 @@ pub(crate) use presentation::engine::parse_pipeline;
 #[cfg(feature = "presentation")]
 pub use presentation::{MermaidEngine, SourcePresentationMetadata};
 
+#[cfg(test)]
 use merman_model::MAX_DIAGRAM_NESTING_DEPTH;
 
 /// Returns Mermaid theme names supported by the pinned baseline.

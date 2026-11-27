@@ -17,6 +17,11 @@ pub mod text;
 pub mod yaml;
 
 #[cfg(feature = "yaml-editor")]
+mod config_order;
+#[cfg(feature = "yaml-editor")]
+#[doc(hidden)]
+pub use config_order::{JSON_ESCAPE_EXPANSION, MAX_CONFIG_REWRITE_DEPTH};
+#[cfg(feature = "yaml-editor")]
 mod source_config_path;
 #[cfg(feature = "yaml-editor")]
 #[doc(hidden)]

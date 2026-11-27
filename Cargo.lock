@@ -2414,7 +2414,6 @@ version = "0.11.0"
 dependencies = [
  "cssparser",
  "futures",
- "json5",
  "merman-core-flow",
  "merman-core-graph",
  "merman-core-preprocess",
@@ -2460,7 +2459,9 @@ name = "merman-core-preprocess"
 version = "0.11.0"
 dependencies = [
  "granit-parser",
+ "json5",
  "merman-model",
+ "serde",
  "serde_json",
 ]
 
