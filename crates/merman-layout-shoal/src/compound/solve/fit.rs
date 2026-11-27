@@ -14,6 +14,11 @@ pub(super) struct Fit {
     vertical_slack: f64,
 }
 
+pub(super) struct TitlePlacement {
+    pub rect: Rect,
+    pub reserve_at: Option<TitlePosition>,
+}
+
 pub(super) fn title_side(position: TitlePosition) -> Side {
     match position {
         TitlePosition::TopAuto
@@ -103,6 +108,7 @@ impl Fit {
             let End::Border { flat, hint, .. } = wire.ends[end] else {
                 unreachable!()
             };
+            let manual_inner = flat.is_none() || wire.uses_caption_band();
             let preferred = flat.map_or(inner.at, |node| nodes[node.0 as usize].center());
             rightmost[index] = rightmost[index]
                 .max(cross(side, inner.at))
@@ -141,7 +147,7 @@ impl Fit {
                 if !adaptive_top_title || protect || markers[end].length > 0.0 {
                     before_title = before_title.max(markers[end].length + gap);
                 }
-                let shaft = if (flat.is_none() || wire.uses_caption_band()) && inner.side == side {
+                let shaft = if manual_inner && inner.side == side {
                     markers[1 - end].length
                 } else {
                     0.0
@@ -165,7 +171,7 @@ impl Fit {
                 let opposite = across(side, content) - at;
                 inset[far as usize] = inset[far as usize].max(corner - opposite);
             }
-            if (flat.is_none() || wire.uses_caption_band()) && markers[1 - end].width > 0.0 {
+            if manual_inner && markers[1 - end].width > 0.0 {
                 let radius = markers[1 - end].width / 2.0 + spacing.edge;
                 let at = cross(inner.side, inner.at);
                 let (near, far) = if inner.side.axis() == Axis::Vertical {
@@ -177,7 +183,7 @@ impl Fit {
                 let opposite = across(inner.side, content) - at;
                 inset[far as usize] = inset[far as usize].max(radius - opposite);
             }
-            if flat.is_none() {
+            if manual_inner {
                 let inner_side = inner.side as usize;
                 let to_body_edge = match inner.side {
                     Side::Top => inner.at.y,
@@ -191,6 +197,8 @@ impl Fit {
                     after_title =
                         after_title.max(markers[1 - end].length + spacing.edge - to_body_edge);
                 }
+            }
+            if flat.is_none() {
                 inset[index] =
                     inset[index].max(markers[0].length + markers[1].length + 2.0 * spacing.edge);
                 let projected = face(body, side, cross(side, inner.at));
@@ -415,7 +423,7 @@ impl Fit {
         wires: &[Wire],
         ports: &[Point],
         work: &mut Work<'_>,
-    ) -> LayoutResult<Option<Rect>> {
+    ) -> LayoutResult<Option<TitlePlacement>> {
         let Some((group, title)) = group.and_then(|group| Some((group, group.title?))) else {
             return Ok(None);
         };
@@ -429,37 +437,67 @@ impl Fit {
         } else {
             self.size.height - self.title_drop
         };
+        let mut reserve_at = None;
         let x = match group.title_position {
             TitlePosition::TopLeft | TitlePosition::BottomLeft => left,
             TitlePosition::TopRight | TitlePosition::BottomRight => right,
-            TitlePosition::TopAuto if self.adaptive_top_title => {
-                let candidates = [left, right, center];
-                let mut scores = [(0usize, 0.0_f64); 3];
+            TitlePosition::TopAuto
+                if self.adaptive_top_title && title.width > 0.0 && title.height > 0.0 =>
+            {
+                let candidates = [
+                    (left, TitlePosition::TopLeft),
+                    (right, TitlePosition::TopRight),
+                    (center, TitlePosition::TopCenter),
+                ];
+                let mut scores = [(0usize, 0usize, 0.0_f64); 3];
                 for wire in wires {
                     work.visit(1)?;
                     let Some((end, slot, Side::Top)) = wire.border() else {
                         continue;
                     };
+                    let fixed = matches!(
+                        wire.ends[end],
+                        End::Border {
+                            hint: PortSideHint::FixedOffset { .. },
+                            ..
+                        }
+                    );
                     let clearance =
                         title.width / 2.0 + wire.title_clearance(end, self.title_margin());
-                    for (candidate, (hits, shift)) in candidates.into_iter().zip(&mut scores) {
+                    for ((candidate, _), (fixed_hits, movable_hits, shift)) in
+                        candidates.into_iter().zip(&mut scores)
+                    {
                         let shortfall = clearance - (ports[slot].x - candidate).abs();
                         if shortfall > 0.0 {
-                            *hits += 1;
+                            if fixed {
+                                *fixed_hits += 1;
+                            } else {
+                                *movable_hits += 1;
+                            }
                             *shift = finite(*shift + shortfall)?;
                         }
                     }
                 }
-                // Keep anchor order for clear candidates and equal fallback scores.
-                candidates
+                let ((x, position), (_, movable_hits, _)) = candidates
                     .into_iter()
                     .zip(scores)
-                    .min_by(|(_, a), (_, b)| a.0.cmp(&b.0).then_with(|| a.1.total_cmp(&b.1)))
-                    .expect("three title anchors")
-                    .0
+                    .min_by(|(_, a), (_, b)| {
+                        a.0.cmp(&b.0)
+                            .then_with(|| a.1.cmp(&b.1))
+                            .then_with(|| a.2.total_cmp(&b.2))
+                    })
+                    .expect("three title anchors");
+                // Nested lanes already reserve room to move their automatic title ports.
+                if movable_hits > 0 && self.protected_title_margin == 0.0 {
+                    reserve_at = Some(position);
+                }
+                x
             }
             _ => center,
         };
-        Ok(Some(centered(Point { x, y }, title)))
+        Ok(Some(TitlePlacement {
+            rect: centered(Point { x, y }, title),
+            reserve_at,
+        }))
     }
 }

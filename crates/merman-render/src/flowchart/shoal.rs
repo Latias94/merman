@@ -10,8 +10,7 @@ use super::{
 use crate::graph_layout::axis_clearance::AxisClearance;
 use crate::graph_layout::contour::ShapePortProfile;
 use crate::graph_layout::ir::{
-    Axis, Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredNode, RoutingStyle, Side, Size,
-    SolvedGraph,
+    Axis, Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredNode, Side, Size, SolvedGraph,
 };
 use crate::graph_layout::{
     AxisRoutes, FlowchartSvgEdgeGeometry, RouteContract, RouteTopology, placement,
@@ -60,7 +59,11 @@ pub(crate) fn layout(
 ) -> Result<FlowchartLayout> {
     let mut work = OperationLayoutWorkControl::new(execution.work_meter());
     work.charge_adapter(0)?;
-    let view = FlowchartRenderModelRef::new(model, render_context);
+    let config_view = FlowchartConfigView::new(config);
+    let view = FlowchartRenderModelRef::new(model, render_context).with_shoal_svg_text(
+        config_view.node_html_labels(),
+        config_view.effective_html_labels(),
+    );
     let measurement = FlowchartMeasurement::new(
         view,
         class_defs,
@@ -169,11 +172,8 @@ fn measure(
         .flatten();
     let mut graph = MeasuredGraph {
         direction,
-        routing: match curve {
-            "rounded" | "step" | "stepBefore" | "stepAfter" => RoutingStyle::Orthogonal,
-            "linear" => RoutingStyle::Polyline,
-            _ => RoutingStyle::Curved,
-        },
+        routing: crate::graph_layout::route_paint::RouteStyle::from_interpolate(curve, 0.0)
+            .routing_style(),
         node_spacing: measurement.settings.nodesep,
         rank_spacing: measurement.settings.ranksep,
         component_spacing: measurement.settings.nodesep,

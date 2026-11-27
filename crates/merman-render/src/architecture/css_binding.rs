@@ -16,6 +16,22 @@ pub(crate) struct ArchitectureCssBinding {
 }
 
 impl ArchitectureCssBinding {
+    pub(crate) fn edge_stroke_outset(&self) -> f64 {
+        use crate::mermaid_style::{CssFontSizeContext, resolve_mermaid_font_size_px};
+
+        let base = CssFontSizeContext::uniform(16.0);
+        let width = self.edge_width.trim();
+        let resolved = if width.contains('%') {
+            // SVG resolves stroke percentages against its viewport, not its font.
+            None
+        } else {
+            let font_size =
+                resolve_mermaid_font_size_px(self.common.font_size_css(), base).unwrap_or(16.0);
+            resolve_mermaid_font_size_px(width, CssFontSizeContext::new(font_size, 16.0))
+        };
+        resolved.unwrap_or(3.0) / 2.0
+    }
+
     pub(super) fn apply_native(
         &mut self,
         theme: &crate::theme::FamilyTheme,

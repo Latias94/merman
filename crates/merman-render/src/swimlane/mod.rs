@@ -22,7 +22,7 @@ mod shoal;
     feature = "layout-shoal",
     any(feature = "diagram-flowchart", feature = "diagram-swimlane")
 ))]
-pub(crate) use shoal::SwimlaneShoal;
+pub(crate) use shoal::{ShellKind, SwimlaneShoal};
 mod sugiyama;
 #[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
 mod tests;
@@ -116,6 +116,37 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
         config.node_gap *= spacing;
         config.layer_gap *= spacing;
     }
+    let config_curve = FlowchartConfigView::new(effective_config.as_value()).render_curve();
+    let source_curve = model
+        .edge_defaults
+        .as_ref()
+        .and_then(|defaults| defaults.interpolate.as_deref())
+        .filter(|curve| !curve.is_empty());
+    let default_curve = source_curve.or(config_curve).unwrap_or("basis");
+    #[cfg(feature = "layout-shoal")]
+    let default_curve = if canonical {
+        execution
+            .native_family_theme()
+            .and_then(|theme| {
+                crate::flowchart::native_theme::default_curve(
+                    theme.form.edge_style,
+                    model,
+                    effective_config,
+                )
+            })
+            .unwrap_or_else(|| {
+                if default_curve == "basis"
+                    && source_curve.is_none()
+                    && !effective_config.explicit_config_owns_path("flowchart.curve")
+                {
+                    "rounded"
+                } else {
+                    default_curve
+                }
+            })
+    } else {
+        default_curve
+    };
     let mut working = prepare::prepare(
         &render_model,
         (&visible_edges, &transport_plan),
@@ -133,7 +164,11 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
             &render_model,
             &visible_edges,
             effective_config,
-            config,
+            (
+                config,
+                crate::graph_layout::route_paint::RouteStyle::from_interpolate(default_curve, 0.0)
+                    .routing_style(),
+            ),
             execution,
             svg_label_sidecar,
         )?)
@@ -152,18 +187,6 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
         );
     }
 
-    // Mermaid's swimlane core only normalizes the implicit `basis` curve to
-    // `rounded`; an explicit edge/default/config curve remains authoritative.
-    // Resolve the same precedence here before the layout artifact is consumed
-    // by the SVG renderer.
-    let config_curve = FlowchartConfigView::new(effective_config.as_value()).render_curve();
-    let default_curve = model
-        .edge_defaults
-        .as_ref()
-        .and_then(|defaults| defaults.interpolate.as_deref())
-        .filter(|curve| !curve.is_empty())
-        .or(config_curve)
-        .unwrap_or("basis");
     if working.original_edges.len() != visible_edges.len() {
         return Err(crate::Error::InvalidModel {
             message: format!(
@@ -195,6 +218,11 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
             .as_deref()
             .filter(|curve| !curve.is_empty())
             .unwrap_or(default_curve);
+        let curve = if !canonical && curve == "basis" {
+            "rounded"
+        } else {
+            curve
+        };
         curve_by_id.insert(edge.id.as_str(), curve);
     }
     let mut layout = project_layout(&working, &curve_by_id);
@@ -292,15 +320,11 @@ fn project_layout(
             points: edge.points.clone(),
             label_node_id: edge.label_node_id.clone(),
             reversed_for_layout: edge.reversed_for_layout,
-            curve: match curve_by_id
+            curve: curve_by_id
                 .get(edge.id.as_str())
                 .copied()
-                .unwrap_or("basis")
-            {
-                "basis" => "rounded",
-                curve => curve,
-            }
-            .to_string(),
+                .unwrap_or("rounded")
+                .to_owned(),
         })
         .collect();
 

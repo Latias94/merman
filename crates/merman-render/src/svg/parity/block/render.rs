@@ -6,9 +6,7 @@ use crate::block::{
 use crate::model::{LayoutEdge, LayoutPoint};
 use crate::svg::BaseEdgeMarkerKind;
 use crate::svg::parity::roughjs_common::closed_path_d_from_points;
-use crate::svg::parity::roughjs_common::paths::{
-    roughjs_hand_drawn_stroke_path_for_svg_path, roughjs_paths_for_svg_path,
-};
+use crate::svg::parity::roughjs_common::paths::roughjs_paths_for_svg_path;
 use merman_theme_contract::v2::EdgeStyle;
 
 // Block diagram SVG renderer implementation (split from parity.rs).
@@ -364,7 +362,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         }
         for class_def in &theme.class_definitions {
             options.checkpoint_emit()?;
-            let class = class_def.id.as_str();
+            let class = merman_render_core::svg_css::escape_css_identifier(&class_def.id);
             let mut shape_declarations = declarations(&class_def.shape);
             if let Some((key, value)) = shape_declarations.next() {
                 let _ = write!(out, r#"#{diagram_id} .{class}>*{{"#);
@@ -920,7 +918,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             continue;
         };
         let fallback_points;
-        let mut fallback_d;
+        let fallback_d;
         let (d, points, marker_refs) = 'geometry: {
             if let Some(route) = edge_routes.orthogonal_route(edge_index) {
                 let b = &route.bounds;
@@ -941,17 +939,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                 }
             };
             fallback_d = d;
-            if edge_style == Some(EdgeStyle::Sketch)
-                && fallback_points.rendered_points.len() >= 2
-                && let Some(rough) = roughjs_hand_drawn_stroke_path_for_svg_path(
-                    &fallback_d,
-                    0.3,
-                    options.work_meter(),
-                    &hand_drawn_seed,
-                )
-            {
-                fallback_d = rough;
-            }
             if let Some(b) = bounds {
                 union_block_bounds(&mut content_bounds, (b.min_x, b.min_y, b.max_x, b.max_y));
             }
@@ -964,6 +951,23 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                 ],
             )
         };
+        let rough_d = if edge_style == Some(EdgeStyle::Sketch) && points.len() >= 2 {
+            Some(super::super::canonical_rough::constrained_rough_edge_path(
+                d,
+                Default::default(),
+                options.work_meter(),
+                &hand_drawn_seed,
+            )?)
+        } else {
+            None
+        };
+        if let Some(bounds) = rough_d.as_deref().and_then(svg_path_bounds_from_d) {
+            union_block_bounds(
+                &mut content_bounds,
+                (bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y),
+            );
+        }
+        let d = rough_d.as_deref().unwrap_or(d);
         has_rendered_edge |= !points.is_empty();
         let data_points =
             base64::engine::general_purpose::STANDARD.encode(json_stringify_points(points));

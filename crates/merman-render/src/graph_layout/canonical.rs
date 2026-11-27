@@ -13,6 +13,20 @@ use merman_render_core::graph_layout::axis_clearance::AxisClearance;
 use rustc_hash::FxHashMap;
 use std::ops::Range;
 
+#[cfg(any(
+    feature = "diagram-class",
+    feature = "diagram-er",
+    feature = "diagram-requirement",
+    feature = "diagram-state"
+))]
+pub(crate) fn theme_routing_style(
+    edge_style: Option<merman_theme_contract::v2::EdgeStyle>,
+) -> super::ir::RoutingStyle {
+    edge_style
+        .map_or(RouteStyle::Curved, RouteStyle::from_theme)
+        .routing_style()
+}
+
 #[derive(Debug)]
 struct AxisPath {
     occurrence: usize,
@@ -32,6 +46,14 @@ pub(crate) struct CanonicalRoutes {
     stitches: Vec<BorderStitch>,
     stitch_contacts: Vec<RoutePoint>,
     clearance: AxisClearance,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum CaptionClearance {
+    Avoid,
+    /// The family clips the painted shafts behind captions after route painting.
+    #[cfg(feature = "diagram-c4")]
+    Cutout,
 }
 
 pub(crate) struct CanonicalPaintedEdge<Points = Vec<LayoutPoint>> {
@@ -101,6 +123,7 @@ impl CanonicalRoutes {
         profiles: &[ShapePortProfile],
         group_corner_radius: impl Fn(u32) -> f64,
         edge_ids: impl ExactSizeIterator<Item = &'id str>,
+        captions: CaptionClearance,
         work: &mut OperationLayoutWorkControl,
     ) -> Result<Self> {
         let invalid = |message: &str| Error::InvalidModel {
@@ -204,7 +227,7 @@ impl CanonicalRoutes {
             paths,
             stitches: solved.border_stitches.clone(),
             stitch_contacts,
-            clearance: obstacles(solved, work)?,
+            clearance: obstacles(solved, captions, work)?,
         })
     }
 
@@ -384,10 +407,9 @@ impl CanonicalRoutes {
             route_paint::marker_lead(contacts.0, route.sides.0, route.markers.0);
         let (end_ref, end_lead) =
             route_paint::marker_lead(contacts.1, route.sides.1, route.markers.1);
-        let clearance = if !matches!(style, RouteStyle::Curved | RouteStyle::Rounded(_))
-            || (style == RouteStyle::Curved
-                && route.corridor_clearance > stroke_outset
-                && stitches.is_empty())
+        let clearance = if style == RouteStyle::Curved
+            && route.corridor_clearance > stroke_outset
+            && stitches.is_empty()
         {
             None
         } else {
@@ -426,7 +448,11 @@ fn label_bounds(label: &LayoutLabel) -> kurbo::Rect {
     kurbo::Rect::from_center_size((label.x, label.y), (label.width, label.height))
 }
 
-fn obstacles(solved: &SolvedGraph, work: &mut OperationLayoutWorkControl) -> Result<AxisClearance> {
+fn obstacles(
+    solved: &SolvedGraph,
+    captions: CaptionClearance,
+    work: &mut OperationLayoutWorkControl,
+) -> Result<AxisClearance> {
     if solved.edges.is_empty() {
         return Ok(AxisClearance::default());
     }
@@ -441,12 +467,14 @@ fn obstacles(solved: &SolvedGraph, work: &mut OperationLayoutWorkControl) -> Res
             entries.push((label_bounds(title), ObstacleOwner::GroupTitle(index as u32)));
         }
     }
-    for (index, edge) in solved.edges.iter().enumerate() {
-        for label in [&edge.label, &edge.start_label, &edge.end_label]
-            .into_iter()
-            .flatten()
-        {
-            entries.push((label_bounds(label), ObstacleOwner::EdgeLabel(index)));
+    if matches!(captions, CaptionClearance::Avoid) {
+        for (index, edge) in solved.edges.iter().enumerate() {
+            for label in [&edge.label, &edge.start_label, &edge.end_label]
+                .into_iter()
+                .flatten()
+            {
+                entries.push((label_bounds(label), ObstacleOwner::EdgeLabel(index)));
+            }
         }
     }
     let levels = entries

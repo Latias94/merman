@@ -133,16 +133,23 @@ impl StateBarb {
 #[cfg(feature = "layout-shoal")]
 pub(crate) fn state_canonical_marker(
     arrow_type_end: &str,
-    neo: bool,
+    compatibility: &crate::state::StateCompatibilityPlan,
 ) -> crate::graph_layout::Marker {
     if !matches!(arrow_type_end.trim(), "arrow_barb" | "arrow_barb_neo") {
         return Default::default();
     }
-    let barb = StateBarb::for_look(neo);
+    let barb = StateBarb::for_look(compatibility.is_neo());
+    let (rear, width) =
+        if compatibility.native_marker == merman_theme_contract::v2::MarkerStyle::Classic {
+            (f64::from(barb.rear_x), 2.0 * f64::from(barb.half_width))
+        } else {
+            // The shared arrow occupies a 10 × 10 viewport, translated by (9, 2).
+            (8.5, 11.0)
+        };
     crate::graph_layout::Marker {
         trim: f64::from(STATE_BARB_TIP_X - barb.ref_x),
-        depth: f64::from(barb.ref_x - barb.rear_x),
-        width: 2.0 * f64::from(barb.half_width),
+        depth: f64::from(barb.ref_x) - rear,
+        width,
     }
 }
 
@@ -168,11 +175,22 @@ where
         (std::borrow::Cow::Owned(barb.glyph_path()), "")
     };
     let ref_x = barb.ref_x;
+    let viewport = if compatibility.native_marker == merman_theme_contract::v2::MarkerStyle::Classic
+    {
+        ""
+    } else {
+        r#" overflow="visible""#
+    };
+    let svg_units = if viewport.is_empty() {
+        "strokeWidth"
+    } else {
+        "userSpaceOnUse"
+    };
 
     if compatibility.is_neo() {
         let _ = write!(
             out,
-            r#"<defs><marker id="{}_stateDiagram-barbEnd" refX="{STATE_BARB_TIP_X}" refY="{STATE_BARB_CENTER_Y}" markerWidth="{STATE_BARB_VIEWPORT_WIDTH}" markerHeight="{STATE_BARB_VIEWPORT_HEIGHT}" markerUnits="strokeWidth" orient="auto"><path d="{glyph_path}"{glyph_attributes}/></marker></defs><defs><marker id="{}_stateDiagram-barbEnd-margin" refX="{ref_x}" refY="{STATE_BARB_CENTER_Y}" markerWidth="{STATE_BARB_VIEWPORT_WIDTH}" markerHeight="{STATE_BARB_VIEWPORT_HEIGHT}" markerUnits="userSpaceOnUse" orient="auto"><path d="{glyph_path}" fill="{}"{glyph_attributes}/></marker></defs>"#,
+            r#"<defs><marker id="{}_stateDiagram-barbEnd" refX="{STATE_BARB_TIP_X}" refY="{STATE_BARB_CENTER_Y}" markerWidth="{STATE_BARB_VIEWPORT_WIDTH}" markerHeight="{STATE_BARB_VIEWPORT_HEIGHT}" markerUnits="{svg_units}" orient="auto"{viewport}><path d="{glyph_path}"{glyph_attributes}/></marker></defs><defs><marker id="{}_stateDiagram-barbEnd-margin" refX="{ref_x}" refY="{STATE_BARB_CENTER_Y}" markerWidth="{STATE_BARB_VIEWPORT_WIDTH}" markerHeight="{STATE_BARB_VIEWPORT_HEIGHT}" markerUnits="userSpaceOnUse" orient="auto"{viewport}><path d="{glyph_path}" fill="{}"{glyph_attributes}/></marker></defs>"#,
             escape_attr_display(diagram_id),
             escape_attr_display(diagram_id),
             escape_xml(transition_color)
@@ -180,7 +198,7 @@ where
     } else {
         let _ = write!(
             out,
-            r#"<defs><marker id="{}_stateDiagram-barbEnd" refX="{ref_x}" refY="{STATE_BARB_CENTER_Y}" markerWidth="{STATE_BARB_VIEWPORT_WIDTH}" markerHeight="{STATE_BARB_VIEWPORT_HEIGHT}" markerUnits="userSpaceOnUse" orient="auto"><path d="{glyph_path}"{glyph_attributes}/></marker></defs>"#,
+            r#"<defs><marker id="{}_stateDiagram-barbEnd" refX="{ref_x}" refY="{STATE_BARB_CENTER_Y}" markerWidth="{STATE_BARB_VIEWPORT_WIDTH}" markerHeight="{STATE_BARB_VIEWPORT_HEIGHT}" markerUnits="userSpaceOnUse" orient="auto"{viewport}><path d="{glyph_path}"{glyph_attributes}/></marker></defs>"#,
             escape_attr_display(diagram_id)
         );
     }
@@ -229,11 +247,11 @@ fn write_state_class_declarations(
 fn write_state_class_rule(
     out: &mut impl SvgOutput,
     id: impl std::fmt::Display,
-    class_id: &str,
+    class: &str,
     selector: std::fmt::Arguments<'_>,
     styles: &[crate::state::StateCssDeclaration],
 ) -> crate::Result<()> {
-    if write!(out, "#{id} .{class_id}{selector}{{").is_err() {
+    if write!(out, "#{id} .{class}{selector}{{").is_err() {
         return out.checkpoint();
     }
     write_state_class_declarations(out, styles)?;
@@ -412,6 +430,12 @@ where
         r#"#{} defs [id$="-barbEnd"]{{fill:{};stroke:{};}}"#,
         id, transition_color, transition_color
     );
+    if theme.native_marker == merman_theme_contract::v2::MarkerStyle::Open {
+        let _ = write!(
+            &mut css,
+            r#"#{id} defs [id$="-barbEnd-margin"]{{stroke:{transition_color};}}"#,
+        );
+    }
     let _ = write!(
         &mut css,
         r#"#{} g.stateGroup text{{fill:{};stroke:none;font-size:10px;}}"#,
@@ -440,7 +464,9 @@ where
     let _ = write!(
         &mut css,
         r#"#{} .transition{{stroke:{};stroke-width:{};fill:none;}}"#,
-        id, transition_color, stroke_width
+        id,
+        transition_color,
+        theme.transition_width()
     );
     let _ = write!(
         &mut css,
@@ -751,19 +777,14 @@ where
     if style_plan.classes().next().is_some() {
         let html_labels = theme.html_labels();
         for sc in style_plan.classes() {
+            let class = merman_render_core::svg_css::escape_css_identifier(sc.id());
             if !sc.styles().is_empty() {
                 if html_labels {
+                    write_state_class_rule(&mut *css, id, &class, format_args!(">*"), sc.styles())?;
                     write_state_class_rule(
                         &mut *css,
                         id,
-                        sc.id(),
-                        format_args!(">*"),
-                        sc.styles(),
-                    )?;
-                    write_state_class_rule(
-                        &mut *css,
-                        id,
-                        sc.id(),
+                        &class,
                         format_args!(" span"),
                         sc.styles(),
                     )?;
@@ -772,7 +793,7 @@ where
                         write_state_class_rule(
                             &mut *css,
                             id,
-                            sc.id(),
+                            &class,
                             format_args!(" {element}"),
                             sc.styles(),
                         )?;
@@ -784,7 +805,7 @@ where
                 write_state_class_rule(
                     &mut *css,
                     id,
-                    sc.id(),
+                    &class,
                     format_args!(" tspan"),
                     sc.text_styles(),
                 )?;
@@ -813,7 +834,7 @@ pub(super) fn state_node_label_html_with_style(
 ) -> String {
     let style_attr = span_style
         .filter(|s| !s.is_empty())
-        .map(|s| format!(r#" style="{}""#, escape_xml_display(s)))
+        .map(|s| format!(r#" style="{}""#, escape_attr_display(s)))
         .unwrap_or_default();
     format!(
         r#"<span{} class="nodeLabel markdown-node-label">{}</span>"#,

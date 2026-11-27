@@ -163,11 +163,10 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
                     e,
                     kurbo::Vec2::new(ctx.content_tx, ctx.content_ty),
                     stroke_outset,
-                    match ctx.relation_theme.native_edge_curve() {
-                        Some("linear") => RouteStyle::Linear,
-                        Some("step") => RouteStyle::Step,
-                        _ => RouteStyle::Curved,
-                    },
+                    RouteStyle::from_interpolate(
+                        ctx.relation_theme.native_edge_curve().unwrap_or("basis"),
+                        0.0,
+                    ),
                     ctx.work_meter,
                     &mut paint_scratch,
                 )

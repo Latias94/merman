@@ -22,44 +22,49 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_diamond(
     let h = common.layout_node.height.max(1.0);
     let tx = -w / 2.0 + if common.centered_diamond { 0.0 } else { 0.5 };
     let ty = h / 2.0;
-
-    let rough_paths = if common.look_is_hand_drawn() {
+    if common.look_is_hand_drawn() {
         // RoughJS normalizes this path to a left-edge hachure start. `roughr` is start-point
         // sensitive for this diamond, so feed the same polygon from the left vertex to keep the
         // hand-drawn silhouette centered instead of visually skewing into a parallelogram.
         let path_data = diamond_path(w, h);
-        super::super::helpers::timed_node_roughjs(common.timing, details, || {
-            roughjs_hachure_paths_for_svg_path(
+        if let Some((fill_d, stroke_d)) =
+            super::super::helpers::timed_node_roughjs(common.timing, details, || {
+                roughjs_hachure_paths_for_svg_path(
+                    &path_data,
+                    common.stroke_width,
+                    common.stroke_dasharray,
+                    FLOWCHART_DIAMOND_HAND_DRAWN_FILL_WEIGHT,
+                    FLOWCHART_DIAMOND_HAND_DRAWN_HACHURE_GAP,
+                    FLOWCHART_DIAMOND_HAND_DRAWN_ROUGHNESS,
+                    common.work_meter,
+                    common.hand_drawn_seed,
+                )
+            })
+        {
+            let _ = write!(
+                out,
+                r#"<g transform="translate({},{})" style="{}">"#,
+                fmt(tx),
+                fmt(ty),
+                escape_attr(common.rough_group_style),
+            );
+            super::super::helpers::write_hand_drawn_hachure(
+                out,
+                common,
                 &path_data,
-                common.stroke_width,
-                common.stroke_dasharray,
-                FLOWCHART_DIAMOND_HAND_DRAWN_FILL_WEIGHT,
-                FLOWCHART_DIAMOND_HAND_DRAWN_HACHURE_GAP,
-                FLOWCHART_DIAMOND_HAND_DRAWN_ROUGHNESS,
-                common.work_meter,
-                common.hand_drawn_seed,
-            )
-        })
-    } else {
-        None
-    };
-
-    if let Some((fill_d, stroke_d)) = rough_paths {
-        let _ = write!(
-            out,
-            r#"<g transform="translate({},{})" style="{}"><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"#,
-            fmt(tx),
-            fmt(ty),
-            escape_attr(common.rough_group_style),
-            escape_attr(&fill_d),
-            escape_attr(common.fill_color),
-            fmt_display(FLOWCHART_DIAMOND_HAND_DRAWN_FILL_WEIGHT as f64),
-            escape_attr(&stroke_d),
-            escape_attr(common.stroke_color),
-            fmt_display(common.stroke_width as f64),
-            escape_attr(common.stroke_dasharray),
-        );
-        return;
+                &fill_d,
+                f64::from(FLOWCHART_DIAMOND_HAND_DRAWN_FILL_WEIGHT),
+            );
+            let _ = write!(
+                out,
+                r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"#,
+                escape_attr(&stroke_d),
+                escape_attr(common.stroke_color),
+                fmt_display(common.stroke_width as f64),
+                escape_attr(common.stroke_dasharray),
+            );
+            return;
+        }
     }
 
     let effect_style;
@@ -111,7 +116,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_circle(
                 r#"<g class="basic label-container" style="{}">"#,
                 escape_attr(&hand_drawn_circle_style(common.node_styles)),
             );
-            write_rough_circle_paths(out, common, &paths, common.stroke_width);
+            write_rough_circle_paths(out, common, &paths, common.stroke_width, r);
             out.push_str("</g>");
             out.checkpoint()?;
             return Ok(());
@@ -176,9 +181,9 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_double_circle(
                 escape_attr(&classes),
                 escape_attr(&hand_drawn_circle_style(common.node_styles)),
             );
-            write_rough_circle_paths(out, common, &outer, 2.5);
+            write_rough_circle_paths(out, common, &outer, 2.5, geometry.outer_radius);
             out.push_str("</g><g>");
-            write_rough_circle_paths(out, common, &inner, 1.5);
+            write_rough_circle_paths(out, common, &inner, 1.5, geometry.inner_radius);
             out.push_str("</g></g>");
             out.checkpoint()?;
             return Ok(());
@@ -225,13 +230,17 @@ fn write_rough_circle_paths(
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     paths: &(String, String),
     stroke_width: f32,
+    radius: f64,
 ) {
-    let _ = write!(
-        out,
-        r#"<path d="{}" stroke="{}" stroke-width="1.5" fill="none" stroke-dasharray="0 0"/>"#,
-        escape_attr(&paths.0),
-        escape_attr(common.fill_color),
-    );
+    let outline = if common.solid_rough_fill {
+        use kurbo::Shape;
+        kurbo::Circle::new((0.0, 0.0), radius)
+            .to_path(0.05)
+            .to_svg()
+    } else {
+        String::new()
+    };
+    super::super::helpers::write_hand_drawn_hachure(out, common, &outline, &paths.0, 1.5);
     // RoughGenerator.ellipse still generates the outline before the fill for PRNG ordering,
     // but excludes that opset from the drawable when the requested stroke is "none".
     if common.stroke_color != "none" {

@@ -39,29 +39,26 @@ type Obstacles = Bvh<(Rect, ObstacleOwner)>;
 #[cfg(not(feature = "layout-shoal"))]
 type Obstacles = Vec<(Rect, ObstacleOwner)>;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Clearance {
-    obstacles: Arc<Obstacles>,
-}
-
-impl Default for Clearance {
-    fn default() -> Self {
-        Self::new(Vec::new())
-    }
+    obstacles: Option<Arc<Obstacles>>,
 }
 
 impl Clearance {
-    pub fn new(mut boxes: Vec<(Rect, ObstacleOwner)>) -> Self {
+    pub fn new(mut boxes: Vec<(Rect, ObstacleOwner)>) -> Result<Self, RoutePaintError> {
         boxes.retain(|(r, _)| r.is_finite() && r.x0 < r.x1 && r.y0 < r.y1);
+        if boxes.is_empty() {
+            return Ok(Self::default());
+        }
         #[cfg(feature = "layout-shoal")]
         let boxes = Bvh::build(boxes, |(rect, _)| Bounds {
             x: [rect.x0, rect.x1],
             y: [rect.y0, rect.y1],
         })
-        .expect("could not build the route clearance index");
-        Self {
-            obstacles: Arc::new(boxes),
-        }
+        .map_err(|_| RoutePaintError::ClearanceAllocationFailed)?;
+        Ok(Self {
+            obstacles: Some(Arc::new(boxes)),
+        })
     }
 
     pub fn for_edge(
@@ -72,7 +69,7 @@ impl Clearance {
         stroke_outset: f64,
     ) -> EdgeClearance<'_> {
         EdgeClearance {
-            obstacles: &self.obstacles,
+            obstacles: self.obstacles.as_deref(),
             edge,
             endpoints,
             paint_to_layout,
@@ -83,7 +80,7 @@ impl Clearance {
 
 #[derive(Clone, Copy)]
 pub struct EdgeClearance<'a> {
-    obstacles: &'a Obstacles,
+    obstacles: Option<&'a Obstacles>,
     edge: usize,
     endpoints: (Endpoint, Endpoint),
     paint_to_layout: Vec2,
@@ -103,6 +100,9 @@ impl EdgeClearance<'_> {
         mut near_curve: impl FnMut(Rect) -> bool,
         mut enters: impl FnMut(Rect) -> bool,
     ) -> Result<bool, RoutePaintError> {
+        let Some(obstacles) = self.obstacles else {
+            return Ok(false);
+        };
         let outset = self.stroke_outset;
         let query = (bounds + self.paint_to_layout).inflate(outset, outset);
         let mut visit = |rect: Rect, owner: Option<ObstacleOwner>| -> Result<_, RoutePaintError> {
@@ -127,7 +127,7 @@ impl EdgeClearance<'_> {
 
         #[cfg(feature = "layout-shoal")]
         {
-            let result = self.obstacles.visit(|entry| match entry {
+            let result = obstacles.visit(|entry| match entry {
                 BvhEntry::Node(bounds) => {
                     let [x0, x1] = bounds.x;
                     let [y0, y1] = bounds.y;
@@ -139,7 +139,7 @@ impl EdgeClearance<'_> {
         }
         #[cfg(not(feature = "layout-shoal"))]
         {
-            for &(rect, owner) in self.obstacles {
+            for &(rect, owner) in obstacles {
                 if visit(rect, Some(owner))?.is_break() {
                     return Ok(true);
                 }
@@ -238,18 +238,34 @@ impl EdgeClearance<'_> {
         )
     }
 
-    pub(super) fn detour(
+    fn clear_elbow(
         self,
         from: Point,
         to: Point,
         budget: &mut DetourBudget,
-    ) -> Result<Vec<Point>, RoutePaintError> {
+    ) -> Result<Option<Point>, RoutePaintError> {
+        if super::aligned(from, to) {
+            return Ok(None);
+        }
         for elbow in [Point::new(from.x, to.y), Point::new(to.x, from.y)] {
             if !self.blocks_detour_leg(from, elbow, budget)?
                 && !self.blocks_detour_leg(elbow, to, budget)?
             {
-                return Ok(vec![elbow, to]);
+                return Ok(Some(elbow));
             }
+        }
+        Ok(None)
+    }
+
+    pub(super) fn detour(
+        self,
+        from: Point,
+        to: Point,
+        orthogonal: bool,
+        budget: &mut DetourBudget,
+    ) -> Result<Vec<Point>, RoutePaintError> {
+        if let Some(elbow) = self.clear_elbow(from, to, budget)? {
+            return Ok(vec![elbow, to]);
         }
         let mut bounds = Rect::from_points(from, to);
         let mut points = Vec::new();
@@ -278,7 +294,7 @@ impl EdgeClearance<'_> {
             if occupied {
                 return Err(RoutePaintError::NoClearDetour);
             }
-            if let Some(path) = self.visible_path(&points, to, budget)? {
+            if let Some(path) = self.visible_path(&points, to, orthogonal, budget)? {
                 return Ok(path);
             }
             if expanded == bounds {
@@ -292,27 +308,45 @@ impl EdgeClearance<'_> {
         self,
         points: &[Point],
         to: Point,
+        orthogonal: bool,
         budget: &mut DetourBudget,
     ) -> Result<Option<Vec<Point>>, RoutePaintError> {
+        // Rectilinear visibility can use either elbow between obstacle corners. Store
+        // the chosen elbow with the parent so the final path uses the checked legs.
+        let connect = |from, to, budget: &mut _| {
+            if orthogonal && !super::aligned(from, to) {
+                self.clear_elbow(from, to, budget)
+            } else {
+                Ok((!self.blocks_detour_leg(from, to, budget)?).then_some(to))
+            }
+        };
         let mut pending = VecDeque::from([0]);
         let mut parents = vec![None; points.len()];
-        parents[0] = Some(0);
         while let Some(index) = pending.pop_front() {
             let from = points[index];
-            if !self.blocks_detour_leg(from, to, budget)? {
+            if let Some(elbow) = connect(from, to, budget)? {
                 let mut path = vec![to];
+                if elbow != to {
+                    path.push(elbow);
+                }
                 let mut current = index;
-                while current != 0 {
-                    path.push(points[current]);
-                    current = parents[current].expect("queued detour points have a parent");
+                while let Some((parent, elbow)) = parents[current] {
+                    let point = points[current];
+                    path.push(point);
+                    if elbow != point {
+                        path.push(elbow);
+                    }
+                    current = parent;
                 }
                 path.reverse();
                 return Ok(Some(path));
             }
             for (next, parent) in parents.iter_mut().enumerate().skip(1) {
                 budget.visit()?;
-                if parent.is_none() && !self.blocks_detour_leg(from, points[next], budget)? {
-                    *parent = Some(index);
+                if parent.is_none()
+                    && let Some(elbow) = connect(from, points[next], budget)?
+                {
+                    *parent = Some((index, elbow));
                     pending.push_back(next);
                 }
             }
@@ -422,18 +456,19 @@ mod tests {
                 .chain(walls)
                 .map(|rect| (rect, ObstacleOwner::EdgeLabel(1)))
                 .collect(),
-        );
+        )
+        .unwrap();
         let guard = tree.for_edge(0, (Endpoint::Node(0), Endpoint::Node(1)), Vec2::ZERO, 1.);
         let mut budget = DetourBudget::default();
         let from = Point::new(20., 0.);
         let to = Point::new(120., 60.);
         assert_eq!(
-            guard.detour(from, to, &mut budget),
+            guard.detour(from, to, false, &mut budget),
             Err(RoutePaintError::DetourBudgetExceeded),
         );
         assert_eq!(budget.0, 0);
         assert_eq!(
-            guard.detour(from, to, &mut budget),
+            guard.detour(from, to, false, &mut budget),
             Err(RoutePaintError::DetourBudgetExceeded),
         );
     }
@@ -450,7 +485,7 @@ mod tests {
                 )
             })
             .collect();
-        let tree = Clearance::new(boxes.clone());
+        let tree = Clearance::new(boxes.clone()).unwrap();
         let route = tree.for_edge(0, (Endpoint::Node(0), Endpoint::Node(1)), Vec2::ZERO, 0.);
         for query in [
             Rect::new(5., 0., 8., 3.),
@@ -490,7 +525,7 @@ mod tests {
                 )
             })
             .collect();
-        let tree = Clearance::new(nodes.clone());
+        let tree = Clearance::new(nodes.clone()).unwrap();
         let route = tree.for_edge(0, (Endpoint::Node(0), Endpoint::Node(1)), offset, 1.);
         let mut broad = 0;
         let mut narrow = 0;
@@ -536,7 +571,7 @@ mod tests {
                     )
                 }),
             ) {
-                let tree = Clearance::new(vec![(rect, owner)]);
+                let tree = Clearance::new(vec![(rect, owner)]).unwrap();
                 let route = tree.for_edge(0, (Endpoint::Node(0), Endpoint::Node(1)), offset, 1.);
                 assert_eq!(
                     route.blocks_cubic(curve),

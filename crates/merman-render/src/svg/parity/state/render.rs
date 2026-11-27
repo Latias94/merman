@@ -570,11 +570,7 @@ fn prepare_state_line_hop_paths(
             0.0,
             0.0,
         );
-        let curve = if layout_edge.points.is_empty() {
-            "linear"
-        } else {
-            "rounded"
-        };
+        let curve = state_elk_edge_curve(ctx, layout_edge);
         owned_edges.push(OwnedEdge {
             id: edge.id.as_str(),
             points: geometry.data_points,

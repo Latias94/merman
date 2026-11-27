@@ -548,12 +548,17 @@ enum ArchitectureShaft<'a> {
 }
 
 impl ArchitectureShaft<'_> {
-    fn bounds(&self) -> Bounds {
-        match self {
+    fn bounds(&self, stroke_outset: f64) -> Bounds {
+        let mut bounds = match self {
             Self::Legacy(points, _, _) => architecture_edge_segment_bounds(*points),
             #[cfg(feature = "layout-shoal")]
             Self::Shoal(shaft) => shaft.painted.path.bounds.clone(),
-        }
+        };
+        bounds.min_x -= stroke_outset;
+        bounds.min_y -= stroke_outset;
+        bounds.max_x += stroke_outset;
+        bounds.max_y += stroke_outset;
+        bounds
     }
 
     fn write(
@@ -784,7 +789,6 @@ pub(super) fn push_architecture_edges<O: SvgOutput>(
                     geometry,
                     layout,
                     edge_idx,
-                    edge_style,
                     checkpoints.work_meter,
                     &mut paint_scratch,
                 )?;
@@ -797,14 +801,21 @@ pub(super) fn push_architecture_edges<O: SvgOutput>(
             #[cfg(not(feature = "layout-shoal"))]
             let (shaft, lhs_arrow, rhs_arrow, label_plan) = legacy();
 
-            extend_bounds(content_bounds, shaft.bounds());
+            extend_bounds(content_bounds, shaft.bounds(settings.edge_stroke_outset));
 
-            if let Some(arrow) = lhs_arrow.as_ref() {
-                extend_bounds(content_bounds, arrow.bounds.clone());
-            }
-
-            if let Some(arrow) = rhs_arrow.as_ref() {
-                extend_bounds(content_bounds, arrow.bounds.clone());
+            for arrow in [lhs_arrow.as_ref(), rhs_arrow.as_ref()]
+                .into_iter()
+                .flatten()
+            {
+                let mut ink = arrow.bounds.clone();
+                if marker_style == MarkerStyle::Open {
+                    let stroke = super::settings::OPEN_ARROW_STROKE_WIDTH / 2.0;
+                    ink.min_x -= stroke;
+                    ink.min_y -= stroke;
+                    ink.max_x += stroke;
+                    ink.max_y += stroke;
+                }
+                extend_bounds(content_bounds, ink);
             }
 
             if let Some(label_plan) = label_plan.as_ref() {

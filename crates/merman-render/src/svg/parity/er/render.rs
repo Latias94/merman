@@ -8,6 +8,7 @@ use merman_render_graph::er::{
 #[cfg(feature = "layout-shoal")]
 mod canonical;
 mod swimlane;
+mod zero_markers;
 
 // ER diagram SVG renderer implementation (split from parity.rs).
 
@@ -491,12 +492,13 @@ pub(crate) fn render_er_diagram_svg_model(
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let effective_config = effective_config.as_value();
     let diagram_id = options.diagram_id_or("merman");
     // Mermaid's internal diagram type for ER is `er` (not `erDiagram`), and marker ids are derived
     // from this type (e.g. `<diagramId>_er-zeroOrMoreEnd`).
     let diagram_type = "er";
     let binding = entity_theme.css_binding();
+    let marker_background = zero_markers::background(effective_config, binding, options);
+    let effective_config = effective_config.as_value();
     let native = binding.native.as_ref();
     let er_render_settings = &binding.render_settings;
     #[cfg(feature = "layout-shoal")]
@@ -522,7 +524,6 @@ pub(crate) fn render_er_diagram_svg_model(
     let redux_border_colors = &binding.redux_border_colors;
     let color_indices = er_color_indices(model);
     let node_border = &binding.node_border;
-    let main_bkg = &binding.main_bkg;
     let font_family = er_render_settings.font_family.clone();
     let font_size = er_render_settings.font_size;
     let title_top_margin = er_render_settings.title_top_margin;
@@ -689,7 +690,7 @@ pub(crate) fn render_er_diagram_svg_model(
             canonical: uses_canonical_routes,
             neo: data_look == "neo",
             neo_stroke_width: binding.neo_marker_stroke_width,
-            main_bkg,
+            main_bkg: &marker_background,
         },
     )?;
 
@@ -803,7 +804,7 @@ pub(crate) fn render_er_diagram_svg_model(
         let mut paint_scratch = crate::graph_layout::canonical::CanonicalPaintScratch::default();
         let mut points_json = Vec::new();
         let mut points_base64 = String::new();
-        for e in edges {
+        for (edge_index, e) in edges.iter().enumerate() {
             let missing_section = geometry.is_missing_section(&e.id);
             if !uses_canonical_routes
                 && (e.points.is_empty() || (!missing_section && e.points.len() < 2))
@@ -888,6 +889,21 @@ pub(crate) fn render_er_diagram_svg_model(
             } else {
                 std::borrow::Cow::Borrowed(edge_style.as_str())
             };
+            let marker_cutout = if marker_background == "none" {
+                let id = format!("{diagram_id}_er-marker-hole-{edge_index}");
+                zero_markers::write_cutout(
+                    &mut out,
+                    &id,
+                    d,
+                    e,
+                    binding,
+                    uses_canonical_routes,
+                    options,
+                )?
+                .then_some(id)
+            } else {
+                None
+            };
 
             // The standard Base64 alphabet is safe in a quoted XML attribute.
             let _ = write!(
@@ -901,6 +917,9 @@ pub(crate) fn render_er_diagram_svg_model(
                 points_base64,
                 escape_xml(data_look)
             );
+            if let Some(id) = marker_cutout {
+                let _ = write!(&mut out, r#" clip-path="url(#{})""#, escape_attr(&id));
+            }
             let start_marker_id = e
                 .start_marker
                 .as_deref()
@@ -1212,7 +1231,14 @@ pub(crate) fn render_er_diagram_svg_model(
                 })?;
         let w = n.width.max(1.0);
         let h = n.height.max(1.0);
-        if (measure.width - w).abs() > 1e-3 || (measure.height - h).abs() > 1e-3 {
+        let width_delta = w - measure.width;
+        let height_delta = h - measure.height;
+        let dimensions_match = if uses_canonical_routes {
+            width_delta >= -1e-3 && height_delta >= -1e-3
+        } else {
+            width_delta.abs() <= 1e-3 && height_delta.abs() <= 1e-3
+        };
+        if !dimensions_match {
             return Err(Error::InvalidModel {
                 message: format!(
                     "ER entity measured size mismatch for {}: layout=({},{}), measure=({}, {})",
@@ -1331,7 +1357,8 @@ pub(crate) fn render_er_diagram_svg_model(
         let span_style_attr = visual.span_style_attr.as_str();
 
         // Mermaid erBox.ts uses the configured label mode and paths for the table rows.
-        let name_row_h = (measure.label_height + measure.text_padding).max(1.0);
+        let row_extra_height = height_delta.max(0.0) / (measure.rows.len() as f64 + 1.0);
+        let name_row_h = (measure.label_height + measure.text_padding).max(1.0) + row_extra_height;
         let box_x0 = ox;
         let box_y0 = oy;
         let box_x1 = ox + w;
@@ -1391,7 +1418,7 @@ pub(crate) fn render_er_diagram_svg_model(
             );
             let mut y = sep_y;
             for (idx, (row, visual)) in measure.rows.iter().zip(&visual.rows).enumerate() {
-                let row_height = row.height.max(1.0);
+                let row_height = row.height.max(1.0) + row_extra_height;
                 let fill = source_style.fill().unwrap_or(&visual.fill);
                 let row_class = if idx.is_multiple_of(2) {
                     "row-rect-odd"
@@ -1468,7 +1495,7 @@ pub(crate) fn render_er_diagram_svg_model(
             let escaped_node_border = escape_xml(node_border);
             let mut y = sep_y;
             for (idx, row) in measure.rows.iter().enumerate() {
-                let row_h = row.height.max(1.0);
+                let row_h = row.height.max(1.0) + row_extra_height;
                 let y0 = y;
                 let y1 = y + row_h;
                 y = y1;
@@ -1567,9 +1594,9 @@ pub(crate) fn render_er_diagram_svg_model(
 
         let mut row_top = sep_y;
         for row in &measure.rows {
-            let row_h = row.height.max(1.0);
+            let row_h = row.height.max(1.0) + row_extra_height;
             // erBox top-aligns independently measured cells within the shared row.
-            let cell_y = row_top + measure.text_padding / 2.0;
+            let cell_y = row_top + (measure.text_padding + row_extra_height) / 2.0;
 
             let [type_w, name_w, keys_w, comment_w] = row.cell_widths;
             let [type_h, name_h, keys_h, comment_h] = row.cell_heights;

@@ -838,6 +838,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
             (width, height),
         )?
     } else {
+        swimlane::write_mermaid_svg_edge_label_background(out, ctx, (x, y), (width, height));
         None
     };
     let mut has_swimlane_fg =

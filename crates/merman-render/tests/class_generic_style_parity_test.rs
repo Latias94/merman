@@ -57,6 +57,44 @@ fn outer_fill_path<'a, 'input>(node: roxmltree::Node<'a, 'input>) -> roxmltree::
 }
 
 #[test]
+fn class_svg_member_signatures_keep_nested_generic_types() {
+    for &layout in LAYOUTS
+        .iter()
+        .chain(cfg!(feature = "layout-shoal").then_some(&"shoal"))
+    {
+        let (measured, svg) = render_class(
+            "namespace Platform {\n  class A {\n    +Map~String, List~Int~~ cache\n    +record(Event~Map~String, String~~ ev) List~List~Int~~\n  }\n}\nclass B {\n  +Map cache\n  +record(ev) List\n}\n",
+            layout,
+            false,
+        );
+        let doc = roxmltree::Document::parse(&svg).unwrap();
+        let node = class_node(&doc, "A");
+        let visible = node
+            .descendants()
+            .filter(|child| child.is_text())
+            .filter_map(|child| child.text())
+            .collect::<String>();
+        assert!(
+            visible.contains("+Map<String, List<Int>> cache"),
+            "{layout}: {visible}"
+        );
+        assert!(
+            visible.contains("+record(Event<Map<String, String>> ev) : List<List<Int>>"),
+            "{layout}: {visible}"
+        );
+        let width = |id| {
+            measured
+                .nodes
+                .iter()
+                .find(|node| node.id == id)
+                .unwrap()
+                .width
+        };
+        assert!(width("A") > width("B"), "{layout}: {measured:?}");
+    }
+}
+
+#[test]
 fn class_group_generic_matches_same_text_control_in_leaves_and_namespaces() {
     for layout in LAYOUTS {
         for html_labels in [false, true] {

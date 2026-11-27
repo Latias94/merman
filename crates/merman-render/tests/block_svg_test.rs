@@ -83,6 +83,57 @@ fn native_theme_v2_block_preserves_authored_fill_and_marker_references() {
     assert!(arrow.attribute("style").unwrap().contains("fill:none;"));
 }
 
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_block_honors_native_styles_on_routed_edges() {
+    let source = "---\nconfig:\n  layout: shoal\n---\nblock\ncolumns 3\nA[\"Alpha\"] X[\"Obstacle\"] B[\"Beta\"]\nA --> B\n";
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    for (style, has_curves) in [("orthogonal", false), ("curved", true), ("sketch", true)] {
+        let theme = ThemeCompiler::new()
+            .compile_json(
+                format!(
+                    r#"{{"schema_version":2,"extends":"paper","form":{{"edge_style":"{style}"}}}}"#
+                )
+                .as_bytes(),
+                None,
+            )
+            .unwrap();
+        let session = RenderEnvironment::deterministic()
+            .begin_session_with_native_theme(NativeTheme::new(theme))
+            .unwrap();
+        let rendered = family::prepare(
+            parsed.presentation(),
+            &LayoutOptions::headless_svg_defaults(),
+            session,
+        )
+        .unwrap()
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+        let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let edge = doc
+            .descendants()
+            .find(|node| node.attribute("data-et") == Some("edge"))
+            .unwrap();
+        assert_eq!(
+            edge.attribute("d").unwrap().contains('C'),
+            has_curves,
+            "{style}: {edge:?}"
+        );
+    }
+}
+
+#[test]
+fn block_digit_prefixed_classes_are_css_identifiers() {
+    let svg = render_block_svg_from_text(
+        "block\nA[\"Alpha\"]\nclassDef 2done fill:#123456\nclass A 2done\n",
+    );
+    assert!(block_stylesheet_text(&svg).contains(r#".\32 done"#));
+    assert!(svg.contains(" 2done"));
+}
+
 fn independent_block_presentation(
     model: merman_model::families::block::BlockDiagramModel,
 ) -> merman_model::presentation::PresentationDiagram {

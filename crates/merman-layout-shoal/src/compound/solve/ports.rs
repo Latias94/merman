@@ -188,6 +188,84 @@ pub(super) fn closest_clear_port(
     Ok(best)
 }
 
+struct MarkerPorts {
+    walls: Vec<Rect>,
+    blocked: Vec<(f64, f64)>,
+    clearance: f64,
+}
+
+#[derive(Clone, Copy)]
+enum PortPitch {
+    Preserve(f64),
+    Reserve(f64),
+}
+
+impl MarkerPorts {
+    fn at(
+        &mut self,
+        port: Contact,
+        marker: MarkerMetrics,
+        bounds: (f64, f64),
+        neighbors: &[Slot],
+        pitch: PortPitch,
+        work: &mut Work<'_>,
+    ) -> LayoutResult<Option<f64>> {
+        let preferred = cross(port.side, port.at);
+        let preserve = matches!(pitch, PortPitch::Preserve(_));
+        let clear = |blocked: &[(f64, f64)], work: &mut Work<'_>| -> LayoutResult<bool> {
+            work.visit(blocked.len())?;
+            Ok(bounds.0 <= preferred
+                && preferred <= bounds.1
+                && blocked
+                    .iter()
+                    .all(|&(lo, hi)| preferred <= lo || preferred >= hi))
+        };
+        for clearance in [self.clearance, 0.0] {
+            marker_blockers(
+                port,
+                marker,
+                clearance,
+                &self.walls,
+                &mut self.blocked,
+                work,
+            )?;
+            if preserve && clear(&self.blocked, work)? {
+                return Ok(Some(preferred));
+            }
+            for neighbor in neighbors {
+                work.visit(1)?;
+                let separation = match pitch {
+                    PortPitch::Preserve(pitch) => (neighbor.at - preferred).abs().min(pitch),
+                    PortPitch::Reserve(pitch) => pitch,
+                };
+                if separation > 0.0 {
+                    push(
+                        &mut self.blocked,
+                        (neighbor.at - separation, neighbor.at + separation),
+                    )?;
+                }
+            }
+            if !preserve && clear(&self.blocked, work)? {
+                return Ok(Some(preferred));
+            }
+            if let Some(at) = closest_clear_port(preferred, bounds, &self.blocked, work)? {
+                return Ok(Some(at));
+            }
+            if clearance == 0.0 {
+                break;
+            }
+        }
+        Ok(None)
+    }
+}
+
+fn anchor_offset(node: &NodeSpec, rect: Rect, side: Side) -> Option<f64> {
+    match side.axis() {
+        Axis::Horizontal => node.anchor_y.map(|anchor| anchor - rect.height / 2.0),
+        Axis::Vertical => None,
+    }
+}
+
 pub(super) fn items(
     wires: &mut [Wire],
     graph: &Graph,
@@ -252,21 +330,27 @@ pub(super) fn items(
                     End::Item { .. } => unreachable!("special leg has a boundary"),
                 });
                 let offset = match hint {
-                    PortSideHint::FixedOffset { offset, .. } => Some(offset),
-                    _ if side.axis() == Axis::Horizontal => nodes[slot]
-                        .anchor_y
-                        .map(|anchor| anchor - rect.height / 2.0),
-                    _ => None,
+                    PortSideHint::FixedOffset { offset, .. } => {
+                        let length = across(
+                            side,
+                            Size {
+                                width: rect.width,
+                                height: rect.height,
+                            },
+                        );
+                        if !offset.is_finite() || offset.abs() > length / 2.0 {
+                            return Err(LayoutError::InvalidInput("port offset outside face"));
+                        }
+                        Some(offset)
+                    }
+                    _ => anchor_offset(&nodes[slot], rect, side),
                 };
                 fixed = offset.is_some();
-                Contact {
-                    at: face(
-                        rect,
-                        side,
-                        cross(side, rect.center()) + offset.unwrap_or(0.0),
-                    ),
-                    side,
-                }
+                let across = finite(cross(side, rect.center()) + offset.unwrap_or(0.0))?;
+                let at = face(rect, side, across);
+                finite(at.x)?;
+                finite(at.y)?;
+                Contact { at, side }
             };
             wire.contacts[end] = Some(contact);
             if custom {
@@ -282,80 +366,63 @@ pub(super) fn items(
             }
         }
     }
-    let mut walls = None;
-    let mut blocked = Vec::new();
+    let mut marker_ports = None;
+    let mut obstructed = Vec::new();
+    let pitch = options.spacing.port_pitch;
     for (slot, faces) in faces.iter_mut().enumerate() {
         let rect = rects[slot];
         for (slots, side) in faces.iter_mut().zip(SIDES) {
             work.visit(slots.len() + 1)?;
-            if slots.iter().all(|slot| slot.fixed) {
+            if slots.is_empty() {
                 continue;
             }
             let span = item_span(&nodes[slot], side, graph, options);
             let center = cross(side, rect.center());
             let bounds = (center - span / 2.0, center + span / 2.0);
-            let pitch = options.spacing.port_pitch;
             spread(slots, bounds.0, bounds.1, pitch, work)?;
             for index in 0..slots.len() {
                 let entry = slots[index];
                 let wire = &wires[entry.wire];
                 let marker = [wire.spec.start_marker, wire.spec.end_marker][entry.end];
-                if entry.fixed || marker.length == 0.0 || span == 0.0 {
+                let auto = matches!(
+                    wire.ends[entry.end],
+                    End::Item {
+                        hint: PortSideHint::Auto,
+                        child: None,
+                        ..
+                    }
+                ) && (!wire.flat() || wire.uses_caption_band());
+                if marker.length == 0.0 || (entry.fixed && !auto) {
                     continue;
                 }
-                if walls.is_none() {
-                    walls = Some(routes::item_boxes(rects, wires, work)?);
-                }
-                marker_blockers(
-                    Contact {
-                        at: face(rect, side, entry.at),
-                        side,
-                    },
+                let marker_ports = match &mut marker_ports {
+                    Some(ports) => ports,
+                    empty => empty.insert(MarkerPorts {
+                        walls: routes::item_boxes(rects, wires, work)?,
+                        blocked: Vec::new(),
+                        clearance: options.spacing.edge,
+                    }),
+                };
+                let port = Contact {
+                    at: face(rect, side, entry.at),
+                    side,
+                };
+                let bounds = if entry.fixed {
+                    (entry.at, entry.at)
+                } else {
+                    bounds
+                };
+                if let Some(at) = marker_ports.at(
+                    port,
                     marker,
-                    options.spacing.edge,
-                    walls.as_deref().unwrap(),
-                    &mut blocked,
+                    bounds,
+                    slots,
+                    PortPitch::Preserve(pitch),
                     work,
-                )?;
-                work.visit(blocked.len())?;
-                if blocked
-                    .iter()
-                    .any(|&(left, right)| left < entry.at && entry.at < right)
-                {
-                    for (other_index, other) in slots.iter().enumerate() {
-                        work.visit(1)?;
-                        let separation = (other.at - entry.at).abs().min(pitch);
-                        if other_index != index && separation > 0.0 {
-                            push(&mut blocked, (other.at - separation, other.at + separation))?;
-                        }
-                    }
-                    let mut clear = closest_clear_port(entry.at, bounds, &blocked, work)?;
-                    if clear.is_none() && options.spacing.edge > 0.0 {
-                        // The requested ink separation is optional when the actual marker
-                        // footprint can still pass safely through a constrained face.
-                        marker_blockers(
-                            Contact {
-                                at: face(rect, side, entry.at),
-                                side,
-                            },
-                            marker,
-                            0.0,
-                            walls.as_deref().unwrap(),
-                            &mut blocked,
-                            work,
-                        )?;
-                        for (other_index, other) in slots.iter().enumerate() {
-                            work.visit(1)?;
-                            let separation = (other.at - entry.at).abs().min(pitch);
-                            if other_index != index && separation > 0.0 {
-                                push(&mut blocked, (other.at - separation, other.at + separation))?;
-                            }
-                        }
-                        clear = closest_clear_port(entry.at, bounds, &blocked, work)?;
-                    }
-                    if let Some(clear) = clear {
-                        slots[index].at = clear;
-                    }
+                )? {
+                    slots[index].at = at;
+                } else if auto {
+                    push(&mut obstructed, (slot, side, entry))?;
                 }
             }
             for entry in slots.iter().filter(|slot| !slot.fixed) {
@@ -363,6 +430,57 @@ pub(super) fn items(
                     at: face(rect, side, entry.at),
                     side,
                 });
+            }
+        }
+    }
+    if let Some(marker_ports) = marker_ports.as_mut() {
+        for (slot, preferred, entry) in obstructed {
+            work.visit(1)?;
+            let wire = &mut wires[entry.wire];
+            let marker = [wire.spec.start_marker, wire.spec.end_marker][entry.end];
+            let rect = rects[slot];
+            let node = &nodes[slot];
+            let faces = &mut faces[slot];
+            // Spread the original faces first. Adopt a perpendicular face before reversing
+            // the shaft, and use the live port positions to keep neighbors apart.
+            'select: for pitch in [pitch, 0.0] {
+                for turn in [1, 3, 2] {
+                    work.visit(1)?;
+                    let side = SIDES[(preferred as usize + turn) % SIDES.len()];
+                    let center = cross(side, rect.center());
+                    let (at, bounds) = if let Some(offset) = anchor_offset(node, rect, side) {
+                        let at = finite(center + offset)?;
+                        (at, (at, at))
+                    } else {
+                        let half = item_span(node, side, graph, options) / 2.0;
+                        (center, (center - half, center + half))
+                    };
+                    let port = Contact {
+                        at: face(rect, side, at),
+                        side,
+                    };
+                    if let Some(at) = marker_ports.at(
+                        port,
+                        marker,
+                        bounds,
+                        &faces[side as usize],
+                        PortPitch::Reserve(pitch),
+                        work,
+                    )? {
+                        let old = &mut faces[preferred as usize];
+                        work.visit(old.len())?;
+                        old.retain(|slot| slot.wire != entry.wire || slot.end != entry.end);
+                        push(&mut faces[side as usize], Slot { at, ..entry })?;
+                        wire.contacts[entry.end] = Some(Contact {
+                            at: face(rect, side, at),
+                            side,
+                        });
+                        break 'select;
+                    }
+                }
+                if pitch == 0.0 {
+                    break;
+                }
             }
         }
     }

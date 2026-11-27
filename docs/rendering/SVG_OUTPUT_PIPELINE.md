@@ -472,7 +472,8 @@ do not implicitly paint the canvas. Set `SvgOutputPolicy.root_background_color` 
 `RootBackgroundPostprocessor`) when the host needs an explicit white, transparent, or custom
 canvas. Native CLI `render` follows the same default and accepts `--background`; the
 `mmdc` compatibility command keeps its explicit white default and accepts `--backgroundColor`.
-PNG/PDF canvas compositing is independently controlled by export options, not SVG root CSS.
+[Raster export options](RASTER_OUTPUT.md#png-and-jpeg) control PNG compositing. PDF uses its own
+export options for page paint.
 
 Binding consumers can opt into generic duplicate-fallback cleanup without writing a Rust
 postprocessor:

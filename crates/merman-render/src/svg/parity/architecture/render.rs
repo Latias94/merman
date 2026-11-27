@@ -340,6 +340,13 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
         &a11y,
         use_max_width,
     )?;
+    if crate::config::config_bool(effective_config, &["themeVariables", "useGradient"])
+        .unwrap_or(false)
+    {
+        out.push_str("<defs>");
+        crate::svg::PreparedLookDefs::new(effective_config).write_gradient(&mut out, diagram_id)?;
+        out.push_str("</defs>");
+    }
     checkpoints.checkpoint()?;
     let separate_group_surfaces = native.is_some();
     #[cfg(feature = "layout-shoal")]

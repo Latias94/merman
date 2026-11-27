@@ -1740,47 +1740,70 @@ fn render_svg_plan_target(
 }
 
 #[cfg(feature = "svg")]
-#[allow(
-    clippy::type_complexity,
-    reason = "The preparation tuple keeps completion, capability admission, and operation state together."
-)]
-fn prepare_resvg_target(
+fn prepare_document_target(
     semantic: PresentationArtifact,
-    request: &SvgRequest,
+    request: SvgRequest,
     default_generation: crate::svg::SvgGeneration,
-) -> Result<
-    (
-        merman_render::family::FamilyRenderCompletion<merman_render::svg::ResvgCompatibleSvg>,
-        Vec<merman_render::RenderCapability>,
-        OperationExecution,
-        ThemeOutcome,
-    ),
-    RenderError,
-> {
+) -> Result<(RenderedDocument, OperationExecution), RenderError> {
     #[cfg(feature = "native-fonts")]
     request.environment.check_native_fonts()?;
+    #[cfg(feature = "png")]
+    let png_theme_matte = mermaid_png_matte(semantic.metadata(), &request.environment);
     let (rendered, operation, theme_outcome) =
-        prepare_rendered_family_svg(semantic, request, default_generation, true)?;
+        prepare_rendered_family_svg(semantic, &request, default_generation, true)?;
     let required_capabilities = rendered.required_capabilities().to_vec();
     let pipeline = request
         .pipeline
-        .clone()
         .unwrap_or_else(SvgPipeline::resvg_safe)
         .into_resvg_safe();
-    let result = rendered
+    let sealed = rendered
         .finalize_resvg(&pipeline)
-        .map(|sealed| {
-            (
-                sealed.into_completion(),
-                required_capabilities,
-                operation,
-                theme_outcome,
-            )
-        })
         .map_err(RenderError::from);
     #[cfg(feature = "native-fonts")]
     request.environment.check_native_fonts()?;
-    result
+    let completion = sealed?.into_completion();
+    crate::operation_runner::checkpoint(&operation.control, OperationPhase::Postprocess)?;
+    let document = RenderedDocument::new(
+        completion,
+        required_capabilities,
+        theme_outcome,
+        #[cfg(feature = "png")]
+        png_theme_matte,
+        #[cfg(feature = "native-fonts")]
+        request.environment.native_fonts,
+        #[cfg(all(
+            feature = "native-fonts",
+            any(feature = "png", feature = "jpeg", feature = "pdf")
+        ))]
+        request.environment.selected_native_fonts,
+    );
+    Ok((document, operation))
+}
+
+#[cfg(feature = "png")]
+fn mermaid_png_matte(
+    metadata: &merman_model::presentation::PresentationMetadata,
+    environment: &SvgEnvironment,
+) -> Option<String> {
+    let config = &metadata.effective_config;
+    if environment.background.is_some()
+        || !config
+            .get_str("theme")
+            .and_then(|name| crate::MermaidThemeId::parse(name).ok())
+            .is_some_and(crate::MermaidThemeId::is_dark)
+    {
+        return None;
+    }
+    let paint = config.get_str("themeVariables.background")?;
+    let color = merman_markup::theme_color::ThemeColor::parse(paint).ok()?;
+    let rgba = color.rgba_channels();
+    Some(format!(
+        "#{:02x}{:02x}{:02x}{:02x}",
+        rgba.red.round() as u8,
+        rgba.green.round() as u8,
+        rgba.blue.round() as u8,
+        (rgba.alpha * 255.0).round() as u8,
+    ))
 }
 
 #[cfg(feature = "svg")]
@@ -1838,21 +1861,8 @@ fn render_document_target(
     semantic: PresentationArtifact,
     request: SvgRequest,
 ) -> Result<Option<RenderedDocument>, RenderError> {
-    let (completion, required_capabilities, operation, theme_outcome) =
-        prepare_resvg_target(semantic, &request, crate::svg::SvgGeneration::Full)?;
-    crate::operation_runner::checkpoint(&operation.control, OperationPhase::Postprocess)?;
-    let document = RenderedDocument::new(
-        completion,
-        required_capabilities,
-        theme_outcome,
-        #[cfg(feature = "native-fonts")]
-        request.environment.native_fonts,
-        #[cfg(all(
-            feature = "native-fonts",
-            any(feature = "png", feature = "jpeg", feature = "pdf")
-        ))]
-        request.environment.selected_native_fonts,
-    );
+    let (document, operation) =
+        prepare_document_target(semantic, request, crate::svg::SvgGeneration::Full)?;
     crate::operation_runner::checkpoint(&operation.control, OperationPhase::Postprocess)?;
     Ok(Some(document))
 }
@@ -1980,22 +1990,11 @@ fn render_png_target(
         .svg
         .environment
         .set_export_backdrop(request.options.matte.as_deref(), None);
-    let (completion, required_capabilities, operation, theme_outcome) =
-        prepare_resvg_target(semantic, &request.svg, crate::svg::SvgGeneration::Static)?;
-    RenderedDocument::new(
-        completion,
-        required_capabilities,
-        theme_outcome,
-        #[cfg(feature = "native-fonts")]
-        request.svg.environment.native_fonts,
-        #[cfg(all(
-            feature = "native-fonts",
-            any(feature = "png", feature = "jpeg", feature = "pdf")
-        ))]
-        request.svg.environment.selected_native_fonts,
-    )
-    .export_png(&request.options, operation.control)
-    .map(Some)
+    let (document, operation) =
+        prepare_document_target(semantic, request.svg, crate::svg::SvgGeneration::Static)?;
+    document
+        .export_png(&request.options, operation.control)
+        .map(Some)
 }
 
 #[cfg(feature = "jpeg")]
@@ -2007,22 +2006,11 @@ fn render_jpeg_target(
         request.options.matte.as_deref(),
         Some(merman_export::RasterOptions::DEFAULT_JPEG_MATTE),
     );
-    let (completion, required_capabilities, operation, theme_outcome) =
-        prepare_resvg_target(semantic, &request.svg, crate::svg::SvgGeneration::Static)?;
-    RenderedDocument::new(
-        completion,
-        required_capabilities,
-        theme_outcome,
-        #[cfg(feature = "native-fonts")]
-        request.svg.environment.native_fonts,
-        #[cfg(all(
-            feature = "native-fonts",
-            any(feature = "png", feature = "jpeg", feature = "pdf")
-        ))]
-        request.svg.environment.selected_native_fonts,
-    )
-    .export_jpeg(&request.options, operation.control)
-    .map(Some)
+    let (document, operation) =
+        prepare_document_target(semantic, request.svg, crate::svg::SvgGeneration::Static)?;
+    document
+        .export_jpeg(&request.options, operation.control)
+        .map(Some)
 }
 
 #[cfg(feature = "pdf")]
@@ -2034,22 +2022,11 @@ fn render_pdf_target(
         .svg
         .environment
         .set_export_backdrop(request.options.page_paint.as_deref(), None);
-    let (completion, required_capabilities, operation, theme_outcome) =
-        prepare_resvg_target(semantic, &request.svg, crate::svg::SvgGeneration::Static)?;
-    RenderedDocument::new(
-        completion,
-        required_capabilities,
-        theme_outcome,
-        #[cfg(feature = "native-fonts")]
-        request.svg.environment.native_fonts,
-        #[cfg(all(
-            feature = "native-fonts",
-            any(feature = "png", feature = "jpeg", feature = "pdf")
-        ))]
-        request.svg.environment.selected_native_fonts,
-    )
-    .export_pdf(&request.options, operation.control)
-    .map(Some)
+    let (document, operation) =
+        prepare_document_target(semantic, request.svg, crate::svg::SvgGeneration::Static)?;
+    document
+        .export_pdf(&request.options, operation.control)
+        .map(Some)
 }
 
 #[cfg(all(test, feature = "svg"))]

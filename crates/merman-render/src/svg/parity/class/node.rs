@@ -116,6 +116,7 @@ pub(super) struct ClassHtmlNodeRowsContext<'a> {
 pub(super) struct ClassSvgNodeLabelRun {
     pub text: String,
     pub literal_fallback: bool,
+    pub create_text_source: bool,
     pub style: String,
     pub metrics: crate::text::TextMetrics,
     pub y_offset: f64,
@@ -930,6 +931,7 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
         annotation_runs.push(ClassSvgNodeLabelRun {
             text,
             literal_fallback: false,
+            create_text_source: false,
             style: String::new(),
             metrics,
             y_offset: 0.0,
@@ -1292,7 +1294,16 @@ fn measure_class_svg_node_rows(
     let mut rect: Option<Rect> = None;
     let mut y_offset = 0.0;
     for row in rows {
-        let mut text = row.display_text_for_render();
+        let generic_source = crate::class::node_binding::class_svg_generic_member_source(row);
+        let create_text_source = generic_source.is_some();
+        let mut text = if let Some(mut source) = generic_source {
+            if source.starts_with('\\') {
+                source.remove(0);
+            }
+            source
+        } else {
+            row.display_text_for_render()
+        };
         let fallback = crate::class::class_svg_empty_markdown_fallback(&text);
         let literal_fallback = fallback.is_some();
         let text_style = crate::class::class_svg_row_text_style(
@@ -1341,6 +1352,7 @@ fn measure_class_svg_node_rows(
         runs.push(ClassSvgNodeLabelRun {
             text,
             literal_fallback,
+            create_text_source,
             style: row.css_style.trim().to_owned(),
             metrics,
             y_offset,
@@ -1390,6 +1402,12 @@ pub(super) fn render_class_svg_node_runs_group(
                 out,
                 run.text.as_str(),
                 group_style,
+            );
+        } else if run.create_text_source {
+            super::super::label::write_svg_text_markdown_from_create_text_source_with_style(
+                out,
+                run.text.as_str(),
+                Some(group_style),
             );
         } else {
             write_class_svg_text_markdown_with_style(out, run.text.as_str(), group_style);

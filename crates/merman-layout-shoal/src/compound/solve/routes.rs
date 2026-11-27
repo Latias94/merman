@@ -1097,32 +1097,42 @@ fn rehome_detached_border_captions(
         }
         // Collect route segments sorted longest-first (with index tie-breaker).
         let mut segments = reserved(legs[index].points.len() - 1)?;
-        for seg in legs[index].points.windows(2) {
+        for (segment, seg) in legs[index].points.windows(2).enumerate() {
             work.visit(1)?;
             let a = point(seg[0]);
             let b = point(seg[1]);
             let len = (b.x - a.x).hypot(b.y - a.y);
             if len > 1e-6 && len.is_finite() {
-                segments.push((len, a, b));
+                segments.push((len, segment, a, b));
             }
         }
         let mut order = reserved(segments.len())?;
         order.extend(0..segments.len());
-        work.sort(&mut order, |&x, &y| {
-            segments[y]
+        work.sort(&mut order, |&a, &b| {
+            segments[b]
                 .0
-                .total_cmp(&segments[x].0)
-                .then_with(|| x.cmp(&y))
+                .total_cmp(&segments[a].0)
+                .then_with(|| a.cmp(&b))
         })?;
         let mut chosen = None::<Point>;
         // Phase A: centered directly on a clear long leg of this edge.
         // Phase B: offset immediately beside a clear leg of this edge.
         'search: for beside in [false, true] {
-            for &ord in &order {
-                let (len, a, b) = segments[ord];
-                let horizontal = (a.y - b.y).abs() <= (a.x - b.x).abs();
-                let along_need = if horizontal { size.width } else { size.height };
-                if !beside && len < along_need + 2.0 * gap {
+            for &segment_index in &order {
+                work.visit(1)?;
+                let (len, host, a, b) = segments[segment_index];
+                let dx = b.x - a.x;
+                let dy = b.y - a.y;
+                let horizontal = dy.abs() <= dx.abs();
+                let inset = if beside {
+                    0.0
+                } else {
+                    // Keep the projected caption and its clearance between both turns.
+                    let half =
+                        dx.abs() / len * (size.width / 2.0) + dy.abs() / len * (size.height / 2.0);
+                    (half + gap) / len
+                };
+                if inset > 0.5 {
                     continue;
                 }
                 let across_offset = if horizontal { size.height } else { size.width } * 0.5 + gap;
@@ -1131,10 +1141,11 @@ fn rehome_detached_border_captions(
                 } else {
                     &[0.0]
                 };
-                for t in [0.5, 0.35, 0.65] {
+                for fraction in [0.5_f64, 0.35, 0.65] {
+                    let t = fraction.clamp(inset, 1.0 - inset);
                     let base = Point {
-                        x: a.x + (b.x - a.x) * t,
-                        y: a.y + (b.y - a.y) * t,
+                        x: a.x + dx * t,
+                        y: a.y + dy * t,
                     };
                     for &off in offsets {
                         work.visit(1)?;
@@ -1149,11 +1160,18 @@ fn rehome_detached_border_captions(
                                 y: base.y,
                             }
                         };
-                        let candidate = centered(center, size);
-                        if candidate.x < 0.0
-                            || candidate.y < 0.0
-                            || candidate.x + candidate.width > fit.size.width
-                            || candidate.y + candidate.height > fit.size.height
+                        let margin = if beside { 0.0 } else { gap };
+                        let footprint = centered(
+                            center,
+                            Size {
+                                width: size.width + 2.0 * margin,
+                                height: size.height + 2.0 * margin,
+                            },
+                        );
+                        if footprint.x < 0.0
+                            || footprint.y < 0.0
+                            || footprint.x + footprint.width > fit.size.width
+                            || footprint.y + footprint.height > fit.size.height
                         {
                             continue;
                         }
@@ -1164,7 +1182,7 @@ fn rehome_detached_border_captions(
                             .chain(markers.iter().map(|entry| &entry.2))
                         {
                             work.visit(1)?;
-                            if overlaps(wall, candidate) {
+                            if overlaps(wall, footprint) {
                                 clear_ok = false;
                                 break;
                             }
@@ -1177,7 +1195,7 @@ fn rehome_detached_border_captions(
                                 continue;
                             }
                             work.visit(1)?;
-                            if overlaps(other_label, candidate) {
+                            if overlaps(other_label, footprint) {
                                 clear_ok = false;
                                 break;
                             }
@@ -1186,12 +1204,12 @@ fn rehome_detached_border_captions(
                             continue;
                         }
                         for (other_idx, other_leg) in legs.iter().enumerate() {
-                            if !beside && other_idx == index {
-                                continue;
-                            }
-                            for seg in other_leg.points.windows(2) {
+                            for (segment, seg) in other_leg.points.windows(2).enumerate() {
                                 work.visit(1)?;
-                                if blocks(candidate, point(seg[0]), point(seg[1])) {
+                                if !beside && other_idx == index && segment == host {
+                                    continue;
+                                }
+                                if blocks(footprint, point(seg[0]), point(seg[1])) {
                                     clear_ok = false;
                                     break;
                                 }
@@ -1220,8 +1238,123 @@ fn rehome_detached_border_captions(
 mod route_unit_tests {
     use super::*;
     use crate::{
-        Direction, Endpoint, GroupId, GroupSpec, Insets, NodeId, NodeSpec, RoutingStyle, layout,
+        Direction, Endpoint, GroupId, GroupSpec, Insets, NodeId, NodeSpec, NoopWorkControl,
+        RoutingStyle, layout,
     };
+
+    fn rehome_label(points: &[(f64, f64)], walls: &[Rect]) -> Rect {
+        let size = Size {
+            width: 60.0,
+            height: 14.0,
+        };
+        let mut spec = EdgeSpec::new(GroupId(0).into(), NodeId(0).into());
+        spec.label = Some(size);
+        let wires = [Wire {
+            ends: [
+                End::Border {
+                    slot: 0,
+                    side: Side::Left,
+                    flat: None,
+                    hint: PortSideHint::Auto,
+                },
+                End::Item {
+                    slot: 0,
+                    hint: PortSideHint::Auto,
+                    child: None,
+                },
+            ],
+            spec,
+            route: None,
+            contacts: [None; 2],
+        }];
+        let seat = Point { x: 175.0, y: 170.0 };
+        let mut legs = [EdgeGeometry {
+            points: points
+                .iter()
+                .map(|&(x, y)| RoutePoint::new(x, y, Axis::Horizontal))
+                .collect(),
+            ports: (Side::Left, Side::Left),
+            label_center: Some(seat),
+            start_label_center: None,
+            end_label_center: None,
+            shared_bus: false,
+            corridor_clearance: 0.0,
+            reversed_for_ranking: false,
+        }];
+        let mut boxes = [centered(seat, size)];
+        let mut options = Options::default();
+        options.spacing.edge = 7.0;
+        let mut control = NoopWorkControl;
+        let mut work = Work::new(&mut control);
+        let fit = fit::Fit::new(
+            None,
+            Size {
+                width: 220.0,
+                height: 200.0,
+            },
+            &[],
+            &[],
+            0.0,
+            &options,
+            &mut work,
+        )
+        .unwrap();
+        rehome_detached_border_captions(
+            &fit,
+            walls,
+            None,
+            &[],
+            &mut boxes,
+            &[Some(0)],
+            &wires,
+            &mut legs,
+            &options,
+            &mut work,
+        )
+        .unwrap();
+        assert_eq!(legs[0].label_center, Some(boxes[0].center()));
+        assert_ne!(boxes[0].center(), seat);
+        boxes[0]
+    }
+
+    #[test]
+    fn rehomed_inline_caption_keeps_both_ends_inside_its_host_segment() {
+        let points = [(40.0, 34.0), (40.0, 60.0), (116.0, 60.0)];
+        assert_eq!(
+            rehome_label(&points, &[]).center(),
+            Point { x: 78.0, y: 60.0 }
+        );
+        let wall = Rect {
+            x: 107.0,
+            y: 65.0,
+            width: 2.0,
+            height: 5.0,
+        };
+        let seat = rehome_label(&points, &[wall]);
+        assert!(seat.center().y != 60.0 || (seat.x >= 47.0 && seat.x + seat.width <= 109.0));
+    }
+
+    #[test]
+    fn rehomed_inline_caption_clears_the_return_leg_of_its_own_edge() {
+        let points = [(30.0, 80.0), (150.0, 80.0), (150.0, 84.0), (35.0, 84.0)];
+        let seat = rehome_label(&points, &[]);
+        assert!(
+            seat.center().y != 80.0 && seat.center().y != 84.0,
+            "{seat:?}"
+        );
+    }
+
+    #[test]
+    fn rehomed_inline_caption_reserves_a_gap_to_nearby_obstacles() {
+        let wall = Rect {
+            x: 15.0,
+            y: 88.0,
+            width: 170.0,
+            height: 55.0,
+        };
+        let seat = rehome_label(&[(30.0, 80.0), (150.0, 80.0)], &[wall]);
+        assert!(seat.y + seat.height + 7.0 <= wall.y, "{seat:?}");
+    }
 
     #[test]
     fn border_entry_preserves_incoming_axis_and_rehomes_detached_parent_label() {

@@ -16,6 +16,7 @@ mod document_ids;
 mod edge;
 mod edge_fill;
 mod edge_geom;
+mod edge_label_cutout;
 mod edge_style_plan;
 mod hierarchy;
 mod label;
@@ -75,7 +76,7 @@ use render::{
     render_flowchart_elk_root_groups, render_flowchart_node, render_flowchart_root,
 };
 use types::*;
-use util::{OptionalStyleAttr, OptionalStyleXmlAttr};
+use util::OptionalStyleAttr;
 
 // Flowchart SVG renderer implementation (split from parity.rs).
 

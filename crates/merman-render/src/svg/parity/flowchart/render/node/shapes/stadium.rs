@@ -33,12 +33,12 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stadium(
             })
         {
             out.push_str(r#"<g class="basic label-container outer-path">"#);
-            let _ = write!(
+            super::super::helpers::write_hand_drawn_hachure(
                 out,
-                r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"/>"#,
-                escape_attr(&fill_d),
-                escape_attr(common.fill_color),
-                fmt_display(FLOWCHART_STADIUM_HAND_DRAWN_FILL_WEIGHT as f64),
+                common,
+                &path_data,
+                &fill_d,
+                f64::from(FLOWCHART_STADIUM_HAND_DRAWN_FILL_WEIGHT),
             );
             let _ = write!(
                 out,

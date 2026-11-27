@@ -41,12 +41,12 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_hexagon(
             fmt_display(h / 2.0),
             escape_attr(common.rough_group_style)
         );
-        let _ = write!(
+        super::super::helpers::write_hand_drawn_hachure(
             out,
-            r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"/>"#,
-            escape_attr(&fill_d),
-            escape_attr(common.fill_color),
-            fmt_display(FLOWCHART_HEXAGON_HAND_DRAWN_FILL_WEIGHT as f64),
+            common,
+            &path_data,
+            &fill_d,
+            f64::from(FLOWCHART_HEXAGON_HAND_DRAWN_FILL_WEIGHT),
         );
         let _ = write!(
             out,

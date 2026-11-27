@@ -36,6 +36,15 @@ pub(super) fn number(config: &Value, key: &str, fallback: f64) -> f64 {
     configured_number(config, key).unwrap_or(fallback)
 }
 
+pub(super) fn spacing(config: &Value, key: &str) -> f64 {
+    config
+        .get(key)
+        .and_then(Value::as_f64)
+        .filter(|value| value.is_finite() && *value >= 0.0)
+        .or_else(|| configured_number(config, key))
+        .unwrap_or(50.0)
+}
+
 fn configured_number(config: &Value, key: &str) -> Option<f64> {
     config
         .get("usecase")

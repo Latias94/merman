@@ -781,22 +781,26 @@ pub(super) fn aesthetic_witnesses() {
                 .iter()
                 .find(|label| label.owner == LabelOwner::Body(group))
                 .expect("A2 has a painted title");
-            assert!(capture.haloed_titles.contains(&group));
-            assert!(seams.iter().any(|seam| {
-                Shaft::read(&capture.scene.edges[seam.edge])
-                    .unwrap()
-                    .hits(title.bounds)
-            }));
+            assert!(!capture.haloed_titles.contains(&group));
+            for seam in &seams {
+                assert!(
+                    !Shaft::read(&capture.scene.edges[seam.edge])
+                        .unwrap()
+                        .hits(title.bounds),
+                    "{} must pass beside the A2 title",
+                    capture.edge_names[seam.edge]
+                );
+            }
             assert_eq!(metrics.seams.len(), 2);
             for seam in metrics.seams {
                 let [outside, inside] = seam.legs.as_slice() else {
                     panic!("expected one outer gap and one inboard approach");
                 };
                 assert_eq!((outside.from, outside.to), ("A1.bottom", "A2.top"));
-                assert_eq!(outside.cubic_count, 1, "single sweep between groups");
                 assert_eq!(
-                    inside.cubic_count, 0,
-                    "the unpinned title yields to a straight shaft"
+                    (inside.from, inside.to),
+                    ("A2.top", "d1.marker_end"),
+                    "the route stays stitched after moving the title-side port"
                 );
             }
         }

@@ -11,7 +11,10 @@ mod stylesheet;
 pub use binding::ErCssBinding;
 pub use config::{ErConfigView, ErEntityMeasurementSettings, ErLayoutSettings, ErRenderSettings};
 pub use geometry::{ErSvgGeometry, ErSvgLayoutView, ErSvgRouteKind, er_rel_idx_from_edge_id};
-pub use markers::{ErMarkerDefs, er_marker_id, er_unified_marker_id, write_er_marker_definitions};
+pub use markers::{
+    ErMarkerDefs, er_marker_id, er_unified_marker_id, er_zero_marker_circle,
+    write_er_marker_definitions,
+};
 #[cfg(feature = "layout-shoal")]
 pub use markers::{er_canonical_marker, er_marker_paint_bounds};
 pub use native_theme::ErNativeStyle;

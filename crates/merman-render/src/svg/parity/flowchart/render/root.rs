@@ -28,6 +28,8 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRootRenderSession<
     pub(in crate::svg::parity::flowchart) hierarchy_plan: &'marker FlowchartHierarchyPlan<'data>,
     pub(in crate::svg::parity::flowchart) marker_plan: &'marker FlowchartMarkerEmissionPlan,
     pub(in crate::svg::parity::flowchart) edge_fills: &'marker FlowchartEdgeFillPlan,
+    pub(in crate::svg::parity::flowchart) label_cutouts:
+        &'marker FxHashSet<crate::flowchart::FlowchartEdgeKey>,
     pub(in crate::svg::parity::flowchart) edge_labels:
         &'cache mut super::super::paint::FlowchartEdgeLabels,
     pub(in crate::svg::parity::flowchart) step_badges: &'marker super::super::step::StepBadges,
@@ -421,6 +423,7 @@ fn render_flowchart_elk_edge_paths(
             ctx,
             session.marker_plan,
             session.edge_fills.ink(e.key),
+            false,
             e,
             0.0,
             0.0,
@@ -564,9 +567,14 @@ fn initialize_flowchart_root_frame<'data, 'plan>(
             .update(ctx, session.hierarchy_plan, session.edge_cache, edges)?;
     }
     let _g_edge_paths = detail_guard(session.timing, &mut session.details.edge_paths);
-    session
-        .edge_fills
-        .write_casings(out, ctx, session.marker_plan, edges, session.edge_cache)?;
+    session.edge_fills.write_casings(
+        out,
+        ctx,
+        session.marker_plan,
+        edges,
+        session.edge_cache,
+        session.label_cutouts,
+    )?;
     let edge_group_class = if ctx.swimlane_direction.is_some() {
         "edges edgePaths"
     } else {
@@ -584,6 +592,7 @@ fn initialize_flowchart_root_frame<'data, 'plan>(
                 ctx,
                 session.marker_plan,
                 session.edge_fills.ink(e.key),
+                session.label_cutouts.contains(&e.key),
                 e,
                 origin_x,
                 frame.content_origin_y,

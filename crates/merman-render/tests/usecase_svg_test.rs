@@ -2240,8 +2240,258 @@ fn usecase_shoal_centers_non_html_ellipse_labels() {
         .and_then(|rest| rest.strip_suffix(')'))
         .expect("translate(...)");
     let tx: f64 = transform.split(',').next().unwrap().trim().parse().unwrap();
-    assert!(
-        tx < -40.0,
-        "Shoal non-HTML ellipse label must be horizontally centered (-width/2), got translate({tx}, _)"
+    assert_eq!(tx, 0.0);
+    let text = label
+        .descendants()
+        .find(|node| node.has_tag_name("text"))
+        .unwrap();
+    assert_eq!(text.attribute("text-anchor"), Some("middle"));
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn usecase_shoal_actor_paints_the_resolved_font_with_a_centered_caption() {
+    let source = "usecase-beta\nactor Agent(\"Support Agent\")\n";
+    let (_, svg) = render_config(
+        source,
+        json!({"layout": "shoal", "htmlLabels": false, "usecase": {"actorFontSize": 23}}),
     );
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let text = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("text")
+                && node.ancestors().any(|parent| {
+                    parent.attribute("class") == Some("label actor-label usecase-actor-label")
+                })
+        })
+        .unwrap();
+    assert_eq!(text.attribute("text-anchor"), Some("middle"));
+    assert!(
+        text.attribute("style")
+            .unwrap()
+            .contains("font-size:23px !important")
+    );
+}
+
+#[cfg(any(feature = "layout-dagre", feature = "layout-shoal"))]
+#[test]
+fn usecase_svg_accepts_exact_output_byte_limit() {
+    use merman_render::{
+        Error,
+        resources::{RenderResourcePolicy, ResourceLimitId, ResourceLimitPhase},
+    };
+
+    let source = "usecase-beta\nA(\"Login\") <<Human>>\nA ..> : include B\n";
+    for backend in [
+        #[cfg(feature = "layout-dagre")]
+        "dagre",
+        #[cfg(feature = "layout-shoal")]
+        "shoal",
+    ] {
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(
+                json!({"layout":backend}),
+            ),
+        );
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let render = |policy| {
+            let session = RenderEnvironment::deterministic()
+                .with_resource_policy(policy)
+                .begin_session()
+                .unwrap();
+            family::prepare(
+                parsed.presentation(),
+                &LayoutOptions::headless_svg_defaults(),
+                session,
+            )?
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .map(|svg| svg.svg().to_owned())
+        };
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input();
+        let baseline = render(policy).unwrap();
+        let exact = policy
+            .with_limit(ResourceLimitId::MaxSvgBytes, baseline.len())
+            .unwrap();
+        assert_eq!(render(exact).unwrap(), baseline, "{backend}");
+        let below = policy
+            .with_limit(ResourceLimitId::MaxSvgBytes, baseline.len() - 1)
+            .unwrap();
+        let Error::ResourceLimitExceeded(limit) = render(below).unwrap_err() else {
+            panic!("{backend}: expected an incremental MaxSvgBytes limit");
+        };
+        assert_eq!(limit.limit, ResourceLimitId::MaxSvgBytes.as_str());
+        assert_eq!(limit.phase, ResourceLimitPhase::SvgOutput);
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn usecase_shoal_keeps_associations_clear_of_the_package_tab() {
+    use kurbo::{BezPath, ParamCurve, Rect};
+
+    let source = r#"usecase-beta
+direction TB
+actor Customer("Retail Customer")@{type:hollow}
+actor Support("Support Agent")@{business:true}
+systemBoundary Checkout("Checkout Subsystem")@{type:package}
+  PlaceOrder("Place Order")@{business:true}
+  Pay("Process Payment")
+  Fraud("Run Fraud Check")
+end
+systemBoundary Fulfillment("Fulfillment Center")
+  Ship("Dispatch Shipment")
+  Refund("Issue Refund")@{business:true}
+end
+Customer --> PlaceOrder
+PlaceOrder ..> : include Pay
+Fraud ..> : extend Pay
+PlaceOrder ..> : include Ship
+Support --> Refund
+Refund ..> : include Pay
+note for Pay "PCI DSS scope"
+"#;
+    let native = merman_render::theme::ThemeCompiler::new()
+        .compile_preset(merman_render::theme::BuiltinPreset::Studio, None)
+        .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_native_theme(merman_render::theme::NativeTheme::new(native))
+        .unwrap();
+    let (_, svg) = render_config_with_session(
+        source,
+        json!({"layout":"shoal", "htmlLabels":false}),
+        session,
+    );
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let tab = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("rect")
+                && node
+                    .attribute("class")
+                    .unwrap_or_default()
+                    .starts_with("boundary-tab ")
+        })
+        .unwrap();
+    let number = |key| tab.attribute(key).unwrap().parse::<f64>().unwrap();
+    let tab = Rect::from_origin_size(
+        (number("x"), number("y")),
+        (number("width"), number("height")),
+    );
+    let edge = document
+        .descendants()
+        .find(|node| node.attribute("data-id") == Some("edge-0") && node.has_tag_name("path"))
+        .unwrap();
+    let path = BezPath::from_svg(edge.attribute("d").unwrap()).unwrap();
+    assert!(
+        path.segments()
+            .all(|segment| (0..=100).all(|i| !tab.contains(segment.eval(f64::from(i) / 100.0)))),
+        "{path:?} crosses {tab:?}"
+    );
+    let css = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .unwrap();
+    assert!(css.contains(".actor-label text{color:"));
+    assert!(css.contains(".usecase-note .noteLabel text{color:"));
+    assert!(!css.contains(".usecase-actor-hollow{"));
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn usecase_shoal_reads_root_spacing_before_family_defaults() {
+    let source = "usecase-beta\ndirection TB\nA --> B\nA --> C\n";
+    let gap = |spacing: serde_json::Value| {
+        let mut config = json!({"layout":"shoal"});
+        config
+            .as_object_mut()
+            .unwrap()
+            .extend(spacing.as_object().unwrap().clone());
+        let (layout, _) = render_config(source, config);
+        let nodes = layout["layout"]["UsecaseDiagram"]["nodes"]
+            .as_array()
+            .unwrap();
+        let x = |id| {
+            nodes.iter().find(|node| node["id"] == id).unwrap()["x"]
+                .as_f64()
+                .unwrap()
+        };
+        (x("B") - x("C")).abs()
+    };
+    let nested = gap(json!({"usecase":{"nodeSpacing":120}}));
+    assert_eq!(
+        gap(json!({"nodeSpacing":120, "usecase":{"nodeSpacing":20}})),
+        nested
+    );
+    assert!(nested > gap(json!({"usecase":{"nodeSpacing":20}})) + 90.0);
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn usecase_native_theme_paints_sketch_and_masks_transparent_labels() {
+    use merman_render::theme::{NativeTheme, ThemeCompiler};
+
+    let source = "usecase-beta\ndirection LR\nA -- status --> B\n";
+    for (style, has_curves) in [("orthogonal", false), ("sketch", true)] {
+        let theme = ThemeCompiler::new().compile_json(
+            format!(r#"{{"schema_version":2,"extends":"paper","form":{{"edge_style":"{style}","marker_style":"open","edge_label_bg":"transparent"}}}}"#).as_bytes(),
+            None,
+        ).unwrap();
+        let session = RenderEnvironment::deterministic()
+            .begin_session_with_native_theme(NativeTheme::new(theme))
+            .unwrap();
+        let (_, svg) = render_config_with_session(
+            source,
+            json!({"layout":"shoal", "htmlLabels":false, "look":"neo", "themeVariables":{"useGradient":true}}),
+            session,
+        );
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        assert!(!svg.contains("url(#usecase-test-gradient)"));
+        let edge = document
+            .descendants()
+            .find(|node| node.attribute("data-edge") == Some("true"))
+            .unwrap();
+        assert_eq!(
+            edge.attribute("d").unwrap().contains('C'),
+            has_curves,
+            "{style}"
+        );
+        let marker = edge
+            .attribute("marker-end")
+            .unwrap()
+            .strip_prefix("url(#")
+            .unwrap()
+            .strip_suffix(')')
+            .unwrap();
+        let marker = document
+            .descendants()
+            .find(|node| node.attribute("id") == Some(marker))
+            .unwrap();
+        assert!(
+            marker
+                .first_element_child()
+                .unwrap()
+                .attribute("style")
+                .unwrap()
+                .contains("fill:none")
+        );
+        assert_eq!(
+            edge.parent_element().unwrap().attribute("mask"),
+            Some("url(#usecase-test_usecase-edge-label-mask)")
+        );
+        let mask = document
+            .descendants()
+            .find(|node| node.has_tag_name("mask"))
+            .unwrap();
+        assert_eq!(
+            mask.children()
+                .filter(|node| node.attribute("fill") == Some("black"))
+                .count(),
+            1
+        );
+    }
 }

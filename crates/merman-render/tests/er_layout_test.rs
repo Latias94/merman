@@ -29,6 +29,41 @@ fn layout_er(text: &str) -> ErDiagramLayout {
     serde_json::from_value(projection["layout"]["ErDiagram"].clone()).expect("ER layout projection")
 }
 
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn er_shoal_gives_cardinality_markers_room_on_a_crowded_face() {
+    for direction in ["LR", "RL", "TB", "BT"] {
+        let source = format!(
+            "---\nconfig:\n  layout: shoal\n  look: classic\n  htmlLabels: false\n---\nerDiagram\n  direction {direction}\n  A }}|--|{{ B : first\n  A }}|--|{{ B : second\n  A }}|--|{{ B : third\n  A }}|--|{{ B : fourth\n  A }}|--|{{ B : fifth\n"
+        );
+        let layout = layout_er(&source);
+        let horizontal = matches!(direction, "LR" | "RL");
+        for node in &layout.nodes {
+            let length = if horizontal { node.height } else { node.width };
+            let mut ports = layout
+                .edges
+                .iter()
+                .map(|edge| {
+                    let point = if edge.from == node.id {
+                        edge.points.first().unwrap()
+                    } else {
+                        edge.points.last().unwrap()
+                    };
+                    if horizontal { point.y } else { point.x }
+                })
+                .collect::<Vec<_>>();
+            ports.sort_by(f64::total_cmp);
+            assert_eq!(ports.len(), 5);
+            assert!(
+                ports.windows(2).all(|pair| pair[1] - pair[0] >= 18.0),
+                "{direction} {}: {ports:?}",
+                node.id
+            );
+            assert!(length >= 5.0 * 18.0, "{direction} {}: {length}", node.id);
+        }
+    }
+}
+
 #[cfg(not(feature = "layout-shoal"))]
 #[test]
 fn er_shoal_reports_the_missing_build_capability() {

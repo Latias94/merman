@@ -354,39 +354,75 @@ pub(super) fn hand_drawn_path_pair_with_stroke(
 pub(super) fn write_hand_drawn_path_pair(
     out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::FlowchartNodeRenderCommon<'_>,
+    outline: &str,
     fill_d: &str,
     stroke_d: &str,
 ) {
-    write_hand_drawn_path_pair_with_colors(
+    write_hand_drawn_hachure(out, common, outline, fill_d, 4.0);
+    let _ = write!(
         out,
-        fill_d,
-        stroke_d,
-        common.fill_color,
-        common.stroke_color,
-        common.stroke_width,
-        common.stroke_dasharray,
+        r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/>"#,
+        crate::svg::parity::flowchart::escape_attr(stroke_d),
+        crate::svg::parity::flowchart::escape_attr(common.stroke_color),
+        crate::svg::parity::util::fmt_display(common.stroke_width as f64),
+        crate::svg::parity::flowchart::escape_attr(common.stroke_dasharray),
     );
 }
 
-pub(super) fn write_hand_drawn_path_pair_with_colors(
+pub(super) fn write_hand_drawn_hachure(
     out: &mut impl crate::svg::parity::SvgOutput,
-    fill_d: &str,
-    stroke_d: &str,
-    fill_color: &str,
-    stroke_color: &str,
-    stroke_width: f32,
-    stroke_dasharray: &str,
+    common: &super::FlowchartNodeRenderCommon<'_>,
+    outline: &str,
+    hatch: &str,
+    width: f64,
 ) {
+    use crate::svg::parity::{escape_attr, fmt_display};
+
+    if !write_backed_hachure(out, common, outline, hatch, width) {
+        let _ = write!(
+            out,
+            r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"/>"#,
+            escape_attr(hatch),
+            escape_attr(common.fill_color),
+            fmt_display(width),
+        );
+    }
+}
+
+pub(super) fn write_backed_hachure(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    common: &super::FlowchartNodeRenderCommon<'_>,
+    outline: &str,
+    hatch: &str,
+    width: f64,
+) -> bool {
+    use crate::svg::parity::{escape_attr, fmt_display};
+
+    if !common.solid_rough_fill {
+        return false;
+    }
+    // A filled silhouette masks connectors and container paint behind the hatch gaps.
+    let fill = escape_attr(common.fill_color);
+    let opacity = fmt_display(common.fill_opacity);
     let _ = write!(
         out,
-        r#"<path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/>"#,
-        crate::svg::parity::flowchart::escape_attr(fill_d),
-        crate::svg::parity::flowchart::escape_attr(fill_color),
-        crate::svg::parity::flowchart::escape_attr(stroke_d),
-        crate::svg::parity::flowchart::escape_attr(stroke_color),
-        crate::svg::parity::util::fmt_display(stroke_width as f64),
-        crate::svg::parity::flowchart::escape_attr(stroke_dasharray),
+        r#"<path class="merman-rough-backing" d="{}" fill="{fill}" stroke="none" style="fill:{fill} !important;fill-opacity:{opacity} !important;stroke:none !important"/>"#,
+        escape_attr(outline),
     );
+    if crate::theme::edge_label_bg::literal_fill(common.fill_color)
+        .is_some_and(|fill| fill.channels()[3] > 0)
+        && common.fill_opacity > 0.0
+    {
+        let stroke = escape_attr(common.stroke_color);
+        let _ = write!(
+            out,
+            r#"<path d="{}" fill="none" stroke="{stroke}" stroke-width="{}" stroke-dasharray="0 0" style="fill:none !important;stroke:{stroke} !important;stroke-opacity:{} !important"/>"#,
+            escape_attr(hatch),
+            fmt_display(width),
+            fmt_display(0.15 * common.fill_opacity),
+        );
+    }
+    true
 }
 
 pub(super) fn write_raw_filled_stroked_path(

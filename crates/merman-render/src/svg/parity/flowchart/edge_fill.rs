@@ -6,16 +6,22 @@ use super::*;
 use crate::flowchart::FlowchartEdgeKey;
 use crate::theme::Color;
 use kurbo::Rect;
+use std::borrow::Cow;
 
 pub(super) const CASING_WIDTH_ADD: f64 = 3.0;
 
-#[derive(Clone, Copy)]
+#[cfg(feature = "layout-shoal")]
+pub(super) use shoal::{
+    EDGE_CONTRAST, contains_rect, contrasting_casing, rect_surface_paint, segment_enters_surface,
+    spatial_bounds,
+};
+
 #[cfg_attr(
     not(feature = "layout-shoal"),
     allow(dead_code, reason = "Only Shoal produces fill-aware paint.")
 )]
 enum EdgeFillPaint {
-    Ink(&'static str),
+    Ink(Cow<'static, str>),
     Casing { color: Color, width: f64 },
 }
 
@@ -26,9 +32,9 @@ pub(super) struct FlowchartEdgeFillPlan {
 }
 
 impl FlowchartEdgeFillPlan {
-    pub(super) fn ink(&self, key: FlowchartEdgeKey) -> Option<&'static str> {
+    pub(super) fn ink(&self, key: FlowchartEdgeKey) -> Option<&str> {
         match self.paint.get(&key) {
-            Some(&EdgeFillPaint::Ink(ink)) => Some(ink),
+            Some(EdgeFillPaint::Ink(ink)) => Some(ink),
             _ => None,
         }
     }
@@ -51,6 +57,7 @@ impl FlowchartEdgeFillPlan {
         marker_plan: &FlowchartMarkerEmissionPlan,
         edges: &[FlowchartRenderEdgeRef<'_>],
         cache: &FxHashMap<FlowchartEdgeKey, FlowchartEdgePathCacheEntry>,
+        label_cutouts: &FxHashSet<FlowchartEdgeKey>,
     ) -> Result<()> {
         if self.casing_bounds.is_none() {
             return Ok(());
@@ -65,11 +72,22 @@ impl FlowchartEdgeFillPlan {
             ctx.checkpoint_emit()?;
             let geom = &cache[&edge.key].geom;
             let d = geom.emitted_d_for_label.as_deref().unwrap_or(&geom.d);
+            let rough_dash = ctx.compatibility.look.is_hand_drawn()
+                && flowchart_neo_mask_uses_dash_pairs(edge.edge);
+            let cap = if rough_dash { "butt" } else { "round" };
             let _ = write!(
                 out,
-                r#"<path d="{d}" fill="none" stroke="{color}" stroke-width="{}" stroke-linecap="round" stroke-linejoin="round""#,
+                r#"<path d="{d}" fill="none" stroke="{color}" stroke-width="{}" stroke-linecap="{cap}" stroke-linejoin="round""#,
                 fmt_display(width),
             );
+            if rough_dash {
+                let dash = if edge.edge.stroke.as_deref() == Some("dotted") {
+                    2
+                } else {
+                    3
+                };
+                let _ = write!(out, r#" stroke-dasharray="{dash}""#);
+            }
             // Match Neo's arrowhead shaft setback without emitting a zero-length leading dash,
             // which under `stroke-linecap="round"` would paint an unwanted dot at the start tip.
             if ctx.compatibility.look.is_neo()
@@ -107,6 +125,11 @@ impl FlowchartEdgeFillPlan {
                 edge.key,
                 ctx.work_meter,
             )?;
+            if label_cutouts.contains(&edge.key)
+                && let Some(id) = ctx.document_ids().edge(edge.key)
+            {
+                super::edge_label_cutout::write_attribute(out, id);
+            }
             out.push_str("/>");
             out.checkpoint()?;
         }
@@ -136,7 +159,9 @@ mod shoal {
     use crate::graph_layout::RouteContract;
     use crate::graph_layout::ir::{BorderStitch, Endpoint, Side};
     use crate::theme::edge_label_bg::{literal_fill, literal_opacity};
-    use kurbo::{Point, RoundedRect, Shape, Vec2};
+    use kurbo::{
+        BezPath, Line, ParamCurve, ParamCurveExtrema, PathSeg, Point, RoundedRect, Shape, Vec2,
+    };
     use merman_layout_shoal::geom::{Bounds as SpatialBounds, Bvh, BvhEntry};
     use merman_model::families::flowchart::FlowEdgeVisibility;
     use merman_theme_contract::v2::{Paint, Texture};
@@ -145,7 +170,7 @@ mod shoal {
     // Treat subtle tint changes as one surface for casing purposes.
     const FILL_CONTRAST: f64 = 1.5;
     // WCAG non-text contrast, used to retain the theme's own connector ink when it reads well.
-    const EDGE_CONTRAST: f64 = 3.0;
+    pub(in crate::svg::parity::flowchart) const EDGE_CONTRAST: f64 = 3.0;
     const WHITE: Color = Color::rgb(255, 255, 255);
     const BLACK: Color = Color::rgb(0, 0, 0);
 
@@ -162,8 +187,10 @@ mod shoal {
     impl FlowchartEdgeFillPlan {
         pub(in crate::svg::parity::flowchart) fn applies(ctx: &FlowchartRenderCtx<'_>) -> bool {
             matches!(ctx.layout.route_contract, RouteContract::CanonicalAxis(_))
-                && ctx.swimlane_layout.is_none()
-                && !ctx.compatibility.look.is_hand_drawn()
+                && !(ctx.swimlane_layout.is_some() && ctx.compatibility.look.is_hand_drawn())
+                && !(ctx.compatibility.look.is_hand_drawn()
+                    && ctx.native.is_none()
+                    && ctx.diagram_type == "agentflow")
                 && ctx.recursive_clusters.is_empty()
                 && !ctx.layout.clusters.is_empty()
                 && !ctx
@@ -202,6 +229,15 @@ mod shoal {
                 return Ok(plan);
             };
             let canvas = solid_canvas(ctx, options);
+            if ctx.swimlane_layout.is_some() {
+                return super::super::swimlane::edge_contrast::prepare(
+                    ctx,
+                    hierarchy,
+                    cache,
+                    canvas,
+                    default_ink,
+                );
+            }
             let groups = &ctx.layout.clusters;
             ctx.work_meter.charge(groups.len())?;
             let indices: FxHashMap<_, _> = groups
@@ -324,13 +360,8 @@ mod shoal {
                 else {
                     continue;
                 };
-                let Some(bounds) = cached.geom.pb else {
-                    continue;
-                };
                 let offset = Vec2::new(cached.origin_x - ctx.tx, cached.origin_y - ctx.ty);
-                let shaft_bounds =
-                    Rect::new(bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y) + offset;
-                let source_ink = style.edge_marker_color(false);
+                let source_ink = style.edge_marker_color(ctx.compatibility.look.is_hand_drawn());
                 let Some(edge_ink) = source_ink
                     .map_or(Some(default_ink), literal_fill)
                     .filter(|ink| ink.channels()[3] == u8::MAX)
@@ -344,10 +375,59 @@ mod shoal {
                 let stitches =
                     &stitches[..stitches.partition_point(|stitch| stitch.edge == occurrence)];
                 ctx.work_meter.charge(stitches.len())?;
+                let allow_casing = ctx.compatibility.look.is_hand_drawn()
+                    || !flowchart_neo_mask_uses_dash_pairs(edge.edge);
+                let candidate = if source_ink.is_some() {
+                    None
+                } else if stitches.is_empty() {
+                    endpoint_parent(route.endpoints.0)
+                        .filter(|&index| Some(index) == endpoint_parent(route.endpoints.1))
+                        .and_then(|index| surfaces[index])
+                        .and_then(|surface| {
+                            Some((adaptive_ink(surface, canvas, default_ink)?, surface))
+                        })
+                } else {
+                    uniform_stitched_adaptive_ink(
+                        route,
+                        stitches,
+                        &surfaces,
+                        &axis.group_parents,
+                        endpoint_parent,
+                        canvas,
+                        default_ink,
+                    )
+                };
+                if candidate.is_none() && (stitches.is_empty() || !allow_casing) {
+                    continue;
+                }
+                let d = cached
+                    .geom
+                    .emitted_d_for_label
+                    .as_deref()
+                    .unwrap_or(&cached.geom.d);
+                ctx.work_meter.charge(d.len().div_ceil(16))?;
+                let shaft = BezPath::from_svg(d).map_err(|error| Error::InvalidModel {
+                    message: format!("could not read painted Shoal edge path: {error}"),
+                })?;
+                let local_shaft_bounds = shaft.bounding_box();
+                let shaft_bounds = local_shaft_bounds + offset;
+                let stroke_bounds = edge_ink_bounds(
+                    edge.edge,
+                    &cached.geom,
+                    shaft_bounds,
+                    offset,
+                    half_width,
+                    0.0,
+                );
+                let endpoint_clusters =
+                    [route.endpoints.0, route.endpoints.1].map(|endpoint| match endpoint {
+                        Endpoint::Group(id) => Some(id as usize),
+                        Endpoint::Node(_) => None,
+                    });
 
-                if !stitches.is_empty() {
-                    if !flowchart_neo_mask_uses_dash_pairs(edge.edge)
-                        && let Some(color) = casing_color(
+                let mut casing = allow_casing
+                    .then(|| {
+                        casing_color(
                             stitches,
                             &surfaces,
                             &cached.geom,
@@ -355,97 +435,69 @@ mod shoal {
                             offset,
                             edge_ink,
                         )
-                    {
-                        let width = 2.0 * half_width + CASING_WIDTH_ADD;
-                        let doc_offset = Vec2::new(cached.origin_x, cached.abs_top_transform);
-                        let doc_shaft =
-                            Rect::new(bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y)
-                                + doc_offset;
-                        let mut bounds = doc_shaft.inflate(width / 2.0, width / 2.0);
-                        let (start_marker, end_marker) = flowchart_marker_metrics(edge.edge);
-                        for (marker, point) in [
-                            (start_marker, cached.geom.data_points.first()),
-                            (end_marker, cached.geom.data_points.last()),
-                        ] {
-                            if marker.depth > 0.0
-                                && let Some(point) = point
-                            {
-                                let tip = Point::new(point.x, point.y) + doc_offset;
-                                let outset = marker.depth + marker.trim + CASING_WIDTH_ADD / 2.0;
-                                bounds = bounds
-                                    .union(Rect::from_points(tip, tip).inflate(outset, outset));
-                            }
-                        }
-                        plan.casing_bounds =
-                            Some(plan.casing_bounds.map_or(bounds, |old| old.union(bounds)));
-                        plan.paint
-                            .insert(edge.key, EdgeFillPaint::Casing { color, width });
-                        continue;
-                    }
-                    if source_ink.is_none()
-                        && let Some(ink) = uniform_stitched_adaptive_ink(
-                            route,
-                            stitches,
-                            &surfaces,
-                            &axis.group_parents,
-                            endpoint_parent,
-                            canvas,
-                            default_ink,
-                        )
-                    {
-                        plan.paint.insert(edge.key, EdgeFillPaint::Ink(ink));
-                    }
-                    continue;
-                }
-                let Some(index) = endpoint_parent(route.endpoints.0)
-                    .filter(|&index| Some(index) == endpoint_parent(route.endpoints.1))
-                else {
-                    continue;
-                };
-                if source_ink.is_some() {
-                    continue;
-                }
-                let Some((surface, surface_index)) = surfaces[index].zip(surface_index.as_ref())
-                else {
-                    continue;
-                };
-                let Some(ink) = adaptive_ink(surface, canvas, default_ink) else {
-                    continue;
-                };
-                let stroke_bounds =
-                    edge_ink_bounds(edge.edge, &cached.geom, shaft_bounds, offset, half_width);
-                let endpoint_clusters = [
-                    match route.endpoints.0 {
-                        Endpoint::Group(id) => Some(id as usize),
-                        Endpoint::Node(_) => None,
-                    },
-                    match route.endpoints.1 {
-                        Endpoint::Group(id) => Some(id as usize),
-                        Endpoint::Node(_) => None,
-                    },
-                ];
-                if contains_rect(surface.frame, stroke_bounds)
-                    && uniform_surface(
+                    })
+                    .flatten();
+                if casing.is_none()
+                    && let Some(((ink, surface), surface_index)) =
+                        candidate.zip(surface_index.as_ref())
+                    && (!stitches.is_empty() || contains_rect(surface.frame, stroke_bounds))
+                {
+                    if uniform_surface(
                         surface_index,
                         UniformSurfaceQuery {
-                            surface,
+                            paint_order: surface.paint_order,
+                            crosses_boundaries: !stitches.is_empty(),
                             ink,
                             bounds: stroke_bounds,
                             endpoint_clusters,
                             group_parents: &axis.group_parents,
-                            data_points: &cached.geom.data_points,
+                            shaft: &shaft,
                             offset,
                             half_width,
-                            canvas,
-                            default_ink,
                         },
                         ctx,
-                    )?
-                {
-                    plan.paint.insert(edge.key, EdgeFillPaint::Ink(ink));
+                    )? {
+                        plan.set_ink(edge.key, ink);
+                    } else if allow_casing {
+                        casing = Some(contrasting_casing(edge_ink));
+                    }
+                }
+                if let Some(color) = casing {
+                    plan.add_casing(edge, cached, local_shaft_bounds, half_width, color);
                 }
             }
             Ok(plan)
+        }
+
+        pub(in crate::svg::parity::flowchart) fn set_ink(
+            &mut self,
+            key: FlowchartEdgeKey,
+            ink: impl Into<Cow<'static, str>>,
+        ) {
+            self.paint.insert(key, EdgeFillPaint::Ink(ink.into()));
+        }
+
+        pub(in crate::svg::parity::flowchart) fn add_casing(
+            &mut self,
+            edge: FlowchartRenderEdgeRef<'_>,
+            cached: &FlowchartEdgePathCacheEntry,
+            local_shaft_bounds: Rect,
+            half_width: f64,
+            color: Color,
+        ) {
+            let width = 2.0 * half_width + CASING_WIDTH_ADD;
+            let doc_offset = Vec2::new(cached.origin_x, cached.abs_top_transform);
+            let bounds = edge_ink_bounds(
+                edge.edge,
+                &cached.geom,
+                local_shaft_bounds + doc_offset,
+                doc_offset,
+                width / 2.0,
+                CASING_WIDTH_ADD / 2.0,
+            );
+            self.casing_bounds = Some(self.casing_bounds.map_or(bounds, |old| old.union(bounds)));
+            self.paint
+                .insert(edge.key, EdgeFillPaint::Casing { color, width });
         }
     }
 
@@ -486,15 +538,22 @@ mod shoal {
         id: &str,
     ) -> Result<Option<(Option<Color>, f64)>> {
         let terminal = ctx.prepared_nodes.cluster(id)?;
-        ctx.work_meter
-            .charge(terminal.rect_style.len().div_ceil(64) + 1)?;
-        let mut fill = literal_fill(super::super::render::cluster_base_fill(ctx, terminal, id));
+        let fill = literal_fill(super::super::render::cluster_base_fill(ctx, terminal, id));
+        rect_surface_paint(ctx, fill, &terminal.rect_style)
+    }
+
+    pub(in crate::svg::parity::flowchart) fn rect_surface_paint(
+        ctx: &FlowchartRenderCtx<'_>,
+        mut fill: Option<Color>,
+        rect_style: &str,
+    ) -> Result<Option<(Option<Color>, f64)>> {
+        ctx.work_meter.charge(rect_style.len().div_ceil(64) + 1)?;
         let mut opacity = Some(1.0);
         let mut fill_opacity = Some(1.0);
         let mut proven_frame = true;
         // The rectangle appends this prepared inline style after the theme fill. Its emitted order
         // is authoritative when source spellings normalize to the same CSS property.
-        crate::mermaid_style::visit_parsed_style_declarations(&terminal.rect_style, |decl| {
+        crate::mermaid_style::visit_parsed_style_declarations(rect_style, |decl| {
             match decl.property() {
                 "fill" => fill = literal_fill(decl.value()),
                 "opacity" => opacity = literal_opacity(decl.value()),
@@ -514,7 +573,7 @@ mod shoal {
         }))
     }
 
-    fn contains_rect(frame: RoundedRect, rect: Rect) -> bool {
+    pub(in crate::svg::parity::flowchart) fn contains_rect(frame: RoundedRect, rect: Rect) -> bool {
         [
             Point::new(rect.x0, rect.y0),
             Point::new(rect.x0, rect.y1),
@@ -558,11 +617,15 @@ mod shoal {
         endpoint_parent: impl Fn(Endpoint) -> Option<usize>,
         canvas: Option<Color>,
         default_ink: Color,
-    ) -> Option<&'static str> {
+    ) -> Option<(&'static str, Surface)> {
         let mut required_ink = None;
+        let mut first_surface: Option<Surface> = None;
         let mut observe_surface = |index: Option<usize>| -> Option<()> {
             let surface = surfaces.get(index?)?.as_ref().copied()?;
             let ink = adaptive_ink(surface, canvas, default_ink)?;
+            if first_surface.is_none_or(|first| surface.paint_order < first.paint_order) {
+                first_surface = Some(surface);
+            }
             if let Some(existing) = required_ink {
                 if existing != ink {
                     return None;
@@ -584,7 +647,7 @@ mod shoal {
                 .map(|parent| parent as usize);
             observe_surface(outside_group)?;
         }
-        required_ink
+        required_ink.zip(first_surface)
     }
 
     fn casing_color(
@@ -613,15 +676,21 @@ mod shoal {
                     outside
                 } else if edge_ink.contrast(fill) >= EDGE_CONTRAST {
                     fill
-                } else if edge_ink.contrast(WHITE) >= edge_ink.contrast(BLACK) {
-                    WHITE
                 } else {
-                    BLACK
+                    contrasting_casing(edge_ink)
                 };
                 Some((surface.depth, color))
             })
             .min_by_key(|(depth, _)| *depth)
             .map(|(_, color)| color)
+    }
+
+    pub(in crate::svg::parity::flowchart) fn contrasting_casing(ink: Color) -> Color {
+        if ink.contrast(WHITE) >= ink.contrast(BLACK) {
+            WHITE
+        } else {
+            BLACK
+        }
     }
 
     fn crosses_face(frame: RoundedRect, point: Point, side: Side, shaft: Rect) -> bool {
@@ -671,6 +740,7 @@ mod shoal {
         shaft: Rect,
         offset: Vec2,
         half_width: f64,
+        marker_outset: f64,
     ) -> Rect {
         let (start, end) = flowchart_marker_metrics(edge);
         let mut bounds = shaft.inflate(half_width, half_width);
@@ -682,14 +752,14 @@ mod shoal {
                 && let Some(point) = point
             {
                 let tip = Point::new(point.x, point.y) + offset;
-                let outset = marker.depth + marker.trim;
+                let outset = marker.depth + marker.trim + marker_outset;
                 bounds = bounds.union(Rect::from_points(tip, tip).inflate(outset, outset));
             }
         }
         bounds
     }
 
-    fn spatial_bounds(rect: Rect) -> SpatialBounds {
+    pub(in crate::svg::parity::flowchart) fn spatial_bounds(rect: Rect) -> SpatialBounds {
         SpatialBounds {
             x: [rect.x0, rect.x1],
             y: [rect.y0, rect.y1],
@@ -697,31 +767,32 @@ mod shoal {
     }
 
     struct UniformSurfaceQuery<'a> {
-        surface: Surface,
+        paint_order: usize,
+        crosses_boundaries: bool,
         ink: &'static str,
         bounds: Rect,
         endpoint_clusters: [Option<usize>; 2],
         group_parents: &'a [Option<u32>],
-        data_points: &'a [crate::model::LayoutPoint],
+        shaft: &'a BezPath,
         offset: Vec2,
         half_width: f64,
-        canvas: Option<Color>,
-        default_ink: Color,
     }
 
     fn is_endpoint_cluster_or_descendant(
         mut cluster_index: usize,
         endpoint_clusters: [Option<usize>; 2],
         group_parents: &[Option<u32>],
-    ) -> bool {
+        work: &crate::resources::OperationWorkMeter,
+    ) -> Result<bool> {
         if endpoint_clusters[0].is_none() && endpoint_clusters[1].is_none() {
-            return false;
+            return Ok(false);
         }
         loop {
+            work.charge(1)?;
             if endpoint_clusters[0] == Some(cluster_index)
                 || endpoint_clusters[1] == Some(cluster_index)
             {
-                return true;
+                return Ok(true);
             }
             let Some(parent) = group_parents
                 .get(cluster_index)
@@ -729,72 +800,66 @@ mod shoal {
                 .flatten()
                 .map(|parent| parent as usize)
             else {
-                return false;
+                return Ok(false);
             };
             cluster_index = parent;
         }
     }
 
-    fn segment_intersects_rect(a: Point, b: Point, rect: Rect) -> bool {
-        if rect.x0 > rect.x1 || rect.y0 > rect.y1 {
-            return false;
+    pub(in crate::svg::parity::flowchart) fn segment_enters_surface(
+        segment: PathSeg,
+        frame: RoundedRect,
+        depth: u8,
+        work: &crate::resources::OperationWorkMeter,
+    ) -> Result<bool> {
+        work.charge(1)?;
+        let bounds = ParamCurveExtrema::bounding_box(&segment);
+        if !bounds.is_finite() {
+            return Ok(true);
         }
-        let dx = b.x - a.x;
-        let dy = b.y - a.y;
-        let mut t0 = 0.0_f64;
-        let mut t1 = 1.0_f64;
-        for (p, q) in [
-            (-dx, a.x - rect.x0),
-            (dx, rect.x1 - a.x),
-            (-dy, a.y - rect.y0),
-            (dy, rect.y1 - a.y),
-        ] {
-            if p == 0.0 {
-                if q < 0.0 {
-                    return false;
-                }
-            } else {
-                let r = q / p;
-                if p < 0.0 {
-                    if r > t1 {
-                        return false;
-                    }
-                    if r > t0 {
-                        t0 = r;
-                    }
-                } else {
-                    if r < t0 {
-                        return false;
-                    }
-                    if r < t1 {
-                        t1 = r;
-                    }
-                }
-            }
+        let rect = frame.rect();
+        if bounds.x1 < rect.x0 || bounds.x0 > rect.x1 || bounds.y1 < rect.y0 || bounds.y0 > rect.y1
+        {
+            return Ok(false);
         }
-        t0 <= t1
-    }
+        if [segment.start(), segment.end(), segment.eval(0.5)]
+            .into_iter()
+            .any(|point| frame.contains(point))
+        {
+            return Ok(true);
+        }
+        if frame.radii().top_left == 0.0 {
+            let corners = [
+                (rect.x0, rect.y0),
+                (rect.x1, rect.y0),
+                (rect.x1, rect.y1),
+                (rect.x0, rect.y1),
+            ];
+            return Ok((0..4).any(|i| {
+                !segment
+                    .intersect_line(Line::new(corners[i], corners[(i + 1) % 4]))
+                    .is_empty()
+            }));
+        }
 
-    fn route_enters_rect(
-        points: &[crate::model::LayoutPoint],
-        offset: Vec2,
-        rect: Rect,
-        margin: f64,
-    ) -> bool {
-        let test_rect = rect.inflate(margin, margin);
-        if test_rect.x0 > test_rect.x1 || test_rect.y0 > test_rect.y1 {
-            return false;
+        // The point of the tight bounds nearest the center also has the deepest possible
+        // penetration into a uniformly rounded rectangle. Prune boxes outside the corner arc.
+        let center = rect.center();
+        let nearest = Point::new(
+            center.x.clamp(bounds.x0, bounds.x1),
+            center.y.clamp(bounds.y0, bounds.y1),
+        );
+        if !frame.contains(nearest) {
+            return Ok(false);
         }
-        if points.len() < 2 {
-            return points
-                .first()
-                .is_some_and(|p| test_rect.contains(Point::new(p.x, p.y) + offset));
+        // Resolve any remaining round-corner contact to a subpixel box. Prefer retaining the
+        // source ink at the numerical boundary instead of proving that adaptive ink is safe.
+        if depth == 32 || bounds.width().max(bounds.height()) <= 1e-3 {
+            return Ok(true);
         }
-        points.windows(2).any(|pair| {
-            let a = Point::new(pair[0].x, pair[0].y) + offset;
-            let b = Point::new(pair[1].x, pair[1].y) + offset;
-            segment_intersects_rect(a, b, test_rect)
-        })
+        let (left, right) = segment.subdivide();
+        Ok(segment_enters_surface(left, frame, depth + 1, work)?
+            || segment_enters_surface(right, frame, depth + 1, work)?)
     }
 
     fn uniform_surface(
@@ -811,10 +876,13 @@ mod shoal {
                     Continue(query.bounds.overlaps(Rect::new(x0, y0, x1, y1)))
                 }
                 BvhEntry::Item(other)
-                    if other.paint_order > query.surface.paint_order
-                        && other.fill != query.surface.fill
-                        && adaptive_ink(*other, query.canvas, query.default_ink)
-                            != Some(query.ink)
+                    if (other.paint_order > query.paint_order
+                        || (query.crosses_boundaries
+                            && !contains_rect(other.frame, query.bounds)))
+                        && other.fill.is_none_or(|fill| {
+                            let ink = if query.ink == "#FFFFFF" { WHITE } else { BLACK };
+                            ink.contrast(fill) < EDGE_CONTRAST
+                        })
                         && query.bounds.overlaps(other.frame.rect()) =>
                 {
                     // An edge terminating on its own source/target child cluster touches that
@@ -824,21 +892,25 @@ mod shoal {
                         other.index,
                         query.endpoint_clusters,
                         query.group_parents,
-                    ) {
+                        ctx.work_meter,
+                    )? {
                         -1e-3
                     } else {
                         query.half_width
                     };
-                    if route_enters_rect(
-                        query.data_points,
-                        query.offset,
-                        other.frame.rect(),
-                        margin,
-                    ) {
-                        Break(())
-                    } else {
-                        Continue(true)
+                    let rect = other.frame.rect().inflate(margin, margin) - query.offset;
+                    if rect.width() > 0.0 && rect.height() > 0.0 {
+                        let frame = RoundedRect::from_rect(
+                            rect,
+                            (other.frame.radii().top_left + margin).max(0.0),
+                        );
+                        for segment in query.shaft.segments() {
+                            if segment_enters_surface(segment, frame, 0, ctx.work_meter)? {
+                                return Ok(Break(()));
+                            }
+                        }
                     }
+                    Continue(true)
                 }
                 BvhEntry::Item(_) => Continue(true),
             })
@@ -849,6 +921,30 @@ mod shoal {
     #[cfg(test)]
     mod tests {
         use super::*;
+
+        #[test]
+        fn surface_test_follows_the_curve_instead_of_its_chord_or_control_polygon() {
+            let work = crate::resources::OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            );
+            let path = BezPath::from_svg("M0,0C0,20 20,20 20,0").unwrap();
+            let curve = path.segments().next().unwrap();
+            for (rect, radius, expected) in [
+                (Rect::new(4.0, 10.0, 6.0, 14.0), 0.0, true),
+                (Rect::new(9.0, 14.9, 11.0, 15.1), 0.1, true),
+                (Rect::new(9.0, 16.0, 11.0, 19.0), 0.0, false),
+                (Rect::new(9.0, -0.1, 11.0, 0.1), 0.0, false),
+            ] {
+                assert_eq!(
+                    segment_enters_surface(curve, rect.to_rounded_rect(radius), 0, &work).unwrap(),
+                    expected,
+                    "rect {rect:?} with radius {radius}"
+                );
+            }
+            let corner = PathSeg::Line(Line::new((0.0, 3.0), (3.0, 0.0)));
+            let rounded = Rect::new(0.0, 0.0, 40.0, 40.0).to_rounded_rect(10.0);
+            assert!(!segment_enters_surface(corner, rounded, 0, &work).unwrap());
+        }
 
         #[test]
         fn crosses_face_accepts_rounded_corner_arc_stitch_points() {

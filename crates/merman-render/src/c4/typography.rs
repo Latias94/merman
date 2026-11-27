@@ -310,6 +310,28 @@ impl C4TypographyThemePlan {
     pub(crate) fn common_css(&self) -> &crate::svg::PreparedCommonCss {
         &self.common_css
     }
+
+    pub(crate) fn title_text_style(&self) -> TextStyle {
+        let native = self.native_style();
+        let font_size = crate::mermaid_style::resolve_mermaid_font_size_px(
+            self.common_css.font_size_css(),
+            crate::mermaid_style::CssFontSizeContext::uniform(16.0),
+        )
+        .unwrap_or(16.0);
+        TextStyle {
+            font_family: Some(
+                native
+                    .map_or(self.common_css.font_family(), |theme| {
+                        theme.title_family.as_str()
+                    })
+                    .to_owned(),
+            ),
+            font_size,
+            font_weight: native.map(|theme| theme.title_weight.to_string()),
+            ..Default::default()
+        }
+    }
+
     pub(crate) fn person_border(&self) -> &str {
         &self.person_border
     }

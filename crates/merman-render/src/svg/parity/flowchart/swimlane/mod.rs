@@ -6,11 +6,15 @@ use crate::model::{FlowchartLayout, LayoutCluster, LayoutEdge, LayoutLabel, Layo
 use merman_model::families::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
 use rustc_hash::FxHashMap;
 
+mod canonical_line_hops;
 mod cluster;
+#[cfg(feature = "layout-shoal")]
+pub(super) mod edge_contrast;
 mod endpoint_clip;
 
 pub(super) use endpoint_clip::clip_swimlane_endpoints;
 
+pub(super) use canonical_line_hops::apply_canonical_line_hops;
 pub(super) use cluster::render_swimlane_cluster;
 
 fn is_pool_cluster(ctx: &FlowchartRenderCtx<'_>, id: &str) -> bool {
@@ -29,6 +33,13 @@ fn is_pool_cluster(ctx: &FlowchartRenderCtx<'_>, id: &str) -> bool {
 }
 
 fn uses_pool_shell(ctx: &FlowchartRenderCtx<'_>, id: &str) -> bool {
+    #[cfg(all(
+        feature = "layout-shoal",
+        any(feature = "diagram-flowchart", feature = "diagram-swimlane")
+    ))]
+    if let Some(shoal) = ctx.swimlane_layout.and_then(|layout| layout.shoal.as_ref()) {
+        return shoal.shells.get(id) == Some(&crate::swimlane::ShellKind::Pool);
+    }
     is_pool_cluster(ctx, id)
         && (id != "__swimlane_default__"
             || ctx
@@ -39,10 +50,14 @@ fn uses_pool_shell(ctx: &FlowchartRenderCtx<'_>, id: &str) -> bool {
 }
 
 pub(super) fn is_lane_or_pool_cluster(ctx: &FlowchartRenderCtx<'_>, id: &str) -> bool {
+    #[cfg(all(
+        feature = "layout-shoal",
+        any(feature = "diagram-flowchart", feature = "diagram-swimlane")
+    ))]
+    if let Some(shoal) = ctx.swimlane_layout.and_then(|layout| layout.shoal.as_ref()) {
+        return shoal.shells.contains_key(id);
+    }
     ctx.swimlane_lanes_by_id.get(id).is_some_and(|group| {
-        if ctx.layout.route_contract.group_parents().is_some() {
-            return group.parent_id.is_none();
-        }
         group.parent_id.is_none()
             || is_pool_cluster(ctx, id)
             || group
@@ -50,6 +65,80 @@ pub(super) fn is_lane_or_pool_cluster(ctx: &FlowchartRenderCtx<'_>, id: &str) ->
                 .as_deref()
                 .is_some_and(|parent| is_pool_cluster(ctx, parent))
     })
+}
+
+pub(super) fn svg_label_ink(
+    ctx: &FlowchartRenderCtx<'_>,
+    id: &str,
+    style: &FlowchartCompiledStyles,
+    default_ink: &str,
+    text_style: &crate::text::TextStyle,
+) -> Result<Option<std::borrow::Cow<'static, str>>> {
+    use crate::theme::Color;
+    use crate::theme::edge_label_bg::{adaptive_text_ink, literal_fill};
+    use std::borrow::Cow;
+
+    if !ctx.layout.route_contract.is_canonical_axis() {
+        return Ok(None);
+    }
+    if style.has_source_label_foreground() {
+        let ink = style
+            .effective_edge_label_text_style_with_provenance(text_style)
+            .terminal_foreground;
+        return Ok(ink.map(|ink| Cow::Owned(ink.value().to_owned())));
+    }
+    if ctx.compatibility.look.is_hand_drawn() {
+        return Ok(None);
+    }
+    let Some((fill, default_ink)) = style
+        .fill
+        .as_deref()
+        .and_then(literal_fill)
+        .zip(literal_fill(default_ink))
+    else {
+        return Ok(None);
+    };
+    let mut backdrop = fill.composite(Color::TRANSPARENT, style.fill_opacity);
+    let mut parent = ctx.parent.get(id).copied();
+    while backdrop.channels()[3] != u8::MAX {
+        let Some(id) = parent else { break };
+        ctx.work_meter.charge_emit_work(1)?;
+        let terminal = ctx.prepared_nodes.cluster(id)?;
+        let fallback = ctx.native.map(|native| native.container);
+        let layer = match terminal.compiled.fill.as_deref() {
+            Some(fill) => literal_fill(fill),
+            None => fallback.or_else(|| literal_fill(&terminal.fill)),
+        };
+        let Some(layer) = layer else { return Ok(None) };
+        let layer = layer.composite(Color::TRANSPARENT, terminal.compiled.fill_opacity);
+        backdrop = backdrop.composite(layer, 1.0);
+        parent = ctx.parent.get(id).copied();
+    }
+    let canvas = ctx.native.map(|native| native.canvas).or_else(|| {
+        ctx.config
+            .get_str("themeVariables.background")
+            .and_then(literal_fill)
+    });
+    let backdrop = canvas.map_or(backdrop, |canvas| backdrop.composite(canvas, 1.0));
+    Ok(adaptive_text_ink(backdrop, default_ink).map(Cow::Borrowed))
+}
+
+pub(super) fn write_mermaid_svg_edge_label_background(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    ctx: &FlowchartRenderCtx<'_>,
+    center: (f64, f64),
+    size: (f64, f64),
+) {
+    use crate::theme::edge_label_bg::{literal_fill, write_backplate};
+    use merman_theme_contract::v2::EdgeLabelBackground;
+
+    if ctx.node_html_labels || !ctx.layout.route_contract.is_canonical_axis() {
+        return;
+    }
+    if let Some(fill) = literal_fill(&ctx.compatibility.edge_label_background) {
+        let bounds = kurbo::Rect::from_center_size(center, size);
+        let _ = write_backplate(out, bounds, EdgeLabelBackground::Canvas, fill, fill);
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -382,23 +471,16 @@ pub(super) fn apply_line_hops_to_edge_geometries(
     preserve_dash_mask_length: impl Fn(&super::render_input::FlowchartRenderEdge<'_>) -> bool,
 ) -> Result<()> {
     use crate::svg::parity::line_hops::{
-        LineHopConfig, LineHopEdge, LineHopStyle, curve_supports_line_hops, line_hop_overrides,
+        LineHopEdge, curve_supports_line_hops, line_hop_overrides,
     };
 
-    let line_hops_value = effective_config
-        .get(if uses_elk_adapter_dom {
-            "elk"
-        } else {
-            "swimlane"
-        })
-        .and_then(|value| value.get("lineHops"));
-    if line_hops_value.and_then(serde_json::Value::as_bool) == Some(false) {
-        return Ok(());
-    }
-    let jump_style = if line_hops_value.and_then(serde_json::Value::as_str) == Some("gap") {
-        LineHopStyle::Gap
+    let family = if uses_elk_adapter_dom {
+        "elk"
     } else {
-        LineHopStyle::Arc
+        "swimlane"
+    };
+    let Some(jump_config) = line_hop_config(effective_config, family) else {
+        return Ok(());
     };
 
     let preparation_work = render_edges
@@ -441,15 +523,7 @@ pub(super) fn apply_line_hops_to_edge_geometries(
         })
         .unzip();
 
-    let paths = line_hop_overrides(
-        &edges,
-        LineHopConfig {
-            jump_radius: 6.0,
-            jump_style,
-        },
-        curve_supports_line_hops,
-        work_meter,
-    )?;
+    let paths = line_hop_overrides(&edges, jump_config, curve_supports_line_hops, work_meter)?;
 
     for (index, path) in paths {
         let edge = owners[index];
@@ -465,6 +539,26 @@ pub(super) fn apply_line_hops_to_edge_geometries(
         cache_entry.geom.line_hop_applied = true;
     }
     Ok(())
+}
+
+fn line_hop_config(
+    config: &merman_model::presentation::PresentationConfig,
+    family: &str,
+) -> Option<crate::svg::parity::line_hops::LineHopConfig> {
+    use crate::svg::parity::line_hops::{LineHopConfig, LineHopStyle};
+
+    let mode = config.get(family).and_then(|value| value.get("lineHops"));
+    if mode.and_then(serde_json::Value::as_bool) == Some(false) {
+        return None;
+    }
+    Some(LineHopConfig {
+        jump_radius: 6.0,
+        jump_style: if mode.and_then(serde_json::Value::as_str) == Some("gap") {
+            LineHopStyle::Gap
+        } else {
+            LineHopStyle::Arc
+        },
+    })
 }
 
 pub(super) fn write_swimlane_css<DiagramId>(

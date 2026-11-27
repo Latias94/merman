@@ -110,7 +110,7 @@ pub(crate) use model::{
 };
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-use merman_model::families::flowchart::FlowchartRenderLabelSources;
+use merman_model::families::flowchart::{FlowchartLabelSourceOwner, FlowchartRenderLabelSources};
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) use model::sanitize_common_db_fields;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -1800,11 +1800,20 @@ impl FlowchartSemanticSource {
 
         let mut render_nodes = Vec::with_capacity(nodes.len());
         let mut label_sources = FlowchartRenderLabelSources::default();
+        let preserve_svg_text = matches!(
+            meta.diagram_type(),
+            "flowchart" | "flowchart-v2" | "flowchart-elk"
+        );
         for (index, node) in nodes.into_iter().enumerate() {
             if index % 128 == 0 {
                 control.checkpoint()?;
             }
-            let node = flow_node_to_model(node, meta.diagram_config(), &mut label_sources);
+            let node = flow_node_to_model(
+                node,
+                meta.diagram_config(),
+                preserve_svg_text,
+                &mut label_sources,
+            );
             render_nodes.push(node);
         }
         let mut render_edges = Vec::with_capacity(edges.len());
@@ -1812,7 +1821,7 @@ impl FlowchartSemanticSource {
             if index % 128 == 0 {
                 control.checkpoint()?;
             }
-            match flow_edge_to_model(edge, meta, index, &mut label_sources) {
+            match flow_edge_to_model(edge, meta, index, preserve_svg_text, &mut label_sources) {
                 Ok(edge) => {
                     render_edges.push(edge);
                 }
@@ -1824,8 +1833,13 @@ impl FlowchartSemanticSource {
             if index % 128 == 0 {
                 control.checkpoint()?;
             }
-            let subgraph =
-                flow_subgraph_to_model(subgraph, meta.diagram_config(), index, &mut label_sources);
+            let subgraph = flow_subgraph_to_model(
+                subgraph,
+                meta.diagram_config(),
+                index,
+                preserve_svg_text,
+                &mut label_sources,
+            );
             render_subgraphs.push(subgraph);
         }
         let mut render_tooltips = rustc_hash::FxHashMap::default();
@@ -1924,6 +1938,7 @@ fn append_missing_subgraph_nodes(
 fn flow_node_to_model(
     n: Node,
     config: &MermaidConfig,
+    preserve_svg_text: bool,
     label_sources: &mut FlowchartRenderLabelSources,
 ) -> FlowNode {
     let layout_shape = layout_shape_for_node(&n);
@@ -1934,6 +1949,15 @@ fn flow_node_to_model(
         .filter(|source| *source != label)
     {
         label_sources.insert_node(n.id.clone(), source);
+    }
+    if preserve_svg_text
+        && n.label_type != TitleKind::Markdown
+        && let Some(source) = alternate_svg_text_label(
+            strip_label_quotes(label_raw),
+            label_sources.node_source(&n.id).unwrap_or(&label),
+        )
+    {
+        label_sources.insert_svg_text(FlowchartLabelSourceOwner::Node(&n.id), source);
     }
 
     FlowNode {
@@ -1963,6 +1987,7 @@ fn flow_edge_to_model<M: FlowchartMetadata>(
     e: Edge,
     meta: &M,
     semantic_index: usize,
+    preserve_svg_text: bool,
     label_sources: &mut FlowchartRenderLabelSources,
 ) -> Result<FlowEdge> {
     let label = sanitized_optional_label(e.label.as_deref(), meta.diagram_config());
@@ -1975,6 +2000,16 @@ fn flow_edge_to_model<M: FlowchartMetadata>(
         && *label != source
     {
         label_sources.insert_edge(semantic_index, source);
+    }
+    if preserve_svg_text
+        && e.label_type != TitleKind::Markdown
+        && let (Some(raw), Some(label)) = (e.label.as_deref(), label.as_deref())
+        && let Some(source) = alternate_svg_text_label(
+            raw,
+            label_sources.edge_source(semantic_index).unwrap_or(label),
+        )
+    {
+        label_sources.insert_svg_text(FlowchartLabelSourceOwner::Edge(semantic_index), source);
     }
     let id = e.id.ok_or_else(|| {
         Error::diagram_parse_fallback(
@@ -2052,6 +2087,13 @@ fn sanitized_node_render_label_source(n: &Node, config: &MermaidConfig) -> Strin
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+fn strip_label_quotes(text: &str) -> &str {
+    text.strip_prefix('"')
+        .and_then(|body| body.strip_suffix('"'))
+        .unwrap_or(text)
+}
+
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 fn sanitized_optional_label(label: Option<&str>, config: &MermaidConfig) -> Option<String> {
     label.map(|s| sanitized_label(s, config))
 }
@@ -2075,6 +2117,46 @@ fn render_label_source_needs_provenance(raw: &str) -> bool {
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+fn alternate_svg_text_label(raw: &str, fallback: &str) -> Option<String> {
+    if !render_label_source_needs_provenance(raw) {
+        return None;
+    }
+    let append_text = |text: &str, out: &mut String| {
+        for ch in decode_mermaid_hash_entities(text).chars() {
+            match ch {
+                '&' => out.push_str("&amp;"),
+                '<' => out.push_str("&lt;"),
+                '>' => out.push_str("&gt;"),
+                _ => out.push(ch),
+            }
+        }
+    };
+    // Recognize only authored break tokens before expanding entities. Encode the other angle
+    // brackets and ampersands for the SVG row tokenizer, which decodes them after tokenization.
+    let mut source = String::with_capacity(raw.len());
+    let mut copied = 0;
+    for (start, _) in raw.match_indices('<') {
+        let tail = &raw[start + 1..];
+        let name = tail.strip_prefix('/').unwrap_or(tail);
+        if !name
+            .get(..2)
+            .is_some_and(|name| name.eq_ignore_ascii_case("br"))
+        {
+            continue;
+        }
+        let tail = name[2..].trim_start_matches(merman_model::text::is_ecmascript_whitespace);
+        let tail = tail.strip_prefix('/').unwrap_or(tail);
+        if let Some(after) = tail.strip_prefix('>') {
+            append_text(&raw[copied..start], &mut source);
+            source.push_str("<br/>");
+            copied = raw.len() - after.len();
+        }
+    }
+    append_text(&raw[copied..], &mut source);
+    (source != fallback).then_some(source)
+}
+
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 fn decode_mermaid_hash_entities(input: &str) -> std::borrow::Cow<'_, str> {
     // Mermaid runs `encodeEntities(...)` before parsing and later decodes with browser
     // `entityDecode(...)`. In our headless pipeline we decode into Unicode during parsing so
@@ -2087,6 +2169,7 @@ fn flow_subgraph_to_model(
     sg: FlowSubGraph,
     config: &MermaidConfig,
     declaration_ordinal: usize,
+    preserve_svg_text: bool,
     label_sources: &mut FlowchartRenderLabelSources,
 ) -> FlowSubgraph {
     let sanitized_title = sanitize_text(&sg.title, config);
@@ -2096,6 +2179,20 @@ fn flow_subgraph_to_model(
         .filter(|source| *source != title);
     if let Some(source) = render_title_source {
         label_sources.insert_subgraph(sg.id.clone(), declaration_ordinal, Some(source));
+    }
+    if preserve_svg_text
+        && sg.label_type != "markdown"
+        && let Some(source) = alternate_svg_text_label(
+            &sg.title,
+            label_sources
+                .subgraph_source(declaration_ordinal, &sg.id)
+                .unwrap_or(&title),
+        )
+    {
+        label_sources.insert_svg_text(
+            FlowchartLabelSourceOwner::Subgraph(declaration_ordinal, &sg.id),
+            source,
+        );
     }
     FlowSubgraph {
         id: sg.id,

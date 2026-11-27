@@ -18,11 +18,46 @@ fn repo_root() -> PathBuf {
 
 #[test]
 fn png_canvas_uses_export_policy_instead_of_svg_css() {
-    let source = "flowchart LR\n A --> B";
+    let assert_canvas = |args: &[&str], source, expected| {
+        let output = support::run_with_stdin(args, source);
+        assert!(output.status.success(), "{args:?}: {:?}", output.stderr);
+        let mut reader = png::Decoder::new(Cursor::new(output.stdout))
+            .read_info()
+            .expect("PNG info");
+        let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
+        let info = reader.next_frame(&mut pixels).expect("PNG frame");
+        assert_eq!(info.color_type, ColorType::Rgba);
+        assert_eq!(pixels[..4], expected, "canvas pixel for {args:?}");
+    };
     for (args, expected) in [
         (vec!["render", "--format", "png", "-"], [0, 0, 0, 0]),
         (
+            vec!["render", "--format", "png", "--theme", "dark", "-"],
+            [51, 51, 51, 255],
+        ),
+        (
+            vec!["render", "--format", "png", "--theme", "neo-dark", "-"],
+            [51, 51, 51, 255],
+        ),
+        (
+            vec![
+                "render",
+                "--format",
+                "png",
+                "--theme",
+                "dark",
+                "--background",
+                "transparent",
+                "-",
+            ],
+            [0, 0, 0, 0],
+        ),
+        (
             vec!["mmdc", "-i", "-", "-o", "-", "-e", "png"],
+            [255, 255, 255, 255],
+        ),
+        (
+            vec!["mmdc", "-i", "-", "-o", "-", "-e", "png", "--theme", "dark"],
             [255, 255, 255, 255],
         ),
         (
@@ -70,16 +105,13 @@ fn png_canvas_uses_export_policy_instead_of_svg_css() {
             [0, 0, 0, 0],
         ),
     ] {
-        let output = support::run_with_stdin(&args, source);
-        assert!(output.status.success(), "{args:?}: {:?}", output.stderr);
-        let mut reader = png::Decoder::new(Cursor::new(output.stdout))
-            .read_info()
-            .expect("PNG info");
-        let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
-        let info = reader.next_frame(&mut pixels).expect("PNG frame");
-        assert_eq!(info.color_type, ColorType::Rgba);
-        assert_eq!(pixels[..4], expected, "canvas pixel for {args:?}");
+        assert_canvas(&args, "flowchart LR\n A --> B", expected);
     }
+    assert_canvas(
+        &["render", "--format", "png", "-"],
+        "---\nconfig:\n  theme: dark\n  themeVariables:\n    background: 'rgb(18, 52, 86)'\n---\nflowchart LR\n A --> B",
+        [18, 52, 86, 255],
+    );
 }
 
 #[test]

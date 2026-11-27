@@ -38,13 +38,21 @@ fn render_polygon_shape(
         {
             let _ = write!(
                 out,
-                r#"<g transform="translate({},{})" style="{}"><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"#,
+                r#"<g transform="translate({},{})" style="{}">"#,
                 fmt_display(tx),
                 fmt_display(ty),
                 escape_attr(common.rough_group_style),
-                escape_attr(&fill_d),
-                escape_attr(common.fill_color),
-                fmt_display(FLOWCHART_POLYGON_HAND_DRAWN_FILL_WEIGHT as f64),
+            );
+            super::super::helpers::write_hand_drawn_hachure(
+                out,
+                common,
+                &path_data,
+                &fill_d,
+                f64::from(FLOWCHART_POLYGON_HAND_DRAWN_FILL_WEIGHT),
+            );
+            let _ = write!(
+                out,
+                r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"#,
                 escape_attr(&stroke_d),
                 escape_attr(common.stroke_color),
                 fmt_display(common.stroke_width as f64),

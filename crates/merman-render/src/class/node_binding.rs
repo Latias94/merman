@@ -1,5 +1,103 @@
-use merman_model::families::class::{ClassDiagram, ClassNode};
+use merman_model::families::class::{ClassDiagram, ClassMember, ClassNode};
+use merman_model::text::parse_generic_types;
 use rustc_hash::FxHashMap;
+use std::borrow::Cow;
+
+/// Retains the member's authored type boundaries until SVG Markdown has been tokenized.
+pub(crate) fn class_svg_generic_member_source(member: &ClassMember) -> Option<String> {
+    fn signature(member: &ClassMember, mut project: impl FnMut(&str) -> String) -> String {
+        let mut text = member.visibility.clone();
+        text.push_str(&project(&member.id));
+        if member.member_type == "method" {
+            text.push('(');
+            text.push_str(&project(member.parameters.trim()));
+            text.push(')');
+            if !member.return_type.is_empty() {
+                text.push_str(" : ");
+                text.push_str(&project(&member.return_type));
+            }
+        }
+        text
+    }
+    if ![&member.id, &member.parameters, &member.return_type]
+        .iter()
+        .any(|part| part.contains('~'))
+    {
+        return None;
+    }
+    let mut changed = false;
+    let rendered = signature(member, |part| {
+        if let Some(encoded) = encode_generic_angles(part) {
+            changed = true;
+            encoded
+        } else {
+            part.to_owned()
+        }
+    });
+    // A typed model may supply its own display text instead of the parser's signature.
+    if !changed || signature(member, parse_generic_types).trim() != member.display_text.trim() {
+        return None;
+    }
+    Some(rendered.trim().to_owned())
+}
+
+fn encode_generic_angles(part: &str) -> Option<String> {
+    if !part.contains('~') {
+        return None;
+    }
+    let mut rendered = String::with_capacity(part.len());
+    let mut depth = 0usize;
+    let mut opened = false;
+    let mut start = 0;
+    // Keep the nesting depth across commas inside the type argument list.
+    for (at, _) in part.match_indices('~') {
+        let previous = part[..at].chars().next_back();
+        let next = part[at + 1..].chars().next();
+        let after_type_name = previous.is_some_and(|ch| ch.is_alphanumeric() || ch == '_');
+        let before_argument = next.is_some_and(|ch| {
+            ch.is_alphanumeric()
+                || matches!(ch, '_' | '?' | '\'')
+                || (depth == 0 && ch.is_whitespace())
+        });
+        let delimiter = if after_type_name && before_argument {
+            depth += 1;
+            opened = true;
+            "&lt;"
+        } else if depth > 0 {
+            depth -= 1;
+            "&gt;"
+        } else {
+            continue;
+        };
+        rendered.push_str(&part[start..at]);
+        rendered.push_str(delimiter);
+        start = at + 1;
+    }
+    if !opened || depth != 0 {
+        return None;
+    }
+    rendered.push_str(&part[start..]);
+    Some(rendered)
+}
+
+pub(super) fn class_node_for_svg_measurement(node: &ClassNode) -> Cow<'_, ClassNode> {
+    let mut projected = Cow::Borrowed(node);
+    for (rows, is_method) in [(&node.members, false), (&node.methods, true)] {
+        for (index, member) in rows.iter().enumerate() {
+            if let Some(source) = class_svg_generic_member_source(member) {
+                let projected = projected.to_mut();
+                let rows = if is_method {
+                    &mut projected.methods
+                } else {
+                    &mut projected.members
+                };
+                // The measured box decodes display_text once before parsing Markdown.
+                rows[index].display_text = source.replace('&', "&amp;");
+            }
+        }
+    }
+    projected
+}
 
 /// Source styles prepared once for each class. The renderer borrows shared defaults as needed.
 #[derive(Debug)]

@@ -1229,7 +1229,7 @@ mod tests {
     #[test]
     fn bounded_svg_output_rejects_invalid_replace_ranges_without_panicking() {
         for (initial, range) in [
-            ("abcdef", 4..2),
+            ("abcdef", std::ops::Range { start: 4, end: 2 }),
             ("abcdef", 0..7),
             ("abcdef", 7..8),
             ("aéb", 1..2),

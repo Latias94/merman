@@ -7,6 +7,7 @@ use crate::flowchart::{FlowchartCompatibilityBinding, FlowchartShape};
 pub(super) struct PreparedNodeTerminal {
     pub(super) source_text_style: std::sync::Arc<crate::flowchart::FlowchartNodeSourceTypography>,
     pub(super) source: FlowchartCompiledStyles,
+    pub(super) has_structural_label_foreground: bool,
     pub(super) rough_group_style: String,
     pub(super) selection: PreparedNodeSelection,
 }
@@ -268,6 +269,7 @@ impl PreparedNodeTerminal {
         Ok(Some(Self {
             source_text_style,
             source,
+            has_structural_label_foreground: structural.foreground.is_some(),
             rough_group_style,
             selection,
         }))

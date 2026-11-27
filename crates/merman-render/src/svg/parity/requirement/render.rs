@@ -1,8 +1,12 @@
-use super::super::roughjs_common::RoughRectSpec;
 use super::super::roughjs_common::parse_hex_color_to_srgba as roughjs_parse_hex_color_to_srgba;
+use super::super::roughjs_common::{RoughRectSpec, controlled, ops_to_svg_path_d};
 use super::super::*;
-use crate::requirement::{RequirementEdgeIdentity, requirement_color_indices};
+use crate::requirement::{
+    RequirementEdgeIdentity, RequirementNativeStyle, requirement_color_indices,
+};
 use merman_model::families::requirement::RequirementDiagramModel;
+use merman_theme_contract::v2::{EdgeStyle, MarkerStyle};
+use roughr::core::RoughRandomness;
 
 // Requirement diagram SVG renderer implementation (split from parity.rs).
 
@@ -19,29 +23,65 @@ struct RequirementPaintedEdge {
     canonical: Option<RequirementCanonicalPaint>,
 }
 
+fn sketch_edge_path(
+    path: &str,
+    randomness: &RoughRandomness,
+    options: &SvgExecution<'_>,
+) -> Result<String> {
+    let stroke = controlled::generate(
+        options.work_meter(),
+        merman_model::OperationPhase::Emit,
+        |control| {
+            let segments = roughr::points_on_path::normalized_path_with_control(path, control)?;
+            let mut style = roughr::core::OptionsBuilder::default()
+                .randomness(randomness.clone())
+                .roughness(0.3)
+                .preserve_vertices(true)
+                .build()
+                .map_err(|_| roughr::work::WorkError::InvalidGeometry)?;
+            roughr::renderer::svg_normalized_segments_with_control::<f64>(
+                &segments, &mut style, control,
+            )
+        },
+    )?;
+    Ok(ops_to_svg_path_d(&stroke))
+}
+
 #[cfg(feature = "layout-shoal")]
 fn paint_canonical_edge(
     routes: &crate::graph_layout::canonical::CanonicalRoutes,
     edge: &crate::model::LayoutEdge,
     stroke_outset: f64,
-    native: Option<&crate::requirement::RequirementNativeStyle>,
+    edge_style: Option<EdgeStyle>,
+    randomness: &RoughRandomness,
     options: &SvgExecution<'_>,
 ) -> Result<(String, RequirementCanonicalPaint)> {
     use crate::graph_layout::route_paint::RouteStyle;
     use kurbo::{Point, Rect, Vec2};
 
     options.work_meter().charge(edge.points.len())?;
-    use merman_theme_contract::v2::EdgeStyle;
-    let style = match native.map(|style| style.edge_style) {
-        Some(EdgeStyle::Orthogonal) => RouteStyle::Step,
-        Some(EdgeStyle::Straight | EdgeStyle::Sketch) => RouteStyle::Linear,
-        _ => RouteStyle::Curved,
-    };
+    let style = edge_style.map_or(RouteStyle::Curved, RouteStyle::from_theme);
     let geometry = routes.paint(edge, Vec2::ZERO, stroke_outset, style, options.work_meter())?;
-    let shaft = geometry.path.bounds;
+    let (d, shaft) = if edge_style == Some(EdgeStyle::Sketch) {
+        let d = sketch_edge_path(&geometry.path.d, randomness, options)?;
+        options.work_meter().charge(d.len())?;
+        let bounds =
+            super::super::svg_path_bounds_from_d(&d).ok_or_else(|| Error::InvalidModel {
+                message: format!("Requirement edge `{}` has no sketch bounds", edge.id),
+            })?;
+        (
+            d,
+            Rect::new(bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y),
+        )
+    } else {
+        let bounds = geometry.path.bounds;
+        (
+            geometry.path.d,
+            Rect::new(bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y),
+        )
+    };
     let outset = stroke_outset * std::f64::consts::SQRT_2;
-    let mut bounds =
-        Rect::new(shaft.min_x, shaft.min_y, shaft.max_x, shaft.max_y).inflate(outset, outset);
+    let mut bounds = shaft.inflate(outset, outset);
     let [start_ref, start_lead, end_lead, end_ref] = geometry.marker_points;
     for (marker, reference, lead) in [
         (geometry.markers.0, start_ref, start_lead),
@@ -58,7 +98,7 @@ fn paint_canonical_edge(
         }
     }
     Ok((
-        geometry.path.d,
+        d,
         RequirementCanonicalPaint {
             points: geometry.data_points,
             bounds: Bounds {
@@ -285,12 +325,14 @@ pub(crate) fn render_requirement_diagram_svg_model(
     let requirement_config = crate::requirement::RequirementConfigView::new(effective_config);
     let binding = paint_theme.css();
     let native = binding.native.as_ref();
+    let edge_style = native.map(|style| style.edge_style);
     let render_settings = requirement_config.render_settings_with_binding(binding);
     #[cfg(feature = "layout-shoal")]
     let canonical_paint = prepared.canonical_routes().map(|routes| {
-        let width = native
-            .and_then(|style| style.connector_width)
-            .unwrap_or_else(|| requirement_config.canonical_stroke_width());
+        let width = native.map_or_else(
+            || requirement_config.canonical_stroke_width(),
+            |style| style.connector_width,
+        );
         (routes, width / 2.0)
     });
     #[cfg(feature = "layout-shoal")]
@@ -340,18 +382,22 @@ pub(crate) fn render_requirement_diagram_svg_model(
                     edge.from, edge.to, edge.id
                 ),
             })?;
-        let compatibility_path = || {
-            use merman_theme_contract::v2::EdgeStyle;
-            match native.map(|style| style.edge_style) {
+        let compatibility_path = || -> Result<String> {
+            match edge_style {
                 Some(EdgeStyle::Orthogonal) => {
-                    return super::super::curve::curve_step_path_d_and_bounds(&edge.points).0;
+                    return Ok(super::super::curve::curve_step_path_d_and_bounds(&edge.points).0);
                 }
-                Some(EdgeStyle::Straight | EdgeStyle::Sketch) => {
-                    return super::super::curve::curve_linear_path_d(&edge.points);
+                Some(EdgeStyle::Straight) => {
+                    return Ok(super::super::curve::curve_linear_path_d(&edge.points));
                 }
-                _ => {}
+                Some(EdgeStyle::Sketch) => {
+                    let d = super::super::curve::curve_linear_path_d(&edge.points);
+                    return sketch_edge_path(&d, &hand_drawn_seed, options);
+                }
+                Some(EdgeStyle::Curved) => return Ok(curve_basis_path_d(&edge.points)),
+                None => {}
             }
-            if prepared.uses_elk() {
+            Ok(if prepared.uses_elk() {
                 if edge.points.len() <= 2 {
                     super::super::curve::curve_linear_path_d(&edge.points)
                 } else {
@@ -359,17 +405,24 @@ pub(crate) fn render_requirement_diagram_svg_model(
                 }
             } else {
                 curve_basis_path_d(&edge.points)
-            }
+            })
         };
         #[cfg(feature = "layout-shoal")]
         let (d, canonical) = if let Some((routes, stroke_outset)) = canonical_paint {
-            let (d, geometry) = paint_canonical_edge(routes, edge, stroke_outset, native, options)?;
+            let (d, geometry) = paint_canonical_edge(
+                routes,
+                edge,
+                stroke_outset,
+                edge_style,
+                &hand_drawn_seed,
+                options,
+            )?;
             (d, Some(geometry))
         } else {
-            (compatibility_path(), None)
+            (compatibility_path()?, None)
         };
         #[cfg(not(feature = "layout-shoal"))]
-        let (d, canonical) = (compatibility_path(), None);
+        let (d, canonical) = (compatibility_path()?, None);
         let label_position = if prepared_edge.has_label {
             let label = edge.label.as_ref().ok_or_else(|| Error::InvalidModel {
                 message: format!(
@@ -416,6 +469,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
     }
 
     let hop_paths = if prepared.uses_elk()
+        && !matches!(edge_style, Some(EdgeStyle::Curved | EdgeStyle::Sketch))
         && effective_config
             .pointer("/elk/lineHops")
             .and_then(serde_json::Value::as_bool)
@@ -425,16 +479,26 @@ pub(crate) fn render_requirement_diagram_svg_model(
         let hop_edges = layout
             .edges
             .iter()
-            .map(|edge| super::super::line_hops::LineHopEdge {
-                id: edge.id.as_str(),
-                points: &edge.points,
-                curve: Some(if edge.points.len() <= 2 {
-                    "linear"
-                } else {
-                    "rounded"
-                }),
-                arrow_type_start: None,
-                arrow_type_end: None,
+            .filter_map(|edge| {
+                if edge_style == Some(EdgeStyle::Orthogonal)
+                    && edge
+                        .points
+                        .windows(2)
+                        .any(|pair| pair[0].x != pair[1].x && pair[0].y != pair[1].y)
+                {
+                    return None;
+                }
+                Some(super::super::line_hops::LineHopEdge {
+                    id: edge.id.as_str(),
+                    points: &edge.points,
+                    curve: Some(if edge_style.is_some() || edge.points.len() <= 2 {
+                        "linear"
+                    } else {
+                        "rounded"
+                    }),
+                    arrow_type_start: None,
+                    arrow_type_end: None,
+                })
             })
             .collect::<Vec<_>>();
         super::super::line_hops::elk_line_hop_paths(
@@ -481,6 +545,15 @@ pub(crate) fn render_requirement_diagram_svg_model(
             min_y = min_y.min(canonical.bounds.min_y);
             max_x = max_x.max(canonical.bounds.max_x);
             max_y = max_y.max(canonical.bounds.max_y);
+        } else if let Some(native) = native {
+            options.work_meter().charge(painted.d.len())?;
+            if let Some(bounds) = super::super::svg_path_bounds_from_d(&painted.d) {
+                let outset = native.connector_width / 2.0;
+                min_x = min_x.min(bounds.min_x - outset);
+                min_y = min_y.min(bounds.min_y - outset);
+                max_x = max_x.max(bounds.max_x + outset);
+                max_y = max_y.max(bounds.max_y + outset);
+            }
         }
         if let (Some(label), Some(position)) = (&edge.label, &painted.label_position) {
             min_x = min_x.min(position.x - label.width / 2.0);
@@ -602,12 +675,14 @@ pub(crate) fn render_requirement_diagram_svg_model(
     out.push_str("<g>");
 
     // Mermaid 12 selects the Neo variants in requirementRenderer.ts.
-    let marker_units = if look == "neo" || uses_canonical_routes {
+    let marker_units = if look == "neo" || uses_canonical_routes || native.is_some() {
         r#" markerUnits="userSpaceOnUse""#
     } else {
         ""
     };
-    let marker_stroke = if look == "neo" {
+    let marker_stroke = if let Some(native) = native {
+        format!(r#" stroke-width="{}""#, fmt(native.connector_width))
+    } else if look == "neo" {
         let width = &binding.marker_stroke_width;
         format!(r#" stroke-width="{}""#, escape_xml(width))
     } else {
@@ -627,10 +702,26 @@ pub(crate) fn render_requirement_diagram_svg_model(
         &mut out,
         r#"<defs><marker id="{diagram_id}_requirement-requirement_containsStart" refX="0" refY="10" markerWidth="20" markerHeight="20" orient="auto"{marker_units}><g><circle cx="10" cy="10" r="9" fill="none"{marker_stroke}/><line x1="1" x2="19" y1="10" y2="10"{marker_stroke}/><line y1="1" y2="19" x1="10" x2="10"{marker_stroke}/></g></marker></defs>"#,
     );
-    let _ = write!(
-        &mut out,
-        r#"<defs><marker id="{diagram_id}_requirement-requirement_arrowEnd" refX="20" refY="10" markerWidth="20" markerHeight="20" orient="auto"{marker_units}{marker_stroke}{arrow_view_box}><path d="M0,0&#10;      L20,10&#10;      M20,10&#10;      L0,20"{arrow_join}/></marker></defs>"#,
-    );
+    if let Some((native, path)) =
+        native.and_then(|style| style.arrow_path().map(|path| (style, path)))
+    {
+        let size = fmt(RequirementNativeStyle::ARROW_SIZE);
+        let width = fmt(native.connector_width * 10.0 / RequirementNativeStyle::ARROW_SIZE);
+        let open = if native.marker_style == MarkerStyle::Open {
+            r#" fill="none" stroke-linecap="round" stroke-linejoin="round""#
+        } else {
+            ""
+        };
+        let _ = write!(
+            &mut out,
+            r#"<defs><marker id="{diagram_id}_requirement-requirement_arrowEnd" refX="10" refY="5" markerWidth="{size}" markerHeight="{size}" viewBox="0 0 10 10" orient="auto"{marker_units}><path d="{path}" stroke-width="{width}"{open}/></marker></defs>"#,
+        );
+    } else {
+        let _ = write!(
+            &mut out,
+            r#"<defs><marker id="{diagram_id}_requirement-requirement_arrowEnd" refX="20" refY="10" markerWidth="20" markerHeight="20" orient="auto"{marker_units}{marker_stroke}{arrow_view_box}><path d="M0,0&#10;      L20,10&#10;      M20,10&#10;      L0,20"{arrow_join}/></marker></defs>"#,
+        );
+    }
     options.checkpoint_emit()?;
 
     out.push_str(r#"<g class="root">"#);
@@ -724,7 +815,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
             dom_id = escape_xml(&dom_id),
             id = escape_xml(&prepared_label.rendered_id),
             class = escape_xml(&class),
-            style = escape_xml(&style),
+            style = escape_attr_display(&style),
             data_points = escape_xml(&data_points_b64),
             look_attr = look_attr.as_str(),
             marker_attr = marker_attr,
@@ -1038,7 +1129,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
             let _ = write!(
                 &mut out,
                 r#"<g class="basic label-container outer-path" style="{style}">"#,
-                style = escape_xml(node_styles)
+                style = escape_attr_display(node_styles)
             );
             let _ = write!(
                 &mut out,
@@ -1125,7 +1216,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
             let _ = write!(
                 &mut out,
                 r#"<g class="label" style="{style}" transform="translate({x}, {y})">"#,
-                style = escape_xml(&style),
+                style = escape_attr_display(&style),
                 x = fmt(label_x),
                 y = fmt(label_y),
             );
@@ -1278,7 +1369,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
                 write!(
                 &mut out,
                 r##"<g class="divider" style="{style}"><path d="{d}" stroke="{stroke}" stroke-width="{stroke_width}" fill="none" stroke-dasharray="0 0"{style_attr}/></g>"##,
-                style = escape_xml(node_styles),
+                style = escape_attr_display(node_styles),
                 d = escape_xml(&divider_d),
                 stroke = escape_xml(stroke_color),
                 stroke_width = fmt(stroke_width),

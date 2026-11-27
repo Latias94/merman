@@ -103,30 +103,36 @@ fn rounded_rect_path_d(x: f64, y: f64, w: f64, h: f64, r: f64) -> String {
     out
 }
 
-fn rough_style_from_node_style(node_style: &str, mut keep: impl FnMut(&str) -> bool) -> String {
+fn rough_style_from_node_style<'a>(
+    node_style: &'a str,
+    mut property: impl FnMut(&crate::mermaid_style::ParsedStyleDeclaration<'a>) -> Option<&'a str>,
+) -> String {
     let mut out = String::new();
-    for decl in node_style.split(';') {
-        let decl = decl.trim();
-        let Some((key, _)) = decl.split_once(':') else {
-            continue;
-        };
-        if !keep(key.trim()) {
-            continue;
+    crate::mermaid_style::visit_parsed_style_declarations(node_style, |decl| {
+        if let Some(key) = property(&decl) {
+            if !out.is_empty() {
+                out.push(';');
+            }
+            out.push_str(key);
+            out.push(':');
+            out.push_str(decl.source_value());
         }
-        if !out.is_empty() {
-            out.push(';');
-        }
-        out.push_str(decl);
-    }
+    });
     out
 }
 
 fn cluster_rough_background_style(node_style: &str) -> String {
-    rough_style_from_node_style(node_style, |key| key == "fill").replace("fill", "stroke")
+    rough_style_from_node_style(node_style, |decl| {
+        (decl.property() == "fill").then_some("stroke")
+    })
 }
 
 fn cluster_rough_border_style(node_style: &str) -> String {
-    rough_style_from_node_style(node_style, |key| key.contains("stroke"))
+    rough_style_from_node_style(node_style, |decl| {
+        decl.property()
+            .starts_with("stroke")
+            .then(|| decl.property_css())
+    })
 }
 
 fn parse_css_px_f32(v: Option<&String>, fallback: f32) -> f32 {
@@ -224,9 +230,8 @@ fn write_flowchart_cluster_shape(
             escape_attr(stroke),
             fmt_display(native.form.stroke_width),
         );
-        // The native defaults are CSS tokens. Only source declarations need Mermaid entity recovery.
         if !rect_style.is_empty() {
-            let _ = write!(out, ";{}", escape_xml_display(rect_style));
+            let _ = write!(out, ";{}", escape_attr(rect_style));
         }
         out.push_str(r#""/>"#);
         return;
@@ -248,8 +253,8 @@ fn write_flowchart_cluster_shape(
                     out,
                     r#"<g><path d="{}" stroke="{}" stroke-width="0.75" fill="none" stroke-dasharray="{}"/></g>"#,
                     escape_xml_display(&stroke_d),
-                    escape_xml_display(stroke),
-                    escape_xml_display(stroke_dasharray),
+                    escape_attr(stroke),
+                    escape_attr(stroke_dasharray),
                 );
 
                 return;
@@ -262,7 +267,7 @@ fn write_flowchart_cluster_shape(
             fmt_display(top),
             fmt_display(rect_w),
             fmt_display(rect_h),
-            escape_xml_display(stroke),
+            escape_attr(stroke),
         );
         if canonical {
             let fill = compiled_styles.fill.as_deref().unwrap_or(fill);
@@ -298,18 +303,37 @@ fn write_flowchart_cluster_shape(
         ) {
             let background_style = cluster_rough_background_style(rect_style);
             let border_style = cluster_rough_border_style(rect_style);
+            out.push_str("<g>");
+            if canonical && ctx.swimlane_direction.is_none() {
+                // The frame is the actual surface sampled by Shoal's contrast pass.
+                let _ = write!(
+                    out,
+                    r#"<rect x="{}" y="{}" width="{}" height="{}" style="fill:{};{};stroke:none !important"/>"#,
+                    fmt_display(left),
+                    fmt_display(top),
+                    fmt_display(rect_w),
+                    fmt_display(rect_h),
+                    escape_attr(fill),
+                    escape_attr(rect_style),
+                );
+            } else {
+                let _ = write!(
+                    out,
+                    r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{} />"#,
+                    escape_attr(&fill_d),
+                    escape_attr(fill),
+                    fmt_display(FLOWCHART_CLUSTER_HAND_DRAWN_FILL_WEIGHT as f64),
+                    OptionalStyleAttr(&background_style),
+                );
+            }
             let _ = write!(
                 out,
-                r#"<g><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{} /><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"{} /></g>"#,
-                escape_xml_display(&fill_d),
-                escape_xml_display(fill),
-                fmt_display(FLOWCHART_CLUSTER_HAND_DRAWN_FILL_WEIGHT as f64),
-                OptionalStyleXmlAttr(&background_style),
-                escape_xml_display(&stroke_d),
-                escape_xml_display(stroke),
+                r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"{} /></g>"#,
+                escape_attr(&stroke_d),
+                escape_attr(stroke),
                 fmt_display(stroke_width as f64),
-                escape_xml_display(stroke_dasharray),
-                OptionalStyleXmlAttr(&border_style),
+                escape_attr(stroke_dasharray),
+                OptionalStyleAttr(&border_style),
             );
 
             return;
@@ -325,7 +349,7 @@ fn write_flowchart_cluster_shape(
     let _ = write!(
         out,
         r#"{}" x="{}" y="{}" width="{}" height="{}"/>"#,
-        escape_xml_display(rect_style),
+        escape_attr(rect_style),
         fmt_display(left),
         fmt_display(top),
         fmt_display(rect_w),
@@ -642,7 +666,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
             fmt_display(label_w),
             fmt_display(label_h),
             HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
-            escape_xml_display(&div_style),
+            escape_attr(&div_style),
             span_style_attr,
             title_html
         );

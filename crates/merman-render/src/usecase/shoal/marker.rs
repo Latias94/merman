@@ -1,7 +1,8 @@
 use crate::graph_layout::Marker;
 use crate::model::LayoutPoint;
 use crate::usecase::UsecaseEdgePlan;
-use kurbo::{BezPath, Point, Rect, Vec2};
+use kurbo::{Affine, BezPath, Point, Rect, Vec2};
+use merman_theme_contract::v2::MarkerStyle;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Kind {
@@ -13,6 +14,7 @@ enum Kind {
 
 pub(crate) struct UsecaseMarker {
     kind: Kind,
+    style: MarkerStyle,
     start: bool,
     width: f64,
     height: f64,
@@ -22,7 +24,12 @@ pub(crate) struct UsecaseMarker {
 }
 
 impl UsecaseMarker {
-    pub(crate) fn for_edge(plan: &UsecaseEdgePlan, start: bool, neo: bool) -> Option<Self> {
+    pub(crate) fn for_edge(
+        plan: &UsecaseEdgePlan,
+        start: bool,
+        neo: bool,
+        style: MarkerStyle,
+    ) -> Option<Self> {
         let name = if start {
             plan.start_marker.as_deref()
         } else {
@@ -30,6 +37,7 @@ impl UsecaseMarker {
         }?;
         let neo = neo && !plan.animated;
         let (kind, width, height, stroke_width) = match (name, neo, start) {
+            ("arrow_point", _, _) if style != MarkerStyle::Classic => (Kind::Point, 8.0, 8.0, 1.0),
             ("arrow_point", false, _) => (Kind::Point, 8.0, 8.0, 0.8),
             ("arrow_point", true, true) => (Kind::Point, 11.5, 14.0, 0.0),
             ("arrow_point", true, false) => (Kind::Point, 10.5, 14.0 * 10.5 / 11.5, 0.0),
@@ -44,6 +52,7 @@ impl UsecaseMarker {
         let stroke_radius = stroke_width / 2.0;
         Some(Self {
             kind,
+            style,
             start,
             width,
             height,
@@ -79,6 +88,18 @@ impl UsecaseMarker {
     }
 
     pub(crate) fn path(&self) -> BezPath {
+        if self.kind == Kind::Point
+            && let Some(d) = crate::theme::marker_svg::arrow_path(self.style)
+            && let Ok(path) = BezPath::from_svg(d)
+        {
+            let scale = Affine::scale_non_uniform(self.width / 10.0, self.height / 10.0);
+            let mirror = Affine::translate((self.width, 0.0)) * Affine::FLIP_X;
+            return if self.start {
+                mirror * scale * path
+            } else {
+                scale * path
+            };
+        }
         let mut path = BezPath::new();
         let (back, tip) = if self.start {
             (self.width, 0.0)
@@ -97,6 +118,10 @@ impl UsecaseMarker {
             path.close_path();
         }
         path
+    }
+
+    pub(crate) fn is_open_point(&self) -> bool {
+        self.kind == Kind::Point && self.style == MarkerStyle::Open
     }
 
     pub(crate) fn metrics(&self) -> Marker {

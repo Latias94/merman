@@ -31,7 +31,13 @@ pub(super) fn with_flowchart_paint_context<T>(
         svg_label_sidecar,
         edge_style_plan,
     } = request;
-    let render_model = crate::flowchart::FlowchartRenderModelRef::new(model, render_context);
+    let mut render_model = crate::flowchart::FlowchartRenderModelRef::new(model, render_context);
+    if swimlane_layout.is_none() && layout.route_contract.is_canonical_axis() {
+        render_model = render_model.with_shoal_svg_text(
+            render_config.node_html_labels,
+            render_config.edge_html_labels,
+        );
+    }
     let model = &render_model;
     if model.nodes.iter().any(|node| {
         node.layout_shape.as_deref() == Some("ellipse")
@@ -422,7 +428,22 @@ pub(super) fn prepare_edge_routes(
             }
         }
     }
-    if matches!(
+    let preserve_dash_mask_length = |edge: &FlowchartRenderEdge<'_>| {
+        ctx.compatibility.look.is_neo()
+            && flowchart_neo_mask_uses_dash_pairs(edge.edge.as_ref())
+            && ctx
+                .edge_style_plan
+                .animation_for(edge.key)
+                .is_ok_and(|animation| !animation.is_active())
+    };
+    if ctx.swimlane_direction.is_some() && ctx.layout.route_contract.is_canonical_axis() {
+        super::swimlane::apply_canonical_line_hops(
+            &mut cache,
+            render_edges,
+            ctx,
+            preserve_dash_mask_length,
+        )?;
+    } else if matches!(
         ctx.layout.route_contract,
         crate::graph_layout::RouteContract::Swimlane
     ) || ctx.uses_elk_adapter_dom
@@ -433,14 +454,7 @@ pub(super) fn prepare_edge_routes(
             ctx.config,
             ctx.work_meter,
             ctx.uses_elk_adapter_dom,
-            |edge| {
-                ctx.compatibility.look.is_neo()
-                    && flowchart_neo_mask_uses_dash_pairs(edge.edge.as_ref())
-                    && ctx
-                        .edge_style_plan
-                        .animation_for(edge.key)
-                        .is_ok_and(|animation| !animation.is_active())
-            },
+            preserve_dash_mask_length,
         )?;
     }
     ctx.work_meter

@@ -25,7 +25,9 @@ pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeRenderCommon<'
     /// style string (notably flowchart-v2 start nodes).
     pub theme_style: &'a str,
     pub rough_group_style: &'a str,
+    pub solid_rough_fill: bool,
     pub fill_color: &'a str,
+    pub fill_opacity: f64,
     pub stroke_color: &'a str,
     pub wrapped_in_a: bool,
     pub timing: RenderTiming,
@@ -261,12 +263,34 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         details.node_style_compile += s.elapsed();
     }
     let native_label_color = selection.native_label_color.as_deref();
+    let swimlane_label_color = if ctx.swimlane_direction.is_some()
+        && !ctx.node_html_labels
+        && !prepared.has_structural_label_foreground
+    {
+        super::super::swimlane::svg_label_ink(
+            ctx,
+            node_id,
+            compiled_styles,
+            native_label_color.unwrap_or(&ctx.compatibility.node_text_color),
+            prepared.source_text_style.as_ref(),
+        )?
+    } else {
+        None
+    };
+    let authored_svg_color =
+        if !ctx.node_html_labels && ctx.layout.route_contract.is_canonical_axis() {
+            compiled_styles.source_label_color()
+        } else {
+            None
+        };
     let fill_color = prepared.fill_color(ctx.compatibility);
     let stroke_color = prepared.stroke_color(ctx.compatibility);
     let label_emission = label::FlowchartNodeLabelEmissionPlan::new(
         prepared.source_text_style.as_ref(),
         compiled_styles,
-        native_label_color,
+        authored_svg_color
+            .or(swimlane_label_color.as_deref())
+            .or(native_label_color),
     );
 
     let suppress_look_filter =
@@ -286,7 +310,11 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         suppress_child_filters: suppress_look_filter,
         theme_style: &selection.theme_style,
         rough_group_style: &prepared.rough_group_style,
+        solid_rough_fill: ctx.layout.route_contract.is_canonical_axis()
+            && ctx.swimlane_direction.is_none()
+            && ctx.diagram_type != "agentflow",
         fill_color,
+        fill_opacity: compiled_styles.fill_opacity,
         stroke_color,
         wrapped_in_a,
         timing,

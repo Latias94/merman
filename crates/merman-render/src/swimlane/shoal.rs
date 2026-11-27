@@ -23,10 +23,19 @@ use merman_model::presentation::PresentationConfig;
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 
+mod columns;
+
 #[derive(Clone, Debug)]
 pub(crate) struct SwimlaneShoal {
     pub(crate) routes: RouteContract,
     pub(crate) placement: GraphPlacement,
+    pub(crate) shells: FxHashMap<String, ShellKind>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ShellKind {
+    Lane,
+    Pool,
 }
 
 struct Bindings {
@@ -68,36 +77,61 @@ pub(super) fn solve(
     view: &FlowchartRenderModelRef<'_>,
     visible_edges: &[(FlowchartEdgeKey, ProjectedFlowchartEdge<'_>)],
     effective_config: &PresentationConfig,
-    config: SwimlaneConfig,
+    (config, routing): (SwimlaneConfig, RoutingStyle),
     execution: &LayoutExecution<'_>,
     labels: Option<&FlowchartSvgLabelSidecarBuilder>,
 ) -> Result<SwimlaneShoal> {
     let mut work = OperationLayoutWorkControl::new(execution.work_meter());
-    let (graph, lane_order, bindings) = measure(
+    let (graph, columns, bindings) = measure(
         working,
         view,
         visible_edges,
         effective_config,
-        config,
+        (config, routing),
         labels,
         &mut work,
     )?;
     let ids = |&slot: &usize| working.nodes[slot].id.as_str();
-    let (solved, placement) = placement::solve(
+    let edge_ports = columns.edge_ports(&graph, &mut work)?;
+    let (mut solved, placement) = placement::solve(
         &graph,
         bindings.node_slots.iter().map(ids),
         bindings.group_slots.iter().map(ids),
         Some(execution),
         placement::Constraints {
-            lane_order: &lane_order,
+            lane_order: &columns.order,
+            edge_ports: &edge_ports,
             capture_ranks: true,
             ..Default::default()
         },
         &mut work,
     )?;
     drop(graph);
+    columns.restore_shells(&mut solved, &mut work)?;
+    work.charge_adapter(bindings.group_slots.len())?;
+    let mut shells = FxHashMap::default();
+    for &slot in &bindings.group_slots {
+        let group = &working.nodes[slot];
+        if let Some(kind) = shell_kind(group) {
+            work.charge_adapter(group.id.len())?;
+            shells.insert(group.id.clone(), kind);
+        }
+    }
     let routes = bindings.project(working, solved, view.edges.len(), visible_edges, &mut work)?;
-    Ok(SwimlaneShoal { routes, placement })
+    Ok(SwimlaneShoal {
+        routes,
+        placement,
+        shells,
+    })
+}
+
+fn shell_kind(node: &WorkingNode) -> Option<ShellKind> {
+    match node.shape.as_str() {
+        "pool" => Some(ShellKind::Pool),
+        "swimlane" => Some(ShellKind::Lane),
+        _ if node.parent_id.is_none() => Some(ShellKind::Lane),
+        _ => None,
+    }
 }
 
 fn measure(
@@ -105,10 +139,10 @@ fn measure(
     view: &FlowchartRenderModelRef<'_>,
     visible_edges: &[(FlowchartEdgeKey, ProjectedFlowchartEdge<'_>)],
     effective_config: &PresentationConfig,
-    config: SwimlaneConfig,
+    (config, routing): (SwimlaneConfig, RoutingStyle),
     labels: Option<&FlowchartSvgLabelSidecarBuilder>,
     work: &mut OperationLayoutWorkControl,
-) -> Result<(MeasuredGraph, Vec<u32>, Bindings)> {
+) -> Result<(MeasuredGraph, columns::Columns, Bindings)> {
     work.charge_adapter(working.nodes.len())?;
     let flow = direction(working.direction);
     let horizontal = matches!(flow, Direction::Left | Direction::Right);
@@ -143,14 +177,16 @@ fn measure(
         _ => Err(invalid_endpoint(id)),
     };
     let parent = |id: Option<&str>| id.map(group_of).transpose();
-    let mut authored_order = vec![None; group_slots.len()];
+    let mut authored_order = vec![usize::MAX; group_slots.len()];
     for (ordinal, id) in working.top_lane_order.iter().enumerate() {
         work.charge_adapter(1)?;
-        authored_order[group_of(id)? as usize] = Some(ordinal);
+        authored_order[group_of(id)? as usize] = ordinal;
     }
+    let mut columns =
+        columns::Columns::new(&group_slots, working, parent, authored_order, flow, work)?;
     let mut graph = MeasuredGraph {
         direction: flow,
-        routing: RoutingStyle::Orthogonal,
+        routing,
         node_spacing: config.node_gap,
         rank_spacing: config.layer_gap,
         component_spacing: config.node_gap,
@@ -159,20 +195,15 @@ fn measure(
         groups: Vec::with_capacity(group_slots.len()),
         edges: Vec::with_capacity(visible_edges.len()),
     };
-    let mut lane_order = Vec::new();
     for (id, &slot) in group_slots.iter().enumerate() {
         work.charge_adapter(1)?;
         let node = &working.nodes[slot];
-        let parent = parent(node.parent_id.as_deref())?;
-        let is_lane = parent.is_none();
-        if is_lane {
-            lane_order.push(index(id, work)?);
-        }
+        let is_column = columns.is_column(id);
         let mut title = (node.label_width > 0.0 && node.label_height > 0.0).then_some(Size {
             width: node.label_width,
             height: node.label_height,
         });
-        if is_lane
+        if shell_kind(node).is_some()
             && horizontal
             && let Some(title) = &mut title
         {
@@ -180,12 +211,12 @@ fn measure(
         }
         let padding = node.padding.max(0.0);
         let mut insets = kurbo::Insets::uniform(padding);
-        if !is_lane && let Some(title) = title {
+        if !is_column && let Some(title) = title {
             insets.y0 += title.height;
         }
         graph.groups.push(MeasuredGroup {
             seq: index(slot, work)?,
-            parent,
+            parent: columns.solver_parent(id),
             direction: node
                 .requested_dir
                 .as_deref()
@@ -199,9 +230,6 @@ fn measure(
             title_position: TitlePosition::TopCenter,
         });
     }
-    let lane_levels = lane_order.len().checked_ilog2().unwrap_or(0) as usize + 1;
-    work.charge_adapter(work.checked_mul(lane_order.len(), lane_levels)?)?;
-    lane_order.sort_unstable_by_key(|&id| (authored_order[id as usize].unwrap_or(usize::MAX), id));
 
     let source_nodes: HashMap<_, _> = view
         .nodes
@@ -291,6 +319,7 @@ fn measure(
         });
         profiles.push(profile);
     }
+    columns.reserve_shell_titles(&mut graph, work)?;
     for ((_, edge), binding) in visible_edges.iter().zip(&working.original_edges) {
         work.charge_adapter(1)?;
         let endpoint = |id: &str| {
@@ -318,7 +347,7 @@ fn measure(
     }
     Ok((
         graph,
-        lane_order,
+        columns,
         Bindings {
             node_slots,
             group_slots,

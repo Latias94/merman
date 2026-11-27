@@ -140,12 +140,18 @@ fn write_hand_drawn_cylinder(
     out.push('>');
     let sw = fmt_display(common.stroke_width as f64);
     if let Some((fill, stroke)) = helpers::hand_drawn_path_pair(common, details, body) {
+        if !helpers::write_backed_hachure(out, common, body, &fill, 4.0) {
+            let _ = write!(
+                out,
+                r#"<path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0" style="fill:none !important;stroke:{} !important;stroke-width:4px !important"/>"#,
+                escape_attr(&fill),
+                escape_attr(common.fill_color),
+                escape_attr(common.fill_color),
+            );
+        }
         let _ = write!(
             out,
-            r#"<path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0" style="fill:none !important;stroke:{} !important;stroke-width:4px !important"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="fill:none !important;stroke:{} !important;stroke-width:{}px !important"/>"#,
-            escape_attr(&fill),
-            escape_attr(common.fill_color),
-            escape_attr(common.fill_color),
+            r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="fill:none !important;stroke:{} !important;stroke-width:{}px !important"/>"#,
             escape_attr(&stroke),
             escape_attr(common.stroke_color),
             sw,

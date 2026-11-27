@@ -4,10 +4,7 @@ use crate::c4::{
     C4PersonOutline, c4_cap_radius, c4_relation_markers, c4_relation_offset, c4_text_row_offset,
 };
 use crate::svg::parity::roughjs_common::closed_path_d_from_points;
-use crate::svg::parity::roughjs_common::paths::{
-    roughjs_hand_drawn_stroke_path_for_svg_path, roughjs_paths_for_circle,
-    roughjs_paths_for_hand_drawn_svg_path,
-};
+use crate::svg::parity::roughjs_common::paths::roughjs_hand_drawn_stroke_path_for_svg_path;
 use merman_model::families::c4::{C4Boundary, C4DiagramModel, C4Shape};
 use merman_theme_contract::v2::{EdgeStyle, MarkerStyle};
 type C4SvgModelShape = C4Shape;
@@ -332,6 +329,27 @@ fn write_c4_relation_defs(
     out.checkpoint()
 }
 
+fn available_local_id(
+    base: String,
+    shapes: &std::collections::HashMap<&str, &C4SvgModelShape>,
+    work: &crate::resources::OperationWorkMeter,
+) -> Result<String> {
+    work.charge(base.len())?;
+    if !shapes.contains_key(base.as_str()) {
+        return Ok(base);
+    }
+    for suffix in 0..shapes.len() {
+        let candidate = format!("{base}-{suffix}");
+        work.charge(candidate.len())?;
+        if !shapes.contains_key(candidate.as_str()) {
+            return Ok(candidate);
+        }
+    }
+    Err(crate::Error::InvalidModel {
+        message: "c4: exhausted local SVG IDs".into(),
+    })
+}
+
 fn c4_shape_classes(type_c4_shape: &str) -> String {
     let mut classes = format!("c4-shape c4-{type_c4_shape}");
     if type_c4_shape.starts_with("external_") {
@@ -389,7 +407,6 @@ fn c4_write_unified_section(
 }
 
 const C4_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
-const C4_HAND_DRAWN_FILL_WEIGHT: f64 = 4.0;
 
 fn c4_rounded_rect_path_d(width: f64, height: f64, radius: f64) -> String {
     let width = width.max(1.0);
@@ -437,25 +454,6 @@ fn c4_rounded_rect_path_d(width: f64, height: f64, radius: f64) -> String {
     closed_path_d_from_points(&points)
 }
 
-fn c4_hand_drawn_paths(
-    path_data: &str,
-    stroke_width: f32,
-    work_meter: &crate::resources::OperationWorkMeter,
-    randomness: &roughr::core::RoughRandomness,
-) -> Result<(String, String)> {
-    let paths = roughjs_paths_for_hand_drawn_svg_path(
-        path_data,
-        stroke_width,
-        "0 0",
-        work_meter,
-        randomness,
-    );
-    work_meter.checkpoint(merman_model::OperationPhase::Emit)?;
-    paths.ok_or_else(|| crate::Error::InvalidModel {
-        message: "c4: handDrawn shape geometry generation failed".to_string(),
-    })
-}
-
 fn c4_hand_drawn_stroke(
     path_data: &str,
     work_meter: &crate::resources::OperationWorkMeter,
@@ -473,25 +471,25 @@ fn c4_hand_drawn_stroke(
     })
 }
 
-fn c4_write_hand_drawn_pair(
+fn c4_write_hand_drawn_shape(
     out: &mut impl SvgOutput,
-    pair: &(String, String),
+    silhouette: &str,
     fill: &str,
     stroke: &str,
-    stroke_width: f32,
+    stroke_width: f64,
+    work_meter: &crate::resources::OperationWorkMeter,
+    randomness: &roughr::core::RoughRandomness,
 ) -> Result<()> {
-    let (fill_d, stroke_d) = pair;
+    let outline = c4_hand_drawn_stroke(silhouette, work_meter, randomness)?;
     let _ = write!(
         out,
-        r#"<path class="rough-fill" d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="stroke-width:{}px !important"/><path class="rough-stroke" d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="stroke-width:{}px !important"/>"#,
-        escape_attr(fill_d),
+        r#"<path class="rough-fill" d="{}" fill="{}" stroke="none"/><path class="rough-stroke" d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="stroke-width:{}px !important"/>"#,
+        escape_attr(silhouette),
         escape_attr(fill),
-        fmt(C4_HAND_DRAWN_FILL_WEIGHT),
-        fmt(C4_HAND_DRAWN_FILL_WEIGHT),
-        escape_attr(stroke_d),
+        escape_attr(&outline),
         escape_attr(stroke),
-        fmt(stroke_width as f64),
-        fmt(stroke_width as f64),
+        fmt(stroke_width),
+        fmt(stroke_width),
     );
     out.checkpoint()
 }
@@ -514,22 +512,39 @@ fn c4_write_unified_shape(
     let width = shape.width.max(1.0);
     let height = shape.height.max(1.0);
     let radius = native.map_or(C4_ROUNDED_RADIUS, |theme| theme.radius);
-    let stroke_width = native.map_or(2.0, |theme| theme.shape_width as f32);
+    let stroke_width = native.map_or(2.0, |theme| theme.shape_width);
 
     if look.is_hand_drawn() {
         match node_shape {
             crate::c4::C4NodeShape::Rounded => {
                 let path = c4_rounded_rect_path_d(width, height, radius);
-                let pair = c4_hand_drawn_paths(&path, stroke_width, work_meter, randomness)?;
                 out.push_str(r#"<g class="basic label-container">"#);
                 out.checkpoint()?;
-                c4_write_hand_drawn_pair(out, &pair, fill, stroke, stroke_width)?;
+                c4_write_hand_drawn_shape(
+                    out,
+                    &path,
+                    fill,
+                    stroke,
+                    stroke_width,
+                    work_meter,
+                    randomness,
+                )?;
                 out.push_str("</g>");
                 return out.checkpoint();
             }
             crate::c4::C4NodeShape::Framed => {
                 let path = c4_rounded_rect_path_d(width, height, radius);
-                let pair = c4_hand_drawn_paths(&path, stroke_width, work_meter, randomness)?;
+                out.push_str(r#"<g class="basic label-container">"#);
+                out.checkpoint()?;
+                c4_write_hand_drawn_shape(
+                    out,
+                    &path,
+                    fill,
+                    stroke,
+                    stroke_width,
+                    work_meter,
+                    randomness,
+                )?;
                 let frame_x = width / 2.0 - C4_FRAMED_FRAME_WIDTH;
                 let frame_path = format!(
                     "M{} {} L{} {} M{} {} L{} {}",
@@ -543,16 +558,13 @@ fn c4_write_unified_shape(
                     fmt(height / 2.0),
                 );
                 let frame_d = c4_hand_drawn_stroke(&frame_path, work_meter, randomness)?;
-                out.push_str(r#"<g class="basic label-container">"#);
-                out.checkpoint()?;
-                c4_write_hand_drawn_pair(out, &pair, fill, stroke, stroke_width)?;
                 let _ = write!(
                     out,
                     r#"<path class="rough-frame" d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="stroke-width:{}px !important"/>"#,
                     escape_attr(&frame_d),
                     escape_attr(stroke),
-                    fmt(stroke_width as f64),
-                    fmt(stroke_width as f64),
+                    fmt(stroke_width),
+                    fmt(stroke_width),
                 );
                 out.checkpoint()?;
                 out.push_str("</g>");
@@ -568,24 +580,12 @@ fn c4_write_unified_shape(
                 } = C4PersonOutline::new(width, height);
                 // The path helper is centered, so translate the body into the person silhouette
                 // after generation instead of baking the offset into the shape's layout box.
-                let body_pair = c4_hand_drawn_paths(
-                    &c4_rounded_rect_path_d(width, body_height, body_radius),
-                    stroke_width,
-                    work_meter,
-                    randomness,
-                )?;
-                let head_pair = roughjs_paths_for_circle(
-                    head_radius * 2.0,
-                    stroke_width,
-                    "0 0",
-                    true,
-                    work_meter,
-                    randomness,
+                let body_path = c4_rounded_rect_path_d(width, body_height, body_radius);
+                let head_path = format!(
+                    "M{r},0 A{r},{r} 0,0,1 {left},0 A{r},{r} 0,0,1 {r},0 Z",
+                    r = fmt(head_radius),
+                    left = fmt(-head_radius),
                 );
-                work_meter.checkpoint(merman_model::OperationPhase::Emit)?;
-                let head_pair = head_pair.ok_or_else(|| crate::Error::InvalidModel {
-                    message: "c4: handDrawn person geometry generation failed".to_string(),
-                })?;
                 out.push_str(r#"<g class="basic label-container">"#);
                 out.checkpoint()?;
                 let _ = write!(
@@ -594,11 +594,27 @@ fn c4_write_unified_shape(
                     fmt(body_top + body_height / 2.0)
                 );
                 out.checkpoint()?;
-                c4_write_hand_drawn_pair(out, &body_pair, fill, stroke, stroke_width)?;
+                c4_write_hand_drawn_shape(
+                    out,
+                    &body_path,
+                    fill,
+                    stroke,
+                    stroke_width,
+                    work_meter,
+                    randomness,
+                )?;
                 out.push_str("</g>");
                 let _ = write!(out, r#"<g transform="translate(0,{})">"#, fmt(head_y));
                 out.checkpoint()?;
-                c4_write_hand_drawn_pair(out, &head_pair, fill, stroke, stroke_width)?;
+                c4_write_hand_drawn_shape(
+                    out,
+                    &head_path,
+                    fill,
+                    stroke,
+                    stroke_width,
+                    work_meter,
+                    randomness,
+                )?;
                 out.push_str("</g></g>");
                 return out.checkpoint();
             }
@@ -606,8 +622,7 @@ fn c4_write_unified_shape(
                 let rx = width / 2.0;
                 let ry = c4_cap_radius(width);
                 let body_height = (height - 2.0 * ry).max(1.0);
-                // Split the closed cylinder silhouette from the open interior rim arc so RoughJS
-                // hatching does not self-intersect across the top cap.
+                // Fill the closed silhouette before painting the open interior rim.
                 let body_path = format!(
                     "M0,{ry} a{rx},{ry} 0,0,1 {w},0 v{h} a{rx},{ry} 0,0,1 {mw},0 Z",
                     ry = fmt(ry),
@@ -622,8 +637,6 @@ fn c4_write_unified_shape(
                     rx = fmt(rx),
                     w = fmt(width),
                 );
-                let pair = c4_hand_drawn_paths(&body_path, stroke_width, work_meter, randomness)?;
-                let rim = c4_hand_drawn_stroke(&rim_path, work_meter, randomness)?;
                 out.push_str(r#"<g class="basic label-container" transform="translate("#);
                 let _ = write!(
                     out,
@@ -632,15 +645,24 @@ fn c4_write_unified_shape(
                     fmt(-(body_height / 2.0 + ry))
                 );
                 out.checkpoint()?;
-                c4_write_hand_drawn_pair(out, &pair, fill, stroke, stroke_width)?;
+                c4_write_hand_drawn_shape(
+                    out,
+                    &body_path,
+                    fill,
+                    stroke,
+                    stroke_width,
+                    work_meter,
+                    randomness,
+                )?;
+                let rim = c4_hand_drawn_stroke(&rim_path, work_meter, randomness)?;
                 let _ = write!(
                     out,
                     r#"<path class="rough-stroke" d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="fill:none !important;stroke:{} !important;stroke-width:{}px !important"/>"#,
                     escape_attr(&rim),
                     escape_attr(stroke),
-                    fmt(stroke_width as f64),
+                    fmt(stroke_width),
                     escape_attr(stroke),
-                    fmt(stroke_width as f64),
+                    fmt(stroke_width),
                 );
                 out.push_str("</g>");
                 return out.checkpoint();
@@ -665,20 +687,27 @@ fn c4_write_unified_shape(
                     ry = fmt(ry),
                     h = fmt(h),
                 );
-                let pair = c4_hand_drawn_paths(&body_path, stroke_width, work_meter, randomness)?;
-                let rim = c4_hand_drawn_stroke(&rim_path, work_meter, randomness)?;
                 out.push_str(r#"<g class="basic label-container" transform="translate("#);
                 let _ = write!(out, "{}, {})\">", fmt(-width / 2.0), fmt(h / 2.0));
                 out.checkpoint()?;
-                c4_write_hand_drawn_pair(out, &pair, fill, stroke, stroke_width)?;
+                c4_write_hand_drawn_shape(
+                    out,
+                    &body_path,
+                    fill,
+                    stroke,
+                    stroke_width,
+                    work_meter,
+                    randomness,
+                )?;
+                let rim = c4_hand_drawn_stroke(&rim_path, work_meter, randomness)?;
                 let _ = write!(
                     out,
                     r#"<path class="rough-stroke" d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="fill:none !important;stroke:{} !important;stroke-width:{}px !important"/>"#,
                     escape_attr(&rim),
                     escape_attr(stroke),
-                    fmt(stroke_width as f64),
+                    fmt(stroke_width),
                     escape_attr(stroke),
-                    fmt(stroke_width as f64),
+                    fmt(stroke_width),
                 );
                 out.push_str("</g>");
                 return out.checkpoint();
@@ -830,7 +859,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
     model: &C4DiagramModel,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
-    _measurer: &dyn TextMeasurer,
+    measurer: &dyn TextMeasurer,
     typography_theme: &crate::c4::C4TypographyThemePlan,
     cluster_theme: &crate::c4::C4ClusterThemePlan,
     text_paint: &crate::c4::C4TextPaintPlan,
@@ -849,6 +878,9 @@ pub(crate) fn render_c4_diagram_svg_typed(
     let diagram_margin_x = c4_cfg.diagram_margin_x();
     let diagram_margin_y = c4_cfg.diagram_margin_y();
     let use_max_width = layout.use_max_width;
+    let has_gradient =
+        crate::config::config_bool(effective_config, &["themeVariables", "useGradient"])
+            .unwrap_or(false);
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: diagram_margin_x,
@@ -868,6 +900,17 @@ pub(crate) fn render_c4_diagram_svg_typed(
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
     let extra_vert_for_title = if title.is_some() { 60.0 } else { 0.0 };
+    let (title_x, title_y) = if is_shoal {
+        (
+            bounds.min_x + box_w / 2.0,
+            bounds.min_y - diagram_margin_y - extra_vert_for_title / 2.0,
+        )
+    } else {
+        (
+            (width - 2.0 * diagram_margin_x) / 2.0 - 4.0 * diagram_margin_x,
+            bounds.min_y + diagram_margin_y,
+        )
+    };
 
     let viewbox_x = bounds.min_x - diagram_margin_x;
     let viewbox_y = if is_shoal {
@@ -876,8 +919,45 @@ pub(crate) fn render_c4_diagram_svg_typed(
         -(diagram_margin_y + extra_vert_for_title)
     };
     let hand_drawn_outset = if look.is_hand_drawn() { 8.0 } else { 0.0 };
-    let root_width = width + 2.0 * hand_drawn_outset;
-    let root_height = height + extra_vert_for_title + 2.0 * hand_drawn_outset;
+    let mut root_bounds = root_svg::DiagramBounds::from_view_box(
+        viewbox_x - hand_drawn_outset,
+        viewbox_y - hand_drawn_outset,
+        width + 2.0 * hand_drawn_outset,
+        height + extra_vert_for_title + 2.0 * hand_drawn_outset,
+    );
+    if is_shoal && let Some(title) = &title {
+        options.work_meter().charge(title.len())?;
+        let style = typography_theme.title_text_style();
+        let (left, right) = measurer.measure_svg_title_bbox_x(title, &style);
+        let (ascent, descent) = crate::text::svg_text_vertical_extents_px(
+            measurer,
+            title,
+            &style,
+            crate::text::svg_title_bbox_vertical_extents_px(&style),
+        );
+        let title_rect = kurbo::Rect::new(
+            title_x - left - diagram_margin_x,
+            title_y - ascent,
+            title_x + right + diagram_margin_x,
+            title_y + descent,
+        )
+        .inflate(hand_drawn_outset, hand_drawn_outset);
+        let viewport = kurbo::Rect::new(
+            root_bounds.min_x,
+            root_bounds.min_y,
+            root_bounds.min_x + root_bounds.width,
+            root_bounds.min_y + root_bounds.height,
+        );
+        let merged = viewport.union(title_rect);
+        if merged != viewport {
+            root_bounds = root_svg::DiagramBounds::from_view_box(
+                merged.x0,
+                merged.y0,
+                merged.width(),
+                merged.height(),
+            );
+        }
+    }
 
     let aria_roledescription = "c4";
 
@@ -891,14 +971,8 @@ pub(crate) fn render_c4_diagram_svg_typed(
         .map(|_| format!("chart-title-{diagram_id}"));
 
     let mut out = BoundedSvgOutput::new(options.work_meter());
-    let root_bounds = root_svg::DiagramBounds::from_view_box(
-        viewbox_x - hand_drawn_outset,
-        viewbox_y - hand_drawn_outset,
-        root_width,
-        root_height,
-    );
     let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, use_max_width)
-        .with_max_width(root_svg::RootMaxWidth::SvgNumber(root_width));
+        .with_max_width(root_svg::RootMaxWidth::SvgNumber(root_bounds.width));
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, aria_roledescription);
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
     root_chrome.aria_describedby = aria_describedby.as_deref();
@@ -942,6 +1016,12 @@ pub(crate) fn render_c4_diagram_svg_typed(
     out.checkpoint()?;
     out.push_str("<g/>");
     out.checkpoint()?;
+    if has_gradient {
+        out.push_str("<defs>");
+        crate::svg::PreparedLookDefs::new(effective_config).write_gradient(&mut out, diagram_id)?;
+        out.push_str("</defs>");
+        out.checkpoint()?;
+    }
     write_c4_base_defs(&mut out, diagram_id)?;
 
     let mut shape_meta: std::collections::HashMap<&str, &C4SvgModelShape> =
@@ -949,6 +1029,9 @@ pub(crate) fn render_c4_diagram_svg_typed(
     for s in &model.shapes {
         shape_meta.insert(s.alias.as_str(), s);
     }
+    let gradient_alias_id = (has_gradient && shape_meta.contains_key("gradient"))
+        .then(|| available_local_id("c4-node-gradient".into(), &shape_meta, options.work_meter()))
+        .transpose()?;
     let mut boundary_meta: std::collections::HashMap<&str, &C4SvgModelBoundary> =
         std::collections::HashMap::new();
     for b in &model.boundaries {
@@ -1005,12 +1088,17 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 };
                 let node_shape = crate::c4::c4_node_shape(meta);
                 let classes = c4_shape_classes(s.type_c4_shape.as_str());
+                let node_id = if s.alias == "gradient" {
+                    gradient_alias_id.as_deref().unwrap_or(&s.alias)
+                } else {
+                    &s.alias
+                };
                 let _ = write!(
                     &mut out,
                     r#"<g transform="translate({}, {})"><g id="{}" class="node {}""#,
                     fmt(s.x + s.width / 2.0),
                     fmt(s.y + s.height / 2.0),
-                    escape_attr_display(scoped_svg_id(diagram_id, &s.alias)),
+                    escape_attr_display(scoped_svg_id(diagram_id, node_id)),
                     classes,
                 );
                 if look != crate::c4::C4Look::Classic {
@@ -1371,13 +1459,24 @@ pub(crate) fn render_c4_diagram_svg_typed(
             .transpose()?;
         #[cfg(feature = "layout-shoal")]
         if let Some(route) = canonical {
+            let clip_id = route
+                .shaft_cutout
+                .is_some()
+                .then(|| {
+                    available_local_id(
+                        format!("{}-label-cutout", route.id),
+                        &shape_meta,
+                        options.work_meter(),
+                    )
+                })
+                .transpose()?;
             super::shoal::open_shaft(
                 &mut out,
                 route,
                 stroke_color,
                 connector_width,
                 diagram_id,
-                root_bounds,
+                clip_id.as_deref().map(|id| (id, root_bounds)),
                 &mut relation_points,
             )?;
         }
@@ -1535,17 +1634,6 @@ pub(crate) fn render_c4_diagram_svg_typed(
     out.checkpoint()?;
 
     if let Some(title) = title {
-        let (title_x, title_y) = if is_shoal {
-            (
-                bounds.min_x + box_w / 2.0,
-                bounds.min_y - diagram_margin_y - extra_vert_for_title / 2.0,
-            )
-        } else {
-            (
-                (width - 2.0 * diagram_margin_x) / 2.0 - 4.0 * diagram_margin_x,
-                bounds.min_y + diagram_margin_y,
-            )
-        };
         let _ = write!(
             &mut out,
             r#"<text x="{}" y="{}""#,

@@ -1208,6 +1208,21 @@ pub(crate) fn draw(
                 };
                 let ordinary = if let Some(fan) = fan {
                     Some(copy_points(&fan)?)
+                } else if options.routing == crate::RoutingStyle::Polyline
+                    && {
+                        // Caption placement seats labels on orthogonal runs of the full route.
+                        let edge = &graph.edges[part.edge];
+                        [edge.label, edge.start_label, edge.end_label]
+                            .iter()
+                            .all(Option::is_none)
+                    }
+                    && let Some(path) = router.direct_polyline(
+                        crate::ortho::OrthogonalSpan { start, end },
+                        Some(scope_bounds),
+                        work,
+                    )?
+                {
+                    Some(path)
                 } else {
                     span(
                         &mut router,
@@ -1293,7 +1308,8 @@ pub(crate) fn draw(
     }
     drop(routed);
     if has_captions {
-        captions::place(&context, &plan, &mut routes, work)?;
+        let card_grid = matches!(gutters, Gutters::CardGrid(_));
+        captions::place(&context, &plan, &mut routes, card_grid, work)?;
     }
     drawing.edges = routes;
     drawing.border_stitches = stitches;

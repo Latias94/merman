@@ -439,6 +439,7 @@ fn state_edge_finish_geometry(
     data_points: Vec<crate::model::LayoutPoint>,
     label_path_points: Vec<crate::model::LayoutPoint>,
     arrow_type_end: Option<&str>,
+    curve: &str,
     points_were_explicitly_updated: bool,
 ) -> StatePreparedEdgeGeometry {
     // Mermaid keeps `paths.updatedPath` before `fixCorners`, marker offsets, and curve encoding.
@@ -448,16 +449,32 @@ fn state_edge_finish_geometry(
         .filter(|point| !point.y.is_nan())
         .cloned()
         .collect::<Vec<_>>();
-    points_for_curve = state_edge_fix_corners(&points_for_curve);
+    if curve == "basis" {
+        points_for_curve = state_edge_fix_corners(&points_for_curve);
+    }
     points_for_curve = state_line_with_end_marker_offset_points(&points_for_curve, arrow_type_end);
 
     StatePreparedEdgeGeometry {
         original_label_path_points,
         data_points,
         label_path_points,
-        rendered_d: curve_basis_path_d(&points_for_curve),
+        rendered_d: curve::interpolated_path_d(&points_for_curve, curve),
         points_were_explicitly_updated,
     }
+}
+
+pub(super) fn state_elk_edge_curve(
+    ctx: &StateRenderCtx<'_>,
+    edge: &crate::model::LayoutEdge,
+) -> &'static str {
+    ctx.style_plan
+        .compatibility()
+        .native_edge_curve()
+        .unwrap_or(if edge.points.is_empty() {
+            "linear"
+        } else {
+            "rounded"
+        })
 }
 
 pub(super) fn state_edge_prepare_geometry(
@@ -480,11 +497,7 @@ pub(super) fn state_edge_prepare_geometry(
                 y: point.y - origin_y,
             })
             .collect();
-        let curve = if le.points.is_empty() {
-            "linear"
-        } else {
-            "rounded"
-        };
+        let curve = state_elk_edge_curve(ctx, le);
         let mut curve_points = data_points.clone();
         let marker_end = if curve == "rounded" {
             curve_points = state_rounded_end_marker_offset_points(&curve_points, arrow_type_end);
@@ -541,6 +554,10 @@ pub(super) fn state_edge_prepare_geometry(
         data_points,
         label_path_points,
         arrow_type_end,
+        ctx.style_plan
+            .compatibility()
+            .native_edge_curve()
+            .unwrap_or("basis"),
         points_were_explicitly_updated,
     )
 }
@@ -674,23 +691,29 @@ fn write_state_edge_path(
 
     let work_meter = ctx.work_meter;
     let look = state_data_look(ctx);
+    let compatibility = ctx.style_plan.compatibility();
+    let sketch =
+        compatibility.native_edge_style == Some(merman_theme_contract::v2::EdgeStyle::Sketch);
     #[cfg(feature = "layout-shoal")]
     let canonical = match ctx.canonical_routes {
         Some(routes) => {
-            if look == "neo" {
+            if look == "neo" && !sketch {
                 scratch.canonical.route.measure_length();
             }
             let origin = kurbo::Vec2::new(origin_x, origin_y);
             let outset = state_edge_stroke_outset(ctx);
+            let style = compatibility
+                .native_edge_style
+                .map_or(RouteStyle::Curved, RouteStyle::from_theme);
             let geometry = routes.paint_with_borrowed_points(
                 le,
                 -origin,
                 outset,
-                RouteStyle::Curved,
+                style,
                 work_meter,
                 &mut scratch.canonical,
             )?;
-            let rough_d = if state_effective_look(ctx) == "handDrawn" {
+            let rough_d = if sketch || state_effective_look(ctx) == "handDrawn" {
                 work_meter.charge(geometry.path.d.len().max(1))?;
                 Some(super::super::canonical_rough::constrained_rough_edge_path(
                     &geometry.path.d,
@@ -726,12 +749,23 @@ fn write_state_edge_path(
     };
     let hopped_d = ctx.elk_line_hop_paths.get(edge_id).map(String::as_str);
     let rendered_d = hopped_d.unwrap_or(paint_d);
+    let rough_d = if sketch && !ctx.uses_canonical_routes() && !rendered_d.is_empty() {
+        Some(super::super::canonical_rough::constrained_rough_edge_path(
+            rendered_d,
+            Default::default(),
+            work_meter,
+            &ctx.hand_drawn_seed,
+        )?)
+    } else {
+        None
+    };
+    let rendered_d = rough_d.as_deref().unwrap_or(rendered_d);
     write_serde_points_json(&mut scratch.json, points, &mut scratch.ryu);
     scratch.base64.clear();
     base64::engine::general_purpose::STANDARD.encode_string(&scratch.json, &mut scratch.base64);
     let original_style = &mut scratch.style;
     original_style.clear();
-    if look == "neo" {
+    if look == "neo" && !sketch {
         #[cfg(feature = "layout-shoal")]
         let length = if ctx.canonical_routes.is_some() {
             scratch
@@ -758,7 +792,11 @@ fn write_state_edge_path(
             );
         }
     }
-    original_style.push_str("fill:none;;;fill:none");
+    original_style.push_str(if ctx.uses_canonical_routes() {
+        "fill:none"
+    } else {
+        "fill:none;;;fill:none"
+    });
     let style = if let Some(path) = hopped_d {
         super::super::line_hops::rewrite_style_after_line_hop(original_style, path, work_meter)?
     } else {
@@ -771,7 +809,7 @@ fn write_state_edge_path(
     out.push_str(r#"" class=""#);
     escape_xml_into(out, classes);
     out.push_str(r#"" style=""#);
-    escape_xml_into(out, &style);
+    merman_render_core::xml::escape_attr_into(out, &style);
     out.push_str(r#"" data-edge="true" data-et="edge" data-id=""#);
     escape_xml_into(out, edge_id);
     out.push_str(r#"" data-points=""#);
@@ -1289,6 +1327,7 @@ mod tests {
             label_path_points.clone(),
             label_path_points.clone(),
             Some("arrow_barb_neo"),
+            "basis",
             true,
         );
 
@@ -1325,6 +1364,7 @@ mod tests {
             clipped.clone(),
             clipped,
             Some("arrow_barb_neo"),
+            "basis",
             true,
         );
         let position = crate::svg::parity::edge_label_geometry::position_edge_label(

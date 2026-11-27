@@ -38,12 +38,9 @@ pub(super) fn paint_edge<'points>(
         |style| style.connector_width,
     ) / 2.0;
     work_meter.charge(edge.points.len())?;
-    use merman_theme_contract::v2::EdgeStyle;
-    let style = match native.map(|style| style.edge_style) {
-        Some(EdgeStyle::Orthogonal) => RouteStyle::Step,
-        Some(EdgeStyle::Straight | EdgeStyle::Sketch) => RouteStyle::Linear,
-        _ => RouteStyle::Curved,
-    };
+    let style = native.map_or(RouteStyle::Curved, |theme| {
+        RouteStyle::from_theme(theme.edge_style)
+    });
     let geometry = routes.paint_with_borrowed_points(
         edge,
         translation,

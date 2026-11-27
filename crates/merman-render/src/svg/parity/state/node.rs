@@ -106,7 +106,7 @@ impl<'a> StateRectBody<'a> {
         let _ = write!(
             out,
             r#"<rect class="basic label-container" style="{}""#,
-            escape_xml_display(&self.style),
+            escape_attr_display(&self.style),
         );
         if let Some(filter) = filter {
             let _ = write!(out, r#" filter="{}""#, escape_attr_display(filter));
@@ -337,7 +337,7 @@ pub(super) fn render_state_node_svg(
                 fmt_display(cx),
                 fmt_display(cy),
                 node_attrs,
-                escape_xml_display(&semantic_style)
+                escape_attr_display(&semantic_style)
             );
             drop(_g_emit);
         }
@@ -689,9 +689,9 @@ pub(super) fn render_state_node_svg(
             let stroke_width_attr = stroke_width_override
                 .unwrap_or_else(|| compatibility.terminal_stroke_width_value(surface))
                 .max(0.0);
-            let fill_path_style_escaped = escape_xml_display(fill_path_style_attr);
-            let stroke_path_style_escaped = escape_xml_display(stroke_path_style_attr);
-            let label_style_escaped = escape_xml_display(text_style_attr);
+            let fill_path_style_escaped = escape_attr_display(fill_path_style_attr);
+            let stroke_path_style_escaped = escape_attr_display(stroke_path_style_attr);
+            let label_style_escaped = escape_attr_display(text_style_attr);
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             if ctx.html_labels {
                 let div_style = if measurement.uses_html_wrapping_table {
@@ -855,14 +855,14 @@ pub(super) fn render_state_node_svg(
                 details.leaf_nodes_label_html += s.elapsed();
             }
             let rect_style = state_rect_style(shape_style_attr, radius_override);
-            let shape_style_escaped = escape_xml_display(&rect_style);
-            let divider_style_escaped = escape_xml_display(shape_style_attr);
-            let label_style_escaped = escape_xml_display(text_style_attr);
+            let shape_style_escaped = escape_attr_display(&rect_style);
+            let divider_style_escaped = escape_attr_display(shape_style_attr);
+            let label_style_escaped = escape_attr_display(text_style_attr);
             let html_div_style_raw = format!(
                 "{}display: table-cell; white-space: nowrap; line-height: 1.5;",
                 div_style_prefix
             );
-            let html_div_style = escape_xml_display(&html_div_style_raw);
+            let html_div_style = escape_attr_display(&html_div_style_raw);
             let radius_attrs = radius_override
                 .map(|radius| {
                     format!(
@@ -1056,7 +1056,7 @@ pub(super) fn render_state_node_svg(
                     let _ = write!(
                         out,
                         r##"<g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"##,
-                        escape_xml_display(text_style_attr),
+                        escape_attr_display(text_style_attr),
                         fmt_display(-lw / 2.0),
                         fmt_display(-lh / 2.0),
                         fmt_display(lw),
@@ -1069,7 +1069,7 @@ pub(super) fn render_state_node_svg(
                     let _ = write!(
                         out,
                         r##"<g class="label" style="{}" transform="translate({}, {})"><rect/>{}</g></g>"##,
-                        escape_xml_display(text_style_attr),
+                        escape_attr_display(text_style_attr),
                         fmt_display(-lw / 2.0),
                         fmt_display(-lh / 2.0),
                         label_dom,
@@ -1117,12 +1117,12 @@ pub(super) fn render_state_node_svg(
                     node_attrs,
                     fill_d.as_str(),
                     escape_xml_display(fill_attr),
-                    escape_xml_display(fill_path_style_attr),
+                    escape_attr_display(fill_path_style_attr),
                     stroke_d.as_str(),
                     escape_xml_display(stroke_attr),
                     fmt_display(stroke_width_attr),
-                    escape_xml_display(stroke_path_style_attr),
-                    escape_xml_display(text_style_attr),
+                    escape_attr_display(stroke_path_style_attr),
+                    escape_attr_display(text_style_attr),
                     fmt_display(-lw / 2.0),
                     fmt_display(-lh / 2.0),
                     fmt_display(lw),
@@ -1143,12 +1143,12 @@ pub(super) fn render_state_node_svg(
                     node_attrs,
                     fill_d.as_str(),
                     escape_xml_display(fill_attr),
-                    escape_xml_display(fill_path_style_attr),
+                    escape_attr_display(fill_path_style_attr),
                     stroke_d.as_str(),
                     escape_xml_display(stroke_attr),
                     fmt_display(stroke_width_attr),
-                    escape_xml_display(stroke_path_style_attr),
-                    escape_xml_display(text_style_attr),
+                    escape_attr_display(stroke_path_style_attr),
+                    escape_attr_display(text_style_attr),
                     fmt_display(-lw / 2.0),
                     fmt_display(-lh / 2.0),
                     label_dom,

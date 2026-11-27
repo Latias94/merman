@@ -20,6 +20,14 @@ mod theme;
 
 #[cfg(feature = "layout-shoal")]
 pub(crate) use shoal::{UsecaseMarker, canonical_route_style};
+
+const PACKAGE_TAB_MIN_WIDTH: f64 = 80.0;
+const PACKAGE_TAB_PADDING_X: f64 = 10.0;
+pub(crate) const PACKAGE_TAB_PADDING_Y: f64 = 5.0;
+
+pub(crate) fn package_tab_width(label_width: f64) -> f64 {
+    PACKAGE_TAB_MIN_WIDTH.max(label_width + 2.0 * PACKAGE_TAB_PADDING_X)
+}
 pub(crate) use theme::UsecaseCssBinding;
 
 /// Mermaid's nonMarkdownToHTML/nonMarkdownToLines treat a literal \n as a line break.
@@ -303,6 +311,7 @@ pub(crate) fn prepare_usecase_diagram(
         let (layout, canonical, routes) = shoal::layout(
             model,
             config_value,
+            &css_binding,
             &nodes,
             &edges,
             Some(execution),

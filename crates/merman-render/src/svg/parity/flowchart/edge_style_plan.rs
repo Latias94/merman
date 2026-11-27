@@ -56,7 +56,7 @@ impl PreparedEdgeLabelTypography {
 #[derive(Debug)]
 struct FlowchartEdgeStyleArtifact {
     emission: FlowchartCompiledStyles,
-    projected_source_style_bytes: usize,
+    projected_source_style_bytes: FlowchartEdgeSourceStyleBytes,
     source_stroke_width_status: crate::flowchart::FlowchartSourceFacetStatus,
     source_stroke_width_value: Option<f32>,
 }
@@ -676,7 +676,7 @@ impl FlowchartEdgeStylePlan {
     ) -> crate::Result<usize> {
         self.edges
             .get(edge_id)
-            .map(|styles| styles.artifact.projected_source_style_bytes)
+            .map(|styles| styles.artifact.projected_source_style_bytes.parity)
             .ok_or_else(|| crate::Error::InvalidModel {
                 message: format!("missing prepared Flowchart edge style for `{edge_id}`"),
             })
@@ -685,8 +685,14 @@ impl FlowchartEdgeStylePlan {
     pub(in crate::svg::parity::flowchart) fn edge_source_style_svg_bytes_for(
         &self,
         key: crate::flowchart::FlowchartEdgeKey,
+        repeat_inline: bool,
     ) -> crate::Result<usize> {
-        Ok(self.occurrence(key)?.artifact.projected_source_style_bytes)
+        let projected = &self.occurrence(key)?.artifact.projected_source_style_bytes;
+        Ok(if repeat_inline {
+            projected.parity
+        } else {
+            projected.native
+        })
     }
 
     pub(in crate::svg::parity::flowchart) fn swimlane_label_for(

@@ -157,19 +157,28 @@ impl BoundaryRoutes {
             corridor_clearance: 0.0,
             reversed_for_ranking: false,
         };
-        let loop_via;
-        let via = if same_side_loop {
+        let routed = if same_side_loop {
             let depth = finite(
                 options.spacing.port_pitch.max(gap)
                     + spec.start_marker.length.max(spec.end_marker.length)
                     + gap,
             )?;
-            loop_via = loop_waypoints(pair, depth, &options.spacing, &blockers, work)?;
-            &loop_via
+            let spacing = crate::Spacing {
+                edge: gap,
+                ..options.spacing
+            };
+            loops::draw(&mut edge, pair, spec, depth, &spacing, &blockers, work)
         } else {
-            label_center.as_slice()
+            redraw(
+                &mut edge,
+                pair,
+                spec,
+                label_center.as_slice(),
+                gap,
+                &blockers,
+                work,
+            )
         };
-        let routed = redraw(&mut edge, pair, spec, via, gap, &blockers, work);
         if let (Err(corridor::NO_CORRIDOR), Some(size), Some(mid)) =
             (routed, spec.label, label_center)
             && spec.source != spec.target
@@ -181,32 +190,15 @@ impl BoundaryRoutes {
             routed?;
         }
         if same_side_loop && let Some(size) = spec.label {
-            let side = pair[0].side;
-            let at = Point {
-                x: pair[0].at.x.midpoint(pair[1].at.x),
-                y: pair[0].at.y.midpoint(pair[1].at.y),
-            };
-            let mut reach = 0.0_f64;
-            for knot in &edge.points {
-                work.visit(1)?;
-                let distance = match side {
-                    Side::Top => at.y - knot.y,
-                    Side::Right => knot.x - at.x,
-                    Side::Bottom => knot.y - at.y,
-                    Side::Left => at.x - knot.x,
-                };
-                reach = reach.max(distance);
-            }
-            let depth = match side.axis() {
-                Axis::Horizontal => size.width,
-                Axis::Vertical => size.height,
-            };
-            let preferred = advance(
-                at,
-                side,
-                finite(reach + options.spacing.loop_gap + depth / 2.0)?,
-            )?;
-            edge.label_center = Some(loop_label(id, preferred, size, side, &self.0, work)?);
+            edge.label_center = Some(loops::place_label(
+                id,
+                &edge,
+                pair,
+                size,
+                options.spacing.loop_gap,
+                &self.0,
+                work,
+            )?);
         }
         if let (Some(center), Some(size)) = (edge.label_center, spec.label) {
             self.0

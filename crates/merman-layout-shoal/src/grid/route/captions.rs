@@ -14,26 +14,26 @@ struct RouteObstacle {
     edge: usize,
 }
 
-#[derive(Clone, Copy)]
-enum ClearanceTier {
-    OffAll,
-    OnOwnRoute,
-    /// The hollow group border can cross the caption in a crowded gutter.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SeatMode {
+    Beside,
+    Inline,
     AcrossFrame,
-    /// Last-resort local placement on a trapped parallel wire: clears every solid obstacle,
-    /// title, marker, and previously placed caption while allowing foreign route lines behind it.
-    AcrossForeignRoute,
-    /// Extended local rescue for heavily congested gutters before falling back to distant
-    /// scope-bottom or diagram-bottom rows: keeps a thin clearance margin from solids/captions.
-    TightAcrossForeignRoute,
+    TightInline,
+    AlongObstacles,
+    Detached,
 }
 
-#[derive(Clone, Copy)]
-enum FitResult {
-    Clear,
-    /// The caption ink clears all required obstacles, but its tether crosses this foreign route leg.
-    TetherBlocked(Bounds),
-    Blocked,
+impl SeatMode {
+    fn pad(self, clearance: f64) -> f64 {
+        match self {
+            Self::Beside => clearance,
+            Self::Inline | Self::AcrossFrame => (clearance * 0.5).min(4.0),
+            Self::TightInline | Self::AlongObstacles | Self::Detached => {
+                (clearance * 0.25).min(1.5)
+            }
+        }
+    }
 }
 
 struct Scene {
@@ -41,6 +41,7 @@ struct Scene {
     routes: Bvh<RouteObstacle>,
     labels: Vec<Caption>,
     clearance: f64,
+    card_grid: bool,
 }
 
 struct Caption {
@@ -48,43 +49,139 @@ struct Caption {
     prefix_bottom: f64,
 }
 
-/// Returns `true` if the straight tether segment `from -> to` crosses `bounds` strictly
-/// after its anchor `from` (`t > 1e-6`), separating a caption candidate from its own route.
-fn segment_crosses_bounds(from: Point, to: Point, bounds: Bounds) -> bool {
-    if !from.x.is_finite()
-        || !from.y.is_finite()
-        || !to.x.is_finite()
-        || !to.y.is_finite()
-        || !bounds.finite()
-    {
-        return false;
+#[derive(Clone, Copy)]
+struct Run {
+    axis: usize,
+    cross: f64,
+    from: f64,
+    to: f64,
+}
+
+impl Run {
+    fn length(self) -> f64 {
+        (self.to - self.from).abs()
     }
-    let dx = to.x - from.x;
-    let dy = to.y - from.y;
-    if !dx.is_finite() || !dy.is_finite() || (dx == 0.0 && dy == 0.0) {
-        return false;
+
+    fn at(self, distance: f64) -> f64 {
+        self.from + (self.to - self.from).signum() * distance
     }
-    let mut t_min = 0.0_f64;
-    let mut t_max = 1.0_f64;
-    for (origin, delta, [lo, hi]) in [(from.x, dx, bounds.x), (from.y, dy, bounds.y)] {
-        if delta == 0.0 {
-            if origin < lo || origin > hi {
-                return false;
+}
+
+#[derive(Default)]
+struct SearchScratch {
+    runs: Vec<Run>,
+    blocked: Vec<[f64; 2]>,
+    seats: Vec<f64>,
+}
+
+impl SearchScratch {
+    fn prepare(&mut self, points: &[RoutePoint], work: &mut Work<'_>) -> LayoutResult<f64> {
+        self.runs.clear();
+        for leg in points.windows(2) {
+            work.visit(1)?;
+            let [a, b] = [leg[0], leg[1]];
+            if a.x == b.x && a.y == b.y {
+                continue;
             }
-        } else {
-            let t0 = (lo - origin) / delta;
-            let t1 = (hi - origin) / delta;
-            if !t0.is_finite() || !t1.is_finite() {
-                return false;
-            }
-            t_min = t_min.max(t0.min(t1));
-            t_max = t_max.min(t0.max(t1));
-            if t_min > t_max {
-                return false;
+            let run = if a.y == b.y {
+                Run {
+                    axis: 0,
+                    cross: a.y,
+                    from: a.x,
+                    to: b.x,
+                }
+            } else if a.x == b.x {
+                Run {
+                    axis: 1,
+                    cross: a.x,
+                    from: a.y,
+                    to: b.y,
+                }
+            } else {
+                return Err(LayoutError::InvalidInput(
+                    "non-orthogonal grid caption route",
+                ));
+            };
+            if let Some(previous) = self.runs.last_mut()
+                && previous.axis == run.axis
+                && previous.cross == run.cross
+                && previous.to == run.from
+                && (previous.from < previous.to) == (run.from < run.to)
+            {
+                previous.to = run.to;
+            } else {
+                push(&mut self.runs, run)?;
             }
         }
+        work.visit(self.runs.len())?;
+        let length = self.runs.iter().map(|run| run.length()).sum::<f64>();
+        if !length.is_finite() {
+            return Err(PRECISION);
+        }
+        Ok(length)
     }
-    t_max > 1e-6 && t_min <= 1.0
+}
+
+/// Candidate centers move along a straight run, at a fixed offset from its shaft.
+#[derive(Clone, Copy)]
+struct SeatLine {
+    axis: usize,
+    span: [f64; 2],
+    cross: f64,
+    anchor_cross: f64,
+    half: [f64; 2],
+}
+
+impl SeatLine {
+    fn bounds(self, along: [f64; 2], cross: [f64; 2]) -> Bounds {
+        if self.axis == 0 {
+            Bounds { x: along, y: cross }
+        } else {
+            Bounds { x: cross, y: along }
+        }
+    }
+
+    fn ink_span(self, rect: Bounds) -> Option<[f64; 2]> {
+        let [along, cross] = self.axes(rect);
+        let margin = self.half[1 - self.axis];
+        (cross[0] < self.cross + margin && self.cross - margin < cross[1]).then(|| {
+            let half = self.half[self.axis];
+            [(along[0] - half).next_up(), (along[1] + half).next_down()]
+        })
+    }
+
+    fn axes(self, rect: Bounds) -> [[f64; 2]; 2] {
+        if self.axis == 0 {
+            [rect.x, rect.y]
+        } else {
+            [rect.y, rect.x]
+        }
+    }
+
+    fn tether_span(self, rect: Bounds) -> Option<[f64; 2]> {
+        let [along, cross] = self.axes(rect);
+        (self.cross != self.anchor_cross
+            && cross[1] >= self.cross.min(self.anchor_cross)
+            && cross[0] <= self.cross.max(self.anchor_cross))
+        .then_some(along)
+    }
+
+    fn foreign_span(self, rect: Bounds, reach: f64) -> Option<[f64; 2]> {
+        let [along, cross] = self.axes(rect);
+        let cross_gap = (cross[0] - self.cross).max(self.cross - cross[1]).max(0.0);
+        if cross_gap > reach {
+            return None;
+        }
+        // Project the part of the neighbor's distance field no farther away than the
+        // host shaft. The caption center must remain in its own route's region.
+        let radius = if reach == 0.0 {
+            0.0
+        } else {
+            let ratio = cross_gap / reach;
+            reach * (1.0 - ratio * ratio).sqrt()
+        };
+        Some([along[0] - radius, along[1] + radius])
+    }
 }
 
 impl Scene {
@@ -93,11 +190,9 @@ impl Scene {
         let at = self
             .labels
             .partition_point(|label| label.ink.y[0] <= ink.y[0]);
-        let prefix_bottom = if at == 0 {
-            ink.y[1]
-        } else {
-            self.labels[at - 1].prefix_bottom.max(ink.y[1])
-        };
+        let prefix_bottom = self.labels[..at]
+            .last()
+            .map_or(ink.y[1], |label| label.prefix_bottom.max(ink.y[1]));
         work.charge(self.labels.len() - at + 1)?;
         self.labels
             .try_reserve(1)
@@ -112,624 +207,332 @@ impl Scene {
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn fits(
+    fn closest_seat(
         &self,
-        at: Point,
-        size: Size,
-        scope: Option<Bounds>,
-        own_route: usize,
-        tether: Option<Point>,
-        tier: ClearanceTier,
+        line: SeatLine,
+        preferred: f64,
+        mode: SeatMode,
+        edge: usize,
+        blocked: &mut Vec<[f64; 2]>,
         work: &mut Work<'_>,
-    ) -> LayoutResult<bool> {
-        Ok(matches!(
-            self.fits_classified(at, size, scope, own_route, tether, &[], tier, work)?,
-            FitResult::Clear
-        ))
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn fits_classified(
-        &self,
-        at: Point,
-        size: Size,
-        scope: Option<Bounds>,
-        own_route: usize,
-        tether: Option<Point>,
-        cached_blockers: &[Bounds],
-        tier: ClearanceTier,
-        work: &mut Work<'_>,
-    ) -> LayoutResult<FitResult> {
-        let pad = match tier {
-            ClearanceTier::OffAll => self.clearance,
-            ClearanceTier::OnOwnRoute
-            | ClearanceTier::AcrossFrame
-            | ClearanceTier::AcrossForeignRoute => (self.clearance * 0.5).min(4.0),
-            ClearanceTier::TightAcrossForeignRoute => (self.clearance * 0.25).min(1.5),
+    ) -> LayoutResult<Option<f64>> {
+        blocked.clear();
+        let [lo, hi] = line.span;
+        let mut block = |span: Option<[f64; 2]>| -> LayoutResult<bool> {
+            if let Some([a, b]) = span
+                && a <= b
+                && b >= lo
+                && a <= hi
+            {
+                // An obstacle covering this whole run leaves no candidate to sort.
+                if a <= lo && b >= hi {
+                    return Ok(true);
+                }
+                push(blocked, [a, b])?;
+            }
+            Ok(false)
         };
-        let ink = Bounds::from_half_extents(at, size.width / 2.0 + pad, size.height / 2.0 + pad);
+        let half_along = line.half[line.axis];
+        let cross_half = line.half[1 - line.axis];
+        let ink = line.bounds(
+            [lo - half_along, hi + half_along],
+            [line.cross - cross_half, line.cross + cross_half],
+        );
         if !ink.finite() {
-            return Ok(FitResult::Blocked);
+            return Ok(None);
         }
-        if let Some(bounds) = scope
-            && (ink.x[0] < bounds.x[0]
-                || ink.x[1] > bounds.x[1]
-                || ink.y[0] < bounds.y[0]
-                || ink.y[1] > bounds.y[1])
-        {
-            return Ok(FitResult::Blocked);
-        }
-        if let Some(last) = self.labels.last()
-            && last.prefix_bottom > ink.y[0]
-            && self.labels[0].ink.y[0] < ink.y[1]
-        {
-            work.visit(self.labels.len().ilog2() as usize + 1)?;
-            let first = self
-                .labels
-                .partition_point(|label| label.prefix_bottom <= ink.y[0]);
-            for label in &self.labels[first..] {
-                work.visit(1)?;
-                if label.ink.y[0] >= ink.y[1] {
-                    break;
-                }
-                if ink.overlaps_strictly(label.ink) {
-                    return Ok(FitResult::Blocked);
-                }
+        work.visit(self.labels.len().checked_ilog2().unwrap_or(0) as usize + 1)?;
+        let first = self
+            .labels
+            .partition_point(|label| label.prefix_bottom <= ink.y[0]);
+        for label in &self.labels[first..] {
+            work.visit(1)?;
+            if label.ink.y[0] >= ink.y[1] {
+                break;
+            }
+            if block(line.ink_span(label.ink))? {
+                return Ok(None);
             }
         }
-        let allow_frame = matches!(
-            tier,
-            ClearanceTier::AcrossFrame
-                | ClearanceTier::AcrossForeignRoute
-                | ClearanceTier::TightAcrossForeignRoute
+        let tether = line.bounds(
+            [lo, hi],
+            [
+                line.anchor_cross.min(line.cross),
+                line.anchor_cross.max(line.cross),
+            ],
         );
-        // Phase 1a: check solid nodes, titles, markers, and (unless relaxed) hollow group frames.
-        let hit_solid = self.solids.visit(|entry| -> LayoutResult<_> {
+        let tethered = mode != SeatMode::Detached;
+        let solids = if tethered { ink.union(tether) } else { ink };
+        let solid_blocked = self.solids.visit(|entry| -> LayoutResult<_> {
             work.visit(1)?;
             Ok(match entry {
-                BvhEntry::Node(node) => Continue(ink.overlaps_strictly(node)),
+                BvhEntry::Node(bounds) => Continue(solids.overlaps(bounds)),
                 BvhEntry::Item(obs) => {
-                    if (!obs.is_frame || !allow_frame) && ink.overlaps_strictly(obs.bounds) {
-                        Break(())
-                    } else {
-                        Continue(true)
+                    if (!obs.is_frame || matches!(mode, SeatMode::Beside | SeatMode::Inline))
+                        && (block(line.ink_span(obs.bounds))?
+                            || (tethered && block(line.tether_span(obs.bounds))?))
+                    {
+                        return Ok(Break(()));
                     }
+                    Continue(true)
                 }
             })
         })?;
-        if hit_solid.is_break() {
-            return Ok(FitResult::Blocked);
+        if solid_blocked.is_break() {
+            return Ok(None);
         }
-        // Phase 1b: tight `ink`-only check against route segments (skipped in foreign-route tiers).
-        if !matches!(
-            tier,
-            ClearanceTier::AcrossForeignRoute | ClearanceTier::TightAcrossForeignRoute
-        ) {
-            let block_own = matches!(tier, ClearanceTier::OffAll);
-            let hit_route = self.routes.visit(|entry| -> LayoutResult<_> {
-                work.visit(1)?;
-                Ok(match entry {
-                    BvhEntry::Node(node) => Continue(ink.overlaps_strictly(node)),
-                    BvhEntry::Item(obs) => {
-                        if (block_own || obs.edge != own_route) && ink.overlaps_strictly(obs.bounds)
-                        {
-                            Break(())
-                        } else {
-                            Continue(true)
-                        }
+        // Keep enough separation to cover a small within-seat authored paint offset.
+        let reach = (line.cross - line.anchor_cross).abs() + self.clearance.min(2.0);
+        let affinity = line.bounds(
+            [lo - reach, hi + reach],
+            [line.cross - reach, line.cross + reach],
+        );
+        let routes = ink.union(affinity).union(tether);
+        let route_blocked = self.routes.visit(|entry| -> LayoutResult<_> {
+            work.visit(1)?;
+            Ok(match entry {
+                BvhEntry::Node(bounds) => Continue(routes.overlaps(bounds)),
+                BvhEntry::Item(obs) => {
+                    let foreign = obs.edge != edge;
+                    if ((foreign || mode == SeatMode::Beside) && block(line.ink_span(obs.bounds))?)
+                        || (foreign && block(line.foreign_span(obs.bounds, reach))?)
+                    {
+                        return Ok(Break(()));
                     }
-                })
-            })?;
-            if hit_route.is_break() {
-                return Ok(FitResult::Blocked);
-            }
+                    Continue(true)
+                }
+            })
+        })?;
+        if route_blocked.is_break() {
+            return Ok(None);
         }
-        // Phase 2: only after the tight ink box is clear, verify that the straight tether from
-        // the route anchor to `at` does not hop across a foreign route in the routes-only BVH.
-        if let Some(origin) = tether
-            && (origin.x != at.x || origin.y != at.y)
-        {
-            for &blocker in cached_blockers {
-                if segment_crosses_bounds(origin, at, blocker) {
-                    return Ok(FitResult::TetherBlocked(blocker));
+        work.charge_sort(blocked.len())?;
+        blocked.sort_unstable_by(|a, b| a[0].total_cmp(&b[0]).then_with(|| a[1].total_cmp(&b[1])));
+        let mut best = None::<(f64, f64)>;
+        let mut consider = |start, end| {
+            if start <= end {
+                let seat = preferred.clamp(start, end);
+                let distance = (seat - preferred).abs();
+                if best.is_none_or(|(old, _)| distance < old) {
+                    best = Some((distance, seat));
                 }
             }
-            let tether_bounds = Bounds::between(origin, at);
-            let mut blocker = None;
-            let crossed = self.routes.visit(|entry| -> LayoutResult<_> {
+        };
+        let mut start = lo;
+        for &[a, b] in blocked.iter() {
+            work.visit(1)?;
+            if b < start {
+                continue;
+            }
+            consider(start, a.next_down().min(hi));
+            start = start.max(b.next_up());
+            if start > hi {
+                break;
+            }
+        }
+        consider(start, hi);
+        Ok(best.map(|(_, seat)| seat))
+    }
+
+    fn adjacent_lines(
+        &self,
+        line: SeatLine,
+        room: [f64; 2],
+        edge: usize,
+        seats: &mut Vec<f64>,
+        work: &mut Work<'_>,
+    ) -> LayoutResult<()> {
+        // A caption can slide around the edge of a solid or a previously seated caption.
+        // Probe those boundaries before considering a detached row.
+        let half = line.half[1 - line.axis];
+        let along = [
+            line.span[0] - line.half[line.axis],
+            line.span[1] + line.half[line.axis],
+        ];
+        let reach = 2.0 * half + self.clearance;
+        let low = (line.cross - reach).max(room[0] + half);
+        let high = (line.cross + reach).min(room[1] - half);
+        if low > high || !low.is_finite() || !high.is_finite() {
+            return Ok(());
+        }
+        let area = line.bounds(along, [low - half, high + half]);
+        push(seats, low)?;
+        push(seats, high)?;
+        let mut border = |bounds: Bounds| -> LayoutResult<()> {
+            let [_, cross] = line.axes(bounds);
+            for at in [(cross[0] - half).next_down(), (cross[1] + half).next_up()] {
+                if at >= low && at <= high {
+                    push(seats, at)?;
+                }
+            }
+            Ok(())
+        };
+        let _ = self.solids.visit(|entry| -> LayoutResult<_> {
+            work.visit(1)?;
+            Ok(match entry {
+                BvhEntry::Node(bounds) => Continue(area.overlaps(bounds)),
+                BvhEntry::Item(obs) => {
+                    if !obs.is_frame && area.overlaps(obs.bounds) {
+                        border(obs.bounds)?;
+                    }
+                    Continue(true)
+                }
+            })
+        })?;
+        if self.card_grid {
+            let _ = self.routes.visit(|entry| -> LayoutResult<_> {
                 work.visit(1)?;
                 Ok(match entry {
-                    BvhEntry::Node(node) => Continue(tether_bounds.overlaps(node)),
+                    BvhEntry::Node(bounds) => Continue(area.overlaps(bounds)),
                     BvhEntry::Item(obs) => {
-                        if obs.edge != own_route && segment_crosses_bounds(origin, at, obs.bounds) {
-                            blocker = Some(obs.bounds);
-                            Break(())
-                        } else {
-                            Continue(true)
+                        if obs.edge != edge && area.overlaps(obs.bounds) {
+                            border(obs.bounds)?;
                         }
+                        Continue(true)
                     }
                 })
             })?;
-            if crossed.is_break()
-                && let Some(blocker) = blocker
-            {
-                return Ok(FitResult::TetherBlocked(blocker));
-            }
         }
-        Ok(FitResult::Clear)
-    }
-
-    fn sample_route(
-        points: &[RoutePoint],
-        lengths: &[f64],
-        total: f64,
-        markers: [f64; 2],
-        t: f64,
-        work: &mut Work<'_>,
-    ) -> LayoutResult<Option<([f64; 2], usize)>> {
-        let mut left = (total - markers[0] - markers[1])
-            .max(0.0)
-            .mul_add(t, markers[0]);
-        for (&length, leg) in lengths.iter().zip(points.windows(2)) {
+        work.visit(self.labels.len().checked_ilog2().unwrap_or(0) as usize + 1)?;
+        let first = self
+            .labels
+            .partition_point(|label| label.prefix_bottom <= area.y[0]);
+        for label in &self.labels[first..] {
             work.visit(1)?;
-            if length <= left {
-                left -= length;
-                continue;
+            if label.ink.y[0] >= area.y[1] {
+                break;
             }
-            let ratio = left / length;
-            let [a, b] = [leg[0], leg[1]];
-            let at = [a.x + (b.x - a.x) * ratio, a.y + (b.y - a.y) * ratio];
-            let cross = usize::from(a.y == b.y);
-            return Ok(Some((at, cross)));
+            if area.overlaps(label.ink) {
+                border(label.ink)?;
+            }
         }
-        Ok(None)
+        work.charge_sort(seats.len())?;
+        seats.sort_unstable_by(|a, b| {
+            (a - line.cross)
+                .abs()
+                .total_cmp(&(b - line.cross).abs())
+                .then_with(|| a.total_cmp(b))
+        });
+        work.visit(seats.len())?;
+        seats.dedup();
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
     fn near_route(
         &self,
         points: &[RoutePoint],
-        route_index: usize,
+        edge: usize,
         fraction: f64,
         markers: [f64; 2],
         size: Size,
         scope: Option<Bounds>,
-        lengths: &mut Vec<f64>,
+        scratch: &mut SearchScratch,
         work: &mut Work<'_>,
     ) -> LayoutResult<Option<Point>> {
-        lengths.clear();
-        lengths
-            .try_reserve(points.len().saturating_sub(1))
-            .map_err(|_| LayoutError::AllocationLimit)?;
-        let mut total = 0.0;
-        for leg in points.windows(2) {
-            work.visit(1)?;
-            let length = (leg[1].x - leg[0].x).abs() + (leg[1].y - leg[0].y).abs();
-            lengths.push(length);
-            total += length;
-        }
-        if !total.is_finite() {
-            return Err(PRECISION);
-        }
-        let radius = total.mul_add(0.75, 60.0).min(120.0);
-        let margin = [
-            size.width / 2.0 + self.clearance,
-            size.height / 2.0 + self.clearance,
-        ];
+        let length = scratch.prepare(points, work)?;
+        let first = markers[0].min(length);
+        let last = (length - markers[1]).max(first);
+        let target = (last - first).mul_add(fraction, first);
         let room = scope.map_or([[0.0, f64::INFINITY]; 2], |bounds| [bounds.x, bounds.y]);
-        // Small exact cache of foreign route segments that already blocked a tether on this route,
-        // plus the best Phase-1-clear rescue candidate (lower priority rank wins, then distance).
-        let mut tether_blockers = [Bounds {
-            x: [0.0; 2],
-            y: [0.0; 2],
-        }; 4];
-        let mut blocker_count = 0usize;
-        let mut rescue = None::<(u8, f64, Point)>;
-        let mut seat = |mut candidate: [f64; 2],
-                        sample: [f64; 2],
-                        tier,
-                        check_tether: bool,
-                        rescue_rank: Option<u8>,
-                        rescue: &mut Option<(u8, f64, Point)>,
-                        best: Option<f64>,
-                        work: &mut Work<'_>| {
-            work.visit(1)?;
-            let pad = match tier {
-                ClearanceTier::OffAll => self.clearance,
-                ClearanceTier::TightAcrossForeignRoute => (self.clearance * 0.25).min(1.5),
-                _ => (self.clearance * 0.5).min(4.0),
-            };
-            for ((coord, [lo, hi]), half) in candidate
-                .iter_mut()
-                .zip(room)
-                .zip([size.width / 2.0 + pad, size.height / 2.0 + pad])
-            {
-                let min_coord = lo + half;
-                let max_coord = hi - half;
-                if min_coord.is_nan() || max_coord.is_nan() || min_coord > max_coord {
-                    return Ok(None);
-                }
-                *coord = coord.clamp(min_coord, max_coord);
-            }
-            let [x, y] = candidate;
-            let at = Point { x, y };
-            let distance = (x - sample[0]).hypot(y - sample[1]);
-            if !distance.is_finite()
-                || distance > radius
-                || best.is_some_and(|best| distance >= best)
-            {
-                return Ok(None);
-            }
-            let tether = check_tether.then_some(Point {
-                x: sample[0],
-                y: sample[1],
-            });
-            let can_improve_rescue = rescue_rank.is_some_and(|rank| {
-                rescue.is_none_or(|(best_rank, best_dist, _)| {
-                    rank < best_rank || (rank == best_rank && distance < best_dist)
-                })
-            });
-            // Exact fast-reject: if a cached foreign route already crosses this tether, the
-            // candidate can never be `FitResult::Clear`; when it also cannot improve `rescue`,
-            // skip both BVH traversals completely.
-            if let Some(origin) = tether
-                && !can_improve_rescue
-                && (origin.x != at.x || origin.y != at.y)
-                && tether_blockers[..blocker_count]
-                    .iter()
-                    .any(|&blocker| segment_crosses_bounds(origin, at, blocker))
-            {
-                return Ok(None);
-            }
-            match self.fits_classified(
-                at,
-                size,
-                scope,
-                route_index,
-                tether,
-                &tether_blockers[..blocker_count],
-                tier,
-                work,
-            )? {
-                FitResult::Clear => Ok::<_, LayoutError>(Some((distance, at))),
-                FitResult::TetherBlocked(blocker) => {
-                    if blocker_count < tether_blockers.len()
-                        && !tether_blockers[..blocker_count]
-                            .iter()
-                            .any(|b| b.x == blocker.x && b.y == blocker.y)
-                    {
-                        tether_blockers[blocker_count] = blocker;
-                        blocker_count += 1;
-                    }
-                    if let Some(rank) = rescue_rank
-                        && can_improve_rescue
-                    {
-                        *rescue = Some((rank, distance, at));
-                    }
-                    Ok(None)
-                }
-                FitResult::Blocked => Ok(None),
-            }
-        };
-        let probes = [
-            fraction,
-            (fraction + 0.25) / 2.0,
-            (fraction + 0.75) / 2.0,
-            0.2,
-            0.8,
-        ];
-        let mut samples = [None; 5];
-        for (probe, t) in probes.into_iter().enumerate() {
-            let Some((at, cross)) = Self::sample_route(points, lengths, total, markers, t, work)?
-            else {
-                continue;
-            };
-            samples[probe] = Some((at, cross));
-            for sign in [-1.0, 1.0] {
-                let mut candidate = at;
-                let edge = at[cross] + sign * margin[cross];
-                candidate[cross] = if sign < 0.0 {
-                    edge.next_down()
-                } else {
-                    edge.next_up()
-                };
-                if let Some((_, candidate)) = seat(
-                    candidate,
-                    at,
-                    ClearanceTier::OffAll,
-                    true,
-                    Some(0),
-                    &mut rescue,
-                    None,
-                    work,
-                )? {
-                    return Ok(Some(candidate));
-                }
-            }
-        }
-        for (tier_idx, tier) in [ClearanceTier::OnOwnRoute, ClearanceTier::AcrossFrame]
-            .into_iter()
-            .enumerate()
-        {
-            let rank = 1 + tier_idx as u8;
-            for (at, cross) in samples.into_iter().flatten() {
-                for sign in [0.0, -1.0, 1.0] {
-                    let mut shifted = at;
-                    shifted[cross] += sign * (size.height.min(size.width) * 0.5 + 4.0);
-                    if let Some((_, shifted)) =
-                        seat(shifted, at, tier, true, Some(rank), &mut rescue, None, work)?
-                    {
-                        return Ok(Some(shifted));
-                    }
-                }
-            }
-        }
-        for (tier_idx, tier) in [ClearanceTier::OffAll, ClearanceTier::AcrossFrame]
-            .into_iter()
-            .enumerate()
-        {
-            for (ring_idx, (mult, radius_fraction)) in
-                [(2.0, 0.0), (3.0, 0.0), (0.0, 0.5), (0.0, 0.875)]
-                    .into_iter()
-                    .enumerate()
-            {
-                let rank = (ring_idx < 3).then_some(3 + (tier_idx * 3 + ring_idx) as u8);
-                let mut closest = None::<(f64, Point)>;
-                for (at, cross) in samples.into_iter().flatten() {
-                    let across = (mult * margin[cross])
-                        .max(radius * radius_fraction)
-                        .next_up();
-                    let along = margin[1 - cross].min(radius / 2.0);
-                    for sign in [-1.0, 1.0] {
-                        for side in [0.0, -1.0, 1.0] {
-                            let mut candidate = at;
-                            candidate[cross] += sign * across;
-                            candidate[1 - cross] += side * along;
-                            if let Some(seat) = seat(
-                                candidate,
-                                at,
-                                tier,
-                                true,
-                                rank,
-                                &mut rescue,
-                                closest.map(|(best, _)| best),
-                                work,
-                            )? {
-                                closest = Some(seat);
-                            }
-                        }
-                    }
-                }
-                if let Some((_, at)) = closest {
-                    return Ok(Some(at));
-                }
-            }
-        }
-        // Local rescue for trapped wires (such as the center wire of a parallel bundle or a tight
-        // gutter) before falling back to distant scope-bottom or diagram-margin rows: first use
-        // any Phase-1-clear candidate already discovered above (with only tether relaxed), and
-        // otherwise allow foreign route lines behind the caption while still clearing every solid
-        // node, title, marker, and previously placed caption.
-        if let Some((_, _, at)) = rescue {
-            return Ok(Some(at));
-        }
-        for (at, cross) in samples.into_iter().flatten() {
-            for sign in [0.0, -1.0, 1.0] {
-                let mut shifted = at;
-                shifted[cross] += sign * (size.height.min(size.width) * 0.5 + 4.0);
-                if let Some((_, shifted)) = seat(
-                    shifted,
-                    at,
-                    ClearanceTier::AcrossForeignRoute,
-                    false,
-                    None,
-                    &mut rescue,
-                    None,
-                    work,
-                )? {
-                    return Ok(Some(shifted));
-                }
-            }
-        }
-        for (mult, radius_fraction) in [(2.0, 0.0), (3.0, 0.0), (0.0, 0.5)] {
-            let mut closest = None::<(f64, Point)>;
-            for (at, cross) in samples.into_iter().flatten() {
-                let across = (mult * margin[cross])
-                    .max(radius * radius_fraction)
-                    .next_up();
-                let along = margin[1 - cross].min(radius / 2.0);
-                for sign in [-1.0, 1.0] {
-                    for side in [0.0, -1.0, 1.0] {
-                        let mut candidate = at;
-                        candidate[cross] += sign * across;
-                        candidate[1 - cross] += side * along;
-                        if let Some(seat) = seat(
-                            candidate,
-                            at,
-                            ClearanceTier::AcrossForeignRoute,
-                            false,
-                            None,
-                            &mut rescue,
-                            closest.map(|(best, _)| best),
-                            work,
-                        )? {
-                            closest = Some(seat);
-                        }
-                    }
-                }
-            }
-            if let Some((_, at)) = closest {
-                return Ok(Some(at));
-            }
-        }
-        self.extended_local_rescue(
-            points,
-            lengths,
-            total,
-            markers,
-            route_index,
-            size,
-            scope,
-            radius,
-            work,
-        )
-    }
-
-    /// Extended local rescue invoked only when standard near-route tiers fail, avoiding
-    /// 200-600 px teleports to scope-bottom or diagram-bottom rows in congested gutters.
-    #[allow(clippy::too_many_arguments)]
-    fn extended_local_rescue(
-        &self,
-        points: &[RoutePoint],
-        lengths: &[f64],
-        total: f64,
-        markers: [f64; 2],
-        route_index: usize,
-        size: Size,
-        scope: Option<Bounds>,
-        base_radius: f64,
-        work: &mut Work<'_>,
-    ) -> LayoutResult<Option<Point>> {
-        let mut anchors = [([0.0; 2], 0usize); 11];
-        let mut anchor_count = 0usize;
-        let mut push_anchor = |at: [f64; 2], cross: usize| {
-            if anchor_count < anchors.len()
-                && !anchors[..anchor_count]
-                    .iter()
-                    .any(|(prev, _)| (prev[0] - at[0]).abs() < 4.0 && (prev[1] - at[1]).abs() < 4.0)
-            {
-                anchors[anchor_count] = (at, cross);
-                anchor_count += 1;
-            }
-        };
-        // Prioritize the longest route legs first so multi-leg routes sample open corridor runs.
-        let mut longest = [(0.0_f64, 0usize); 4];
-        for (idx, &len) in lengths.iter().enumerate() {
-            work.visit(1)?;
-            if len <= 0.0 {
-                continue;
-            }
-            for slot in 0..longest.len() {
-                if len > longest[slot].0 {
-                    for shift in (slot + 1..longest.len()).rev() {
-                        longest[shift] = longest[shift - 1];
-                    }
-                    longest[slot] = (len, idx);
-                    break;
-                }
-            }
-        }
-        for (len, idx) in longest {
-            if len <= 0.0 {
-                continue;
-            }
-            let a = points[idx];
-            let b = points[idx + 1];
-            let mid = [(a.x + b.x) * 0.5, (a.y + b.y) * 0.5];
-            let cross = usize::from(a.y == b.y);
-            push_anchor(mid, cross);
-        }
-        for t in [0.5, 0.35, 0.65, 0.2, 0.8, 0.1, 0.9] {
-            if let Some((at, cross)) = Self::sample_route(points, lengths, total, markers, t, work)?
-            {
-                push_anchor(at, cross);
-            }
-        }
-        if anchor_count == 0 {
-            return Ok(None);
-        }
-        let extended_radius = (base_radius * 2.0).max(240.0);
-        let room = scope.map_or([[0.0, f64::INFINITY]; 2], |bounds| [bounds.x, bounds.y]);
-        for tier in [
-            ClearanceTier::OffAll,
-            ClearanceTier::AcrossFrame,
-            ClearanceTier::AcrossForeignRoute,
-            ClearanceTier::TightAcrossForeignRoute,
+        for mode in [
+            SeatMode::Beside,
+            SeatMode::Inline,
+            SeatMode::AcrossFrame,
+            SeatMode::TightInline,
+            SeatMode::AlongObstacles,
+            SeatMode::Detached,
         ] {
-            let pad = match tier {
-                ClearanceTier::OffAll => self.clearance,
-                ClearanceTier::TightAcrossForeignRoute => (self.clearance * 0.25).min(1.5),
-                _ => (self.clearance * 0.5).min(4.0),
-            };
-            let step = [size.width / 2.0 + pad, size.height / 2.0 + pad];
-            let mut closest = None::<(f64, Point)>;
-            for &(sample, cross) in &anchors[..anchor_count] {
-                let along_base = step[1 - cross].min(extended_radius * 0.5);
-                for (mult, radius_fraction) in [
-                    (0.0, 0.0),
-                    (1.0, 0.0),
-                    (1.5, 0.0),
-                    (2.0, 0.0),
-                    (2.5, 0.0),
-                    (3.0, 0.0),
-                    (4.0, 0.0),
-                    (0.0, 0.55),
-                    (0.0, 0.72),
-                    (0.0, 0.88),
-                    (0.0, 0.98),
-                ] {
-                    let across_dist = (mult * step[cross])
-                        .max(extended_radius * radius_fraction)
-                        .next_up();
-                    let signs: &[f64] = if mult == 0.0 && radius_fraction == 0.0 {
-                        &[0.0]
-                    } else {
-                        &[-1.0, 1.0]
-                    };
-                    for &sign in signs {
-                        for along_mult in [0.0, -0.5, 0.5, -1.0, 1.0, -1.5, 1.5] {
-                            work.visit(1)?;
-                            let mut candidate = sample;
-                            candidate[cross] += sign * across_dist;
-                            candidate[1 - cross] += along_mult * along_base;
-                            let mut valid = true;
-                            for ((coord, [lo, hi]), half) in
-                                candidate.iter_mut().zip(room).zip(step)
-                            {
-                                let min_c = lo + half;
-                                let max_c = hi - half;
-                                if min_c.is_nan() || max_c.is_nan() || min_c > max_c {
-                                    valid = false;
-                                    break;
-                                }
-                                *coord = coord.clamp(min_c, max_c);
-                            }
-                            if !valid {
-                                continue;
-                            }
-                            let at = Point {
-                                x: candidate[0],
-                                y: candidate[1],
-                            };
-                            let dist = (at.x - sample[0]).hypot(at.y - sample[1]);
-                            if !dist.is_finite()
-                                || dist > extended_radius
-                                || closest.is_some_and(|(best, _)| dist >= best)
-                            {
-                                continue;
-                            }
-                            if matches!(
-                                self.fits_classified(
-                                    at,
-                                    size,
-                                    scope,
-                                    route_index,
-                                    None,
-                                    &[],
-                                    tier,
-                                    work,
-                                )?,
-                                FitResult::Clear
-                            ) {
-                                closest = Some((dist, at));
-                            }
+            if mode == SeatMode::TightInline && !self.card_grid {
+                continue;
+            }
+            let pad = mode.pad(self.clearance);
+            let half = [size.width / 2.0 + pad, size.height / 2.0 + pad];
+            if !half.into_iter().all(f64::is_finite) {
+                continue;
+            }
+            let mut seen = 0.0;
+            let mut best = None::<(f64, Point)>;
+            for &run in &scratch.runs {
+                work.visit(1)?;
+                let start = seen;
+                seen += run.length();
+                let lo = first.max(start);
+                let hi = last.min(seen);
+                if lo > hi {
+                    continue;
+                }
+                let axis = run.axis;
+                let cross_axis = 1 - axis;
+                // A root caption can sit outside a perimeter bundle. The drawing extent
+                // includes the ink, and the seat still projects onto the run's length.
+                let cross_room = if self.card_grid && scope.is_none() {
+                    [f64::NEG_INFINITY, f64::INFINITY]
+                } else {
+                    room[cross_axis]
+                };
+                let [a, b] = [run.at(lo - start), run.at(hi - start)];
+                let span = [
+                    a.min(b).max(room[axis][0] + half[axis]),
+                    a.max(b).min(room[axis][1] - half[axis]),
+                ];
+                if span[0] > span[1] {
+                    continue;
+                }
+                let preferred = run.at(target.clamp(lo, hi) - start);
+                let across = half[cross_axis];
+                let line = SeatLine {
+                    axis,
+                    span,
+                    cross: run.cross,
+                    anchor_cross: run.cross,
+                    half,
+                };
+                let seats: &[f64] = match mode {
+                    SeatMode::Beside => &[
+                        (run.cross - across).next_down(),
+                        (run.cross + across).next_up(),
+                    ],
+                    SeatMode::AlongObstacles => {
+                        scratch.seats.clear();
+                        self.adjacent_lines(line, cross_room, edge, &mut scratch.seats, work)?;
+                        &scratch.seats
+                    }
+                    SeatMode::Detached => &[
+                        run.cross - 120.0,
+                        run.cross + 120.0,
+                        run.cross - 180.0,
+                        run.cross + 180.0,
+                        run.cross - 240.0,
+                        run.cross + 240.0,
+                    ],
+                    _ => &[run.cross],
+                };
+                for &cross in seats {
+                    work.visit(1)?;
+                    if cross < cross_room[0] + across || cross > cross_room[1] - across {
+                        continue;
+                    }
+                    let offset = (cross - run.cross).abs();
+                    let lower_cost = (target - target.clamp(lo, hi)).abs() + offset;
+                    if best.is_some_and(|(cost, _)| lower_cost >= cost) {
+                        continue;
+                    }
+                    let line = SeatLine { cross, ..line };
+                    if let Some(at) =
+                        self.closest_seat(line, preferred, mode, edge, &mut scratch.blocked, work)?
+                    {
+                        let distance = (start + (at - run.from).abs() - target).abs() + offset;
+                        if best.is_none_or(|(cost, _)| distance < cost) {
+                            let mut coords = [cross; 2];
+                            coords[axis] = at;
+                            best = Some((distance, point(coords)));
                         }
                     }
                 }
             }
-            if let Some((_, at)) = closest {
-                return Ok(Some(at));
+            if let Some((_, seat)) = best {
+                return Ok(Some(seat));
             }
         }
         Ok(None)
@@ -740,6 +543,7 @@ pub(super) fn place(
     context: &Routing<'_>,
     plan: &Plan,
     routes: &mut [EdgeGeometry],
+    card_grid: bool,
     work: &mut Work<'_>,
 ) -> LayoutResult<()> {
     let root = context.hierarchy.root();
@@ -789,12 +593,14 @@ pub(super) fn place(
     let route_cap = routes.len().saturating_mul(2);
     work.charge(route_cap)?;
     let mut route_obstacles = reserved(route_cap)?;
+    let mut lengths = filled(routes.len(), 0.0)?;
     for (edge, route) in routes.iter().enumerate() {
         work.visit(1)?;
         let mut previous: Option<Bounds> = None;
         for leg in route.points.windows(2) {
             work.visit(1)?;
             let bounds = Bounds::between(position(leg[0]), position(leg[1]));
+            lengths[edge] += (bounds.x[1] - bounds.x[0]) + (bounds.y[1] - bounds.y[0]);
             if let Some(run) = &mut previous
                 && ((run.x == bounds.x && run.x[0] == run.x[1])
                     || (run.y == bounds.y && run.y[0] == run.y[1]))
@@ -830,6 +636,7 @@ pub(super) fn place(
         routes: Bvh::build_with_work(route_obstacles, |obs| obs.bounds, work)?,
         labels: Vec::new(),
         clearance: context.metrics.label_clearance,
+        card_grid,
     };
     let mut bottom = context.drawing.bounds.height;
     if let Some(ink) = scene.solids.root_bounds() {
@@ -838,13 +645,27 @@ pub(super) fn place(
     if let Some(ink) = scene.routes.root_bounds() {
         bottom = bottom.max(ink.y[1]);
     }
-    let mut lengths = Vec::new();
-    // Reserve the most constrained captions first. Within a scope, preserve authored order.
+    let mut scratch = SearchScratch::default();
+    let mut labelled = Vec::new();
+    // Narrow scopes and short routes offer fewer possible seats. Give them first choice.
     for &scope in context.hierarchy.order.iter().rev() {
         work.visit(1)?;
         let bounds = Bounds::of(context.bounds(scope));
         let constraint = (scope != root).then_some(bounds);
+        labelled.clear();
         for part in &plan.scopes[scope] {
+            work.visit(1)?;
+            if part.labels.iter().any(Option::is_some) {
+                push(&mut labelled, part)?;
+            }
+        }
+        work.charge_sort(labelled.len())?;
+        labelled.sort_unstable_by(|a, b| {
+            lengths[a.edge]
+                .total_cmp(&lengths[b.edge])
+                .then_with(|| a.edge.cmp(&b.edge))
+        });
+        for &part in &labelled {
             work.visit(1)?;
             let edge = part.edge;
             let spec = &context.graph.edges[edge];
@@ -856,39 +677,60 @@ pub(super) fn place(
                 &mut route.end_label_center,
             ]) {
                 let Some(size) = size else { continue };
-                let mut seat = scene.near_route(
-                    &route.points,
-                    edge,
-                    fraction,
-                    markers,
-                    size,
-                    constraint,
-                    &mut lengths,
-                    work,
-                )?;
+                let mut seat = None;
+                let scopes = std::iter::once(constraint)
+                    .chain((card_grid && constraint.is_some()).then_some(None));
+                // Try the enclosing boundary first. If it is too narrow, the root can
+                // accommodate an overhang without moving any shaft or covering foreign ink.
+                for scope in scopes {
+                    seat = scene.near_route(
+                        &route.points,
+                        edge,
+                        fraction,
+                        markers,
+                        size,
+                        scope,
+                        &mut scratch,
+                        work,
+                    )?;
+                    if seat.is_some() {
+                        break;
+                    }
+                }
+                if seat.is_none() && card_grid {
+                    // Leave the caption unset so the caller can try against the final shaft.
+                    continue;
+                }
                 // Placement reserves a caption row in each scope for congested routes.
                 let y = bounds.y[1] - context.metrics.margin() - size.height / 2.0;
                 let [lo, hi] = bounds.x;
                 let inset = size.width / 2.0 + scene.clearance;
-                if seat.is_none() {
-                    for x in [lo.midpoint(hi), lo + inset, hi - inset] {
-                        let at = Point { x, y };
-                        if scene.fits(
-                            at,
-                            size,
-                            constraint,
+                let preferred_x = route
+                    .points
+                    .first()
+                    .zip(route.points.last())
+                    .map_or(lo.midpoint(hi), |(a, b)| a.x.midpoint(b.x));
+                if seat.is_none() && lo + inset <= hi - inset {
+                    let line = SeatLine {
+                        axis: 0,
+                        span: [lo + inset, hi - inset],
+                        cross: y,
+                        anchor_cross: y,
+                        half: [inset, size.height / 2.0 + scene.clearance],
+                    };
+                    seat = scene
+                        .closest_seat(
+                            line,
+                            preferred_x,
+                            SeatMode::Detached,
                             edge,
-                            None,
-                            ClearanceTier::OffAll,
+                            &mut scratch.blocked,
                             work,
-                        )? {
-                            seat = Some(at);
-                            break;
-                        }
-                    }
+                        )?
+                        .map(|x| Point { x, y });
                 }
                 let at = seat.unwrap_or(Point {
-                    x: inset,
+                    x: preferred_x.max(inset),
                     y: bottom + scene.clearance + size.height / 2.0,
                 });
                 let ink = Bounds::centered(at, size);
@@ -944,6 +786,7 @@ mod tests {
             routes: Bvh::build_with_work(routes, |obs| obs.bounds, &mut work).unwrap(),
             labels: Vec::new(),
             clearance: 8.0,
+            card_grid: true,
         };
         let route0 = [
             RoutePoint {
@@ -977,7 +820,7 @@ mod tests {
             width: 80.0,
             height: 20.0,
         };
-        let mut lengths = Vec::new();
+        let mut scratch = SearchScratch::default();
         let seat0 = scene
             .near_route(
                 &route0,
@@ -986,7 +829,7 @@ mod tests {
                 [0.0, 0.0],
                 size,
                 None,
-                &mut lengths,
+                &mut scratch,
                 &mut work,
             )
             .unwrap()
@@ -1008,7 +851,7 @@ mod tests {
                 [0.0, 0.0],
                 size,
                 None,
-                &mut lengths,
+                &mut scratch,
                 &mut work,
             )
             .unwrap()
@@ -1021,12 +864,10 @@ mod tests {
     }
 
     #[test]
-    fn trapped_center_wire_in_parallel_bundle_seats_locally_instead_of_teleporting() {
+    fn trapped_center_wire_cannot_use_a_foreign_shaft_for_its_caption() {
         let mut noop = NoopWorkControl;
         let mut work = Work::new(&mut noop);
-        // Three tightly packed parallel horizontal routes spaced 7px apart:
-        // the middle wire (edge 1) has a foreign route on both sides within label height,
-        // so strict tether & foreign-route checks cannot place it without a local rescue.
+        // A caption 24px high cannot fit in the 14px between the two outer shafts.
         let routes = vec![
             RouteObstacle {
                 bounds: Bounds {
@@ -1056,6 +897,7 @@ mod tests {
             routes: Bvh::build_with_work(routes, |obs| obs.bounds, &mut work).unwrap(),
             labels: Vec::new(),
             clearance: 8.0,
+            card_grid: true,
         };
         let center_route = [
             RoutePoint {
@@ -1075,7 +917,7 @@ mod tests {
             width: 90.0,
             height: 24.0,
         };
-        let mut lengths = Vec::new();
+        let mut scratch = SearchScratch::default();
         let seat = scene
             .near_route(
                 &center_route,
@@ -1084,40 +926,17 @@ mod tests {
                 [0.0, 0.0],
                 size,
                 None,
-                &mut lengths,
+                &mut scratch,
                 &mut work,
             )
-            .unwrap()
-            .expect("trapped center wire must seat locally rather than teleporting to bottom row");
-        assert!(
-            (seat.y - 167.0).abs() <= 45.0 && (100.0..=400.0).contains(&seat.x),
-            "expected local seat near (250, 167), got {seat:?}"
-        );
+            .unwrap();
+        assert!(seat.is_none(), "seat {seat:?} would cross a foreign shaft");
     }
 
     #[test]
-    fn non_finite_caption_dimensions_do_not_panic_and_segment_crosses_bounds_rejects_nan() {
+    fn non_finite_caption_dimensions_do_not_panic() {
         let mut noop = NoopWorkControl;
         let mut work = Work::new(&mut noop);
-        assert!(!segment_crosses_bounds(
-            Point {
-                x: f64::NAN,
-                y: 0.0
-            },
-            Point { x: 10.0, y: 10.0 },
-            Bounds {
-                x: [0.0, 20.0],
-                y: [0.0, 20.0],
-            },
-        ));
-        assert!(!segment_crosses_bounds(
-            Point { x: 0.0, y: 0.0 },
-            Point { x: 10.0, y: 10.0 },
-            Bounds {
-                x: [f64::NAN, 20.0],
-                y: [0.0, 20.0],
-            },
-        ));
         let scene = Scene {
             solids: Bvh::build_with_work(Vec::new(), |obs: &SolidObstacle| obs.bounds, &mut work)
                 .unwrap(),
@@ -1125,6 +944,7 @@ mod tests {
                 .unwrap(),
             labels: Vec::new(),
             clearance: f64::MAX,
+            card_grid: true,
         };
         let route = [
             RoutePoint {
@@ -1140,7 +960,7 @@ mod tests {
                 kind: KnotKind::Free,
             },
         ];
-        let mut lengths = Vec::new();
+        let mut scratch = SearchScratch::default();
         let seat = scene
             .near_route(
                 &route,
@@ -1152,7 +972,7 @@ mod tests {
                     height: 20.0,
                 },
                 None,
-                &mut lengths,
+                &mut scratch,
                 &mut work,
             )
             .unwrap();
@@ -1193,6 +1013,7 @@ mod tests {
             routes: Bvh::build_with_work(routes, |obs| obs.bounds, &mut work).unwrap(),
             labels: Vec::new(),
             clearance: 8.0,
+            card_grid: true,
         };
         let route = [
             RoutePoint {
@@ -1208,7 +1029,7 @@ mod tests {
                 kind: KnotKind::Free,
             },
         ];
-        let mut lengths = Vec::new();
+        let mut scratch = SearchScratch::default();
         let seat = scene
             .near_route(
                 &route,
@@ -1220,7 +1041,7 @@ mod tests {
                     height: 50.0,
                 },
                 None,
-                &mut lengths,
+                &mut scratch,
                 &mut work,
             )
             .unwrap()

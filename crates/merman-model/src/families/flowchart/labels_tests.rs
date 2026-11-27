@@ -32,6 +32,34 @@ fn sparse_sources_keep_occurrence_identity_and_stay_out_of_serialization() {
     model
         .label_sources
         .insert_subgraph("G".to_owned(), 1, Some("&lt;Group&gt;".to_owned()));
+    let edge_owner = FlowchartLabelSourceOwner::Edge(1);
+    model
+        .label_sources
+        .insert_svg_text(edge_owner, "&lt;edge&gt;".to_owned());
+    let group_owner = FlowchartLabelSourceOwner::Subgraph(1, "G");
+    model
+        .label_sources
+        .insert_svg_text(group_owner, "&lt;title&gt;".to_owned());
+    assert_eq!(
+        model.label_sources.svg_text_source(edge_owner),
+        Some("&lt;edge&gt;")
+    );
+    assert_eq!(
+        model
+            .label_sources
+            .svg_text_source(FlowchartLabelSourceOwner::Edge(0)),
+        None
+    );
+    assert_eq!(
+        model.label_sources.svg_text_source(group_owner),
+        Some("&lt;title&gt;")
+    );
+    assert_eq!(
+        model
+            .label_sources
+            .svg_text_source(FlowchartLabelSourceOwner::Subgraph(1, "other")),
+        None
+    );
 
     assert_eq!(
         model.node_label_source(&model.nodes[0]),
@@ -97,24 +125,34 @@ fn source_clones_preserve_ownership_and_charge_utf8_bytes_to_the_model() {
             .label_sources
             .shares_storage_with(&cloned.label_sources)
     );
-    cloned
-        .label_sources
-        .insert_node("A".to_owned(), "changed".to_owned());
+    cloned.label_sources.insert_svg_text(
+        FlowchartLabelSourceOwner::Node("A"),
+        "节点 &lt;tag&gt;".to_owned(),
+    );
     assert!(
         !model
             .label_sources
             .shares_storage_with(&cloned.label_sources)
     );
     assert_eq!(model.label_sources.node_source("A"), Some("节点 &lt;T&gt;"));
-    assert_eq!(cloned.label_sources.node_source("A"), Some("changed"));
+    assert_eq!(
+        cloned.label_sources.node_source("A"),
+        Some("节点 &lt;T&gt;")
+    );
+    assert_eq!(
+        model
+            .label_sources
+            .svg_text_source(FlowchartLabelSourceOwner::Node("A")),
+        None
+    );
 
-    let expected = baseline + "A节点 &lt;T&gt;".len();
+    let expected = baseline + "A节点 &lt;T&gt;".len() + "A节点 &lt;tag&gt;".len();
     let policy = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
         .with_limit(InputResourceLimitId::MaxModelTextBytes, expected)
         .unwrap();
     assert_eq!(
         policy
-            .check_flowchart_complexity(&model)
+            .check_flowchart_complexity(&cloned)
             .unwrap()
             .label_bytes,
         expected
@@ -122,7 +160,7 @@ fn source_clones_preserve_ownership_and_charge_utf8_bytes_to_the_model() {
     let error = policy
         .with_limit(InputResourceLimitId::MaxModelTextBytes, expected - 1)
         .unwrap()
-        .check_flowchart_complexity(&model)
+        .check_flowchart_complexity(&cloned)
         .unwrap_err();
     assert_eq!(error.actual, expected);
 }
@@ -133,7 +171,9 @@ fn validation_rejects_corrupted_edge_order_before_binary_search_consumers() {
     let mut sources = FlowchartRenderLabelSources::default();
     sources.insert_edge(0, "first".to_owned());
     sources.insert_edge(1, "second".to_owned());
-    sources.sources_mut().edges.swap(0, 1);
+    FlowchartRenderLabelSources::table_mut(&mut sources.sources)
+        .edges
+        .swap(0, 1);
     assert_eq!(
         sources
             .validate_for_model_controlled(&model, &OperationControl::new())

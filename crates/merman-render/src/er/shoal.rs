@@ -1,5 +1,5 @@
 use super::{ErLayoutSettings, ErPreparedLabels, ErPreparedLayout, ErSubgraph, er_marker_id};
-use crate::graph_layout::canonical::CanonicalRoutes;
+use crate::graph_layout::canonical::{CanonicalRoutes, CaptionClearance, theme_routing_style};
 use crate::graph_layout::contour::ShapePortProfile;
 use crate::graph_layout::ir::{
     Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, Rect,
@@ -36,8 +36,24 @@ pub(super) fn layout(
     execution: Option<&crate::LayoutExecution<'_>>,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<ErPreparedLayout> {
-    let input = measure(model, measurer, settings, &prepared_labels, neo, work)?;
+    let native = execution.and_then(crate::LayoutExecution::native_family_theme);
+    let routing = theme_routing_style(native.map(|theme| theme.form.edge_style));
+    let mut input = measure(
+        model,
+        measurer,
+        settings,
+        &prepared_labels,
+        neo,
+        routing,
+        work,
+    )?;
     let group_order = parent_first_groups(&input, work)?;
+    reserve_marker_faces(
+        &mut input,
+        &group_order,
+        native.map_or(0.0, |theme| theme.form.radius),
+        work,
+    )?;
     let (solved, placement) = placement::solve(
         &input.graph,
         input.entity_ids.iter().copied(),
@@ -52,6 +68,7 @@ pub(super) fn layout(
         &input.profiles,
         |_| 0.0,
         input.edge_ids.iter().map(String::as_str),
+        CaptionClearance::Avoid,
         work,
     )?;
     canonical_routes.placement = placement;
@@ -76,6 +93,7 @@ fn measure<'a>(
     settings: &ErLayoutSettings,
     prepared_labels: &ErPreparedLabels,
     neo: bool,
+    routing: RoutingStyle,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<MeasuredEr<'a>> {
     let group_count = model.subgraphs.len();
@@ -87,7 +105,7 @@ fn measure<'a>(
     };
     let mut graph = MeasuredGraph {
         direction: settings.direction,
-        routing: RoutingStyle::Curved,
+        routing,
         node_spacing: settings.node_spacing,
         rank_spacing: settings.rank_spacing,
         component_spacing: settings.node_spacing.max(settings.rank_spacing),
@@ -237,6 +255,94 @@ fn measure<'a>(
         edge_ids,
         profiles,
     })
+}
+
+#[derive(Clone, Copy, Default)]
+struct MarkerDemand {
+    count: usize,
+    max_width: f64,
+}
+
+fn reserve_marker_faces(
+    input: &mut MeasuredEr<'_>,
+    group_order: &[usize],
+    radius: f64,
+    work: &mut OperationLayoutWorkControl,
+) -> Result<()> {
+    let graph = &mut input.graph;
+    let mut group_directions = vec![graph.direction; graph.groups.len()];
+    for &index in group_order {
+        work.charge_adapter(0)?;
+        let group = &graph.groups[index];
+        group_directions[index] = group.direction.unwrap_or_else(|| {
+            group
+                .parent
+                .map_or(graph.direction, |parent| group_directions[parent as usize])
+        });
+    }
+    let spacing = merman_layout_shoal::Spacing::default();
+    let mut demands = vec![MarkerDemand::default(); graph.nodes.len()];
+    for edge in &graph.edges {
+        work.charge_adapter(0)?;
+        if edge.source == edge.target {
+            // Shoal allocates self-loops on its separate boundary routes.
+            continue;
+        }
+        for (endpoint, marker) in [
+            (edge.source, edge.start_marker),
+            (edge.target, edge.end_marker),
+        ] {
+            if let Endpoint::Node(index) = endpoint {
+                let demand = &mut demands[index as usize];
+                demand.count = work.checked_add(demand.count, 1)?;
+                demand.max_width = demand.max_width.max(marker.width);
+            }
+        }
+    }
+    for ((node, profile), demand) in graph.nodes.iter_mut().zip(&mut input.profiles).zip(demands) {
+        work.charge_adapter(0)?;
+        if demand.count < 2 || demand.max_width <= 0.0 {
+            continue;
+        }
+        // Backedges can be placed on the same side as outgoing edges, so reserve for incident
+        // ends together. Shoal's main port fan uses a 4 px gap between marker footprints.
+        let pitch = spacing.port_pitch.max(demand.max_width + 4.0);
+        let span = (demand.count - 1) as f64 * pitch;
+        let inset = radius.max(spacing.corner_clearance) + demand.max_width / 2.0;
+        let minimum = span + 2.0 * inset;
+        let direction = node
+            .parent
+            .map_or(graph.direction, |parent| group_directions[parent as usize]);
+        let face = match direction {
+            Direction::Down | Direction::Up => {
+                node.size.width = node.size.width.max(minimum);
+                Side::Top
+            }
+            Direction::Right | Direction::Left => {
+                node.size.height = node.size.height.max(minimum);
+                Side::Left
+            }
+        };
+        *profile = ShapePortProfile::rectangle(node.size.width, node.size.height);
+        node.contour = profile.shoal_contour(node.size);
+        let horizontal_face = if face == Side::Top {
+            (node.size.width - 2.0 * inset).max(span)
+        } else {
+            profile.port_span(Side::Top)
+        };
+        let vertical_face = if face == Side::Left {
+            (node.size.height - 2.0 * inset).max(span)
+        } else {
+            profile.port_span(Side::Left)
+        };
+        let (main, perpendicular) = match graph.direction {
+            Direction::Down | Direction::Up => (horizontal_face, vertical_face),
+            Direction::Right | Direction::Left => (vertical_face, horizontal_face),
+        };
+        node.port_span = Some(main);
+        node.perpendicular_port_span = Some(perpendicular);
+    }
+    Ok(())
 }
 
 fn parent_first_groups(

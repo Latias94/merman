@@ -673,6 +673,60 @@ fn isolated_fallback_accounts_for_definition_and_instance_bytes() {
 }
 
 #[test]
+fn foreign_object_fallback_requires_a_real_native_branch_in_the_same_switch() {
+    let foreign = concat!(
+        "<foreignObject width='80' height='20'>",
+        "<![CDATA[</foreignObject>]]>",
+        "<div xmlns='http://www.w3.org/1999/xhtml'>HTML label</div>",
+        "</foreignObject >",
+    );
+    let svg = format!(
+        "<svg xmlns='http://www.w3.org/2000/svg'><switch>{foreign}<!-- don't </switch> -->\
+         <switch><text>Native</text></switch ></switch >\
+         <switch>{foreign}<textPath/> <!-- <text>fake</text> --> </switch ></svg>"
+    );
+    let out = foreign_object_label_fallback_svg_text(&svg);
+    let doc = crate::xml_dom::Document::parse(&out).expect("well-formed SVG after fallback");
+    let switches: Vec<_> = doc
+        .root_element()
+        .children()
+        .filter(|node| node.has_tag_name("switch"))
+        .collect();
+    let is_native = |node: crate::xml_dom::Node<'_, '_>| {
+        node.attribute("data-merman-foreignobject-source") == Some("switch-native-fallback")
+    };
+    assert!(switches[0].children().any(is_native), "{out}");
+    assert!(!switches[1].children().any(is_native), "{out}");
+}
+
+#[test]
+fn foreign_object_fallback_places_defs_in_the_qualified_root() {
+    let svg = concat!(
+        r#"<s:svg xmlns:s="http://www.w3.org/2000/svg" xmlns="http://www.w3.org/2000/svg" id="diagram">"#,
+        r#"<svg><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml">Label</div></foreignObject></svg>"#,
+        "</s:svg><!-- literal </svg> -->",
+    );
+    let output = foreign_object_label_fallback_svg_text(svg);
+    let doc = crate::xml_dom::Document::parse(&output).unwrap();
+    let reference = doc
+        .descendants()
+        .find(|node| node.has_tag_name("use"))
+        .and_then(|node| node.attribute("href"))
+        .and_then(|href| href.strip_prefix('#'))
+        .expect("fallback instance has a fragment reference");
+    let defs = doc
+        .root_element()
+        .children()
+        .find(|node| node.has_tag_name("defs"))
+        .unwrap();
+    assert!(
+        defs.children()
+            .any(|node| node.attribute("id") == Some(reference))
+    );
+    assert!(output.ends_with("<!-- literal </svg> -->"));
+}
+
+#[test]
 fn foreign_object_inside_switch_with_native_text_generates_tagged_fallback() {
     let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><switch><foreignObject x="150" y="50" width="550" height="50"><div class="journey-section" xmlns="http://www.w3.org/1999/xhtml" style="display: table; height: 100%; width: 100%;"><div class="label" style="display: table-cell; text-align: center; vertical-align: middle;">Go to work</div></div></foreignObject><text x="425" y="75" fill="#333"><tspan x="425" dy="0">Go to work</tspan></text></switch></svg>"##;
     let out = foreign_object_label_fallback_svg_text(svg);

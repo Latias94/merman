@@ -1,5 +1,5 @@
 use merman_model::presentation::PresentationConfig;
-use merman_theme_contract::v2::{EdgeLabelBackground, EdgeStyle};
+use merman_theme_contract::v2::{EdgeLabelBackground, EdgeStyle, MarkerStyle};
 
 use crate::theme::{Color, FamilyTheme, font_family_css};
 
@@ -13,13 +13,19 @@ pub(crate) struct RequirementNativeStyle {
     pub(crate) guide: String,
     pub(crate) radius: f64,
     pub(crate) border_width: f64,
-    #[cfg(feature = "layout-shoal")]
-    pub(crate) connector_width: Option<f64>,
+    pub(crate) connector_width: f64,
     pub(crate) edge_style: EdgeStyle,
+    pub(crate) marker_style: MarkerStyle,
     risk_ink: Option<[String; 4]>,
 }
 
 impl RequirementNativeStyle {
+    pub(crate) const ARROW_SIZE: f64 = 20.0;
+
+    pub(crate) fn arrow_path(&self) -> Option<&'static str> {
+        merman_render_core::theme_svg::marker::arrow_path(self.marker_style)
+    }
+
     pub(crate) fn risk_ink(&self, risk: &str) -> Option<&str> {
         let risk = risk.trim();
         let [low, medium, high, other] = self.risk_ink.as_ref()?;
@@ -94,16 +100,24 @@ impl super::RequirementCssBinding {
         if !owns("themeVariables.relationColor") {
             binding.relation_color.clone_from(&binding.line_color);
         }
-        let connector_width =
-            (!owns("themeVariables.strokeWidth")).then_some(theme.form.connector_width);
-        if let Some(width) = connector_width {
+        let connector_width = if owns("themeVariables.strokeWidth") {
+            if let Some(width) = crate::config::config_css_number_or_string(
+                config.as_value(),
+                &["themeVariables", "strokeWidth"],
+            ) {
+                binding.relationship_line_stroke_width = width;
+            }
+            crate::config::config_f64_css_absolute_px(
+                config.as_value(),
+                &["themeVariables", "strokeWidth"],
+            )
+            .filter(|width| *width >= 0.0)
+            .unwrap_or(theme.form.connector_width)
+        } else {
+            let width = theme.form.connector_width;
             binding.relationship_line_stroke_width = format!("{width}px");
-        } else if let Some(width) = crate::config::config_css_number_or_string(
-            config.as_value(),
-            &["themeVariables", "strokeWidth"],
-        ) {
-            binding.relationship_line_stroke_width = width;
-        }
+            width
+        };
         if !owns("themeVariables.edgeLabelBackground")
             && !owns("themeVariables.requirementEdgeLabelBackground")
         {
@@ -147,9 +161,9 @@ impl super::RequirementCssBinding {
             guide: roles.stroke_guide.first_color().to_string(),
             radius: theme.form.radius,
             border_width,
-            #[cfg(feature = "layout-shoal")]
             connector_width,
             edge_style: theme.form.edge_style,
+            marker_style: theme.form.marker_style,
             risk_ink: (!authored_ink).then(|| {
                 [
                     roles.status_success,

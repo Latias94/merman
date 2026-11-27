@@ -42,6 +42,18 @@ pub enum CurveTerminals {
 }
 
 impl RouteStyle {
+    /// Selects the base shaft. Families that support sketch strokes paint them over a polyline.
+    #[cfg(feature = "theme-svg")]
+    pub fn from_theme(style: merman_theme_contract::v2::EdgeStyle) -> Self {
+        use merman_theme_contract::v2::EdgeStyle;
+
+        match style {
+            EdgeStyle::Curved => Self::Curved,
+            EdgeStyle::Orthogonal => Self::Step,
+            EdgeStyle::Straight | EdgeStyle::Sketch => Self::Linear,
+        }
+    }
+
     pub fn from_interpolate(name: &str, rounded_radius: f64) -> Self {
         match name {
             "rounded" => Self::Rounded(rounded_radius),
@@ -50,6 +62,19 @@ impl RouteStyle {
             "stepAfter" => Self::StepAfter,
             "linear" => Self::Linear,
             _ => Self::Curved,
+        }
+    }
+
+    #[cfg(feature = "layout-shoal")]
+    pub fn routing_style(self) -> merman_layout_shoal::RoutingStyle {
+        use merman_layout_shoal::RoutingStyle;
+
+        match self {
+            Self::Curved => RoutingStyle::Curved,
+            Self::Rounded(_) | Self::Step | Self::StepBefore | Self::StepAfter => {
+                RoutingStyle::Orthogonal
+            }
+            Self::Linear => RoutingStyle::Polyline,
         }
     }
 
@@ -70,6 +95,7 @@ pub enum RoutePaintError {
     InvalidGeometry,
     NoClearDetour,
     DetourBudgetExceeded,
+    ClearanceAllocationFailed,
 }
 
 impl std::fmt::Display for RoutePaintError {
@@ -78,6 +104,7 @@ impl std::fmt::Display for RoutePaintError {
             Self::InvalidGeometry => "invalid canonical route geometry",
             Self::NoClearDetour => "no clear path between fixed route points",
             Self::DetourBudgetExceeded => "canonical route detour budget exceeded",
+            Self::ClearanceAllocationFailed => "could not allocate the route clearance index",
         })
     }
 }
@@ -230,6 +257,7 @@ fn steps(
     style: RouteStyle,
     route: &[RoutePoint],
     markers: (Option<Marker>, Option<Marker>),
+    clearance: Option<EdgeClearance<'_>>,
 ) {
     out.clear();
     out.reserve(route.len());
@@ -245,18 +273,33 @@ fn steps(
                     None
                 },
             );
-            let (p, q) = match b.axis {
-                Axis::Vertical => {
-                    let y = step_level(style, a.y, b.y, ends);
-                    (RoutePoint { y, ..a }, RoutePoint { y, ..b })
+            for candidate in [
+                style,
+                RouteStyle::Step,
+                RouteStyle::StepBefore,
+                RouteStyle::StepAfter,
+            ] {
+                let (p, q) = match b.axis {
+                    Axis::Vertical => {
+                        let y = step_level(candidate, a.y, b.y, ends);
+                        (RoutePoint { y, ..a }, RoutePoint { y, ..b })
+                    }
+                    Axis::Horizontal => {
+                        let x = step_level(candidate, a.x, b.x, ends);
+                        (RoutePoint { x, ..a }, RoutePoint { x, ..b })
+                    }
+                };
+                if clearance.is_none_or(|guard| {
+                    [a, p, q, b]
+                        .windows(2)
+                        .all(|leg| !guard.blocks_line(position(leg[0]), position(leg[1])))
+                }) {
+                    push_knot(out, p);
+                    push_knot(out, q);
+                    break;
                 }
-                Axis::Horizontal => {
-                    let x = step_level(style, a.x, b.x, ends);
-                    (RoutePoint { x, ..a }, RoutePoint { x, ..b })
-                }
-            };
-            push_knot(out, p);
-            push_knot(out, q);
+            }
+            // An offset leg without a clear crossbar reaches the bounded rectilinear detour.
         }
         push_knot(out, b);
     }
@@ -408,10 +451,7 @@ impl Pen {
                     guard.blocks_cubic(curve(scale))
                 }
             }) else {
-                for point in guard.detour(self.at, target, &mut self.detour_budget)? {
-                    self.line(point);
-                }
-                return Ok(());
+                return self.detour_to(target, guard, false);
             };
             if scale == 0.0 {
                 self.line(target);
@@ -422,6 +462,18 @@ impl Pen {
             full
         };
         self.cubic(sweep.p1, sweep.p2, sweep.p3);
+        Ok(())
+    }
+
+    fn detour_to(
+        &mut self,
+        target: Point,
+        clearance: EdgeClearance<'_>,
+        orthogonal: bool,
+    ) -> Result<(), RoutePaintError> {
+        for point in clearance.detour(self.at, target, orthogonal, &mut self.detour_budget)? {
+            self.line(point);
+        }
         Ok(())
     }
 
@@ -492,6 +544,24 @@ fn draw_body(
     terminals: (Option<&Terminal>, Option<&Terminal>),
     clearance: Option<EdgeClearance<'_>>,
 ) -> Result<(), RoutePaintError> {
+    if let Some(guard) = clearance
+        && (style.stepped() || style == RouteStyle::Linear)
+    {
+        for (i, &knot) in body.iter().enumerate().skip(1) {
+            let p = position(knot);
+            if (style.stepped() && !aligned(pen.at, p)) || guard.blocks_line(pen.at, p) {
+                // A bend from the placement style can lie inside an obstacle after switching
+                // styles. The section ends capture the fixed terminals and border contacts.
+                if i + 1 < body.len() && guard.blocks_line(p, p) {
+                    continue;
+                }
+                pen.detour_to(p, guard, style.stepped())?;
+            } else {
+                pen.line(p);
+            }
+        }
+        return Ok(());
+    }
     for i in 1..body.len() {
         let p = position(body[i]);
         if matches!(style, RouteStyle::Curved | RouteStyle::Rounded(_)) && right_angle(body, i) {
@@ -805,7 +875,7 @@ fn draw_section(
             );
         }
         if has_offset_leg(route) {
-            steps(body, style, route, markers);
+            steps(body, style, route, markers, clearance);
             std::mem::swap(route, body);
         }
     }
@@ -821,7 +891,11 @@ fn draw_section(
         if gap < 0.0 {
             return Err(RoutePaintError::InvalidGeometry);
         }
-        if aligned(start.tip, end.tip) && (end.tip - start.tip).dot(start.normal) > 0.0 {
+        if aligned(start.tip, end.tip)
+            && (end.tip - start.tip).dot(start.normal) > 0.0
+            && (!(style.stepped() || style == RouteStyle::Linear)
+                || clearance.is_none_or(|guard| !guard.blocks_line(pen.at, end.shaft_end())))
+        {
             // Opposed markers can share this one straight segment up to its full length.
             if gap < start.lead().max(end.lead()) {
                 return Err(RoutePaintError::InvalidGeometry);
@@ -858,7 +932,7 @@ fn draw_section(
     // With different endpoint sides, inserting a normal shaft can create an offset leg even
     // on a previously orthogonal route. Step renderers must still emit only axis-aligned legs.
     if style.stepped() && has_offset_leg(body) {
-        steps(route, style, body, (None, None));
+        steps(route, style, body, (None, None), clearance);
         std::mem::swap(route, body);
     }
     pen.start_path(body.len(), style);
@@ -1082,7 +1156,7 @@ mod tests {
         let delta = Vec2::new(732., -127.);
         let markers = (Marker::default(), Marker::default());
         let endpoints = (Endpoint::Node(3), Endpoint::Node(7));
-        let tree = Clearance::new(vec![(obstacle + delta, ObstacleOwner::EdgeLabel(1))]);
+        let tree = Clearance::new(vec![(obstacle + delta, ObstacleOwner::EdgeLabel(1))]).unwrap();
         for style in [RouteStyle::Curved, RouteStyle::Rounded(40.)] {
             let paint = |guard| {
                 build_svg_path(
@@ -1161,7 +1235,7 @@ mod tests {
                 true,
             ),
         ] {
-            let tree = Clearance::new(vec![(obstacle, owner)]);
+            let tree = Clearance::new(vec![(obstacle, owner)]).unwrap();
             let result = paint(&points, Some(tree.for_edge(1, endpoints, Vec2::ZERO, 0.)));
             assert_eq!(samples_inside(&result, obstacle), !protected);
             assert_eq!(result.d == original.d, !protected);
@@ -1190,7 +1264,8 @@ mod tests {
                 .into_iter()
                 .map(|rect| (rect, ObstacleOwner::EdgeLabel(1)))
                 .collect(),
-        );
+        )
+        .unwrap();
         let markers = (marker(3., 8.), marker(2., 9.));
         let path = build_svg_path(
             &points,
@@ -1231,7 +1306,8 @@ mod tests {
         let tree = Clearance::new(vec![(
             kurbo::Rect::new(18., -2., 22., 2.),
             ObstacleOwner::GroupTitle(0),
-        )]);
+        )])
+        .unwrap();
         let result = build_svg_path(
             &points,
             (Side::Right, Side::Left),
@@ -1467,7 +1543,8 @@ mod tests {
         let obstacle = Clearance::new(vec![(
             kurbo::Rect::new(-10.0, 55.0, 10.0, 75.0),
             ObstacleOwner::Node(99),
-        )]);
+        )])
+        .unwrap();
         let blocked = build_svg_path(
             &z,
             sides,
@@ -1515,6 +1592,48 @@ mod tests {
             "StepAfter must preserve stitched compound corridor crossbars: {}",
             stitched.d
         );
+    }
+
+    #[test]
+    fn straight_route_styles_detour_around_blocked_offset_legs() {
+        let points = [v(0.0, 0.0), v(100.0, 100.0)];
+        let tree = Clearance::new(vec![(
+            kurbo::Rect::new(45.0, 12.0, 55.0, 88.0),
+            ObstacleOwner::GroupTitle(0),
+        )])
+        .unwrap();
+        let guard = tree.for_edge(0, (Endpoint::Node(0), Endpoint::Node(1)), Vec2::ZERO, 1.0);
+        for style in [
+            RouteStyle::Step,
+            RouteStyle::StepBefore,
+            RouteStyle::StepAfter,
+            RouteStyle::Linear,
+        ] {
+            let route = build_svg_path(
+                &points,
+                (Side::Bottom, Side::Top),
+                style,
+                (marker(4.0, 10.0), marker(4.0, 10.0)),
+                CurveTerminals::Fixed,
+                &[],
+                Some(guard),
+            )
+            .unwrap();
+            let segments = segments(&route);
+            assert!(
+                segments.iter().all(|segment| {
+                    matches!(segment, PathSeg::Line(_))
+                        && (!style.stepped() || aligned(segment.start(), segment.end()))
+                        && !guard.blocks_line(segment.start(), segment.end())
+                }),
+                "{style:?}: {}",
+                route.d
+            );
+            assert_eq!(segments[0].start(), Point::new(0.0, 4.0));
+            assert_eq!(segments[0].end(), Point::new(0.0, 14.0));
+            assert_eq!(segments.last().unwrap().start(), Point::new(100.0, 86.0));
+            assert_eq!(segments.last().unwrap().end(), Point::new(100.0, 96.0));
+        }
     }
 
     #[test]

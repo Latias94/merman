@@ -465,7 +465,7 @@ impl FlowchartMarkerVariantKey {
 #[derive(Debug, Clone, Copy)]
 enum FlowchartMarkerColor<'a> {
     Source(&'a str),
-    Adaptive(&'static str),
+    Adaptive(&'a str),
     Casing(&'a str),
 }
 

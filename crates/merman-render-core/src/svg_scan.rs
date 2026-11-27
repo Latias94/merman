@@ -318,6 +318,33 @@ impl<'a> SvgTagScanner<'a> {
             end,
         }))
     }
+
+    /// Consumes the element just read, including nested elements with the same name.
+    /// For an empty element, its opening tag also serves as the end.
+    pub fn matching_end_with_checkpoints<E>(
+        &mut self,
+        opening: SvgTag<'a>,
+        checkpoint: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<SvgTag<'a>>, E> {
+        let Some(name) = start_tag_name(opening.raw()) else {
+            return Ok(None);
+        };
+        if opening.is_self_closing() {
+            return Ok(Some(opening));
+        }
+        let mut depth = 1usize;
+        while let Some(tag) = self.next_with_checkpoints(checkpoint)? {
+            if end_tag_name(tag.raw()) == Some(name) {
+                depth -= 1;
+                if depth == 0 {
+                    return Ok(Some(tag));
+                }
+            } else if start_tag_name(tag.raw()) == Some(name) && !tag.is_self_closing() {
+                depth += 1;
+            }
+        }
+        Ok(None)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -540,11 +567,13 @@ fn consume_svg_attr_name_with_checkpoints<E>(
 }
 
 fn is_svg_attr_name_start_byte(b: u8) -> bool {
-    b.is_ascii_alphabetic() || matches!(b, b'_' | b':')
+    // Name validity is checked at document admission. Consume Unicode names whole so
+    // attribute-like text within their quoted values cannot be mistaken for attributes.
+    !b.is_ascii() || b.is_ascii_alphabetic() || matches!(b, b'_' | b':')
 }
 
 fn is_svg_attr_name_continue_byte(b: u8) -> bool {
-    b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b':' | b'.')
+    is_svg_attr_name_start_byte(b) || b.is_ascii_digit() || matches!(b, b'-' | b'.')
 }
 
 pub fn extract_quoted_attr<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
@@ -758,6 +787,18 @@ mod tests {
 
         let inserted = set_or_insert_quoted_attr(tag, "x", "10");
         assert!(inserted.contains(r#" x="10" />"#), "{inserted}");
+
+        let unicode = r#"<g 属性="before style='fake'" class="ordinary">"#;
+        assert_eq!(
+            extract_quoted_attr(unicode, "属性"),
+            Some("before style='fake'")
+        );
+        assert_eq!(extract_quoted_attr(unicode, "style"), None);
+        let mut checkpoint = || Ok::<(), std::convert::Infallible>(());
+        let attribute = next_svg_quoted_attr_with_checkpoints(unicode, 0, &mut checkpoint)
+            .unwrap()
+            .unwrap();
+        assert_eq!(&unicode[attribute.name_start..attribute.name_end], "属性");
     }
 
     #[test]

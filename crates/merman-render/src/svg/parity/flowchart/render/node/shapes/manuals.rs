@@ -1,6 +1,6 @@
 //! Flowchart v2 manual input/file shapes.
 
-use crate::svg::parity::{escape_xml_display, fmt, fmt_display};
+use crate::svg::parity::{escape_attr_display, escape_xml_display, fmt, fmt_display};
 
 use super::super::geom::path_from_points;
 use super::super::helpers;
@@ -20,9 +20,9 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_file(
             r#"<g transform="translate({},{})" class="outer-path" style="{}">"#,
             fmt_display(-h / 2.0),
             fmt_display(h / 2.0),
-            escape_xml_display(common.rough_group_style),
+            escape_attr_display(common.rough_group_style),
         );
-        helpers::write_hand_drawn_path_pair(out, common, &fill_d, &stroke_d);
+        helpers::write_hand_drawn_path_pair(out, common, &path_data, &fill_d, &stroke_d);
         out.push_str("</g>");
     } else if common.look_is_hand_drawn() {
         let _ = write!(
@@ -31,7 +31,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_file(
             escape_xml_display(&path_data),
             fmt_display(-h / 2.0),
             fmt_display(h / 2.0),
-            escape_xml_display(common.style),
+            escape_attr_display(common.style),
         );
     } else if let Some((fill_d, stroke_d)) =
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
@@ -55,7 +55,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_file(
             r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
             escape_xml_display(&fill_d),
             escape_xml_display(common.fill_color),
-            escape_xml_display(common.style)
+            escape_attr_display(common.style)
         );
         let _ = write!(
             out,
@@ -64,7 +64,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_file(
             escape_xml_display(common.stroke_color),
             fmt_display(common.stroke_width as f64),
             escape_xml_display(common.stroke_dasharray),
-            escape_xml_display(common.style)
+            escape_attr_display(common.style)
         );
         out.push_str("</g>");
     } else {
@@ -72,7 +72,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_file(
             out,
             r#"<path d="{}" class="outer-path" style="{}"/>"#,
             escape_xml_display(&path_data),
-            escape_xml_display(common.style),
+            escape_attr_display(common.style),
         );
     }
 
@@ -104,9 +104,9 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_input(
             out,
             r#"<g class="basic label-container outer-path" transform="translate(0,{})" style="{}">"#,
             fmt(h / 4.0),
-            escape_xml_display(common.rough_group_style),
+            escape_attr_display(common.rough_group_style),
         );
-        helpers::write_hand_drawn_path_pair(out, common, &fill_d, &stroke_d);
+        helpers::write_hand_drawn_path_pair(out, common, &path_data, &fill_d, &stroke_d);
         out.push_str("</g>");
     } else if common.look_is_hand_drawn() {
         let _ = write!(
@@ -114,7 +114,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_input(
             r#"<path d="{}" class="basic label-container outer-path" transform="translate(0,{})" style="{}"/>"#,
             escape_xml_display(&path_data),
             fmt(h / 4.0),
-            escape_xml_display(common.style),
+            escape_attr_display(common.style),
         );
     } else if let Some((fill_d, stroke_d)) =
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
@@ -137,7 +137,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_input(
             r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
             escape_xml_display(&fill_d),
             escape_xml_display(common.fill_color),
-            escape_xml_display(common.style)
+            escape_attr_display(common.style)
         );
         let _ = write!(
             out,
@@ -146,7 +146,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_input(
             escape_xml_display(common.stroke_color),
             fmt_display(common.stroke_width as f64),
             escape_xml_display(common.stroke_dasharray),
-            escape_xml_display(common.style)
+            escape_attr_display(common.style)
         );
         out.push_str("</g>");
     } else {
@@ -155,7 +155,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_input(
             r#"<path d="{}" class="basic label-container outer-path" transform="translate(0,{})" style="{}"/>"#,
             escape_xml_display(&path_data),
             fmt(h / 4.0),
-            escape_xml_display(common.style),
+            escape_attr_display(common.style),
         );
     }
 

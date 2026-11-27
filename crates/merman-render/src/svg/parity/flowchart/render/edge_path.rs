@@ -41,7 +41,8 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &FlowchartRenderCtx<'_>,
     marker_plan: &FlowchartMarkerEmissionPlan,
-    adaptive_ink: Option<&'static str>,
+    adaptive_ink: Option<&str>,
+    label_cutout: bool,
     edge_ref: super::super::render_input::FlowchartRenderEdgeRef<'_>,
     origin_x: f64,
     origin_y: f64,
@@ -131,7 +132,18 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         key,
         ctx.work_meter,
     )?;
-    let source_style_svg_bytes = ctx.edge_style_plan.edge_source_style_svg_bytes_for(key)?;
+    if label_cutout {
+        super::super::edge_label_cutout::write_attribute(
+            &mut scratch.edge_marker_attrs,
+            edge_dom_id,
+        );
+    }
+    // Mermaid's legacy edge writer appends the same inline list twice. Keep its byte contract
+    // only for parity renderers; the native painter needs the declarations once in cascade order.
+    let repeat_inline = !ctx.layout.route_contract.is_canonical_axis();
+    let source_style_svg_bytes = ctx
+        .edge_style_plan
+        .edge_source_style_svg_bytes_for(key, repeat_inline)?;
     let path = FlowchartEdgeSvgEmission {
         edge_dom_id,
         edge,
@@ -143,6 +155,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         class_attr: &scratch.edge_class_attr,
         marker_attrs: &scratch.edge_marker_attrs,
         default_edge_style: ctx.default_edge_style,
+        repeat_inline,
         adaptive_ink,
         neo_edge_mask,
         line_hop_applied: geom.line_hop_applied,
@@ -164,7 +177,8 @@ struct FlowchartEdgeSvgEmission<'a> {
     class_attr: &'a str,
     marker_attrs: &'a str,
     default_edge_style: &'a [String],
-    adaptive_ink: Option<&'static str>,
+    repeat_inline: bool,
+    adaptive_ink: Option<&'a str>,
     neo_edge_mask: Option<FlowchartNeoEdgeMaskPlan>,
     line_hop_applied: bool,
 }
@@ -334,10 +348,12 @@ impl FlowchartEdgeSvgEmission<'_> {
         {
             out.write_char(';')?;
         }
-        if self.default_edge_style.is_empty() && self.edge.style.is_empty() {
+        write_style_joined(out, self.default_edge_style, &self.edge.style)?;
+        if !self.repeat_inline {
+            Ok(())
+        } else if self.default_edge_style.is_empty() && self.edge.style.is_empty() {
             out.write_char(';')
         } else {
-            write_style_joined(out, self.default_edge_style, &self.edge.style)?;
             out.write_str(";;;")?;
             write_style_joined(out, self.default_edge_style, &self.edge.style)
         }
@@ -615,7 +631,8 @@ mod tests {
                 .into_edge_artifact(false);
         let source_style_svg_bytes = emitted_styles
             .projected_edge_source_style_bytes(&default_edge_style, &edge.style, false)
-            .expect("finite source-style projection");
+            .expect("finite source-style projection")
+            .parity;
         let neo_edge_mask = neo_mask(16.0, &edge, false);
         let key = crate::flowchart::FlowchartEdgeKey::self_loop_segment(12, 2);
         let document_ids = FlowchartDocumentIds::prepare(FlowchartDocumentIdRequest {
@@ -639,6 +656,7 @@ mod tests {
             class_attr: "edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link",
             marker_attrs: r#" marker-start="url(#diagram-flowchart-v2-circleStart)" marker-end="url(#diagram-flowchart-v2-pointEnd)""#,
             default_edge_style: &default_edge_style,
+            repeat_inline: true,
             adaptive_ink: None,
             neo_edge_mask: Some(neo_edge_mask),
             line_hop_applied: false,
@@ -744,7 +762,8 @@ mod tests {
         };
         let hand_drawn_style_bytes = emitted_styles
             .projected_edge_source_style_bytes(&default_edge_style, &edge.style, true)
-            .unwrap();
+            .unwrap()
+            .parity;
         let mut hand_drawn_svg = String::new();
         hand_drawn
             .append_to(&mut hand_drawn_svg, hand_drawn_style_bytes, &probe_meter)

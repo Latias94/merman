@@ -21,7 +21,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_odd(
             fmt(dx),
             escape_attr(common.rough_group_style),
         );
-        helpers::write_hand_drawn_path_pair(out, common, &fill_d, &stroke_d);
+        helpers::write_hand_drawn_path_pair(out, common, &path_data, &fill_d, &stroke_d);
         out.push_str("</g>");
     } else if common.look_is_hand_drawn() {
         let _ = write!(

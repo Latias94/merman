@@ -36,6 +36,7 @@ pub(crate) use merman_render_core::theme_svg::elevation as elevation_svg;
     feature = "diagram-swimlane",
     feature = "diagram-block",
     feature = "diagram-state",
+    feature = "diagram-usecase",
 ))]
 pub(crate) use merman_render_core::theme_svg::marker as marker_svg;
 
@@ -215,7 +216,13 @@ pub fn family_capabilities(family: crate::DiagramFamilyId) -> ThemeCapabilityFla
         #[cfg(feature = "diagram-agentflow")]
         crate::DiagramFamilyId::AGENTFLOW => FLOWCHART_BASE_CAPABILITIES.union(Cap::EDGE_STYLE),
         #[cfg(feature = "diagram-swimlane")]
-        crate::DiagramFamilyId::SWIMLANE => FLOWCHART_BASE_CAPABILITIES,
+        crate::DiagramFamilyId::SWIMLANE => {
+            if cfg!(feature = "layout-shoal") {
+                FLOWCHART_BASE_CAPABILITIES.union(Cap::EDGE_STYLE)
+            } else {
+                FLOWCHART_BASE_CAPABILITIES
+            }
+        }
         #[cfg(feature = "diagram-class")]
         crate::DiagramFamilyId::CLASS => caps!(
             CANVAS
@@ -335,9 +342,17 @@ pub fn family_capabilities(family: crate::DiagramFamilyId) -> ThemeCapabilityFla
             caps!(CANVAS | NODE_SURFACE | EMPHASIS | CONNECTOR | TYPOGRAPHY)
         }
         #[cfg(feature = "diagram-usecase")]
-        crate::DiagramFamilyId::USECASE => {
-            caps!(CANVAS | NODE_SURFACE | CONTAINER | CALLOUT | CONNECTOR | ELEVATION | TYPOGRAPHY)
-        }
+        crate::DiagramFamilyId::USECASE => caps!(
+            CANVAS
+                | NODE_SURFACE
+                | CONTAINER
+                | CALLOUT
+                | CONNECTOR
+                | ELEVATION
+                | EDGE_STYLE
+                | MARKER_STYLE
+                | TYPOGRAPHY
+        ),
         #[cfg(feature = "diagram-state")]
         crate::DiagramFamilyId::STATE => caps!(
             CANVAS
@@ -348,6 +363,7 @@ pub fn family_capabilities(family: crate::DiagramFamilyId) -> ThemeCapabilityFla
                 | CONNECTOR
                 | ELEVATION
                 | RADIUS
+                | EDGE_STYLE
                 | MARKER_STYLE
                 | TYPOGRAPHY
         ),

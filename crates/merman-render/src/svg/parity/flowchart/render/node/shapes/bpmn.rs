@@ -1,5 +1,5 @@
 use crate::flowchart::bpmn::{BpmnGeometry, BpmnShape, ICON_SIZE};
-use crate::svg::parity::{escape_xml_display, fmt_display};
+use crate::svg::parity::{escape_attr_display, fmt_display};
 
 #[derive(Default)]
 struct BpmnOptions<'a> {
@@ -95,7 +95,7 @@ fn write_shape(
     if shape != BpmnShape::Activity {
         write_bounds(out, geometry);
     }
-    let style = escape_xml_display(style);
+    let style = escape_attr_display(style);
     if let Some((rings, stroke_width)) = shape.event_rings() {
         let _ = write!(out, r#"<g class="bpmn-event-body" style="{style}">"#);
         for ring in 0..rings {
@@ -112,7 +112,7 @@ fn write_shape(
             );
             // The event ring owns its notation width; a native palette can supply its fill.
             if !theme_style.is_empty() {
-                let _ = write!(out, "{};", escape_xml_display(theme_style));
+                let _ = write!(out, "{};", escape_attr_display(theme_style));
             }
             out.push_str(r#""/>"#);
             out.checkpoint()?;

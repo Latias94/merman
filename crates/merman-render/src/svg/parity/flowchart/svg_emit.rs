@@ -153,6 +153,27 @@ pub(super) fn render_flowchart_svg_model(
                 hierarchy_plan,
             )?;
 
+            let cutout_labels = layout.route_contract.is_canonical_axis()
+                && swimlane_layout.is_none()
+                && diagram_type != "agentflow"
+                && options
+                    .family
+                    .session()
+                    .canvas_background()
+                    .or_else(|| ctx.native.map(|native| native.canvas))
+                    .is_some_and(|canvas| canvas.channels()[3] == 0);
+            // These plans follow the visible shaft, including RoughJS displacement.
+            if marker_plan.is_none()
+                || cutout_labels
+                || !ctx.hand_drawn_seed.seed().may_use_math_random()
+            {
+                super::paint::prepare_rough_edge_paths(
+                    ctx,
+                    hierarchy_plan.ordered_edges(),
+                    &mut edge_path_cache,
+                )?;
+            }
+
             let marker_plan = match marker_plan {
                 Some(plan) => plan,
                 None => {
@@ -172,13 +193,6 @@ pub(super) fn render_flowchart_svg_model(
                 }
             };
 
-            if !ctx.hand_drawn_seed.seed().may_use_math_random() {
-                super::paint::prepare_rough_edge_paths(
-                    ctx,
-                    hierarchy_plan.ordered_edges(),
-                    &mut edge_path_cache,
-                )?;
-            }
             let mut edge_labels =
                 super::paint::FlowchartEdgeLabels::prepare(ctx, hierarchy_plan, &edge_path_cache)?;
             let step_badges = super::step::StepBadges::prepare(
@@ -267,6 +281,18 @@ pub(super) fn render_flowchart_svg_model(
                 ctx,
                 &marker_plan,
             );
+            let label_cutouts = if cutout_labels {
+                super::edge_label_cutout::write_definitions(
+                    &mut out,
+                    ctx,
+                    &edge_path_cache,
+                    &edge_labels,
+                    kurbo::Rect::new(bbox_min_x, bbox_min_y, bbox_max_x, bbox_max_y)
+                        .inflate(diagram_padding, diagram_padding),
+                )?
+            } else {
+                FxHashSet::default()
+            };
 
             let mut root_session = FlowchartRootRenderSession {
                 timing: render_timing,
@@ -276,6 +302,7 @@ pub(super) fn render_flowchart_svg_model(
                 hierarchy_plan,
                 marker_plan: &marker_plan,
                 edge_fills: &edge_fills,
+                label_cutouts: &label_cutouts,
                 edge_labels: &mut edge_labels,
                 step_badges: &step_badges,
             };

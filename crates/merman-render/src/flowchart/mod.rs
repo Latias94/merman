@@ -25,6 +25,7 @@ mod style;
 pub(crate) use source_style::{FlowchartSourceFacetStatus, FlowchartStyleDeclaration};
 mod svg_label_artifact;
 
+use merman_model::families::flowchart::FlowchartLabelSourceOwner;
 pub(crate) use merman_model::families::flowchart::{
     FlowEdge, FlowNode, FlowSubgraph, FlowchartModel, FlowchartRenderContext,
 };
@@ -45,6 +46,8 @@ pub(crate) use lane_title::zero_width_lane_title_rows;
 pub(crate) struct FlowchartRenderModelRef<'a> {
     semantic: &'a FlowchartModel,
     render_context: &'a FlowchartRenderContext,
+    svg_text_nodes: bool,
+    svg_text_edges_and_titles: bool,
 }
 
 impl<'a> FlowchartRenderModelRef<'a> {
@@ -55,10 +58,31 @@ impl<'a> FlowchartRenderModelRef<'a> {
         Self {
             semantic,
             render_context,
+            svg_text_nodes: false,
+            svg_text_edges_and_titles: false,
         }
     }
 
+    pub(crate) fn with_shoal_svg_text(
+        mut self,
+        node_html_labels: bool,
+        edge_html_labels: bool,
+    ) -> Self {
+        if self.semantic.keyword != "agentflow-beta" {
+            self.svg_text_nodes = !node_html_labels;
+            self.svg_text_edges_and_titles = !edge_html_labels;
+        }
+        self
+    }
+
     pub(crate) fn node_label_for_render<'b>(&'b self, node: &'b FlowNode) -> Option<&'b str> {
+        if self.svg_text_nodes
+            && let Some(source) = self
+                .render_context
+                .svg_text_source(FlowchartLabelSourceOwner::Node(&node.id))
+        {
+            return Some(source);
+        }
         self.render_context.node_label_for_render(node)
     }
 
@@ -67,6 +91,13 @@ impl<'a> FlowchartRenderModelRef<'a> {
         semantic_index: usize,
         edge: &'b FlowEdge,
     ) -> Option<&'b str> {
+        if self.svg_text_edges_and_titles
+            && let Some(source) = self
+                .render_context
+                .svg_text_source(FlowchartLabelSourceOwner::Edge(semantic_index))
+        {
+            return Some(source);
+        }
         self.render_context
             .edge_label_for_render(semantic_index, edge)
     }
@@ -87,6 +118,21 @@ impl<'a> FlowchartRenderModelRef<'a> {
         declaration_ordinal: usize,
         subgraph: &'b FlowSubgraph,
     ) -> &'b str {
+        let use_svg_text = if self.is_subgraph_collapsed(&subgraph.id) {
+            self.svg_text_nodes
+        } else {
+            self.svg_text_edges_and_titles
+        };
+        if use_svg_text
+            && let Some(source) =
+                self.render_context
+                    .svg_text_source(FlowchartLabelSourceOwner::Subgraph(
+                        declaration_ordinal,
+                        &subgraph.id,
+                    ))
+        {
+            return source;
+        }
         self.render_context
             .subgraph_title_for_render(declaration_ordinal, subgraph)
     }

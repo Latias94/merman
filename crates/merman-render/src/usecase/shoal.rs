@@ -1,9 +1,11 @@
-use super::{UsecaseDiagramLayout, UsecaseEdgePlan, UsecaseLabelPlan, UsecaseNodePlan};
-use crate::graph_layout::canonical::CanonicalRoutes;
+use super::{
+    UsecaseCssBinding, UsecaseDiagramLayout, UsecaseEdgePlan, UsecaseLabelPlan, UsecaseNodePlan,
+};
+use crate::graph_layout::canonical::{CanonicalRoutes, CaptionClearance};
 use crate::graph_layout::contour::ShapePortProfile;
 use crate::graph_layout::ir::{
-    Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, RoutingStyle,
-    Side, Size, SolvedGroup, TitlePosition,
+    Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, Side, Size,
+    SolvedGroup, TitlePosition,
 };
 use crate::graph_layout::placement;
 use crate::graph_layout::route_paint::RouteStyle;
@@ -27,11 +29,13 @@ pub(super) struct UsecaseCanonicalLayout {
     pub(super) boundary_order: Vec<(usize, usize)>,
 }
 
-pub(crate) fn canonical_route_style(config: &Value) -> RouteStyle {
-    let curve = config
-        .pointer("/flowchart/curve")
-        .and_then(Value::as_str)
-        .unwrap_or("basis");
+pub(crate) fn canonical_route_style(config: &Value, binding: &UsecaseCssBinding) -> RouteStyle {
+    let curve = binding.native_curve().unwrap_or_else(|| {
+        config
+            .pointer("/flowchart/curve")
+            .and_then(Value::as_str)
+            .unwrap_or("basis")
+    });
     let radius = config
         .pointer("/flowchart/roundedCornerRadius")
         .and_then(Value::as_f64)
@@ -94,6 +98,7 @@ fn boundary_paint_order(
 pub(super) fn layout(
     model: &UsecaseDiagramModel,
     config: &Value,
+    binding: &UsecaseCssBinding,
     plans: &[UsecaseNodePlan],
     edge_plans: &[UsecaseEdgePlan],
     execution: Option<&LayoutExecution<'_>>,
@@ -114,16 +119,9 @@ pub(super) fn layout(
         Direction::Up | Direction::Down => (Side::Top, Side::Left),
         Direction::Left | Direction::Right => (Side::Left, Side::Top),
     };
-    let node_spacing = super::measure::number(config, "nodeSpacing", 50.0);
-    let rank_spacing = super::measure::number(config, "rankSpacing", 50.0);
-    let routing = match canonical_route_style(config) {
-        RouteStyle::Rounded(_)
-        | RouteStyle::Step
-        | RouteStyle::StepBefore
-        | RouteStyle::StepAfter => RoutingStyle::Orthogonal,
-        RouteStyle::Linear => RoutingStyle::Polyline,
-        RouteStyle::Curved => RoutingStyle::Curved,
-    };
+    let node_spacing = super::measure::spacing(config, "nodeSpacing");
+    let rank_spacing = super::measure::spacing(config, "rankSpacing");
+    let routing = canonical_route_style(config, binding).routing_style();
     let mut graph = MeasuredGraph {
         direction,
         routing,
@@ -159,7 +157,14 @@ pub(super) fn layout(
         let endpoint = if plan.is_boundary {
             let group = Endpoint::Group(index(graph.groups.len(), work)?);
             boundary_plans.push(plan_index);
-            let title = label_size(&plan.label);
+            let title = if plan.package {
+                Some(Size {
+                    width: super::package_tab_width(plan.label.metrics.width),
+                    height: plan.label.metrics.height + 2.0 * super::PACKAGE_TAB_PADDING_Y,
+                })
+            } else {
+                label_size(&plan.label)
+            };
             let title_band = title.map_or(0.0, |title| title.height + title_margin);
             graph.groups.push(MeasuredGroup {
                 seq,
@@ -269,7 +274,7 @@ pub(super) fn layout(
     for plan in edge_plans {
         work.charge_adapter(0)?;
         let marker = |start| {
-            UsecaseMarker::for_edge(plan, start, neo)
+            UsecaseMarker::for_edge(plan, start, neo, binding.marker_style)
                 .map_or_else(Default::default, |marker| marker.metrics())
         };
         graph.edges.push(MeasuredEdge {
@@ -298,6 +303,7 @@ pub(super) fn layout(
         &profiles,
         |_| 0.0,
         edge_plans.iter().map(|plan| plan.id.as_str()),
+        CaptionClearance::Avoid,
         work,
     )?;
     routes.placement = placement;

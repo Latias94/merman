@@ -4,6 +4,73 @@ use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn requirement_shoal_paints_sketch_edges_and_native_arrowheads() {
+    use merman_render::theme::{NativeTheme, ThemeCompiler};
+
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(
+            "---\nconfig:\n  layout: shoal\n  look: neo\n---\nrequirementDiagram\ndirection LR\nelement A {\ntype: hardware\n}\nelement B {\ntype: software\n}\nA - satisfies -> B\nA - contains -> B\n",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let render = |edge_style, marker_style| {
+        let source = serde_json::json!({"schema_version": 2, "extends": "paper", "form": {
+            "edge_style": edge_style, "marker_style": marker_style
+        }});
+        let theme = ThemeCompiler::new()
+            .compile_json(source.to_string().as_bytes(), None)
+            .unwrap();
+        let session = RenderEnvironment::deterministic()
+            .begin_session_with_native_theme(NativeTheme::new(theme))
+            .unwrap();
+        family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+            .unwrap()
+            .render_svg(&Default::default(), &Default::default())
+            .unwrap()
+    };
+    let arrow_paths = [
+        ("open", "M1 1L10 5L1 9", Some("none")),
+        ("filled", "M0 0.75L10 5L0 9.25Z", None),
+        ("stealth", "M0 1L10 5L0 9L2.5 5Z", None),
+    ];
+    for (style, path, fill) in arrow_paths {
+        let rendered = render("sketch", style);
+        let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let edge = doc
+            .descendants()
+            .find(|node| node.attribute("marker-end").is_some())
+            .unwrap();
+        let marker_id = edge
+            .attribute("marker-end")
+            .unwrap()
+            .trim_start_matches("url(#")
+            .trim_end_matches(')');
+        let marker = doc
+            .descendants()
+            .find(|node| node.attribute("id") == Some(marker_id))
+            .unwrap();
+        let head = marker.first_element_child().unwrap();
+        assert_eq!(head.attribute("d"), Some(path), "{style}");
+        assert_eq!(head.attribute("fill"), fill, "{style}");
+        assert!(edge.attribute("d").unwrap().contains('C'));
+        assert!(doc.descendants().any(|node| {
+            node.attribute("marker-start")
+                .is_some_and(|value| value.contains("containsStart"))
+        }));
+    }
+    let rendered = render("straight", "open");
+    let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+    assert!(
+        doc.descendants()
+            .filter(|node| node.attribute("data-edge") == Some("true"))
+            .all(|node| !node.attribute("d").unwrap().contains('C'))
+    );
+}
+
 fn render_requirement(layout: &str, look: &str) -> String {
     let source = format!(
         "---\nconfig:\n  layout: {layout}\n  look: {look}\n  themeVariables:\n    strokeWidth: 3\n    mainBkg: '#123456'\n    requirementBackground: '#abcdef'\n---\nrequirementDiagram\nrequirement Req {{\n  id: 1\n  text: body\n  risk: high\n  verifymethod: analysis\n}}\n"

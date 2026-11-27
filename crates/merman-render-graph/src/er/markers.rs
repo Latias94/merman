@@ -48,9 +48,14 @@ impl MarkerGlyph {
         }
     }
 
-    fn write_content(&self, out: &mut impl SvgOutput, neo: Option<(&str, &str)>) {
+    fn write_content(
+        &self,
+        out: &mut impl SvgOutput,
+        background: &str,
+        stroke_width: Option<&str>,
+    ) {
         if let Some((classic_x, neo_x)) = self.circle_x {
-            if let Some((stroke_width, background)) = neo {
+            if let Some(stroke_width) = stroke_width {
                 let _ = write!(
                     out,
                     r#"<circle fill="{background}" cx="{}" cy="{}" stroke-width="{stroke_width}" r="{CIRCLE_RADIUS}"/>"#,
@@ -60,14 +65,14 @@ impl MarkerGlyph {
             } else {
                 let _ = write!(
                     out,
-                    r#"<circle fill="white" cx="{}" cy="{}" r="{CIRCLE_RADIUS}"/>"#,
+                    r#"<circle fill="{background}" cx="{}" cy="{}" r="{CIRCLE_RADIUS}"/>"#,
                     fmt(classic_x),
                     self.ref_y,
                 );
             }
         }
         let _ = write!(out, r#"<path d="{}""#, self.path);
-        if let Some((stroke_width, _)) = neo {
+        if let Some(stroke_width) = stroke_width {
             let _ = write!(out, r#" stroke-width="{stroke_width}""#);
         }
         out.push_str("/>");
@@ -250,6 +255,24 @@ pub fn er_unified_marker_id(diagram_id: SvgId<'_>, upstream_marker: &str) -> Str
     format!("{diagram_id}_er-{name}{end}")
 }
 
+/// Center offset and radius of a cardinality marker's circle in its viewport units.
+pub fn er_zero_marker_circle(
+    upstream_marker: &str,
+    canonical: bool,
+    neo: bool,
+) -> Option<(f64, f64)> {
+    let (card, start) = marker_suffix(upstream_marker.trim())?;
+    let entry = if canonical {
+        canonical_cardinality(card)
+    } else {
+        cardinality(card)
+    }?;
+    let glyph = &entry.ends[usize::from(!start)];
+    let (classic_x, neo_x) = glyph.circle_x?;
+    let x = if neo { neo_x } else { classic_x };
+    Some((x - f64::from(glyph.ref_x), f64::from(CIRCLE_RADIUS)))
+}
+
 #[cfg(feature = "layout-shoal")]
 pub fn er_canonical_marker(card: &str, start: bool, neo: bool) -> Marker {
     let Some(entry) = canonical_cardinality(card) else {
@@ -309,6 +332,7 @@ pub struct ErMarkerDefs<'a> {
     pub canonical: bool,
     pub neo: bool,
     pub neo_stroke_width: f64,
+    /// Resolved backing paint for the zero cardinality circles.
     pub main_bkg: &'a str,
 }
 
@@ -334,14 +358,14 @@ pub fn write_er_marker_definitions(out: &mut impl SvgOutput, defs: ErMarkerDefs<
         ] {
             let id = format!("{diagram_id}_er-mdParent{end}");
             write_marker_start(out, &id, "mdParent", &glyph, false);
-            glyph.write_content(out, None);
+            glyph.write_content(out, "none", None);
             out.push_str("</marker></defs>\n");
             out.checkpoint()?;
         }
     }
 
     let neo_width = fmt(neo_stroke_width).to_string();
-    let neo_background = escape_attr(main_bkg);
+    let background = escape_attr(main_bkg);
     for entry in &CARDINALITIES {
         let active = if canonical {
             canonical_cardinality(entry.card).unwrap_or(entry)
@@ -352,10 +376,7 @@ pub fn write_er_marker_definitions(out: &mut impl SvgOutput, defs: ErMarkerDefs<
             let name = active.name;
             let id = format!("{diagram_id}_er-{name}{end}");
             write_marker_start(out, &id, name, glyph, neo || canonical);
-            glyph.write_content(
-                out,
-                neo.then_some((neo_width.as_str(), neo_background.as_str())),
-            );
+            glyph.write_content(out, &background, neo.then_some(neo_width.as_str()));
             out.push_str("</marker></defs>\n");
             out.checkpoint()?;
         }

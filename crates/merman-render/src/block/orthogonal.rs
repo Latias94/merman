@@ -8,15 +8,16 @@ use super::{
 };
 use crate::Result;
 use crate::graph_layout::Marker;
-use crate::graph_layout::route_paint::{self, CurveTerminals, RouteStyle};
+use crate::graph_layout::ir::Endpoint;
+use crate::graph_layout::route_paint::{
+    self, Clearance, CurveTerminals, EdgeClearance, ObstacleOwner, RouteStyle,
+};
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{BlockDiagramLayout, LayoutLabel, LayoutPoint};
 use crate::resources::OperationWorkMeter;
 use crate::svg::BaseEdgeMarkerKind;
 use kurbo::{Point, Rect, Vec2};
-use merman_layout_shoal::{
-    OrthogonalSpan, Rect as Obstacle, RoutePoint, Side, route_orthogonal_spans,
-};
+use merman_layout_shoal::{OrthogonalSpan, Rect as Obstacle, RoutePoint, Side, route_fixed_spans};
 use merman_model::families::block::{BlockDiagramRenderModel, BlockEdge};
 use merman_theme_contract::v2::EdgeStyle;
 use std::{collections::HashMap, sync::Arc};
@@ -255,6 +256,8 @@ impl Request {
     fn paint(
         &self,
         inner: impl Iterator<Item = RoutePoint>,
+        style: RouteStyle,
+        clearance: Option<EdgeClearance<'_>>,
     ) -> Option<(Vec<LayoutPoint>, BlockOrthogonalRoute)> {
         let [a, b] = &self.ends;
         let mut points: Vec<_> = std::iter::once(a.contact)
@@ -266,16 +269,19 @@ impl Request {
             end.marker
                 .map_or_else(Marker::default, MarkerBox::for_paint)
         };
-        let path = route_paint::build_svg_path(
-            &points,
-            (a.side, b.side),
-            RouteStyle::Linear,
-            (marker(a), marker(b)),
-            CurveTerminals::Fixed,
-            &[],
-            None,
-        )
-        .ok()?;
+        let paint = |style, clearance| {
+            route_paint::build_svg_path(
+                &points,
+                (a.side, b.side),
+                style,
+                (marker(a), marker(b)),
+                CurveTerminals::Fixed,
+                &[],
+                clearance,
+            )
+            .ok()
+        };
+        let path = paint(style, clearance).or_else(|| paint(RouteStyle::Linear, None))?;
         let route = BlockOrthogonalRoute {
             path: path.d,
             bounds: path.bounds,
@@ -493,6 +499,7 @@ pub(super) fn prepare(
         return Ok(Vec::new());
     }
     let edge_style = typography.native().map(|style| style.form.edge_style);
+    let route_style = edge_style.map_or(RouteStyle::Step, RouteStyle::from_theme);
     let Some(mut walls) = clearance_boxes(
         model,
         layout,
@@ -605,6 +612,28 @@ pub(super) fn prepare(
         }
     }
     work.charge_adapter(work.checked_add(walls.len(), work.checked_mul(admitted.len(), 2)?)?)?;
+    let clearance = if route_style == RouteStyle::Curved {
+        let levels = walls.len().checked_ilog2().map_or(0, |n| n as usize + 1);
+        work.charge_adapter(work.checked_mul(walls.len(), levels)?)?;
+        let mut obstacles = Vec::with_capacity(walls.len());
+        for wall in &walls {
+            let owner = match wall.owner {
+                Owner::Body(index) => ObstacleOwner::Node(
+                    u32::try_from(index).map_err(|_| work.record_arithmetic_overflow())?,
+                ),
+                Owner::NodeLabel => ObstacleOwner::GroupTitle(0),
+                Owner::EdgeLabel(index) | Owner::Marker(index) => ObstacleOwner::EdgeLabel(index),
+            };
+            obstacles.push((wall.rect, owner));
+        }
+        Some(
+            Clearance::new(obstacles).map_err(|error| crate::Error::InvalidModel {
+                message: format!("Block route clearance: {error}"),
+            })?,
+        )
+    } else {
+        None
+    };
     let walls: Vec<_> = walls
         .into_iter()
         .map(|Wall { rect, .. }| Obstacle {
@@ -615,9 +644,16 @@ pub(super) fn prepare(
         })
         .collect();
     let spans: Vec<_> = admitted.iter().flat_map(Request::spans).collect();
-    let mut paths = route_orthogonal_spans(&walls, None, edge_sep, &spans, &mut work)
-        .map_err(|error| work.map_shoal_error(error))?
-        .into_iter();
+    let mut paths = route_fixed_spans(
+        &walls,
+        None,
+        edge_sep,
+        &spans,
+        route_style.routing_style(),
+        &mut work,
+    )
+    .map_err(|error| work.map_shoal_error(error))?
+    .into_iter();
     work.charge_adapter(model.edges.len())?;
     let mut routes: Vec<_> = (0..model.edges.len()).map(|_| None).collect();
     let mut updates = Vec::new();
@@ -632,7 +668,23 @@ pub(super) fn prepare(
             work.charge_adapter(
                 work.checked_add(work.checked_add(first.len(), second.len())?, 2)?,
             )?;
-            if let Some((points, route)) = request.paint(first.into_iter().chain(second)) {
+            let [from, to] = request.bodies.map(|index| {
+                u32::try_from(index)
+                    .map(Endpoint::Node)
+                    .map_err(|_| work.record_arithmetic_overflow())
+            });
+            let endpoints = (from?, to?);
+            let guard = clearance.as_ref().map(|clearance| {
+                clearance.for_edge(
+                    request.occurrence,
+                    endpoints,
+                    Vec2::ZERO,
+                    stroke_width / 2.0,
+                )
+            });
+            if let Some((points, route)) =
+                request.paint(first.into_iter().chain(second), route_style, guard)
+            {
                 updates.push((request.index, points));
                 routes[request.occurrence] = Some(route);
             }

@@ -74,7 +74,7 @@ fn cells(
     graph: &Graph,
     scope: &Scope,
     drawing: &mut LayoutOutput,
-    gap: Size,
+    metrics: Metrics,
     available: f64,
     options: &Options,
     work: &mut Work<'_>,
@@ -82,6 +82,16 @@ fn cells(
     let items = &scope.items;
     if items.is_empty() {
         return Ok((Size::default(), Gutters::default()));
+    }
+    let margin = metrics.margin();
+    // One track beyond the opposing marker approaches leaves their elbows clear.
+    let min_gap = margin + options.spacing.edge;
+    let gap = Size {
+        width: options.spacing.node.max(min_gap),
+        height: options.spacing.rank.max(min_gap),
+    };
+    if !gap.width.is_finite() || !gap.height.is_finite() {
+        return Err(PRECISION);
     }
     let count = items.len();
     let mut average = Size::default();
@@ -103,22 +113,30 @@ fn cells(
             .sqrt()
             .round() as usize;
     let natural = natural.clamp(1, count);
+    // Preserve the natural column count, then leave room for a caption along each axis
+    // after both terminal approaches.
+    let caption_gap = |gap: f64, caption: f64| {
+        if caption > 0.0 {
+            gap.max(caption + margin)
+        } else {
+            gap
+        }
+    };
+    let column_gap = caption_gap(gap.width, scope.caption.width);
+    let row_gap = caption_gap(gap.height, scope.caption.height);
+    if !column_gap.is_finite() || !row_gap.is_finite() {
+        return Err(PRECISION);
+    }
     // The widest card gives a fitting column count without repeated trial layouts.
     // An oversized card gets its own row.
-    let guaranteed_fit = (((available + gap.width) / (widest + gap.width)).floor() as usize).max(1);
-    let (mut columns, mut total_width) = widths(items, natural, gap.width, drawing, work)?;
+    let guaranteed_fit =
+        (((available + column_gap) / (widest + column_gap)).floor() as usize).max(1);
+    let (mut columns, mut total_width) = widths(items, natural, column_gap, drawing, work)?;
     if total_width > available && guaranteed_fit < natural {
-        (columns, total_width) = widths(items, guaranteed_fit, gap.width, drawing, work)?;
+        (columns, total_width) = widths(items, guaranteed_fit, column_gap, drawing, work)?;
     }
     let count_columns = columns.len();
     let count_rows = count.div_ceil(count_columns);
-    // Keep the card grid's row count while making a gutter tall enough for a multiline
-    // caption and a marker approach. Taller authored labels can use the caption row below.
-    let row_gap = if scope.caption.height > gap.height {
-        (scope.caption.height + gap.height / 2.0).min(gap.height * 2.0)
-    } else {
-        gap.height
-    };
     let gutter_count = |tracks: usize| tracks.checked_add(1).ok_or(WorkError::ArithmeticOverflow);
     let x_gutters = gutter_count(count_columns)?;
     let y_gutters = gutter_count(count_rows)?;
@@ -133,8 +151,8 @@ fn cells(
     let mut x = 0.0;
     for &column in &columns[..count_columns - 1] {
         work.visit(1)?;
-        gutters[0].push(x + column + gap.width / 2.0);
-        x += column + gap.width;
+        gutters[0].push(x + column + column_gap / 2.0);
+        x += column + column_gap;
     }
     let mut y = 0.0;
     for (row, items) in items.chunks(count_columns).enumerate() {
@@ -156,7 +174,7 @@ fn cells(
             let slot = item_rect_mut(drawing, item);
             slot.x = x + (column - slot.width) / 2.0;
             slot.y = y + (above - horizontal_anchor(graph, item, slot.height));
-            x += column + gap.width;
+            x += column + column_gap;
             if let Some(rank) = drawing.node_ranks.get_mut(item) {
                 *rank = row as u32;
             }
@@ -242,16 +260,6 @@ pub(super) fn place(
     }
 
     let margin = metrics.margin();
-    // The shared margin already reserves two opposing marker leads. A single additional
-    // track keeps their adjoining elbows clear between neighboring cards.
-    let min_gap = margin + options.spacing.edge;
-    let gap = Size {
-        width: options.spacing.node.max(min_gap),
-        height: options.spacing.rank.max(min_gap),
-    };
-    if !gap.width.is_finite() || !gap.height.is_finite() {
-        return Err(PRECISION);
-    }
     let max_width = match options.width_policy {
         WidthPolicy::FitWidth { max_width, .. } => max_width,
         WidthPolicy::Natural => match options.packing {
@@ -282,7 +290,7 @@ pub(super) fn place(
             graph,
             scope,
             &mut drawing,
-            gap,
+            metrics,
             available[id],
             options,
             work,

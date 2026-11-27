@@ -1218,7 +1218,7 @@ System(framed, "Framed", "Component description", $shape="component")
 }
 
 #[test]
-fn c4_hand_drawn_look_emits_rough_shape_geometry() {
+fn c4_hand_drawn_shapes_have_solid_fills_and_rough_outlines() {
     let source = r#"%%{init: {"look": "handDrawn"}}%%
 C4Context
 Person(person, "Person")
@@ -1240,10 +1240,34 @@ System(queue, "Queue", "SQS", $shape="queue")
         })
         .collect::<Vec<_>>();
     assert_eq!(shape_groups.len(), 5);
-    assert!(shape_groups.iter().all(|group| {
-        group.attribute("data-look") == Some("handDrawn")
-            && group.descendants().any(|node| node.has_tag_name("path"))
-    }));
+    for group in shape_groups {
+        let id = group.attribute("id").unwrap();
+        assert_eq!(group.attribute("data-look"), Some("handDrawn"));
+        let fills: Vec<_> = group
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("path") && node.attribute("class") == Some("rough-fill")
+            })
+            .collect();
+        assert_eq!(fills.len(), if id == "merman-person" { 2 } else { 1 });
+        for fill in fills {
+            assert!(
+                fill.attribute("fill").is_some_and(|color| color != "none"),
+                "{id} needs a continuous fill behind its text"
+            );
+            assert_eq!(fill.attribute("stroke"), Some("none"));
+            let path = svgtypes::PathParser::from(fill.attribute("d").unwrap());
+            assert!(matches!(
+                path.last(),
+                Some(Ok(svgtypes::PathSegment::ClosePath { .. }))
+            ));
+        }
+        assert!(group.descendants().any(|node| {
+            node.has_tag_name("path")
+                && node.attribute("class") == Some("rough-stroke")
+                && node.attribute("fill") == Some("none")
+        }));
+    }
 }
 
 #[test]

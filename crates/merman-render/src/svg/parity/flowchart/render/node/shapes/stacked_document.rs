@@ -1,6 +1,6 @@
 //! Flowchart v2 stacked document shape.
 
-use crate::svg::parity::{escape_xml_display, fmt_display};
+use crate::svg::parity::{escape_attr_display, escape_xml_display, fmt_display};
 
 use super::super::geom::path_from_points;
 use super::super::helpers;
@@ -19,7 +19,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stacked_document(
             out,
             r#"<g class="basic label-container outer-path" transform="translate(0,{})" style="{}">"#,
             fmt_display(group_dy),
-            escape_xml_display(common.rough_group_style),
+            escape_attr_display(common.rough_group_style),
         );
     } else {
         let _ = write!(
@@ -59,12 +59,12 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stacked_document(
                 r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
                 escape_xml_display(&fill_d),
                 escape_xml_display(common.fill_color),
-                escape_xml_display(common.style),
+                escape_attr_display(common.style),
                 escape_xml_display(&stroke_d),
                 escape_xml_display(common.stroke_color),
                 fmt_display(common.stroke_width as f64),
                 escape_xml_display(common.stroke_dasharray),
-                escape_xml_display(common.style),
+                escape_attr_display(common.style),
             );
         }
     } else if common.look_is_hand_drawn() {
@@ -75,7 +75,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stacked_document(
             escape_xml_display(common.fill_color),
             escape_xml_display(common.stroke_color),
             fmt_display(common.stroke_width as f64),
-            escape_xml_display(common.style),
+            escape_attr_display(common.style),
         );
     }
     out.push_str("<g>");
@@ -110,12 +110,12 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stacked_document(
                 r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
                 escape_xml_display(&fill_d),
                 escape_xml_display(common.fill_color),
-                escape_xml_display(common.style),
+                escape_attr_display(common.style),
                 escape_xml_display(&stroke_d),
                 escape_xml_display(common.stroke_color),
                 fmt_display(common.stroke_width as f64),
                 escape_xml_display(common.stroke_dasharray),
-                escape_xml_display(common.style),
+                escape_attr_display(common.style),
             );
         }
     } else if common.look_is_hand_drawn() {
@@ -126,7 +126,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stacked_document(
             escape_xml_display(common.fill_color),
             escape_xml_display(common.stroke_color),
             fmt_display(common.stroke_width as f64),
-            escape_xml_display(common.style),
+            escape_attr_display(common.style),
         );
     }
     out.push_str("</g></g>");

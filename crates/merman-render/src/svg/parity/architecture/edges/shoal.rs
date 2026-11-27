@@ -10,7 +10,6 @@ use crate::graph_layout::route_paint::RouteStyle;
 use crate::model::{ArchitectureDiagramLayout, LayoutEdge, LayoutPoint};
 use crate::{Error, Result};
 use base64::Engine as _;
-use merman_theme_contract::v2::EdgeStyle;
 use std::borrow::Cow;
 
 pub(super) struct Shaft<'a> {
@@ -23,7 +22,6 @@ impl<'a> Shaft<'a> {
         geometry: &ArchitectureShoalGeometry,
         layout: &'a ArchitectureDiagramLayout,
         ordinal: usize,
-        edge_style: Option<EdgeStyle>,
         work_meter: &crate::resources::OperationWorkMeter,
         scratch: &'a mut CanonicalPaintScratch,
     ) -> Result<Self> {
@@ -33,18 +31,15 @@ impl<'a> Shaft<'a> {
             .ok_or_else(|| Error::InvalidModel {
                 message: format!("Missing Architecture route edge-{ordinal}"),
             })?;
-        let route_style = match edge_style {
-            // Grid Core solves orthogonal 90-degree routes without curved gap guards;
-            // bounded rounded corners preserve architectural legs instead of sweeping them.
-            Some(EdgeStyle::Curved) => RouteStyle::Rounded(10.0),
-            Some(EdgeStyle::Straight | EdgeStyle::Sketch) => RouteStyle::Linear,
-            Some(EdgeStyle::Orthogonal) | None => RouteStyle::Step,
+        let route_style = match geometry.route_style {
+            // Bound the bend within the grid's right-angle channels.
+            RouteStyle::Curved => RouteStyle::Rounded(10.0),
+            style => style,
         };
-        let stroke_outset = edge_style.map_or(0.0, |_| geometry.edge_stroke_outset);
         let painted = geometry.routes.paint_with_borrowed_points(
             edge,
             kurbo::Vec2::ZERO,
-            stroke_outset,
+            geometry.edge_stroke_outset,
             route_style,
             work_meter,
             scratch,

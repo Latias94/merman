@@ -8,6 +8,7 @@
 #![forbid(unsafe_code)]
 
 mod fallback;
+mod foreign_objects;
 pub(crate) use fallback::measure_styled_html_label;
 #[cfg_attr(
     not(feature = "all-diagrams"),

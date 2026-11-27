@@ -188,7 +188,10 @@ impl RequirementPaintThemePlan {
             let fill_style_attr = if fill_style.is_empty() {
                 String::new()
             } else {
-                format!(r#" style="{}""#, crate::svg::escape_xml(&fill_style))
+                format!(
+                    r#" style="{}""#,
+                    merman_render_core::xml::escape_attr_display(&fill_style)
+                )
             };
             let mut stroke_style = path_style.to_owned();
             if source_owns_stroke {
@@ -200,7 +203,10 @@ impl RequirementPaintThemePlan {
             let stroke_style_attr = if stroke_style.is_empty() {
                 String::new()
             } else {
-                format!(r#" style="{}""#, crate::svg::escape_xml(&stroke_style))
+                format!(
+                    r#" style="{}""#,
+                    merman_render_core::xml::escape_attr_display(&stroke_style)
+                )
             };
             let visual = RequirementNodeVisual {
                 label_styles: source.label_styles,

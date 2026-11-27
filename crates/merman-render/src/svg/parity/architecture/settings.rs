@@ -2,6 +2,8 @@ use crate::text::TextStyle;
 
 use super::super::SvgDiagramId;
 
+pub(super) const OPEN_ARROW_STROKE_WIDTH: f64 = 1.5;
+
 #[derive(Clone)]
 pub(super) struct ArchitectureRenderSettings {
     pub(super) css: String,
@@ -9,6 +11,7 @@ pub(super) struct ArchitectureRenderSettings {
     pub(super) half_icon: f64,
     pub(super) padding_px: f64,
     pub(super) arch_font_size_px: f64,
+    pub(super) edge_stroke_outset: f64,
     pub(super) use_max_width: bool,
     pub(super) text_style: TextStyle,
     pub(super) compound_text_style: TextStyle,
@@ -27,7 +30,7 @@ impl ArchitectureRenderSettings {
             self.css,
             "#{diagram_id} .architecture-services text,#{diagram_id} .architecture-groups text,#{diagram_id} .architecture-edges text{{fill:{};}}\
              #{diagram_id} .node-icon-text>div{{color:{};}}\
-             #{diagram_id} .arrow-open{{fill:none;stroke:{};stroke-width:1.5px;stroke-linejoin:round;stroke-linecap:round;}}",
+             #{diagram_id} .arrow-open{{fill:none;stroke:{};stroke-width:{OPEN_ARROW_STROKE_WIDTH}px;stroke-linejoin:round;stroke-linecap:round;}}",
             native.text_ink, native.icon_ink, binding.arrow_color,
         );
     }
@@ -60,6 +63,7 @@ impl ArchitectureRenderSettings {
             half_icon: binding.icon_size_px / 2.0,
             padding_px: binding.padding_px,
             arch_font_size_px: binding.arch_font_size_px,
+            edge_stroke_outset: binding.edge_stroke_outset(),
             use_max_width: binding.use_max_width,
             text_style: typography.svg_text_style(),
             compound_text_style: crate::architecture::architecture_cytoscape_text_style(
@@ -164,6 +168,7 @@ mod tests {
             Some(r#""IBM Plex Sans",Arial,sans-serif"#)
         );
         assert_eq!(prepared.text_style.font_size, 19.0);
+        assert_eq!(prepared.edge_stroke_outset, 19.0);
         assert_eq!(
             prepared.compound_text_style.font_family.as_deref(),
             Some("Helvetica Neue,Helvetica,sans-serif")

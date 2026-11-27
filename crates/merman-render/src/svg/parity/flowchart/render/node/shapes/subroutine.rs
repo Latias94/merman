@@ -37,11 +37,23 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_subroutine(
     {
         let _ = write!(
             out,
-            r#"<g class="basic label-container" style="{}"><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"/>"#,
+            r#"<g class="basic label-container" style="{}">"#,
             escape_attr(common.rough_group_style),
-            escape_attr(&fill),
-            escape_attr(common.fill_color),
-            HAND_DRAWN_FILL_WEIGHT,
+        );
+        let frame = if common.solid_rough_fill {
+            use kurbo::Shape;
+            kurbo::Rect::from_center_size((0.0, 0.0), (total_w, h))
+                .to_path(0.05)
+                .to_svg()
+        } else {
+            String::new()
+        };
+        super::super::helpers::write_hand_drawn_hachure(
+            out,
+            common,
+            &frame,
+            &fill,
+            f64::from(HAND_DRAWN_FILL_WEIGHT),
         );
         write_outline(out, common, &outline);
         out.push_str("</g>");

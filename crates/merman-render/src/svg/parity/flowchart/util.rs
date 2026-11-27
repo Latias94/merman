@@ -17,20 +17,3 @@ impl std::fmt::Display for OptionalStyleAttr<'_> {
         )
     }
 }
-
-pub(super) struct OptionalStyleXmlAttr<'a>(pub(super) &'a str);
-
-impl std::fmt::Display for OptionalStyleXmlAttr<'_> {
-    #[inline]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = self.0.trim();
-        if s.is_empty() {
-            return Ok(());
-        }
-        write!(
-            f,
-            r#" style="{}""#,
-            super::super::util::escape_xml_display(s)
-        )
-    }
-}

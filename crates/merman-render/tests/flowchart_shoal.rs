@@ -509,11 +509,9 @@ flowchart LR
             }
         }
         if id == "I" {
-            assert!(
-                paths
-                    .iter()
-                    .any(|path| path.attribute("stroke") == Some("#ABCDEF"))
-            );
+            assert!(paths.iter().any(|path| path.attribute("class")
+                == Some("merman-rough-backing")
+                && path.attribute("fill") == Some("#ABCDEF")));
             assert!(paths.iter().any(|path| {
                 path.attribute("stroke") == Some("#123456")
                     && path.attribute("stroke-width") == Some("2")
@@ -911,228 +909,279 @@ fn positioned_titles_and_local_directions_reach_painted_group_frames() {
 }
 
 #[cfg(feature = "layout-shoal")]
-fn assert_struck_title_halo(keyword: &str, group_keyword: &str) {
-    use merman_render::svg::SvgPipeline;
+#[path = "../src/family/flowchart_layout_tests/title_fixtures.rs"]
+mod title_fixtures;
+
+#[cfg(feature = "layout-shoal")]
+fn assert_edges_clear_title(
+    layout: &merman_render::model::FlowchartLayout,
+    svg: &str,
+    group: &str,
+) {
+    use kurbo::{BezPath, Line, ParamCurve, Rect, Vec2};
+    use svgtypes::{TransformListParser, TransformListToken};
+
+    let doc = roxmltree::Document::parse(svg).unwrap();
+    let title = &layout
+        .clusters
+        .iter()
+        .find(|cluster| cluster.id == group)
+        .unwrap()
+        .title_label;
+    assert!(title.width > 0.0 && title.height > 0.0);
+    assert!(
+        !doc.descendants()
+            .any(|node| node.attribute("data-merman-title-struck").is_some())
+    );
+    let label = doc
+        .descendants()
+        .find(|node| {
+            node.attribute("data-et") == Some("cluster") && node.attribute("data-id") == Some(group)
+        })
+        .unwrap()
+        .children()
+        .find(|node| node.attribute("class") == Some("cluster-label"))
+        .unwrap();
+    let translation = |node: roxmltree::Node<'_, '_>| -> Vec2 {
+        node.ancestors()
+            .filter_map(|node| node.attribute("transform"))
+            .flat_map(TransformListParser::from)
+            .map(|transform| {
+                let TransformListToken::Translate { tx, ty } = transform.unwrap() else {
+                    panic!("expected translated route and title frame");
+                };
+                Vec2::new(tx, ty)
+            })
+            .sum()
+    };
+    let top_left = translation(label).to_point();
+    let title_box = Rect::from_origin_size(top_left, (title.width, title.height)).inset(-0.01);
+    let corners = [
+        (title_box.x0, title_box.y0),
+        (title_box.x1, title_box.y0),
+        (title_box.x1, title_box.y1),
+        (title_box.x0, title_box.y1),
+    ];
+    let edges = doc
+        .descendants()
+        .filter(|node| node.attribute("data-edge") == Some("true"))
+        .collect::<Vec<_>>();
+    assert!(!edges.is_empty());
+    for edge in edges {
+        let path = BezPath::from_svg(edge.attribute("d").unwrap()).unwrap();
+        let edge_origin = translation(edge);
+        for segment in path.segments() {
+            assert!(
+                !title_box.contains(segment.start() + edge_origin)
+                    && !title_box.contains(segment.end() + edge_origin)
+                    && (0..4).all(|i| {
+                        let side = Line::new(corners[i], corners[(i + 1) % 4]);
+                        segment
+                            .intersect_line(Line::new(side.p0 - edge_origin, side.p1 - edge_origin))
+                            .is_empty()
+                    }),
+                "edge {:?} intersects the title of {group}",
+                edge.attribute("data-id"),
+            );
+        }
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+fn render_native_title_fixture(
+    source: &str,
+    variant: &str,
+    theme: &[u8],
+) -> (
+    merman_render::model::FlowchartLayout,
+    merman_render::family::RenderedFamilySvg,
+) {
     use merman_render::theme::{NativeTheme, ThemeCompiler};
 
-    for html_labels in [false, true] {
-        let source = format!(
-            "---\nconfig:\n  layout: shoal\n  htmlLabels: {html_labels}\n---\n\
-             {keyword} TB\n\
-             {group_keyword} Parent[Parent]\n\
-             {group_keyword} G[A long title with no room beside the entering route]\n\
-             A[Short]\nend\nend\n\
-             Outside trunk@--> A\n\
-             style Parent fill:#FF0000\nstyle G fill:#0000FF80\n"
-        );
-        let parsed = parse(&source);
-        let theme = ThemeCompiler::new()
-            .compile_json(
-                br#"{"schema_version":2,"extends":"paper","form":{"elevation":"flat"}}"#,
-                None,
-            )
-            .unwrap();
-        let session = RenderEnvironment::deterministic()
-            .begin_session_with_native_theme(NativeTheme::new(theme))
-            .unwrap();
-        let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
-            .unwrap()
-            .render_svg(&Default::default(), &Default::default())
-            .unwrap();
-        let check = |svg: &str, contains_html: bool| {
-            let doc = roxmltree::Document::parse(svg).unwrap();
-            let edge = doc
-                .descendants()
-                .find(|node| {
-                    node.attribute("data-et") == Some("edge")
-                        && node.attribute("data-id") == Some("trunk")
+    let parsed = parse(source);
+    let theme = ThemeCompiler::new().compile_json(theme, None).unwrap();
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_native_theme(NativeTheme::new(theme))
+        .unwrap();
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
+    let layout =
+        serde_json::from_value(artifact.layout_json().unwrap()["layout"][variant].clone()).unwrap();
+    let rendered = artifact
+        .render_svg(&Default::default(), &Default::default())
+        .unwrap();
+    (layout, rendered)
+}
+
+#[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
+#[test]
+fn flowchart_shoal_dark_title_stays_clear_and_preserves_authored_color_in_resvg_safe() {
+    let (layout, rendered) = render_native_title_fixture(
+        title_fixtures::DARK_CLUSTER,
+        "FlowchartV2",
+        title_fixtures::STUDIO,
+    );
+    assert_edges_clear_title(&layout, rendered.svg(), "prod");
+    let finalized = rendered
+        .finalize_resvg(&merman_render::svg::SvgPipeline::resvg_safe())
+        .unwrap();
+    let doc = roxmltree::Document::parse(finalized.svg().as_str()).unwrap();
+    let text = doc
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("text")
+                && node.descendants().any(|node| {
+                    node.is_text() && node.text().is_some_and(|text| text.contains("Production"))
                 })
-                .unwrap();
-            let titles: Vec<_> = doc
-                .descendants()
-                .filter(|node| node.attribute("data-merman-title-struck") == Some("true"))
-                .collect();
-            assert_eq!(titles.len(), 1);
-            let title = titles[0];
-            let mut groups = doc.descendants().filter(|node| {
-                node.attribute("data-et") == Some("cluster")
-                    && node.attribute("data-id") == Some("G")
-            });
-            let group = groups.next().unwrap();
-            assert!(groups.next().is_none());
-            let group_id = group.attribute("id").unwrap();
-            assert_eq!(
-                title.attribute("data-merman-cluster-title-for"),
-                Some(group_id)
-            );
-            assert_eq!(
-                doc.descendants()
-                    .filter(|n| n.attribute("id") == Some(group_id))
-                    .count(),
-                1
-            );
-            let outline = group
-                .children()
-                .find(|node| node.has_tag_name("rect"))
-                .unwrap();
-            assert!(outline.range().start < edge.range().start);
-            assert!(edge.range().start < title.range().start);
-            assert_eq!(title.attribute("paint-order"), Some("stroke"));
-            assert_eq!(title.attribute("stroke"), Some("#7F0080"));
-            assert_eq!(title.attribute("stroke-width"), Some("5"));
-            assert_eq!(
-                title
-                    .descendants()
-                    .any(|node| node.has_tag_name("foreignObject")),
-                contains_html,
-            );
-            if contains_html {
-                let span = title
-                    .descendants()
-                    .find(|node| {
-                        node.has_tag_name("span") && node.attribute("class") == Some("nodeLabel")
-                    })
-                    .expect("struck HTML title span");
-                let style = span.attribute("style").unwrap_or_default();
-                assert!(
-                    style.contains("-webkit-text-stroke:5px #7F0080"),
-                    "struck HTML title halo must keep raw hex color instead of entity-decoding `#`: {style}"
-                );
-                assert!(!style.contains("&7F0080"));
-            }
-            assert!(title.descendants().any(|node| node.has_tag_name("text")));
-        };
-        check(rendered.svg(), html_labels);
-        let finalized = rendered.finalize_resvg(&SvgPipeline::resvg_safe()).unwrap();
-        assert!(
-            !finalized.svg().as_str().contains("<switch"),
-            "resvg_safe should unwrap struck-title switch fallback"
-        );
-        check(finalized.svg().as_str(), false);
+        })
+        .expect("native SVG title text");
+    assert!(
+        text.ancestors().any(|node| {
+            node.attribute("fill")
+                .is_some_and(|fill| fill.eq_ignore_ascii_case("#ffffff"))
+                || node
+                    .attribute("style")
+                    .is_some_and(|style| style.contains("fill:#ffffff"))
+        }),
+        "dark cluster title must carry the authored color: {text:?}"
+    );
+}
+
+#[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
+#[test]
+fn flowchart_shoal_compatibility_title_clears_entering_edge() {
+    let source = title_fixtures::nested_title("flowchart", "subgraph", false, false);
+    let (layout, svg) = render(&source, "FlowchartV2");
+    assert_edges_clear_title(&layout, &svg, "G");
+}
+
+#[cfg(all(feature = "diagram-agentflow", feature = "layout-shoal"))]
+#[test]
+fn agentflow_shoal_palette_title_clears_entering_edge() {
+    let source = title_fixtures::nested_title("agentflow-beta", "flow", false, false);
+    let (layout, svg) = render(&source, "AgentflowDiagram");
+    assert_edges_clear_title(&layout, &svg, "G");
+}
+
+#[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
+#[test]
+fn flowchart_shoal_nested_title_clears_entering_edge_in_both_label_modes() {
+    for html in [false, true] {
+        let source = title_fixtures::nested_title("flowchart", "subgraph", html, true);
+        let (layout, svg) =
+            render_native_title_fixture(&source, "FlowchartV2", title_fixtures::PAPER_FLAT);
+        assert_edges_clear_title(&layout, svg.svg(), "G");
     }
 }
 
 #[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
 #[test]
-fn flowchart_shoal_dark_struck_title_preserves_authored_color_in_resvg_safe() {
+fn compound_step_routes_preserve_title_clearance_and_svg_references_across_themes() {
     use merman_render::svg::SvgPipeline;
-    use merman_render::theme::{NativeTheme, ThemeCompiler};
+    use merman_render::theme::{Appearance, BuiltinPreset, Color, NativeTheme, ThemeCompiler};
+    use std::collections::HashSet;
 
-    let source = "\
----
-config:
-  layout: shoal
----
-flowchart TD
-  req([Pull Request]) --> gate{CI Gate}
-  subgraph ci[Verification]
-    direction TB
-    unit[Unit Tests]
-    lint[Static Checks]
-  end
-  subgraph prod[Production Deploy]
-    rollout[Canary Rollout]
-  end
-  gate -->|Fast Path| unit
-  gate -->|Policy| lint
-  unit --> rollout
-  lint --> rollout
-  style prod fill:#1e3a5f,stroke:#60a5fa,color:#ffffff
-";
-    let parsed = parse(source);
-    let theme = ThemeCompiler::new()
-        .compile_json(br#"{"schema_version":2,"extends":"studio"}"#, None)
+    let compiler = ThemeCompiler::new();
+    let studio_dark = compiler
+        .compile_preset(BuiltinPreset::Studio, Some(Appearance::Dark))
         .unwrap();
-    let session = RenderEnvironment::deterministic()
-        .begin_session_with_native_theme(NativeTheme::new(theme))
+    let blueprint = compiler
+        .compile_preset(BuiltinPreset::Blueprint, None)
         .unwrap();
-    let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
-        .unwrap()
-        .render_svg(&Default::default(), &Default::default())
-        .unwrap();
-    let finalized = rendered.finalize_resvg(&SvgPipeline::resvg_safe()).unwrap();
-    let svg = finalized.svg().as_str();
-    assert!(!svg.contains("<switch"), "resvg_safe must unwrap <switch>");
-    let doc = roxmltree::Document::parse(svg).unwrap();
-    let title = doc
-        .descendants()
-        .find(|node| node.attribute("data-merman-title-struck") == Some("true"))
-        .expect("struck dark cluster title");
-    let text = title
-        .descendants()
-        .find(|node| node.has_tag_name("text"))
-        .expect("native SVG <text> fallback");
-    let style = text.attribute("style").unwrap_or_default();
-    assert!(
-        style.contains("fill:#ffffff !important"),
-        "dark struck cluster title fallback must carry authored fill: {style}"
-    );
-}
+    let references = regex::Regex::new(r#"(?i)url\(\s*['"]?#([^)\s'"]+)"#).unwrap();
 
-#[cfg(feature = "layout-shoal")]
-fn assert_compatibility_struck_title_fill(
-    keyword: &str,
-    group_keyword: &str,
-    variant: &str,
-    expected_fill: &str,
-) {
-    let source = format!(
-        "---\nconfig:\n  layout: shoal\n  theme: redux-color\n  look: neo\n  htmlLabels: false\n---\n\
-         {keyword} TB\n\
-         {group_keyword} Parent[Parent]\n\
-         {group_keyword} G[A long title with no room beside the entering route]\n\
-         A[Short]\nend\nend\n\
-         Outside trunk@--> A\n",
-    );
-    let (_, svg) = render(&source, variant);
-    let document = roxmltree::Document::parse(&svg).unwrap();
-    let title = document
-        .descendants()
-        .find(|node| node.attribute("data-merman-title-struck") == Some("true"))
-        .unwrap();
-    assert_eq!(title.attribute("stroke"), Some(expected_fill));
-    assert_eq!(title.attribute("stroke-width"), Some("5"));
-
-    let group_id = title.attribute("data-merman-cluster-title-for").unwrap();
-    let group = document
-        .descendants()
-        .find(|node| node.attribute("id") == Some(group_id))
-        .unwrap();
-    let rect = group
-        .children()
-        .find(|node| node.has_tag_name("rect"))
-        .unwrap();
-    assert!(
-        rect.attribute("style")
-            .unwrap()
-            .split(';')
-            .filter_map(|decl| decl.split_once(':'))
-            .any(|(property, value)| property == "fill" && value == expected_fill)
-    );
-}
-
-#[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
-#[test]
-fn flowchart_shoal_struck_title_matches_the_compatibility_cluster_fill() {
-    assert_compatibility_struck_title_fill("flowchart", "subgraph", "FlowchartV2", "#F9F9FB");
+    for (theme, native, transparent) in [
+        ("studio-dark", Some(&studio_dark), false),
+        ("blueprint", Some(&blueprint), false),
+        ("forest", None, false),
+        ("transparent", Some(&studio_dark), true),
+    ] {
+        for look in ["neo", "handDrawn"] {
+            for direction in ["LR", "BT", "RL"] {
+                for curve in ["stepBefore", "stepAfter"] {
+                    let case = format!("{theme} {look} {direction} {curve}");
+                    let compat_theme = if native.is_none() {
+                        "  theme: forest\n"
+                    } else {
+                        ""
+                    };
+                    let source = format!(
+                        "---\nconfig:\n  layout: shoal\n  look: {look}\n  htmlLabels: false\n{compat_theme}---\n\
+                         flowchart {direction}\n\
+                         subgraph G[Container with a long title]\nA[Inside] --> B[Next]\nend\n\
+                         Outside route@-->|Caption| A\nroute@{{curve: {curve}}}\n"
+                    );
+                    let parsed = parse(&source);
+                    let environment = RenderEnvironment::deterministic();
+                    let mut session = match native {
+                        Some(theme) => environment
+                            .begin_session_with_native_theme(NativeTheme::new((*theme).clone())),
+                        None => environment.begin_session(),
+                    }
+                    .unwrap();
+                    if transparent {
+                        session = session.with_canvas_background(Color::TRANSPARENT);
+                    }
+                    let prepared = family::prepare(&parsed, &LayoutOptions::default(), session)
+                        .unwrap_or_else(|error| panic!("{case}: {error}"));
+                    let layout = serde_json::from_value(
+                        prepared.layout_json().unwrap()["layout"]["FlowchartV2"].clone(),
+                    )
+                    .unwrap();
+                    let rendered = prepared
+                        .render_svg(&Default::default(), &Default::default())
+                        .unwrap_or_else(|error| panic!("{case}: {error}"));
+                    let svg = rendered.svg().to_owned();
+                    assert_edges_clear_title(&layout, &svg, "G");
+                    let resvg = rendered.finalize_resvg(&SvgPipeline::resvg_safe()).unwrap();
+                    for svg in [svg.as_str(), resvg.svg().as_str()] {
+                        let doc = roxmltree::Document::parse(svg)
+                            .unwrap_or_else(|error| panic!("{case}: {error}"));
+                        let mut ids = HashSet::new();
+                        for id in doc.descendants().filter_map(|node| node.attribute("id")) {
+                            assert!(ids.insert(id), "{case}: duplicate id {id}");
+                        }
+                        for node in doc.descendants().filter(roxmltree::Node::is_element) {
+                            let paints = node.attributes().filter(|attr| {
+                                matches!(
+                                    attr.name(),
+                                    "style"
+                                        | "fill"
+                                        | "stroke"
+                                        | "clip-path"
+                                        | "mask"
+                                        | "filter"
+                                        | "marker-start"
+                                        | "marker-mid"
+                                        | "marker-end"
+                                )
+                            });
+                            let css = node.has_tag_name("style").then(|| node.text()).flatten();
+                            for paint in paints.map(|attr| attr.value()).chain(css) {
+                                for capture in references.captures_iter(paint) {
+                                    assert!(
+                                        ids.contains(&capture[1]),
+                                        "{case}: missing {}",
+                                        &capture[1]
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[cfg(all(feature = "diagram-agentflow", feature = "layout-shoal"))]
 #[test]
-fn agentflow_shoal_struck_title_matches_the_palette_cluster_fill() {
-    assert_compatibility_struck_title_fill("agentflow-beta", "flow", "AgentflowDiagram", "#EEF2FF");
-}
-
-#[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
-#[test]
-fn flowchart_shoal_struck_titles_keep_their_surface_halo_in_static_svg() {
-    assert_struck_title_halo("flowchart", "subgraph");
-}
-
-#[cfg(all(feature = "diagram-agentflow", feature = "layout-shoal"))]
-#[test]
-fn agentflow_shoal_struck_titles_keep_their_surface_halo_in_static_svg() {
-    assert_struck_title_halo("agentflow-beta", "flow");
+fn agentflow_shoal_nested_title_clears_entering_edge_in_both_label_modes() {
+    for html in [false, true] {
+        let source = title_fixtures::nested_title("agentflow-beta", "flow", html, true);
+        let (layout, svg) =
+            render_native_title_fixture(&source, "AgentflowDiagram", title_fixtures::PAPER_FLAT);
+        assert_edges_clear_title(&layout, svg.svg(), "G");
+    }
 }
 
 #[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]

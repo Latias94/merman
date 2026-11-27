@@ -333,7 +333,15 @@ impl FlowchartPreparedNodes {
             render_context,
             use_projected_edges,
         );
-        let render_model = crate::flowchart::FlowchartRenderModelRef::new(model, render_context);
+        let mut render_model =
+            crate::flowchart::FlowchartRenderModelRef::new(model, render_context);
+        if matches!(layout, FlowchartNodeLayoutView::Flowchart(layout) if layout.route_contract.is_canonical_axis())
+        {
+            render_model = render_model.with_shoal_svg_text(
+                render_config.node_html_labels,
+                render_config.edge_html_labels,
+            );
+        }
         let selection_inputs = super::node_style::NodeSelectionInputs::new(
             &prepared_theme.compatibility,
             render_config,

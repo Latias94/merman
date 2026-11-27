@@ -1232,7 +1232,7 @@ fn count_crossings_impl(
                             } else {
                                 (other as u32, edge as u32)
                             };
-                            if !crossed.contains(pair)
+                            if !crossed.contains(pair, work)?
                                 && !bounds_in_shared_fan(
                                     bounds,
                                     candidate.bounds,

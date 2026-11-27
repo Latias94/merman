@@ -141,6 +141,65 @@ fn shoal_flowchart_paints_fill_boundaries_and_adapts_internal_markers() {
 
 #[cfg(feature = "diagram-flowchart")]
 #[test]
+fn shoal_hand_drawn_edges_adapt_over_dark_cluster_and_hatches_have_a_backing() {
+    let svg = render(
+        "flowchart",
+        "shoal",
+        "handDrawn",
+        "subgraph G[Dark group]\nA([Start]) inside@<--> DB[(Database)]\nend\n\
+         X crossing@-.-> A\nstyle G fill:#0B1120\n",
+        false,
+    );
+    let doc = Document::parse(&svg).unwrap();
+    let internal = edge(&doc, "inside");
+    assert!(
+        internal
+            .attribute("style")
+            .unwrap()
+            .contains("stroke:#FFFFFF;")
+    );
+    for marker in ["marker-start", "marker-end"] {
+        assert_eq!(
+            marker_shape(&doc, internal, marker).attribute("stroke"),
+            Some("#FFFFFF")
+        );
+    }
+    let crossing = edge(&doc, "crossing");
+    let casing = doc
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("path")
+                && node.attribute("d") == crossing.attribute("d")
+                && node.parent().and_then(|parent| parent.attribute("class"))
+                    == Some("merman-edge-casings")
+        })
+        .expect("solid colored cluster has a casing on the actual rough crossing path");
+    assert_eq!(casing.attribute("stroke-dasharray"), Some("2"));
+    for id in ["A", "DB"] {
+        let node = doc
+            .descendants()
+            .find(|node| {
+                node.attribute("data-et") == Some("node") && node.attribute("data-id") == Some(id)
+            })
+            .unwrap();
+        let backing = node
+            .descendants()
+            .find(|node| node.attribute("class") == Some("merman-rough-backing"))
+            .expect("opaque node paint beneath rough hatches");
+        assert_eq!(backing.attribute("stroke"), Some("none"));
+        let hatch = backing.next_sibling_element().unwrap();
+        assert!(
+            hatch
+                .attribute("style")
+                .unwrap()
+                .contains("stroke-opacity:0.15")
+        );
+        assert!(backing.range().end <= hatch.range().start);
+    }
+}
+
+#[cfg(feature = "diagram-flowchart")]
+#[test]
 fn shoal_flowchart_uses_the_parent_paint_at_a_nested_boundary() {
     let svg = render(
         "flowchart",

@@ -1,8 +1,8 @@
 //! Source-faithful labels and frozen Flowchart render facts.
 
 use super::{
-    FlowEdge, FlowNode, FlowSubgraph, FlowchartModel, FlowchartRenderLabelSources,
-    FlowchartSubgraphStyles,
+    FlowEdge, FlowNode, FlowSubgraph, FlowchartLabelSourceOwner, FlowchartModel,
+    FlowchartRenderLabelSources, FlowchartSubgraphStyles,
 };
 use crate::{OperationControl, OperationControlResult};
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -196,6 +196,11 @@ impl FlowchartRenderContext {
     }
 
     #[doc(hidden)]
+    pub fn svg_text_source(&self, owner: FlowchartLabelSourceOwner<'_>) -> Option<&str> {
+        self.labels.svg_text_source(owner)
+    }
+
+    #[doc(hidden)]
     /// Returns the source-faithful label for one edge at its semantic model ordinal.
     ///
     /// The ordinal is required because Mermaid permits duplicate edge ids.
@@ -279,14 +284,7 @@ impl FlowchartRenderContext {
 
     /// Counts context text not already owned by this model's shared label allocation.
     pub fn retained_bytes_for_model(&self, model: &FlowchartModel) -> usize {
-        let label_bytes = self.labels.retained_bytes();
-        let shared = if self.labels.shares_storage_with(&model.label_sources) {
-            label_bytes
-        } else {
-            0
-        };
-        self.retained_bytes_with_labels(label_bytes)
-            .saturating_sub(shared)
+        self.retained_bytes_with_labels(self.labels.unshared_retained_bytes(&model.label_sources))
     }
 }
 

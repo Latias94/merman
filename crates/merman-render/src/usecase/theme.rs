@@ -2,6 +2,7 @@
 
 use crate::config::{config_f64, config_string};
 use crate::text::TextStyle;
+use merman_theme_contract::v2::{EdgeStyle, MarkerStyle};
 use serde_json::Value;
 
 #[derive(Debug, Clone)]
@@ -41,6 +42,12 @@ impl std::fmt::Display for UsecaseCssPaint {
 }
 
 #[derive(Debug)]
+pub(crate) struct UsecaseMermaidLook {
+    pub(crate) css: crate::svg::PreparedCommonNeoCss,
+    pub(crate) defs: crate::svg::PreparedLookDefs,
+}
+
+#[derive(Debug)]
 pub(crate) struct UsecaseCssBinding {
     pub(crate) generic_font: TextStyle,
     pub(crate) root_font: TextStyle,
@@ -71,8 +78,10 @@ pub(crate) struct UsecaseCssBinding {
     pub(crate) edge_look: String,
     pub(crate) rotate: bool,
     pub(crate) hand_drawn_seed: f64,
-    pub(crate) neo: crate::svg::PreparedCommonNeoCss,
-    pub(crate) look_defs: crate::svg::PreparedLookDefs,
+    native_edge_style: Option<EdgeStyle>,
+    pub(crate) marker_style: MarkerStyle,
+    pub(crate) connector_width: f64,
+    pub(crate) mermaid_look: Option<UsecaseMermaidLook>,
     pub(crate) native_title_font: Option<TextStyle>,
 }
 
@@ -165,8 +174,13 @@ impl UsecaseCssBinding {
                 .and_then(Value::as_str)
                 == Some("rotate"),
             hand_drawn_seed: config_f64(config, &["handDrawnSeed"]).unwrap_or(0.0),
-            neo: crate::svg::PreparedCommonNeoCss::new(config),
-            look_defs: crate::svg::PreparedLookDefs::new(config),
+            native_edge_style: None,
+            marker_style: MarkerStyle::Classic,
+            connector_width: 1.0,
+            mermaid_look: Some(UsecaseMermaidLook {
+                css: crate::svg::PreparedCommonNeoCss::new(config),
+                defs: crate::svg::PreparedLookDefs::new(config),
+            }),
             native_title_font: None,
         }
     }
@@ -180,6 +194,11 @@ impl UsecaseCssBinding {
         use merman_theme_contract::v2::EdgeLabelBackground;
 
         let roles = &theme.roles;
+        if !config.explicit_config_owns_path("flowchart.curve") {
+            self.native_edge_style = Some(theme.form.edge_style);
+        }
+        self.marker_style = theme.form.marker_style;
+        self.connector_width = theme.form.connector_width;
         let paint = |binding: &mut UsecaseCssPaint, color: crate::theme::Color| {
             if !binding.variable.is_some_and(|key| {
                 config.explicit_config_owns_path(&format!("themeVariables.{key}"))
@@ -225,6 +244,7 @@ impl UsecaseCssBinding {
         paint(&mut self.edge_background, edge_label);
         self.palette.clear();
         self.backgrounds.clear();
+        self.mermaid_look = None;
 
         let typography = &theme.typography;
         let family = crate::theme::font_family_css(typography.stack(typography.body_family));
@@ -245,6 +265,18 @@ impl UsecaseCssBinding {
             font_weight: Some(typography.title_weight.to_string()),
             ..TextStyle::default()
         });
+    }
+
+    pub(crate) fn native_curve(&self) -> Option<&'static str> {
+        self.native_edge_style.map(|style| match style {
+            EdgeStyle::Curved => "basis",
+            EdgeStyle::Orthogonal => "step",
+            EdgeStyle::Straight | EdgeStyle::Sketch => "linear",
+        })
+    }
+
+    pub(crate) fn sketches_edges(&self) -> bool {
+        self.native_edge_style == Some(EdgeStyle::Sketch)
     }
 }
 

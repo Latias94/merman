@@ -1,6 +1,6 @@
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
-use merman_render::environment::RenderEnvironment;
+use merman_render::environment::{RenderEnvironment, RenderSession};
 use merman_render::family;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
@@ -12,18 +12,61 @@ fn render_er(layout: &str, look: &str) -> String {
 }
 
 fn render_er_source(source: &str) -> String {
+    render_er_in_session(
+        source,
+        RenderEnvironment::deterministic().begin_session().unwrap(),
+    )
+}
+
+fn render_er_in_session(source: &str, session: RenderSession) -> String {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::default())
         .unwrap()
         .unwrap()
         .into_presentation();
-    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .unwrap()
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .unwrap()
         .svg()
         .to_owned()
+}
+
+#[test]
+fn er_classic_zero_markers_respect_the_canvas() {
+    use merman_render::theme::Color;
+
+    let environment = RenderEnvironment::deterministic();
+    let source =
+        "---\nconfig:\n  layout: dagre\n  look: classic\n---\nerDiagram\nA |o--o{ B : owns\n";
+    for (background, fill) in [
+        (Color::TRANSPARENT, "none"),
+        (Color::rgb(18, 52, 86), "#123456"),
+    ] {
+        let session = environment
+            .begin_session()
+            .unwrap()
+            .with_canvas_background(background);
+        let svg = render_er_in_session(source, session);
+        let doc = roxmltree::Document::parse(&svg).unwrap();
+        let circles = doc
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("circle") && node.parent().unwrap().has_tag_name("marker")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(circles.len(), 4);
+        for circle in circles {
+            assert_eq!(circle.attribute("fill"), Some(fill));
+        }
+        if fill == "none" {
+            let edge = doc
+                .descendants()
+                .find(|node| node.attribute("data-edge") == Some("true"))
+                .unwrap();
+            assert!(edge.attribute("clip-path").is_some());
+        }
+    }
 }
 
 #[test]

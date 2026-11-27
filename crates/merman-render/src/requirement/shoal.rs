@@ -1,14 +1,13 @@
 use super::{
-    RequirementCssBinding, RequirementEdgeLabels, RequirementMeasurements,
+    RequirementCssBinding, RequirementEdgeLabels, RequirementMeasurements, RequirementNativeStyle,
     RequirementNodeRenderPlan, RequirementPreparedArtifact, measure_requirement,
     measure_requirement_relationship, missing_relationship_node, requirement_layout_node,
 };
 use crate::Result;
-use crate::graph_layout::canonical::CanonicalRoutes;
+use crate::graph_layout::canonical::{CanonicalRoutes, CaptionClearance, theme_routing_style};
 use crate::graph_layout::contour::ShapePortProfile;
 use crate::graph_layout::ir::{
-    Direction, Endpoint, Marker, MeasuredEdge, MeasuredGraph, MeasuredNode, RoutingStyle, Side,
-    Size,
+    Direction, Endpoint, Marker, MeasuredEdge, MeasuredGraph, MeasuredNode, Side, Size,
 };
 use crate::graph_layout::placement;
 use crate::layout_work::OperationLayoutWorkControl;
@@ -43,9 +42,10 @@ pub(super) fn layout(
         Direction::Down | Direction::Up => (Side::Top, Side::Left),
         Direction::Right | Direction::Left => (Side::Left, Side::Top),
     };
+    let native = css_binding.native.as_ref();
     let mut graph = MeasuredGraph {
         direction,
-        routing: RoutingStyle::Curved,
+        routing: theme_routing_style(native.map(|style| style.edge_style)),
         node_spacing: settings.nodesep,
         rank_spacing: settings.ranksep,
         component_spacing: settings.nodesep.max(settings.ranksep),
@@ -76,8 +76,11 @@ pub(super) fn layout(
 
     let effective_config = config.as_value();
     let neo = crate::config::config_diagram_look(effective_config).is_neo();
-    let stroke_width = super::RequirementConfigView::new(effective_config).canonical_stroke_width();
-    let (contains_marker, arrow_marker) = relation_markers(neo, stroke_width);
+    let stroke_width = native.map_or_else(
+        || super::RequirementConfigView::new(effective_config).canonical_stroke_width(),
+        |style| style.connector_width,
+    );
+    let (contains_marker, arrow_marker) = relation_markers(neo, stroke_width, native);
     let endpoint = |id: &str, terminal: &str| {
         nodes
             .get_index_of(id)
@@ -126,6 +129,7 @@ pub(super) fn layout(
         &profiles,
         |_| 0.0,
         measured_edges.iter().map(|edge| edge.identity().name),
+        CaptionClearance::Avoid,
         &mut work,
     )?;
     canonical_routes.placement = placement;
@@ -180,7 +184,11 @@ pub(super) fn layout(
     })
 }
 
-fn relation_markers(neo: bool, stroke_width: f64) -> (Marker, Marker) {
+fn relation_markers(
+    neo: bool,
+    stroke_width: f64,
+    native: Option<&RequirementNativeStyle>,
+) -> (Marker, Marker) {
     let half_stroke = stroke_width / 2.0;
     let contains_radius = (9.0 + half_stroke).min(10.0);
     let contains = Marker {
@@ -190,7 +198,16 @@ fn relation_markers(neo: bool, stroke_width: f64) -> (Marker, Marker) {
     };
     let arrow_trim = half_stroke / 5.0_f64.sqrt();
     let arrow_half_width = 10.0 + 2.0 * arrow_trim;
-    let arrow = if neo {
+    let arrow = if native
+        .and_then(RequirementNativeStyle::arrow_path)
+        .is_some()
+    {
+        Marker {
+            trim: 0.0,
+            depth: RequirementNativeStyle::ARROW_SIZE,
+            width: RequirementNativeStyle::ARROW_SIZE,
+        }
+    } else if neo {
         let scale = 20.0 / 25.0;
         Marker {
             trim: arrow_trim.min(5.0) * scale,

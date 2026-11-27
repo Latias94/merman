@@ -18,17 +18,25 @@ use std::cell::Cell;
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
-/// Compact deterministic open-addressed set for canonical `(a, b)` (`a < b`) edge pairs.
-///
-/// Only membership (`contains`), insertion (`insert`), and cardinality (`len`) are exposed;
-/// the table is never iterated, so layout decisions remain 100% deterministic.
-pub(crate) struct PairSet {
-    slots: Vec<u64>,
+/// Deterministic open-addressed storage. A zero key denotes an unoccupied slot, and
+/// the load limit leaves free slots even immediately before growing.
+struct PairTable<T> {
+    slots: Vec<(u64, T)>,
     len: usize,
 }
 
-impl PairSet {
-    pub(crate) fn new() -> Self {
+#[inline]
+fn pair_hash(mut key: u64) -> usize {
+    key ^= key >> 30;
+    key = key.wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    key ^= key >> 27;
+    key = key.wrapping_mul(0x94d0_49bb_1331_11eb);
+    key ^= key >> 31;
+    key as usize
+}
+
+impl<T: Copy + Default> PairTable<T> {
+    fn new() -> Self {
         Self {
             slots: Vec::new(),
             len: 0,
@@ -36,8 +44,97 @@ impl PairSet {
     }
 
     #[inline]
+    fn find_slot(slots: &[(u64, T)], key: u64, work: &mut Work<'_>) -> LayoutResult<usize> {
+        let mask = slots.len() - 1;
+        let mut index = pair_hash(key) & mask;
+        let mut probes = 0;
+        loop {
+            let slot = slots[index].0;
+            probes += 1;
+            if slot == 0 || slot == key {
+                work.visit(probes)?;
+                return Ok(index);
+            }
+            // Bound each unmetered batch, even when many keys share a bucket.
+            if probes == 8 {
+                work.visit(probes)?;
+                probes = 0;
+            }
+            index = (index + 1) & mask;
+        }
+    }
+
+    #[inline]
+    fn get(&self, key: u64, work: &mut Work<'_>) -> LayoutResult<Option<T>> {
+        if self.slots.is_empty() {
+            return Ok(None);
+        }
+        let (slot, value) = self.slots[Self::find_slot(&self.slots, key, work)?];
+        Ok((slot == key).then_some(value))
+    }
+
+    fn insert(
+        &mut self,
+        key: u64,
+        value: T,
+        initial_cap: usize,
+        work: &mut Work<'_>,
+    ) -> LayoutResult<bool> {
+        let cap = self.slots.len();
+        if cap != 0 {
+            let index = Self::find_slot(&self.slots, key, work)?;
+            if self.slots[index].0 == key {
+                self.slots[index].1 = value;
+                return Ok(false);
+            }
+            // 68.75% of the power-of-two capacity.
+            if self.len < (cap >> 1) + (cap >> 3) + (cap >> 4) {
+                self.slots[index] = (key, value);
+                self.len += 1;
+                return Ok(true);
+            }
+        }
+        self.grow(initial_cap, work)?;
+        let index = Self::find_slot(&self.slots, key, work)?;
+        self.slots[index] = (key, value);
+        self.len += 1;
+        Ok(true)
+    }
+
+    fn grow(&mut self, initial_cap: usize, work: &mut Work<'_>) -> LayoutResult<()> {
+        let new_cap = if self.slots.is_empty() {
+            initial_cap
+        } else {
+            self.slots
+                .len()
+                .checked_mul(2)
+                .ok_or(WorkError::ArithmeticOverflow)?
+        };
+        work.charge(new_cap)?;
+        let mut next = filled(new_cap, (0, T::default()))?;
+        for &(key, value) in &self.slots {
+            work.visit(1)?;
+            if key != 0 {
+                let index = Self::find_slot(&next, key, work)?;
+                next[index] = (key, value);
+            }
+        }
+        self.slots = next;
+        Ok(())
+    }
+}
+
+/// Compact set for canonical `(a, b)` edge pairs with `a < b`.
+pub(crate) struct PairSet(PairTable<()>);
+
+impl PairSet {
+    pub(crate) fn new() -> Self {
+        Self(PairTable::new())
+    }
+
+    #[inline]
     pub(crate) fn len(&self) -> usize {
-        self.len
+        self.0.len
     }
 
     #[inline]
@@ -47,144 +144,38 @@ impl PairSet {
     }
 
     #[inline]
-    fn hash(mut key: u64) -> usize {
-        key ^= key >> 30;
-        key = key.wrapping_mul(0xbf58_476d_1ce4_e5b9);
-        key ^= key >> 27;
-        key = key.wrapping_mul(0x94d0_49bb_1331_11eb);
-        key ^= key >> 31;
-        key as usize
-    }
-
-    #[inline]
-    pub(crate) fn contains(&self, pair: (u32, u32)) -> bool {
-        let cap = self.slots.len();
-        if cap == 0 {
-            return false;
-        }
-        let key = Self::encode(pair);
-        let mask = cap - 1;
-        let mut idx = Self::hash(key) & mask;
-        loop {
-            let slot = self.slots[idx];
-            if slot == 0 {
-                return false;
-            }
-            if slot == key {
-                return true;
-            }
-            idx = (idx + 1) & mask;
-        }
-    }
-
-    #[inline]
-    fn load_limit(cap: usize) -> usize {
-        // 68.75% of power-of-two `cap`: overflow-free and division-free.
-        (cap >> 1) + (cap >> 3) + (cap >> 4)
+    pub(crate) fn contains(&self, pair: (u32, u32), work: &mut Work<'_>) -> LayoutResult<bool> {
+        Ok(self.0.get(Self::encode(pair), work)?.is_some())
     }
 
     pub(crate) fn insert(&mut self, pair: (u32, u32), work: &mut Work<'_>) -> LayoutResult<bool> {
-        let key = Self::encode(pair);
-        if !self.slots.is_empty() {
-            let cap = self.slots.len();
-            let mask = cap - 1;
-            let mut idx = Self::hash(key) & mask;
-            let mut probes = 1usize;
-            loop {
-                let slot = self.slots[idx];
-                if slot == key {
-                    if probes > 8 {
-                        work.visit(probes)?;
-                    }
-                    return Ok(false);
-                }
-                if slot == 0 {
-                    if probes > 8 {
-                        work.visit(probes)?;
-                    }
-                    if self.len < Self::load_limit(cap) {
-                        self.slots[idx] = key;
-                        self.len += 1;
-                        return Ok(true);
-                    }
-                    break;
-                }
-                idx = (idx + 1) & mask;
-                probes += 1;
-            }
-        }
-        self.grow(work)?;
-        let mask = self.slots.len() - 1;
-        let mut idx = Self::hash(key) & mask;
-        let mut probes = 1usize;
-        loop {
-            if self.slots[idx] == 0 {
-                if probes > 8 {
-                    work.visit(probes)?;
-                }
-                self.slots[idx] = key;
-                self.len += 1;
-                return Ok(true);
-            }
-            idx = (idx + 1) & mask;
-            probes += 1;
-        }
+        self.0.insert(Self::encode(pair), (), 64, work)
     }
 
     #[cfg(test)]
     pub(crate) fn to_btree_set(&self) -> std::collections::BTreeSet<(u32, u32)> {
-        self.slots
+        self.0
+            .slots
             .iter()
-            .copied()
-            .filter(|&k| k != 0)
-            .map(|k| ((k >> 32) as u32, k as u32))
+            .map(|&(key, ())| key)
+            .filter(|&key| key != 0)
+            .map(|key| ((key >> 32) as u32, key as u32))
             .collect()
-    }
-
-    fn grow(&mut self, work: &mut Work<'_>) -> LayoutResult<()> {
-        let new_cap = if self.slots.is_empty() {
-            64
-        } else {
-            self.slots
-                .len()
-                .checked_mul(2)
-                .ok_or(WorkError::ArithmeticOverflow)?
-        };
-        work.charge(new_cap)?;
-        let mut next = filled(new_cap, 0u64)?;
-        let mask = new_cap - 1;
-        for &key in &self.slots {
-            if key != 0 {
-                let mut idx = Self::hash(key) & mask;
-                while next[idx] != 0 {
-                    idx = (idx + 1) & mask;
-                }
-                next[idx] = key;
-            }
-        }
-        self.slots = next;
-        Ok(())
     }
 }
 
-/// Deterministic open-addressed schedule cache keyed by ordered active chain pair `(a, b)`.
+/// Schedule cache keyed by ordered active chain pair `(a, b)`.
 ///
 /// Stores the `y` coordinate of the pending `EV_CROSS(a, b)` event, or `f64::INFINITY` when
 /// `(a, b)` has been proven not to cross for the remainder of their vertical overlap.
 /// Because the min-heap pops events in non-decreasing `y` order, any query with `cur_y < y_sched`
 /// is guaranteed either to have no future crossing (`INFINITY`) or to still have its scheduled
 /// `EV_CROSS` event pending in the heap.
-struct PairSchedule {
-    slots: Vec<(u64, f64)>,
-    len: usize,
-}
+struct PairSchedule(PairTable<f64>);
 
 impl PairSchedule {
     fn new() -> Self {
-        Self {
-            slots: Vec::new(),
-            len: 0,
-        }
+        Self(PairTable::new())
     }
 
     #[inline]
@@ -194,24 +185,17 @@ impl PairSchedule {
     }
 
     #[inline]
-    fn is_covered(&self, a: usize, b: usize, cur_y: f64) -> bool {
-        let cap = self.slots.len();
-        if cap == 0 {
-            return false;
-        }
-        let key = Self::encode(a, b);
-        let mask = cap - 1;
-        let mut idx = PairSet::hash(key) & mask;
-        loop {
-            let (slot_key, y_sched) = self.slots[idx];
-            if slot_key == 0 {
-                return false;
-            }
-            if slot_key == key {
-                return cur_y < y_sched;
-            }
-            idx = (idx + 1) & mask;
-        }
+    fn is_covered(
+        &self,
+        a: usize,
+        b: usize,
+        cur_y: f64,
+        work: &mut Work<'_>,
+    ) -> LayoutResult<bool> {
+        Ok(self
+            .0
+            .get(Self::encode(a, b), work)?
+            .is_some_and(|y| cur_y < y))
     }
 
     fn record(
@@ -221,79 +205,7 @@ impl PairSchedule {
         y_sched: f64,
         work: &mut Work<'_>,
     ) -> LayoutResult<()> {
-        let key = Self::encode(a, b);
-        if !self.slots.is_empty() {
-            let cap = self.slots.len();
-            let mask = cap - 1;
-            let mut idx = PairSet::hash(key) & mask;
-            let mut probes = 1usize;
-            loop {
-                let (slot_key, slot_y) = &mut self.slots[idx];
-                if *slot_key == key {
-                    *slot_y = y_sched;
-                    if probes > 8 {
-                        work.visit(probes)?;
-                    }
-                    return Ok(());
-                }
-                if *slot_key == 0 {
-                    if probes > 8 {
-                        work.visit(probes)?;
-                    }
-                    if self.len < PairSet::load_limit(cap) {
-                        *slot_key = key;
-                        *slot_y = y_sched;
-                        self.len += 1;
-                        return Ok(());
-                    }
-                    break;
-                }
-                idx = (idx + 1) & mask;
-                probes += 1;
-            }
-        }
-        self.grow(work)?;
-        let mask = self.slots.len() - 1;
-        let mut idx = PairSet::hash(key) & mask;
-        let mut probes = 1usize;
-        loop {
-            let (slot_key, slot_y) = &mut self.slots[idx];
-            if *slot_key == 0 {
-                if probes > 8 {
-                    work.visit(probes)?;
-                }
-                *slot_key = key;
-                *slot_y = y_sched;
-                self.len += 1;
-                return Ok(());
-            }
-            idx = (idx + 1) & mask;
-            probes += 1;
-        }
-    }
-
-    fn grow(&mut self, work: &mut Work<'_>) -> LayoutResult<()> {
-        let new_cap = if self.slots.is_empty() {
-            256
-        } else {
-            self.slots
-                .len()
-                .checked_mul(2)
-                .ok_or(WorkError::ArithmeticOverflow)?
-        };
-        work.charge(new_cap)?;
-        let mut next = filled(new_cap, (0u64, 0.0))?;
-        let mask = new_cap - 1;
-        for &(key, y_sched) in &self.slots {
-            if key != 0 {
-                let mut idx = PairSet::hash(key) & mask;
-                while next[idx].0 != 0 {
-                    idx = (idx + 1) & mask;
-                }
-                next[idx] = (key, y_sched);
-            }
-        }
-        self.slots = next;
+        self.0.insert(Self::encode(a, b), y_sched, 256, work)?;
         Ok(())
     }
 }
@@ -1154,13 +1066,17 @@ fn chain_x_at_y(centerlines: &Centerlines, chain: &SweepChain, y: f64) -> f64 {
     x_at_y(ord, y)
 }
 
-/// Computes the exact `y` coordinate where `a` (currently left of `b`) moves strictly right of
-/// `b` within `[max(cur_y, a.top.y, b.top.y), min(a.bot.y, b.bot.y)]`.
+/// Schedules the `y` where `a` (currently left of `b`) moves strictly right of `b`.
 #[inline]
-fn geometric_crossing_y(a: [Point; 2], b: [Point; 2], cur_y: f64) -> Option<f64> {
+fn geometric_crossing_y(
+    a: [Point; 2],
+    b: [Point; 2],
+    cur_y: f64,
+    strict_after: bool,
+) -> Option<f64> {
     let y_lo = cur_y.max(a[0].y).max(b[0].y);
     let y_hi = a[1].y.min(b[1].y);
-    if y_hi < y_lo {
+    if y_hi < y_lo || (strict_after && y_hi <= cur_y) {
         return None;
     }
     let ax_lo = x_at_y(a, y_lo);
@@ -1169,22 +1085,21 @@ fn geometric_crossing_y(a: [Point; 2], b: [Point; 2], cur_y: f64) -> Option<f64>
     let bx_hi = x_at_y(b, y_hi);
     let d_lo = ax_lo - bx_lo;
     let d_hi = ax_hi - bx_hi;
-    if d_lo == 0.0 && d_hi == 0.0 {
-        return None;
-    }
     if d_lo <= 0.0 && d_hi <= 0.0 {
         return None;
     }
     if d_lo >= 0.0 {
-        if d_lo > 0.0 || d_hi > 0.0 {
-            return Some(y_lo);
-        }
-        return None;
+        return ((d_lo > 0.0 || d_hi > 0.0) && (!strict_after || y_lo > cur_y)).then_some(y_lo);
     }
     let denom = d_lo - d_hi;
     let frac = (d_lo / denom).clamp(0.0, 1.0);
     let y_cross = (y_lo + (y_hi - y_lo) * frac).clamp(y_lo, y_hi);
-    y_cross.is_finite().then_some(y_cross)
+    if strict_after && y_cross <= cur_y && d_lo < 0.0 && d_hi > 0.0 {
+        // The signs bracket a new crossing, even if its interpolated height rounds back
+        // to the event we are already processing.
+        return Some(cur_y.next_up().min(y_hi));
+    }
+    (y_cross.is_finite() && (!strict_after || y_cross > cur_y)).then_some(y_cross)
 }
 
 #[inline]
@@ -1222,7 +1137,7 @@ fn inspect_chain_pair(
     }
     let pair = edge_pair(ca.edge, cb.edge);
     let mut need_cross_check =
-        ca.edge != cb.edge && (crossed.len() as u64) < limit && !crossed.contains(pair);
+        ca.edge != cb.edge && (crossed.len() as u64) < limit && !crossed.contains(pair, work)?;
 
     // Fast-reject when `ca` lies wholly left of `cb`. If `ca` lies wholly right of `cb`, the
     // chains are already inverted in `ActiveTree` and must swap immediately at `y_lo`.
@@ -1275,8 +1190,7 @@ fn inspect_chain_pair(
         {
             crossed.insert(pair, work)?;
         }
-        return Ok(geometric_crossing_y(ord_a, ord_b, y_lo)
-            .filter(|&y_cross| !strict_after || y_cross > cur_y));
+        return Ok(geometric_crossing_y(ord_a, ord_b, cur_y, strict_after));
     }
 
     // Compute overlapping chord ranges ONCE and reuse them for endpoint evaluation and the merge.
@@ -1486,9 +1400,7 @@ fn inspect_chain_pair(
                         need_cross_check = false;
                     }
                 }
-                if let Some(y_cross) = geometric_crossing_y(ord_a, ord_b, y_lo)
-                    && (!strict_after || y_cross > cur_y)
-                {
+                if let Some(y_cross) = geometric_crossing_y(ord_a, ord_b, cur_y, strict_after) {
                     return Ok(Some(y_cross));
                 }
             }
@@ -1632,7 +1544,7 @@ pub(super) fn run_monotone_sweep(
                       cross_events: &mut usize,
                       work: &mut Work<'_>|
      -> LayoutResult<bool> {
-        if !strict_after && schedule.is_covered(a_id, b_id, cur_y) {
+        if !strict_after && schedule.is_covered(a_id, b_id, cur_y, work)? {
             return Ok(true);
         }
         if let Some(y_cross) = inspect_chain_pair(
@@ -1921,7 +1833,7 @@ pub(super) fn run_monotone_sweep(
                     }
                     if c.edge != h.edge {
                         let pair = edge_pair(h.edge, c.edge);
-                        if !crossed.contains(pair) {
+                        if !crossed.contains(pair, work)? {
                             let mut hit = chord_c.bounds().overlaps(h_bounds)
                                 && !bounds_in_shared_fan(
                                     h_bounds,
@@ -2011,7 +1923,7 @@ pub(super) fn run_monotone_sweep(
                 let ca = &chains[a_id];
                 let cb = &chains[b_id];
                 let y_bot = ca.y_bot.min(cb.y_bot);
-                if y_bot <= cur_y {
+                if y_bot < cur_y {
                     continue;
                 }
                 let points_a = centerlines.points(ca.primitive);
@@ -2021,15 +1933,13 @@ pub(super) fn run_monotone_sweep(
                 let ord_a = ordered_ends_in(points_a, ca, ka);
                 let ord_b = ordered_ends_in(points_b, cb, kb);
                 let y_hi = ord_a[1].y.min(ord_b[1].y);
-                if y_hi <= cur_y {
-                    continue;
-                }
                 let d_lo = x_at_y(ord_a, cur_y) - x_at_y(ord_b, cur_y);
                 let d_hi = x_at_y(ord_a, y_hi) - x_at_y(ord_b, y_hi);
-                if d_lo <= 0.0 && d_hi <= 0.0 {
+                if d_lo <= 0.0 && (y_hi <= cur_y || d_hi <= 0.0) {
                     // A multi-chord chain can graze or remain collinear at a chord boundary while
                     // still crossing later chords; re-schedule strictly below `cur_y`.
-                    if (ca.chord_count > 1 || cb.chord_count > 1)
+                    if y_hi > cur_y
+                        && (ca.chord_count > 1 || cb.chord_count > 1)
                         && !check_pair(
                             a_id,
                             b_id,
@@ -2047,7 +1957,8 @@ pub(super) fn run_monotone_sweep(
                     continue;
                 }
 
-                // Swap `a` and `b` in `O(1)` (`b` moves left, `a` moves right).
+                // Repair even an inversion at the last shared y: horizontal probes run
+                // before end events and still need the active chains in x order.
                 active.swap_adjacent(a_id, b_id);
                 tracker.invalidate(a_id);
                 tracker.invalidate(b_id);
@@ -2061,7 +1972,8 @@ pub(super) fn run_monotone_sweep(
                 // Re-check `(b, a)` strictly below `cur_y` when either curve has multiple chords
                 // or the swapped pair was already inverted at `cur_y` and crosses back before
                 // `y_hi` (`d_hi < 0.0`), so the return crossing still triggers its second swap.
-                if (ca.chord_count > 1 || cb.chord_count > 1 || d_hi < 0.0)
+                if y_bot > cur_y
+                    && (ca.chord_count > 1 || cb.chord_count > 1 || d_hi < 0.0)
                     && !check_pair(
                         b_id,
                         a_id,
@@ -2112,4 +2024,192 @@ pub(super) fn run_monotone_sweep(
     }
 
     Ok(Some(crossed))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{NodeId, NoopWorkControl, WorkControl, geom::Bounds};
+
+    #[test]
+    fn sub_ulp_return_crossing_reorders_before_the_horizontal_probe() {
+        let y = 1.5_f64;
+        let probe_y = y.next_up();
+        let mut centerlines = Centerlines {
+            samples: vec![
+                Point {
+                    x: -3.0,
+                    y: y.next_down(),
+                },
+                Point { x: 1.0, y },
+                Point {
+                    x: -7.0,
+                    y: probe_y.next_up(),
+                },
+                Point { x: -7.0, y: 2.0 },
+            ],
+            primitives: Vec::new(),
+        };
+        let [from, _, _, to] = centerlines.samples.as_slice() else {
+            unreachable!();
+        };
+        centerlines.primitives.push(Primitive {
+            edge: 0,
+            ends: [*from, *to],
+            bounds: Bounds {
+                x: [-7.0, 1.0],
+                y: [from.y, to.y],
+            },
+            cubic: Some(super::super::Cubic {
+                handles: [*from, *to],
+                minimum: 3,
+                points: 0..4,
+                ordered: [true, false],
+            }),
+        });
+        let mut line = |edge, from, to| {
+            centerlines.primitives.push(Primitive {
+                edge,
+                ends: [from, to],
+                bounds: Bounds::between(from, to),
+                cubic: None,
+            });
+        };
+        line(1, Point { x: 0.0, y: 0.0 }, Point { x: 0.0, y: 2.0 });
+        line(
+            2,
+            Point {
+                x: -4.0,
+                y: probe_y,
+            },
+            Point {
+                x: -2.0,
+                y: probe_y,
+            },
+        );
+        for edge in 3..=MIN_SWEEP_PRIMITIVES {
+            let x = 8.0 * edge as f64;
+            line(edge, Point { x, y: 3.0 }, Point { x, y: 4.0 });
+        }
+        let ends: Vec<_> = (0..centerlines.primitives.len() as u32)
+            .map(|edge| {
+                [
+                    Endpoint::Node(NodeId(2 * edge)),
+                    Endpoint::Node(NodeId(2 * edge + 1)),
+                ]
+            })
+            .collect();
+        let out = LayoutOutput {
+            nodes: vec![Default::default(); 2 * ends.len()],
+            ..Default::default()
+        };
+        let mask = vec![true; centerlines.primitives.len()];
+        for end_y in [2.0, probe_y] {
+            centerlines.primitives[1].ends[1].y = end_y;
+            centerlines.primitives[1].bounds.y[1] = end_y;
+            let mut control = NoopWorkControl;
+            let mut work = Work::new(&mut control);
+            let mut partition = MonotonePartition::build(&mut centerlines, &mask, &mut work)
+                .unwrap()
+                .unwrap();
+            let crossed = run_monotone_sweep(
+                &centerlines,
+                &mut partition,
+                &ends,
+                &out,
+                u64::MAX,
+                &mut work,
+            )
+            .unwrap()
+            .unwrap();
+            assert_eq!(
+                crossed.to_btree_set(),
+                [(0, 1), (0, 2)].into(),
+                "end_y={end_y}"
+            );
+        }
+    }
+
+    struct Budget(usize);
+
+    impl WorkControl for Budget {
+        fn check(&mut self) -> Result<(), WorkError> {
+            Ok(())
+        }
+
+        fn charge(&mut self, units: usize) -> Result<(), WorkError> {
+            self.0 = self.0.checked_sub(units).ok_or(WorkError::Interrupted)?;
+            Ok(())
+        }
+    }
+
+    fn colliding_keys(capacity: usize) -> impl Iterator<Item = u32> {
+        (1..).filter(move |&key| pair_hash(u64::from(key)) & (capacity - 1) == 0)
+    }
+
+    #[test]
+    fn pair_lookups_meter_every_collision_probe_on_hits_and_misses() {
+        let mut set = PairSet::new();
+        let mut schedule = PairSchedule::new();
+        let mut control = NoopWorkControl;
+        let mut work = Work::new(&mut control);
+        let mut keys = colliding_keys(256);
+        let mut last = 0;
+        for key in keys.by_ref().take(16) {
+            set.insert((0, key), &mut work).unwrap();
+            schedule
+                .record(0, key as usize - 1, 5.0, &mut work)
+                .unwrap();
+            last = key;
+        }
+        let missing = keys.next().unwrap();
+        let mut budget = Budget(2 * (16 + 17));
+        let mut work = Work::new(&mut budget);
+        assert!(set.contains((0, last), &mut work).unwrap());
+        assert!(!set.contains((0, missing), &mut work).unwrap());
+        assert!(
+            schedule
+                .is_covered(0, last as usize - 1, 2.0, &mut work)
+                .unwrap()
+        );
+        assert!(
+            !schedule
+                .is_covered(0, missing as usize - 1, 2.0, &mut work)
+                .unwrap()
+        );
+        work.finish().unwrap();
+        assert_eq!(budget.0, 0);
+    }
+
+    #[test]
+    fn rehashing_pair_tables_can_be_interrupted_during_collision_probes() {
+        let mut set = PairSet::new();
+        let mut schedule = PairSchedule::new();
+        let mut control = NoopWorkControl;
+        let mut work = Work::new(&mut control);
+        for key in colliding_keys(512).take(40) {
+            set.insert((0, key), &mut work).unwrap();
+            schedule
+                .record(0, key as usize - 1, f64::INFINITY, &mut work)
+                .unwrap();
+        }
+        let mut set_budget = Budget(128);
+        let mut schedule_budget = Budget(512);
+        let mut set_budget = Work::new(&mut set_budget);
+        let mut schedule_budget = Work::new(&mut schedule_budget);
+        let set_result = set.0.grow(64, &mut set_budget);
+        let schedule_result = schedule.0.grow(256, &mut schedule_budget);
+        assert_eq!(set_result, Err(WorkError::Interrupted.into()));
+        assert_eq!(schedule_result, Err(WorkError::Interrupted.into()));
+        assert_eq!(set.0.slots.len(), 64);
+        assert_eq!(schedule.0.slots.len(), 256);
+        for key in colliding_keys(512).take(40) {
+            assert!(set.contains((0, key), &mut work).unwrap());
+            assert!(
+                schedule
+                    .is_covered(0, key as usize - 1, 0.0, &mut work)
+                    .unwrap()
+            );
+        }
+    }
 }

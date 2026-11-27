@@ -403,6 +403,8 @@ pub(crate) struct StateCompatibilityPlan {
     pub(crate) native_title: Option<crate::text::TextStyle>,
     pub(crate) native_label_weight: Option<String>,
     pub(crate) native_layout_scale: [f64; 3],
+    pub(crate) native_edge_style: Option<merman_theme_contract::v2::EdgeStyle>,
+    native_connector_width: Option<String>,
     pub(crate) native_marker: merman_theme_contract::v2::MarkerStyle,
 }
 
@@ -589,6 +591,10 @@ impl StateCompatibilityPlan {
             }),
             native_label_weight: Some(typography.label_weight.to_string()),
             native_layout_scale,
+            native_edge_style: Some(theme.form.edge_style),
+            native_connector_width: Some(
+                crate::number_format::canonical_number(theme.form.connector_width).to_string(),
+            ),
             native_marker: theme.form.marker_style,
         }
     }
@@ -843,8 +849,25 @@ impl StateCompatibilityPlan {
             native_title: None,
             native_label_weight: None,
             native_layout_scale: [1.0; 3],
+            native_edge_style: None,
+            native_connector_width: None,
             native_marker: merman_theme_contract::v2::MarkerStyle::Classic,
         }
+    }
+
+    pub(crate) fn native_edge_curve(&self) -> Option<&'static str> {
+        use merman_theme_contract::v2::EdgeStyle;
+        self.native_edge_style.map(|style| match style {
+            EdgeStyle::Orthogonal => "step",
+            EdgeStyle::Straight | EdgeStyle::Sketch => "linear",
+            EdgeStyle::Curved => "basis",
+        })
+    }
+
+    pub(crate) fn transition_width(&self) -> &str {
+        self.native_connector_width
+            .as_deref()
+            .unwrap_or(&self.stroke_width)
     }
 
     pub(crate) fn diagram_look(&self) -> &str {
@@ -937,7 +960,7 @@ impl StateCompatibilityPlan {
                 Stroke,
             ) => StateTerminalPaintRef::Css(&self.node_border),
             #[cfg(feature = "layout-shoal")]
-            (Transition, StrokeWidth) => StateTerminalPaintRef::Css(&self.stroke_width),
+            (Transition, StrokeWidth) => StateTerminalPaintRef::Css(self.transition_width()),
             #[cfg(feature = "layout-shoal")]
             (Transition, Fill | Stroke) => return None,
             (NoteClassic | NoteHandDrawn | NoteNeo, Fill) => {

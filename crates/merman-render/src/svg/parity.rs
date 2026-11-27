@@ -171,14 +171,12 @@ mod look_defs;
 mod markers;
 pub(crate) use markers::BaseEdgeMarkerKind;
 #[cfg(any(
+    feature = "diagram-block",
+    feature = "diagram-state",
+    feature = "diagram-usecase",
     all(
         feature = "layout-shoal",
-        any(
-            feature = "diagram-class",
-            feature = "diagram-er",
-            feature = "diagram-state",
-            feature = "diagram-usecase"
-        )
+        any(feature = "diagram-class", feature = "diagram-er")
     ),
     all(
         any(feature = "layout-shoal", test),

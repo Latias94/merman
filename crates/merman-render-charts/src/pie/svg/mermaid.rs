@@ -7,7 +7,7 @@ use merman_render_core::{
     svg_css::SvgId,
     svg_output::{SvgOutput, XmlTextOutput},
     theme_svg::cssom_color_value,
-    xml::escape_xml,
+    xml::{escape_attr_display, escape_xml},
 };
 
 use super::write_pie_group_open;
@@ -160,7 +160,7 @@ pub fn write_mermaid_svg_body(
         );
         out.checkpoint()?;
         let style = mermaid_legend_rect_style(&item.fill);
-        let escaped_style = escape_xml(&style);
+        let escaped_style = escape_attr_display(&style);
         let _ = write!(
             out,
             r#"<rect width="{size}" height="{size}" style="{style}"/>"#,

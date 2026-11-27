@@ -19,6 +19,73 @@ use merman_render::text::{
 
 #[cfg(feature = "layout-shoal")]
 #[test]
+fn shoal_state_native_edge_styles_and_neo_open_marker_are_visible() {
+    use kurbo::{BezPath, ParamCurve, PathSeg};
+    use merman_render::theme::{NativeTheme, ThemeCompiler};
+
+    let source = "---\nconfig:\n  layout: shoal\n  look: neo\n---\nstateDiagram-v2\nA --> B\nA --> C\nB --> D\nC --> D\n";
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    for style in ["orthogonal", "straight", "sketch"] {
+        let theme = ThemeCompiler::new().compile_json(
+            format!(r##"{{"schema_version":2,"extends":"blueprint","roles":{{"stroke.connector":"#123456"}},"form":{{"edge_style":"{style}","marker_style":"open"}}}}"##).as_bytes(),
+            None,
+        ).unwrap();
+        let session = RenderEnvironment::deterministic()
+            .begin_session_with_native_theme(NativeTheme::new(theme))
+            .unwrap();
+        let rendered = family::prepare(
+            parsed.presentation(),
+            &LayoutOptions::headless_svg_defaults(),
+            session,
+        )
+        .unwrap()
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+        let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let css = doc
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .and_then(|node| node.text())
+            .unwrap();
+        assert!(css.contains(r#"[id$="-barbEnd-margin"]{stroke:#123456;"#));
+        for edge in doc
+            .descendants()
+            .filter(|node| node.attribute("data-et") == Some("edge"))
+        {
+            assert_eq!(
+                edge.attribute("marker-end"),
+                Some("url(#merman_stateDiagram-barbEnd-margin)")
+            );
+            let path = BezPath::from_svg(edge.attribute("d").unwrap()).unwrap();
+            assert_eq!(
+                path.segments()
+                    .any(|segment| matches!(segment, PathSeg::Cubic(_))),
+                style == "sketch"
+            );
+            if style == "orthogonal" {
+                for segment in path.segments() {
+                    let delta = segment.end() - segment.start();
+                    assert!(delta.x == 0.0 || delta.y == 0.0);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn state_digit_prefixed_classes_are_css_identifiers() {
+    let svg = render_state_svg_from_text(
+        "stateDiagram-v2\nclassDef 2done fill:#123456\nA --> B\nclass B 2done\n",
+    );
+    assert!(svg.contains(r#".\32 done"#));
+    assert!(svg.contains(" 2done"));
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
 fn shoal_state_html_labels_allow_ink_overhang_and_composites_share_a_bottom_edge() {
     let svg = render_state_svg_from_text(
         "---\nconfig:\n  layout: shoal\n  htmlLabels: true\n---\nstateDiagram-v2\n\

@@ -463,31 +463,36 @@ pub(super) fn level(
         ctx.options,
         work,
     )?;
-    let group = ctx.graph.groups.get(id);
+    let mut group = ctx.graph.groups.get(id).copied();
     let protected_title_margin = if ctx.hierarchy.lanes.is_some() {
         NESTED_LANE_TITLE_CLEAR
     } else {
         0.0
     };
-    let mut fit = fit::Fit::new(
-        group,
-        drawing.bounds,
-        &nodes,
-        &wires,
-        protected_title_margin,
-        ctx.options,
-        work,
-    )?;
-    let border = |fit: &fit::Fit, work: &mut Work<'_>| -> LayoutResult<_> {
+    let measure_fit = |group: Option<&crate::GroupSpec>, work: &mut Work<'_>| {
+        fit::Fit::new(
+            group,
+            drawing.bounds,
+            &nodes,
+            &wires,
+            protected_title_margin,
+            ctx.options,
+            work,
+        )
+    };
+    let border = |fit: &fit::Fit,
+                  group: Option<&crate::GroupSpec>,
+                  work: &mut Work<'_>|
+     -> LayoutResult<_> {
         let mut ports = ports::border(&wires, &nodes, fit, level.ports.len(), ctx.options, work)?;
         let title = fit.title(group, &wires, &ports, work)?;
         if (!fit.adaptive_top_title || fit.protected_title_margin > 0.0)
-            && let (Some(title), Some(group)) = (title, group)
+            && let (Some(title), Some(group)) = (&title, group)
         {
             ports::beside_title(
                 &wires,
                 &mut ports,
-                title,
+                title.rect,
                 fit::title_side(group.title_position),
                 fit,
                 ctx.options,
@@ -496,15 +501,25 @@ pub(super) fn level(
         }
         Ok((ports, title))
     };
-    let (mut ports, mut title) = border(&fit, work)?;
+    let mut fit = measure_fit(group.as_ref(), work)?;
+    let (mut ports, mut placement) = border(&fit, group.as_ref(), work)?;
+    if let Some(position) = placement.as_ref().and_then(|title| title.reserve_at)
+        && let Some(group) = group.as_mut()
+    {
+        group.title_position = position;
+        fit = measure_fit(Some(group), work)?;
+        (ports, placement) = border(&fit, Some(group), work)?;
+    }
+    let mut title = placement.map(|title| title.rect);
     if !fit.adaptive_top_title
-        && let (Some(rect), Some(group)) = (title, group)
+        && let (Some(rect), Some(group)) = (title, &group)
     {
         let side = fit::title_side(group.title_position);
         let extra = routes::title_room(&wires, &ports, side, &fit, rect, ctx.options, work)?;
         if extra > 0.0 {
             fit.reserve_title_room(side, extra, work)?;
-            (ports, title) = border(&fit, work)?;
+            (ports, placement) = border(&fit, Some(group), work)?;
+            title = placement.map(|title| title.rect);
         }
     }
     nodes.truncate(level.items.len());

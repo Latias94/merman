@@ -1,10 +1,15 @@
-use crate::graph_layout::{Marker, route_paint::LEAD};
 use crate::resources::OperationWorkMeter;
 use crate::svg::parity::roughjs_common::{controlled, ops_to_svg_path_d};
 use kurbo::Point;
+#[cfg(feature = "layout-shoal")]
+use merman_render_core::route_paint::LEAD;
+use merman_render_core::route_types::Marker;
 use roughr::core::{Op, OpType, OptionsBuilder, RoughRandomness};
 use roughr::work::WorkError;
 use svgtypes::PathSegment;
+
+#[cfg(not(feature = "layout-shoal"))]
+const LEAD: f64 = 6.0;
 
 pub(super) fn constrained_rough_edge_path(
     path: &str,

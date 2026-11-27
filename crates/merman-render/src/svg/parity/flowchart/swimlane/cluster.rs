@@ -7,21 +7,22 @@ const SWIMLANE_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
 const SWIMLANE_HAND_DRAWN_FILL_WEIGHT: f32 = 3.0;
 const SWIMLANE_HAND_DRAWN_HACHURE_GAP: f32 = 1.5;
 
-fn rough_style_from_node_style(node_style: &str, mut keep: impl FnMut(&str) -> bool) -> String {
+fn rough_style_from_node_style<'a>(
+    node_style: &'a str,
+    mut property: impl FnMut(&crate::mermaid_style::ParsedStyleDeclaration<'a>) -> Option<&'a str>,
+) -> String {
     let mut out = String::new();
-    for declaration in node_style.split(';') {
-        let declaration = declaration.trim();
-        let Some((key, _)) = declaration.split_once(':') else {
-            continue;
+    crate::mermaid_style::visit_parsed_style_declarations(node_style, |declaration| {
+        let Some(property) = property(&declaration) else {
+            return;
         };
-        if !keep(key.trim()) {
-            continue;
-        }
         if !out.is_empty() {
             out.push(';');
         }
-        out.push_str(declaration);
-    }
+        out.push_str(property);
+        out.push(':');
+        out.push_str(declaration.source_value());
+    });
     out
 }
 
@@ -29,6 +30,23 @@ fn parse_css_px_f32(value: Option<&String>, fallback: f32) -> f32 {
     value
         .and_then(|raw| raw.trim_end_matches("px").trim().parse::<f32>().ok())
         .unwrap_or(fallback)
+}
+
+pub(super) fn lane_color_slot(ctx: &FlowchartRenderCtx<'_>, id: &str) -> Option<usize> {
+    super::super::agentflow::container_color_slot(ctx, id).or_else(|| {
+        let palette_len = ctx.palette.color_count();
+        (!ctx.subgraphs_by_id.contains_key(id) && palette_len > 0).then(|| {
+            // The synthetic lane follows the highest visible source container color ordinal.
+            ctx.model
+                .subgraphs
+                .iter()
+                .filter(|subgraph| ctx.model.collapsed_replacement(&subgraph.id).is_none())
+                .filter_map(|subgraph| ctx.model.subgraph_color_ordinal(&subgraph.id))
+                .max()
+                .map_or(0, |ordinal| ordinal.saturating_add(1))
+                % palette_len
+        })
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -68,27 +86,31 @@ fn write_swimlane_rect(
         {
             let _ = write!(out, r#"<g class="{}">"#, escape_xml_display(class_name));
             if let Some(fill) = fill {
-                let background_style = rough_style_from_node_style(node_style, |key| key == "fill")
-                    .replace("fill", "stroke");
+                let background_style = rough_style_from_node_style(node_style, |decl| {
+                    (decl.property() == "fill").then_some("stroke")
+                });
                 let _ = write!(
                     out,
                     r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{} />"#,
                     escape_xml_display(&fill_d),
-                    escape_xml_display(fill),
+                    escape_attr_display(fill),
                     fmt_display(SWIMLANE_HAND_DRAWN_FILL_WEIGHT as f64),
-                    OptionalStyleXmlAttr(&background_style),
+                    OptionalStyleAttr(&background_style),
                 );
             }
-            let border_style =
-                rough_style_from_node_style(node_style, |key| key.contains("stroke"));
+            let border_style = rough_style_from_node_style(node_style, |decl| {
+                decl.property()
+                    .starts_with("stroke")
+                    .then(|| decl.property_css())
+            });
             let _ = write!(
                 out,
                 r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"{} /></g>"#,
                 escape_xml_display(&stroke_d),
-                escape_xml_display(stroke),
+                escape_attr_display(stroke),
                 fmt_display(stroke_width as f64),
-                escape_xml_display(stroke_dasharray),
-                OptionalStyleXmlAttr(&border_style),
+                escape_attr_display(stroke_dasharray),
+                OptionalStyleAttr(&border_style),
             );
 
             return;
@@ -99,13 +121,13 @@ fn write_swimlane_rect(
         out,
         r#"<rect class="{}" style="{}" x="{}" y="{}" width="{}" height="{}" fill="{}" stroke="{}"/>"#,
         escape_xml_display(class_name),
-        escape_xml_display(node_style),
+        escape_attr_display(node_style),
         fmt_display(x),
         fmt_display(y),
         fmt_display(width),
         fmt_display(height),
-        escape_xml_display(fill.unwrap_or("none")),
-        escape_xml_display(stroke),
+        escape_attr_display(fill.unwrap_or("none")),
+        escape_attr_display(stroke),
     );
 }
 
@@ -204,22 +226,8 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
         escape_xml_display(&lane.id),
     );
     let data_look = ctx.compatibility.look.as_str();
-    let color_slot = super::super::agentflow::container_color_slot(ctx, &lane.id).or_else(|| {
-        let palette_len = ctx.palette.color_count();
-        (subgraph.is_none() && palette_len > 0).then(|| {
-            // The synthetic lane follows the highest visible source container color ordinal.
-            ctx.model
-                .subgraphs
-                .iter()
-                .filter(|subgraph| ctx.model.collapsed_replacement(&subgraph.id).is_none())
-                .filter_map(|subgraph| ctx.model.subgraph_color_ordinal(&subgraph.id))
-                .max()
-                .map_or(0, |ordinal| ordinal.saturating_add(1))
-                % palette_len
-        })
-    });
     let _ = write!(out, r#" data-look="{}""#, escape_xml_display(data_look));
-    if let Some(color_slot) = color_slot {
+    if let Some(color_slot) = lane_color_slot(ctx, &lane.id) {
         let _ = write!(out, r#" data-color-id="color-{color_slot}""#);
     }
     out.push('>');
@@ -315,7 +323,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             fmt_display(label_width),
             fmt_display(label_height),
             overflow_attr,
-            escape_xml_display(&div_style),
+            escape_attr_display(&div_style),
             OptionalStyleAttr(label_style),
             title_html,
         );
@@ -335,7 +343,29 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             label_class,
             escape_xml_display(&transform),
         );
-        let title_text_style = terminal.title_text_style.as_ref();
+        let title_text_style = ctx
+            .svg_label_sidecar
+            .zip(title_owner)
+            .and_then(|(sidecar, owner)| sidecar.node_source_style(owner))
+            .unwrap_or(&terminal.title_text_style)
+            .as_ref();
+        let mut svg_style = String::new();
+        if canonical {
+            svg_style.push_str(label_style);
+            let default_ink = ctx.native.map(|native| native.on_emphasis.to_string());
+            let ink = super::svg_label_ink(
+                ctx,
+                &lane.id,
+                compiled,
+                default_ink
+                    .as_deref()
+                    .unwrap_or(&ctx.compatibility.title_color),
+                title_text_style,
+            )?;
+            if let Some(ink) = ink.as_deref() {
+                super::super::label::append_native_label_color(&mut svg_style, ink);
+            }
+        }
         let prepared = crate::flowchart::FlowchartSvgLabelRenderPlan::new(
             ctx.svg_label_sidecar,
             title_owner,
@@ -347,7 +377,6 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             crate::flowchart::FlowchartSvgWidthMode::Bbox,
         );
         let zero_width_title = lane.width == 0.0;
-        let prepared_title = !zero_width_title && prepared.is_prepared();
         if zero_width_title {
             let rows = crate::flowchart::zero_width_lane_title_rows(render_title);
             crate::svg::parity::label::write_svg_markdown_word_lines_with_style(
@@ -356,8 +385,21 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
                 Some(""),
                 crate::text::SvgTextEntityMode::DecodedModel,
             );
-        } else if prepared_title {
-            write_flowchart_svg_label_plan(out, &prepared, true);
+        } else if prepared.is_prepared() {
+            if svg_style.is_empty() {
+                write_flowchart_svg_label_plan(out, &prepared, true);
+            } else {
+                write_flowchart_svg_label_plan_with_style(out, &prepared, true, Some(&svg_style));
+            }
+        } else if canonical {
+            write_flowchart_svg_text_markdown_wrapped_with_style(
+                out,
+                render_title,
+                &svg_style,
+                ctx.measurer,
+                title_text_style,
+                Some(FLOWCHART_FIXED_LABEL_WRAP_WIDTH),
+            );
         } else {
             write_flowchart_svg_text_markdown(out, render_title, true);
         }
@@ -365,4 +407,20 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
     }
     out.push_str("</g>");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::rough_style_from_node_style;
+
+    #[test]
+    fn rough_title_style_rewrites_only_the_property_and_keeps_quoted_css_intact() {
+        let style = r#"fill:"R&amp;D;fill" !important;stroke:#123456"#;
+        assert_eq!(
+            rough_style_from_node_style(style, |decl| {
+                (decl.property() == "fill").then_some("stroke")
+            }),
+            r#"stroke:"R&amp;D;fill" !important"#,
+        );
+    }
 }
