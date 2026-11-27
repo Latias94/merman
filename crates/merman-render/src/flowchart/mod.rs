@@ -18,7 +18,13 @@ pub(crate) use merman_model::families::flowchart::{FlowchartModel, FlowchartRend
 pub(crate) use class_style::FlowchartClassDefinitions;
 #[cfg(feature = "diagram-flowchart")]
 pub(crate) use class_style::FlowchartLabelDom;
-#[cfg(any(feature = "layout-shoal", test))]
+#[cfg(any(
+    all(
+        feature = "layout-shoal",
+        any(feature = "diagram-flowchart", feature = "diagram-swimlane")
+    ),
+    all(test, feature = "diagram-flowchart")
+))]
 pub(crate) use merman_render_flow::projection::FlowchartEdgeKey;
 #[cfg(feature = "layout-shoal")]
 pub(crate) use merman_render_flow::projection::ProjectedFlowchartEdge;
