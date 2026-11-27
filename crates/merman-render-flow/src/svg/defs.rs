@@ -10,7 +10,7 @@ use crate::projection::FlowchartEdgeKey;
 #[cfg(all(
     feature = "native-compact",
     feature = "diagram-flowchart",
-    feature = "layout-dagre"
+    any(feature = "layout-dagre", feature = "layout-elk")
 ))]
 pub(super) fn compact_classic_point_end(
     color: merman_render_core::paint_scene::SceneColor,

@@ -342,9 +342,73 @@ pub fn prepare_dagre_linear_edge_route(
     edge: FlowchartRenderEdgeRef<'_>,
     hierarchy: &FlowchartHierarchyPlan<'_>,
     scratch: &mut FlowchartEdgeDataPointsScratch,
-) -> Result<Option<edge_geom::DagreLinearPaintedRoute>> {
+) -> Result<Option<edge_geom::LinearPaintedRoute>> {
     let (request, _) = charged_edge_route_request(ctx, edge, hierarchy)?;
     Ok(edge_geom::dagre_linear_painted_route(request, scratch))
+}
+
+/// Prepare the ELK batch through terminal straightening and label separation, before curve
+/// formatting and line hops. The caller owns the batch debit and final layout checkpoint.
+pub(super) fn prepare_elk_clipped_routes<'a>(
+    ctx: &'a FlowchartRenderCtx<'a>,
+    render_edges: &'a [FlowchartRenderEdge<'_>],
+    hierarchy: &FlowchartHierarchyPlan<'_>,
+    scratch: &mut FlowchartEdgeDataPointsScratch,
+) -> Result<
+    impl Iterator<
+        Item = (
+            FlowchartEdgePathGeomRequest<'a>,
+            FlowchartRootOffsets,
+            edge_geom::ClippedEdgeRoute,
+        ),
+    > + use<'a>,
+> {
+    let mut routes = Vec::new();
+    let mut routed_edges = Vec::new();
+    for edge in render_edges {
+        let edge = edge.as_ref();
+        let (request, offsets) = charged_edge_route_request(ctx, edge, hierarchy)?;
+        if let Some(route) = edge_geom::prepare_edge_route(request, scratch) {
+            routes.push(route);
+            routed_edges.push((edge, offsets));
+        }
+    }
+    if ctx
+        .config
+        .get("elk")
+        .and_then(|value| value.get("straightenEdges"))
+        .and_then(serde_json::Value::as_bool)
+        != Some(false)
+    {
+        edge_geom::straighten_edge_terminals(&mut routes, ctx.work_meter)?;
+    }
+    edge_geom::separate_edge_labels(
+        &mut routes,
+        routed_edges.iter().map(|(edge, _)| {
+            (
+                edge.edge.from.as_str(),
+                edge.edge.to.as_str(),
+                ctx.model
+                    .edge_label_for_occurrence(edge.key, edge.edge)
+                    .is_some_and(|label| !label.is_empty()),
+            )
+        }),
+        ctx.work_meter,
+    )?;
+    Ok(routed_edges
+        .into_iter()
+        .zip(routes)
+        .map(move |((edge, offsets), route)| {
+            let request = FlowchartEdgePathGeomRequest {
+                ctx,
+                key: edge.key,
+                edge: edge.edge,
+                origin_x: offsets.origin_x,
+                origin_y: offsets.origin_y,
+                trace_enabled: false,
+            };
+            (request, offsets, route)
+        }))
 }
 
 pub fn prepare_edge_routes(
@@ -356,69 +420,30 @@ pub fn prepare_edge_routes(
     ctx.work_meter.charge(render_edges.len())?;
     let mut cache = FxHashMap::with_capacity_and_hasher(render_edges.len(), Default::default());
     let mut scratch = FlowchartEdgeDataPointsScratch::default();
-    let mut routes = Vec::new();
-    let mut routed_edges = Vec::new();
-    for edge in render_edges {
-        let edge = edge.as_ref();
-        let (request, offsets) = charged_edge_route_request(ctx, edge, hierarchy)?;
-        if ctx.uses_elk_adapter_dom {
-            if let Some(route) = edge_geom::prepare_edge_route(request, &mut scratch) {
-                routes.push(route);
-                routed_edges.push((edge, offsets));
-            }
-        } else if let Some(geom) =
-            flowchart_compute_edge_path_geom(request, &mut scratch, measure_neo_length)?
-        {
-            cache.insert(
-                edge.key,
-                FlowchartEdgePathCacheEntry {
-                    origin_x: offsets.origin_x,
-                    origin_y: offsets.origin_y,
-                    abs_top_transform: offsets.abs_top_transform,
-                    geom,
-                },
-            );
-        }
-    }
     if ctx.uses_elk_adapter_dom {
-        if ctx
-            .config
-            .get("elk")
-            .and_then(|value| value.get("straightenEdges"))
-            .and_then(serde_json::Value::as_bool)
-            != Some(false)
+        for (request, offsets, route) in
+            prepare_elk_clipped_routes(ctx, render_edges, hierarchy, &mut scratch)?
         {
-            edge_geom::straighten_edge_terminals(&mut routes, ctx.work_meter)?;
-        }
-        edge_geom::separate_edge_labels(
-            &mut routes,
-            routed_edges.iter().map(|(edge, _)| {
-                (
-                    edge.edge.from.as_str(),
-                    edge.edge.to.as_str(),
-                    ctx.model
-                        .edge_label_for_occurrence(edge.key, edge.edge)
-                        .is_some_and(|label| !label.is_empty()),
-                )
-            }),
-            ctx.work_meter,
-        )?;
-        for ((edge, offsets), route) in routed_edges.into_iter().zip(routes) {
-            if let Some(geom) = edge_geom::finish_edge_route(
-                FlowchartEdgePathGeomRequest {
-                    ctx,
-                    key: edge.key,
-                    edge: edge.edge,
-                    origin_x: offsets.origin_x,
-                    origin_y: offsets.origin_y,
-                    trace_enabled: false,
-                },
-                route,
-                &mut scratch,
-                false,
-            ) {
+            if let Some(geom) = edge_geom::finish_edge_route(request, route, &mut scratch, false) {
                 cache.insert(
-                    edge.key,
+                    request.key,
+                    FlowchartEdgePathCacheEntry {
+                        origin_x: offsets.origin_x,
+                        origin_y: offsets.origin_y,
+                        abs_top_transform: offsets.abs_top_transform,
+                        geom,
+                    },
+                );
+            }
+        }
+    } else {
+        for edge in render_edges {
+            let (request, offsets) = charged_edge_route_request(ctx, edge.as_ref(), hierarchy)?;
+            if let Some(geom) =
+                flowchart_compute_edge_path_geom(request, &mut scratch, measure_neo_length)?
+            {
+                cache.insert(
+                    request.key,
                     FlowchartEdgePathCacheEntry {
                         origin_x: offsets.origin_x,
                         origin_y: offsets.origin_y,

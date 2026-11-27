@@ -3,8 +3,9 @@
 The `diagram-flowchart`, `diagram-swimlane`, and `diagram-agentflow` selectors enable the shared
 Flow renderer. It owns config and theme binding, shape and label geometry, source styles, and
 complete Mermaid SVG emission. Flowchart can also emit the NativeCompact profile with
-`layout-dagre` and `native-compact` enabled. Edge geometry queries use the same prepared routes
-and label positions as SVG.
+`native-compact` and either `layout-dagre` or `layout-elk`. The ELK path accepts two-point sections
+with `elk.lineHops: false` in the classic ungrouped pilot with plain single-line rectangle labels
+and unlabeled edges. Edge geometry queries use the same prepared routes and label positions as SVG.
 
 The Dagre and ELK adapters prepare, solve, and project layout in this crate. Flow also prepares,
 solves, and projects the measured Swimlane graph. `merman-render` selects and admits the backend,

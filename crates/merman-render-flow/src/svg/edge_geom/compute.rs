@@ -370,10 +370,15 @@ pub(in crate::svg) fn finish_edge_route(
 /// The painted linear shaft in root-local coordinates, rounded as in the parity path.
 #[cfg(all(
     feature = "diagram-flowchart",
-    feature = "layout-dagre",
-    any(feature = "native-compact", feature = "test-support")
+    any(
+        all(
+            feature = "layout-dagre",
+            any(feature = "native-compact", feature = "test-support")
+        ),
+        all(feature = "layout-elk", feature = "native-compact")
+    )
 ))]
-pub struct DagreLinearPaintedRoute {
+pub struct LinearPaintedRoute {
     pub points: Vec<merman_render_core::LayoutPoint>,
     pub bounds: path_bounds::SvgPathBounds,
 }
@@ -386,7 +391,7 @@ pub struct DagreLinearPaintedRoute {
 pub(in crate::svg) fn dagre_linear_painted_route(
     request: FlowchartEdgePathGeomRequest<'_>,
     scratch: &mut FlowchartEdgeDataPointsScratch,
-) -> Option<DagreLinearPaintedRoute> {
+) -> Option<LinearPaintedRoute> {
     let ctx = request.ctx;
     if !matches!(ctx.layout.route_contract, FlowchartSvgRoute::DagreParity)
         || ctx.uses_elk_adapter_dom
@@ -408,15 +413,68 @@ pub(in crate::svg) fn dagre_linear_painted_route(
         return None;
     }
     let prepared = prepare_edge_paint(request, le, route, scratch);
-    DagreLinearPaintedRoute::from_line_data(prepared.curve.into_linear_points()?)
+    LinearPaintedRoute::from_line_data(prepared.curve.into_linear_points()?)
 }
 
 #[cfg(all(
     feature = "diagram-flowchart",
-    feature = "layout-dagre",
-    any(feature = "native-compact", feature = "test-support")
+    feature = "layout-elk",
+    feature = "native-compact"
 ))]
-impl DagreLinearPaintedRoute {
+pub(in crate::svg) fn elk_straight_painted_route(
+    request: FlowchartEdgePathGeomRequest<'_>,
+    route: ClippedEdgeRoute,
+    scratch: &mut FlowchartEdgeDataPointsScratch,
+) -> Option<LinearPaintedRoute> {
+    let ctx = request.ctx;
+    let le = ctx.layout_edges_by_key.get(&request.key)?.materialized()?;
+    if le.from_cluster.is_some() || le.to_cluster.is_some() || le.label.is_some() {
+        return None;
+    }
+    let [port_start, port_end] = le.points.as_slice() else {
+        // The parity endpoint cutter can synthesize a path for a missing section.
+        return None;
+    };
+    let [start, end] = route.points.as_slice() else {
+        return None;
+    };
+    let coordinates = |point: &merman_render_core::LayoutPoint| [point.x, point.y];
+    if [port_start, port_end, start, end]
+        .into_iter()
+        .flat_map(coordinates)
+        .any(|value| !value.is_finite())
+        || coordinates(port_start) == coordinates(port_end)
+        || coordinates(start) == coordinates(end)
+    {
+        return None;
+    }
+    // The cutter injects both rectangle centers. If sanitization falls back to those
+    // input points, the first center survives deduplication and marker-segment removal.
+    for (id, contact) in [(&request.edge.from, start), (&request.edge.to, end)] {
+        let node = boundary_for_node(ctx, id, request.origin_x, request.origin_y)?;
+        if coordinates(contact) == [node.x, node.y] {
+            return None;
+        }
+    }
+    let prepared = prepare_edge_paint(request, le, route, scratch);
+    let shaft = LinearPaintedRoute::from_line_data(prepared.curve.into_straight_rounded_points()?)?;
+    let [start, end] = shaft.points.as_slice() else {
+        return None;
+    };
+    (coordinates(start) != coordinates(end)).then_some(shaft)
+}
+
+#[cfg(all(
+    feature = "diagram-flowchart",
+    any(
+        all(
+            feature = "layout-dagre",
+            any(feature = "native-compact", feature = "test-support")
+        ),
+        all(feature = "layout-elk", feature = "native-compact")
+    )
+))]
+impl LinearPaintedRoute {
     fn from_line_data(mut points: Vec<merman_render_core::LayoutPoint>) -> Option<Self> {
         let (first, rest) = points.split_first_mut()?;
         if rest.is_empty() {
@@ -434,8 +492,13 @@ impl DagreLinearPaintedRoute {
 
 #[cfg(all(
     feature = "diagram-flowchart",
-    feature = "layout-dagre",
-    any(feature = "native-compact", feature = "test-support")
+    any(
+        all(
+            feature = "layout-dagre",
+            any(feature = "native-compact", feature = "test-support")
+        ),
+        all(feature = "layout-elk", feature = "native-compact")
+    )
 ))]
 fn round_linear_point(point: &mut merman_render_core::LayoutPoint) -> Option<()> {
     fn coordinate(value: f64) -> Option<f64> {

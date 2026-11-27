@@ -1,4 +1,4 @@
-//! NativeCompact projection of an admitted, ungrouped Dagre Flowchart.
+//! NativeCompact projection of an admitted, ungrouped Flowchart.
 
 use merman_markup::theme_color::ThemeColor;
 use merman_model::{
@@ -33,13 +33,17 @@ use crate::{
     svg_label::FlowchartSvgLabelRenderPlan,
 };
 
+#[cfg(feature = "layout-dagre")]
+use super::paint::prepare_dagre_linear_edge_route;
 use super::{
     FlowchartSvgModelRequest, FlowchartSvgRoute, FlowchartSvgServices,
     defs::compact_classic_point_end,
-    paint::{prepare_dagre_linear_edge_route, with_flowchart_paint_context},
+    paint::with_flowchart_paint_context,
     types::{FlowchartEdgeDataPointsScratch, FlowchartRenderCtx},
     viewbox::{FlowchartRenderedBoundsRequest, prepare_flowchart_rendered_bounds},
 };
+#[cfg(feature = "layout-elk")]
+use super::{edge_geom::elk_straight_painted_route, paint::prepare_elk_clipped_routes};
 
 const MAX_TOKEN_BYTES: usize = 8 * 1024;
 
@@ -141,18 +145,35 @@ fn admit_request(
     }
     let model = request.model;
     let config = request.render_config;
-    if !matches!(
-        request.layout.route_contract,
-        FlowchartSvgRoute::DagreParity
-    ) || request.prepared_theme.compatibility.look.as_str() != "classic"
-        || config.default_edge_interpolate != "linear"
+    let route = request.layout.route_contract;
+    let (curve, reason) = match route {
+        #[cfg(feature = "layout-dagre")]
+        FlowchartSvgRoute::DagreParity => (
+            "linear",
+            "flowchart-requires-classic-dagre-linear-svg-labels",
+        ),
+        #[cfg(feature = "layout-elk")]
+        FlowchartSvgRoute::ElkParity => (
+            "rounded",
+            "flowchart-requires-classic-elk-rounded-svg-labels",
+        ),
+        _ => {
+            return Err(unsupported(
+                meter,
+                "flowchart-requires-classic-dagre-linear-svg-labels",
+            ));
+        }
+    };
+    if request.prepared_theme.compatibility.look.as_str() != "classic"
+        || config.default_edge_interpolate != curve
         || config.node_html_labels
         || config.edge_html_labels
     {
-        return Err(unsupported(
-            meter,
-            "flowchart-requires-classic-dagre-linear-svg-labels",
-        ));
+        return Err(unsupported(meter, reason));
+    }
+    #[cfg(feature = "layout-elk")]
+    if route.is_elk_parity() && request.effective_config.get_bool("elk.lineHops") != Some(false) {
+        return Err(unsupported(meter, "flowchart-elk-line-hops"));
     }
     if request.swimlane_layout.is_some()
         || !model.subgraphs.is_empty()
@@ -488,10 +509,36 @@ fn render_scene(
     meter.charge(edges.len())?;
     reserve(&mut ranges, edges.len())?;
     let mut scratch = FlowchartEdgeDataPointsScratch::default();
+    #[cfg(feature = "layout-elk")]
+    let mut elk_routes = if ctx.uses_elk_adapter_dom {
+        Some(prepare_elk_clipped_routes(
+            ctx,
+            edges,
+            hierarchy,
+            &mut scratch,
+        )?)
+    } else {
+        None
+    };
     for edge in edges {
         let edge = edge.as_ref();
-        let route = prepare_dagre_linear_edge_route(ctx, edge, hierarchy, &mut scratch)?
-            .ok_or_else(|| unsupported(meter, "flowchart-linear-painted-route"))?;
+        let route = match ctx.layout.route_contract {
+            #[cfg(feature = "layout-dagre")]
+            FlowchartSvgRoute::DagreParity => {
+                prepare_dagre_linear_edge_route(ctx, edge, hierarchy, &mut scratch)?
+                    .ok_or_else(|| unsupported(meter, "flowchart-linear-painted-route"))?
+            }
+            #[cfg(feature = "layout-elk")]
+            FlowchartSvgRoute::ElkParity => elk_routes
+                .as_mut()
+                .and_then(Iterator::next)
+                .filter(|(request, _, _)| request.key == edge.key)
+                .and_then(|(request, _, route)| {
+                    elk_straight_painted_route(request, route, &mut scratch)
+                })
+                .ok_or_else(|| unsupported(meter, "flowchart-elk-straight-painted-route"))?,
+            _ => return Err(invalid("unadmitted Flowchart compact route contract")),
+        };
         min_x = min_x.min(route.bounds.min_x);
         min_y = min_y.min(route.bounds.min_y);
         max_x = max_x.max(route.bounds.max_x);

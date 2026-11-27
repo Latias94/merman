@@ -43,7 +43,7 @@ pub(in crate::svg::parity) fn flowchart_edge_geometry(
 #[cfg(all(
     feature = "native-compact",
     feature = "diagram-flowchart",
-    feature = "layout-dagre"
+    any(feature = "layout-dagre", feature = "layout-elk")
 ))]
 pub(in crate::svg::parity) fn render_native_compact_flowchart_artifact(
     artifact: &crate::family::FlowchartFamilyArtifact<FlowchartLayout>,
