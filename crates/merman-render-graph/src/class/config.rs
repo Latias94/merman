@@ -1,8 +1,8 @@
-use crate::config::{
+use merman_render_core::config::{
     config_bool, config_diagram_look, config_f64, config_f64_css_px,
     config_f64_explicit_css_absolute_px, config_string,
 };
-use crate::text::{TextStyle, WrapMode};
+use merman_render_core::text::{TextStyle, WrapMode};
 use merman_theme_contract::v2::Density;
 use serde_json::Value;
 
@@ -140,7 +140,7 @@ impl<'a> ClassConfigView<'a> {
     fn interface_wrapping_width(&self) -> f64 {
         self.flowchart_compat_f64("wrappingWidth")
             .filter(|width| width.is_finite() && *width > 0.0)
-            .unwrap_or(crate::text::MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX)
+            .unwrap_or(merman_render_core::text::MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX)
     }
 
     fn render_diagram_html_labels(&self) -> bool {
@@ -158,12 +158,12 @@ impl<'a> ClassConfigView<'a> {
         config_f64_explicit_css_absolute_px(self.effective_config, &["themeVariables", "fontSize"])
             .filter(|size| *size >= 0.0)
             .or_else(|| {
-                crate::config::config_css_number_or_string(
+                merman_render_core::config::config_css_number_or_string(
                     self.effective_config,
                     &["themeVariables", "fontSize"],
                 )
                 .as_deref()
-                .is_some_and(crate::mermaid_style::css_font_size_is_zero)
+                .is_some_and(merman_render_core::mermaid_style::css_font_size_is_zero)
                 .then_some(0.0)
             })
             .unwrap_or(16.0)
@@ -199,7 +199,7 @@ impl<'a> ClassConfigView<'a> {
     }
 
     pub(super) fn layout_font_family_css(&self) -> String {
-        let font_family = crate::config::normalize_css_font_family(
+        let font_family = merman_render_core::config::normalize_css_font_family(
             self.text_font_family().unwrap_or_default().as_str(),
         );
         if font_family.is_empty() {
@@ -212,7 +212,7 @@ impl<'a> ClassConfigView<'a> {
 
 /// Operation-owned configuration shared by layout and terminal SVG emission.
 #[derive(Debug)]
-pub(crate) struct ClassRenderConfig {
+pub struct ClassRenderConfig {
     layout: ClassLayoutSettings,
     pub(crate) native_style: Option<super::ClassNativeStyle>,
     pub(crate) diagram_use_html_labels: bool,
@@ -228,7 +228,7 @@ pub(crate) struct ClassRenderConfig {
 }
 
 impl ClassRenderConfig {
-    pub(crate) fn resolve(
+    pub fn resolve(
         effective_config: &merman_model::presentation::PresentationConfig,
         typography: &super::ClassTextThemePlan,
     ) -> Self {
@@ -262,9 +262,9 @@ impl ClassRenderConfig {
         }
     }
 
-    pub(crate) fn with_native_style(
+    pub fn with_native_style(
         mut self,
-        native: &crate::theme::FamilyTheme,
+        native: &merman_theme_contract::v2::FamilyTheme,
         config: &merman_model::presentation::PresentationConfig,
     ) -> Self {
         if !config.explicit_config_owns_path("fontSize")
@@ -298,7 +298,16 @@ impl ClassRenderConfig {
             .map_or(self.text_style(), |native| &native.code_style)
     }
 
-    pub(super) const fn layout_settings(&self) -> &ClassLayoutSettings {
+    pub const fn hand_drawn_seed(&self) -> Option<f64> {
+        self.hand_drawn_seed
+    }
+
+    #[cfg(feature = "layout-shoal")]
+    pub fn uses_neo_look(&self) -> bool {
+        self.look == "neo"
+    }
+
+    pub const fn layout_settings(&self) -> &ClassLayoutSettings {
         &self.layout
     }
 
@@ -320,21 +329,21 @@ impl ClassRenderConfig {
 }
 
 #[derive(Debug)]
-pub(super) struct ClassLayoutSettings {
-    pub(super) nodesep: f64,
-    pub(super) ranksep: f64,
-    pub(super) wrap_mode_node: WrapMode,
-    pub(super) wrap_mode_label: WrapMode,
-    pub(super) wrap_mode_note: WrapMode,
-    pub(super) class_padding: f64,
-    pub(super) namespace_padding: f64,
-    pub(super) note_padding: f64,
-    pub(super) hide_empty_members_box: bool,
-    pub(super) text_style: TextStyle,
-    pub(super) html_calc_text_style: TextStyle,
-    pub(super) wrap_probe_font_size: f64,
-    pub(super) title_margin_top: f64,
-    pub(super) title_margin_bottom: f64,
+pub struct ClassLayoutSettings {
+    pub nodesep: f64,
+    pub ranksep: f64,
+    pub wrap_mode_node: WrapMode,
+    pub wrap_mode_label: WrapMode,
+    pub wrap_mode_note: WrapMode,
+    pub class_padding: f64,
+    pub namespace_padding: f64,
+    pub note_padding: f64,
+    pub hide_empty_members_box: bool,
+    pub text_style: TextStyle,
+    pub html_calc_text_style: TextStyle,
+    pub wrap_probe_font_size: f64,
+    pub title_margin_top: f64,
+    pub title_margin_bottom: f64,
 }
 
 fn class_wrap_mode(html_labels: bool) -> WrapMode {
@@ -352,7 +361,7 @@ mod tests {
 
     #[test]
     fn prepared_config_preserves_font_probe_and_padding_domains() {
-        let source = crate::test_support::presentation_config(json!({
+        let source = crate::class::test_support::presentation_config(json!({
             "fontFamily": "Root Sans, monospace",
             "fontSize": "18",
             "htmlLabels": false,
@@ -399,14 +408,20 @@ mod tests {
     fn prepared_interface_width_and_seed_keep_existing_coercion_boundaries() {
         for (width, expected) in [
             (json!("200"), 200.0),
-            (json!(0), crate::text::MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX),
-            (json!(-2), crate::text::MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX),
+            (
+                json!(0),
+                merman_render_core::text::MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX,
+            ),
+            (
+                json!(-2),
+                merman_render_core::text::MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX,
+            ),
             (
                 json!("Infinity"),
-                crate::text::MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX,
+                merman_render_core::text::MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX,
             ),
         ] {
-            let source = crate::test_support::presentation_config(
+            let source = crate::class::test_support::presentation_config(
                 json!({ "flowchart": { "wrappingWidth": width } }),
             );
             let typography = super::super::ClassTextThemePlan::resolve(None, &source);
@@ -419,7 +434,8 @@ mod tests {
             (json!("17"), None),
             (json!(null), None),
         ] {
-            let source = crate::test_support::presentation_config(json!({ "handDrawnSeed": seed }));
+            let source =
+                crate::class::test_support::presentation_config(json!({ "handDrawnSeed": seed }));
             let typography = super::super::ClassTextThemePlan::resolve(None, &source);
             let config = ClassRenderConfig::resolve(&source, &typography);
             assert_eq!(config.hand_drawn_seed, expected);
@@ -483,7 +499,7 @@ mod tests {
 
     #[test]
     fn class_namespace_padding_defaults_to_sixteen_from_native_config() {
-        let source = crate::test_support::presentation_config_from_config(
+        let source = crate::class::test_support::presentation_config_from_config(
             merman_core::generated::default_site_config(),
         );
         assert!(source.as_value()["class"].get("padding").is_none());
@@ -641,7 +657,7 @@ mod tests {
             json!({"class": {"diagramPadding": 31, "padding": 23}}),
             json!({"diagramPadding": 99, "flowchart": {"diagramPadding": 0}}),
         ] {
-            let source = crate::test_support::presentation_config(source);
+            let source = crate::class::test_support::presentation_config(source);
             let typography = super::super::ClassTextThemePlan::resolve(None, &source);
             let config = ClassRenderConfig::resolve(&source, &typography);
             assert_eq!(config.viewport_padding, 8.0, "{source:?}");
@@ -667,7 +683,7 @@ mod tests {
                 false,
             ),
         ] {
-            let source = crate::test_support::presentation_config(source);
+            let source = crate::class::test_support::presentation_config(source);
             let typography = super::super::ClassTextThemePlan::resolve(None, &source);
             let config = ClassRenderConfig::resolve(&source, &typography);
             assert_eq!(config.use_max_width, expected, "{source:?}");

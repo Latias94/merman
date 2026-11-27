@@ -9,7 +9,7 @@ pub(super) fn write_class_svg_document(
     aria_roledescription: &str,
     root_context: &root_svg::RootViewportContext<'_>,
     viewport: root_svg::RootViewportSpec,
-) -> crate::Result<root_svg::RootDocument> {
+) -> merman_render_core::Result<root_svg::RootDocument> {
     let has_acc_title = model
         .model()
         .acc_title

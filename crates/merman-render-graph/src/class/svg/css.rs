@@ -1,4 +1,4 @@
-use super::super::*;
+use super::*;
 
 pub(super) fn write_class_native_css(
     out: &mut impl SvgOutput,
@@ -7,7 +7,7 @@ pub(super) fn write_class_native_css(
     relation: &crate::class::ClassRelationThemePlan,
     theme: &crate::class::ClassCssThemeBinding,
 ) -> Result<()> {
-    let id = crate::svg::escape_css_identifier(diagram_id);
+    let id = merman_render_core::svg_css::escape_css_identifier(diagram_id);
     let code = native
         .code_style
         .font_family
@@ -93,7 +93,7 @@ pub(super) fn write_class_css(
     native: Option<&crate::class::ClassNativeStyle>,
 ) -> Result<()> {
     let theme = typography_theme.css_binding();
-    let id = crate::svg::escape_css_identifier(diagram_id);
+    let id = merman_render_core::svg_css::escape_css_identifier(diagram_id);
     let info_css = typography_theme.common_css();
     let font_family = info_css.font_family();
     let class_text = theme.class_text.as_str();
@@ -266,15 +266,19 @@ mod tests {
             self.retained.as_str()
         }
 
-        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()> {
+        fn replace_range(
+            &mut self,
+            range: Range<usize>,
+            replacement: &str,
+        ) -> merman_render_core::Result<()> {
             self.retained.replace_range(range, replacement);
             Ok(())
         }
 
-        fn checkpoint(&mut self) -> crate::Result<()> {
+        fn checkpoint(&mut self) -> merman_render_core::Result<()> {
             self.checkpoint_count += 1;
             if self.reject_at == Some(self.checkpoint_count) {
-                return Err(crate::Error::InvalidModel {
+                return Err(merman_render_core::Error::InvalidModel {
                     message: "test Class CSS sink rejected a checkpoint".to_string(),
                 });
             }
@@ -308,7 +312,10 @@ mod tests {
                 None,
             )
             .expect_err("a failed Class CSS checkpoint must prevent successful CSS output");
-            assert!(matches!(error, crate::Error::InvalidModel { .. }));
+            assert!(matches!(
+                error,
+                merman_render_core::Error::InvalidModel { .. }
+            ));
         }
     }
 }

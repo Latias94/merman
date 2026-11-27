@@ -1,5 +1,5 @@
-use super::super::roughjs_common::{controlled, ops_to_svg_path_d, parse_hex_color_to_srgba};
-use super::super::*;
+use super::*;
+use merman_render_core::rough_svg::{controlled, ops_to_svg_path_d, parse_hex_color_to_srgba};
 
 fn class_parse_stroke_dash_pair(stroke_dasharray: &str) -> (f64, f64) {
     let dash = stroke_dasharray.trim().replace(',', " ");
@@ -35,7 +35,7 @@ pub(super) fn class_rough_hachure_rect_paths(
     stroke: &str,
     stroke_width: f32,
     stroke_dasharray: &str,
-    work_meter: &crate::resources::OperationWorkMeter,
+    work_meter: &merman_render_core::resources::OperationWorkMeter,
     randomness: &roughr::core::RoughRandomness,
 ) -> Option<(String, String)> {
     let fill =
@@ -101,7 +101,7 @@ pub(super) fn class_rough_hand_drawn_line_path(
     stroke: &str,
     stroke_width: f32,
     stroke_dasharray: &str,
-    work_meter: &crate::resources::OperationWorkMeter,
+    work_meter: &merman_render_core::resources::OperationWorkMeter,
     randomness: &roughr::core::RoughRandomness,
 ) -> Option<String> {
     let stroke =
@@ -128,7 +128,7 @@ pub(super) fn class_rough_hand_drawn_line_path(
 pub(super) fn class_rough_hand_drawn_stroke_path_for_svg_path(
     svg_path_data: &str,
     roughness: f32,
-    work_meter: &crate::resources::OperationWorkMeter,
+    work_meter: &merman_render_core::resources::OperationWorkMeter,
     randomness: &roughr::core::RoughRandomness,
 ) -> Option<String> {
     let mut options = roughr::core::OptionsBuilder::default()
@@ -157,7 +157,7 @@ pub(super) fn class_rough_line_double_path_and_bounds(
     x2: f64,
     y2: f64,
     randomness: &roughr::core::RoughRandomness,
-) -> (String, super::super::path_bounds::SvgPathBounds) {
+) -> (String, merman_render_core::svg_bounds::SvgPathBounds) {
     let mut options = roughr::core::OptionsBuilder::default()
         .randomness(randomness.clone())
         .build()
@@ -171,11 +171,11 @@ fn class_rough_line_double_path_and_bounds_with_options(
     x2: f64,
     y2: f64,
     options: &mut roughr::core::Options,
-) -> (String, super::super::path_bounds::SvgPathBounds) {
+) -> (String, merman_render_core::svg_bounds::SvgPathBounds) {
     let dx = x2 - x1;
     let dy = y2 - y1;
     let mut d = String::new();
-    let mut pb = super::super::path_bounds::SvgPathBounds {
+    let mut pb = merman_render_core::svg_bounds::SvgPathBounds {
         min_x: x1,
         min_y: y1,
         max_x: x1,
@@ -207,9 +207,9 @@ fn class_rough_line_double_path_and_bounds_with_options(
             fmt(x2),
             fmt(y2),
         );
-        super::super::path_bounds::svg_path_bounds_include_cubic(
+        merman_render_core::svg_bounds::svg_path_bounds_include_cubic(
             &mut pb,
-            super::super::path_bounds::CubicBezier {
+            merman_render_core::svg_bounds::CubicBezier {
                 x0: x1,
                 y0: y1,
                 x1: c1x,
@@ -231,7 +231,7 @@ pub(super) fn class_rough_rect_stroke_path_and_bounds(
     width: f64,
     height: f64,
     randomness: &roughr::core::RoughRandomness,
-) -> (String, super::super::path_bounds::SvgPathBounds) {
+) -> (String, merman_render_core::svg_bounds::SvgPathBounds) {
     let right = left + width;
     let bottom = top + height;
     let mut options = roughr::core::OptionsBuilder::default()
@@ -239,7 +239,7 @@ pub(super) fn class_rough_rect_stroke_path_and_bounds(
         .build()
         .expect("class rough rectangle options must be valid");
     let mut out = String::new();
-    let mut pb_opt: Option<super::super::path_bounds::SvgPathBounds> = None;
+    let mut pb_opt: Option<merman_render_core::svg_bounds::SvgPathBounds> = None;
 
     for (idx, (ax, ay, bx, by)) in [
         (left, top, right, top),
@@ -268,7 +268,7 @@ pub(super) fn class_rough_rect_stroke_path_and_bounds(
 
     (
         out,
-        pb_opt.unwrap_or(super::super::path_bounds::SvgPathBounds {
+        pb_opt.unwrap_or(merman_render_core::svg_bounds::SvgPathBounds {
             min_x: left,
             min_y: top,
             max_x: right,
@@ -280,11 +280,11 @@ pub(super) fn class_rough_rect_stroke_path_and_bounds(
 #[cfg(test)]
 mod control_tests {
     use super::*;
-    use crate::resources::{
+    use merman_model::{OperationControl, OperationPhase};
+    use merman_render_core::resources::{
         OperationWorkError, OperationWorkMeter, RenderResourcePolicy, ResourceLimitCause,
         ResourceLimitId,
     };
-    use merman_model::{OperationControl, OperationPhase};
 
     #[test]
     fn class_rough_generation_preserves_work_and_cancellation_terminals() {

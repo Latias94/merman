@@ -1,47 +1,17 @@
-#[cfg(feature = "diagram-class")]
-use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
-#[cfg(any(feature = "diagram-class", feature = "diagram-er"))]
+#[cfg(feature = "diagram-er")]
 use std::sync::Arc;
 
 pub use merman_render_core::{
     Bounds, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
 };
 
-#[derive(Debug)]
 #[cfg(feature = "diagram-class")]
-pub struct ClassNodeRowMetrics {
-    pub members: Vec<crate::text::TextMetrics>,
-    pub methods: Vec<crate::text::TextMetrics>,
-    pub(crate) _retained_reservation: Option<crate::resources::PreparedTextRetainedReservation>,
-}
-
-#[derive(Debug)]
-#[cfg(feature = "diagram-class")]
-#[non_exhaustive]
-pub struct ClassPreparedHtmlLabel {
-    pub metrics: crate::text::TextMetrics,
-    pub max_width_px: i64,
-    pub xhtml: String,
-}
-
-#[derive(Debug)]
-#[cfg(feature = "diagram-class")]
-pub struct ClassPreparedHtmlNodeLabels {
-    pub title: ClassPreparedHtmlLabel,
-    pub annotation: Option<ClassPreparedHtmlLabel>,
-    pub members: Vec<ClassPreparedHtmlLabel>,
-    pub methods: Vec<ClassPreparedHtmlLabel>,
-    pub(crate) _retained_reservation: Option<crate::resources::PreparedTextRetainedReservation>,
-}
-
-/// Prepared labels share ownership through `Arc` without copying their admitted allocations.
-#[derive(Debug)]
-#[cfg(feature = "diagram-class")]
-pub enum ClassNodeLabelPlan {
-    RowMetrics(ClassNodeRowMetrics),
-    PreparedHtml(ClassPreparedHtmlNodeLabels),
-}
+pub use merman_render_graph::class::{
+    ClassDiagramLayout, ClassNodeLabelPlan, ClassNodeRowMetrics, ClassPreparedHtmlLabel,
+    ClassPreparedHtmlNodeLabels, ClassRenderItem, ClassRenderRoot, ClassRenderRootId,
+    ClassRenderTree,
+};
 
 /// Edge geometry prepared by the same family-local route and label decisions as SVG.
 ///
@@ -401,63 +371,6 @@ impl SwimlaneLayout {
 
 #[cfg(feature = "diagram-state")]
 pub use merman_render_graph::state::StateDiagramLayout;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-class")]
-pub struct ClassDiagramLayout {
-    pub nodes: Vec<LayoutNode>,
-    pub edges: Vec<LayoutEdge>,
-    pub clusters: Vec<LayoutCluster>,
-    pub bounds: Option<Bounds>,
-    /// Whether SVG emission follows Mermaid's registered ELK renderer DOM structure.
-    #[serde(skip)]
-    pub uses_elk_adapter_dom: bool,
-    #[serde(skip)]
-    pub class_label_plans_by_id: FxHashMap<String, Arc<ClassNodeLabelPlan>>,
-    /// DOM ownership produced by the same recursive Dagre preparation that owns layout.
-    ///
-    /// Compatibility layout JSON remains flat, while SVG rendering consumes this typed tree so it
-    /// never has to reconstruct extracted namespace roots from the semantic model.
-    #[serde(skip)]
-    pub render_tree: ClassRenderTree,
-}
-
-#[derive(Debug, Clone, Default)]
-#[cfg(feature = "diagram-class")]
-pub struct ClassRenderRoot {
-    pub namespace_id: Option<String>,
-    pub cluster_ids: Vec<String>,
-    pub edge_ids: Vec<String>,
-    pub items: Vec<ClassRenderItem>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[cfg(feature = "diagram-class")]
-pub struct ClassRenderRootId(pub usize);
-
-#[derive(Debug, Clone)]
-#[cfg(feature = "diagram-class")]
-pub struct ClassRenderTree {
-    pub roots: Vec<ClassRenderRoot>,
-    pub top: ClassRenderRootId,
-}
-
-#[cfg(feature = "diagram-class")]
-impl Default for ClassRenderTree {
-    fn default() -> Self {
-        Self {
-            roots: vec![ClassRenderRoot::default()],
-            top: ClassRenderRootId(0),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-#[cfg(feature = "diagram-class")]
-pub enum ClassRenderItem {
-    Node(String),
-    Subgraph(ClassRenderRootId),
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-er")]

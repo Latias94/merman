@@ -1,16 +1,16 @@
-use super::super::SvgOutput;
-use super::super::timing::RenderTiming;
+#[cfg(feature = "layout-shoal")]
+use super::ClassCanonicalRoutes;
 use super::ClassSvgRelation;
+use super::SvgOutput;
 use super::context::{ClassEmitCheckpoint, ClassRenderDetails};
 use super::edge::{
     ClassEdgeGroupsRenderContext, ClassEdgePathEmission, render_class_edge_labels,
     render_class_edge_paths,
 };
-#[cfg(feature = "layout-shoal")]
-use crate::graph_layout::canonical::CanonicalRoutes;
-use crate::model::{Bounds, LayoutEdge, LayoutPoint};
-use crate::svg::parity::SvgDiagramId;
-use crate::text::{TextMeasurer, TextStyle};
+use crate::class::model::{Bounds, LayoutEdge, LayoutPoint};
+use merman_render_core::svg_css::SvgId as SvgDiagramId;
+use merman_render_core::svg_output::timing::RenderTiming;
+use merman_render_core::text::{TextMeasurer, TextStyle};
 use rustc_hash::FxHashMap;
 
 pub(super) struct ClassSplitEdgeGroupsRenderState<'a> {
@@ -20,17 +20,17 @@ pub(super) struct ClassSplitEdgeGroupsRenderState<'a> {
 
 pub(super) struct ClassSplitEdgeGroupsRenderContext<'a> {
     pub(super) edges: &'a [LayoutEdge],
-    pub(super) clusters: &'a [crate::model::LayoutCluster],
+    pub(super) clusters: &'a [merman_render_core::LayoutCluster],
     pub(super) native_style: Option<&'a crate::class::ClassNativeStyle>,
     pub(super) missing_section_points: &'a FxHashMap<&'a str, Vec<LayoutPoint>>,
-    pub(super) work_meter: &'a crate::resources::OperationWorkMeter,
+    pub(super) work_meter: &'a merman_render_core::resources::OperationWorkMeter,
     pub(super) line_hop_paths: &'a std::collections::HashMap<&'a str, String>,
     pub(super) relations_by_id: &'a FxHashMap<&'a str, ClassSvgRelation<'a>>,
     pub(super) relation_index_by_id: &'a FxHashMap<&'a str, usize>,
     pub(super) prepared_svg_edge_labels:
         &'a FxHashMap<String, crate::class::ClassPreparedSvgEdgeLabel>,
     #[cfg(feature = "layout-shoal")]
-    pub(super) canonical_routes: Option<&'a CanonicalRoutes>,
+    pub(super) canonical_routes: Option<&'a ClassCanonicalRoutes<'a>>,
     pub(super) diagram_marker_class: &'a str,
     pub(super) diagram_id: SvgDiagramId<'a>,
     pub(super) content_tx: f64,
@@ -39,7 +39,8 @@ pub(super) struct ClassSplitEdgeGroupsRenderContext<'a> {
     pub(super) text_measurer: &'a dyn TextMeasurer,
     pub(super) terminal_text_style: &'a TextStyle,
     pub(super) mermaid_config: Option<&'a merman_model::presentation::PresentationConfig>,
-    pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
+    pub(super) math_renderer:
+        Option<&'a (dyn merman_render_core::math::MathRenderer + Send + Sync)>,
     pub(super) look: &'a str,
     pub(super) hand_drawn_seed: roughr::core::RoughRandomness,
     pub(super) timing: RenderTiming,
@@ -55,7 +56,7 @@ pub(super) fn render_class_split_edge_groups<O: SvgOutput>(
     ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
     bounds_dx: f64,
     bounds_dy: f64,
-) -> crate::Result<()> {
+) -> merman_render_core::Result<()> {
     let ClassSplitEdgeGroupsRenderState {
         content_bounds,
         detail,
@@ -80,7 +81,7 @@ pub(super) fn render_class_split_edge_paths<'edges, O: SvgOutput>(
     ctx: &ClassSplitEdgeGroupsRenderContext<'edges>,
     bounds_dx: f64,
     bounds_dy: f64,
-) -> crate::Result<ClassEdgePathEmission<'edges>> {
+) -> merman_render_core::Result<ClassEdgePathEmission<'edges>> {
     let local_ctx = local_edge_context(ctx, bounds_dx, bounds_dy);
     render_class_edge_paths(out, content_bounds, detail, &local_ctx)
 }
@@ -93,7 +94,7 @@ pub(super) fn render_class_split_edge_labels<O: SvgOutput>(
     bounds_dx: f64,
     bounds_dy: f64,
     path_emission: &ClassEdgePathEmission<'_>,
-) -> crate::Result<()> {
+) -> merman_render_core::Result<()> {
     let local_ctx = local_edge_context(ctx, bounds_dx, bounds_dy);
     render_class_edge_labels(out, content_bounds, detail, &local_ctx, path_emission)
 }

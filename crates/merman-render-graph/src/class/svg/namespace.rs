@@ -1,15 +1,15 @@
-use crate::model::{Bounds, LayoutCluster};
-use crate::text::MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX;
+use crate::class::model::{Bounds, LayoutCluster};
+use merman_render_core::text::MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX;
 use std::collections::HashMap;
 
-use super::super::SvgDiagramId;
-use super::super::timing::RenderTiming;
-use super::super::util::html_label_overflow_attr;
-use super::super::{SvgOutput, escape_attr_display, escape_xml_display, fmt};
+use super::SvgDiagramId;
 use super::bounds::include_xywh;
 use super::context::ClassEmitCheckpoint;
 use super::label::{class_math_html_label, write_class_svg_plain_node_text};
-use crate::Result;
+use super::{SvgOutput, escape_attr_display, escape_xml_display, fmt};
+use merman_render_core::Result;
+use merman_render_core::html::html_label_overflow_attr;
+use merman_render_core::svg_output::timing::RenderTiming;
 
 #[derive(Clone, Copy)]
 pub(super) struct ClassNamespaceClusterGroupContext<'a> {
@@ -22,7 +22,7 @@ pub(super) struct ClassNamespaceClusterGroupContext<'a> {
     pub use_html_labels: bool,
     pub look: &'a str,
     pub mermaid_config: Option<&'a merman_model::presentation::PresentationConfig>,
-    pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
+    pub math_renderer: Option<&'a (dyn merman_render_core::math::MathRenderer + Send + Sync)>,
     pub timing: RenderTiming,
     pub emit: ClassEmitCheckpoint<'a>,
 }
@@ -32,7 +32,7 @@ pub(super) fn render_class_namespace_cluster_group(
     content_bounds: &mut Option<Bounds>,
     clusters: &[LayoutCluster],
     ctx: ClassNamespaceClusterGroupContext<'_>,
-) -> crate::Result<std::time::Duration> {
+) -> merman_render_core::Result<std::time::Duration> {
     let clusters_start = ctx.timing.start();
     out.push_str(r#"<g class="clusters">"#);
     out.checkpoint()?;
@@ -157,7 +157,7 @@ pub(super) fn render_class_namespace_clusters_in_root(
     root_ns_id: &str,
     root_dx: f64,
     root_dy: f64,
-) -> crate::Result<()> {
+) -> merman_render_core::Result<()> {
     out.push_str(r#"<g class="clusters">"#);
     out.checkpoint()?;
     for ns_id in cluster_ids {

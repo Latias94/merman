@@ -1,6 +1,8 @@
 //! Class Dagre projection and compound namespace layout.
 
-use super::measured::{MeasuredClassDiagram, MeasuredGraph, measure_class_diagram};
+use merman_render_graph::class::measured::MeasuredClassDiagram;
+
+use super::measured::{MeasuredGraph, measure_class_diagram};
 use super::{
     ClassDiagramModel, ClassPreparedLabels, ClassRenderConfig, ClassTextThemePlan,
     EdgeTerminalMetrics, Rect, apply_class_terminal_labels, class_namespace_ids_in_decl_order,

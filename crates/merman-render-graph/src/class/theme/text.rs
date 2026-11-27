@@ -1,16 +1,16 @@
-use crate::text::TextStyle;
 use merman_model::presentation::PresentationConfig;
+use merman_render_core::text::TextStyle;
 
 #[derive(Debug)]
-pub(crate) struct ClassTextThemePlan {
+pub struct ClassTextThemePlan {
     css_binding: super::ClassCssThemeBinding,
-    common_css: crate::svg::PreparedCommonCss,
+    common_css: merman_render_core::svg_css::PreparedCommonCss,
     layout_font_family_css: String,
 }
 
 impl ClassTextThemePlan {
-    pub(crate) fn resolve(
-        theme: Option<&crate::theme::FamilyTheme>,
+    pub fn resolve(
+        theme: Option<&merman_theme_contract::v2::FamilyTheme>,
         config: &PresentationConfig,
     ) -> Self {
         let values = config.as_value();
@@ -22,11 +22,13 @@ impl ClassTextThemePlan {
         let native_family = theme.filter(|_| !owns(&["fontFamily", "themeVariables.fontFamily"]));
         let (family, layout_font_family_css) = if let Some(theme) = native_family {
             let typography = &theme.typography;
-            let family = crate::theme::font_family_css(typography.stack(typography.body_family));
+            let family = merman_render_core::mermaid_style::font_family_css(
+                typography.stack(typography.body_family),
+            );
             (family.clone(), family)
         } else {
             (
-                crate::config::config_font_family_css(config),
+                merman_render_core::config::config_font_family_css(config),
                 super::super::config::ClassConfigView::new(values).layout_font_family_css(),
             )
         };
@@ -34,7 +36,7 @@ impl ClassTextThemePlan {
             .filter(|_| !owns(&["fontSize", "themeVariables.fontSize"]))
             .map_or_else(
                 || {
-                    crate::config::config_css_number_or_string(
+                    merman_render_core::config::config_css_number_or_string(
                         values,
                         &["themeVariables", "fontSize"],
                     )
@@ -53,7 +55,9 @@ impl ClassTextThemePlan {
                     "strokeWidth": theme.form.stroke_width,
                 }});
                 let mut common =
-                    crate::svg::PreparedCommonCss::with_resolved_typography(&paints, family, size);
+                    merman_render_core::svg_css::PreparedCommonCss::with_resolved_typography(
+                        &paints, family, size,
+                    );
                 if native_family.is_none() {
                     common = common.with_configured_root_font_family(values);
                 }
@@ -61,8 +65,10 @@ impl ClassTextThemePlan {
             }
             None => (
                 super::ClassCssThemeBinding::resolve(values),
-                crate::svg::PreparedCommonCss::with_resolved_typography(values, family, size)
-                    .with_configured_root_font_family(values),
+                merman_render_core::svg_css::PreparedCommonCss::with_resolved_typography(
+                    values, family, size,
+                )
+                .with_configured_root_font_family(values),
             ),
         };
         Self {
@@ -76,7 +82,7 @@ impl ClassTextThemePlan {
         &self.css_binding
     }
 
-    pub(crate) fn common_css(&self) -> &crate::svg::PreparedCommonCss {
+    pub(crate) fn common_css(&self) -> &merman_render_core::svg_css::PreparedCommonCss {
         &self.common_css
     }
 

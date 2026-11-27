@@ -97,7 +97,7 @@ Quadrant Chart, Radar, Sankey, Treemap, and Venn layout through `diagram-quadran
 `diagram-xychart` selects XY Chart layout and plot geometry.
 `merman-render-flow` provides shape geometry, authored styling and document stylesheets through
 `diagram-flowchart`, `diagram-swimlane`, and `diagram-agentflow`.
-`merman-render-graph` provides complete SVG writers for ER, GitGraph, Requirement, and State.
+`merman-render-graph` provides complete SVG writers for Class, ER, GitGraph, Requirement, and State.
 `merman-render-sequence` provides complete layout and SVG for Sequence and ZenUML through
 `diagram-sequence` and `diagram-zenuml`.
 [Chart renderer ownership](../adr/0099-model-and-source-boundaries.md#chart-rendering)

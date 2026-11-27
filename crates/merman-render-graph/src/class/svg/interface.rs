@@ -1,14 +1,14 @@
-use super::super::SvgDiagramId;
-use super::super::util::html_label_overflow_attr;
-use super::super::{SvgOutput, escape_attr_display, escape_xml_into, fmt};
 use super::ClassSvgInterface;
+use super::SvgDiagramId;
 use super::bounds::include_xywh;
 use super::context::ClassEmitCheckpoint;
 use super::label::{class_html_div_style, class_math_html_label};
 use super::node::ClassNodeRenderPosition;
-use crate::entities::decode_entities_minimal_cow;
-use crate::model::{Bounds, LayoutNode};
-use crate::text::{TextMeasurer, TextStyle, WrapMode};
+use super::{SvgOutput, escape_attr_display, escape_xml_into, fmt};
+use merman_render_core::entities::decode_entities_minimal_cow;
+use merman_render_core::html::html_label_overflow_attr;
+use merman_render_core::text::{TextMeasurer, TextStyle, WrapMode};
+use merman_render_core::{Bounds, LayoutNode};
 
 pub(super) struct ClassInterfaceRenderContext<'a> {
     pub diagram_id: SvgDiagramId<'a>,
@@ -19,7 +19,7 @@ pub(super) struct ClassInterfaceRenderContext<'a> {
     pub wrapping_width: f64,
     pub look: &'a str,
     pub mermaid_config: Option<&'a merman_model::presentation::PresentationConfig>,
-    pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
+    pub math_renderer: Option<&'a (dyn merman_render_core::math::MathRenderer + Send + Sync)>,
     pub emit: ClassEmitCheckpoint<'a>,
 }
 
@@ -34,7 +34,7 @@ pub(super) fn render_class_interface_node<O: SvgOutput>(
     layout_node: &LayoutNode,
     position: ClassNodeRenderPosition,
     ctx: &ClassInterfaceRenderContext<'_>,
-) -> crate::Result<()> {
+) -> merman_render_core::Result<()> {
     let out = &mut *state.out;
     let content_bounds = &mut *state.content_bounds;
 
@@ -129,11 +129,12 @@ pub(super) fn render_class_interface_node<O: SvgOutput>(
         }
         out.push_str("</span></div></foreignObject>");
     } else {
-        let source = crate::graph_label::FlowchartSvgLabelSource::new(&label_text);
+        let source =
+            merman_render_core::text::literal_label::FlowchartSvgLabelSource::new(&label_text);
         let lines =
             source.wrapped_lines(ctx.measurer, ctx.text_style, Some(ctx.wrapping_width), true);
         out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
-        super::super::label::write_svg_text_source_word_lines_with_style(
+        merman_render_core::text::svg_label::write_svg_text_source_word_lines_with_style(
             out, &lines, "", false, None,
         );
         out.push_str("</g>");

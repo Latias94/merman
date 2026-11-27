@@ -1,14 +1,11 @@
-use crate::entities::decode_entities_minimal_cow;
-use crate::model::{Bounds, LayoutNode};
-use crate::text::{MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, TextMeasurer, TextStyle};
+use merman_render_core::entities::decode_entities_minimal_cow;
+use merman_render_core::text::{MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, TextMeasurer, TextStyle};
+use merman_render_core::{Bounds, LayoutNode};
 use std::fmt::Write as _;
 use std::time::Duration;
 
-use super::super::SvgDiagramId;
-use super::super::timing::RenderTiming;
-use super::super::util::html_label_overflow_attr;
-use super::super::{SvgOutput, escape_attr_display, fmt};
 use super::ClassSvgNote;
+use super::SvgDiagramId;
 use super::bounds::{include_path_d, include_xywh};
 use super::context::ClassEmitCheckpoint;
 use super::label::{class_math_html_label, class_note_html_div_style};
@@ -16,6 +13,9 @@ use super::node::ClassNodeRenderPosition;
 use super::rough::{
     class_rough_hachure_rect_paths, class_rough_rect_stroke_path_and_bounds, class_rough_seed,
 };
+use super::{SvgOutput, escape_attr_display, fmt};
+use merman_render_core::html::html_label_overflow_attr;
+use merman_render_core::svg_output::timing::RenderTiming;
 
 pub(super) struct ClassNoteRenderContext<'a> {
     pub relation_theme: &'a crate::class::ClassRelationThemePlan,
@@ -26,7 +26,7 @@ pub(super) struct ClassNoteRenderContext<'a> {
     pub use_html_labels: bool,
     pub uses_canonical_routes: bool,
     pub mermaid_config: &'a merman_model::presentation::PresentationConfig,
-    pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
+    pub math_renderer: Option<&'a (dyn merman_render_core::math::MathRenderer + Send + Sync)>,
     pub look: &'a str,
     pub hand_drawn_seed: roughr::core::RoughRandomness,
     pub timing: RenderTiming,
@@ -51,7 +51,7 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
     layout_node: &LayoutNode,
     position: ClassNodeRenderPosition,
     ctx: &ClassNoteRenderContext<'_>,
-) -> crate::Result<ClassNoteRenderStats> {
+) -> merman_render_core::Result<ClassNoteRenderStats> {
     let out = &mut *state.out;
     let content_bounds = &mut *state.content_bounds;
     let mut stats = ClassNoteRenderStats::default();
@@ -244,11 +244,11 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
             fmt(label_x),
             fmt(label_y),
         );
-        super::super::label::write_svg_markdown_word_lines_with_style(
+        merman_render_core::text::svg_label::write_svg_markdown_word_lines_with_style(
             out,
             svg_label.as_ref().expect("SVG note plan").lines(),
             Some(note_label_style),
-            crate::text::SvgTextEntityMode::DecodedModel,
+            merman_render_core::text::inline_html::SvgTextEntityMode::DecodedModel,
         );
         out.push_str("</g></g></g>");
     }

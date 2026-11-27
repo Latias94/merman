@@ -10,15 +10,20 @@ pub(crate) struct ClassRelationWidthBinding {
 impl ClassRelationWidthBinding {
     pub(super) fn from_config(config: &PresentationConfig) -> Self {
         let values = config.as_value();
-        let css =
-            crate::config::config_css_number_or_string(values, &["themeVariables", "strokeWidth"]);
+        let css = merman_render_core::config::config_css_number_or_string(
+            values,
+            &["themeVariables", "strokeWidth"],
+        );
         let authored =
             css.is_some() && config.explicit_config_owns_path("themeVariables.strokeWidth");
         let paint_width = authored
             .then(|| {
-                crate::config::config_f64_css_px(values, &["themeVariables", "strokeWidth"])
-                    .filter(|value| value.is_finite() && *value >= 0.0 && *value <= f32::MAX as f64)
-                    .map(|value| value as f32)
+                merman_render_core::config::config_f64_css_px(
+                    values,
+                    &["themeVariables", "strokeWidth"],
+                )
+                .filter(|value| value.is_finite() && *value >= 0.0 && *value <= f32::MAX as f64)
+                .map(|value| value as f32)
             })
             .flatten();
         Self {

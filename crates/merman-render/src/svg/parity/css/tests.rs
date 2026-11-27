@@ -144,7 +144,7 @@ fn logical_css_fragment_ids_survive_one_terminal_xml_encoding() {
         diagram_id,
         &serde_json::json!({"look": "neo", "themeVariables": {"useGradient": true}}),
     );
-    assert!(css.contains(crate::svg::escape_css_identifier(diagram_id).as_ref()));
+    assert!(css.contains(merman_render_core::svg_css::escape_css_identifier(diagram_id).as_ref()));
     let mut serialized = String::from("<svg><style>");
     super::super::output::XmlTextOutput::new(&mut serialized).push_str(&css);
     serialized.push_str("</style></svg>");

@@ -5,6 +5,10 @@ binding, label preparation, and complete SVG emission. `merman-render` selects t
 supplies canonical routes and the operation context, and applies terminal SVG policies.
 `layout-shoal` adds marker footprints for routing and viewport geometry.
 
+The `diagram-class` feature owns Class style binding, label preparation, and complete SVG
+emission. The facade selects the layout backend and supplies measured geometry and canonical
+routes.
+
 The `diagram-requirement` feature owns Requirement preparation, Dagre layout, ELK graph
 projections, and complete SVG emission. `merman-render` selects the backend and supplies
 canonical geometry, viewport settings, and terminal policies.

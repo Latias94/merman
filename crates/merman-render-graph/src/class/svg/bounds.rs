@@ -1,7 +1,7 @@
-use crate::model::{Bounds, LayoutPoint};
+use crate::class::model::{Bounds, LayoutPoint};
 
-use super::super::path_bounds::{SvgPathBounds, svg_path_bounds_from_d};
 use super::defs::ClassMarkerPaintSpec;
+use merman_render_core::svg_bounds::{SvgPathBounds, svg_path_bounds_from_d};
 
 pub(super) fn include_rect(
     bounds: &mut Option<Bounds>,
@@ -144,7 +144,7 @@ pub(super) fn include_class_marker_paint_bounds(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::svg::parity::class::defs::class_marker_paint_spec;
+    use crate::class::svg::defs::class_marker_paint_spec;
 
     fn assert_close(actual: f64, expected: f64) {
         assert!(

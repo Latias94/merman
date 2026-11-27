@@ -1,4 +1,4 @@
-use crate::model::Bounds;
+use crate::class::model::Bounds;
 
 pub(super) struct ClassViewBoxContext<'a> {
     pub content_bounds: Option<Bounds>,

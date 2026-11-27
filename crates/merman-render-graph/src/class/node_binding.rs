@@ -3,15 +3,15 @@ use rustc_hash::FxHashMap;
 
 /// Source styles prepared once for each class. The renderer borrows shared defaults as needed.
 #[derive(Debug)]
-pub(crate) struct ClassNodeVisualPlan {
+pub struct ClassNodeVisualPlan {
     nodes: FxHashMap<String, ClassNodeVisualBinding>,
 }
 
 impl ClassNodeVisualPlan {
-    pub(crate) fn resolve(
+    pub fn resolve(
         model: &ClassDiagram,
-        work: &crate::resources::OperationWorkMeter,
-    ) -> crate::Result<Self> {
+        work: &merman_render_core::resources::OperationWorkMeter,
+    ) -> merman_render_core::Result<Self> {
         let mut nodes =
             FxHashMap::with_capacity_and_hasher(model.classes().len(), Default::default());
         for (id, node) in model.classes() {
@@ -102,7 +102,7 @@ pub(super) fn class_apply_inline_styles<'a>(node: &'a ClassNode) -> ClassInlineS
     let mut stroke_dasharray: Option<&str> = None;
 
     for raw in &node.styles {
-        let Some(parsed) = crate::mermaid_style::parse_style_declaration(raw) else {
+        let Some(parsed) = merman_render_core::mermaid_style::parse_style_declaration(raw) else {
             continue;
         };
         if !style_attr.is_empty() {
@@ -157,13 +157,13 @@ mod tests {
         for padding in [0, 1024, 4096] {
             let fill = format!("rgb({}1,2,3)", " ".repeat(padding));
             let stroke = format!("rgb({}4,5,6)", " ".repeat(padding));
-            let config = crate::test_support::presentation_config(serde_json::json!({
+            let config = crate::class::test_support::presentation_config(serde_json::json!({
                 "themeVariables": {"mainBkg": fill, "nodeBorder": stroke}
             }));
             let typography = crate::class::ClassTextThemePlan::resolve(None, &config);
             let defaults = typography.css_binding();
-            let meter = crate::resources::OperationWorkMeter::new(
-                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            let meter = merman_render_core::resources::OperationWorkMeter::new(
+                merman_render_core::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
             );
             let visual = ClassNodeVisualPlan::resolve(&model, &meter).unwrap();
             assert_eq!(defaults.node_default_fill, fill);
@@ -195,8 +195,8 @@ mod tests {
             format!("fill:{}", defaults.node_default_fill),
             format!("stroke:{}", defaults.node_default_stroke),
         ];
-        let meter = crate::resources::OperationWorkMeter::new(
-            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        let meter = merman_render_core::resources::OperationWorkMeter::new(
+            merman_render_core::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
         let model = ClassDiagram::new(model, config.as_config());
         let visual = ClassNodeVisualPlan::resolve(&model, &meter).unwrap();
@@ -219,14 +219,14 @@ mod tests {
     #[test]
     fn visual_preparation_observes_cancellation() {
         let control = merman_model::OperationControl::new();
-        let work = crate::resources::OperationWorkMeter::new_with_control(
-            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        let work = merman_render_core::resources::OperationWorkMeter::new_with_control(
+            merman_render_core::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
             control.clone(),
         );
         control.cancel();
         assert!(matches!(
             ClassNodeVisualPlan::resolve(&fixture_model(), &work),
-            Err(crate::Error::Cancelled(_))
+            Err(merman_render_core::Error::Cancelled(_))
         ));
     }
 

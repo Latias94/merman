@@ -1,4 +1,3 @@
-use super::super::timing::RenderTimings;
 use super::context::ClassEmitCheckpoint;
 use super::groups::ClassSplitEdgeGroupsRenderContext;
 use super::nodes::{
@@ -8,15 +7,65 @@ use super::nodes::{
 use super::root::{CLASS_GRAPH_MARGIN_PX, write_class_svg_document};
 use super::viewbox::{ClassViewBoxContext, class_viewbox};
 use super::*;
+use merman_render_core::svg_output::timing::RenderTimings;
+
+#[cfg(feature = "layout-shoal")]
+use merman_render_core::{
+    LayoutEdge, LayoutPoint,
+    route_paint::{CanonicalPaintScratch, PaintedRoute, RouteStyle},
+    route_types::Marker,
+};
+use merman_render_core::{resources::OperationWorkMeter, svg_output::timing::RenderTiming};
+use roughr::core::RoughRandomness;
+
+#[cfg(feature = "layout-shoal")]
+pub struct ClassCanonicalEdge {
+    pub path: PaintedRoute,
+    pub marker_points: [LayoutPoint; 4],
+    pub data_points: Vec<LayoutPoint>,
+    pub markers: (Marker, Marker),
+}
+
+#[cfg(feature = "layout-shoal")]
+pub type ClassCanonicalPaint<'a> = dyn Fn(
+        &LayoutEdge,
+        kurbo::Vec2,
+        f64,
+        RouteStyle,
+        &mut CanonicalPaintScratch,
+    ) -> Result<ClassCanonicalEdge>
+    + 'a;
+
+#[cfg(feature = "layout-shoal")]
+pub type ClassCanonicalRoughStroke =
+    fn(&str, (Marker, Marker), &OperationWorkMeter, &RoughRandomness) -> Result<String>;
+
+#[cfg(feature = "layout-shoal")]
+pub struct ClassCanonicalRoutes<'a> {
+    pub paint: &'a ClassCanonicalPaint<'a>,
+    pub rough_stroke: ClassCanonicalRoughStroke,
+}
+
+/// Facade-owned root, timing, random key, and optional canonical geometry.
+pub struct ClassSvgContext<'a> {
+    pub diagram_id: SvgDiagramId<'a>,
+    pub viewport: root_svg::RootViewportContext<'a>,
+    pub work_meter: &'a OperationWorkMeter,
+    pub math_renderer: Option<&'a (dyn merman_render_core::math::MathRenderer + Send + Sync)>,
+    pub timing: RenderTiming,
+    pub hand_drawn_seed: RoughRandomness,
+    pub elk_parity: bool,
+    #[cfg(feature = "layout-shoal")]
+    pub canonical_routes: Option<&'a ClassCanonicalRoutes<'a>>,
+}
 
 #[allow(
     clippy::too_many_arguments,
     reason = "The SVG writer receives prepared geometry, styles, and operation inputs."
 )]
-pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
+pub fn render_class_diagram_svg_model_with_config(
     layout: &ClassDiagramLayout,
     prepared_labels: &crate::class::ClassPreparedLabels,
-    route_contract: &crate::graph_layout::RouteContract,
     model: &ClassSvgModel,
     relation_theme: &crate::class::ClassRelationThemePlan,
     typography_theme: &crate::class::ClassTextThemePlan,
@@ -25,35 +74,31 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     effective_config: &merman_model::presentation::PresentationConfig,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
-    options: &SvgExecution<'_>,
+    options: ClassSvgContext<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let mermaid_config = effective_config;
     let effective_config = effective_config.as_value();
-    let timing = options.timing();
+    let timing = options.timing;
     let total_timer = timing.start();
     let mut timings = RenderTimings::default();
 
     let mut detail = ClassRenderDetails::default();
-    let diagram_id = options.diagram_id_or("merman");
-    let checkpoint_emit = || options.checkpoint_emit();
-    let emit = ClassEmitCheckpoint::new(&checkpoint_emit, options.work_meter());
+    let diagram_id = options.diagram_id;
+    let emit = ClassEmitCheckpoint {
+        work_meter: options.work_meter,
+    };
     let aria_roledescription = model.model().diagram_type.as_str();
 
     let build_ctx_guard = timing.section(&mut timings.build_ctx);
-    let hand_drawn_seed = options.rough_randomness(
-        render_config
-            .hand_drawn_seed
-            .unwrap_or(options.seed() as f64),
-        "render.class.roughjs",
-    );
+    let hand_drawn_seed = options.hand_drawn_seed;
     let settings = render_config;
     #[cfg(feature = "layout-shoal")]
-    let canonical_routes = route_contract.canonical_routes();
+    let canonical_routes = options.canonical_routes;
     #[cfg(feature = "layout-shoal")]
     let uses_canonical_routes = canonical_routes.is_some();
     #[cfg(not(feature = "layout-shoal"))]
     let uses_canonical_routes = false;
-    let elk_parity = route_contract.is_elk_parity();
+    let elk_parity = options.elk_parity;
 
     // Mermaid's Dagre renderer applies fixed 8px graph margins. Its registered ELK renderer emits
     // the layout coordinates directly and keeps the viewport padding as the only outer margin.
@@ -70,14 +115,14 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     let mut content_bounds: Option<Bounds> = None;
 
     let render_guard = timing.section(&mut timings.render_svg);
-    let mut out = BoundedSvgOutput::new(options.work_meter());
-    let root_context = options.root_viewport(crate::DiagramFamilyId::CLASS, diagram_id);
+    let mut out = BoundedSvgOutput::new(options.work_meter);
+    let root_context = &options.viewport;
     emit.checkpoint()?;
 
     // Mermaid emits a single `<style>` element with diagram-scoped CSS.
     out.push_str("<style>");
     write_class_css(
-        &mut super::super::output::XmlTextOutput::new(&mut out),
+        &mut merman_render_core::svg_output::XmlTextOutput::new(&mut out),
         diagram_id.semantic_str(),
         typography_theme,
         relation_theme,
@@ -85,7 +130,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     )?;
     if let Some(native) = &settings.native_style {
         super::css::write_class_native_css(
-            &mut super::super::output::XmlTextOutput::new(&mut out),
+            &mut merman_render_core::svg_output::XmlTextOutput::new(&mut out),
             diagram_id.semantic_str(),
             native,
             relation_theme,
@@ -139,19 +184,21 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
             {
                 missing_section_points.insert(
                     edge.id.as_str(),
-                    crate::elk_geometry::missing_rect_section_points(start, end),
+                    merman_render_core::graph_layout::elk_geometry::missing_rect_section_points(
+                        start, end,
+                    ),
                 );
             }
         }
     }
     let line_hop_edges = if elk_parity {
-        options.work_meter().charge(paint_edges.len())?;
+        options.work_meter.charge(paint_edges.len())?;
         paint_edges
             .iter()
             .map(|edge| {
                 let relation = relations_by_id.get(edge.id.as_str()).copied();
                 let missing = missing_section_points.get(edge.id.as_str());
-                super::super::line_hops::LineHopEdge {
+                merman_render_core::svg_edge_parity::line_hops::LineHopEdge {
                     id: edge.id.as_str(),
                     points: missing.map(Vec::as_slice).unwrap_or(&edge.points),
                     curve: Some(if missing.is_some() {
@@ -171,17 +218,17 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     } else {
         Vec::new()
     };
-    let line_hop_paths = super::super::line_hops::elk_line_hop_paths(
+    let line_hop_paths = merman_render_core::svg_edge_parity::line_hops::elk_line_hop_paths(
         effective_config,
         &line_hop_edges,
-        options.work_meter(),
+        options.work_meter,
     )?;
     let group_ctx = ClassSplitEdgeGroupsRenderContext {
         edges: &paint_edges,
         clusters: &layout.clusters,
         native_style: settings.native_style.as_ref(),
         missing_section_points: &missing_section_points,
-        work_meter: options.work_meter(),
+        work_meter: options.work_meter,
         line_hop_paths: &line_hop_paths,
         relations_by_id: &relations_by_id,
         relation_index_by_id: &relation_index_by_id,
@@ -196,7 +243,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         text_measurer: measurer,
         terminal_text_style: &terminal_text_style,
         mermaid_config: Some(mermaid_config),
-        math_renderer: options.math_renderer(),
+        math_renderer: options.math_renderer,
         look: settings.look.as_str(),
         hand_drawn_seed: hand_drawn_seed.clone(),
         timing,
@@ -227,7 +274,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         diagram_id,
         measurer,
         mermaid_config,
-        math_renderer: options.math_renderer(),
+        math_renderer: options.math_renderer,
         node_visual_plan,
         typography_theme,
         relation_theme,
@@ -331,13 +378,13 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(view_box.width));
     // Fixed sizing needs the final dimensions when the root is opened. Build its small
     // prefix after measuring content rather than changing a deferred document's sizing mode.
-    let mut prefix = BoundedSvgOutput::new(options.work_meter());
+    let mut prefix = BoundedSvgOutput::new(options.work_meter);
     let root_document = write_class_svg_document(
         &mut prefix,
         model,
         diagram_id,
         aria_roledescription,
-        &root_context,
+        root_context,
         final_root_spec,
     )?;
     out.replace_range(0..0, &prefix.finish()?)?;

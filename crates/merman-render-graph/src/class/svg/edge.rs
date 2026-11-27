@@ -1,5 +1,5 @@
-use super::super::timing::RenderTiming;
-use super::super::util::html_label_overflow_attr;
+#[cfg(feature = "layout-shoal")]
+use super::ClassCanonicalRoutes;
 use super::ClassSvgRelation;
 use super::bounds::{
     include_class_marker_paint_bounds, include_path_bounds_with_outset, include_path_d_with_outset,
@@ -12,22 +12,20 @@ use super::label::{
     write_class_svg_edge_text,
 };
 use super::rough::class_rough_hand_drawn_stroke_path_for_svg_path;
-use crate::entities::decode_entities_minimal_cow;
-#[cfg(feature = "layout-shoal")]
-use crate::graph_layout::{
-    canonical::{CanonicalPaintScratch, CanonicalRoutes},
-    route_paint::RouteStyle,
-};
-use crate::model::{Bounds, LayoutEdge, LayoutLabel, LayoutPoint};
-use crate::svg::parity::SvgDiagramId;
-use crate::svg::parity::edge_label_geometry::position_edge_label;
-use crate::text::{MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, TextMeasurer, TextStyle};
 use base64::Engine as _;
+use merman_render_core::entities::decode_entities_minimal_cow;
+use merman_render_core::html::html_label_overflow_attr;
+#[cfg(feature = "layout-shoal")]
+use merman_render_core::route_paint::{CanonicalPaintScratch, RouteStyle};
+use merman_render_core::svg_css::SvgId as SvgDiagramId;
+use merman_render_core::svg_edge_parity::edge_label_geometry::position_edge_label;
+use merman_render_core::svg_output::timing::RenderTiming;
+use merman_render_core::text::{MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, TextMeasurer, TextStyle};
+use merman_render_core::{Bounds, LayoutEdge, LayoutLabel, LayoutPoint};
 use std::fmt::Write as _;
 
-use super::super::{
-    SvgOutput, escape_attr_display, escape_xml_into, fmt, json_stringify_points_into,
-};
+use super::{SvgOutput, escape_attr_display, escape_xml_into, fmt};
+use merman_render_core::svg_edge_parity::path_numbers::json_stringify_points_into;
 use rustc_hash::FxHashMap;
 
 const CLASS_HAND_DRAWN_EDGE_STROKE: &str = "#000";
@@ -35,16 +33,16 @@ const CLASS_HAND_DRAWN_EDGE_STROKE_WIDTH: &str = "1";
 
 pub(super) struct ClassEdgeGroupsRenderContext<'a> {
     pub edges: &'a [LayoutEdge],
-    pub clusters: &'a [crate::model::LayoutCluster],
+    pub clusters: &'a [merman_render_core::LayoutCluster],
     pub native_style: Option<&'a crate::class::ClassNativeStyle>,
     pub missing_section_points: &'a FxHashMap<&'a str, Vec<LayoutPoint>>,
-    pub work_meter: &'a crate::resources::OperationWorkMeter,
+    pub work_meter: &'a merman_render_core::resources::OperationWorkMeter,
     pub line_hop_paths: &'a std::collections::HashMap<&'a str, String>,
     pub relations_by_id: &'a FxHashMap<&'a str, ClassSvgRelation<'a>>,
     pub relation_index_by_id: &'a FxHashMap<&'a str, usize>,
     pub prepared_svg_edge_labels: &'a FxHashMap<String, crate::class::ClassPreparedSvgEdgeLabel>,
     #[cfg(feature = "layout-shoal")]
-    pub canonical_routes: Option<&'a CanonicalRoutes>,
+    pub canonical_routes: Option<&'a ClassCanonicalRoutes<'a>>,
     pub diagram_marker_class: &'a str,
     pub diagram_id: SvgDiagramId<'a>,
     pub content_tx: f64,
@@ -55,7 +53,7 @@ pub(super) struct ClassEdgeGroupsRenderContext<'a> {
     pub text_measurer: &'a dyn TextMeasurer,
     pub terminal_text_style: &'a TextStyle,
     pub mermaid_config: Option<&'a merman_model::presentation::PresentationConfig>,
-    pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
+    pub math_renderer: Option<&'a (dyn merman_render_core::math::MathRenderer + Send + Sync)>,
     pub look: &'a str,
     pub hand_drawn_seed: roughr::core::RoughRandomness,
     pub timing: RenderTiming,
@@ -91,7 +89,7 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
     content_bounds: &mut Option<Bounds>,
     detail: &mut ClassRenderDetails,
     ctx: &ClassEdgeGroupsRenderContext<'edges>,
-) -> crate::Result<ClassEdgePathEmission<'edges>> {
+) -> merman_render_core::Result<ClassEdgePathEmission<'edges>> {
     let mut edge_points_json_buf = String::new();
     let mut edge_points_json_ryu = ryu_js::Buffer::new();
     let mut edge_points_b64_buf = String::new();
@@ -159,7 +157,7 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
                 if ctx.look == "neo" {
                     paint_scratch.route.measure_length();
                 }
-                routes.paint_with_scratch(
+                (routes.paint)(
                     e,
                     kurbo::Vec2::new(ctx.content_tx, ctx.content_ty),
                     stroke_outset,
@@ -168,7 +166,6 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
                         Some("step") => RouteStyle::Step,
                         _ => RouteStyle::Curved,
                     },
-                    ctx.work_meter,
                     &mut paint_scratch,
                 )
             })
@@ -181,7 +178,7 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
                 let bounds = &geometry.path.bounds;
                 break 'geometry (
                     geometry.path.d.as_str(),
-                    Some(super::super::path_bounds::SvgPathBounds {
+                    Some(merman_render_core::svg_bounds::SvgPathBounds {
                         min_x: bounds.min_x,
                         min_y: bounds.min_y,
                         max_x: bounds.max_x,
@@ -194,7 +191,7 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
             if ctx.uses_elk_adapter_dom && missing_section.is_none() {
                 // ELK selects rounded routing after clipping and offsets only the endpoints.
                 edge_marker_points =
-                    super::super::edge_path::rounded_line_with_marker_offsets_points(
+                    merman_render_core::svg_edge_parity::edge_path::rounded_line_with_marker_offsets_points(
                         &edge_raw_points,
                         relation
                             .and_then(|rel| class_arrow_type_for_relation_end(rel.relation.type1)),
@@ -202,7 +199,7 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
                             .and_then(|rel| class_arrow_type_for_relation_end(rel.relation.type2)),
                     );
             } else {
-                super::super::edge_path::line_with_offset_points_into(
+                merman_render_core::svg_edge_parity::edge_path::line_with_offset_points_into(
                     &edge_raw_points,
                     relation.and_then(|rel| class_arrow_type_for_relation_end(rel.relation.type1)),
                     relation.and_then(|rel| class_arrow_type_for_relation_end(rel.relation.type2)),
@@ -212,12 +209,19 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
             let edge_curve_source = edge_marker_points.as_slice();
             let native_curve = ctx.relation_theme.native_edge_curve();
             let (path_d, bounds) = if missing_section.is_some() || native_curve == Some("linear") {
-                super::super::curve::curve_linear_path_d_and_bounds(edge_curve_source)
+                merman_render_core::svg_edge_parity::curve::curve_linear_path_d_and_bounds(
+                    edge_curve_source,
+                )
             } else if native_curve == Some("step") {
-                super::super::curve::curve_step_path_d_and_bounds(edge_curve_source)
+                merman_render_core::svg_edge_parity::curve::curve_step_path_d_and_bounds(
+                    edge_curve_source,
+                )
             } else if ctx.uses_elk_adapter_dom && native_curve.is_none() {
                 (
-                    super::super::curve::curve_rounded_path_d(edge_curve_source, 5.0),
+                    merman_render_core::svg_edge_parity::curve::curve_rounded_path_d(
+                        edge_curve_source,
+                        5.0,
+                    ),
                     None,
                 )
             } else if edge_curve_source.len() == 2 {
@@ -230,9 +234,13 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
                     y: (a.y + b.y) / 2.0,
                 });
                 edge_curve_points.push(b.clone());
-                super::super::curve::curve_basis_path_d_and_bounds(&edge_curve_points)
+                merman_render_core::svg_edge_parity::curve::curve_basis_path_d_and_bounds(
+                    &edge_curve_points,
+                )
             } else {
-                super::super::curve::curve_basis_path_d_and_bounds(edge_curve_source)
+                merman_render_core::svg_edge_parity::curve::curve_basis_path_d_and_bounds(
+                    edge_curve_source,
+                )
             };
             parity_d = path_d;
             break 'geometry (
@@ -250,9 +258,9 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
                 break 'rough None;
             }
             #[cfg(feature = "layout-shoal")]
-            if let Some(geometry) = &canonical {
+            if let (Some(routes), Some(geometry)) = (ctx.canonical_routes, &canonical) {
                 ctx.work_meter.charge(d.len().max(1))?;
-                break 'rough Some(super::super::canonical_rough::constrained_rough_edge_path(
+                break 'rough Some((routes.rough_stroke)(
                     d,
                     geometry.markers,
                     ctx.work_meter,
@@ -448,8 +456,10 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
             });
             #[cfg(not(feature = "layout-shoal"))]
             let length: Option<f64> = None;
-            if let Some(length) = length.or_else(|| super::super::svg_path_length_from_d(paint_d)) {
-                super::super::edge_path::write_neo_edge_mask(
+            if let Some(length) = length
+                .or_else(|| merman_render_core::svg_edge_parity::svg_path_length_from_d(paint_d))
+            {
+                merman_render_core::svg_edge_parity::edge_path::write_neo_edge_mask(
                     &mut edge_style_buf,
                     length,
                     relation.and_then(|rel| class_arrow_type_for_relation_end(rel.relation.type1)),
@@ -466,7 +476,7 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
             ctx.look == "handDrawn",
         ));
         let path_style = if let Some(hopped_d) = hopped_d {
-            super::super::line_hops::rewrite_style_after_line_hop(
+            merman_render_core::svg_edge_parity::line_hops::rewrite_style_after_line_hop(
                 &edge_style_buf,
                 hopped_d,
                 ctx.work_meter,
@@ -496,7 +506,7 @@ pub(super) fn render_class_edge_labels<O: SvgOutput>(
     detail: &mut ClassRenderDetails,
     ctx: &ClassEdgeGroupsRenderContext<'_>,
     path_emission: &ClassEdgePathEmission<'_>,
-) -> crate::Result<()> {
+) -> merman_render_core::Result<()> {
     let mut edge_dom_id_buf = String::with_capacity(64);
     let edge_labels_start = ctx.timing.start();
     let ordered_edges = &path_emission.ordered_edges;
@@ -622,15 +632,16 @@ fn render_class_edge_label_group(
     prepared_svg_label: Option<&crate::class::ClassPreparedSvgEdgeLabel>,
     (center_x, center_y): (f64, f64),
     ctx: &ClassEdgeGroupsRenderContext<'_>,
-) -> crate::Result<()> {
+) -> merman_render_core::Result<()> {
     let normalized = if ctx.uses_elk_adapter_dom {
-        crate::text::mermaid_html_breaks_to_newlines(label_text)
+        merman_render_core::text::line_break::mermaid_html_breaks_to_newlines(label_text)
     } else {
         std::borrow::Cow::Borrowed(label_text)
     };
     let decoded = decode_entities_minimal_cow(&normalized);
     let trimmed = decoded.trim();
-    let use_html_labels = ctx.edge_use_html_labels || crate::math::contains_delimited_math(trimmed);
+    let use_html_labels =
+        ctx.edge_use_html_labels || merman_render_core::math::contains_delimited_math(trimmed);
     let container_sampled_bg = ctx.native_style.and_then(|native| {
         if native.edge_label_bg != merman_theme_contract::v2::EdgeLabelBackground::Auto
             || ctx.clusters.is_empty()
@@ -714,7 +725,7 @@ fn render_class_edge_label_group(
         None
     } else {
         Some(
-            prepared_svg_label.ok_or_else(|| crate::Error::InvalidModel {
+            prepared_svg_label.ok_or_else(|| merman_render_core::Error::InvalidModel {
                 message: format!("missing prepared Class SVG relationship label for `{dom_id}`"),
             })?,
         )
@@ -785,7 +796,7 @@ fn render_class_edge_terminals(
     is_start: bool,
     content_bounds: &mut Option<Bounds>,
     ctx: &ClassEdgeGroupsRenderContext<'_>,
-) -> crate::Result<()> {
+) -> merman_render_core::Result<()> {
     let Some(relation) = ctx.relations_by_id.get(edge.id.as_str()).copied() else {
         return Ok(());
     };
@@ -882,7 +893,7 @@ fn render_class_terminal_label(
     out: &mut impl SvgOutput,
     text: &str,
     mermaid_config: Option<&merman_model::presentation::PresentationConfig>,
-    math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
+    math_renderer: Option<&(dyn merman_render_core::math::MathRenderer + Send + Sync)>,
 ) {
     let decoded = decode_entities_minimal_cow(text);
     if let Some(math_html) = class_math_html_label(&decoded, mermaid_config, math_renderer) {

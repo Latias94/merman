@@ -1,14 +1,13 @@
 use crate::class::ClassPreparedSvgTitle;
-use crate::model::{Bounds, ClassNodeLabelPlan, ClassPreparedHtmlLabel, LayoutNode};
-use crate::svg_security::{MermaidNavigationSecurity, prepare_mermaid_navigation_href};
-use crate::text::{TextMeasurer, TextStyle, WrapMode};
+use crate::class::model::{Bounds, ClassNodeLabelPlan, ClassPreparedHtmlLabel, LayoutNode};
 use merman_model::families::class::ClassMember;
+use merman_render_core::svg_security::{
+    MermaidNavigationSecurity, prepare_mermaid_navigation_href,
+};
+use merman_render_core::text::{TextMeasurer, TextStyle, WrapMode};
 use std::time::Duration;
 
-use super::super::SvgDiagramId;
-use super::super::timing::RenderTiming;
-use super::super::util::html_label_overflow_attr;
-use super::super::{SvgOutput, escape_attr_display, escape_xml_into, fmt, fmt_into};
+use super::SvgDiagramId;
 use super::bounds::{include_path_d, include_xywh};
 use super::context::ClassEmitCheckpoint;
 use super::label::{
@@ -23,6 +22,9 @@ use super::rough::{
     class_rough_seed,
 };
 use super::{ClassSvgNode, Rect};
+use super::{SvgOutput, escape_attr_display, escape_xml_into, fmt, fmt_into};
+use merman_render_core::html::html_label_overflow_attr;
+use merman_render_core::svg_output::timing::RenderTiming;
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct ClassNodeRenderPosition {
@@ -55,7 +57,7 @@ pub(super) struct ClassNodeShellContext<'a> {
 }
 
 pub(super) struct ClassNodeBasicContainerContext<'a> {
-    pub work_meter: &'a crate::resources::OperationWorkMeter,
+    pub work_meter: &'a merman_render_core::resources::OperationWorkMeter,
     pub diagram_id: SvgDiagramId<'a>,
     pub node_fill_style_attr: &'a str,
     pub node_stroke_style_attr: &'a str,
@@ -70,7 +72,7 @@ pub(super) struct ClassNodeBasicContainerContext<'a> {
 }
 
 pub(super) struct ClassNodeDividerContext<'a> {
-    pub work_meter: &'a crate::resources::OperationWorkMeter,
+    pub work_meter: &'a merman_render_core::resources::OperationWorkMeter,
     pub node_stroke_style_attr: &'a str,
     pub node_stroke: &'a str,
     pub node_stroke_width: &'a str,
@@ -94,7 +96,7 @@ pub(super) struct ClassNodeBasicContainerResult {
 pub(super) struct ClassHtmlNodeRow<'a> {
     pub text: String,
     pub row_style: String,
-    pub metrics: crate::text::TextMetrics,
+    pub metrics: merman_render_core::text::TextMetrics,
     pub max_width_px: i64,
     pub prepared_xhtml: Option<&'a str>,
     pub y: f64,
@@ -117,7 +119,7 @@ pub(super) struct ClassSvgNodeLabelRun {
     pub text: String,
     pub literal_fallback: bool,
     pub style: String,
-    pub metrics: crate::text::TextMetrics,
+    pub metrics: merman_render_core::text::TextMetrics,
     pub y_offset: f64,
 }
 
@@ -133,11 +135,11 @@ pub(super) struct ClassHtmlNodeLabelGroupSpec<'a> {
     pub span_style: Option<&'a str>,
     pub prepared_xhtml: Option<&'a str>,
     pub mermaid_config: Option<&'a merman_model::presentation::PresentationConfig>,
-    pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
+    pub math_renderer: Option<&'a (dyn merman_render_core::math::MathRenderer + Send + Sync)>,
 }
 
 pub(super) struct ClassHtmlNodeBodyContext<'a> {
-    pub work_meter: &'a crate::resources::OperationWorkMeter,
+    pub work_meter: &'a merman_render_core::resources::OperationWorkMeter,
     pub measurer: &'a dyn TextMeasurer,
     pub text_style: &'a TextStyle,
     pub html_calc_text_style: &'a TextStyle,
@@ -153,14 +155,14 @@ pub(super) struct ClassHtmlNodeBodyContext<'a> {
     pub use_neo_line_class: bool,
     pub uses_canonical_routes: bool,
     pub mermaid_config: Option<&'a merman_model::presentation::PresentationConfig>,
-    pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
+    pub math_renderer: Option<&'a (dyn merman_render_core::math::MathRenderer + Send + Sync)>,
     pub timing: RenderTiming,
     pub native: Option<&'a crate::class::ClassNativeStyle>,
     pub paint_heading: bool,
 }
 
 pub(super) struct ClassSvgNodeBodyContext<'a> {
-    pub work_meter: &'a crate::resources::OperationWorkMeter,
+    pub work_meter: &'a merman_render_core::resources::OperationWorkMeter,
     pub measurer: &'a dyn TextMeasurer,
     pub text_style: &'a TextStyle,
     pub html_calc_text_style: &'a TextStyle,
@@ -197,7 +199,7 @@ pub(super) fn render_class_node_shell_open(
     node: ClassSvgNode<'_>,
     position: ClassNodeRenderPosition,
     ctx: &ClassNodeShellContext<'_>,
-) -> crate::Result<bool> {
+) -> merman_render_core::Result<bool> {
     let tooltip = node.tooltip.as_deref().unwrap_or("").trim();
     let has_tooltip = !tooltip.is_empty();
 
@@ -212,7 +214,7 @@ pub(super) fn render_class_node_shell_open(
 
     if link.is_some() {
         out.push_str(r#"<a data-look=""#);
-        super::super::util::escape_attr_into(out, ctx.look);
+        merman_render_core::xml::escape_attr_into(out, ctx.look);
         out.push('"');
         if let Some(href) = href.as_ref() {
             out.push_str(r#" xlink:href=""#);
@@ -227,7 +229,7 @@ pub(super) fn render_class_node_shell_open(
                 .filter(|target| !target.is_empty())
         {
             out.push_str(r#" target=""#);
-            super::super::util::escape_attr_into(out, target);
+            merman_render_core::xml::escape_attr_into(out, target);
             out.push('"');
         }
         if have_callback {
@@ -246,22 +248,22 @@ pub(super) fn render_class_node_shell_open(
     } else {
         out.push_str("node ");
     }
-    super::super::util::escape_attr_into(out, node.css_classes.trim());
+    merman_render_core::xml::escape_attr_into(out, node.css_classes.trim());
     out.push_str(r#"" id=""#);
     let _ = write!(out, "{}", ctx.diagram_id);
     ctx.emit.checkpoint()?;
     out.push('-');
-    super::super::util::escape_attr_into(out, node.dom_id);
+    merman_render_core::xml::escape_attr_into(out, node.dom_id);
     out.push('"');
     if link.is_none() {
         out.push_str(r#" data-look=""#);
-        super::super::util::escape_attr_into(out, ctx.look);
+        merman_render_core::xml::escape_attr_into(out, ctx.look);
         out.push('"');
     }
     write_class_color_slot(out, ctx.color_index, ctx.palette_size);
     if has_tooltip {
         out.push_str(r#" title=""#);
-        super::super::util::escape_attr_into(out, tooltip);
+        merman_render_core::xml::escape_attr_into(out, tooltip);
         out.push('"');
     }
     if link.is_none() {
@@ -915,7 +917,7 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
                 false,
             );
         }
-        let metrics = crate::text::measure_markdown_with_inline_styles(
+        let metrics = merman_render_core::text::measure_markdown_with_inline_styles(
             ctx.measurer,
             &text,
             &text_style,
@@ -1143,7 +1145,7 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
 
 pub(super) fn measure_class_html_node_rows<'a>(
     members: &[ClassMember],
-    row_metrics: Option<&[crate::text::TextMetrics]>,
+    row_metrics: Option<&[merman_render_core::text::TextMetrics]>,
     prepared_rows: Option<&'a [ClassPreparedHtmlLabel]>,
     ctx: &ClassHtmlNodeRowsContext<'_>,
 ) -> ClassHtmlNodeRows<'a> {
@@ -1323,7 +1325,7 @@ fn measure_class_svg_node_rows(
             ctx.measurer
                 .measure_wrapped(&text, &text_style, None, WrapMode::SvgLike)
         } else {
-            crate::text::measure_markdown_with_inline_styles(
+            merman_render_core::text::measure_markdown_with_inline_styles(
                 ctx.measurer,
                 &text,
                 &text_style,
@@ -1404,7 +1406,7 @@ pub(super) fn render_class_svg_title_group(
     group_x: f64,
     group_y: f64,
     title: &crate::class::ClassSvgTitleLabel,
-    title_metrics: &crate::text::TextMetrics,
+    title_metrics: &merman_render_core::text::TextMetrics,
     group_style: &str,
     weight_style: &str,
 ) {
@@ -1443,10 +1445,10 @@ mod palette_tests {
 #[cfg(test)]
 mod typography_tests {
     use super::*;
-    use crate::environment::TextMeasurementOperation;
-    use crate::text::TextMetrics;
     use merman_core::{MermaidEngine, ParseOptions};
     use merman_model::presentation::RenderSemanticModel;
+    use merman_render_core::text::TextMetrics;
+    use merman_render_core::text::measurement::TextMeasurementOperation;
     use std::sync::Mutex;
 
     struct RecordingMeasurer {
@@ -1538,7 +1540,7 @@ mod typography_tests {
     fn body_context<'a>(
         measurer: &'a dyn TextMeasurer,
         style: &'a TextStyle,
-        work_meter: &'a crate::resources::OperationWorkMeter,
+        work_meter: &'a merman_render_core::resources::OperationWorkMeter,
     ) -> ClassSvgNodeBodyContext<'a> {
         ClassSvgNodeBodyContext {
             work_meter,
@@ -1586,7 +1588,7 @@ mod typography_tests {
             "font-family:serif;font-size:24px;font-weight:900;font-style:italic".to_owned();
         let measurer = RecordingMeasurer::new(1024.0);
         let base = TextStyle::default();
-        let meter = crate::resources::OperationWorkMeter::new(Default::default());
+        let meter = merman_render_core::resources::OperationWorkMeter::new(Default::default());
         let ctx = body_context(&measurer, &base, &meter);
 
         for (rows, font_size) in [(&node.members, 32.0), (&node.methods, 24.0)] {
@@ -1639,7 +1641,7 @@ mod typography_tests {
         node.members[0].css_style = "font-size:32px".to_owned();
         let measurer = RecordingMeasurer::new(0.0);
         let base = TextStyle::default();
-        let meter = crate::resources::OperationWorkMeter::new(Default::default());
+        let meter = merman_render_core::resources::OperationWorkMeter::new(Default::default());
         let ctx = body_context(&measurer, &base, &meter);
         let (runs, _) = measure_class_svg_node_rows(&node.members[..1], &ctx, 3.0);
 
@@ -1714,7 +1716,7 @@ mod typography_tests {
         node.members[1].css_style = node.members[0].css_style.clone();
         let measurer = RecordingMeasurer::new(4096.0);
         let base = TextStyle::default();
-        let meter = crate::resources::OperationWorkMeter::new(Default::default());
+        let meter = merman_render_core::resources::OperationWorkMeter::new(Default::default());
         let ctx = body_context(&measurer, &base, &meter);
         let (runs, _) = measure_class_svg_node_rows(&node.members, &ctx, 3.0);
 
@@ -1775,7 +1777,10 @@ mod typography_tests {
 /// Emit retained createText words; title role and literal fallback are applied after parsing.
 pub(super) fn write_class_svg_label_rows(
     out: &mut impl SvgOutput,
-    lines: &[Vec<(String, crate::text::MermaidMarkdownWordType)>],
+    lines: &[Vec<(
+        String,
+        merman_render_core::text::inline_html::MermaidMarkdownWordType,
+    )>],
     title: bool,
     literal_first_row: bool,
     centered: bool,
@@ -1817,14 +1822,18 @@ pub(super) fn write_class_svg_label_rows(
             }
         } else {
             for (word_index, (word, kind)) in words.iter().enumerate() {
-                let font_style = if *kind == crate::text::MermaidMarkdownWordType::Em {
+                let font_style = if *kind
+                    == merman_render_core::text::inline_html::MermaidMarkdownWordType::Em
+                {
                     "italic"
                 } else {
                     "normal"
                 };
                 let font_weight = if title {
                     ""
-                } else if *kind == crate::text::MermaidMarkdownWordType::Strong {
+                } else if *kind
+                    == merman_render_core::text::inline_html::MermaidMarkdownWordType::Strong
+                {
                     "bold"
                 } else {
                     "normal"

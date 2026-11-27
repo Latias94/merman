@@ -1,5 +1,5 @@
-use super::super::path_bounds::{SvgPathBounds, svg_path_bounds_from_d};
-use super::super::*;
+use super::*;
+use merman_render_core::svg_bounds::{SvgPathBounds, svg_path_bounds_from_d};
 
 const CLASS_DIAMOND_MARKER_PATH: &str = "M 18,7 L9,13 L1,7 L9,1 Z";
 const CLASS_EXTENSION_START_MARKER_PATH: &str = "M 1,7 L18,13 V 1 Z";
@@ -179,11 +179,11 @@ pub(super) fn class_marker_paint_spec(
 }
 
 #[cfg(feature = "layout-shoal")]
-pub(crate) fn class_canonical_marker(
+pub fn class_canonical_marker(
     ty: i32,
     is_start: bool,
     neo: bool,
-) -> crate::graph_layout::Marker {
+) -> merman_render_core::route_types::Marker {
     let Some(spec) = class_marker_paint_spec(ty, is_start, neo) else {
         return Default::default();
     };
@@ -196,7 +196,7 @@ pub(crate) fn class_canonical_marker(
     } else {
         (shape.max_x - ref_x, ref_x - paint.min_x)
     };
-    crate::graph_layout::Marker {
+    merman_render_core::route_types::Marker {
         trim: trim * scale,
         depth: depth * scale,
         width: 2.0 * (ref_y - paint.min_y).max(paint.max_y - ref_y) * scale,
@@ -871,14 +871,18 @@ mod tests {
             self.retained.as_str()
         }
 
-        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()> {
+        fn replace_range(
+            &mut self,
+            range: Range<usize>,
+            replacement: &str,
+        ) -> merman_render_core::Result<()> {
             self.retained.replace_range(range, replacement);
             Ok(())
         }
 
-        fn checkpoint(&mut self) -> crate::Result<()> {
+        fn checkpoint(&mut self) -> merman_render_core::Result<()> {
             if self.rejected {
-                Err(crate::Error::InvalidModel {
+                Err(merman_render_core::Error::InvalidModel {
                     message: "test SVG sink rejected the first write".to_string(),
                 })
             } else {
@@ -894,7 +898,10 @@ mod tests {
         let error = class_markers(&mut out, "class-sink-failure", "classDiagram", true)
             .expect_err("the rejecting sink must stop Class marker rendering");
 
-        assert!(matches!(error, crate::Error::InvalidModel { .. }));
+        assert!(matches!(
+            error,
+            merman_render_core::Error::InvalidModel { .. }
+        ));
         assert_eq!(
             out.write_attempts, 1,
             "Class marker rendering must stop at the first failed sink checkpoint"

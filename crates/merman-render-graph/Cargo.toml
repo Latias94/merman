@@ -17,6 +17,13 @@ third-party-bundle = true
 
 [features]
 default = []
+diagram-class = [
+    "dep:base64", "dep:indexmap", "dep:merman-markup", "dep:merman-model", "dep:merman-render-core",
+    "dep:merman-theme-contract", "dep:roughr", "dep:rustc-hash", "dep:ryu-js", "dep:serde", "dep:serde_json",
+    "merman-markup/html", "merman-model/diagram-class", "merman-render-core/euclid-geometry",
+    "merman-render-core/graph-layout", "merman-render-core/markdown-labels", "merman-render-core/math-labels",
+    "merman-render-core/root-svg", "merman-render-core/rough-svg", "merman-render-core/svg-edge-parity",
+]
 diagram-er = [
     "dep:base64", "dep:indexmap", "dep:kurbo", "dep:merman-markup", "dep:merman-model",
     "dep:merman-render-core", "dep:merman-theme-contract", "dep:roxmltree", "dep:roughr",
@@ -70,6 +77,7 @@ serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 
 [dev-dependencies]
+merman-core = { workspace = true, features = ["diagram-class", "presentation"] }
 merman-model = { workspace = true, features = ["test-support"] }
 merman-render-core = { workspace = true, features = ["test-support"] }
 merman-theme-contract = { workspace = true, features = ["presets"] }

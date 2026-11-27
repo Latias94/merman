@@ -2824,6 +2824,7 @@ dependencies = [
  "euclid",
  "indexmap",
  "kurbo 0.13.1",
+ "merman-core",
  "merman-layout-elk",
  "merman-markup",
  "merman-model",

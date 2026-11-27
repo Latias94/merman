@@ -1,6 +1,6 @@
 use merman_model::presentation::PresentationConfig;
 
-use crate::theme::{Color, FamilyTheme};
+use merman_theme_contract::v2::{Color, FamilyTheme};
 
 mod css_binding;
 mod relation_width;
@@ -8,10 +8,10 @@ mod text;
 
 pub(crate) use css_binding::ClassCssThemeBinding;
 use relation_width::ClassRelationWidthBinding;
-pub(crate) use text::ClassTextThemePlan;
+pub use text::ClassTextThemePlan;
 
 #[derive(Debug)]
-pub(crate) struct ClassRelationThemePlan {
+pub struct ClassRelationThemePlan {
     stroke: String,
     width: ClassRelationWidthBinding,
     note_fill: String,
@@ -25,7 +25,7 @@ pub(crate) struct ClassRelationThemePlan {
 }
 
 impl ClassRelationThemePlan {
-    pub(crate) fn resolve(
+    pub fn resolve(
         theme: Option<&FamilyTheme>,
         config: &PresentationConfig,
         canvas: Option<Color>,
@@ -48,7 +48,7 @@ impl ClassRelationThemePlan {
             };
         }
         let paint = |key, fallback: &str| {
-            crate::config::config_string(config, &["themeVariables", key])
+            merman_render_core::config::config_string(config, &["themeVariables", key])
                 .unwrap_or_else(|| fallback.to_owned())
         };
         Self {

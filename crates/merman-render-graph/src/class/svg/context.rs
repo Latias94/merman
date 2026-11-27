@@ -1,27 +1,18 @@
-use super::super::timing::RenderTimings;
 use super::*;
+use merman_render_core::svg_output::timing::RenderTimings;
 use rustc_hash::FxHashMap;
 use std::time::Duration;
 
 #[derive(Clone, Copy)]
 pub(super) struct ClassEmitCheckpoint<'a> {
-    checkpoint: &'a dyn Fn() -> crate::Result<()>,
-    pub(super) work_meter: &'a crate::resources::OperationWorkMeter,
+    pub(super) work_meter: &'a merman_render_core::resources::OperationWorkMeter,
 }
 
 impl<'a> ClassEmitCheckpoint<'a> {
-    pub(super) fn new(
-        checkpoint: &'a dyn Fn() -> crate::Result<()>,
-        work_meter: &'a crate::resources::OperationWorkMeter,
-    ) -> Self {
-        Self {
-            checkpoint,
-            work_meter,
-        }
-    }
-
-    pub(super) fn checkpoint(self) -> crate::Result<()> {
-        (self.checkpoint)()
+    pub(super) fn checkpoint(self) -> merman_render_core::Result<()> {
+        self.work_meter
+            .checkpoint(merman_model::OperationPhase::Emit)
+            .map_err(Into::into)
     }
 }
 

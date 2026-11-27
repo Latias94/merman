@@ -4,7 +4,7 @@ use serde_json::Value;
 /// Values stay as CSS tokens; binding does not imply native color support.
 #[derive(Debug, Clone)]
 pub(crate) struct ClassCssThemeBinding {
-    pub(crate) look_defs: crate::svg::PreparedLookDefs,
+    pub(crate) look_defs: merman_render_core::svg_css::PreparedLookDefs,
     pub(crate) class_text: String,
     pub(crate) note_text: String,
     pub(crate) class_group_text: String,
@@ -20,11 +20,11 @@ pub(crate) struct ClassCssThemeBinding {
 impl ClassCssThemeBinding {
     pub(crate) fn resolve(config: &Value) -> Self {
         let token = |key: &str, fallback: &str| {
-            crate::config::config_string(config, &["themeVariables", key])
+            merman_render_core::config::config_string(config, &["themeVariables", key])
                 .unwrap_or_else(|| fallback.to_string())
         };
         let paint = |paths: &[&'static str], fallback: &str| {
-            crate::config::selected_config_string(config, paths)
+            merman_render_core::config::selected_config_string(config, paths)
                 .map_or(fallback, |(_, value)| value)
                 .to_owned()
         };
@@ -37,7 +37,7 @@ impl ClassCssThemeBinding {
             "#333",
         );
         let class_group_text =
-            crate::config::config_string(config, &["themeVariables", "nodeBorder"])
+            merman_render_core::config::config_string(config, &["themeVariables", "nodeBorder"])
                 .unwrap_or_else(|| class_text.clone());
         let palette_look = config
             .get("look")
@@ -89,7 +89,7 @@ impl ClassCssThemeBinding {
             Vec::new()
         };
         Self {
-            look_defs: crate::svg::PreparedLookDefs::new(config),
+            look_defs: merman_render_core::svg_css::PreparedLookDefs::new(config),
             class_text: class_text.clone(),
             note_text: token("noteTextColor", "#333"),
             class_group_text,
@@ -112,13 +112,13 @@ impl ClassCssThemeBinding {
         }
     }
 
-    pub(super) fn from_native(theme: &crate::theme::FamilyTheme) -> Self {
+    pub(super) fn from_native(theme: &merman_theme_contract::v2::FamilyTheme) -> Self {
         let roles = &theme.roles;
         let main_bkg = roles.surface_node.first_color().to_string();
         let node_border = roles.stroke_border.first_color().to_string();
         let class_text = roles.text_primary.to_string();
         Self {
-            look_defs: crate::svg::PreparedLookDefs::new(&Value::Null),
+            look_defs: merman_render_core::svg_css::PreparedLookDefs::new(&Value::Null),
             class_group_text: class_text.clone(),
             class_text,
             note_text: roles.text_callout.to_string(),

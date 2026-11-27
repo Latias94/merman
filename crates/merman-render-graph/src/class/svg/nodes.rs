@@ -1,4 +1,3 @@
-use super::super::timing::RenderTiming;
 use super::context::{ClassEmitCheckpoint, ClassRenderDetails};
 use super::groups::{
     ClassSplitEdgeGroupsRenderContext, ClassSplitEdgeGroupsRenderState,
@@ -21,8 +20,11 @@ use super::note::{ClassNoteRenderContext, ClassNoteRenderState, render_class_not
 use super::*;
 use super::{ClassSvgInterface, ClassSvgNode, ClassSvgNote};
 use crate::class::ClassRenderConfig;
-use crate::model::{Bounds, ClassDiagramLayout, ClassRenderItem, ClassRenderRootId, LayoutEdge};
-use crate::{Error, Result};
+use crate::class::model::{
+    Bounds, ClassDiagramLayout, ClassRenderItem, ClassRenderRootId, LayoutEdge,
+};
+use merman_render_core::svg_output::timing::RenderTiming;
+use merman_render_core::{Error, Result};
 use rustc_hash::FxHashMap;
 use std::collections::{HashMap, HashSet};
 
@@ -51,7 +53,8 @@ pub(super) struct ClassNodesRenderContext<'a> {
     pub(super) diagram_id: SvgDiagramId<'a>,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) mermaid_config: &'a merman_model::presentation::PresentationConfig,
-    pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
+    pub(super) math_renderer:
+        Option<&'a (dyn merman_render_core::math::MathRenderer + Send + Sync)>,
     pub(super) node_visual_plan: &'a crate::class::ClassNodeVisualPlan,
     pub(super) typography_theme: &'a crate::class::ClassTextThemePlan,
     pub(super) relation_theme: &'a crate::class::ClassRelationThemePlan,
@@ -384,8 +387,8 @@ pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
 
 fn validate_class_render_tree(
     ctx: &ClassNodesRenderContext<'_>,
-    layout_nodes_by_id: &FxHashMap<&str, &crate::model::LayoutNode>,
-    clusters_by_id: &HashMap<&str, &crate::model::LayoutCluster>,
+    layout_nodes_by_id: &FxHashMap<&str, &crate::class::model::LayoutNode>,
+    clusters_by_id: &HashMap<&str, &merman_render_core::LayoutCluster>,
     edges_by_id: &HashMap<&str, &LayoutEdge>,
 ) -> Result<()> {
     let tree = &ctx.layout.render_tree;
@@ -632,7 +635,7 @@ fn render_class_split_edges_for_namespace<O: SvgOutput>(
 fn render_class_node_id<O: SvgOutput>(
     state: ClassNodesRenderState<'_, O>,
     ctx: &ClassNodesRenderContext<'_>,
-    layout_nodes_by_id: &FxHashMap<&str, &crate::model::LayoutNode>,
+    layout_nodes_by_id: &FxHashMap<&str, &crate::class::model::LayoutNode>,
     id: &str,
     offsets: ClassNodeRootOffsets,
 ) -> Result<()> {
@@ -668,8 +671,8 @@ fn render_class_node_id<O: SvgOutput>(
     };
 
     if let Some(note) = ctx.note_by_id.get(n.id.as_str()).copied() {
-        let use_html_labels =
-            settings.diagram_use_html_labels || crate::math::contains_delimited_math(&note.text);
+        let use_html_labels = settings.diagram_use_html_labels
+            || merman_render_core::math::contains_delimited_math(&note.text);
         let stats = render_class_note_node(
             ClassNoteRenderState {
                 out,
@@ -830,7 +833,7 @@ fn render_class_node_id<O: SvgOutput>(
         detail.path_bounds_calls += html_stats.path_bounds_calls;
     } else {
         let Some(prepared_title) = ctx.prepared_svg_titles.get(n.id.as_str()) else {
-            return Err(crate::Error::InvalidModel {
+            return Err(merman_render_core::Error::InvalidModel {
                 message: format!("missing prepared Class SVG title for `{}`", n.id),
             });
         };

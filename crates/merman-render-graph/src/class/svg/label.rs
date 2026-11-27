@@ -1,18 +1,18 @@
-use super::super::*;
+use super::*;
 
 pub(super) fn class_math_html_label(
     text: &str,
     mermaid_config: Option<&merman_model::presentation::PresentationConfig>,
-    math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
+    math_renderer: Option<&(dyn merman_render_core::math::MathRenderer + Send + Sync)>,
 ) -> Option<String> {
-    if !crate::math::contains_delimited_math(text) {
+    if !merman_render_core::math::contains_delimited_math(text) {
         return None;
     }
     let (Some(config), Some(renderer)) = (mermaid_config, math_renderer) else {
         return None;
     };
-    crate::math::render_math_html_label(text, config, Some(renderer))
-        .map(crate::math::mark_math_html_native_unavailable)
+    merman_render_core::math::render_math_html_label(text, config, Some(renderer))
+        .map(merman_render_core::math::mark_math_html_native_unavailable)
 }
 
 pub(super) struct ClassHtmlLabelSpec<'a> {
@@ -23,7 +23,7 @@ pub(super) struct ClassHtmlLabelSpec<'a> {
     pub span_style: Option<&'a str>,
     pub prepared_xhtml: Option<&'a str>,
     pub mermaid_config: Option<&'a merman_model::presentation::PresentationConfig>,
-    pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
+    pub math_renderer: Option<&'a (dyn merman_render_core::math::MathRenderer + Send + Sync)>,
 }
 
 pub(super) fn render_class_html_label(out: &mut impl SvgOutput, spec: &ClassHtmlLabelSpec<'_>) {
@@ -39,7 +39,7 @@ pub(super) fn render_class_html_label(out: &mut impl SvgOutput, spec: &ClassHtml
     }
     let span_style = spec.span_style.map(str::trim).unwrap_or("");
     out.push('"');
-    super::super::util::write_style_attribute(
+    merman_render_core::text::svg_label::write_style_attribute(
         out,
         (spec.span_class == "nodeLabel" || !span_style.is_empty()).then_some(span_style),
     );
@@ -52,7 +52,9 @@ pub(super) fn render_class_html_label(out: &mut impl SvgOutput, spec: &ClassHtml
             std::borrow::Cow::Owned(
                 class_math_html_label(spec.text, spec.mermaid_config, spec.math_renderer)
                     .unwrap_or_else(|| {
-                        crate::text::mermaid_markdown_to_xhtml_label_fragment(spec.text, true)
+                        merman_render_core::text::mermaid_markdown_to_xhtml_label_fragment(
+                            spec.text, true,
+                        )
                     }),
             )
         });
@@ -69,23 +71,23 @@ pub(super) fn render_class_html_label(out: &mut impl SvgOutput, spec: &ClassHtml
 }
 
 pub(super) fn write_class_svg_plain_node_text(out: &mut impl SvgOutput, text: &str) {
-    let lines = crate::text::DeterministicTextMeasurer::normalized_text_lines(text)
+    let lines = merman_render_core::text::DeterministicTextMeasurer::normalized_text_lines(text)
         .into_iter()
         .map(|line| {
-            crate::text::non_markdown_svg_words(&line)
+            merman_render_core::text::non_markdown_svg_words(&line)
                 .map(str::to_owned)
                 .collect()
         })
         .collect::<Vec<_>>();
     out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
-    crate::svg::parity::label::write_svg_text_source_word_lines_with_style(
+    merman_render_core::text::svg_label::write_svg_text_source_word_lines_with_style(
         out, &lines, "", false, None,
     );
     out.push_str("</g>");
 }
 
 pub(super) fn write_class_svg_edge_text(out: &mut impl SvgOutput, text: &str, include_style: bool) {
-    crate::svg::parity::label::write_svg_text_centered(out, text, include_style);
+    merman_render_core::text::svg_label::write_svg_text_centered(out, text, include_style);
 }
 
 pub(super) fn write_class_svg_empty_markdown_fallback(
@@ -94,7 +96,7 @@ pub(super) fn write_class_svg_empty_markdown_fallback(
     style: &str,
 ) {
     out.push_str(r#"<text y="-10.1""#);
-    super::super::util::write_style_attribute(out, Some(style));
+    merman_render_core::text::svg_label::write_style_attribute(out, Some(style));
     out.push_str(r#"><tspan class="row text-outer-tspan" x="0" y="-0.1em" dy="1.1em">"#);
     escape_xml_into(out, text);
     out.push_str("</tspan></text>");
@@ -105,7 +107,7 @@ pub(super) fn write_class_svg_text_markdown_with_style(
     markdown: &str,
     style: &str,
 ) {
-    crate::svg::parity::label::write_svg_text_markdown_with_style(
+    merman_render_core::text::svg_label::write_svg_text_markdown_with_style(
         out,
         markdown,
         Some(if style.trim().is_empty() { "" } else { style }),
@@ -125,7 +127,7 @@ pub(super) fn write_class_diagram_title(out: &mut impl SvgOutput, x: f64, y: f64
 
 pub(super) fn open_class_note_label(out: &mut impl SvgOutput, style: &str) {
     out.push_str("<span");
-    super::super::util::write_style_attribute(out, Some(style));
+    merman_render_core::text::svg_label::write_style_attribute(out, Some(style));
     out.push_str(r#" class="nodeLabel markdown-node-label">"#);
 }
 
@@ -178,7 +180,7 @@ pub(super) fn class_html_label_metrics(
     text: &str,
     max_width_px: i64,
     css_style: &str,
-) -> crate::text::TextMetrics {
+) -> merman_render_core::text::TextMetrics {
     crate::class::class_html_measure_label_metrics(measurer, style, text, max_width_px, css_style)
 }
 
@@ -188,13 +190,13 @@ pub(super) fn class_html_title_metrics(
     text: &str,
     max_width_px: i64,
     span_style: &str,
-) -> crate::text::TextMetrics {
+) -> merman_render_core::text::TextMetrics {
     let style = crate::class::class_html_node_text_style(style, "font-weight:bolder", span_style);
     crate::class::class_html_measure_label_metrics(measurer, &style, text, max_width_px, "")
 }
 
 pub(super) fn class_svg_label_rect(
-    metrics: &crate::text::TextMetrics,
+    metrics: &merman_render_core::text::TextMetrics,
     y_offset: f64,
 ) -> Option<super::Rect> {
     if !(metrics.width.is_finite() && metrics.height.is_finite()) {
@@ -225,9 +227,9 @@ pub(super) fn wrap_class_svg_text_like_mermaid(
     };
 
     let mut lines: Vec<String> = Vec::new();
-    for line in crate::text::DeterministicTextMeasurer::normalized_text_lines(text) {
+    for line in merman_render_core::text::DeterministicTextMeasurer::normalized_text_lines(text) {
         let mut tokens = std::collections::VecDeque::from(
-            crate::text::DeterministicTextMeasurer::split_line_to_words(&line),
+            merman_render_core::text::DeterministicTextMeasurer::split_line_to_words(&line),
         );
         let mut cur = String::new();
 
@@ -335,20 +337,20 @@ mod tests {
     fn class_svg_wrap_width_uses_the_same_host_dimensions_probe_as_layout() {
         struct HostProbe;
 
-        impl crate::text::TextMeasurer for HostProbe {
+        impl merman_render_core::text::TextMeasurer for HostProbe {
             fn measure(
                 &self,
                 _text: &str,
-                _style: &crate::text::TextStyle,
-            ) -> crate::text::TextMetrics {
+                _style: &merman_render_core::text::TextStyle,
+            ) -> merman_render_core::text::TextMetrics {
                 panic!("Class width must use the dedicated calculateTextDimensions operation");
             }
 
             fn measure_mermaid_calculate_text_dimensions(
                 &self,
                 text: &str,
-                style: &crate::text::TextStyle,
-            ) -> crate::text::TextMetrics {
+                style: &merman_render_core::text::TextStyle,
+            ) -> merman_render_core::text::TextMetrics {
                 assert_eq!(text, "member");
                 assert_eq!(style.font_size, 10.0);
                 assert_eq!(style.font_weight, None);
@@ -358,7 +360,7 @@ mod tests {
                     Some("HostFont") => (80.4, 30.0),
                     family => panic!("unexpected probe font: {family:?}"),
                 };
-                crate::text::TextMetrics {
+                merman_render_core::text::TextMetrics {
                     width,
                     height,
                     line_count: 1,
@@ -366,7 +368,7 @@ mod tests {
             }
         }
 
-        let render_style = crate::text::TextStyle {
+        let render_style = merman_render_core::text::TextStyle {
             font_family: Some("HostFont".to_string()),
             font_size: 24.0,
             font_weight: Some("bold".to_string()),
@@ -448,7 +450,7 @@ mod svg_label_tests {
                     assert_eq!(output, expected);
                 } else {
                     assert_eq!(output.replacen(style, "", 1), expected);
-                    let document = crate::xml_dom::Document::parse(&output).unwrap();
+                    let document = roxmltree::Document::parse(&output).unwrap();
                     assert_eq!(document.root_element().attribute("style"), Some(style));
                 }
             }
@@ -460,7 +462,7 @@ mod svg_label_tests {
             "\\\\method()",
         ] {
             let mut plain = String::new();
-            crate::svg::parity::label::write_svg_text_markdown_with_style(
+            merman_render_core::text::svg_label::write_svg_text_markdown_with_style(
                 &mut plain,
                 markdown,
                 Some(""),
@@ -479,7 +481,9 @@ mod svg_label_tests {
 
     #[test]
     fn note_label_writes_respect_the_svg_byte_limit() {
-        use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+        use merman_render_core::resources::{
+            OperationWorkMeter, RenderResourcePolicy, ResourceLimitId,
+        };
         let style = "color:#123456;fill:#123456";
         let mut prefix = String::new();
         open_class_note_label(&mut prefix, style);
@@ -490,7 +494,7 @@ mod svg_label_tests {
                 .with_limit(ResourceLimitId::MaxSvgBytes, budget)
                 .unwrap();
             let meter = OperationWorkMeter::new(policy);
-            let mut out = crate::svg::parity::BoundedSvgOutput::new(&meter);
+            let mut out = merman_render_core::svg_output::BoundedSvgOutput::new(&meter);
             open_class_note_label(&mut out, style);
             assert!(out.checkpoint().is_err(), "budget={budget}");
             assert!(out.finish().is_err());
@@ -499,7 +503,7 @@ mod svg_label_tests {
             .with_limit(ResourceLimitId::MaxSvgBytes, prefix.len())
             .unwrap();
         let meter = OperationWorkMeter::new(policy);
-        let mut out = crate::svg::parity::BoundedSvgOutput::new(&meter);
+        let mut out = merman_render_core::svg_output::BoundedSvgOutput::new(&meter);
         open_class_note_label(&mut out, style);
         out.checkpoint().unwrap();
         out.push_str("<p>Label</p></span>");
