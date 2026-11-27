@@ -207,11 +207,7 @@ pub(super) fn construct_sequence_semantic_source(
             control,
         )?),
     };
-    let model = match syntax.into_model(
-        wrap_enabled,
-        crate::inline_config::parse_mermaid_inline_object_controlled,
-        control,
-    )? {
+    let model = match syntax.into_model(wrap_enabled, control)? {
         Ok(model) => model,
         Err(SequenceModelError::Grammar(diagnostic)) => {
             return Ok(Err(Box::new(SequenceSemanticFailure::Grammar {

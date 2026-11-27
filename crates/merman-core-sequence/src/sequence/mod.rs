@@ -17,7 +17,7 @@ pub use db::box_color_and_title;
 pub use lexer::{LexError as SequenceLexicalError, SequenceLexicalEvent, Tok as SequenceToken};
 pub use parser::{SequenceExpectedTokens, SequenceSyntaxDiagnostic};
 #[doc(hidden)]
-pub use semantic::{SequenceInlineConfigParser, SequenceModelError};
+pub use semantic::SequenceModelError;
 
 /// A single lexical stream, including events after recoverable lexer errors.
 pub struct SequenceSyntax {
