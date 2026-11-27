@@ -1394,7 +1394,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         let _ = write!(
             &mut title_element,
             r#"<text text-anchor="middle" x="{x}" y="{y}" class="gitTitleText" xmlns="http://www.w3.org/2000/svg""#,
-            x = fmt(title_anchor_x).to_string(),
+            x = fmt(title_anchor_x),
             y = fmt(title_y),
         );
         let _ = write!(&mut title_element, ">{}</text>", escape_xml(title));
