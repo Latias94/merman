@@ -185,3 +185,9 @@ pub fn diagram_header_facts() -> &'static [DiagramHeaderFact] {
 
 #[cfg(all(test, feature = "compat-json", feature = "editor-facts"))]
 mod tests;
+#[cfg(all(
+    test,
+    feature = "compat-json",
+    any(feature = "diagram-ishikawa", feature = "all-diagrams")
+))]
+mod tree_lifecycle_test_support;

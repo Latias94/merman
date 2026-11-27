@@ -1090,7 +1090,7 @@ fn mindmap_json_projection_observes_cancellation_inside_large_models() {
 #[cfg(feature = "all-diagrams")]
 #[test]
 fn mindmap_projection_cancels_after_deep_completed_subtree_child() {
-    crate::diagrams::treemap::tests::run_lifecycle_child(
+    crate::tree_lifecycle_test_support::run_lifecycle_child(
         "diagrams::mindmap::tests::mindmap_projection_cancels_after_deep_completed_subtree_child",
         || {
             const DEPTH: usize = 3_000;
@@ -1133,7 +1133,7 @@ fn mindmap_projection_cancels_after_deep_completed_subtree_child() {
 #[cfg(feature = "all-diagrams")]
 #[test]
 fn mindmap_projection_failure_drops_deep_completed_children_child() {
-    crate::diagrams::treemap::tests::run_lifecycle_child(
+    crate::tree_lifecycle_test_support::run_lifecycle_child(
         "diagrams::mindmap::tests::mindmap_projection_failure_drops_deep_completed_children_child",
         || {
             let source = deep_mindmap_chain(3_001);
