@@ -5,10 +5,10 @@
 //! Merman's typed model, iterative traversal, resource limits, and Mermaid layout conventions.
 
 use super::{MindmapEdgeModel, MindmapNodeModel};
-use crate::model::{LayoutEdge, LayoutNode, LayoutPoint};
-use crate::resources::OperationWorkMeter;
-use crate::{Error, Result};
 use merman_model::OperationPhase;
+use merman_render_core::resources::OperationWorkMeter;
+use merman_render_core::{Error, Result};
+use merman_render_core::{LayoutEdge, LayoutNode, LayoutPoint};
 
 const SIBLING_GAP: f64 = 20.0;
 const CONNECTION_PADDING: f64 = 40.0;
@@ -927,7 +927,7 @@ mod tests {
 
         let control = OperationControl::new();
         let meter = OperationWorkMeter::new_with_control(
-            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            merman_render_core::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
             control.clone(),
         );
         let edges = [(0, 1), (0, 2), (1, 3), (2, 3)];
@@ -949,8 +949,10 @@ mod tests {
 
     #[test]
     fn mindmap_model_admission_replays_resource_terminal_before_later_cancellation() {
-        use crate::resources::{OperationWorkError, RenderResourcePolicy, ResourceLimitId};
         use merman_model::OperationControl;
+        use merman_render_core::resources::{
+            OperationWorkError, RenderResourcePolicy, ResourceLimitId,
+        };
 
         let control = OperationControl::new();
         let policy = RenderResourcePolicy::unbounded_for_trusted_input()

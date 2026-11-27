@@ -1,24 +1,24 @@
 //! Mindmap projections for Mermaid's registered graph layout loaders.
 
+#[cfg(feature = "layout-elk")]
+use super::MindmapElkSolver;
 #[cfg(any(
     feature = "layout-cytoscape",
     feature = "layout-dagre",
     feature = "layout-elk"
 ))]
 use super::compute_bounds;
-use super::{MindmapEdgeModel, MindmapModel};
+use super::{MindmapDiagramLayout, MindmapEdgeModel, MindmapModel, MindmapSwimlaneSolver};
 #[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
-use crate::Error;
-use crate::Result;
-#[cfg(feature = "layout-elk")]
-use crate::layout_backend::ElkRootAlgorithm;
+use merman_render_core::Error;
+use merman_render_core::Result;
 #[cfg(any(
     feature = "layout-cytoscape",
     feature = "layout-dagre",
     feature = "layout-elk"
 ))]
-use crate::layout_work::OperationLayoutWorkControl;
-use crate::model::{LayoutEdge, LayoutNode, LayoutPoint, MindmapDiagramLayout};
+use merman_render_core::layout_work::OperationLayoutWorkControl;
+use merman_render_core::{LayoutEdge, LayoutNode, LayoutPoint};
 #[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 use serde_json::Value;
 
@@ -93,8 +93,14 @@ pub(super) fn dagre(
             }),
         );
     }
-    crate::layout_work::measure_layout_solve!(dugong::layout_controlled(&mut graph, work))
-        .map_err(|error| work.map_dugong_error(error))?;
+    let solved = {
+        #[cfg(feature = "benchmark-stages")]
+        let _stage = merman_model::benchmark_stages::enter(
+            merman_model::benchmark_stages::Stage::LayoutSolve,
+        );
+        dugong::layout_controlled(&mut graph, work)
+    };
+    solved.map_err(|error| work.map_dugong_error(error))?;
     for node in &mut nodes {
         let placed = graph.node(&node.id).ok_or_else(|| Error::InvalidModel {
             message: format!("Dagre omitted Mindmap node {}", node.id),
@@ -147,9 +153,8 @@ pub(super) fn elk(
     model: &MindmapModel,
     mut nodes: Vec<LayoutNode>,
     config: &Value,
-    algorithm: ElkRootAlgorithm,
     work: &mut OperationLayoutWorkControl,
-    operation_seed: merman_layout_elk::ElkOperationSeed,
+    solve: &MindmapElkSolver<'_>,
 ) -> Result<MindmapDiagramLayout> {
     use merman_layout_elk as elk;
     let mut graph = elk::Graph {
@@ -186,18 +191,9 @@ pub(super) fn elk(
             })
             .collect(),
         spacing: elk::Spacing::default(),
-        options: crate::elk_options::layout_options(config, algorithm),
+        options: elk::LayoutOptions::default(),
     };
-    let oriented = crate::elk_feedback_edges::orient_feedback_edges(
-        &mut graph,
-        config,
-        &mut Some(&mut *work),
-    )?;
-    let mut placed = crate::layout_work::measure_layout_solve!(
-        elk::layout_with_operation_seed_and_work_control(oriented.graph(), operation_seed, work)
-    )
-    .map_err(|error| work.map_elk_error_with_context(error, "Mindmap ELK"))?;
-    oriented.restore(&mut placed, &mut Some(&mut *work))?;
+    let placed = solve(&mut graph, config, work)?;
     let indices: rustc_hash::FxHashMap<_, _> = nodes
         .iter()
         .enumerate()
@@ -274,12 +270,14 @@ pub(super) fn cose_bilkent(
         }
     }
 
-    let positions = crate::layout_work::measure_layout_solve!(layout_indexed_with_work_control(
-        &indexed_nodes,
-        &indexed_edges,
-        work
-    ))
-    .map_err(|error| work.map_manatee_error(error))?;
+    let solved = {
+        #[cfg(feature = "benchmark-stages")]
+        let _stage = merman_model::benchmark_stages::enter(
+            merman_model::benchmark_stages::Stage::LayoutSolve,
+        );
+        layout_indexed_with_work_control(&indexed_nodes, &indexed_edges, work)
+    };
+    let positions = solved.map_err(|error| work.map_manatee_error(error))?;
     for (node, position) in nodes.iter_mut().zip(positions) {
         node.x = position.x;
         node.y = position.y;
@@ -340,9 +338,10 @@ pub(super) fn swimlane(
     model: &MindmapModel,
     nodes: Vec<LayoutNode>,
     config: &merman_model::presentation::PresentationConfig,
-    work_meter: std::sync::Arc<crate::resources::OperationWorkMeter>,
+    work_meter: std::sync::Arc<merman_render_core::resources::OperationWorkMeter>,
+    solve: MindmapSwimlaneSolver,
 ) -> Result<MindmapDiagramLayout> {
-    use crate::model::{LayoutCluster, LayoutLabel};
+    use merman_render_core::{LayoutCluster, LayoutLabel};
     let measured: Vec<_> = nodes
         .iter()
         .zip(&model.nodes)
@@ -353,28 +352,13 @@ pub(super) fn swimlane(
         .iter()
         .map(|source| edge(source, Vec::new()))
         .collect();
-    let placed = crate::swimlane::layout_flat(&measured, &edges, config, work_meter)?;
-    let nodes = placed
-        .nodes
-        .into_iter()
-        .map(|node| LayoutNode {
-            id: node.id,
-            x: node.x,
-            y: node.y,
-            width: node.width,
-            height: node.height,
-            is_cluster: false,
-            label_width: Some(node.label_width),
-            label_height: Some(node.label_height),
-        })
-        .collect();
-    let routes: rustc_hash::FxHashMap<_, _> = placed
-        .edges
-        .into_iter()
-        .map(|edge| (edge.id, edge.points))
-        .collect();
+    let placed = solve(&measured, &edges, config, work_meter)?;
     for edge in &mut edges {
-        edge.points = routes.get(&edge.id).cloned().unwrap_or_default();
+        edge.points = placed
+            .edge_points
+            .get(&edge.id)
+            .cloned()
+            .unwrap_or_default();
     }
     let swimlane_lanes = placed
         .lanes
@@ -402,7 +386,7 @@ pub(super) fn swimlane(
         })
         .collect();
     Ok(MindmapDiagramLayout {
-        nodes,
+        nodes: placed.nodes,
         edges,
         bounds: placed.bounds,
         swimlane_lanes,

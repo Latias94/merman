@@ -23,7 +23,9 @@ use crate::{Error, Result};
 use base64::Engine as _;
 use merman_model::OperationPhase;
 use merman_render_core::root_svg;
-use merman_render_core::svg_css::{SvgDiagramIdProjection, SvgDiagramIdValue, SvgId};
+#[cfg(test)]
+use merman_render_core::svg_css::SvgDiagramIdValue;
+use merman_render_core::svg_css::{SvgDiagramIdProjection, SvgId};
 use merman_render_core::svg_output as output;
 use std::fmt::Write as _;
 
@@ -271,10 +273,6 @@ mod util;
 mod zenuml;
 use output::{BoundedSvgOutput, SvgOutput};
 use path_bounds::{svg_path_bounds_from_d, svg_path_length_from_d};
-#[cfg(feature = "diagram-mindmap")]
-pub(crate) fn mindmap_cloud_rendered_bbox_size_px(w: f64, h: f64) -> Option<(f64, f64)> {
-    mindmap::mindmap_cloud_rendered_bbox_size_px(w, h)
-}
 
 #[cfg_attr(
     not(feature = "all-diagrams"),
@@ -863,11 +861,6 @@ impl<'a> SvgExecution<'a> {
         self.family.family_id()
     }
 
-    #[cfg(feature = "diagram-mindmap")]
-    pub(crate) const fn layout_backend(&self) -> crate::layout_backend::GraphLayoutBackend {
-        self.family.layout_backend()
-    }
-
     #[allow(dead_code, reason = "Used by enabled diagram families.")]
     pub(crate) fn native_family_theme(&self) -> Option<&crate::theme::FamilyTheme> {
         self.family.native_theme()
@@ -1229,14 +1222,7 @@ fn render_builtin_family_artifact_raw(
         }
         #[cfg(feature = "diagram-mindmap")]
         BuiltinFamilyArtifact::Mindmap(artifact) => {
-            mindmap::render_mindmap_diagram_svg_model_with_config(
-                artifact.pair().layout(),
-                artifact.pair().semantic(),
-                effective_config,
-                artifact.appearance(),
-                artifact.prepared_labels(),
-                options,
-            )
+            mindmap::render_mindmap(artifact, effective_config, options)
         }
         #[cfg(feature = "diagram-state")]
         BuiltinFamilyArtifact::State(artifact) => state::render_state_diagram_svg_model(

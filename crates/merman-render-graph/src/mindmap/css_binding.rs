@@ -13,8 +13,8 @@ pub(crate) struct MindmapSectionCss {
 
 #[derive(Debug)]
 pub(crate) struct MindmapCssBinding {
-    pub(crate) common: crate::svg::PreparedCommonCss,
-    pub(crate) label_style: crate::text::TextStyle,
+    pub(crate) common: merman_render_core::svg_css::PreparedCommonCss,
+    pub(crate) label_style: merman_render_core::text::TextStyle,
     pub(crate) sections: Vec<MindmapSectionCss>,
     pub(crate) neutral_label: String,
     pub(crate) label_background: Option<String>,
@@ -46,7 +46,7 @@ impl MindmapCssBinding {
         let theme = config.get_str("theme").unwrap_or_default();
         let use_gradient = raw
             .pointer("/themeVariables/useGradient")
-            .and_then(crate::config::json_bool)
+            .and_then(merman_render_core::config::json_bool)
             .unwrap_or(false);
         let gradient = use_gradient
             .then(|| {
@@ -59,7 +59,7 @@ impl MindmapCssBinding {
         let root_fill = token("git0", "hsl(240, 100%, 46.2745098039%)");
         let root_label = token("gitBranchLabel0", "#ffffff");
         let main_background = token("mainBkg", &root_fill);
-        let node_border = crate::config::selected_config_string(
+        let node_border = merman_render_core::config::selected_config_string(
             raw,
             &[
                 "themeVariables.nodeBorder",
@@ -96,36 +96,36 @@ impl MindmapCssBinding {
                 ),
             })
             .collect();
-        let font_family = crate::config::config_font_family_css(config);
-        let common = crate::svg::PreparedCommonCss::new(raw, Some(&font_family));
+        let font_family = merman_render_core::config::config_font_family_css(config);
+        let common = merman_render_core::svg_css::PreparedCommonCss::new(raw, Some(&font_family));
         let label_style = super::mindmap_text_style_with_font_family(raw, font_family);
         Self {
             common,
             label_style,
             sections,
             neutral_label: token("cScaleLabel1", "black"),
-            label_background: crate::config::config_string(
+            label_background: merman_render_core::config::config_string(
                 raw,
                 &["themeVariables", "mindmap", "labelBackgroundColor"],
             ),
-            label_text: crate::config::config_string(
+            label_text: merman_render_core::config::config_string(
                 raw,
                 &["themeVariables", "mindmap", "labelTextColor"],
             ),
             theme: theme.into(),
-            look: crate::config::mermaid_config_diagram_look(config)
+            look: merman_render_core::config::mermaid_config_diagram_look(config)
                 .as_str()
                 .into(),
             root_fill,
             root_label,
             node_border,
             main_background,
-            stroke_width: crate::config::config_css_number_or_string(
+            stroke_width: merman_render_core::config::config_css_number_or_string(
                 raw,
                 &["themeVariables", "strokeWidth"],
             )
             .unwrap_or_else(|| "2".into()),
-            drop_shadow: crate::config::config_css_number_or_string(
+            drop_shadow: merman_render_core::config::config_css_number_or_string(
                 raw,
                 &["themeVariables", "dropShadow"],
             )

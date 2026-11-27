@@ -1,6 +1,6 @@
 use merman_model::presentation::PresentationConfig;
 
-use crate::text::TextStyle;
+use merman_render_core::text::TextStyle;
 
 use super::{MindmapCssBinding, MindmapNativeStyle};
 
@@ -26,15 +26,18 @@ pub(super) fn mindmap_color_scale_css(config: &PresentationConfig, slot: usize) 
         .get_str(&format!("themeVariables.cScale{slot}"))
         .map(str::to_string)
         .unwrap_or_else(|| {
-            crate::svg::render_theme::default_c_scale(slot % MINDMAP_THEME_COLOR_LIMIT_DEFAULT)
+            merman_render_core::svg_css::default_c_scale(slot % MINDMAP_THEME_COLOR_LIMIT_DEFAULT)
                 .to_owned()
         })
 }
 
 pub(super) fn mindmap_theme_color_limit(config: &PresentationConfig) -> usize {
-    crate::config::config_f64(config.as_value(), &["themeVariables", "THEME_COLOR_LIMIT"])
-        .map(|value| value.round() as i64)
-        .filter(|value| *value > 0)
-        .unwrap_or(MINDMAP_THEME_COLOR_LIMIT_DEFAULT as i64)
-        .clamp(1, 64) as usize
+    merman_render_core::config::config_f64(
+        config.as_value(),
+        &["themeVariables", "THEME_COLOR_LIMIT"],
+    )
+    .map(|value| value.round() as i64)
+    .filter(|value| *value > 0)
+    .unwrap_or(MINDMAP_THEME_COLOR_LIMIT_DEFAULT as i64)
+    .clamp(1, 64) as usize
 }

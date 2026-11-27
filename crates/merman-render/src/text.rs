@@ -6,15 +6,24 @@ pub use line_break::split_html_br_lines;
 pub(crate) use line_break::{mermaid_html_breaks_to_newlines, split_mermaid_common_br_lines};
 pub use merman_render_core::text::flowchart_html_line_height_px;
 pub(crate) use merman_render_core::text::html_wrap::{self, HtmlWhiteSpace};
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    all(test, feature = "diagram-mindmap")
+))]
+pub(crate) use merman_render_core::text::inline_html::SvgTextEntityMode;
 pub use merman_render_core::text::inline_html::measure_html_with_inline_styles;
 pub(crate) use merman_render_core::text::inline_html::{
-    MermaidMarkdownWordType, SvgTextEntityMode, measure_html_with_authored_width,
-    measure_html_with_document_root, svg_markdown_word_style,
+    MermaidMarkdownWordType, measure_html_with_authored_width, svg_markdown_word_style,
 };
 use merman_render_core::text::line_break;
 #[cfg(feature = "markdown-labels")]
 pub use merman_render_core::text::measure_markdown_with_inline_styles;
 pub(crate) use merman_render_core::text::measure_mermaid_text_dimensions_with_checkpoint;
+pub(crate) use merman_render_core::text::measure_xhtml_label_fragment_with_terminal_fonts;
+#[cfg(any(feature = "diagram-er", feature = "diagram-requirement"))]
+pub(crate) use merman_render_core::text::mermaid_markdown_to_xhtml_label_fragment;
 pub use merman_render_core::text::replace_fontawesome_icons;
 pub use merman_render_core::text::{
     DeterministicTextMeasurer, TextMeasurer, WrappedTextLayout, try_measure_wrapped_text,
@@ -24,11 +33,15 @@ pub use merman_render_core::text::{
 pub(crate) use merman_render_core::text::{
     analyze_mermaid_markdown, mermaid_markdown_contains_html_tags,
     mermaid_markdown_contains_raw_blocks, mermaid_markdown_is_plain_text,
-    mermaid_markdown_to_html_label_fragment, mermaid_markdown_to_lines,
-    mermaid_markdown_to_xhtml_label_fragment,
+    mermaid_markdown_to_html_label_fragment,
 };
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
 pub(crate) use merman_render_core::text::{
-    measure_svg_markdown_word_lines, measure_xhtml_label_fragment_with_terminal_fonts,
+    measure_svg_markdown_word_lines, mermaid_markdown_to_lines,
 };
 #[cfg(feature = "markdown-labels")]
 pub(crate) use merman_render_core::text::{

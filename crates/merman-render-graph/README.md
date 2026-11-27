@@ -24,6 +24,11 @@ The `diagram-git-graph` feature owns GitGraph preparation, layout, theme binding
 complete SVG emission. `merman-render` supplies routed measurement, viewport context,
 and terminal SVG policies.
 
+The `diagram-mindmap` feature owns Mindmap styles, prepared labels, TidyTree layout, and
+complete SVG emission. Optional loader features enable Dagre, ELK, or CoSE-Bilkent projections.
+`merman-render` selects the loader, supplies operation measurement and shared ELK and Swimlane
+services, and applies terminal SVG policies.
+
 The `diagram-state` feature owns State presentation binding, label measurement, and
 complete SVG emission. `merman-render` selects the layout backend, supplies its route
 geometry and the operation context, and applies terminal SVG policies.

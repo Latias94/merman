@@ -50,6 +50,12 @@ diagram-git-graph = [
     "dep:merman-theme-contract", "dep:serde", "dep:serde_json", "merman-model/diagram-git-graph",
     "merman-render-core/root-svg", "merman-render-core/svg-bounds", "merman-render-core/text-layout",
 ]
+diagram-mindmap = [
+    "dep:base64", "dep:merman-markup", "dep:merman-model", "dep:merman-render-core",
+    "dep:merman-theme-contract", "dep:rustc-hash", "dep:serde", "dep:serde_json", "merman-markup/html",
+    "merman-model/diagram-mindmap", "merman-render-core/markdown-labels", "merman-render-core/math-labels",
+    "merman-render-core/root-svg", "merman-render-core/svg-edge-parity",
+]
 diagram-requirement = [
     "dep:base64", "dep:indexmap", "dep:merman-markup", "dep:merman-model", "dep:merman-render-core",
     "dep:merman-theme-contract", "dep:roughr", "dep:serde", "dep:serde_json", "merman-markup/html",
@@ -74,7 +80,7 @@ diagram-usecase = [
     "merman-render-core/svg-edge-parity", "merman-render-core/theme-elevation",
 ]
 layout-shoal = ["dep:kurbo", "merman-render-core?/route-paint"]
-layout-cytoscape = ["dep:indexmap", "dep:manatee"]
+layout-cytoscape = ["dep:indexmap", "dep:manatee", "merman-render-core?/layout-cytoscape"]
 layout-dagre = ["dep:dugong", "merman-render-core?/layout-dagre"]
 layout-elk = ["dep:merman-layout-elk"]
 benchmark-stages = ["merman-model?/benchmark-stages"]
@@ -102,7 +108,7 @@ serde_json = { workspace = true, optional = true }
 unicode-segmentation = { workspace = true, optional = true }
 
 [dev-dependencies]
-merman-core = { workspace = true, features = ["diagram-architecture", "diagram-class", "presentation"] }
+merman-core = { workspace = true, features = ["diagram-architecture", "diagram-class", "diagram-mindmap", "presentation"] }
 merman-model = { workspace = true, features = ["test-support"] }
 merman-render-core = { workspace = true, features = ["test-support"] }
 merman-theme-contract = { workspace = true, features = ["presets"] }

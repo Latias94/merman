@@ -934,31 +934,11 @@ pub(crate) struct TreeViewFamilyArtifact<'parsed> {
     theme: crate::tree_view::TreeViewCssBinding,
 }
 
-#[derive(Debug)]
 #[cfg(feature = "diagram-mindmap")]
-pub(crate) struct MindmapFamilyArtifact<'parsed> {
-    pair: FamilyPair<&'parsed diagrams::mindmap::MindmapDiagramRenderModel, MindmapDiagramLayout>,
-    appearance: crate::mindmap::MindmapAppearance,
-    prepared_labels: crate::mindmap::MindmapPreparedLabels,
-}
-
-#[cfg(feature = "diagram-mindmap")]
-impl<'parsed> MindmapFamilyArtifact<'parsed> {
-    pub(crate) const fn pair(
-        &self,
-    ) -> &FamilyPair<&'parsed diagrams::mindmap::MindmapDiagramRenderModel, MindmapDiagramLayout>
-    {
-        &self.pair
-    }
-
-    pub(crate) const fn appearance(&self) -> &crate::mindmap::MindmapAppearance {
-        &self.appearance
-    }
-
-    pub(crate) const fn prepared_labels(&self) -> &crate::mindmap::MindmapPreparedLabels {
-        &self.prepared_labels
-    }
-}
+pub(crate) type MindmapFamilyArtifact<'parsed> = FamilyPair<
+    &'parsed diagrams::mindmap::MindmapDiagramRenderModel,
+    crate::mindmap::MindmapPreparedArtifact,
+>;
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-er")]
@@ -1452,9 +1432,7 @@ impl BuiltinFamilyArtifact<'_> {
             }
             #[cfg(feature = "diagram-mindmap")]
             Self::Mindmap(artifact) => {
-                artifact
-                    .pair
-                    .compatibility_json(metadata, output_context, &control)
+                artifact.compatibility_json(metadata, output_context, &control)
             }
             #[cfg(feature = "diagram-state")]
             Self::State(artifact) => {
@@ -1648,7 +1626,7 @@ impl BuiltinFamilyArtifact<'_> {
             }
             Self::Error(artifact) => LayoutProjection::ErrorDiagram(artifact.pair().layout()),
             #[cfg(feature = "diagram-mindmap")]
-            Self::Mindmap(artifact) => LayoutProjection::MindmapDiagram(artifact.pair.layout()),
+            Self::Mindmap(artifact) => LayoutProjection::MindmapDiagram(artifact.layout().layout()),
             #[cfg(feature = "diagram-state")]
             Self::State(artifact) => LayoutProjection::StateDiagram(artifact.pair.layout()),
             #[cfg(feature = "diagram-sequence")]

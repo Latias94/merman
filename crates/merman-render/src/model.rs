@@ -150,16 +150,8 @@ pub use merman_render_graph::architecture::{
     ArchitectureCytoscapeServiceLabelMetrics, ArchitectureDiagramLayout,
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-mindmap")]
-pub struct MindmapDiagramLayout {
-    pub nodes: Vec<LayoutNode>,
-    pub edges: Vec<LayoutEdge>,
-    pub bounds: Option<Bounds>,
-    /// Swimlane decoration owned by the selected renderer, not semantic Mindmap nodes.
-    #[serde(skip)]
-    pub swimlane_lanes: Vec<LayoutCluster>,
-}
+pub use merman_render_graph::mindmap::MindmapDiagramLayout;
 
 #[cfg(feature = "diagram-sankey")]
 pub use merman_render_charts::sankey::{SankeyDiagramLayout, SankeyLinkLayout, SankeyNodeLayout};

@@ -149,36 +149,10 @@ fn prepare_mindmap_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    use crate::mindmap::{MindmapAppearance, MindmapCssBinding, MindmapNativeStyle};
-
-    let appearance = match execution.native_family_theme() {
-        Some(theme) => MindmapAppearance::Native(MindmapNativeStyle::resolve(theme)),
-        None => {
-            execution
-                .family
-                .session()
-                .checkpoint(merman_model::OperationPhase::Layout)?;
-            let binding = MindmapCssBinding::new(&meta.effective_config);
-            execution
-                .family
-                .session()
-                .checkpoint(merman_model::OperationPhase::Layout)?;
-            MindmapAppearance::Mermaid(Box::new(binding))
-        }
-    };
-    let (layout, prepared_labels) = crate::mindmap::layout_mindmap_diagram_typed_with_work_meter(
-        model,
-        &meta.effective_config,
-        appearance.text_style(),
-        execution,
-    )?;
-    Ok(BuiltinFamilyArtifact::Mindmap(Box::new(
-        MindmapFamilyArtifact {
-            pair: FamilyPair::new(model, layout),
-            appearance,
-            prepared_labels,
-        },
-    )))
+    let prepared = crate::mindmap::prepare(model, &meta.effective_config, execution)?;
+    Ok(BuiltinFamilyArtifact::Mindmap(Box::new(FamilyPair::new(
+        model, prepared,
+    ))))
 }
 
 #[inline(never)]

@@ -22,6 +22,10 @@ pub mod er;
 #[doc(hidden)]
 pub mod gitgraph;
 
+#[cfg(feature = "diagram-mindmap")]
+#[doc(hidden)]
+pub mod mindmap;
+
 #[cfg(feature = "diagram-requirement")]
 #[doc(hidden)]
 pub mod requirement;

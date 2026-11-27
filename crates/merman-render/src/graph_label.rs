@@ -889,23 +889,7 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
     match label_type {
         "markdown" => {
             if !html_labels {
-                return crate::text::mermaid_markdown_to_lines(label, true)
-                    .into_iter()
-                    .map(|line| {
-                        line.into_iter()
-                            .map(
-                                |(word, _)| match crate::entities::decode_svg_text_content_entities(
-                                    &word,
-                                ) {
-                                    std::borrow::Cow::Borrowed(_) => word,
-                                    std::borrow::Cow::Owned(decoded) => decoded,
-                                },
-                            )
-                            .collect::<Vec<_>>()
-                            .join(" ")
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
+                return merman_render_core::text::mermaid_markdown_svg_plain_text(label);
             }
 
             if html_labels
