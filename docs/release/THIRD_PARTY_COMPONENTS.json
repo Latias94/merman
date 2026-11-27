@@ -429,7 +429,11 @@
         "path": "src/path.js"
       },
       "relationships": ["modified", "translated"],
-      "local_paths": ["crates/merman-render-charts/src/pie/geometry.rs", "crates/merman-render/src/svg/parity/util.rs"],
+      "local_paths": [
+        "crates/merman-render-charts/src/pie/geometry.rs",
+        "crates/merman-render-core/src/svg_edge_parity/path_numbers.rs",
+        "crates/merman-render/src/svg/parity/util.rs"
+      ],
       "license_expression": "ISC",
       "license_files": [
         {
@@ -495,7 +499,7 @@
         "path": "src/curve"
       },
       "relationships": ["modified", "translated"],
-      "local_paths": ["crates/merman-render-charts/src/pie/geometry.rs", "crates/merman-render/src/svg/parity/curve.rs"],
+      "local_paths": ["crates/merman-render-charts/src/pie/geometry.rs", "crates/merman-render-core/src/svg_edge_parity/curve.rs"],
       "license_expression": "ISC",
       "license_files": [
         {
@@ -944,10 +948,12 @@
         "crates/merman-render-charts/src/xychart",
         "crates/merman-render-core/src/graph_layout/elk_geometry.rs",
         "crates/merman-render-core/src/graph_layout/elk_terminal_jogs.rs",
+        "crates/merman-render-core/src/rough_svg/geometry.rs",
         "crates/merman-render-core/src/step_animation.rs",
         "crates/merman-render-core/src/svg_bounds.rs",
         "crates/merman-render-core/src/svg_bounds/path.rs",
         "crates/merman-render-core/src/svg_css/palette.rs",
+        "crates/merman-render-core/src/svg_edge_parity",
         "crates/merman-render-core/src/text/icons.rs",
         "crates/merman-render-core/src/text/label_metrics.rs",
         "crates/merman-render-core/src/text/literal_label.rs",
@@ -958,6 +964,7 @@
         "crates/merman-render-flow/src",
         "crates/merman-render-graph/src/er",
         "crates/merman-render-graph/src/gitgraph",
+        "crates/merman-render-graph/src/state",
         "crates/merman-render-sequence/src",
         "crates/merman-render-structured/src/cynefin",
         "crates/merman-render-structured/src/gantt",
