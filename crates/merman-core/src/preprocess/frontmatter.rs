@@ -21,6 +21,7 @@ use merman_core_preprocess::{
     SourceEdit,
     frontmatter::{find_physical_line_ending_controlled, frontmatter_has_prefix_controlled},
     scan::controlled::ControlledScanCheckpoints,
+    yaml::YamlInsertOrderRequest,
 };
 use serde_json::{Map, Value};
 use std::borrow::Cow;
@@ -197,17 +198,19 @@ pub(super) fn process_frontmatter_controlled(
     let (mut captured, insert_order) = {
         static ROUTES: std::sync::OnceLock<Vec<(&'static str, &'static str)>> =
             std::sync::OnceLock::new();
-        let routes = capture_mode.collects().then(|| {
-            ROUTES
+        let insert_order_request = capture_mode.collects().then(|| YamlInsertOrderRequest {
+            routes: ROUTES
                 .get_or_init(|| frontmatter_config_routes().collect())
-                .as_slice()
+                .as_slice(),
+            insert_key: "config",
+            max_bytes: MAX_INSERT_ORDER_JSON_BYTES,
+            max_depth: MAX_REWRITE_DEPTH,
         });
         crate::yaml_config::parse_yaml_frontmatter_capture_controlled(
             yaml_input.text(),
             MAX_CONFIG_NESTING_DEPTH,
-            routes,
-            MAX_INSERT_ORDER_JSON_BYTES,
-            MAX_REWRITE_DEPTH,
+            &["title", "displayMode"],
+            insert_order_request,
             control,
         )?
     };
@@ -278,8 +281,9 @@ pub(super) fn process_frontmatter_controlled(
         captured.collection_text.remove("displayMode"),
     );
     #[cfg(feature = "editor-facts")]
-    let insert_order =
-        insert_order.and_then(|order| order.with_display_mode(display_mode.as_deref()));
+    let insert_order = insert_order.and_then(|order| {
+        FrontmatterInsertOrder::from_yaml_capture(order, display_mode.as_deref())
+    });
 
     let mut config = MermaidConfig::empty_object();
     merge_top_level_frontmatter_diagram_configs(&parsed_obj, &mut config);

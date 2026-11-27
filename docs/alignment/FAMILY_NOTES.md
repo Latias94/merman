@@ -539,7 +539,7 @@ remain cumulative. Merge validation follows the selected DB's head-ownership ord
 distinct self-merge diagnostics.
 
 Owners: [parser](../../crates/merman-core/src/diagrams/git_graph.rs),
-[color binding](../../crates/merman-render/src/gitgraph/css_binding.rs), and
+[color binding](../../crates/merman-render-graph/src/gitgraph/css_binding.rs), and
 [12.3 regressions](../../crates/merman-render/tests/gitgraph_mermaid_12_3_regression_test.rs).
 
 ## Ishikawa and Venn
@@ -604,7 +604,7 @@ task markers retain authored people order. Zero task width and height remain val
 configuration, section and task geometry, face placement and activity lines.
 
 Owners: [Journey model](../../crates/merman-model/src/families/journey.rs),
-[layout](../../crates/merman-render/src/journey.rs), and
+[layout](../../crates/merman-render-structured/src/journey/mod.rs), and
 [SVG tests](../../crates/merman-render/tests/journey_svg_test.rs).
 
 ## Requirement and Block
@@ -816,7 +816,8 @@ an explicit zero still overrides the class radius. Owners:
 Markdown delimiters select the upstream text token; they do not add rich Markdown rendering to this
 family's direct SVG text terminals. Font measurement remains subject to the shared headless boundary.
 
-Owners: [parser](../../crates/merman-core/src/diagrams/quadrant_chart.rs) and
+Owners: [parser](../../crates/merman-core/src/diagrams/quadrant_chart.rs),
+[SVG emitter](../../crates/merman-render-charts/src/quadrantchart/svg.rs), and
 [SVG tests](../../crates/merman-render/tests/quadrantchart_svg_test.rs).
 
 ## Radar
@@ -847,7 +848,7 @@ not gain drawing effects that the selected upstream renderer omits. Browser text
 belong to the shared root diagnostic boundary; fixed width floors and fixture-specific roots are
 not valid substitutes for measurement.
 
-Owners: [Railroad layout](../../crates/merman-render/src/railroad.rs),
+Owners: [Railroad layout](../../crates/merman-render-structured/src/railroad/layout.rs),
 [parser tests](../../crates/merman-core/src/tests/railroad.rs), and
 [SVG/grammar-combination tests](../../crates/merman-render/tests/railroad_svg_test.rs).
 
@@ -1039,7 +1040,7 @@ become allocation counts, and SVG emits their resulting coordinates with JavaScr
 text instead of replacing nonfinite coordinates with zero. Absent offsets retain strategy and
 anchor defaults; explicit zero remains an authored override.
 
-Owners: [Wardley layout](../../crates/merman-render/src/wardley.rs) and
+Owners: [Wardley layout](../../crates/merman-render-charts/src/wardley/layout.rs) and
 [SVG tests](../../crates/merman-render/tests/wardley_svg_test.rs).
 
 ## XYChart
@@ -1068,7 +1069,7 @@ exponent thresholds, shortest rounded representation, unsigned zero, and nonfini
 [numeric whitespace tests](../../crates/merman-core/tests/xychart_numeric_whitespace_parity_test.rs)
 and [cross-family numeric tests](../../crates/merman-core/tests/popular_numeric_grammar_parity_test.rs).
 
-Owners: [XYChart layout](../../crates/merman-render/src/xychart.rs),
+Owners: [XYChart layout](../../crates/merman-render-charts/src/xychart/layout.rs),
 [SVG tests](../../crates/merman-render/tests/xychart_svg_test.rs), and
 [literal-text tests](../../crates/merman-render/tests/xychart_literal_text_test.rs).
 

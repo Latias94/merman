@@ -22,17 +22,8 @@ pub(super) const fn css_selector_diagram_id<I>(diagram_id: I) -> CssSelectorDiag
     CssSelectorDiagramId(diagram_id)
 }
 
-/// Returns only the style attribute accepted by the output sink.
-/// Final document checkpoints still own failures in subsequent writes.
-pub(super) fn write_style_attribute<'a>(
-    out: &mut impl SvgOutput,
-    style: Option<&'a str>,
-) -> Option<&'a str> {
-    let style = style?;
-    write!(out, r#" style="{}""#, escape_attr_display(style))
-        .ok()
-        .map(|()| style)
-}
+#[cfg(feature = "diagram-class")]
+pub(super) use merman_render_core::text::svg_label::write_style_attribute;
 
 pub(super) use crate::config::config_f64;
 

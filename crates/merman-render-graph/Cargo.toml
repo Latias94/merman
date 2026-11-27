@@ -17,9 +17,32 @@ third-party-bundle = true
 
 [features]
 default = []
-diagram-er = ["dep:merman-render-core", "merman-render-core/svg-output"]
+diagram-er = [
+    "dep:indexmap", "dep:merman-markup", "dep:merman-model", "dep:merman-render-core",
+    "dep:merman-theme-contract", "dep:rustc-hash", "dep:serde_json", "merman-model/diagram-er",
+    "merman-render-core/css-style", "merman-render-core/graph-layout",
+    "merman-render-core/theme-svg",
+]
+diagram-git-graph = [
+    "dep:cssparser", "dep:euclid", "dep:merman-model", "dep:merman-render-core",
+    "dep:merman-theme-contract", "dep:serde", "dep:serde_json", "merman-model/diagram-git-graph",
+    "merman-render-core/root-svg", "merman-render-core/svg-bounds", "merman-render-core/text-layout",
+]
 layout-shoal = ["dep:kurbo"]
 
 [dependencies]
+cssparser = { workspace = true, optional = true }
+euclid = { workspace = true, optional = true }
+indexmap = { workspace = true, optional = true }
 kurbo = { workspace = true, optional = true }
+merman-markup = { workspace = true, features = ["color"], optional = true }
+merman-model = { workspace = true, features = ["presentation-data"], optional = true }
 merman-render-core = { workspace = true, optional = true }
+merman-theme-contract = { workspace = true, optional = true }
+rustc-hash = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+
+[dev-dependencies]
+merman-model = { workspace = true, features = ["test-support"] }
+merman-theme-contract = { workspace = true, features = ["presets"] }

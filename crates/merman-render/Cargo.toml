@@ -60,42 +60,42 @@ all-diagrams = [
     "diagram-xychart",
     "diagram-zenuml",
 ]
-diagram-architecture = ["merman-model/diagram-architecture", "merman-render-core/theme-elevation", "dep:pulldown-cmark"]
-diagram-block = ["merman-model/diagram-block", "merman-render-core/theme-elevation", "dep:roughr", "merman-render-core/rough-svg"]
+diagram-architecture = ["merman-model/diagram-architecture", "merman-render-core/theme-elevation", "dep:pulldown-cmark", "dep:indexmap"]
+diagram-block = ["merman-model/diagram-block", "merman-render-core/theme-elevation", "dep:roughr", "merman-render-core/rough-svg", "dep:indexmap"]
 diagram-c4 = ["merman-model/diagram-c4", "dep:roughr", "merman-render-core/rough-svg"]
-diagram-class = ["merman-model/diagram-class", "merman-render-core/resources-class", "markdown-labels", "dep:roughr", "merman-render-core/rough-svg"]
-diagram-cynefin = ["merman-model/diagram-cynefin"]
-diagram-er = ["merman-model/diagram-er", "dep:merman-render-graph", "merman-render-graph/diagram-er", "markdown-labels", "dep:roughr", "merman-render-core/rough-svg"]
+diagram-class = ["merman-model/diagram-class", "merman-render-core/resources-class", "markdown-labels", "dep:roughr", "merman-render-core/rough-svg", "dep:indexmap", "merman-render-core/graph-layout"]
+diagram-cynefin = ["merman-model/diagram-cynefin", "dep:merman-render-structured", "merman-render-structured/diagram-cynefin"]
+diagram-er = ["merman-model/diagram-er", "dep:merman-render-graph", "merman-render-graph/diagram-er", "markdown-labels", "dep:roughr", "merman-render-core/rough-svg", "dep:indexmap", "merman-render-core/graph-layout"]
 diagram-event-modeling = ["merman-model/diagram-event-modeling"]
-diagram-agentflow = ["merman-model/diagram-agentflow", "merman-render-core/resources-agentflow", "merman-render-core/theme-elevation", "merman-render-core/theme-label-background", "dep:merman-render-flow", "merman-render-flow/diagram-agentflow", "dep:imagesize", "markdown-labels", "dep:roughr", "merman-render-core/rough-svg"]
-diagram-usecase = ["merman-model/diagram-usecase", "merman-render-core/theme-elevation", "markdown-labels", "dep:roughr", "merman-render-core/rough-svg"]
-diagram-flowchart = ["merman-model/diagram-flowchart", "merman-render-core/resources-flowchart", "merman-render-core/theme-elevation", "merman-render-core/theme-label-background", "dep:merman-render-flow", "merman-render-flow/diagram-flowchart", "dep:imagesize", "markdown-labels", "dep:roughr", "merman-render-core/rough-svg"]
-diagram-gantt = ["merman-model/diagram-gantt"]
-diagram-git-graph = ["merman-model/diagram-git-graph"]
+diagram-agentflow = ["merman-model/diagram-agentflow", "merman-render-core/resources-agentflow", "merman-render-core/theme-elevation", "merman-render-core/theme-label-background", "dep:merman-render-flow", "merman-render-flow/diagram-agentflow", "dep:imagesize", "markdown-labels", "dep:roughr", "merman-render-core/rough-svg", "dep:indexmap", "merman-render-core/graph-layout"]
+diagram-usecase = ["merman-model/diagram-usecase", "merman-render-core/theme-elevation", "markdown-labels", "dep:roughr", "merman-render-core/rough-svg", "dep:indexmap", "merman-render-core/graph-layout"]
+diagram-flowchart = ["merman-model/diagram-flowchart", "merman-render-core/resources-flowchart", "merman-render-core/theme-elevation", "merman-render-core/theme-label-background", "dep:merman-render-flow", "merman-render-flow/diagram-flowchart", "dep:imagesize", "markdown-labels", "dep:roughr", "merman-render-core/rough-svg", "dep:indexmap", "merman-render-core/graph-layout"]
+diagram-gantt = ["merman-model/diagram-gantt", "dep:merman-render-structured", "merman-render-structured/diagram-gantt"]
+diagram-git-graph = ["merman-model/diagram-git-graph", "dep:merman-render-graph", "merman-render-graph/diagram-git-graph"]
 diagram-info = ["merman-model/diagram-info", "dep:merman-render-structured", "merman-render-structured/diagram-info"]
 diagram-ishikawa = ["merman-model/diagram-ishikawa", "dep:merman-render-structured", "merman-render-structured/diagram-ishikawa"]
-diagram-journey = ["merman-model/diagram-journey"]
+diagram-journey = ["merman-model/diagram-journey", "dep:merman-render-structured", "merman-render-structured/diagram-journey"]
 diagram-kanban = ["merman-model/diagram-kanban", "merman-render-core/theme-elevation", "markdown-labels"]
-diagram-mindmap = ["merman-model/diagram-mindmap", "merman-render-core/resources-mindmap", "markdown-labels"]
+diagram-mindmap = ["merman-model/diagram-mindmap", "merman-render-core/resources-mindmap", "markdown-labels", "dep:indexmap"]
 diagram-packet = ["merman-model/diagram-packet", "dep:merman-render-structured", "merman-render-structured/diagram-packet"]
 diagram-pie = ["merman-model/diagram-pie", "dep:merman-render-charts", "merman-render-charts/diagram-pie"]
 diagram-quadrant-chart = ["merman-model/diagram-quadrant-chart", "dep:merman-render-charts", "merman-render-charts/diagram-quadrant-chart"]
 diagram-radar = ["merman-model/diagram-radar", "dep:merman-render-charts", "merman-render-charts/diagram-radar"]
 diagram-railroad = ["merman-model/diagram-railroad", "dep:merman-render-structured", "merman-render-structured/diagram-railroad"]
-diagram-requirement = ["merman-model/diagram-requirement", "markdown-labels", "dep:roughr", "merman-render-core/rough-svg"]
+diagram-requirement = ["merman-model/diagram-requirement", "markdown-labels", "dep:roughr", "merman-render-core/rough-svg", "dep:indexmap", "merman-render-core/graph-layout"]
 diagram-sankey = ["merman-model/diagram-sankey", "dep:merman-render-charts", "merman-render-charts/diagram-sankey"]
 diagram-sequence = ["merman-model/diagram-sequence", "dep:merman-render-sequence", "merman-render-sequence/svg"]
-diagram-state = ["merman-model/diagram-state", "merman-render-core/theme-elevation", "merman-render-core/theme-label-background", "markdown-labels", "dep:roughr", "merman-render-core/rough-svg"]
-diagram-swimlane = ["merman-model/diagram-swimlane", "merman-render-core/resources-swimlane", "merman-render-core/theme-elevation", "merman-render-core/theme-label-background", "dep:merman-render-flow", "merman-render-flow/diagram-swimlane", "dep:imagesize", "markdown-labels", "dep:roughr", "merman-render-core/rough-svg"]
-diagram-timeline = ["merman-model/diagram-timeline"]
+diagram-state = ["merman-model/diagram-state", "merman-render-core/theme-elevation", "merman-render-core/theme-label-background", "markdown-labels", "dep:roughr", "merman-render-core/rough-svg", "dep:indexmap", "merman-render-core/graph-layout"]
+diagram-swimlane = ["merman-model/diagram-swimlane", "merman-render-core/resources-swimlane", "merman-render-core/theme-elevation", "merman-render-core/theme-label-background", "dep:merman-render-flow", "merman-render-flow/diagram-swimlane", "dep:imagesize", "markdown-labels", "dep:roughr", "merman-render-core/rough-svg", "dep:indexmap", "merman-render-core/graph-layout"]
+diagram-timeline = ["merman-model/diagram-timeline", "dep:merman-render-structured", "merman-render-structured/diagram-timeline"]
 diagram-tree-view = ["merman-model/diagram-tree-view"]
 diagram-treemap = ["merman-model/diagram-treemap", "dep:merman-render-charts", "merman-render-charts/diagram-treemap"]
-diagram-venn = ["merman-model/diagram-venn", "dep:merman-render-charts", "merman-render-charts/diagram-venn", "dep:roughr", "merman-render-core/rough-svg"]
+diagram-venn = ["merman-model/diagram-venn", "dep:merman-render-charts", "merman-render-charts/diagram-venn"]
 diagram-wardley = ["merman-model/diagram-wardley", "dep:merman-render-charts", "merman-render-charts/diagram-wardley"]
-diagram-xychart = ["merman-model/diagram-xychart", "merman-render-core/theme-elevation", "dep:merman-render-charts", "merman-render-charts/diagram-xychart"]
+diagram-xychart = ["merman-model/diagram-xychart", "dep:merman-render-charts", "merman-render-charts/diagram-xychart"]
 diagram-zenuml = ["merman-model/diagram-zenuml", "merman-render-core/resources-zenuml", "merman-render-core/theme-elevation", "cssparser/fast_match_color", "dep:pulldown-cmark"]
 default = []
-markdown-labels = ["dep:pulldown-cmark"]
+markdown-labels = ["dep:pulldown-cmark", "merman-render-core/markdown-labels"]
 native-compact = ["merman-render-core/paint-scene", "merman-render-sequence?/native-compact"]
 system-clock = ["merman-model/system-clock"]
 system-timezone = ["merman-model/system-timezone"]
@@ -112,7 +112,7 @@ math = ["merman-render-core/math", "merman-render-sequence?/math"]
 merman-markup = { workspace = true, features = ["html", "url", "color"] }
 merman-model = { workspace = true, features = ["presentation-data", "compat-json", "html-entities"] }
 merman-render-charts = { workspace = true, optional = true }
-merman-render-core = { workspace = true, features = ["graph-layout", "icon-registry", "math-labels", "root-svg", "svg-animation", "svg-identity", "svg-parse", "text-layout", "theme-svg"] }
+merman-render-core = { workspace = true, features = ["icon-registry", "math-labels", "root-svg", "svg-animation", "svg-bounds", "svg-identity", "theme-svg", "xhtml-labels"] }
 merman-render-flow = { workspace = true, optional = true }
 merman-render-graph = { workspace = true, optional = true }
 merman-render-sequence = { workspace = true, optional = true }
@@ -123,7 +123,7 @@ data-url.workspace = true
 imagesize = { workspace = true, optional = true }
 dugong = { workspace = true, optional = true }
 euclid.workspace = true
-indexmap = { workspace = true, features = ["serde"] }
+indexmap = { workspace = true, features = ["serde"], optional = true }
 kurbo.workspace = true
 manatee = { workspace = true, optional = true }
 memchr.workspace = true
@@ -150,5 +150,5 @@ serde_json = { workspace = true, features = ["float_roundtrip"] }
 futures = { workspace = true, features = ["executor"] }
 merman-core = { workspace = true, features = ["all-diagrams", "presentation", "compat-json", "test-support"] }
 merman-fixture-render-context = { path = "../merman-fixture-render-context" }
-merman-render-core = { workspace = true, features = ["route-paint", "test-support"] }
+merman-render-core = { workspace = true, features = ["graph-layout", "route-paint", "test-support"] }
 regex.workspace = true

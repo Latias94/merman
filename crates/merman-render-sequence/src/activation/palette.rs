@@ -1,3 +1,4 @@
+use merman_render_core::config::ConfigLookup;
 use serde_json::Value;
 
 #[derive(Debug, Default)]
@@ -16,7 +17,7 @@ enum PaletteEntry {
 }
 
 impl SequenceActorPalette {
-    pub fn resolve(config: &Value) -> Self {
+    pub fn resolve(config: &(impl ConfigLookup + ?Sized)) -> Self {
         let theme = config.get("themeVariables");
         let palette = |key: &str| {
             theme

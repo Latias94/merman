@@ -310,7 +310,7 @@ fn insert_port_auxiliary_edges(graph: &LGraph, aux: &mut Auxiliary, order: &[usi
             let Some(dummy) = &port.port_dummy else {
                 continue;
             };
-            if dummy.graph_id != graph.id {
+            if !dummy.belongs_to(graph) {
                 continue;
             }
             let Some(other) = aux.nodes[dummy.node] else {

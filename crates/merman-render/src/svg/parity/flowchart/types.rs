@@ -6,6 +6,7 @@
 use super::super::*;
 use super::FlowchartEdgeStylePlan;
 use super::render_input::FlowchartRenderEdgeRef;
+use indexmap::IndexMap;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 #[derive(Clone, Copy)]

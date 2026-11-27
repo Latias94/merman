@@ -1,4 +1,9 @@
-use merman_render_core::config::{config_f64, config_string};
+use merman_render_core::{
+    config::{
+        config_bool, config_f64, config_string, config_theme_font_size_css_or_root_number_px,
+    },
+    number_format::canonicalize_number,
+};
 use serde_json::Value;
 
 const DEFAULT_CHART_WIDTH: f64 = 500.0;
@@ -86,6 +91,25 @@ impl QuadrantChartLayoutSettings {
             .unwrap_or(DEFAULT_QUADRANT_EXTERNAL_BORDER_STROKE_WIDTH),
         }
     }
+}
+
+pub(super) fn inherited_font_size_px(effective_config: &Value) -> f64 {
+    canonicalize_number(config_theme_font_size_css_or_root_number_px(
+        effective_config,
+        16.0,
+    ))
+}
+
+pub(super) fn use_max_width(effective_config: &Value) -> bool {
+    effective_config
+        .get("quadrantChart")
+        .filter(|config| {
+            !config
+                .as_object()
+                .is_some_and(|map| map.contains_key("$ref"))
+        })
+        .and_then(|config| config_bool(config, &["useMaxWidth"]))
+        .unwrap_or(true)
 }
 
 #[cfg(test)]
@@ -190,5 +214,26 @@ mod tests {
         let cfg = json!({"quadrantChart": {"$ref": "#/defs/quadrantChart", "chartWidth": 640}});
         let settings = QuadrantChartLayoutSettings::from_effective_config(&cfg);
         assert_eq!(settings.chart_width, 640.0);
+    }
+
+    #[test]
+    fn quadrantchart_render_settings_project_use_max_width() {
+        let cfg = json!({
+            "quadrantChart": {
+                "useMaxWidth": false
+            }
+        });
+        assert!(!use_max_width(&cfg));
+    }
+
+    #[test]
+    fn quadrantchart_ref_config_uses_render_default() {
+        let cfg = json!({
+            "quadrantChart": {
+                "$ref": "#/defs/quadrantChart",
+                "useMaxWidth": false
+            }
+        });
+        assert!(use_max_width(&cfg));
     }
 }

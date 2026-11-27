@@ -31,8 +31,6 @@ pub(crate) fn parse_mermaid_inline_object_with_text_controlled(
         &inline_yaml(input),
         crate::MAX_DIAGRAM_NESTING_DEPTH,
         collection_text_keys,
-        #[cfg(feature = "editor-facts")]
-        false,
         control,
     )?;
     Ok(captured

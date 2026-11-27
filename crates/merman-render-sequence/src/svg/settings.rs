@@ -1,3 +1,4 @@
+use merman_model::presentation::PresentationConfig;
 use merman_render_core::text::TextStyle;
 
 pub(super) struct SequenceRenderSettings {
@@ -23,7 +24,7 @@ pub(super) struct SequenceRenderSettings {
 
 impl SequenceRenderSettings {
     pub(super) fn from_resolved_typography(
-        effective_config: &serde_json::Value,
+        effective_config: &PresentationConfig,
         typography: &crate::preparation::SequenceTypographyPlan,
     ) -> Self {
         let config = crate::preparation::SequenceConfigView::new(effective_config);
@@ -77,7 +78,7 @@ impl SequenceRenderSettings {
     pub(super) fn from_effective_config(effective_config: &serde_json::Value) -> Self {
         let config = super::presentation_config(effective_config.clone());
         let typography = crate::preparation::SequenceTypographyPlan::resolve(&config);
-        Self::from_resolved_typography(config.as_value(), &typography)
+        Self::from_resolved_typography(&config, &typography)
     }
 }
 
@@ -113,12 +114,11 @@ mod tests {
             .unwrap();
         let config = merman_model::presentation::PresentationConfig::default();
         let typography = crate::preparation::SequenceTypographyPlan::for_native(
-            config.as_value(),
+            &config,
             theme.family("sequence"),
             None,
         );
-        let settings =
-            SequenceRenderSettings::from_resolved_typography(config.as_value(), &typography);
+        let settings = SequenceRenderSettings::from_resolved_typography(&config, &typography);
 
         for style in [
             &settings.actor_text_style,

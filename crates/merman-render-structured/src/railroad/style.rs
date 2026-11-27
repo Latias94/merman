@@ -200,7 +200,7 @@ fn parse_js_float_prefix(text: &str) -> Option<f64> {
     text[..end].parse::<f64>().ok()
 }
 
-pub fn resolve_railroad_style(
+pub(super) fn resolve_railroad_style(
     config: &PresentationConfig,
     native: Option<&FamilyTheme>,
 ) -> RailroadStyle {

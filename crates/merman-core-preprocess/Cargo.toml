@@ -18,9 +18,14 @@ third-party-bundle = true
 [features]
 default = []
 mermaid-unicode = []
+yaml = ["dep:granit-parser", "dep:serde_json"]
+yaml-editor = ["yaml", "granit-parser/comments"]
+test-support = []
 
 [dependencies]
+granit-parser = { workspace = true, optional = true }
 merman-model.workspace = true
+serde_json = { workspace = true, optional = true }
 
 [dev-dependencies]
 merman-model = { workspace = true, features = ["test-support"] }

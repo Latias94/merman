@@ -1,0 +1,227 @@
+use merman_render_core::{
+    config::{
+        config_css_number_or_string, config_diagram_look, config_f64, config_string, json_bool,
+    },
+    svg_css::PreparedCommonCss,
+};
+
+/// Mermaid uses a fixed ring for commits/arrows and a theme-dependent ring for branch labels.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct GitGraphColorIndices {
+    branch_limit: f64,
+    avoid_default_color: bool,
+}
+
+impl GitGraphColorIndices {
+    pub(super) fn resolve(config: &serde_json::Value) -> Self {
+        let theme = config_string(config, &["theme"]).unwrap_or_default();
+        Self {
+            branch_limit: if super::layout::gitgraph_theme_is_redux_geometry(&theme) {
+                config_f64(config, &["themeVariables", "THEME_COLOR_LIMIT"]).unwrap_or(12.0)
+            } else {
+                8.0
+            },
+            avoid_default_color: matches!(theme.as_str(), "redux-color" | "redux-dark-color"),
+        }
+    }
+
+    pub(super) fn commit_slot(self, raw_index: i64) -> usize {
+        self.index(raw_index, 8.0) as usize
+    }
+
+    pub(super) fn branch_index(self, raw_index: i64) -> f64 {
+        self.index(raw_index, self.branch_limit)
+    }
+
+    pub(super) fn branch_slot(self, raw_index: i64) -> Option<usize> {
+        let index = self.branch_index(raw_index);
+        (index.is_finite() && index >= 0.0 && index.fract() == 0.0).then_some(index as usize)
+    }
+
+    fn index(self, raw_index: i64, limit: f64) -> f64 {
+        if self.avoid_default_color && raw_index > 0 {
+            ((raw_index - 1) as f64 % (limit - 1.0)) + 1.0
+        } else {
+            raw_index as f64 % limit
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(super) struct GitGraphNamedPaint {
+    pub(super) git: String,
+    pub(super) branch_label: String,
+    pub(super) inverse: String,
+}
+
+#[derive(Debug)]
+pub(super) struct GitGraphCssBinding {
+    pub(super) common: PreparedCommonCss,
+    pub(super) use_redux_geometry: bool,
+    pub(super) look_is_neo: bool,
+    pub(super) sources: GitGraphTerminalPaletteSources,
+    pub(super) color_indices: GitGraphColorIndices,
+    pub(super) theme_color_limit: usize,
+    pub(super) named: [GitGraphNamedPaint; 8],
+    pub(super) border_color_array: Vec<String>,
+    pub(super) gradient_start: Option<String>,
+    pub(super) gradient_stop: Option<String>,
+    pub(super) secondary_border: Option<String>,
+    pub(super) commit_line_color: Option<String>,
+    pub(super) stroke_width: String,
+    pub(super) note_font_weight: String,
+    pub(super) drop_shadow: String,
+    pub(super) commit_label_color: String,
+    pub(super) commit_label_background: String,
+    pub(super) tag_label_color: String,
+    pub(super) tag_label_background: String,
+    pub(super) tag_label_border: String,
+    pub(super) primary_color: String,
+    pub(super) main_bkg: String,
+    pub(super) node_border: String,
+    pub(super) primary_border: String,
+    pub(super) filter_color: String,
+}
+
+impl GitGraphCssBinding {
+    pub(super) fn resolve(config: &serde_json::Value, font_family: &str, font_size: &str) -> Self {
+        let optional = |key: &str| config_string(config, &["themeVariables", key]);
+        let color =
+            |key: &str, fallback: &str| optional(key).unwrap_or_else(|| fallback.to_owned());
+        let css = |key: &str, fallback: &str| {
+            config_css_number_or_string(config, &["themeVariables", key])
+                .unwrap_or_else(|| fallback.to_owned())
+        };
+        let theme = config_string(config, &["theme"]).unwrap_or_else(|| "default".to_owned());
+        let use_color_gen = super::layout::gitgraph_theme_uses_color_gen(&theme);
+        let theme_color_limit =
+            config_f64(config, &["themeVariables", "THEME_COLOR_LIMIT"]).unwrap_or(12.0);
+        // Classic normalTheme uses Array.from's floored length; Neo/Redux genColor loops ceil it.
+        // The SVG owner's resource budgets bound generation instead of truncating the palette.
+        let theme_color_limit = if use_color_gen {
+            theme_color_limit.ceil()
+        } else {
+            theme_color_limit.floor()
+        }
+        .max(0.0) as usize;
+        let border_color_array: Vec<String> = config
+            .pointer("/themeVariables/borderColorArray")
+            .and_then(serde_json::Value::as_array)
+            .map(|values| {
+                values
+                    .iter()
+                    .filter_map(|value| value.as_str().map(str::to_owned))
+                    .collect()
+            })
+            .unwrap_or_default();
+        Self {
+            common: PreparedCommonCss::with_resolved_typography(
+                config,
+                font_family.to_owned(),
+                font_size.to_owned(),
+            ),
+            use_redux_geometry: super::layout::gitgraph_theme_is_redux_geometry(&theme),
+            look_is_neo: config_diagram_look(config).is_neo(),
+            color_indices: GitGraphColorIndices::resolve(config),
+            sources: GitGraphTerminalPaletteSources {
+                use_color_theme: matches!(theme.as_str(), "redux-color" | "redux-dark-color"),
+                use_neo_theme: matches!(theme.as_str(), "neo" | "neo-dark"),
+                use_dark_theme: matches!(
+                    theme.as_str(),
+                    "dark" | "redux-dark" | "redux-dark-color" | "neo-dark"
+                ),
+                use_color_gen,
+                use_gradient: config
+                    .pointer("/themeVariables/useGradient")
+                    .and_then(json_bool)
+                    .unwrap_or(false),
+            },
+            theme_color_limit,
+            named: std::array::from_fn(|i| GitGraphNamedPaint {
+                git: color(&format!("git{i}"), default_git_color(i)),
+                branch_label: color(&format!("gitBranchLabel{i}"), default_git_branch_label(i)),
+                inverse: color(&format!("gitInv{i}"), default_git_inv(i)),
+            }),
+            border_color_array,
+            gradient_start: optional("gradientStart"),
+            gradient_stop: optional("gradientStop"),
+            secondary_border: optional("secondaryBorderColor"),
+            commit_line_color: optional("commitLineColor"),
+            stroke_width: css("strokeWidth", "1"),
+            note_font_weight: css("noteFontWeight", "normal"),
+            drop_shadow: css("dropShadow", "none"),
+            commit_label_color: color("commitLabelColor", "#000021"),
+            commit_label_background: color("commitLabelBackground", "#ffffde"),
+            tag_label_color: color("tagLabelColor", "#131300"),
+            tag_label_background: color("tagLabelBackground", "#ECECFF"),
+            tag_label_border: color("tagLabelBorder", "hsl(240, 60%, 86.2745098039%)"),
+            primary_color: color("primaryColor", "#ECECFF"),
+            main_bkg: color("mainBkg", "#ECECFF"),
+            node_border: color("nodeBorder", "#9370DB"),
+            primary_border: color("primaryBorderColor", "#9370DB"),
+            filter_color: color("filterColor", "#000000"),
+        }
+    }
+
+    /// Resolves the gradient start using the same Mermaid fallback order for defs and CSS.
+    ///
+    /// An authored empty string is a value and must therefore remain distinct from absence.
+    pub(super) fn gradient_start(&self) -> &str {
+        self.gradient_start
+            .as_deref()
+            .unwrap_or(&self.primary_border)
+    }
+
+    /// Resolves the gradient stop after the start has already been selected.
+    ///
+    /// The explicit stop and secondary border preserve their raw CSS spelling, including an
+    /// authored empty string; only an absent value falls back to the selected start.
+    pub(super) fn gradient_stop<'a>(&'a self, start: &'a str) -> &'a str {
+        self.gradient_stop
+            .as_deref()
+            .or(self.secondary_border.as_deref())
+            .unwrap_or(start)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) struct GitGraphTerminalPaletteSources {
+    pub(super) use_color_theme: bool,
+    pub(super) use_neo_theme: bool,
+    pub(super) use_dark_theme: bool,
+    pub(super) use_color_gen: bool,
+    pub(super) use_gradient: bool,
+}
+
+fn default_git_color(i: usize) -> &'static str {
+    match i {
+        0 => "hsl(240, 100%, 46.2745098039%)",
+        1 => "hsl(60, 100%, 43.5294117647%)",
+        2 => "hsl(80, 100%, 46.2745098039%)",
+        3 => "hsl(210, 100%, 46.2745098039%)",
+        4 => "hsl(180, 100%, 46.2745098039%)",
+        5 => "hsl(150, 100%, 46.2745098039%)",
+        6 => "hsl(300, 100%, 46.2745098039%)",
+        _ => "hsl(0, 100%, 46.2745098039%)",
+    }
+}
+
+fn default_git_branch_label(i: usize) -> &'static str {
+    match i {
+        0 | 3 => "#ffffff",
+        _ => "black",
+    }
+}
+
+fn default_git_inv(i: usize) -> &'static str {
+    match i {
+        0 => "hsl(60, 100%, 3.7254901961%)",
+        1 => "rgb(0, 0, 160.5)",
+        2 => "rgb(48.8333333334, 0, 146.5000000001)",
+        3 => "rgb(146.5000000001, 73.2500000001, 0)",
+        4 => "rgb(146.5000000001, 0, 0)",
+        5 => "rgb(146.5000000001, 0, 73.2500000001)",
+        6 => "rgb(0, 146.5000000001, 0)",
+        _ => "rgb(0, 146.5000000001, 146.5000000001)",
+    }
+}

@@ -1,8 +1,11 @@
-use std::sync::{Arc, OnceLock};
+use std::{
+    fmt,
+    sync::{Arc, OnceLock},
+};
 
 use merman_model::family::DiagramFamilyId;
 use merman_theme_contract::v2::SCHEMA_VERSION;
-use serde::Serialize;
+use serde::{Deserialize, Deserializer, Serialize, de};
 
 pub use merman_theme_contract::v2::{
     Appearance, BuiltinPreset, Category, Color, Paint, ResolvedThemeV2, ThemeCapabilityFlags,
@@ -10,7 +13,7 @@ pub use merman_theme_contract::v2::{
 };
 
 /// Decides which theme to use when the source selects a Mermaid theme.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ThemePrecedence {
     /// The selected native theme owns global visual defaults.
@@ -18,6 +21,30 @@ pub enum ThemePrecedence {
     Host,
     /// An authored Mermaid theme selects the Mermaid rendering path.
     Source,
+}
+
+impl<'de> Deserialize<'de> for ThemePrecedence {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct PrecedenceVisitor;
+
+        impl de::Visitor<'_> for PrecedenceVisitor {
+            type Value = ThemePrecedence;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a string")
+            }
+
+            fn visit_str<E: de::Error>(self, value: &str) -> Result<Self::Value, E> {
+                match value {
+                    "host" => Ok(ThemePrecedence::Host),
+                    "source" => Ok(ThemePrecedence::Source),
+                    _ => Err(E::unknown_variant(value, &["host", "source"])),
+                }
+            }
+        }
+
+        deserializer.deserialize_str(PrecedenceVisitor)
+    }
 }
 
 /// The rendering mode actually used for a completed output.
@@ -266,5 +293,49 @@ impl ThemeSelection {
                     None => theme,
                 }
             }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ThemePrecedence;
+    use serde_json::json;
+
+    #[test]
+    fn theme_precedence_deserializes_only_strings() {
+        for (spelling, expected) in [
+            ("host", ThemePrecedence::Host),
+            ("source", ThemePrecedence::Source),
+        ] {
+            let string = json!(spelling);
+            assert_eq!(serde_json::to_value(expected).unwrap(), string);
+            assert_eq!(
+                serde_json::from_str::<ThemePrecedence>(&string.to_string()).unwrap(),
+                expected
+            );
+            assert_eq!(
+                serde_json::from_value::<ThemePrecedence>(string).unwrap(),
+                expected
+            );
+        }
+
+        for invalid in [
+            json!({"host": null}),
+            json!({"source": null}),
+            json!(["source"]),
+            json!(0),
+            json!(true),
+            json!(null),
+        ] {
+            let error = serde_json::from_str::<ThemePrecedence>(&invalid.to_string()).unwrap_err();
+            assert!(error.to_string().contains("expected a string"), "{error}");
+            assert!(serde_json::from_value::<ThemePrecedence>(invalid).is_err());
+        }
+        assert_eq!(
+            serde_json::from_value::<ThemePrecedence>(json!("SOURCE"))
+                .unwrap_err()
+                .to_string(),
+            "unknown variant `SOURCE`, expected `host` or `source`"
+        );
     }
 }

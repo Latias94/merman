@@ -1,7 +1,7 @@
 use crate::activation::SequenceActorPalette;
 use merman_render_core::{
     config::{
-        config_css_number_or_string, config_diagram_look, config_font_family_css,
+        ConfigLookup, config_css_number_or_string, config_diagram_look, config_font_family_css,
         config_root_font_family_css, config_string,
     },
     mermaid_style::font_family_css,
@@ -47,7 +47,7 @@ pub struct SequenceCompatBinding {
 
 impl SequenceCompatBinding {
     pub(super) fn for_native(
-        config: &serde_json::Value,
+        config: &dyn ConfigLookup,
         theme: &FamilyTheme,
         background: Option<Color>,
     ) -> Self {
@@ -102,7 +102,7 @@ impl SequenceCompatBinding {
         }
     }
 
-    pub(crate) fn resolve(config: &serde_json::Value) -> Self {
+    pub(crate) fn resolve(config: &dyn ConfigLookup) -> Self {
         let color = |key: &str, fallback: &str| {
             config_string(config, &["themeVariables", key]).unwrap_or_else(|| fallback.to_owned())
         };

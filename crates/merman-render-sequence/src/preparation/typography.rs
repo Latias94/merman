@@ -170,7 +170,7 @@ pub struct SequenceTerminalTextStyle<'a> {
 
 impl SequenceTypographyPlan {
     pub fn for_native(
-        config: &serde_json::Value,
+        config: &PresentationConfig,
         theme: &FamilyTheme,
         background: Option<Color>,
     ) -> Self {
@@ -200,7 +200,7 @@ impl SequenceTypographyPlan {
     }
 
     pub fn resolve(effective_config: &PresentationConfig) -> Self {
-        let compat = super::SequenceCompatBinding::resolve(effective_config.as_value());
+        let compat = super::SequenceCompatBinding::resolve(effective_config);
         let config = super::config::SequenceConfigView::from_mermaid_config(effective_config);
         let role = |role| SequenceResolvedTypography::resolve(&config, role, &compat.font_family);
         // The title inherits root CSS, independently of the message's inline font size.

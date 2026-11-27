@@ -452,7 +452,7 @@ impl BarycenterPortDistributor {
                 let Some(dummy_node) = port_data
                     .port_dummy
                     .as_ref()
-                    .filter(|dummy| dummy.graph_id == graph.id)
+                    .filter(|dummy| dummy.belongs_to(graph))
                     .map(|dummy| dummy.node)
                 else {
                     continue;
@@ -1759,7 +1759,7 @@ impl LayerSweepTypeDecider {
                     if let Some(dummy) = graph.layerless_nodes[port.node].ports[port.port]
                         .port_dummy
                         .as_ref()
-                        && dummy.graph_id == graph.id
+                        && dummy.belongs_to(graph)
                     {
                         paths_to_random += current.random_influence;
                         paths_to_hierarchical += current.hierarchical_influence;
@@ -4344,13 +4344,13 @@ fn external_dummy_origin_side(
         return PortSide::Undefined;
     };
     if let Some(origin) = dummy.origin_port.as_ref() {
-        if origin.graph_id == graph.id
+        if origin.belongs_to(graph)
             && let Some(side) = port_side_at(graph, origin.port)
         {
             return side;
         }
         if let Some(parent_graph) = parent_graph
-            && origin.graph_id == parent_graph.id
+            && origin.belongs_to(parent_graph)
             && let Some(side) = port_side_at(parent_graph, origin.port)
         {
             return side;
@@ -4382,7 +4382,7 @@ fn sort_port_dummies_by_port_positions(
             continue;
         }
         if let Some(dummy) = parent_port.port_dummy.as_ref()
-            && dummy.graph_id == child_graph.id
+            && dummy.belongs_to(child_graph)
         {
             sorted.push(dummy.node);
         }
@@ -4410,19 +4410,16 @@ fn parent_port_order_by_dummy_layer(
     };
 
     for dummy_node in iter {
-        if let Some(port) = parent_port_for_dummy_node(
-            parent_graph,
-            parent_node_index,
-            child_graph.id.as_str(),
-            dummy_node,
-        ) {
+        if let Some(port) =
+            parent_port_for_dummy_node(parent_graph, parent_node_index, child_graph, dummy_node)
+        {
             order.push(port);
             continue;
         }
         let Some(origin) = child_graph.layerless_nodes[dummy_node].origin_port.as_ref() else {
             continue;
         };
-        if origin.graph_id == parent_graph.id && origin.port.node == parent_node_index {
+        if origin.belongs_to(parent_graph) && origin.port.node == parent_node_index {
             order.push(origin.port.port);
         }
     }
@@ -4432,7 +4429,7 @@ fn parent_port_order_by_dummy_layer(
 fn parent_port_for_dummy_node(
     parent_graph: &LGraph,
     parent_node_index: usize,
-    child_graph_id: &str,
+    child_graph: &LGraph,
     dummy_node: usize,
 ) -> Option<usize> {
     parent_graph
@@ -4443,7 +4440,7 @@ fn parent_port_for_dummy_node(
         .enumerate()
         .find_map(|(port_index, port)| {
             let dummy = port.port_dummy.as_ref()?;
-            (dummy.graph_id == child_graph_id && dummy.node == dummy_node).then_some(port_index)
+            (dummy.belongs_to(child_graph) && dummy.node == dummy_node).then_some(port_index)
         })
 }
 

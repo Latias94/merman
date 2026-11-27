@@ -220,6 +220,7 @@ pub(super) struct FcoseConstraintWorkShape {
     retained_relative_count: usize,
     valid_axis_pair_count: usize,
     may_collapse_zero_gap: bool,
+    has_compound_zero_gap_self_loop: bool,
 }
 
 impl FcoseConstraintWorkShape {
@@ -240,6 +241,7 @@ impl FcoseConstraintWorkShape {
             retained_relative_count: input_relative_count,
             valid_axis_pair_count,
             may_collapse_zero_gap: false,
+            has_compound_zero_gap_self_loop: false,
         }
     }
 
@@ -276,6 +278,7 @@ impl FcoseConstraintWorkShape {
 
     pub(super) fn from_indexed_options(
         opts: &IndexedFcoseOptions,
+        leaf_count: usize,
         node_count: usize,
         input_group_count: usize,
         input_member_count: usize,
@@ -298,6 +301,7 @@ impl FcoseConstraintWorkShape {
 
         let mut valid_axis_pair_count = 0usize;
         let mut may_collapse_zero_gap = false;
+        let mut has_compound_zero_gap_self_loop = false;
         for relative in &opts.relative_placement_constraint {
             let horizontal = relative
                 .left
@@ -310,11 +314,20 @@ impl FcoseConstraintWorkShape {
             valid_axis_pair_count = valid_axis_pair_count
                 .checked_add(usize::from(horizontal) + usize::from(vertical))
                 .ok_or(WorkFailure::ArithmeticOverflow)?;
-            may_collapse_zero_gap |= (horizontal || vertical) && relative.gap.max(0.0) == 0.0;
+            if (horizontal || vertical) && relative.gap <= 0.0 {
+                may_collapse_zero_gap = true;
+                if leaf_count < node_count && !has_compound_zero_gap_self_loop {
+                    has_compound_zero_gap_self_loop = relative
+                        .zero_gap_compound_self_loops(leaf_count..node_count)
+                        .next()
+                        .is_some();
+                }
+            }
         }
 
         Ok(Self {
             may_collapse_zero_gap,
+            has_compound_zero_gap_self_loop,
             ..Self::from_counts(
                 input_group_count,
                 input_member_count,
@@ -328,6 +341,10 @@ impl FcoseConstraintWorkShape {
 
     pub(super) const fn may_collapse_zero_gap(self) -> bool {
         self.may_collapse_zero_gap
+    }
+
+    pub(super) const fn has_compound_zero_gap_self_loop(self) -> bool {
+        self.has_compound_zero_gap_self_loop
     }
 
     pub(super) fn with_normalized_constraints(
@@ -366,11 +383,18 @@ impl FcoseConstraintWorkShape {
         self,
         schedule: FcoseIterationSchedule,
     ) -> std::result::Result<usize, WorkFailure> {
+        // The raw rows must be available once more if normalization can erase a compound target.
+        let compound_self_loop_scan = if self.has_compound_zero_gap_self_loop {
+            self.input_relative_count
+        } else {
+            0
+        };
         schedule
             .setup_work_units()
             .checked_add(self.input_group_count)
             .and_then(|units| units.checked_add(self.input_member_count))
             .and_then(|units| units.checked_add(self.input_relative_count))
+            .and_then(|units| units.checked_add(compound_self_loop_scan))
             .ok_or(WorkFailure::ArithmeticOverflow)
     }
 

@@ -473,6 +473,7 @@ mod tests {
     };
     use crate::svg::parity::flowchart::render_input::FlowchartRenderEdgeRef;
     use crate::svg::parity::{BoundedSvgOutput, SvgOutput};
+    use indexmap::IndexMap;
 
     fn edge(edge_type: &str, stroke: &str) -> crate::flowchart::FlowEdge {
         crate::flowchart::FlowEdge {

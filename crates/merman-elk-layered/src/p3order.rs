@@ -14,7 +14,7 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
 use crate::graph::{
-    FlatPortRemap, LGraph, LNodeKind, PendingPortRemap, PortRef, PortSide,
+    FlatPortRemap, GraphNodeRef, LGraph, LNodeKind, PendingPortRemap, PortRef, PortSide,
     ReorderNodePortsWorkContext,
 };
 use crate::options::{OrderingStrategy, PortConstraints, PortSortingStrategy};
@@ -334,7 +334,7 @@ fn process_node_port_sides(graph: &mut LGraph, node: usize) {
 pub fn set_port_side(graph: &mut LGraph, port: PortRef) {
     let port_data = &graph.layerless_nodes[port.node].ports[port.port];
     let side = if let Some(dummy) = port_data.port_dummy.as_ref() {
-        external_port_dummy_side(graph, port.node, dummy.graph_id.as_str(), dummy.node)
+        external_port_dummy_side(graph, port.node, dummy)
     } else if port_data.net_flow() < 0 {
         PortSide::East
     } else {
@@ -345,16 +345,11 @@ pub fn set_port_side(graph: &mut LGraph, port: PortRef) {
     }
 }
 
-fn external_port_dummy_side(
-    graph: &LGraph,
-    port_node: usize,
-    dummy_graph_id: &str,
-    dummy_node: usize,
-) -> PortSide {
-    if dummy_graph_id == graph.id {
+fn external_port_dummy_side(graph: &LGraph, port_node: usize, dummy: &GraphNodeRef) -> PortSide {
+    if dummy.belongs_to(graph) {
         return graph
             .layerless_nodes
-            .get(dummy_node)
+            .get(dummy.node)
             .map(|node| node.external_port_side)
             .unwrap_or(PortSide::Undefined);
     }
@@ -363,8 +358,8 @@ fn external_port_dummy_side(
         .layerless_nodes
         .get(port_node)
         .and_then(|node| node.nested_graph.as_deref())
-        .filter(|nested| nested.id == dummy_graph_id)
-        .and_then(|nested| nested.layerless_nodes.get(dummy_node))
+        .filter(|nested| dummy.belongs_to(nested))
+        .and_then(|nested| nested.layerless_nodes.get(dummy.node))
         .map(|node| node.external_port_side)
         .unwrap_or(PortSide::Undefined)
 }
@@ -1697,7 +1692,7 @@ fn first_outgoing_target_port(graph: &LGraph, node: usize) -> Option<PortRef> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{GraphNodeRef, LNode, LNodeKind, LPoint, LayeredEdge, PortType};
+    use crate::graph::{LNode, LNodeKind, LPoint, LayeredEdge, PortType};
     use crate::importer::{ElkInputEdge, ElkInputGraph, ElkInputNode, import_graph};
     use crate::intermediate::split_long_edges;
     use crate::options::{ElkDirection, LayeredOptions};
@@ -1977,10 +1972,7 @@ mod tests {
                 LPoint::default(),
             )
             .unwrap();
-        graph.layerless_nodes[parent].ports[port.port].port_dummy = Some(GraphNodeRef {
-            graph_id: "root".to_string(),
-            node: dummy,
-        });
+        graph.layerless_nodes[parent].ports[port.port].port_dummy = Some(graph.scoped_node(dummy));
 
         set_port_side(&mut graph, port);
 
@@ -2896,10 +2888,8 @@ mod tests {
         crate::selfloops::preprocess_self_loops(&mut graph);
         initialize_crossing_minimization_port_ids(&mut graph);
         graph.layerless_nodes[0].ports[1].crossing_minimization_id = None;
-        graph.layerless_nodes[1].origin_port = Some(crate::graph::GraphPortRef {
-            graph_id: graph.id.clone(),
-            port: PortRef { node: 0, port: 2 },
-        });
+        graph.layerless_nodes[1].origin_port =
+            Some(graph.scoped_port(PortRef { node: 0, port: 2 }));
         let best = SweepCopy::new(&graph, &[vec![0], vec![1]]);
         let mut expected = graph.clone();
         for node in &mut expected.layerless_nodes {

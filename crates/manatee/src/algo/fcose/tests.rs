@@ -246,7 +246,7 @@ fn constraint_work_shape_preserves_duplicates_and_counts_both_axes() {
     let members = FcoseConstraintWorkShape::input_member_count(&options).unwrap();
 
     assert_eq!(
-        FcoseConstraintWorkShape::from_indexed_options(&options, 3, groups, members).unwrap(),
+        FcoseConstraintWorkShape::from_indexed_options(&options, 3, 3, groups, members).unwrap(),
         FcoseConstraintWorkShape::from_counts(4, 10, 3, 2, 5, 3),
     );
 }
@@ -1667,6 +1667,76 @@ fn indexed_layout_matches_string_graph_layout_for_compound_constraints() {
 }
 
 #[test]
+fn indexed_layout_rejects_nonfinite_gaps_on_active_axes() {
+    let graph = IndexedGraph {
+        nodes: [0.0, 100.0]
+            .map(|x| IndexedNode {
+                parent: None,
+                width: 40.0,
+                height: 40.0,
+                x,
+                y: x,
+                bounds_extras: BoundsExtras::default(),
+            })
+            .to_vec(),
+        edges: Vec::new(),
+        compounds: Vec::new(),
+    };
+    let mut options = IndexedFcoseOptions {
+        randomize: false,
+        num_iter: Some(1),
+        ..Default::default()
+    };
+    for gap in [f64::NAN, f64::INFINITY] {
+        let horizontal = IndexedRelativePlacementConstraint {
+            left: Some(0),
+            right: Some(1),
+            top: None,
+            bottom: None,
+            gap,
+        };
+        let vertical = IndexedRelativePlacementConstraint {
+            left: None,
+            right: None,
+            top: Some(0),
+            bottom: Some(1),
+            gap,
+        };
+        for (rows, expected_axis) in [
+            (vec![horizontal], "horizontal"),
+            (vec![vertical], "vertical"),
+            (vec![vertical, horizontal], "horizontal"),
+        ] {
+            options.relative_placement_constraint = rows;
+            assert!(matches!(
+                layout_indexed(&graph, &options),
+                Err(Error::InfeasibleConstraints { axis }) if axis == expected_axis
+            ));
+        }
+
+        options.relative_placement_constraint = vec![horizontal];
+        let mut interrupted = RejectingPreflight {
+            reject_on_check: 2,
+            ..Default::default()
+        };
+        assert!(matches!(
+            layout_indexed_with_random_policy_and_work_control(
+                &graph,
+                &options,
+                FcoseRandomPolicy::xorshift(1),
+                &mut interrupted,
+            ),
+            Err(Error::WorkFailure(WorkFailure::Interrupted))
+        ));
+        assert_eq!(interrupted.checks, [2, 3]);
+        assert!(interrupted.charges.is_empty());
+
+        options.relative_placement_constraint[0].right = Some(2);
+        layout_indexed(&graph, &options).expect("an out-of-range pair is inactive");
+    }
+}
+
+#[test]
 fn indexed_layout_rejects_positive_relative_constraint_cycles() {
     let graph = IndexedGraph {
         nodes: vec![
@@ -1947,6 +2017,87 @@ fn zero_gap_cycles_only_accept_compounds_that_can_move_independently() {
         .normalize(sim.nodes.len(), &mut NoopWorkControl)
         .unwrap();
     assert_eq!(constraints.projection_node_count(&sim).unwrap(), 3);
+}
+
+#[test]
+fn zero_gap_compound_self_loops_validate_authored_targets() {
+    let mut graph = IndexedGraph {
+        nodes: vec![IndexedNode {
+            parent: Some(0),
+            width: 40.0,
+            height: 40.0,
+            x: 100.0,
+            y: 30.0,
+            bounds_extras: BoundsExtras::default(),
+        }],
+        edges: Vec::new(),
+        compounds: vec![IndexedCompound { parent: None }],
+    };
+    let horizontal = IndexedRelativePlacementConstraint {
+        left: Some(1),
+        right: Some(1),
+        top: None,
+        bottom: None,
+        gap: 0.0,
+    };
+    let vertical = IndexedRelativePlacementConstraint {
+        left: None,
+        right: None,
+        top: Some(1),
+        bottom: Some(1),
+        gap: 0.0,
+    };
+    let mut options = IndexedFcoseOptions {
+        randomize: false,
+        num_iter: Some(1),
+        ..Default::default()
+    };
+    for row in [horizontal, vertical] {
+        options.relative_placement_constraint = vec![row];
+        assert!(matches!(
+            layout_indexed(&graph, &options),
+            Err(Error::UnsupportedCompoundConstraint { index: 1 })
+        ));
+    }
+
+    let run = |graph, options, control: &mut RejectingPreflight| {
+        layout_indexed_with_random_policy_and_work_control(
+            graph,
+            options,
+            FcoseRandomPolicy::xorshift(1),
+            control,
+        )
+    };
+    let mut admitted = RejectingPreflight {
+        reject_on_check: usize::MAX,
+        ..Default::default()
+    };
+    assert!(matches!(
+        run(&graph, &options, &mut admitted),
+        Err(Error::UnsupportedCompoundConstraint { index: 1 })
+    ));
+    assert_eq!(admitted.checks.last(), Some(&0));
+    let mut interrupted = RejectingPreflight {
+        reject_on_check: admitted.checks.len(),
+        ..Default::default()
+    };
+    assert!(matches!(
+        run(&graph, &options, &mut interrupted),
+        Err(Error::WorkFailure(WorkFailure::Interrupted))
+    ));
+    assert_eq!(interrupted.checks, admitted.checks);
+    assert_eq!(interrupted.charges, admitted.charges);
+
+    graph.nodes[0].parent = None;
+    let with_loop = layout_indexed(&graph, &options).expect("empty compound can move on its own");
+    options.relative_placement_constraint.clear();
+    let without_loop = layout_indexed(&graph, &options).unwrap();
+    assert_point_close(with_loop.node_positions[0], without_loop.node_positions[0]);
+    assert_point_close(
+        with_loop.compound_positions[0],
+        without_loop.compound_positions[0],
+    );
+    assert_eq!(with_loop.compound_bounds, without_loop.compound_bounds);
 }
 
 #[test]

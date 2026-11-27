@@ -99,7 +99,7 @@ impl ArchitectureCssBinding {
     pub(super) fn resolve(
         config: &serde_json::Value,
         font_family: &str,
-        font_size_css: &str,
+        font_size_css: String,
     ) -> Self {
         let edge_color = Self::edge_color_source(config)
             .1
@@ -109,7 +109,7 @@ impl ArchitectureCssBinding {
             common: PreparedCommonCss::with_resolved_typography(
                 config,
                 font_family.to_owned(),
-                font_size_css.to_owned(),
+                font_size_css,
             ),
             arrow_color: Self::arrow_color_source(config)
                 .1

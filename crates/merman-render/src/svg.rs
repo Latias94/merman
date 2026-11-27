@@ -65,6 +65,14 @@ pub use icon_registry::{
     IconRegistryBuilder, IconRegistryResourceLimitDescriptor, IconRegistryResourceLimitId,
     icon_registry_resource_limit_descriptors,
 };
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-class",
+    feature = "diagram-flowchart",
+    feature = "diagram-kanban",
+    feature = "diagram-requirement",
+    feature = "diagram-swimlane"
+))]
 pub(crate) use merman_render_core::svg_css::escape_css_identifier;
 pub use merman_render_core::svg_output::SvgOutputProfile;
 #[cfg(all(
@@ -74,6 +82,12 @@ pub use merman_render_core::svg_output::SvgOutputProfile;
 pub(crate) use parity::render_architecture_family_artifact;
 #[cfg(feature = "native-compact")]
 pub(crate) use parity::render_native_compact_family_artifact;
+#[cfg(any(
+    feature = "diagram-kanban",
+    feature = "diagram-mindmap",
+    feature = "diagram-radar",
+    feature = "diagram-treemap"
+))]
 pub(crate) use parity::theme as render_theme;
 pub use parity::*;
 #[cfg(any(

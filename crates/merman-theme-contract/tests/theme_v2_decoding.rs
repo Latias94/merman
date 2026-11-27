@@ -233,6 +233,98 @@ fn document_fields_require_json_objects_at_the_schema_paths() {
 }
 
 #[test]
+fn document_enums_require_strings_at_the_schema_paths() {
+    let compiler = ThemeCompiler::new();
+    for (field, spelling, path) in [
+        (
+            r#""default_appearance": VALUE"#,
+            "dark",
+            "default_appearance",
+        ),
+        (r#""category": VALUE"#, "reading", "category"),
+        (
+            r#""typography": {"body_family": VALUE}"#,
+            "sans",
+            "typography.body_family",
+        ),
+        (
+            r#""typography": {"title_family": VALUE}"#,
+            "serif",
+            "typography.title_family",
+        ),
+        (
+            r#""typography": {"code_family": VALUE}"#,
+            "mono",
+            "typography.code_family",
+        ),
+        (r#""form": {"density": VALUE}"#, "compact", "form.density"),
+        (
+            r#""form": {"edge_style": VALUE}"#,
+            "orthogonal",
+            "form.edge_style",
+        ),
+        (
+            r#""form": {"marker_style": VALUE}"#,
+            "open",
+            "form.marker_style",
+        ),
+        (
+            r#""form": {"edge_label_bg": VALUE}"#,
+            "transparent",
+            "form.edge_label_bg",
+        ),
+        (
+            r#""overrides": [{"families": ["flowchart"], "appearance": VALUE}]"#,
+            "light",
+            "overrides[0].appearance",
+        ),
+        (
+            r##""roles": {"canvas": {"kind": VALUE, "stops": [
+                {"offset": 0, "color": "#FFFFFF"}, {"offset": 1, "color": "#EEEEEE"}
+            ]}}"##,
+            "linear_gradient",
+            "roles.canvas.kind",
+        ),
+    ] {
+        let document = |value: &str| {
+            let field = field.replace("VALUE", value);
+            format!("{{\n  \"schema_version\": 2,\n  {field}\n}}")
+        };
+        let valid = document(&json!(spelling).to_string());
+        assert_eq!(
+            compiler.parse_json(valid.as_bytes()).unwrap(),
+            serde_json::from_str::<ThemeDocumentV2>(&valid).unwrap()
+        );
+
+        let invalid = document(&json!({(spelling): null}).to_string());
+        assert!(serde_json::from_str::<ThemeDocumentV2>(&invalid).is_err());
+        assert!(
+            serde_json::from_value::<ThemeDocumentV2>(serde_json::from_str(&invalid).unwrap())
+                .is_err()
+        );
+        let error = compiler.parse_json(invalid.as_bytes()).unwrap_err();
+        assert_eq!(error.path(), Some(path), "{error}");
+        assert_eq!(error.line(), Some(3));
+        assert!(error.to_string().contains("expected a string"), "{error}");
+    }
+}
+
+#[test]
+fn unknown_enum_spelling_keeps_the_source_diagnostic() {
+    let error = ThemeCompiler::new()
+        .parse_json(
+            b"{\n  \"schema_version\": 2,\n  \"typography\": {\"title_family\": \"SERIF\"}\n}",
+        )
+        .unwrap_err();
+    assert_eq!(error.path(), Some("typography.title_family"));
+    assert_eq!((error.line(), error.column()), (Some(3), Some(40)));
+    assert_eq!(
+        error.to_string(),
+        "unknown variant `SERIF`, expected one of `sans`, `serif`, `mono` at line 3 column 40"
+    );
+}
+
+#[test]
 fn trailing_input_is_rejected_after_a_valid_document() {
     let error = ThemeCompiler::new()
         .parse_json(b"{\"schema_version\": 2}\n[]")

@@ -17,7 +17,7 @@ artifact-profile-required = true
 
 [features]
 presentation = ["merman-markup/color", "merman-model/presentation-data", "merman-core-graph?/presentation", "serde_json/raw_value"]
-editor-facts = ["granit-parser/comments", "merman-core-flow?/editor-facts", "merman-core-graph?/editor-facts", "merman-core-sequence?/editor-facts", "merman-core-structured?/editor-facts"]
+editor-facts = ["merman-core-preprocess/yaml-editor", "merman-core-flow?/editor-facts", "merman-core-graph?/editor-facts", "merman-core-sequence?/editor-facts", "merman-core-structured?/editor-facts"]
 compat-json = ["presentation", "merman-model/compat-json"]
 terminal-text = ["merman-model/terminal-text"]
 # Diagram selection is independent of output formats and optional layout engines.
@@ -105,7 +105,7 @@ benchmark-stages = ["merman-model/benchmark-stages"]
 [dependencies]
 merman-core-flow = { workspace = true, optional = true }
 merman-core-graph = { workspace = true, optional = true }
-merman-core-preprocess.workspace = true
+merman-core-preprocess = { workspace = true, features = ["yaml"] }
 merman-core-sequence = { workspace = true, optional = true }
 merman-core-structured = { workspace = true, optional = true }
 merman-markup = { workspace = true, features = ["html", "url"] }
@@ -115,13 +115,13 @@ ryu-js = { workspace = true, optional = true }
 indexmap = { workspace = true, features = ["serde"], optional = true }
 serde.workspace = true
 serde_json = { workspace = true, features = ["float_roundtrip"] }
-granit-parser.workspace = true
 json5.workspace = true
 thiserror.workspace = true
 unicode-general-category = { workspace = true, optional = true }
 rustc-hash = { workspace = true, optional = true }
 
 [dev-dependencies]
+merman-core-preprocess = { workspace = true, features = ["test-support"] }
 merman-model = { workspace = true, features = ["test-support"] }
 futures = { workspace = true, features = ["executor"] }
 merman-fixture-render-context = { path = "../merman-fixture-render-context" }

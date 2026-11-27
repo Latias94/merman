@@ -664,37 +664,51 @@ fn parent_options_preserve_self_loops_model_order_and_every_work_checkpoint() {
     assert_eq!(index.container_options.len(), 2);
     assert!(!index.container_options.contains_key("leaf"));
 
-    // Six nodes and four edges cost 6 + 3*4 planning units. Two labels plus the one-hop
-    // leaf-to-tail hierarchy path cost three materialization units, independently of the planner.
+    // Planning visits six nodes and four edges. Materialization owns two labels, the one-hop
+    // leaf-to-tail path, and four reference domains (root, group, and the two loop graphs).
+    let planning = 6 + 3 * 4;
+    let materialization = 2 + 1 + 4;
+    let required = planning + materialization;
     let expected = [
-        WorkCall::Check(18),
-        WorkCall::Charge(18),
-        WorkCall::Check(3),
-        WorkCall::Charge(3),
+        WorkCall::Check(planning),
+        WorkCall::Charge(planning),
+        WorkCall::Check(materialization),
+        WorkCall::Charge(materialization),
     ];
-    for budget in [0, 17, 18, 20, 21, 22] {
+    for budget in [
+        0,
+        planning - 1,
+        planning,
+        required - 1,
+        required,
+        required + 1,
+    ] {
         let mut control = WorkTrace {
             remaining: budget,
             stop_at: None,
             calls: Vec::new(),
         };
         let result = import_graph_with_work_control(&input, &mut control);
-        let prefix = if budget < 18 {
+        let prefix = if budget < planning {
             1
-        } else if budget < 21 {
+        } else if budget < required {
             3
         } else {
             4
         };
         assert_eq!(control.calls.as_slice(), &expected[..prefix]);
-        if budget >= 21 {
+        if budget >= required {
             assert_eq!(result.unwrap(), imported);
-            assert_eq!(control.remaining, budget - 21);
+            assert_eq!(control.remaining, budget - required);
         } else {
             assert_eq!(result, Err(ImportError::Work(WorkError::Interrupted)));
             assert_eq!(
                 control.remaining,
-                if budget < 18 { budget } else { budget - 18 }
+                if budget < planning {
+                    budget
+                } else {
+                    budget - planning
+                }
             );
         }
     }

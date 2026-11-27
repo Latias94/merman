@@ -87,7 +87,7 @@ mod source_span;
 #[cfg(feature = "presentation")]
 mod theme;
 mod utils;
-mod yaml_config;
+use merman_core_preprocess::yaml as yaml_config;
 
 #[cfg(feature = "presentation")]
 pub use detect::{ConfigDetectorFn, Detector, DetectorConfig, DetectorRegistry};

@@ -26,7 +26,7 @@ pub(super) fn render_cluster(
         })
         .transpose()?;
     let style_attr = source.map_or(r#"style="""#, |source| {
-        source.visual.rect_style_attr.as_str()
+        source.visual().rect_style_attr.as_str()
     });
     let mut classes = String::from("cluster swimlane");
     if let Some(group) = subgraph {
@@ -140,7 +140,7 @@ pub(super) fn render_cluster(
                     message: format!("ER prepared HTML title is missing Swimlane {}", lane.id),
                 })?;
         let text_attr = source.map_or(r#"style="""#, |source| {
-            source.visual.source_text_attr.as_str()
+            source.visual().source_text_attr.as_str()
         });
         let _ = write!(
             out,

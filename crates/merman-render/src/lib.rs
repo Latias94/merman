@@ -26,8 +26,6 @@ pub(crate) mod architecture_metrics;
 pub mod block;
 #[cfg(feature = "diagram-c4")]
 pub mod c4;
-#[cfg(feature = "diagram-xychart")]
-mod chart_palette;
 #[cfg(feature = "diagram-class")]
 pub mod class;
 use merman_render_core::{config, entities, mermaid_style, number_format};
@@ -74,15 +72,8 @@ mod elk_edge_geometry;
     )
 )]
 mod elk_feedback_edges;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
-    )
-)]
-mod elk_geometry;
+#[cfg(feature = "diagram-class")]
+use merman_render_core::graph_layout::elk_geometry;
 #[cfg(feature = "layout-elk")]
 #[cfg_attr(
     not(feature = "all-diagrams"),
@@ -103,15 +94,21 @@ mod elk_hierarchy;
     )
 )]
 mod elk_options;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
+#[cfg(any(
+    test,
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    all(
+        feature = "layout-elk",
+        any(
+            feature = "diagram-class",
+            feature = "diagram-requirement",
+            feature = "diagram-state"
+        )
     )
-)]
-mod elk_terminal_jogs;
+))]
+use merman_render_core::graph_layout::elk_terminal_jogs;
 pub mod environment;
 #[cfg(feature = "diagram-er")]
 pub mod er;

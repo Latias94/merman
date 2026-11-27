@@ -12,6 +12,15 @@ pub mod frontmatter;
 pub mod scan;
 #[doc(hidden)]
 pub mod text;
+#[cfg(feature = "yaml")]
+#[doc(hidden)]
+pub mod yaml;
+
+#[cfg(feature = "yaml-editor")]
+mod source_config_path;
+#[cfg(feature = "yaml-editor")]
+#[doc(hidden)]
+pub use source_config_path::SourceConfigPath;
 
 const CONTROLLED_EDIT_REBUILD_CHECKPOINT_BYTES: usize = 4 * 1024;
 const CONTROLLED_EDIT_REBUILD_CHECKPOINT_ITEMS: usize = 128;

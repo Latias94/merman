@@ -74,6 +74,9 @@ struct ActiveTiming {
 
 impl ActiveTiming {
     fn switch(&mut self, next: Option<Stage>) -> Option<Stage> {
+        if self.stage == next {
+            return self.stage;
+        }
         let boundary = Instant::now();
         self.close_interval(boundary);
         let previous = std::mem::replace(&mut self.stage, next);
@@ -242,5 +245,21 @@ mod tests {
                 .sum::<Duration>()
                 <= timing.end_to_end
         );
+    }
+
+    #[test]
+    fn nested_scopes_of_the_same_stage_share_one_trace_interval() {
+        let (_, timing) = capture(true, || {
+            let _layout = enter(Stage::LayoutPrepare);
+            {
+                let _nested = enter(Stage::LayoutPrepare);
+            }
+        });
+
+        let stage = timing.stages[Stage::LayoutPrepare as usize];
+        assert_eq!(stage.calls, 2);
+        assert_eq!(timing.trace.len(), 1);
+        assert_eq!(timing.trace[0].stage.id(), "layout_prepare");
+        assert_eq!(timing.trace[0].elapsed, stage.elapsed);
     }
 }

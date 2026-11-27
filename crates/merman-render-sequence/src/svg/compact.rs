@@ -636,9 +636,7 @@ fn prepare_sequence_compact<'a>(
         }
         return Err(unsupported(meter, "authored-css"));
     }
-    if compat.actor_palette.enabled()
-        || config_diagram_look(config.as_value()).as_str() != "classic"
-    {
+    if compat.actor_palette.enabled() || config_diagram_look(config).as_str() != "classic" {
         return Err(unsupported(meter, "sequence-look-or-palette"));
     }
     if native.is_some_and(|theme| !matches!(theme.elevation, Elevation::Flat)) {
@@ -674,8 +672,7 @@ fn prepare_sequence_compact<'a>(
 
     let canvas = compact_canvas(request.canvas_background, policy, meter)?;
     let has_root_canvas = native.is_some() || request.canvas_background.is_some();
-    let settings =
-        SequenceRenderSettings::from_resolved_typography(config.as_value(), prepared.typography());
+    let settings = SequenceRenderSettings::from_resolved_typography(config, prepared.typography());
     let native_width = native.map(|theme| theme.form.stroke_width as f32);
     let native_radius = native.map(|theme| theme.form.radius as f32);
     let connector_width = native.map(|theme| theme.form.connector_width as f32);

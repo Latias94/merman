@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::flowchart::FlowchartClassDefinitions;
+use indexmap::IndexMap;
 use std::cell::OnceCell;
 use std::sync::Arc;
 

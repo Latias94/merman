@@ -1,10 +1,8 @@
 use std::fmt;
 
 #[cfg(feature = "compile")]
-use serde::Deserializer;
-#[cfg(feature = "compile")]
-use serde::de::{self, IntoDeserializer, value::MapAccessDeserializer};
-use serde::{Deserialize, Serialize};
+use serde::de::{IntoDeserializer, value::MapAccessDeserializer};
+use serde::{Deserialize, Deserializer, Serialize, de};
 
 use super::Color;
 #[cfg(feature = "compile")]
@@ -88,8 +86,36 @@ macro_rules! merge {
     };
 }
 
+// Serde's externally tagged enum format also accepts an object with a null payload.
+macro_rules! deserialize_string_enum {
+    ($name:ident { $($variant:ident => $spelling:literal),+ $(,)? }) => {
+        impl<'de> Deserialize<'de> for $name {
+            fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+                struct StringVisitor;
+
+                impl de::Visitor<'_> for StringVisitor {
+                    type Value = $name;
+
+                    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                        formatter.write_str("a string")
+                    }
+
+                    fn visit_str<E: de::Error>(self, value: &str) -> Result<Self::Value, E> {
+                        match value {
+                            $($spelling => Ok($name::$variant),)+
+                            _ => Err(E::unknown_variant(value, &[$($spelling),+])),
+                        }
+                    }
+                }
+
+                deserializer.deserialize_str(StringVisitor)
+            }
+        }
+    };
+}
+
 /// The concrete light or dark appearance selected by the host.
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Hash, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Appearance {
     /// Light surfaces.
@@ -97,6 +123,8 @@ pub enum Appearance {
     /// Dark surfaces.
     Dark,
 }
+
+deserialize_string_enum!(Appearance { Light => "light", Dark => "dark" });
 
 impl Appearance {
     /// The spelling used by theme documents and tools.
@@ -115,7 +143,7 @@ impl fmt::Display for Appearance {
 }
 
 /// A theme's catalog grouping.
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Category {
     /// General-purpose reading.
@@ -127,6 +155,10 @@ pub enum Category {
     /// User-authored design.
     Custom,
 }
+
+deserialize_string_enum!(Category {
+    Reading => "reading", Editor => "editor", Art => "art", Custom => "custom",
+});
 
 /// A version 2 theme document. Use [`super::ThemeCompiler`] to admit and resolve it.
 #[cfg(feature = "compile")]
@@ -454,7 +486,6 @@ pub struct LinearGradient {
     pub stops: Vec<GradientStop>,
 }
 
-#[cfg_attr(feature = "compile", derive(Deserialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(
@@ -467,6 +498,9 @@ pub struct LinearGradient {
 enum GradientKind {
     LinearGradient,
 }
+
+#[cfg(feature = "compile")]
+deserialize_string_enum!(GradientKind { LinearGradient => "linear_gradient" });
 
 #[cfg(feature = "compile")]
 patch!(CanvasPatch { textures: Vec<Texture>, padding_px: f64 });
@@ -749,7 +783,7 @@ impl<'de> Deserialize<'de> for ElevationSpec {
 }
 
 /// A typography slot for body, title, or code.
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FontRole {
     /// Use the sans-serif stack.
@@ -759,6 +793,8 @@ pub enum FontRole {
     /// Use the monospace stack.
     Mono,
 }
+
+deserialize_string_enum!(FontRole { Sans => "sans", Serif => "serif", Mono => "mono" });
 
 /// Concrete font stacks, sizes, and weights.
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -836,7 +872,7 @@ patch!(TypographyPatch {
 });
 
 /// The spacing and padding preference for layout.
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Density {
     /// Tight, space-efficient layout.
@@ -847,8 +883,10 @@ pub enum Density {
     Airy,
 }
 
+deserialize_string_enum!(Density { Compact => "compact", Balanced => "balanced", Airy => "airy" });
+
 /// The preferred connector geometry.
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EdgeStyle {
     /// Curved connectors.
@@ -861,8 +899,12 @@ pub enum EdgeStyle {
     Sketch,
 }
 
+deserialize_string_enum!(EdgeStyle {
+    Curved => "curved", Orthogonal => "orthogonal", Straight => "straight", Sketch => "sketch",
+});
+
 /// The preferred arrowhead shape for ordinary connectors.
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MarkerStyle {
     /// A narrow arrowhead with a recessed base.
@@ -875,8 +917,12 @@ pub enum MarkerStyle {
     Classic,
 }
 
+deserialize_string_enum!(MarkerStyle {
+    Stealth => "stealth", Filled => "filled", Open => "open", Classic => "classic",
+});
+
 /// How a label on a connector should be backed.
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EdgeLabelBackground {
     /// Use the underlying container or canvas.
@@ -888,6 +934,10 @@ pub enum EdgeLabelBackground {
     /// Draw only the label.
     Transparent,
 }
+
+deserialize_string_enum!(EdgeLabelBackground {
+    Auto => "auto", Canvas => "canvas", Pill => "pill", Transparent => "transparent",
+});
 
 /// Concrete chart presentation settings.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]

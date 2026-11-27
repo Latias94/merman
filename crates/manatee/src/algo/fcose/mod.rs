@@ -268,7 +268,23 @@ pub struct IndexedRelativePlacementConstraint {
     pub right: Option<usize>,
     pub top: Option<usize>,
     pub bottom: Option<usize>,
+    /// Minimum separation for each complete, in-range pair. Negative values are clamped to zero.
+    /// NaN and positive infinity make an active axis infeasible.
     pub gap: f64,
+}
+
+impl IndexedRelativePlacementConstraint {
+    fn zero_gap_compound_self_loops(
+        self,
+        compounds: std::ops::Range<usize>,
+    ) -> impl Iterator<Item = usize> {
+        [self.left.zip(self.right), self.top.zip(self.bottom)]
+            .into_iter()
+            .flatten()
+            .filter_map(move |(from, to)| {
+                (from == to && self.gap <= 0.0 && compounds.contains(&from)).then_some(from)
+            })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -371,6 +387,7 @@ pub fn layout_indexed_with_random_policy_and_work_control<W: WorkControl + ?Size
 
     let mut shape = FcoseConstraintWorkShape::from_indexed_options(
         opts,
+        graph.nodes.len(),
         node_count,
         input_group_count,
         input_member_count,
@@ -417,6 +434,20 @@ pub fn layout_indexed_with_random_policy_and_work_control<W: WorkControl + ?Size
     };
     let mut sim = SimGraph::from_indexed(graph);
     let projection_node_count = constraints.projection_node_count(&sim)?;
+    if shape.has_compound_zero_gap_self_loop() {
+        // Normalization erases redundant self-loops. Validate those authored targets after
+        // the other constraint checks, using the same compound children as the projection.
+        work_control.check(0)?;
+        let compounds = sim.leaf_count..node_count;
+        if let Some(index) = opts
+            .relative_placement_constraint
+            .iter()
+            .flat_map(|relative| relative.zero_gap_compound_self_loops(compounds.clone()))
+            .find(|&index| !sim.children_by_owner[index].is_empty())
+        {
+            return Err(Error::UnsupportedCompoundConstraint { index });
+        }
+    }
 
     let spectral_topology = if opts.randomize && sim.leaf_count > 0 {
         Some(spectral::SpectralTopology::build(

@@ -555,9 +555,7 @@ impl<'parsed> QuadrantChartFamilyArtifact<'parsed> {
 #[cfg(feature = "diagram-xychart")]
 pub(crate) struct XyChartFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::xy_chart::XyChartDiagramRenderModel, XyChartDiagramLayout>,
-    typography_theme: crate::xychart::XyChartTypographyThemePlan,
-    bar_legend_plots: Vec<usize>,
-    data_label_color: String,
+    style: merman_render_charts::xychart::XyChartStyle,
 }
 
 #[derive(Debug)]
@@ -578,7 +576,7 @@ pub(crate) struct SankeyFamilyArtifact<'parsed> {
 #[cfg(feature = "diagram-venn")]
 pub(crate) struct VennFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::venn::VennDiagramModel, VennDiagramLayout>,
-    typography_theme: crate::venn::VennTypographyThemePlan,
+    style: merman_render_charts::venn::VennStyle,
 }
 
 #[derive(Debug)]
@@ -668,8 +666,8 @@ impl<'parsed> VennFamilyArtifact<'parsed> {
         &self.pair
     }
 
-    pub(crate) const fn typography_theme(&self) -> &crate::venn::VennTypographyThemePlan {
-        &self.typography_theme
+    pub(crate) const fn style(&self) -> &merman_render_charts::venn::VennStyle {
+        &self.style
     }
 }
 
@@ -823,7 +821,7 @@ impl<'parsed> SankeyFamilyArtifact<'parsed> {
 #[cfg(feature = "diagram-git-graph")]
 pub(crate) struct GitGraphFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::git_graph::GitGraphDiagramModel, GitGraphDiagramLayout>,
-    typography_theme: crate::gitgraph::GitGraphTypographyThemePlan,
+    typography_theme: merman_render_graph::gitgraph::GitGraphTypographyThemePlan,
 }
 
 #[cfg(feature = "diagram-git-graph")]
@@ -835,7 +833,9 @@ impl<'parsed> GitGraphFamilyArtifact<'parsed> {
         &self.pair
     }
 
-    pub(crate) const fn typography_theme(&self) -> &crate::gitgraph::GitGraphTypographyThemePlan {
+    pub(crate) const fn typography_theme(
+        &self,
+    ) -> &merman_render_graph::gitgraph::GitGraphTypographyThemePlan {
         &self.typography_theme
     }
 }
@@ -929,16 +929,8 @@ impl<'parsed> XyChartFamilyArtifact<'parsed> {
         &self.pair
     }
 
-    pub(crate) const fn typography_theme(&self) -> &crate::xychart::XyChartTypographyThemePlan {
-        &self.typography_theme
-    }
-
-    pub(crate) fn bar_legend_plots(&self) -> &[usize] {
-        &self.bar_legend_plots
-    }
-
-    pub(crate) fn data_label_color(&self) -> &str {
-        &self.data_label_color
+    pub(crate) const fn style(&self) -> &merman_render_charts::xychart::XyChartStyle {
+        &self.style
     }
 }
 
