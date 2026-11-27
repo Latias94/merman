@@ -17,7 +17,7 @@ third-party-bundle = true
 
 [features]
 benchmark-stages = ["merman-model?/benchmark-stages"]
-canonical-edge-paint = []
+canonical-edge-paint = ["merman-render-core/graph-layout", "merman-render-core/route-paint"]
 diagram-agentflow = [
     "dep:base64",
     "dep:cssparser",
@@ -145,4 +145,4 @@ unicode-segmentation = { workspace = true, optional = true }
 
 [dev-dependencies]
 merman-model = { workspace = true, features = ["test-support"] }
-merman-render-core = { workspace = true, features = ["test-support"] }
+merman-render-core = { workspace = true, features = ["graph-layout", "test-support"] }

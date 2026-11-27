@@ -34,15 +34,6 @@ pub(crate) mod validate;
 
 #[cfg(any(feature = "layout-shoal", test))]
 pub(crate) use ir::Marker;
-#[cfg(all(
-    any(feature = "layout-shoal", test),
-    any(
-        feature = "diagram-flowchart",
-        feature = "diagram-swimlane",
-        feature = "diagram-agentflow"
-    )
-))]
-use ir::{Axis, BorderStitch, Endpoint, KnotKind, Side};
 #[cfg(any(
     feature = "layout-shoal",
     all(
@@ -55,6 +46,24 @@ use ir::{Axis, BorderStitch, Endpoint, KnotKind, Side};
     )
 ))]
 pub(crate) use merman_render_core::route_paint;
+#[cfg(all(
+    feature = "layout-shoal",
+    any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    )
+))]
+pub(crate) use merman_render_flow::graph::FlowchartSvgEdgeGeometry;
+#[cfg(all(
+    any(feature = "layout-shoal", test),
+    any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    )
+))]
+pub(crate) use merman_render_flow::graph::{AxisRoutes, RouteTopology};
 
 #[cfg(any(feature = "layout-shoal", test))]
 #[cfg(any(
@@ -78,58 +87,6 @@ pub(crate) fn edge_paint_error(edge_id: &str, error: route_paint::RoutePaintErro
     crate::Error::InvalidModel {
         message: format!("Could not paint canonical edge `{edge_id}`: {error}"),
     }
-}
-
-/// Render-only metadata for coordinates in occurrence order.
-#[cfg(all(
-    any(feature = "layout-shoal", test),
-    any(
-        feature = "diagram-flowchart",
-        feature = "diagram-swimlane",
-        feature = "diagram-agentflow"
-    )
-))]
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct RouteTopology {
-    pub(crate) endpoints: (Endpoint, Endpoint),
-    pub(crate) ports: (Side, Side),
-    pub(crate) knots: Vec<(Axis, KnotKind)>,
-    pub(crate) corridor_clearance: f64,
-}
-
-#[cfg(all(
-    feature = "layout-shoal",
-    any(
-        feature = "diagram-flowchart",
-        feature = "diagram-swimlane",
-        feature = "diagram-agentflow"
-    )
-))]
-#[derive(Debug)]
-pub(crate) struct FlowchartSvgEdgeGeometry {
-    pub(crate) points: Vec<crate::model::LayoutPoint>,
-    pub(crate) label: Option<crate::model::LayoutLabel>,
-}
-
-#[cfg(all(
-    any(feature = "layout-shoal", test),
-    any(
-        feature = "diagram-flowchart",
-        feature = "diagram-swimlane",
-        feature = "diagram-agentflow"
-    )
-))]
-#[derive(Debug)]
-pub(crate) struct AxisRoutes {
-    pub(crate) nodes: Vec<contour::ShapePortProfile>,
-    pub(crate) group_parents: Vec<Option<u32>>,
-    pub(crate) struck_group_titles: rustc_hash::FxHashSet<String>,
-    pub(crate) border_stitches: Vec<BorderStitch>,
-    pub(crate) clearance: axis_clearance::AxisClearance,
-    pub(crate) routes: Vec<Option<RouteTopology>>,
-    /// Geometry in Flowchart edge-owner order when preparing SVG without owned layout edges.
-    #[cfg(feature = "layout-shoal")]
-    pub(crate) svg_edges: Option<Vec<FlowchartSvgEdgeGeometry>>,
 }
 
 #[derive(Clone, Debug, Default)]

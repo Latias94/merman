@@ -1,6 +1,6 @@
 use super::{ErLayoutSettings, ErPreparedLabels, ErPreparedLayout, ErSubgraph, er_marker_id};
 use crate::graph_layout::canonical::CanonicalRoutes;
-use crate::graph_layout::contour::ShapePortProfile;
+use crate::graph_layout::contour::{ShapePortProfile, shoal_contour};
 use crate::graph_layout::ir::{
     Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, Rect,
     RoutingStyle, Side, Size, SolvedGraph, TitlePosition, direction_from_rank,
@@ -173,7 +173,7 @@ fn measure<'a>(
         let seq = index(work.checked_add(group_count, graph.nodes.len())?, work)?;
         graph.nodes.push(MeasuredNode {
             size,
-            contour: profile.shoal_contour(size),
+            contour: shoal_contour(&profile, size),
             seq,
             parent: None,
             port_span: Some(profile.port_span(face)),

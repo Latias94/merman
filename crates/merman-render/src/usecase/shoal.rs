@@ -1,6 +1,6 @@
 use super::{UsecaseDiagramLayout, UsecaseEdgePlan, UsecaseLabelPlan, UsecaseNodePlan};
 use crate::graph_layout::canonical::CanonicalRoutes;
-use crate::graph_layout::contour::ShapePortProfile;
+use crate::graph_layout::contour::{ShapePortProfile, shoal_contour, usecase_actor};
 use crate::graph_layout::ir::{
     Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, RoutingStyle,
     Side, Size, SolvedGroup, TitlePosition,
@@ -188,7 +188,7 @@ pub(super) fn layout(
             let (profile, size, anchor_y) = if let Some(&variant) = actors.get(plan.id.as_str()) {
                 let actor = super::actor::ActorPlacement::canonical(plan, variant);
                 (
-                    ShapePortProfile::usecase_actor(
+                    usecase_actor(
                         variant,
                         actor.placement,
                         dimensions(&plan.label),
@@ -214,7 +214,7 @@ pub(super) fn layout(
             };
             graph.nodes.push(MeasuredNode {
                 size,
-                contour: profile.shoal_contour(size),
+                contour: shoal_contour(&profile, size),
                 seq,
                 parent: None,
                 port_span: Some(profile.port_span(face)),

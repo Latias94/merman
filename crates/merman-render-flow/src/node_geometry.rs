@@ -7,6 +7,8 @@ use merman_render_core::{Error, LayoutNode, LayoutPoint, Result, text::TextMetri
 use crate::svg_label::FlowchartSvgLabelSidecar;
 
 pub mod brace;
+#[cfg(any(feature = "layout-shoal", test))]
+pub mod contour;
 mod dimensions;
 mod label;
 mod validation;

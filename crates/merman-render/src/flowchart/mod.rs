@@ -52,9 +52,8 @@ pub(crate) use merman_render_flow::node_geometry::NodeLayoutDimensionsRequest;
 ))]
 pub(crate) use merman_render_flow::node_geometry::validate_flowchart_node_asset_dimensions;
 pub(crate) use merman_render_flow::node_geometry::{
-    CROSSED_CIRCLE_RADIUS, DelayGeometry, DisplayGeometry, DoubleCircleGeometry,
-    FlowchartRectangleGeometry, HexagonGeometry, ImageSquareGeometry, ImageSquareSizing,
-    LeanGeometry, LeanKind, OddGeometry, PreparedFlowchartNodeGeometry, StadiumGeometry,
+    CROSSED_CIRCLE_RADIUS, DelayGeometry, DisplayGeometry, FlowchartRectangleGeometry,
+    ImageSquareGeometry, ImageSquareSizing, LeanGeometry, LeanKind, StadiumGeometry,
     flowchart_brace_content_dimensions, flowchart_node_label_min_width,
     flowchart_node_render_dimensions, flowchart_node_svg_width_mode,
     flowchart_stacked_document_geometry, resolve_flowchart_shape,

@@ -8,7 +8,7 @@ use super::{
     FlowchartSvgLabelSidecarBuilder, ProjectedFlowchartEdge,
 };
 use crate::graph_layout::axis_clearance::AxisClearance;
-use crate::graph_layout::contour::ShapePortProfile;
+use crate::graph_layout::contour::{ShapePortProfile, shoal_contour};
 use crate::graph_layout::ir::{
     Axis, Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredNode, RoutingStyle, Side, Size,
     SolvedGraph,
@@ -22,6 +22,7 @@ use crate::model::{Bounds, FlowchartLayout, LayoutEdge, LayoutLabel, LayoutNode,
 use crate::{Error, LayoutAdaptation, LayoutExecution, Result};
 use merman_model::families::flowchart::{FlowchartModel, FlowchartRenderContext};
 use merman_model::presentation::PresentationConfig;
+use merman_render_flow::node_geometry::contour as flow_contour;
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 
@@ -235,9 +236,9 @@ fn measure(
             _ => None,
         };
         let profile = if shape == super::FlowchartShape::Diamond {
-            ShapePortProfile::decision(layout_node.width, layout_node.height)
+            flow_contour::decision(layout_node.width, layout_node.height)
         } else {
-            ShapePortProfile::flowchart_with_paint_metrics(
+            flow_contour::from_paint_metrics(
                 node,
                 &layout_node,
                 measurement.settings.node_padding,
@@ -350,7 +351,7 @@ impl FlowchartBindings {
         };
         graph.nodes.push(MeasuredNode {
             size,
-            contour: profile.shoal_contour(size),
+            contour: shoal_contour(&profile, size),
             seq,
             parent,
             port_span: Some(profile.port_span(face)),
@@ -373,7 +374,7 @@ impl FlowchartBindings {
         work.charge_adapter(self.flow_relative_nodes.len())?;
         for &(index, _) in &self.flow_relative_nodes {
             let rect = solved.nodes[index];
-            self.profiles[index] = ShapePortProfile::fork_join(rect.width, rect.height);
+            self.profiles[index] = flow_contour::fork_join(rect.width, rect.height);
         }
         work.charge_adapter(self.nodes.len())?;
         for (node, rect) in self.nodes.iter_mut().zip(solved.nodes) {
