@@ -35,18 +35,22 @@ pub fn write_subroutine(out: &mut impl SvgOutput, mut body: NodeBodySvg<'_>) {
     {
         let _ = write!(
             out,
-            r#"<g class="basic label-container" style="{}"><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"/>"#,
-            escape_attr(body.rough_group_style),
-            escape_attr(&fill),
-            escape_attr(body.fill_color),
-            HAND_DRAWN_FILL_WEIGHT,
+            r#"<g class="basic label-container" style="{}">"#,
+            escape_attr(body.hand_drawn_group_style()),
         );
+        let frame = super::rectangle_backing(&body, total_w, h);
+        body.write_hachure(out, &frame, &fill, f64::from(HAND_DRAWN_FILL_WEIGHT));
         write_outline(out, &body, &outline);
-        out.push_str("</g>");
+        if body.rough_fill_opacity.is_none() {
+            out.push_str("</g>");
+        }
         // Mermaid generates the left rule first, then inserts the right rule ahead of it.
         for stroke in side_strokes.iter().rev() {
             out.push_str("<g>");
             write_outline(out, &body, &ops_to_svg_path_d(stroke));
+            out.push_str("</g>");
+        }
+        if body.rough_fill_opacity.is_some() {
             out.push_str("</g>");
         }
         return;

@@ -54,7 +54,7 @@ impl ClassNativeStyle {
     }
 }
 
-pub(super) fn edge_background(theme: &FamilyTheme, background: Option<Color>) -> String {
+pub(super) fn edge_label_fill(theme: &FamilyTheme, background: Option<Color>) -> Color {
     match theme.form.edge_label_bg {
         EdgeLabelBackground::Transparent => Color::TRANSPARENT,
         EdgeLabelBackground::Pill => theme.roles.surface_node.first_color(),
@@ -62,7 +62,6 @@ pub(super) fn edge_background(theme: &FamilyTheme, background: Option<Color>) ->
             background.unwrap_or_else(|| theme.roles.canvas.first_color())
         }
     }
-    .to_string()
 }
 
 pub(super) fn edge_curve(style: EdgeStyle) -> &'static str {

@@ -6,8 +6,11 @@
 ))]
 
 use merman::svg::{RenderResourcePolicy, ResourceLimitId, SvgOutputProfile};
-use merman::theme::{BuiltinPreset, ThemeSelection};
+use merman::theme::{BuiltinPreset, Color, ThemeCompiler, ThemeSelection};
 use merman::{OperationControl, RenderError, RenderOutput, RenderRequest, Renderer, SvgRequest};
+
+#[path = "native_compact/paint.rs"]
+mod paint;
 
 const FLOWCHART_CONFIG: &str = r#"---
 config:
@@ -17,6 +20,7 @@ config:
   flowchart:
     htmlLabels: false
     curve: linear
+    diagramPadding: 0
 ---
 "#;
 
@@ -110,6 +114,116 @@ fn compact_flowchart_keeps_the_native_label_weight() {
         .find(|node| node.has_tag_name("text") && node.text() == Some("Plan"))
         .expect("expected the compact label");
     assert_eq!(label.attribute("font-weight"), Some("600"));
+}
+
+fn assert_compact_unsupported(result: Result<String, RenderError>, expected: &str) {
+    let error = result.unwrap_err();
+    let RenderError::Svg(merman_render::Error::UnsupportedSvgOutputProfile { profile, reason }) =
+        error
+    else {
+        panic!("expected an unsupported output profile, got {error:?}");
+    };
+    assert_eq!(profile, SvgOutputProfile::NativeCompact);
+    assert_eq!(reason, expected);
+}
+
+#[test]
+fn compact_flowchart_admits_original_presets_on_a_transparent_canvas() {
+    let source = "flowchart LR\nA[Plan] --> B[Ship]";
+    for (preset, arrow_path) in [
+        (BuiltinPreset::Blueprint, "M1 1 L10 5 L1 9"),
+        (BuiltinPreset::Cyberpunk, "M0 1 L10 5 L0 9 L2.5 5 Z"),
+    ] {
+        let request = compact_request().with_native_theme(ThemeSelection::preset(preset, None));
+        for request in [
+            request.clone(),
+            request.clone().with_background(Color::rgb(18, 52, 86)),
+            request.clone().with_background(Color::rgba(18, 52, 86, 1)),
+        ] {
+            assert_compact_unsupported(render(source, request), "flowchart-canvas-texture");
+        }
+
+        let transparent = Color::rgba(18, 52, 86, 0);
+        let theme_doc = serde_json::json!({
+            "schema_version": 2,
+            "extends": preset.as_str(),
+            "roles": { "canvas": transparent },
+        });
+        let canvas_theme = ThemeCompiler::new()
+            .compile_json(&serde_json::to_vec(&theme_doc).unwrap(), None)
+            .unwrap();
+        let flat_view_box = (preset == BuiltinPreset::Cyberpunk).then(|| {
+            let mut flat_doc = theme_doc;
+            flat_doc["form"] = serde_json::json!({"elevation": "flat"});
+            let flat_theme = ThemeCompiler::new()
+                .compile_json(&serde_json::to_vec(&flat_doc).unwrap(), None)
+                .unwrap();
+            let svg = render(
+                source,
+                compact_request().with_native_theme(ThemeSelection::compiled(flat_theme)),
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let root = document.root_element();
+            assert!(
+                !root
+                    .children()
+                    .any(|node| node.attribute("data-scene-role") == Some("depth"))
+            );
+            paint::view_box(root)
+        });
+        for request in [
+            request.with_background(transparent),
+            compact_request().with_native_theme(ThemeSelection::compiled(canvas_theme)),
+        ] {
+            let svg = render(source, request).unwrap();
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let root = document.root_element();
+            paint::assert_transparent_scene(root);
+            assert!(
+                root.descendants()
+                    .any(|node| node.has_tag_name("text") && node.text() == Some("Ship"))
+            );
+            let glyph = paint::endpoint_glyph(root);
+            assert_eq!(glyph.attribute("d"), Some(arrow_path));
+            let stroke = glyph
+                .attribute("stroke")
+                .expect("expected painted arrow outline");
+            assert_ne!(stroke, "none");
+            if preset == BuiltinPreset::Blueprint {
+                assert_eq!(glyph.attribute("fill"), Some("none"));
+                assert_eq!(glyph.attribute("stroke-linecap"), Some("round"));
+                assert_eq!(glyph.attribute("stroke-linejoin"), Some("round"));
+                assert!(
+                    !root
+                        .children()
+                        .any(|node| node.attribute("data-scene-role") == Some("depth"))
+                );
+            } else {
+                assert_eq!(glyph.attribute("fill"), Some(stroke));
+                paint::assert_cyberpunk_shadows(root, 2);
+                let [left, top, width, height] = paint::view_box(root);
+                let [flat_left, flat_top, flat_width, flat_height] = flat_view_box.unwrap();
+                assert!(left < flat_left && left + width > flat_left + flat_width);
+                assert!(top + height > flat_top + flat_height);
+            }
+        }
+    }
+}
+
+#[test]
+fn compact_flowchart_transparent_canvas_rejects_blurred_elevation() {
+    let source = "flowchart LR\nA[Plan] --> B[Ship]";
+    let blurred_theme = ThemeCompiler::new()
+        .compile_json(
+            br#"{"schema_version":2,"extends":"cyberpunk","form":{"elevation":"soft"}}"#,
+            None,
+        )
+        .unwrap();
+    let request = compact_request()
+        .with_native_theme(ThemeSelection::compiled(blurred_theme))
+        .with_background(Color::TRANSPARENT);
+    assert_compact_unsupported(render(source, request), "flowchart-native-material");
 }
 
 #[test]

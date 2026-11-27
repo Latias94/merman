@@ -5,7 +5,8 @@ use super::compiled::admitted_flowchart_source_stroke_width;
 use super::{
     FlowchartTextStyleResolution,
     compiled::{
-        FlowchartCompiledStyles, FlowchartPreparedClassStyles, flowchart_compile_prepared_styles,
+        FlowchartCompiledStyles, FlowchartEdgeSourceStyleBytes, FlowchartPreparedClassStyles,
+        flowchart_compile_prepared_styles,
     },
 };
 use crate::{
@@ -112,7 +113,7 @@ impl PreparedEdgeLabelTypography {
 #[derive(Debug)]
 struct FlowchartEdgeStyleArtifact {
     emission: FlowchartCompiledStyles,
-    projected_source_style_bytes: usize,
+    projected_source_style_bytes: FlowchartEdgeSourceStyleBytes,
     source_stroke_width_status: FlowchartSourceFacetStatus,
     source_stroke_width_value: Option<f32>,
 }
@@ -679,14 +680,24 @@ impl FlowchartEdgeStylePlan {
     fn edge_source_style_svg_bytes(&self, edge_id: &str) -> Result<usize> {
         self.edges
             .get(edge_id)
-            .map(|styles| styles.artifact.projected_source_style_bytes)
+            .map(|styles| styles.artifact.projected_source_style_bytes.parity)
             .ok_or_else(|| Error::InvalidModel {
                 message: format!("missing prepared Flowchart edge style for `{edge_id}`"),
             })
     }
 
-    pub fn edge_source_style_svg_bytes_for(&self, key: FlowchartEdgeKey) -> Result<usize> {
-        Ok(self.occurrence(key)?.artifact.projected_source_style_bytes)
+    /// Project the same source declarations as the selected edge writer.
+    pub fn edge_source_style_svg_bytes_for(
+        &self,
+        key: FlowchartEdgeKey,
+        repeat_inline: bool,
+    ) -> Result<usize> {
+        let projected = &self.occurrence(key)?.artifact.projected_source_style_bytes;
+        Ok(if repeat_inline {
+            projected.parity
+        } else {
+            projected.native
+        })
     }
 
     pub fn swimlane_label_for(

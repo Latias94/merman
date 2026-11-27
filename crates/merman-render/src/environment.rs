@@ -29,6 +29,13 @@ use std::sync::Arc;
 use std::sync::Weak;
 
 #[cfg(feature = "layout-shoal")]
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        reason = "Only the shared layered Shoal solver uses the scratch pool."
+    )
+)]
 mod shoal_scratch;
 #[cfg(feature = "layout-shoal")]
 use shoal_scratch::ShoalScratchPool;
@@ -330,6 +337,10 @@ pub struct RenderSession {
     work_meter: Arc<OperationWorkMeter>,
     // A prepared artifact can outlive its operation's environment without retaining the pool.
     #[cfg(feature = "layout-shoal")]
+    #[allow(
+        dead_code,
+        reason = "Only the shared layered Shoal solver reads the session pool."
+    )]
     shoal_scratch: Weak<ShoalScratchPool>,
     font_catalog: FontCatalog,
     font_source_policy: FontSourcePolicy,
@@ -470,6 +481,10 @@ impl RenderSession {
     }
 
     #[cfg(feature = "layout-shoal")]
+    #[allow(
+        dead_code,
+        reason = "Only the shared layered Shoal solver reads the session pool."
+    )]
     pub(crate) fn shoal_scratch(&self) -> Option<Arc<ShoalScratchPool>> {
         self.shoal_scratch.upgrade()
     }

@@ -2,11 +2,7 @@
 
 use super::super::{NodeBodyGeometry, NodeBodySvg, escape_attr, prepare_node_path};
 use merman_render_core::{
-    number_format::canonical_number as fmt_display,
-    rough_svg::{
-        closed_path_d_from_points as path_from_points,
-        paths::{RoughGeometryTarget, roughjs_paths_for_hand_drawn_svg_path},
-    },
+    rough_svg::{closed_path_d_from_points as path_from_points, paths::RoughGeometryTarget},
     svg_output::SvgOutput,
     text::TextMetrics,
 };
@@ -41,36 +37,14 @@ pub(super) fn render_folder(
 ) -> f64 {
     let (total_height, tab_height, path_data) =
         prepare_folder_geometry(&svg.geometry, metrics, padding);
-    if svg.geometry.hand_drawn {
-        let rough_paths = svg.timed_rough(|geometry| {
-            roughjs_paths_for_hand_drawn_svg_path(
-                &path_data,
-                geometry.stroke_width,
-                geometry.stroke_dasharray,
-                geometry.work_meter,
-                geometry.randomness,
-            )
-        });
-        if let Some((fill_d, stroke_d)) = rough_paths {
-            let _ = write!(
-                out,
-                r#"<g class="basic label-container" style="{}"><path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"#,
-                escape_attr(svg.rough_group_style),
-                escape_attr(&fill_d),
-                escape_attr(svg.fill_color),
-                escape_attr(&stroke_d),
-                escape_attr(svg.stroke_color),
-                fmt_display(svg.geometry.stroke_width as f64),
-                escape_attr(svg.geometry.stroke_dasharray),
-            );
-        } else {
-            let _ = write!(
-                out,
-                r#"<path d="{}" class="basic label-container" style="{}"/>"#,
-                escape_attr(&path_data),
-                escape_attr(svg.style),
-            );
-        }
+    if let Some((fill_d, stroke_d)) = svg.hand_drawn_path_pair(&path_data) {
+        let _ = write!(
+            out,
+            r#"<g class="basic label-container" style="{}">"#,
+            escape_attr(svg.hand_drawn_group_style()),
+        );
+        svg.write_hand_drawn_path_pair(out, &path_data, &fill_d, &stroke_d, 4.0);
+        out.push_str("</g>");
     } else {
         let _ = write!(
             out,

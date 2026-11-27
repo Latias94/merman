@@ -6,6 +6,13 @@ pub struct LaneModel {
     lanes: HashSet<String>,
     pools: HashSet<String>,
     lane_by_id: HashMap<String, Option<String>>,
+    #[cfg_attr(
+        not(any(test, feature = "diagram-flowchart", feature = "diagram-swimlane")),
+        allow(
+            dead_code,
+            reason = "Only Flow-family lane preparation orders Pool children."
+        )
+    )]
     pub(super) lanes_by_pool: HashMap<String, Vec<String>>,
 }
 

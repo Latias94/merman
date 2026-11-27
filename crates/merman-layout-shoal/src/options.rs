@@ -63,6 +63,8 @@ pub enum RankPolicy {
 pub struct GroupPolicy {
     pub inherit_crossed_direction: bool,
     pub adaptive_title_clearance: bool,
+    /// Treat top-left titles as tabs attached to the group corner.
+    pub flush_top_left_titles: bool,
 }
 
 impl Default for GroupPolicy {
@@ -70,6 +72,7 @@ impl Default for GroupPolicy {
         Self {
             inherit_crossed_direction: true,
             adaptive_title_clearance: true,
+            flush_top_left_titles: false,
         }
     }
 }

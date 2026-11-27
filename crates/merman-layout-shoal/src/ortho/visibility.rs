@@ -99,6 +99,36 @@ impl Obstacles {
             .is_continue())
     }
 
+    pub(super) fn diagonal_is_clear(
+        &self,
+        start: Point,
+        end: Point,
+        work: &mut Work<'_>,
+    ) -> LayoutResult<bool> {
+        let area = Bounds::between(start, end);
+        let along = |range: [f64; 2], from: f64, to: f64| {
+            let [a, b] = range.map(|edge| (edge - from) / (to - from));
+            [a.min(b), a.max(b)]
+        };
+        let visit = self.rects.visit(|entry| -> LayoutResult<_> {
+            work.visit(1)?;
+            Ok(match entry {
+                BvhEntry::Node(bounds) => Continue(bounds.overlaps_strictly(area)),
+                BvhEntry::Item(&wall) if wall.overlaps_strictly(area) => {
+                    let [x0, x1] = along(wall.x, start.x, end.x);
+                    let [y0, y1] = along(wall.y, start.y, end.y);
+                    if x0.max(y0).max(0.0) < x1.min(y1).min(1.0) {
+                        Break(())
+                    } else {
+                        Continue(true)
+                    }
+                }
+                BvhEntry::Item(_) => Continue(true),
+            })
+        })?;
+        Ok(visit.is_continue())
+    }
+
     pub(super) fn window(&self, start: Point, end: Point, margin: f64) -> Option<Bounds> {
         let mut b = Bounds::between(start, end);
         if let Some(root) = self.rects.root_bounds() {

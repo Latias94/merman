@@ -5,10 +5,18 @@ use merman::{
     OperationControl, RenderError, RenderOutput, RenderRequest, Renderer, SvgOutput, SvgRequest,
 };
 
+#[cfg(feature = "native-compact")]
+#[path = "native_compact/paint.rs"]
+mod paint;
+
 const SEQUENCE: &str = r#"---
 config:
   look: classic
   theme: default
+  sequence:
+    diagramMarginX: 0
+    diagramMarginY: 0
+    mirrorActors: true
 ---
 sequenceDiagram
     participant Client
@@ -126,6 +134,78 @@ fn compact_sequence_has_visible_svg_and_locally_scoped_markers() {
                     .is_some_and(|parent| parent.has_tag_name("defs"))
         }));
     }
+}
+
+#[cfg(feature = "native-compact")]
+#[test]
+fn compact_sequence_admits_original_presets_on_a_transparent_canvas() {
+    use merman::theme::{BuiltinPreset, Color, ThemeSelection};
+
+    for (preset, arrow_path) in [
+        (BuiltinPreset::Blueprint, "M0 0 L10 5 L0 10"),
+        (BuiltinPreset::Cyberpunk, "M-1 0 L10 5 L-1 10 L2 5 Z"),
+    ] {
+        let theme = ThemeSelection::preset(preset, None);
+        let request = compact_request().with_native_theme(theme.clone());
+        for request in [
+            request.clone(),
+            request.clone().with_background(Color::rgb(18, 52, 86)),
+            request.clone().with_background(Color::rgba(18, 52, 86, 1)),
+        ] {
+            let error = standalone(SEQUENCE, request).map(|_| ()).unwrap_err();
+            assert_eq!(compact_unsupported(error), "canvas-texture");
+        }
+
+        let transparent = Color::rgba(18, 52, 86, 0);
+        for request in [
+            request.with_background(transparent),
+            compact_request().with_native_theme(theme.with_background(transparent)),
+        ] {
+            let svg = standalone(SEQUENCE, request).unwrap();
+            let document = roxmltree::Document::parse(svg.svg()).unwrap();
+            let root = document.root_element();
+            paint::assert_transparent_scene(root);
+            assert!(
+                root.descendants()
+                    .any(|node| node.has_tag_name("text") && node.text() == Some("Send request"))
+            );
+            let glyph = paint::endpoint_glyph(root);
+            assert_eq!(glyph.attribute("d"), Some(arrow_path));
+            let stroke = glyph
+                .attribute("stroke")
+                .expect("expected painted arrow outline");
+            assert_ne!(stroke, "none");
+            if preset == BuiltinPreset::Blueprint {
+                assert_eq!(glyph.attribute("fill"), Some("none"));
+                assert!(
+                    !root
+                        .children()
+                        .any(|node| node.attribute("data-scene-role") == Some("depth"))
+                );
+            } else {
+                assert_eq!(glyph.attribute("fill"), Some(stroke));
+                paint::assert_cyberpunk_shadows(root, 4);
+            }
+        }
+    }
+}
+
+#[cfg(feature = "native-compact")]
+#[test]
+fn compact_sequence_transparent_canvas_rejects_blurred_elevation() {
+    use merman::theme::{Color, ThemeCompiler, ThemeSelection};
+
+    let blurred_theme = ThemeCompiler::new()
+        .compile_json(
+            br#"{"schema_version":2,"extends":"cyberpunk","form":{"elevation":"soft"}}"#,
+            None,
+        )
+        .unwrap();
+    let request = compact_request()
+        .with_native_theme(ThemeSelection::compiled(blurred_theme))
+        .with_background(Color::TRANSPARENT);
+    let error = standalone(SEQUENCE, request).map(|_| ()).unwrap_err();
+    assert_eq!(compact_unsupported(error), "sequence-elevation");
 }
 
 #[test]

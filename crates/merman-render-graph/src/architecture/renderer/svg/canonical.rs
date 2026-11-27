@@ -4,7 +4,6 @@ use merman_render_core::{
     route_paint::{CanonicalPaintScratch, PaintedRoute},
     route_types::Marker,
 };
-use merman_theme_contract::v2::EdgeStyle;
 
 use super::super::labels::SvgLine;
 
@@ -43,12 +42,11 @@ pub trait ArchitectureCanonicalSvg {
         label: Option<&LayoutLabel>,
     ) -> Option<ArchitecturePlacedText<'_>>;
 
-    /// Called in the edge loop after looking up the matching layout edge. The returned points
-    /// borrow the writer's scratch buffer until that edge has been encoded.
+    /// Paints the prepared route for the matching layout edge. The returned points borrow the
+    /// writer's scratch buffer until that edge has been encoded.
     fn paint_edge<'points>(
         &self,
         edge: &LayoutEdge,
-        edge_style: Option<EdgeStyle>,
         work_meter: &OperationWorkMeter,
         scratch: &'points mut CanonicalPaintScratch,
     ) -> Result<ArchitectureCanonicalEdge<'points>>;

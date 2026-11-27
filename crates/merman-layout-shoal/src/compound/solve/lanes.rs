@@ -7,7 +7,10 @@ mod tests;
 
 use super::*;
 use crate::compound::hierarchy::LaneMembership;
-use crate::flat::{BoundaryRoutes, lanes::Column};
+use crate::flat::{
+    BoundaryRoutes,
+    lanes::{Column, ColumnOrder},
+};
 use crate::work::push;
 use crate::{Direction, GroupSpec, LayoutOutput, Options};
 
@@ -50,6 +53,7 @@ struct Shell {
     body_pad: f64,
     padding: [f64; 4],
     min: Size,
+    boundary_only: bool,
 }
 
 impl Shell {
@@ -70,6 +74,7 @@ impl Shell {
             body_pad,
             padding,
             min: spec.min_size,
+            boundary_only: spec.lane_boundary_only,
         };
         if header > 0.0 {
             // Reserve the header band PLUS the lane's inner body padding so the first
@@ -95,6 +100,12 @@ impl Shell {
     }
 
     fn column(&self, axes: Axes) -> Column {
+        if self.boundary_only {
+            return Column {
+                min_width: 0.0,
+                padding: [0.0; 2],
+            };
+        }
         let padding = axes.cross.map(|side| self.padding[side as usize]);
         let title_width = self.title.map_or(0.0, |title| {
             across(axes.start, title) + 2.0 * padding[0].max(padding[1])
@@ -110,6 +121,7 @@ fn choose_sides(
     wires: &mut [Wire],
     shells: &mut [Shell],
     owners: &[usize],
+    order: &ColumnOrder,
     axes: Axes,
     options: &Options,
     work: &mut Work<'_>,
@@ -151,13 +163,8 @@ fn choose_sides(
                 }
             } else if side.axis() != axes.start.axis() {
                 // A normal leaving a shared wall travels through the adjacent lane's padding.
-                let adjacent = if side == axes.cross[0] {
-                    index.checked_sub(1)
-                } else {
-                    Some(index + 1)
-                };
-                if let Some(shell) = adjacent.and_then(|index| shells.get_mut(index)) {
-                    shell.reserve(routes::opposite(side), finite(room + peer_room)?);
+                if let Some(adjacent) = order.neighbor(index, side == axes.cross[1]) {
+                    shells[adjacent].reserve(routes::opposite(side), finite(room + peer_room)?);
                 }
             }
             wire.ends[end] = End::Lane {
@@ -721,16 +728,42 @@ pub(super) fn root(
     let mut shells = reserved(ctx.graph.lane_order.len())?;
     for &id in &ctx.graph.lane_order {
         work.visit(1)?;
-        shells.push(Shell::new(&ctx.graph.groups[id.0 as usize], axes));
+        let group = &ctx.graph.groups[id.0 as usize];
+        if group.lane_boundary_only && group.title.is_some() {
+            return Err(LayoutError::InvalidInput(
+                "a boundary-only swimlane cannot have a title",
+            ));
+        }
+        shells.push(Shell::new(group, axes));
     }
-    choose_sides(&mut wires, &mut shells, &owners, axes, ctx.options, work)?;
     let mut columns = reserved(shells.len())?;
     columns.extend(shells.iter().map(|shell| shell.column(axes)));
+    let order = ColumnOrder::new(&columns, &owners, work)?;
+    choose_sides(
+        &mut wires,
+        &mut shells,
+        &owners,
+        &order,
+        axes,
+        ctx.options,
+        work,
+    )?;
+    for (column, shell) in columns.iter_mut().zip(&shells) {
+        work.visit(1)?;
+        *column = shell.column(axes);
+    }
     let mut rank_options = *ctx.options;
     // Lane compaction moves complete rank bands and needs their membership.
     rank_options.capture_node_ranks |= rank_options.compact_ranks;
-    let (mut drawing, mut placed) =
-        flat::lanes::run(graph, &rank_options, expanded, &owners, &columns, work)?;
+    let (mut drawing, mut placed) = flat::lanes::run(
+        graph,
+        &rank_options,
+        expanded,
+        &owners,
+        &columns,
+        &order,
+        work,
+    )?;
     let (feedback, widened) = routing::reserve_feedback(
         &drawing,
         graph,
@@ -745,8 +778,15 @@ pub(super) fn root(
             work.visit(1)?;
             *column = shell.column(axes);
         }
-        (drawing, placed) =
-            flat::lanes::run(graph, &rank_options, expanded, &owners, &columns, work)?;
+        (drawing, placed) = flat::lanes::run(
+            graph,
+            &rank_options,
+            expanded,
+            &owners,
+            &columns,
+            &order,
+            work,
+        )?;
     }
     if ctx.options.compact_ranks {
         compact::close(

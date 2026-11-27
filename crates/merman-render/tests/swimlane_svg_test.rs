@@ -571,92 +571,343 @@ fn producer_pool_metadata_selects_pool_shell_classes_without_author_syntax() {
     }
 }
 
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_pool_children_share_ranks_and_preserve_the_pool_endpoint() {
+    use merman_model::OperationControl;
+    use merman_model::presentation::{PresentationDiagram, RenderSemanticModel};
+    use merman_model::resources::InputResourcePolicy;
+
+    for direction in ["TB", "BT", "LR", "RL"] {
+        let source = format!(
+            "---\nconfig:\n  layout: shoal\n---\nswimlane-beta {direction}\n\
+             subgraph pool[Order Handling]\n\
+               subgraph sales[Sales]\nA --> C\nend\n\
+               subgraph warehouse[Warehouse]\nB --> D\nend\n\
+               P\nend\n\
+             subgraph external[External]\nX\nend\n\
+             A --> D\nP --> X\nX poolPort@--> pool\n"
+        );
+        let parsed = MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let (metadata, mut model, context) = parsed.into_parts();
+        let RenderSemanticModel::Flowchart(flowchart) = &mut model else {
+            panic!("expected Flowchart model");
+        };
+        for group in &mut flowchart.subgraphs {
+            group.metadata = match group.id.as_str() {
+                "pool" => Some(serde_json::json!({"laneRole": "pool"})),
+                "warehouse" => Some(serde_json::json!({"laneIndex": 0})),
+                "external" => Some(serde_json::json!({"laneIndex": 1})),
+                "sales" => Some(serde_json::json!({"laneIndex": 2})),
+                _ => None,
+            };
+        }
+        let presentation = PresentationDiagram::try_from_frozen(
+            metadata,
+            model,
+            context,
+            &InputResourcePolicy::default(),
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let artifact = family::prepare(&presentation, &LayoutOptions::default(), session).unwrap();
+        let layout: SwimlaneLayout = serde_json::from_value(
+            artifact.layout_json().unwrap()["layout"]["SwimlaneDiagram"].clone(),
+        )
+        .unwrap();
+        let lane = |id| layout.lanes.iter().find(|lane| lane.id == id).unwrap();
+        let node = |id| layout.nodes.iter().find(|node| node.id == id).unwrap();
+        let rect = |id| {
+            let lane = lane(id);
+            kurbo::Rect::from_center_size((lane.x, lane.y), (lane.width, lane.height))
+        };
+        let pool = rect("pool");
+        let external = rect("external");
+        let sales = rect("sales");
+        let warehouse = rect("warehouse");
+        for id in ["sales", "warehouse"] {
+            let bounds = rect(id);
+            assert_eq!(lane(id).parent_id.as_deref(), Some("pool"));
+            assert!(pool.inflate(1e-8, 1e-8).contains_rect(bounds));
+        }
+        assert!(pool.intersect(external).area() < 1e-8);
+        let horizontal = matches!(direction, "LR" | "RL");
+        if horizontal {
+            assert!(warehouse.y1 <= sales.y0 + 1e-8);
+        } else {
+            assert!(warehouse.x1 <= sales.x0 + 1e-8);
+        }
+        let (a, b) = (node("A"), node("B"));
+        assert_eq!(a.top_lane_id.as_deref(), Some("sales"));
+        assert_eq!(b.top_lane_id.as_deref(), Some("warehouse"));
+        assert_eq!(a.layer, b.layer);
+        assert!((if horizontal { a.x - b.x } else { a.y - b.y }).abs() < 1e-8);
+        assert_eq!(node("P").parent_id.as_deref(), Some("pool"));
+        assert_eq!(node("P").top_lane_id, None);
+        let port = layout
+            .edges
+            .iter()
+            .find(|edge| edge.id == "poolPort")
+            .unwrap()
+            .points
+            .last()
+            .unwrap();
+        assert!(
+            pool.inflate(1e-8, 1e-8)
+                .contains(kurbo::Point::new(port.x, port.y))
+        );
+        assert!(
+            (if horizontal {
+                pool.y0 - port.y
+            } else {
+                pool.x0 - port.x
+            })
+            .abs()
+                < 1e-8
+        );
+
+        let rendered = artifact
+            .render_svg(&Default::default(), &Default::default())
+            .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert!(has_class(
+            semantic_element(&document, "pool", "cluster"),
+            "pool"
+        ));
+        for id in ["warehouse", "sales"] {
+            let lane = semantic_element(&document, id, "cluster");
+            assert!(has_class(lane, "swimlane"), "{direction} {id}");
+            assert!(!has_class(lane, "pool"), "{direction} {id}");
+        }
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_horizontal_swimlane_titles_keep_markdown_rows_in_the_measured_band() {
+    for direction in ["LR", "RL"] {
+        let source = format!(
+            "---\nconfig:\n  layout: shoal\n  htmlLabels: false\n  flowchart:\n    htmlLabels: false\n---\n\
+             swimlane-beta {direction}\n\
+             subgraph Lane[\"`Customer Experience and **Self-Service Portal** for Supporting Evidence`\"]\nA\nend"
+        );
+        let (svg, layout) = render_swimlane_with_layout(&source, "svg-lane-title");
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let lane = &layout.lanes[0];
+        let title = lane.title_rect.as_ref().unwrap();
+        assert!(title.top >= lane.y - lane.height / 2.0);
+        assert!(title.bottom <= lane.y + lane.height / 2.0);
+        let label = semantic_element(&document, "Lane", "cluster")
+            .descendants()
+            .find(|node| has_class(*node, "swimlane-label"))
+            .unwrap();
+        assert!(
+            label
+                .attribute("transform")
+                .unwrap()
+                .contains("rotate(-90)")
+        );
+        assert!(
+            label
+                .descendants()
+                .filter(|node| has_class(*node, "row"))
+                .count()
+                > 1
+        );
+        assert!(
+            label
+                .descendants()
+                .any(|node| node.attribute("font-weight") == Some("bold"))
+        );
+        assert!(text_content(label).contains("Supporting Evidence"));
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_swimlane_line_hops_modify_only_the_painted_straights() {
+    use svgtypes::{PathParser, PathSegment};
+
+    let render = |mode: &str| {
+        render_swimlane(
+            &format!(
+                "---\nconfig:\n  layout: shoal\n  htmlLabels: false\n  swimlane:\n    lineHops: {mode}\n---\n\
+                 swimlane-beta TB\nsubgraph Lane1\nA\nB\nend\nsubgraph Lane2\nC\nD\nend\n\
+                 C inbound@--> B\nA cross@--> D\nA local@--> B\nD return@--> A"
+            ),
+            "swimlane-line-hops",
+        )
+    };
+    let disabled = render("false");
+    let arcs = render("true");
+    let gaps = render("gap");
+    let disabled = roxmltree::Document::parse(&disabled).unwrap();
+    let arcs = roxmltree::Document::parse(&arcs).unwrap();
+    let gaps = roxmltree::Document::parse(&gaps).unwrap();
+    let read = |edge: roxmltree::Node<'_, '_>| {
+        PathParser::from(edge.attribute("d").unwrap())
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+    };
+    let bends = |path: &[PathSegment]| {
+        path.iter()
+            .filter(|segment| {
+                matches!(
+                    segment,
+                    PathSegment::EllipticalArc { .. } | PathSegment::CurveTo { .. }
+                )
+            })
+            .copied()
+            .collect::<Vec<_>>()
+    };
+    let moves = |path: &[PathSegment]| {
+        path.iter()
+            .filter(|command| matches!(command, PathSegment::MoveTo { .. }))
+            .count()
+    };
+
+    let mut hopped = 0;
+    for id in ["inbound", "cross", "local", "return"] {
+        let base = semantic_element(&disabled, id, "edge");
+        let arc = semantic_element(&arcs, id, "edge");
+        let gap = semantic_element(&gaps, id, "edge");
+        for candidate in [arc, gap] {
+            assert_eq!(
+                candidate.attribute("marker-end"),
+                base.attribute("marker-end")
+            );
+            assert_eq!(
+                candidate.attribute("data-points"),
+                base.attribute("data-points")
+            );
+        }
+        let (base, arc, gap) = (read(base), read(arc), read(gap));
+        for path in [&arc, &gap] {
+            assert_eq!(path.first(), base.first());
+            assert_eq!(path.last(), base.last());
+        }
+        let expected_bends = bends(&base);
+        assert_eq!(bends(&gap), expected_bends);
+        let arc_bends = bends(&arc);
+        // The fixture has ordinary rounded elbows. Their parameters and order must survive.
+        let mut remaining = arc_bends.iter();
+        assert!(
+            expected_bends
+                .iter()
+                .all(|bend| remaining.any(|other| other == bend))
+        );
+        assert_eq!(moves(&arc), 1);
+        assert_eq!(moves(&gap) - 1, arc_bends.len() - expected_bends.len());
+        hopped += moves(&gap) - 1;
+    }
+    assert!(hopped > 0, "fixture must contain a paintable crossing");
+}
+
 #[test]
 fn producer_pool_default_lane_reuse_preserves_membership_ranks_and_shells() {
     use merman_model::OperationControl;
     use merman_model::presentation::{PresentationDiagram, RenderSemanticModel};
     use merman_model::resources::InputResourcePolicy;
 
-    for look in ["classic", "handDrawn"] {
-        for direction in ["TB", "LR"] {
-            for with_loose_node in [false, true] {
-                let loose_source = if with_loose_node { "B\nA --> B\n" } else { "" };
-                let source = format!(
-                    "%%{{init: {{\"look\": \"{look}\", \"handDrawnSeed\": 7}}}}%%\nswimlane-beta {direction}\nsubgraph __swimlane_default__[Declared pool]\nsubgraph L[Child lane]\nA\nend\nend\n{loose_source}"
-                );
-                let parsed = MermaidEngine::new()
-                    .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
-                    .unwrap()
-                    .unwrap()
-                    .into_presentation();
-                let (metadata, mut model, context) = parsed.into_parts();
-                let RenderSemanticModel::Flowchart(flowchart) = &mut model else {
-                    panic!("expected Flowchart model");
-                };
-                flowchart
-                    .subgraphs
-                    .iter_mut()
-                    .find(|group| group.id == "__swimlane_default__")
-                    .unwrap()
-                    .metadata = Some(serde_json::json!({"laneRole": "pool"}));
-                let presentation = PresentationDiagram::try_from_frozen(
-                    metadata,
-                    model,
-                    context,
-                    &InputResourcePolicy::default(),
-                    &OperationControl::new(),
-                )
+    let cases = ["classic", "handDrawn"].into_iter().flat_map(|look| {
+        ["TB", "LR"].into_iter().flat_map(move |direction| {
+            [false, true]
+                .into_iter()
+                .map(move |loose| (look, direction, loose))
+        })
+    });
+    for canonical in [false, true] {
+        if canonical && !cfg!(feature = "layout-shoal") {
+            continue;
+        }
+        let layout_config = if canonical {
+            r#", "layout": "shoal""#
+        } else {
+            ""
+        };
+        for (look, direction, with_loose_node) in cases.clone() {
+            let loose_source = if with_loose_node { "B\nA --> B\n" } else { "" };
+            let source = format!(
+                "%%{{init: {{\"look\": \"{look}\", \"handDrawnSeed\": 7{layout_config}}}}}%%\nswimlane-beta {direction}\nsubgraph __swimlane_default__[Declared pool]\nsubgraph L[Child lane]\nA\nend\nend\n{loose_source}"
+            );
+            let parsed = MermaidEngine::new()
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
                 .unwrap()
-                .unwrap();
-                let session = RenderEnvironment::deterministic().begin_session().unwrap();
-                let artifact =
-                    family::prepare(&presentation, &LayoutOptions::default(), session).unwrap();
-                let layout: SwimlaneLayout = serde_json::from_value(
-                    artifact.layout_json().unwrap()["layout"]["SwimlaneDiagram"].clone(),
-                )
-                .unwrap();
-                let task = layout.nodes.iter().find(|node| node.id == "A").unwrap();
-                assert_eq!(task.parent_id.as_deref(), Some("L"));
-                assert_eq!(task.top_lane_id.as_deref(), Some("L"));
-                assert_eq!(task.layer, 0);
-                if with_loose_node {
-                    let loose = layout.nodes.iter().find(|node| node.id == "B").unwrap();
-                    assert_eq!(loose.parent_id.as_deref(), Some("__swimlane_default__"));
-                    assert_eq!(loose.top_lane_id, None);
-                    assert_eq!(loose.layer, 0);
-                    assert_eq!(layout.edges.len(), 1);
-                    assert_eq!(layout.edges[0].from, "A");
-                    assert_eq!(layout.edges[0].to, "B");
-                    assert!(layout.edges[0].points.len() >= 2);
-                }
-                let rendered = artifact
-                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-                    .unwrap();
-                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-                let default_group = semantic_element(&document, "__swimlane_default__", "cluster");
-                assert!(has_class(default_group, "swimlane"));
-                assert_eq!(has_class(default_group, "pool"), !with_loose_node);
-                for (lane_class, pool_class) in [
-                    ("swimlane-body", "pool-body"),
-                    ("swimlane-title", "pool-title"),
-                    ("swimlane-label", "pool-label"),
-                ] {
-                    assert!(
-                        default_group
-                            .children()
-                            .any(|node| has_class(node, lane_class))
-                    );
-                    assert_eq!(
-                        default_group
-                            .children()
-                            .any(|node| has_class(node, pool_class)),
-                        !with_loose_node,
-                    );
-                }
-                let child_lane = semantic_element(&document, "L", "cluster");
-                assert!(has_class(child_lane, "swimlane"));
-                assert!(!has_class(child_lane, "pool"));
+                .unwrap()
+                .into_presentation();
+            let (metadata, mut model, context) = parsed.into_parts();
+            let RenderSemanticModel::Flowchart(flowchart) = &mut model else {
+                panic!("expected Flowchart model");
+            };
+            flowchart
+                .subgraphs
+                .iter_mut()
+                .find(|group| group.id == "__swimlane_default__")
+                .unwrap()
+                .metadata = Some(serde_json::json!({"laneRole": "pool"}));
+            let presentation = PresentationDiagram::try_from_frozen(
+                metadata,
+                model,
+                context,
+                &InputResourcePolicy::default(),
+                &OperationControl::new(),
+            )
+            .unwrap()
+            .unwrap();
+            let session = RenderEnvironment::deterministic().begin_session().unwrap();
+            let artifact =
+                family::prepare(&presentation, &LayoutOptions::default(), session).unwrap();
+            let layout: SwimlaneLayout = serde_json::from_value(
+                artifact.layout_json().unwrap()["layout"]["SwimlaneDiagram"].clone(),
+            )
+            .unwrap();
+            let task = layout.nodes.iter().find(|node| node.id == "A").unwrap();
+            assert_eq!(task.parent_id.as_deref(), Some("L"));
+            assert_eq!(task.top_lane_id.as_deref(), Some("L"));
+            assert_eq!(task.layer, 0);
+            if with_loose_node {
+                let loose = layout.nodes.iter().find(|node| node.id == "B").unwrap();
+                assert_eq!(loose.parent_id.as_deref(), Some("__swimlane_default__"));
+                assert_eq!(loose.top_lane_id, None);
+                assert_eq!(loose.layer, usize::from(canonical));
+                assert_eq!(layout.edges.len(), 1);
+                assert_eq!(layout.edges[0].from, "A");
+                assert_eq!(layout.edges[0].to, "B");
+                assert!(layout.edges[0].points.len() >= 2);
             }
+            let rendered = artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let default_group = semantic_element(&document, "__swimlane_default__", "cluster");
+            assert!(has_class(default_group, "swimlane"));
+            assert_eq!(has_class(default_group, "pool"), !with_loose_node);
+            for (lane_class, pool_class) in [
+                ("swimlane-body", "pool-body"),
+                ("swimlane-title", "pool-title"),
+                ("swimlane-label", "pool-label"),
+            ] {
+                assert!(
+                    default_group
+                        .children()
+                        .any(|node| has_class(node, lane_class))
+                );
+                assert_eq!(
+                    default_group
+                        .children()
+                        .any(|node| has_class(node, pool_class)),
+                    !with_loose_node,
+                );
+            }
+            let child_lane = semantic_element(&document, "L", "cluster");
+            assert!(has_class(child_lane, "swimlane"));
+            assert!(!has_class(child_lane, "pool"));
         }
     }
 }

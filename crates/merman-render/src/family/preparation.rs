@@ -1,5 +1,10 @@
 use super::*;
 
+#[cfg(any(
+    feature = "diagram-sequence",
+    feature = "diagram-kanban",
+    feature = "diagram-usecase"
+))]
 #[inline(never)]
 fn prepare_pair<S, L>(
     semantic: &S,
@@ -1033,6 +1038,10 @@ pub(super) fn prepare_non_class_render<'parsed>(
     parsed: &'parsed PresentationDiagram,
     options: &LayoutOptions,
     context: FamilyRenderContext,
+    #[allow(
+        unused_variables,
+        reason = "Only Flowchart-derived families use the preparation mode."
+    )]
     preparation: FamilyPreparation,
 ) -> Result<FamilyRenderArtifact<'parsed>> {
     let meta = context.render_metadata(parsed.metadata());
@@ -1051,7 +1060,6 @@ pub(super) fn prepare_non_class_render<'parsed>(
             })
         });
     let diagram_type = meta.diagram_type.as_str();
-    let title = meta.title.as_deref();
     let execution =
         LayoutExecution::new(options, context.execution(), Some(&meta.effective_config));
     let family = match model {
@@ -1067,7 +1075,7 @@ pub(super) fn prepare_non_class_render<'parsed>(
             BuiltinFamilyArtifact::Sequence(prepare_pair(model, |model| {
                 prepare_sequence_diagram_typed_with_title_and_work_meter(
                     model,
-                    title,
+                    meta.title.as_deref(),
                     &meta.effective_config,
                     execution
                         .native_family_theme()

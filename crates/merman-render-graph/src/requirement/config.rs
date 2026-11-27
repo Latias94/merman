@@ -69,7 +69,7 @@ impl<'a> RequirementConfigView<'a> {
             edge_html_labels: config_effective_html_labels(self.effective_config),
             body_text_start: self.effective_config.get("layout").and_then(Value::as_str)
                 == Some("elk"),
-            look: config_diagram_look(self.effective_config),
+            look: self.look(),
             viewport_padding: DEFAULT_VIEWPORT_PADDING,
             use_max_width: config_bool(self.state_config, &["useMaxWidth"])
                 .unwrap_or(DEFAULT_USE_MAX_WIDTH),
@@ -90,7 +90,7 @@ impl<'a> RequirementConfigView<'a> {
             edge_html_labels: config_effective_html_labels(self.effective_config),
             body_text_start: self.effective_config.get("layout").and_then(Value::as_str)
                 == Some("elk"),
-            look: config_diagram_look(self.effective_config),
+            look: self.look(),
             viewport_padding: DEFAULT_VIEWPORT_PADDING,
             use_max_width: config_bool(self.state_config, &["useMaxWidth"])
                 .unwrap_or(DEFAULT_USE_MAX_WIDTH),
@@ -102,9 +102,12 @@ impl<'a> RequirementConfigView<'a> {
         }
     }
 
-    #[cfg(feature = "layout-shoal")]
+    pub(crate) fn look(&self) -> DiagramLook<'a> {
+        config_diagram_look(self.effective_config)
+    }
+
     pub fn canonical_stroke_width(&self) -> f64 {
-        if config_diagram_look(self.effective_config).is_neo() {
+        if self.look().is_neo() {
             merman_render_core::config::config_f64_css_absolute_px(
                 self.effective_config,
                 &["themeVariables", "strokeWidth"],

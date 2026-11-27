@@ -1,5 +1,6 @@
 //! Complete Mermaid-compatible ER SVG emission.
 
+use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::sync::Arc;
 
@@ -7,6 +8,7 @@ use base64::Engine as _;
 use merman_model::{
     OperationPhase,
     families::er::{ErDiagramModel, ErEntity, ErRelationship, ErSubgraph},
+    presentation::PresentationConfig,
 };
 #[cfg(feature = "layout-shoal")]
 use merman_render_core::route_paint::CanonicalPaintScratch;
@@ -23,18 +25,21 @@ use merman_render_core::{
         self, TextMeasurer, inline_html::SvgTextEntityMode,
         literal_label::flowchart_non_markdown_svg_source_word_lines, svg_label as label,
     },
-    xml::{escape_attr, escape_xml, escape_xml_display},
+    xml::{escape_attr, escape_attr_display, escape_xml},
 };
+use merman_theme_contract::v2::{Color, EdgeStyle};
 use roughr::core::RoughRandomness;
 
 use super::{
     ErBoxLabel, ErConfigView, ErCssBinding, ErEntityThemePlan, ErMarkerDefs, ErNativeStyle,
     ErPreparedLabels, ErPreparedRelationshipLabel, ErSvgGeometry, ErSvgLayoutView, ErSvgRouteKind,
     ErSwimlanePaintLayout, er_color_indices, er_redux_color_id, er_rel_idx_from_edge_id,
-    er_unified_marker_id, write_er_marker_definitions, write_er_stylesheet,
+    er_unified_marker_id, stylesheet::write_er_stylesheet_with_cluster_titles,
+    write_er_marker_definitions,
 };
 
 mod swimlane;
+mod zero_markers;
 
 /// A borrow of the exact prepared artifact shared by the style plan and writer.
 pub struct ErPreparedSvgLayout<'a> {
@@ -65,6 +70,8 @@ pub type ErCanonicalEdgePainter<'a> = dyn for<'points> Fn(
 pub struct ErSvgContext<'a> {
     pub diagram_id: SvgId<'a>,
     pub viewport: root_svg::RootViewportContext<'a>,
+    pub canvas_background: Option<Color>,
+    pub canvas_has_texture: bool,
     pub elk_parity: bool,
     pub swimlane: bool,
     #[cfg(feature = "layout-shoal")]
@@ -89,7 +96,6 @@ fn er_edge_path_d(
     if missing_section {
         return curve::curve_linear_path_d(points);
     }
-    use merman_theme_contract::v2::EdgeStyle;
     match native.map(|style| style.edge_style) {
         Some(EdgeStyle::Orthogonal) => {
             return curve::curve_step_path_d_and_bounds(points).0;
@@ -178,7 +184,6 @@ fn write_er_svg_label_background(out: &mut impl SvgOutput) {
 
 #[derive(Clone, Copy)]
 struct ErSubgraphRenderContext<'a> {
-    diagram_id: SvgId<'a>,
     data_look: &'a str,
     uses_canonical_routes: bool,
     allow_html_label_overflow: bool,
@@ -197,6 +202,7 @@ struct ErSubgraphRenderContext<'a> {
 fn render_er_subgraph_cluster(
     out: &mut impl SvgOutput,
     cluster: &LayoutCluster,
+    dom_id: &str,
     subgraph: &ErSubgraph,
     context: ErSubgraphRenderContext<'_>,
 ) -> Result<()> {
@@ -227,11 +233,10 @@ fn render_er_subgraph_cluster(
     let title_y = cluster.title_label.y + context.translate_y;
     let _ = write!(
         out,
-        r#"<g id="{}-{}" class="{}" data-look="{}""#,
-        escape_xml(&format!("{}", context.diagram_id)),
-        escape_xml(&subgraph.id),
-        escape_xml(&class_attr),
-        escape_xml(context.data_look),
+        r#"<g id="{}" class="{}" data-look="{}""#,
+        escape_attr(dom_id),
+        escape_attr(&class_attr),
+        escape_attr(context.data_look),
     );
     if context.uses_canonical_routes {
         let _ = write!(
@@ -303,6 +308,7 @@ fn render_er_subgraph_cluster(
 fn render_er_subgraph_clusters(
     out: &mut impl SvgOutput,
     clusters: &[LayoutCluster],
+    dom_ids: &[String],
     model: &ErDiagramModel,
     swimlane: Option<&ErSwimlanePaintLayout>,
     context: ErSubgraphRenderContext<'_>,
@@ -317,18 +323,90 @@ fn render_er_subgraph_clusters(
         .filter(|lane| lane.parent_id.is_none())
         .map(|lane| (lane.id.as_str(), lane))
         .collect();
-    for cluster in clusters {
+    for (cluster, dom_id) in clusters.iter().zip(dom_ids) {
         let subgraph = subgraphs.get(cluster.id.as_str()).copied();
         if let (Some(lane), Some(paint)) = (lanes.get(cluster.id.as_str()), swimlane) {
-            swimlane::render_cluster(out, cluster, lane, paint, subgraph, context)?;
+            swimlane::render_cluster(out, cluster, dom_id, lane, paint, subgraph, context)?;
             continue;
         }
         let Some(subgraph) = subgraph else {
             continue;
         };
-        render_er_subgraph_cluster(out, cluster, subgraph, context)?;
+        render_er_subgraph_cluster(out, cluster, dom_id, subgraph, context)?;
     }
     Ok(())
+}
+
+fn er_cluster_dom_ids(
+    clusters: &[LayoutCluster],
+    model: &ErDiagramModel,
+    geometry: &ErSvgGeometry<'_>,
+    swimlane: bool,
+    diagram_id: SvgId<'_>,
+    work: &OperationWorkMeter,
+) -> Result<Vec<String>> {
+    work.charge(
+        clusters
+            .len()
+            .saturating_add(geometry.nodes().len())
+            .saturating_add(geometry.edges().len()),
+    )?;
+    let subgraphs: HashSet<_> = model
+        .subgraphs
+        .iter()
+        .map(|group| group.id.as_str())
+        .collect();
+    let original: Vec<_> = clusters
+        .iter()
+        .map(|cluster| {
+            if subgraphs.contains(cluster.id.as_str()) {
+                format!("{diagram_id}-{}", cluster.id)
+            } else {
+                cluster.id.clone()
+            }
+        })
+        .collect();
+    let original_ids: HashSet<_> = original.iter().map(String::as_str).collect();
+    let mut occupied = HashSet::from([
+        diagram_id.semantic_str().to_owned(),
+        format!("chart-title-{diagram_id}"),
+        format!("chart-desc-{diagram_id}"),
+        format!("{diagram_id}-drop-shadow"),
+        format!("{diagram_id}-drop-shadow-small"),
+        format!("{diagram_id}-gradient"),
+    ]);
+    for node in geometry.nodes().iter().filter(|node| !node.is_cluster) {
+        occupied.insert(format!("{diagram_id}-{}", node.id));
+        if node.id.contains("---") {
+            occupied.insert(node.id.clone());
+        }
+    }
+    for edge in geometry.edges() {
+        let id = er_edge_dom_id(&edge.id, &model.relationships);
+        occupied.insert(format!("{diagram_id}-{id}"));
+        if swimlane {
+            occupied.insert(swimlane::relationship_label_dom_id(edge, &id));
+        }
+    }
+    let internal_prefix = format!("{diagram_id}_er-");
+    let mut ordinal = 0;
+    original
+        .iter()
+        .map(|id| {
+            work.checkpoint(OperationPhase::Emit)?;
+            if !id.starts_with(&internal_prefix) && occupied.insert(id.clone()) {
+                return Ok(id.clone());
+            }
+            loop {
+                let candidate = format!("{diagram_id}-er-cluster-{ordinal}");
+                ordinal += 1;
+                if !original_ids.contains(candidate.as_str()) && occupied.insert(candidate.clone())
+                {
+                    return Ok(candidate);
+                }
+            }
+        })
+        .collect()
 }
 
 fn er_edge_dom_id(edge_id: &str, relationships: &[ErRelationship]) -> String {
@@ -494,7 +572,7 @@ pub fn render_er_diagram_svg_model(
     layout: ErPreparedSvgLayout<'_>,
     model: &ErDiagramModel,
     entity_theme: &ErEntityThemePlan,
-    effective_config: &serde_json::Value,
+    effective_config: &PresentationConfig,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &ErSvgContext<'_>,
@@ -510,7 +588,20 @@ pub fn render_er_diagram_svg_model(
     // from this type (e.g. `<diagramId>_er-zeroOrMoreEnd`).
     let diagram_type = "er";
     let binding = entity_theme.css_binding();
+    let marker_background = if clusters.is_empty() {
+        zero_markers::background(
+            effective_config,
+            binding,
+            options.canvas_background,
+            options.canvas_has_texture,
+        )
+    } else {
+        // The backing beneath a zero marker can be a subgraph or a lane rather than the canvas.
+        std::borrow::Cow::Borrowed("none")
+    };
+    let effective_config = effective_config.as_value();
     let native = binding.native.as_ref();
+    let sketch = native.is_some_and(|style| style.edge_style == EdgeStyle::Sketch);
     let er_render_settings = &binding.render_settings;
     #[cfg(feature = "layout-shoal")]
     let canonical_routes = options.canonical_routes;
@@ -535,13 +626,13 @@ pub fn render_er_diagram_svg_model(
     let redux_border_colors = &binding.redux_border_colors;
     let color_indices = er_color_indices(model);
     let node_border = &binding.node_border;
-    let main_bkg = &binding.main_bkg;
     let font_family = er_render_settings.font_family.clone();
     let font_size = er_render_settings.font_size;
     let title_top_margin = er_render_settings.title_top_margin;
     let use_max_width = er_render_settings.use_max_width;
     let label_style = er_render_settings.label_style.clone();
     let edge_html_labels = entity_theme.relationship_html_labels();
+    let swimlane_html_labels = ErConfigView::new(effective_config).swimlane_title_html_labels();
     let entity_wrap_mode = er_render_settings.entity_html_label_wrap_mode;
     let entity_measurement = er_render_settings.entity_measurement;
     let hand_drawn_seed = options.rough_randomness;
@@ -683,7 +774,13 @@ pub fn render_er_diagram_svg_model(
     }
     out.checkpoint()?;
 
-    write_er_stylesheet(&mut out, diagram_id.semantic_str(), data_look, binding)?;
+    write_er_stylesheet_with_cluster_titles(
+        &mut out,
+        diagram_id.semantic_str(),
+        data_look,
+        binding,
+        !clusters.is_empty() && (edge_html_labels || (is_swimlane_layout && swimlane_html_labels)),
+    )?;
 
     // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
     out.push_str("<g>");
@@ -696,7 +793,7 @@ pub fn render_er_diagram_svg_model(
             canonical: uses_canonical_routes,
             neo: data_look == "neo",
             neo_stroke_width: binding.neo_marker_stroke_width,
-            main_bkg,
+            main_bkg: &marker_background,
         },
     )?;
 
@@ -706,7 +803,6 @@ pub fn render_er_diagram_svg_model(
         entity_by_id.insert(e.id.as_str(), e);
     }
     let subgraph_context = ErSubgraphRenderContext {
-        diagram_id,
         data_look,
         uses_canonical_routes,
         allow_html_label_overflow,
@@ -716,7 +812,7 @@ pub fn render_er_diagram_svg_model(
         translate_x,
         translate_y,
         theme: entity_theme,
-        swimlane_html_labels: ErConfigView::new(effective_config).swimlane_title_html_labels(),
+        swimlane_html_labels,
         synthetic_color_ordinal: nodes.iter().filter(|node| !node.is_cluster).count(),
         work_meter: options.work_meter,
         rough_randomness: hand_drawn_seed,
@@ -727,8 +823,23 @@ pub fn render_er_diagram_svg_model(
     if clusters.is_empty() {
         out.push_str(r#"<g class="clusters"/>"#);
     } else {
+        let cluster_ids = er_cluster_dom_ids(
+            clusters,
+            model,
+            &geometry,
+            is_swimlane_layout,
+            diagram_id,
+            options.work_meter,
+        )?;
         out.push_str(r#"<g class="clusters">"#);
-        render_er_subgraph_clusters(&mut out, clusters, model, swimlane, subgraph_context)?;
+        render_er_subgraph_clusters(
+            &mut out,
+            clusters,
+            &cluster_ids,
+            model,
+            swimlane,
+            subgraph_context,
+        )?;
         out.push_str("</g>");
     }
 
@@ -738,6 +849,7 @@ pub fn render_er_diagram_svg_model(
         out.push_str(r#"<g class="edgePaths">"#);
     }
     let line_hops_enabled = rounded_layout
+        && !sketch
         && options.include_edges
         && effective_config
             .pointer(if is_swimlane_layout {
@@ -799,7 +911,7 @@ pub fn render_er_diagram_svg_model(
         let mut paint_scratch = CanonicalPaintScratch::default();
         let mut points_json = Vec::new();
         let mut points_base64 = String::new();
-        for e in edges {
+        for (edge_index, e) in edges.iter().enumerate() {
             let missing_section = geometry.is_missing_section(&e.id);
             if !uses_canonical_routes
                 && (e.points.is_empty() || (!missing_section && e.points.len() < 2))
@@ -840,7 +952,31 @@ pub fn render_er_diagram_svg_model(
                         y: p.y + translate_y,
                     })
                     .collect::<Vec<_>>();
-                let d = er_edge_path_d(&legacy_points, rounded_layout, missing_section, native);
+                let mut d = er_edge_path_d(&legacy_points, rounded_layout, missing_section, native);
+                if let Some(native) = native.filter(|_| sketch && !d.is_empty()) {
+                    let [start, end] =
+                        [e.start_marker.as_deref(), e.end_marker.as_deref()].map(|marker| {
+                            super::markers::er_compatibility_sketch_marker(
+                                marker,
+                                data_look == "neo",
+                                native.connector_width,
+                            )
+                        });
+                    d = merman_render_core::rough_svg::constrained_rough_edge_path(
+                        &d,
+                        (start, end),
+                        options.work_meter,
+                        hand_drawn_seed,
+                    )?;
+                    if let Some(bounds) = merman_render_core::svg_bounds::svg_path_bounds_from_d(&d)
+                    {
+                        let outset = native.connector_width / std::f64::consts::SQRT_2;
+                        content_bounds.min_x = content_bounds.min_x.min(bounds.min_x - outset);
+                        content_bounds.min_y = content_bounds.min_y.min(bounds.min_y - outset);
+                        content_bounds.max_x = content_bounds.max_x.max(bounds.max_x + outset);
+                        content_bounds.max_y = content_bounds.max_y.max(bounds.max_y + outset);
+                    }
+                }
                 break 'path (d, legacy_points.as_slice());
             };
             points_json.clear();
@@ -856,6 +992,7 @@ pub fn render_er_diagram_svg_model(
 
             let mut edge_style = String::new();
             if data_look == "neo"
+                && !sketch
                 && let Some(length) = svg_path_length_from_d(&original_d)
             {
                 edge_path::write_neo_edge_mask(
@@ -867,29 +1004,56 @@ pub fn render_er_diagram_svg_model(
                     false,
                 );
             }
-            edge_style.push_str(if is_elk_layout {
-                "fill:none;;;fill:none"
-            } else {
-                "undefined;;;undefined"
-            });
+            if !uses_canonical_routes {
+                edge_style.push_str(if is_elk_layout {
+                    "fill:none;;;fill:none"
+                } else {
+                    "undefined;;;undefined"
+                });
+            }
             let edge_style = if let Some(hopped_d) = hopped_d {
                 line_hops::rewrite_style_after_line_hop(&edge_style, hopped_d, options.work_meter)?
             } else {
                 std::borrow::Cow::Borrowed(edge_style.as_str())
             };
 
+            let marker_cutout = if marker_background == "none" {
+                let id = format!("{diagram_id}_er-marker-hole-{edge_index}");
+                zero_markers::write_cutout(
+                    &mut out,
+                    &id,
+                    d,
+                    e,
+                    binding,
+                    uses_canonical_routes,
+                    options.work_meter,
+                )?
+                .then_some(id)
+            } else {
+                None
+            };
+
             // The standard Base64 alphabet is safe in a quoted XML attribute.
             let _ = write!(
                 &mut out,
-                r#"<path d="{}" id="{}" class="{}" style="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
-                escape_xml(d),
-                escape_xml(&edge_svg_id),
-                escape_xml(&line_classes),
-                escape_attr(&edge_style),
-                escape_xml(&edge_dom_id),
-                points_base64,
-                escape_xml(data_look)
+                r#"<path d="{}" id="{}" class="{}""#,
+                escape_attr(d),
+                escape_attr(&edge_svg_id),
+                escape_attr(&line_classes),
             );
+            if !uses_canonical_routes || !edge_style.is_empty() {
+                let _ = write!(&mut out, r#" style="{}""#, escape_attr(&edge_style));
+            }
+            let _ = write!(
+                &mut out,
+                r#" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
+                escape_attr(&edge_dom_id),
+                points_base64,
+                escape_attr(data_look)
+            );
+            if let Some(id) = marker_cutout {
+                let _ = write!(&mut out, r#" mask="url(#{})""#, escape_attr(&id));
+            }
             let start_marker_id = e
                 .start_marker
                 .as_deref()
@@ -1023,7 +1187,7 @@ pub fn render_er_diagram_svg_model(
                 let _ = write!(
                     &mut out,
                     r#"<g class="label" data-id="{}" transform="translate({}, {})""#,
-                    escape_xml_display(&edge_dom_id),
+                    escape_attr_display(&edge_dom_id),
                     fmt(label_tx),
                     fmt(label_ty)
                 );
@@ -1098,7 +1262,7 @@ pub fn render_er_diagram_svg_model(
                     let _ = write!(
                         &mut out,
                         r#" data-id="{}""#,
-                        escape_xml_display(&edge_dom_id)
+                        escape_attr_display(&edge_dom_id)
                     );
                     out.push_str(r#" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#);
                 } else {
@@ -1111,7 +1275,7 @@ pub fn render_er_diagram_svg_model(
                     let _ = write!(
                         &mut out,
                         r#" data-id="{}""#,
-                        escape_xml_display(&edge_dom_id)
+                        escape_attr_display(&edge_dom_id)
                     );
                     out.push_str(r#" transform="translate(0, 0)">"#);
                     // createText gates addSvgBackground on the raw source's truthiness.
@@ -1145,7 +1309,7 @@ pub fn render_er_diagram_svg_model(
                 let _ = write!(
                     &mut out,
                     r#"<g class="label edgeLabel" id="{}" transform="translate({}, {})">"#,
-                    escape_xml(&n.id),
+                    escape_attr(&n.id),
                     fmt(cx),
                     fmt(cy)
                 );
@@ -1197,7 +1361,15 @@ pub fn render_er_diagram_svg_model(
             })?;
         let w = n.width.max(1.0);
         let h = n.height.max(1.0);
-        if (measure.width - w).abs() > 1e-3 || (measure.height - h).abs() > 1e-3 {
+        let width_delta = w - measure.width;
+        let height_delta = h - measure.height;
+        // Shoal can grow the measured entity to fit the marker fan.
+        let dimensions_match = if uses_canonical_routes {
+            width_delta >= -1e-3 && height_delta >= -1e-3
+        } else {
+            width_delta.abs() <= 1e-3 && height_delta.abs() <= 1e-3
+        };
+        if !dimensions_match {
             return Err(Error::InvalidModel {
                 message: format!(
                     "ER entity measured size mismatch for {}: layout=({},{}), measure=({}, {})",
@@ -1219,15 +1391,15 @@ pub fn render_er_diagram_svg_model(
         let color_id_attr = color_indices
             .get(entity.id.as_str())
             .and_then(|index| er_redux_color_id(redux_border_colors, *index))
-            .map(|color_id| format!(r#" data-color-id="{}""#, escape_xml(&color_id)))
+            .map(|color_id| format!(r#" data-color-id="{}""#, escape_attr(&color_id)))
             .unwrap_or_default();
         let _ = write!(
             &mut out,
             r#"<g id="{}-{}" class="{}" data-look="{}"{}"#,
             diagram_id,
-            escape_xml(&entity.id),
-            escape_xml(&group_class),
-            escape_xml(data_look),
+            escape_attr(&entity.id),
+            escape_attr(&group_class),
+            escape_attr(data_look),
             color_id_attr,
         );
         if uses_canonical_routes {
@@ -1316,7 +1488,8 @@ pub fn render_er_diagram_svg_model(
         let span_style_attr = visual.span_style_attr.as_str();
 
         // Mermaid erBox.ts uses the configured label mode and paths for the table rows.
-        let name_row_h = (measure.label_height + measure.text_padding).max(1.0);
+        let row_extra_height = height_delta.max(0.0) / (measure.rows.len() as f64 + 1.0);
+        let name_row_h = (measure.label_height + measure.text_padding).max(1.0) + row_extra_height;
         let box_x0 = ox;
         let box_y0 = oy;
         let box_x1 = ox + w;
@@ -1351,7 +1524,7 @@ pub fn render_er_diagram_svg_model(
         }
 
         if let Some(native) = native {
-            let clip_id = format!("{diagram_id}-er-table-{entity_index}");
+            let clip_id = format!("{diagram_id}_er-table-{entity_index}");
             let (left, top, width, height, radius) =
                 (fmt(ox), fmt(oy), fmt(w), fmt(h), fmt(native.radius));
             let opacity_css = |property| {
@@ -1376,7 +1549,7 @@ pub fn render_er_diagram_svg_model(
             );
             let mut y = sep_y;
             for (idx, (row, visual)) in measure.rows.iter().zip(&visual.rows).enumerate() {
-                let row_height = row.height.max(1.0);
+                let row_height = row.height.max(1.0) + row_extra_height;
                 let fill = source_style.fill().unwrap_or(&visual.fill);
                 let row_class = if idx.is_multiple_of(2) {
                     "row-rect-odd"
@@ -1450,10 +1623,10 @@ pub fn render_er_diagram_svg_model(
             out.push_str("</g>");
             out.checkpoint()?;
             // Row rectangles
-            let escaped_node_border = escape_xml(node_border);
+            let escaped_node_border = escape_attr(node_border);
             let mut y = sep_y;
             for (idx, row) in measure.rows.iter().enumerate() {
-                let row_h = row.height.max(1.0);
+                let row_h = row.height.max(1.0) + row_extra_height;
                 let y0 = y;
                 let y1 = y + row_h;
                 y = y1;
@@ -1480,7 +1653,7 @@ pub fn render_er_diagram_svg_model(
                         &mut out,
                         r#"<path d="{}" stroke="none" stroke-width="0" fill="{}"{} />"#,
                         rough_border.fill_path_d(box_x0, y0, box_x1, y1),
-                        escape_xml(fill),
+                        escape_attr(fill),
                         row_fill_style_attr
                     );
                 }
@@ -1552,9 +1725,9 @@ pub fn render_er_diagram_svg_model(
 
         let mut row_top = sep_y;
         for row in &measure.rows {
-            let row_h = row.height.max(1.0);
+            let row_h = row.height.max(1.0) + row_extra_height;
             // erBox top-aligns independently measured cells within the shared row.
-            let cell_y = row_top + measure.text_padding / 2.0;
+            let cell_y = row_top + (measure.text_padding + row_extra_height) / 2.0;
 
             let [type_w, name_w, keys_w, comment_w] = row.cell_widths;
             let [type_h, name_h, keys_h, comment_h] = row.cell_heights;
@@ -1720,10 +1893,10 @@ pub fn render_er_diagram_svg_model(
         }
 
         if native.is_none() {
-            let escaped_box_fill = escape_xml(box_fill);
+            let escaped_box_fill = escape_attr(box_fill);
             let divider_path_attrs = format!(
                 r#" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{}"#,
-                escape_xml(box_stroke),
+                escape_attr(box_stroke),
                 stroke_width_attr,
                 override_style_attr,
             );
@@ -1835,8 +2008,8 @@ fn push_er_gradient(
         return Ok(());
     };
 
-    let gradient_start = escape_xml(gradient_start);
-    let gradient_stop = escape_xml(gradient_stop);
+    let gradient_start = escape_attr(gradient_start);
+    let gradient_stop = escape_attr(gradient_stop);
     let _ = write!(
         out,
         r#"<linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient>"#,

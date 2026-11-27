@@ -22,8 +22,7 @@ pub(crate) use final_validation::{SvgStructureMetrics, validate_well_formed_svg_
 pub(crate) use merman_render_core::svg_scan::{
     SvgTagScanner, checkpoint_loop, end_tag_name, escape_xml_attr_with_checkpoints,
     escape_xml_text_with_checkpoints, extract_exact_double_quoted_attr_with_checkpoints,
-    find_tag_end_with_checkpoints, find_with_checkpoints, next_svg_quoted_attr_with_checkpoints,
-    rfind_with_checkpoints, start_tag_name,
+    find_with_checkpoints, next_svg_quoted_attr_with_checkpoints, start_tag_name,
 };
 pub use policy::SvgOutputPolicy;
 pub use preset::SvgPipelinePreset;

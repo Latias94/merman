@@ -98,13 +98,12 @@ pub(super) fn render_sequence_actor_popup_menus(
         );
         let _ = write!(
             out,
-            r##"<rect class="{class}" x="{x}" y="{y}" fill="{fill}" stroke="#666" width="{w}" height="{h}" rx="{radius}" ry="{radius}"/>"##,
+            r##"<rect class="{class}" x="{x}" y="{y}" fill="{popup_fill}" stroke="#666" width="{w}" height="{h}" rx="{radius}" ry="{radius}"/>"##,
             class = escape_attr(&popup_panel_class),
             x = fmt(x),
             y = fmt(rect_height),
             w = fmt(popup.width),
             h = fmt(popup.height),
-            fill = escape_xml_display(popup_fill),
         );
 
         let mut row_index = 0;

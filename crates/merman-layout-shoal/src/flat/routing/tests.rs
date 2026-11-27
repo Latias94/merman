@@ -152,12 +152,75 @@ fn parallel_and_reverse_occurrences_share_symmetric_slots_with_or_without_dummie
                 slots.push(offset);
             }
             slots.sort_by(f64::total_cmp);
-            assert_eq!(
-                slots,
-                [-8.0, -4.0, 0.0, 4.0, 8.0],
-                "{direction:?}, cap {cap}"
-            );
+            // A component can be translated by a fractional origin after the slots are set.
+            for (slot, expected) in slots.into_iter().zip([-8.0, -4.0, 0.0, 4.0, 8.0]) {
+                assert!(
+                    (slot - expected).abs() < 1e-10,
+                    "{direction:?}, cap {cap}: {slot}"
+                );
+            }
         }
+    }
+}
+
+#[test]
+fn late_parallel_port_balancing_moves_a_clear_straight_waypoint_with_its_ports() {
+    let mut scene = Scene::new(
+        &[40.; 2],
+        &[&[0], &[2, 3], &[1]],
+        &[&[0, 2, 1], &[0, 3, 1]],
+        &[100., 100., 90., 110.],
+    );
+    scene.options.spacing.edge = 4.;
+    scene.g.has_parallel_links = true;
+    scene.g.width[..2].fill(80.);
+    for node in scene.c.nodes.iter_mut().chain(&mut scene.graph.nodes) {
+        node.size.width = 80.;
+    }
+    // Refinement leaves four extra pixels between the markers. The final balance
+    // uses the marker width, moving each contact two pixels toward the center.
+    let marker = MarkerMetrics {
+        length: 8.,
+        width: 16.,
+    };
+    for edge in &mut scene.graph.edges {
+        edge.start_marker = marker;
+        edge.end_marker = marker;
+    }
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    scene.g.pred = crate::flat::Csr::new(4, scene.g.to.iter().copied(), &mut work).unwrap();
+    scene.g.succ = crate::flat::Csr::new(4, scene.g.from.iter().copied(), &mut work).unwrap();
+    crate::flat::refine::refine(
+        &mut scene.g,
+        &scene.c,
+        &scene.orientation,
+        &scene.graph,
+        &scene.options,
+        &mut scene.x,
+        &mut work,
+    )
+    .unwrap();
+
+    assert_eq!(scene.x[2..], [90., 110.]);
+    scene.g.keep[2..].fill(true);
+    let (drawing, _) = route_with_label_gaps(
+        &mut scene.g,
+        &scene.c,
+        &scene.orientation,
+        &scene.graph,
+        &scene.options,
+        &mut scene.x,
+        None,
+        &mut work,
+    )
+    .unwrap();
+    assert_eq!(scene.x[2..], [92., 108.]);
+    for (_, edge) in drawing.edges {
+        assert!(
+            edge.points.iter().all(|point| point.x == edge.points[0].x),
+            "{edge:?}"
+        );
     }
 }
 
@@ -587,6 +650,7 @@ fn gap(spans: &[(f64, f64)]) -> Gap {
                     horizon: None,
                     keep_landing_runway: false,
                     lower: 0,
+                    parallel: None,
                     track: None,
                 }
             })
@@ -691,6 +755,41 @@ fn sorted_sweep_emits_exactly_the_brute_force_touching_and_overlapping_pairs() {
             }
         }
     }
+}
+
+#[test]
+fn parallel_sweeps_do_not_mix_promoted_and_unpromoted_lanes() {
+    let mut gap = gap(&[(0., 120.), (40., 140.), (70., 160.), (90., 240.)]);
+    for piece in &mut gap.pieces {
+        piece.parallel = Some((0, 1));
+    }
+    gap.grade(&Options::default(), &mut Work::new(&mut NoopWorkControl))
+        .unwrap();
+    assert!(gap.pieces.iter().all(|piece| piece.track.is_some()));
+}
+
+#[test]
+fn opposing_polyline_sweeps_use_distinct_shelves_without_overlapping() {
+    let mut scene = Scene::new(
+        &[40.; 4],
+        &[&[0, 1], &[2, 3]],
+        &[&[0, 3], &[1, 2]],
+        &[0., 200., 50., 250.],
+    );
+    scene.options.routing = RoutingStyle::Polyline;
+    let drawing = scene.draw();
+    let shelves: Vec<_> = drawing
+        .edges
+        .iter()
+        .map(|(_, edge)| {
+            edge.points
+                .windows(2)
+                .find(|pair| pair[0].y == pair[1].y && pair[0].x != pair[1].x)
+                .expect("one shelf in the shared gap")[0]
+                .y
+        })
+        .collect();
+    assert_ne!(shelves[0], shelves[1]);
 }
 
 #[test]

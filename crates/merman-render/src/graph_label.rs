@@ -34,7 +34,6 @@ pub(crate) use merman_render_core::text::create_text_html::{
 pub(crate) use merman_render_core::text::flowchart_wrap_svg_source_word_lines;
 #[cfg(all(test, feature = "markdown-labels"))]
 pub(crate) use merman_render_core::text::html_label_layout::flowchart_label_plain_text_for_layout;
-pub(crate) use merman_render_core::text::literal_label::FlowchartSvgWidthMode;
 
 #[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
 use merman_render_flow::node_geometry::flowchart_node_label_min_width;

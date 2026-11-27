@@ -432,13 +432,7 @@ fn find_hex_style_match_end_controlled(
         }
 
         if let Some(hash) = hash {
-            return rfind_ascii_byte_in_range_controlled(
-                text,
-                hash + 1,
-                line_end,
-                b';',
-                checkpoints,
-            );
+            return last_unquoted_style_semicolon(text, hash + 1, line_end, checkpoints);
         }
 
         // Skip the complete value token. Re-probing at every byte after a colon makes a
@@ -448,18 +442,30 @@ fn find_hex_style_match_end_controlled(
     Ok(None)
 }
 
-fn rfind_ascii_byte_in_range_controlled(
+fn last_unquoted_style_semicolon(
     text: &str,
     start: usize,
     end: usize,
-    needle: u8,
     checkpoints: &mut ControlledScanCheckpoints<'_>,
 ) -> OperationControlResult<Option<usize>> {
-    for offset in (start..end.min(text.len())).rev() {
+    let mut quote = None;
+    let mut escaped = false;
+    let mut last = None;
+    for (index, &byte) in text.as_bytes()[start..end].iter().enumerate() {
         checkpoints.scanned(1)?;
-        if text.as_bytes()[offset] == needle {
-            return Ok(Some(offset));
+        if escaped {
+            escaped = false;
+        } else if byte == b'\\' {
+            escaped = true;
+        } else if let Some(open) = quote {
+            if byte == open {
+                quote = None;
+            }
+        } else if matches!(byte, b'\'' | b'"') {
+            quote = Some(byte);
+        } else if byte == b';' {
+            last = Some(start + index);
         }
     }
-    Ok(None)
+    Ok(last)
 }

@@ -4,7 +4,9 @@ use super::super::SvgExecution;
 use crate::{DiagramFamilyId, Result};
 use merman_model::families::requirement::RequirementDiagramModel;
 #[cfg(feature = "layout-shoal")]
-use merman_render_core::Bounds;
+use merman_render_core::{
+    Bounds, rough_svg::constrained_rough_edge_path, svg_bounds::svg_path_bounds_from_d,
+};
 use merman_render_core::{root_svg, text::TextMeasurer};
 use merman_render_graph::requirement as graph;
 
@@ -15,22 +17,39 @@ fn paint_canonical_edge(
     stroke_outset: f64,
     edge_style: Option<merman_theme_contract::v2::EdgeStyle>,
     work_meter: &crate::resources::OperationWorkMeter,
+    randomness: &roughr::core::RoughRandomness,
 ) -> Result<(String, graph::RequirementCanonicalEdge)> {
     use crate::graph_layout::route_paint::RouteStyle;
     use kurbo::{Point, Rect, Vec2};
 
     work_meter.charge(edge.points.len())?;
     use merman_theme_contract::v2::EdgeStyle;
-    let style = match edge_style {
-        Some(EdgeStyle::Orthogonal) => RouteStyle::Step,
-        Some(EdgeStyle::Straight | EdgeStyle::Sketch) => RouteStyle::Linear,
-        _ => RouteStyle::Curved,
-    };
+    let style = edge_style.map_or(RouteStyle::Curved, RouteStyle::from_theme);
     let geometry = routes.paint(edge, Vec2::ZERO, stroke_outset, style, work_meter)?;
-    let shaft = geometry.path.bounds;
+    let (d, shaft) = if edge_style == Some(EdgeStyle::Sketch) {
+        let d = constrained_rough_edge_path(
+            &geometry.path.d,
+            geometry.markers,
+            work_meter,
+            randomness,
+        )?;
+        work_meter.charge(d.len())?;
+        let bounds = svg_path_bounds_from_d(&d).ok_or_else(|| crate::Error::InvalidModel {
+            message: format!("Requirement edge `{}` has no sketch bounds", edge.id),
+        })?;
+        (
+            d,
+            Rect::new(bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y),
+        )
+    } else {
+        let bounds = geometry.path.bounds;
+        (
+            geometry.path.d,
+            Rect::new(bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y),
+        )
+    };
     let outset = stroke_outset * std::f64::consts::SQRT_2;
-    let mut bounds =
-        Rect::new(shaft.min_x, shaft.min_y, shaft.max_x, shaft.max_y).inflate(outset, outset);
+    let mut bounds = shaft.inflate(outset, outset);
     let [start_ref, start_lead, end_lead, end_ref] = geometry.marker_points;
     for (marker, reference, lead) in [
         (geometry.markers.0, start_ref, start_lead),
@@ -47,7 +66,7 @@ fn paint_canonical_edge(
         }
     }
     Ok((
-        geometry.path.d,
+        d,
         graph::RequirementCanonicalEdge {
             points: geometry.data_points,
             bounds: Bounds {
@@ -71,15 +90,23 @@ pub(crate) fn render_requirement_diagram_svg_model(
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id_or("requirement");
     let work_meter = options.work_meter();
-    #[cfg(feature = "layout-shoal")]
-    let canonical_routes = prepared.canonical_routes().map(|routes| {
-        move |edge: &merman_render_core::LayoutEdge, stroke_outset, edge_style| {
-            paint_canonical_edge(routes, edge, stroke_outset, edge_style, work_meter)
-        }
-    });
     let configured_seed =
         graph::RequirementConfigView::new(sanitize_config.as_value()).hand_drawn_seed();
     let randomness = options.rough_randomness(configured_seed, "render.requirement.roughjs");
+    #[cfg(feature = "layout-shoal")]
+    let canonical_routes = prepared.canonical_routes().map(|routes| {
+        let randomness = &randomness;
+        move |edge: &merman_render_core::LayoutEdge, stroke_outset, edge_style| {
+            paint_canonical_edge(
+                routes,
+                edge,
+                stroke_outset,
+                edge_style,
+                work_meter,
+                randomness,
+            )
+        }
+    });
     let context = graph::RequirementSvgContext {
         diagram_id,
         viewport: options.root_viewport(DiagramFamilyId::REQUIREMENT, diagram_id),

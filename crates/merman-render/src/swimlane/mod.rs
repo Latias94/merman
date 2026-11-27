@@ -111,12 +111,21 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
     let source_nodes = model.nodes.len().saturating_add(model.subgraphs.len());
     let source_work = source_layout_work_units(source_nodes, model.edges.len());
     work_meter.preflight(source_work)?;
-    let render_model = FlowchartRenderModelRef::new(model, render_label_sources);
-    let visible_edges = render_model.projected_edges().collect::<Vec<_>>();
     #[cfg(feature = "layout-shoal")]
     let canonical = execution.layout_backend() == crate::layout_backend::GraphLayoutBackend::Shoal;
     #[cfg(not(feature = "layout-shoal"))]
     let canonical = false;
+    let config_view = FlowchartConfigView::new(effective_config.as_value());
+    let render_model = FlowchartRenderModelRef::new(model, render_label_sources);
+    let render_model = if canonical {
+        render_model.with_shoal_svg_text(
+            config_view.node_html_labels(),
+            config_view.effective_html_labels(),
+        )
+    } else {
+        render_model
+    };
+    let visible_edges = render_model.projected_edges().collect::<Vec<_>>();
     if canonical {
         work_meter.charge(source_work)?;
     } else {
@@ -133,6 +142,37 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
         config.node_gap *= spacing;
         config.layer_gap *= spacing;
     }
+    let config_curve = config_view.render_curve();
+    let source_curve = model
+        .edge_defaults
+        .as_ref()
+        .and_then(|defaults| defaults.interpolate.as_deref())
+        .filter(|curve| !curve.is_empty());
+    let default_curve = source_curve.or(config_curve).unwrap_or("basis");
+    #[cfg(feature = "layout-shoal")]
+    let default_curve = if canonical {
+        execution
+            .native_family_theme()
+            .and_then(|theme| {
+                crate::flowchart::native_theme::default_curve(
+                    theme.form.edge_style,
+                    model,
+                    effective_config,
+                )
+            })
+            .unwrap_or_else(|| {
+                if default_curve == "basis"
+                    && source_curve.is_none()
+                    && !effective_config.explicit_config_owns_path("flowchart.curve")
+                {
+                    "rounded"
+                } else {
+                    default_curve
+                }
+            })
+    } else {
+        default_curve
+    };
     let mut working = prepare_working_layout(
         &render_model,
         (&visible_edges, &transport_plan),
@@ -157,7 +197,11 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
             &render_model,
             &visible_edges,
             effective_config,
-            config,
+            (
+                config,
+                crate::graph_layout::route_paint::RouteStyle::from_interpolate(default_curve, 0.0)
+                    .routing_style(),
+            ),
             execution,
             svg_label_sidecar,
         )?)
@@ -176,18 +220,6 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
         );
     }
 
-    // Mermaid's swimlane core only normalizes the implicit `basis` curve to
-    // `rounded`; an explicit edge/default/config curve remains authoritative.
-    // Resolve the same precedence here before the layout artifact is consumed
-    // by the SVG renderer.
-    let config_curve = FlowchartConfigView::new(effective_config.as_value()).render_curve();
-    let default_curve = model
-        .edge_defaults
-        .as_ref()
-        .and_then(|defaults| defaults.interpolate.as_deref())
-        .filter(|curve| !curve.is_empty())
-        .or(config_curve)
-        .unwrap_or("basis");
     if working.original_edges.len() != visible_edges.len() {
         return Err(crate::Error::InvalidModel {
             message: format!(
@@ -228,6 +260,10 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
         layout.shoal = shoal;
     }
     for (edge, (_, source)) in layout.edges.iter_mut().zip(&visible_edges) {
+        // Canonical painting retains the explicitly selected basis curve.
+        if canonical && curve_by_id.get(edge.id.as_str()) == Some(&"basis") {
+            edge.curve = "basis".to_owned();
+        }
         if edge.id != source.semantic.id {
             edge.id.clone_from(&source.semantic.id);
         }

@@ -12,6 +12,7 @@
 
 mod boundary;
 mod corridor;
+mod loops;
 mod obstacles;
 #[cfg(test)]
 mod tests;
@@ -394,6 +395,15 @@ fn redraw(
     let start = a.stub(spec.start_marker, gap, walls, work)?;
     let end = b.stub(spec.end_marker, gap, walls, work)?;
     let path = corridor::path(start, end, via, walls, gap, work)?;
+    write_route(edge, ports, &path, work)
+}
+
+fn write_route(
+    edge: &mut EdgeGeometry,
+    [a, b]: [Port; 2],
+    path: &[Point],
+    work: &mut Work<'_>,
+) -> LayoutResult<()> {
     // Remove strictly collinear intermediate grid points. Keep the terminals and both stubs
     // explicit so marker trimming cannot move the first or last bend onto a box face.
     let count = path
@@ -403,7 +413,7 @@ fn redraw(
     work.charge(count)?;
     let mut points = reserved(count)?;
     points.push(route_point(a.at, a.side.axis()));
-    let mut prev = start;
+    let mut prev = a.at;
     for (i, &p) in path.iter().enumerate() {
         work.visit(1)?;
         if i > 0 && i + 1 < path.len() {
@@ -429,68 +439,6 @@ fn redraw(
     edge.corridor_clearance = 0.0;
     edge.ports = (a.side, b.side);
     Ok(())
-}
-
-fn loop_waypoints(
-    ports: [Port; 2],
-    depth: f64,
-    spacing: &crate::Spacing,
-    walls: &RouteWalls,
-    work: &mut Work<'_>,
-) -> LayoutResult<Vec<Point>> {
-    let [a, b] = ports;
-    if a.side != b.side {
-        return Ok(Vec::new());
-    }
-    let outside = advance(a.at, a.side, depth)?;
-    let mut via = reserved(4)?;
-    if a.at != b.at {
-        via.extend([outside, advance(b.at, b.side, depth)?]);
-    } else {
-        // Coincident fixed anchors (or a point node) still get a loop with area.
-        // The two shafts can share a contact; the upper and lower branches differ.
-        let across = if a.side.axis() == Axis::Horizontal {
-            Side::Bottom
-        } else {
-            Side::Right
-        };
-        let radius = spacing
-            .loop_gap
-            .max(spacing.edge)
-            .max(spacing.port_pitch / 2.0)
-            .max(depth / 4.0);
-        let inner = advance(a.at, a.side, depth / 2.0)?;
-        via.extend([
-            advance(outside, across, -radius)?,
-            advance(inner, across, -radius)?,
-            advance(inner, across, radius)?,
-            advance(outside, across, radius)?,
-        ]);
-    }
-    for p in &mut via {
-        let mut blocked = false;
-        let mut far = match a.side {
-            Side::Right => p.x,
-            Side::Left => -p.x,
-            Side::Bottom => p.y,
-            Side::Top => -p.y,
-        };
-        for &r in &walls.0 {
-            work.visit(1)?;
-            blocked |= r.x[0] < p.x && p.x < r.x[1] && r.y[0] < p.y && p.y < r.y[1];
-            far = far.max(r.along(a.side).1);
-        }
-        if blocked {
-            let line = finite(far + spacing.edge)?;
-            match a.side {
-                Side::Right => p.x = line,
-                Side::Left => p.x = -line,
-                Side::Bottom => p.y = line,
-                Side::Top => p.y = -line,
-            }
-        }
-    }
-    Ok(via)
 }
 
 fn end_label(
@@ -672,8 +620,12 @@ pub(super) fn finish(
             }
         }
         let direct = g.direct.get(i).copied().unwrap_or(false);
-        placing_labels |= spec.label.is_some() && (direct || i >= c.links.len());
-        ports.push((pair, direct || old_ports(edge)? != pair));
+        let is_loop = i >= c.links.len();
+        placing_labels |= spec.label.is_some() && (direct || is_loop);
+        ports.push((
+            pair,
+            direct || old_ports(edge)? != pair || (is_loop && pair[0] == pair[1]),
+        ));
     }
     // A deferred box must also clear ordinary dummy-chain strokes, which are already final.
     // Segment envelopes conservatively include the monotone curve between two route knots.
@@ -691,6 +643,10 @@ pub(super) fn finish(
     {
         work.visit(1)?;
         let spec = &graph.edges[*id as usize];
+        if pair[0] == pair[1] {
+            // The closed path can extend beyond the nominal reach, so place its label after routing.
+            continue;
+        }
         if let (Some(at), Some(size)) = (edge.label_center, spec.label) {
             let size = canonical_size(graph.direction, size);
             let mut side = edge.ports.0;
@@ -734,32 +690,25 @@ pub(super) fn finish(
             edge.label_center = Some(p);
         }
         let blockers = walls.for_route(*id, pair, work)?;
-        let loop_via;
         let label = edge.label_center;
-        let via = if is_loop {
-            if !changed && pair[0].at != pair[1].at {
-                let mut clear = true;
-                for leg in edge.points.windows(2) {
-                    if !blockers.clear_leg(point(leg[0]), point(leg[1]), work)? {
-                        clear = false;
-                        break;
-                    }
-                }
-                if clear {
-                    continue;
+        if is_loop && !changed && pair[0].at != pair[1].at {
+            let mut clear = true;
+            for leg in edge.points.windows(2) {
+                if !blockers.clear_leg(point(leg[0]), point(leg[1]), work)? {
+                    clear = false;
+                    break;
                 }
             }
-            if pair[0].side != pair[1].side {
-                label.as_slice()
-            } else {
-                let depth = (edge.points[1].x - edge.points[0].x).abs();
-                loop_via = loop_waypoints(pair, depth, &options.spacing, &blockers, work)?;
-                &loop_via[..]
+            if clear {
+                continue;
             }
+        }
+        let result = if is_loop && pair[0].side == pair[1].side {
+            let depth = (edge.points[1].x - edge.points[0].x).abs();
+            loops::draw(edge, pair, spec, depth, &options.spacing, &blockers, work)
         } else {
-            label.as_slice()
+            redraw(edge, pair, spec, label.as_slice(), gap, &blockers, work)
         };
-        let result = redraw(edge, pair, spec, via, gap, &blockers, work);
         let deferred = spec
             .label
             .filter(|_| direct)
@@ -780,6 +729,23 @@ pub(super) fn finish(
             edge.label_center = Some(outside);
         } else {
             result?;
+        }
+        if is_loop
+            && pair[0] == pair[1]
+            && let Some(size) = spec.label
+        {
+            let size = canonical_size(graph.direction, size);
+            let p = loops::place_label(
+                *id,
+                edge,
+                pair,
+                size,
+                options.spacing.loop_gap,
+                &walls,
+                work,
+            )?;
+            edge.label_center = Some(p);
+            walls.add(Owner::Middle(*id), Bounds::checked_centered(p, size)?, work)?;
         }
         if let (Some(size), Some(p)) = (deferred, edge.label_center) {
             walls.add(Owner::Middle(*id), Bounds::checked_centered(p, size)?, work)?;

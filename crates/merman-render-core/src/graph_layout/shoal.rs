@@ -22,8 +22,10 @@ pub struct Constraints<'a> {
     pub flow_relative_nodes: &'a [(usize, Axis)],
     pub edge_ports: &'a [(shoal::PortSideHint, shoal::PortSideHint)],
     pub lane_order: &'a [u32],
+    pub lane_boundaries: &'a [u32],
     pub capture_ranks: bool,
     pub allow_turn: bool,
+    pub flush_top_left_titles: bool,
 }
 
 #[derive(Default)]
@@ -136,6 +138,16 @@ pub fn project_input(
             Ok(shoal::GroupId(id))
         })?;
     }
+    work.charge_adapter(placement.constraints.lane_boundaries.len())?;
+    for &id in placement.constraints.lane_boundaries {
+        let group = graph
+            .groups
+            .get_mut(id as usize)
+            .ok_or_else(|| Error::InvalidModel {
+                message: "Shoal lane boundary does not match a measured group occurrence".into(),
+            })?;
+        group.lane_boundary_only = true;
+    }
     let ports = placement.constraints.edge_ports;
     if !ports.is_empty() && ports.len() != measured.edges.len() {
         return Err(Error::InvalidModel {
@@ -176,6 +188,7 @@ impl Placement<'_> {
             measured.component_spacing,
         ));
         options.group_policy.inherit_crossed_direction = measured.inherit_crossed_group_direction;
+        options.group_policy.flush_top_left_titles = self.constraints.flush_top_left_titles;
         options.width_policy = self.width;
         options.capture_node_ranks = self.capture_ranks || self.constraints.capture_ranks;
         options.reuse_unchanged_components = self.reuse_components;

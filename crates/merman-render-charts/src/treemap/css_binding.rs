@@ -5,6 +5,7 @@ use merman_render_core::{
         config_css_number_or_string, config_string,
         config_theme_font_size_css_or_root_number_px_opt, selected_config_string,
     },
+    mermaid_style::visit_style_declaration_boundaries,
     svg_css::PreparedCommonCss,
 };
 
@@ -195,12 +196,15 @@ fn is_white_like(color: &str) -> bool {
 }
 
 fn style_has_non_empty_decl(style: &str, property: &str) -> bool {
-    style.split(';').any(|declaration| {
-        let Some((key, value)) = declaration.split_once(':') else {
-            return false;
-        };
-        key.trim().eq_ignore_ascii_case(property) && !value.trim().is_empty()
-    })
+    let mut found = false;
+    visit_style_declaration_boundaries(style, |boundary| {
+        let declaration = boundary.raw();
+        let declaration = declaration.strip_suffix(';').unwrap_or(declaration);
+        found |= declaration.split_once(':').is_some_and(|(key, value)| {
+            key.trim().eq_ignore_ascii_case(property) && !value.trim().is_empty()
+        });
+    });
+    found
 }
 
 #[cfg(test)]
@@ -261,13 +265,17 @@ mod tests {
         assert_eq!(binding.color_scale_label[1], "rgb(10, 20, 30)");
         assert_eq!(binding.color_scale_label[3], "#f5ebe1");
         assert_eq!(
-            binding.readable_leaf_label_fill("transparent", "", "#ffffff".into()),
+            binding.readable_leaf_label_fill(
+                "transparent",
+                r#"--annotation:"a;fill:red" !important"#,
+                "#ffffff".into()
+            ),
             "#333".to_owned()
         );
         assert_eq!(
             binding.readable_leaf_label_fill(
                 "rgba(10 20 30 / 0)",
-                "fill:var(--fill)",
+                r##"--annotation:"a;b" !important;FiLL:url("#paint") !important"##,
                 "white".into()
             ),
             "white".to_owned()

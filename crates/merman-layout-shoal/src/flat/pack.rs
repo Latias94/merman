@@ -12,8 +12,17 @@ mod skyline;
 const PRECISION: LayoutError = LayoutError::InvalidInput("layout exceeds coordinate precision");
 type Placement = (Vec<Point>, Size);
 
+/// Keep a collapsed footprint in the packer's occupied interval even with no padding.
+fn reserve_zero_extent(start: f64, padded_end: f64, extent: f64) -> f64 {
+    if extent == 0.0 && padded_end == start {
+        start.next_up()
+    } else {
+        padded_end
+    }
+}
+
 impl Drawing {
-    fn transform(&mut self, direction: Direction, delta: Point) {
+    fn transform(&mut self, direction: Direction, origin: Point, at: Point) {
         let point = |x: f64, y: f64| {
             let (x, y) = match direction {
                 Direction::Down => (x, y),
@@ -22,8 +31,9 @@ impl Drawing {
                 Direction::Left => (-y, x),
             };
             Point {
-                x: x + delta.x,
-                y: y + delta.y,
+                // Normalize first so a small packing step survives a large local origin.
+                x: (x - origin.x) + at.x,
+                y: (y - origin.y) + at.y,
             }
         };
         for rect in &mut self.nodes {
@@ -167,7 +177,7 @@ impl Tile {
         width_policy: WidthPolicy,
         work: &mut Work<'_>,
     ) -> LayoutResult<Self> {
-        drawing.transform(graph.direction, Point::default());
+        drawing.transform(graph.direction, Point::default(), Point::default());
         let bounds = drawing.bounds(
             graph,
             matches!(width_policy, WidthPolicy::FitWidth { .. }),
@@ -205,7 +215,7 @@ fn shelves(
     work: &mut Work<'_>,
 ) -> LayoutResult<Placement> {
     work.charge(tiles.len())?;
-    let mut offsets = reserved(tiles.len())?;
+    let mut positions = reserved(tiles.len())?;
     let (mut row, mut col, mut height, mut width) = (0.0_f64, 0.0_f64, 0.0_f64, 0.0_f64);
     for tile in tiles {
         let b = tile.bounds;
@@ -215,7 +225,7 @@ fn shelves(
             (b.width, b.height)
         };
         if col > 0.0 && col + w > limit {
-            row += height + gap;
+            row = reserve_zero_extent(row, row + (height + gap), height);
             col = 0.0;
             height = 0.0;
         }
@@ -223,13 +233,10 @@ fn shelves(
         if (w > 0.0 && col + w <= col) || (h > 0.0 && row + h <= row) {
             return Err(PRECISION);
         }
-        offsets.push(Point {
-            x: x - b.x,
-            y: y - b.y,
-        });
+        positions.push(Point { x, y });
         width = width.max(col + w);
         height = height.max(h);
-        col += w + gap;
+        col = reserve_zero_extent(col, col + (w + gap), w);
     }
     let (w, h) = if vertical {
         (row + height, width)
@@ -240,7 +247,7 @@ fn shelves(
         return Err(PRECISION);
     }
     Ok((
-        offsets,
+        positions,
         Size {
             width: w,
             height: h,
@@ -303,7 +310,7 @@ pub(super) fn assemble(
 ) -> LayoutResult<LayoutOutput> {
     let gap = options.spacing.component;
     let horizontal = matches!(graph.direction, Direction::Left | Direction::Right);
-    let (offsets, bounds) = match options.packing {
+    let (positions, bounds) = match options.packing {
         PackingPolicy::Strip => shelves(&tiles, gap, f64::INFINITY, horizontal, work)?,
         PackingPolicy::FitWidth { max_width } => shelves(&tiles, gap, max_width, false, work)?,
         PackingPolicy::AspectTargeted { target_ratio } => {
@@ -323,8 +330,12 @@ pub(super) fn assemble(
         Vec::new()
     };
     let mut edges = filled(graph.edges.len(), None)?;
-    for (mut tile, offset) in tiles.into_iter().zip(offsets) {
-        tile.drawing.transform(Direction::Down, offset);
+    for (mut tile, at) in tiles.into_iter().zip(positions) {
+        let origin = Point {
+            x: tile.bounds.x,
+            y: tile.bounds.y,
+        };
+        tile.drawing.transform(Direction::Down, origin, at);
         for (&id, rank) in tile.ids.iter().zip(tile.ranks) {
             work.visit(1)?;
             node_ranks[id as usize] = rank;
@@ -392,4 +403,91 @@ fn snap_to_faces(edge: &mut EdgeGeometry, source: Rect, target: Rect) -> LayoutR
         p.axis = side.axis();
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{NodeSpec, NoopWorkControl, Spacing, layout};
+
+    #[test]
+    fn width_limited_shelves_advance_past_zero_height_rows() {
+        let size = Size {
+            width: 20.0,
+            height: 0.0,
+        };
+        let graph = Graph {
+            nodes: (0..3).map(|id| NodeSpec::new(size, id)).collect(),
+            ..Default::default()
+        };
+        let options = Options {
+            spacing: Spacing {
+                component: 0.0,
+                ..Default::default()
+            },
+            packing: PackingPolicy::FitWidth {
+                max_width: size.width,
+            },
+            ..Default::default()
+        };
+        let out = layout(&graph, &options).unwrap();
+        assert!(out.nodes.windows(2).all(|pair| pair[0].y < pair[1].y));
+        assert!(
+            out.nodes
+                .iter()
+                .all(|node| node.x == 0.0 && node.height == 0.0)
+        );
+        assert_eq!(out.bounds.width, size.width);
+        assert_eq!(out.bounds.height, out.nodes[2].y);
+    }
+
+    #[test]
+    fn zero_width_shelf_tiles_keep_distinct_origins_after_translation() {
+        let options = Options {
+            spacing: Spacing {
+                component: 0.0,
+                ..Default::default()
+            },
+            packing: PackingPolicy::Strip,
+            ..Default::default()
+        };
+        let size = Size {
+            width: 0.0,
+            height: 20.0,
+        };
+        let graph = Graph {
+            nodes: (0..3).map(|id| NodeSpec::new(size, id)).collect(),
+            ..Default::default()
+        };
+        let mut control = NoopWorkControl;
+        let mut work = Work::new(&mut control);
+        let mut tiles = Vec::new();
+        for id in 0..3 {
+            let origin = f64::from(id) * 2.0 - 10.0;
+            let bounds = Rect {
+                x: origin,
+                y: -15.0,
+                width: size.width,
+                height: size.height,
+            };
+            tiles.push(Tile {
+                ids: vec![id],
+                ranks: Vec::new(),
+                drawing: Drawing {
+                    nodes: vec![bounds],
+                    edges: Vec::new(),
+                },
+                bounds,
+            });
+        }
+        let out = assemble(tiles, &graph, &options, LayoutStats::default(), &mut work).unwrap();
+        assert!(out.nodes.windows(2).all(|pair| pair[0].x < pair[1].x));
+        assert!(
+            out.nodes
+                .iter()
+                .all(|node| node.y == 0.0 && node.width == 0.0)
+        );
+        assert_eq!(out.bounds.width, out.nodes[2].x);
+        assert_eq!(out.bounds.height, size.height);
+    }
 }

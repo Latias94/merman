@@ -63,7 +63,7 @@ fn canvas_inserts_base_and_grid_before_family_content() {
 
 #[cfg(feature = "diagram-pie")]
 #[test]
-fn a_host_background_replaces_the_canvas_and_keeps_its_texture() {
+fn a_host_background_replaces_canvas_paint_and_preserves_transparency() {
     let theme = ThemeCompiler::new()
         .compile_preset(BuiltinPreset::Blueprint, None)
         .unwrap();
@@ -80,7 +80,10 @@ fn a_host_background_replaces_the_canvas_and_keeps_its_texture() {
             fill.starts_with('#').then_some(fill)
         });
         assert_eq!(fill, expected);
-        assert!(layer.descendants().any(|node| node.has_tag_name("pattern")));
+        assert_eq!(
+            layer.descendants().any(|node| node.has_tag_name("pattern")),
+            expected.is_some(),
+        );
     }
 }
 

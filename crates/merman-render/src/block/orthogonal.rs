@@ -7,69 +7,36 @@ use super::{
     resolve_block_node_sources,
 };
 use crate::Result;
-use crate::graph_layout::Marker;
-use crate::graph_layout::route_paint::{self, CurveTerminals, RouteStyle};
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{BlockDiagramLayout, LayoutLabel, LayoutPoint};
 use crate::resources::OperationWorkMeter;
 use crate::svg::BaseEdgeMarkerKind;
 use kurbo::{Point, Rect, Vec2};
-use merman_layout_shoal::{
-    OrthogonalSpan, Rect as Obstacle, RoutePoint, Side, route_orthogonal_spans,
-};
+use merman_layout_shoal::{OrthogonalSpan, Rect as Obstacle, RoutePoint, Side, route_fixed_spans};
 use merman_model::families::block::{BlockDiagramRenderModel, BlockEdge};
+use merman_render_core::graph_layout::{Endpoint, Marker};
+use merman_render_core::route_paint::{
+    self, Clearance, CurveTerminals, EdgeClearance, ObstacleOwner, RoutePaintError, RouteStyle,
+};
+use merman_render_structured::block::BlockEdgeMarkerGeometry;
 use merman_theme_contract::v2::EdgeStyle;
 use std::{collections::HashMap, sync::Arc};
 
-#[derive(Clone, Copy)]
-struct MarkerBox {
-    // The extent towards the attached shape can be negative when the marker has a gap.
-    front: f64,
-    depth: f64,
-    half_width: f64,
+fn edge_marker_geometry(edge: &BlockEdge, start: bool) -> Option<BlockEdgeMarkerGeometry> {
+    let arrow = if start {
+        edge.arrow_type_start.as_deref()
+    } else {
+        edge.arrow_type_end.as_deref()
+    };
+    BaseEdgeMarkerKind::from_arrow(arrow, start).and_then(BlockEdgeMarkerGeometry::from_kind)
 }
 
-impl MarkerBox {
-    fn of(edge: &BlockEdge, start: bool) -> Option<Self> {
-        use BaseEdgeMarkerKind::*;
-        let arrow = if start {
-            &edge.arrow_type_start
-        } else {
-            &edge.arrow_type_end
-        };
-        // Distances from the shared marker definition's refX/refY in drawing units.
-        // The point touches its clipped viewport tip. Circle and cross leave a gap.
-        let (front, depth, half_width) =
-            match BaseEdgeMarkerKind::from_arrow(arrow.as_deref(), start)? {
-                PointStart => (3.6, 4.4, 4.0),
-                PointEnd => (4.0, 4.0, 4.0),
-                CircleStart | CircleEnd => (-1.1, 12.1, 5.5),
-                CrossStart => (-1.0, 12.0, 5.8),
-                CrossEnd => (-1.0, 12.0, 5.8),
-                _ => return None,
-            };
-        Some(Self {
-            front,
-            depth,
-            half_width,
-        })
-    }
-
-    fn for_paint(self) -> Marker {
-        Marker {
-            trim: self.front.max(0.0),
-            depth: self.depth,
-            width: 2.0 * self.half_width,
-        }
-    }
-
-    fn bounds(self, reference: Point, outward: Vec2) -> Rect {
-        let across = Vec2::new(-outward.y, outward.x) * self.half_width;
-        let front = reference - outward * self.front;
-        let back = reference + outward * self.depth;
-        Rect::from_points(front - across, front + across)
-            .union(Rect::from_points(back - across, back + across))
-    }
+fn marker_bounds(marker: BlockEdgeMarkerGeometry, reference: Point, outward: Vec2) -> Rect {
+    let across = Vec2::new(-outward.y, outward.x) * (marker.routing.width / 2.0);
+    let front = reference - outward * marker.front;
+    let back = reference + outward * marker.routing.depth;
+    Rect::from_points(front - across, front + across)
+        .union(Rect::from_points(back - across, back + across))
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -90,7 +57,7 @@ struct Terminal {
     side: Side,
     anchor: RoutePoint,
     reference: Point,
-    marker: Option<MarkerBox>,
+    marker: Option<BlockEdgeMarkerGeometry>,
 }
 
 type Anchor = (RoutePoint, Side);
@@ -99,7 +66,7 @@ impl Terminal {
     fn new(
         shape: &BlockShapeGeometry,
         side: Side,
-        marker: Option<MarkerBox>,
+        marker: Option<BlockEdgeMarkerGeometry>,
         margin: f64,
     ) -> Option<Self> {
         let normal = normal(side);
@@ -117,7 +84,7 @@ impl Terminal {
             Side::Top | Side::Bottom => (contact.y, normal.y),
             _ => (contact.x, normal.x),
         };
-        let marker_metrics = marker.map_or_else(Marker::default, MarkerBox::for_paint);
+        let marker_metrics = marker.map(|marker| marker.routing).unwrap_or_default();
         let depth = marker_metrics.trim + route_paint::LEAD.max(marker_metrics.depth);
         let anchor = contact + normal * (depth.max((face - at) * sign) + margin);
         if !contact.is_finite() || !anchor.is_finite() || contact == center || contact == anchor {
@@ -135,7 +102,7 @@ impl Terminal {
 
     fn marker_bounds(&self) -> Option<Rect> {
         self.marker
-            .map(|m| m.bounds(self.reference, normal(self.side)))
+            .map(|marker| marker_bounds(marker, self.reference, normal(self.side)))
     }
 
     fn lead_bounds(&self) -> Rect {
@@ -255,33 +222,46 @@ impl Request {
     fn paint(
         &self,
         inner: impl Iterator<Item = RoutePoint>,
-    ) -> Option<(Vec<LayoutPoint>, BlockOrthogonalRoute)> {
+        style: RouteStyle,
+        clearance: Option<EdgeClearance<'_>>,
+    ) -> Result<(Vec<LayoutPoint>, BlockOrthogonalRoute)> {
         let [a, b] = &self.ends;
         let mut points: Vec<_> = std::iter::once(a.contact)
             .chain(inner)
             .chain(std::iter::once(b.contact))
             .collect();
         points.dedup_by(|a, b| a.x == b.x && a.y == b.y);
-        let marker = |end: &Terminal| {
-            end.marker
-                .map_or_else(Marker::default, MarkerBox::for_paint)
+        let marker = |end: &Terminal| -> Marker {
+            end.marker.map(|marker| marker.routing).unwrap_or_default()
         };
-        let path = route_paint::build_svg_path(
-            &points,
-            (a.side, b.side),
-            RouteStyle::Linear,
-            (marker(a), marker(b)),
-            CurveTerminals::Fixed,
-            &[],
-            None,
-        )
-        .ok()?;
+        let markers = (marker(a), marker(b));
+        let paint = |style, clearance| {
+            route_paint::build_svg_path(
+                &points,
+                (a.side, b.side),
+                style,
+                markers,
+                CurveTerminals::Fixed,
+                &[],
+                clearance,
+            )
+        };
+        let path = paint(style, clearance)
+            .or_else(|error| match error {
+                // The router already admitted the orthogonal spans before curve paint.
+                RoutePaintError::NoClearDetour => paint(RouteStyle::Linear, None),
+                _ => Err(error),
+            })
+            .map_err(|error| crate::Error::InvalidModel {
+                message: format!("Block route {}: {error}", self.occurrence),
+            })?;
         let route = BlockOrthogonalRoute {
             path: path.d,
             bounds: path.bounds,
             marker_refs: [a.reference, b.reference].map(layout_point),
+            markers,
         };
-        Some((
+        Ok((
             points
                 .into_iter()
                 .map(|k| layout_point(knot_point(k)))
@@ -370,7 +350,7 @@ fn terminals(
     start: bool,
     margin: f64,
 ) -> impl Iterator<Item = Terminal> {
-    let marker = MarkerBox::of(edge, start);
+    let marker = edge_marker_geometry(edge, start);
     [Side::Top, Side::Right, Side::Bottom, Side::Left]
         .into_iter()
         .filter_map(move |side| Terminal::new(shape, side, marker, margin))
@@ -431,21 +411,21 @@ fn clearance_boxes(
             });
         }
         // A fallback edge keeps the marker it had before routing, including diagonal variants.
-        if MarkerBox::of(edge, true).is_some() || MarkerBox::of(edge, false).is_some() {
+        let start_marker = edge_marker_geometry(edge, true);
+        let end_marker = edge_marker_geometry(edge, false);
+        if start_marker.is_some() || end_marker.is_some() {
             let points =
                 block_render_edge_points(edge, edge_layout, geometries, edge_style).rendered_points;
-            for (is_start, first, next) in [
-                (true, points.first(), points.get(1)),
-                (false, points.last(), points.iter().rev().nth(1)),
+            for (marker, first, next) in [
+                (start_marker, points.first(), points.get(1)),
+                (end_marker, points.last(), points.iter().rev().nth(1)),
             ] {
-                if let (Some(marker), Some(first), Some(next)) =
-                    (MarkerBox::of(edge, is_start), first, next)
-                {
+                if let (Some(marker), Some(first), Some(next)) = (marker, first, next) {
                     let first = to_point(first);
                     let delta = to_point(next) - first;
                     if delta.hypot2() > 0.0 {
                         walls.push(Wall {
-                            rect: marker.bounds(first, delta.normalize()),
+                            rect: marker_bounds(marker, first, delta.normalize()),
                             owner: Owner::Marker(occurrence),
                         });
                     }
@@ -493,6 +473,7 @@ pub(super) fn prepare(
         return Ok(Vec::new());
     }
     let edge_style = typography.native().map(|style| style.form.edge_style);
+    let route_style = edge_style.map_or(RouteStyle::Step, RouteStyle::from_theme);
     let Some(mut walls) = clearance_boxes(
         model,
         layout,
@@ -605,6 +586,28 @@ pub(super) fn prepare(
         }
     }
     work.charge_adapter(work.checked_add(walls.len(), work.checked_mul(admitted.len(), 2)?)?)?;
+    let clearance = if route_style == RouteStyle::Curved {
+        let levels = walls.len().checked_ilog2().map_or(0, |n| n as usize + 1);
+        work.charge_adapter(work.checked_mul(walls.len(), levels)?)?;
+        let mut obstacles = Vec::with_capacity(walls.len());
+        for wall in &walls {
+            let owner = match wall.owner {
+                Owner::Body(index) => ObstacleOwner::Node(
+                    u32::try_from(index).map_err(|_| work.record_arithmetic_overflow())?,
+                ),
+                Owner::NodeLabel => ObstacleOwner::GroupTitle(0),
+                Owner::EdgeLabel(index) | Owner::Marker(index) => ObstacleOwner::EdgeLabel(index),
+            };
+            obstacles.push((wall.rect, owner));
+        }
+        Some(
+            Clearance::new(obstacles).map_err(|error| crate::Error::InvalidModel {
+                message: format!("Block route clearance: {error}"),
+            })?,
+        )
+    } else {
+        None
+    };
     let walls: Vec<_> = walls
         .into_iter()
         .map(|Wall { rect, .. }| Obstacle {
@@ -615,9 +618,16 @@ pub(super) fn prepare(
         })
         .collect();
     let spans: Vec<_> = admitted.iter().flat_map(Request::spans).collect();
-    let mut paths = route_orthogonal_spans(&walls, None, edge_sep, &spans, &mut work)
-        .map_err(|error| work.map_shoal_error(error))?
-        .into_iter();
+    let mut paths = route_fixed_spans(
+        &walls,
+        None,
+        edge_sep,
+        &spans,
+        route_style.routing_style(),
+        &mut work,
+    )
+    .map_err(|error| work.map_shoal_error(error))?
+    .into_iter();
     work.charge_adapter(model.edges.len())?;
     let mut routes: Vec<_> = (0..model.edges.len()).map(|_| None).collect();
     let mut updates = Vec::new();
@@ -632,10 +642,24 @@ pub(super) fn prepare(
             work.charge_adapter(
                 work.checked_add(work.checked_add(first.len(), second.len())?, 2)?,
             )?;
-            if let Some((points, route)) = request.paint(first.into_iter().chain(second)) {
-                updates.push((request.index, points));
-                routes[request.occurrence] = Some(route);
-            }
+            let [from, to] = request.bodies.map(|index| {
+                u32::try_from(index)
+                    .map(Endpoint::Node)
+                    .map_err(|_| work.record_arithmetic_overflow())
+            });
+            let endpoints = (from?, to?);
+            let guard = clearance.as_ref().map(|clearance| {
+                clearance.for_edge(
+                    request.occurrence,
+                    endpoints,
+                    Vec2::ZERO,
+                    stroke_width / 2.0,
+                )
+            });
+            let (points, route) =
+                request.paint(first.into_iter().chain(second), route_style, guard)?;
+            updates.push((request.index, points));
+            routes[request.occurrence] = Some(route);
         }
     }
     work.charge_adapter(updates.len())?;

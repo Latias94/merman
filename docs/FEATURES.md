@@ -141,7 +141,7 @@ Shoal draws Flowcharts in all four directions, including cycles, self-loops, par
 
 C4's Shoal layout treats authored relationship-label offsets as local preferences. Crowded relationships can use a caption area with enough room for the text.
 
-Use a `swimlane-beta` header with `layout: shoal` to align work across lanes. Root lanes share rank positions and align their borders. Direct handoffs can turn once, and feedback edges can use reserved corridors within a lane. Use `layout: shoal` in Block to try orthogonal edge routing on the authored grid. Block uses its usual route for an edge if the router cannot find a clear alternative.
+Use a `swimlane-beta` header with `layout: shoal` to align work across lanes. Root lanes and lanes inside producer-supplied BPMN pools share rank positions. Direct handoffs can turn once, and feedback edges can use reserved corridors within a lane. Set `swimlane.lineHops` to `false`, `true`, or `"gap"` to control the drawing at edge crossings. Use `layout: shoal` in Block to try orthogonal edge routing on the authored grid. Block uses its usual route for an edge if the router cannot find a clear alternative.
 
 A build without Shoal reports the missing capability when one of these diagrams requests it. Rust callers can also pass measured graphs directly to the standalone crate. [Shoal crate](../crates/merman-layout-shoal/README.md)
 

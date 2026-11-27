@@ -46,10 +46,11 @@ fn editable_preset_reproduces_the_canvas_and_honors_background_overrides() {
                 .and_then(|node| node.attribute("fill")),
             fill
         );
-        assert!(
+        assert_eq!(
             canvas
                 .descendants()
-                .any(|node| node.has_tag_name("pattern"))
+                .any(|node| node.has_tag_name("pattern")),
+            fill.is_some()
         );
     }
 }

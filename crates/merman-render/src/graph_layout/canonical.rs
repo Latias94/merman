@@ -14,6 +14,20 @@ pub(crate) use merman_render_core::route_paint::CanonicalPaintScratch;
 use rustc_hash::FxHashMap;
 use std::ops::Range;
 
+#[cfg(any(
+    feature = "diagram-class",
+    feature = "diagram-er",
+    feature = "diagram-requirement",
+    feature = "diagram-state"
+))]
+pub(crate) fn theme_routing_style(
+    edge_style: Option<merman_theme_contract::v2::EdgeStyle>,
+) -> super::ir::RoutingStyle {
+    edge_style
+        .map_or(RouteStyle::Curved, RouteStyle::from_theme)
+        .routing_style()
+}
+
 #[derive(Debug)]
 struct AxisPath {
     occurrence: usize,
@@ -28,11 +42,21 @@ struct AxisPath {
 
 #[derive(Debug)]
 pub(crate) struct CanonicalRoutes {
+    #[allow(dead_code, reason = "C4 retains placement on its own family artifact.")]
     pub(crate) placement: crate::layout_frame::GraphPlacement,
     paths: FxHashMap<String, AxisPath>,
     stitches: Vec<BorderStitch>,
     stitch_contacts: Vec<RoutePoint>,
     clearance: AxisClearance,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum CaptionClearance {
+    #[allow(dead_code, reason = "C4-only builds use caption cutouts.")]
+    Avoid,
+    /// The family clips the painted shafts behind captions after route painting.
+    #[cfg(feature = "diagram-c4")]
+    Cutout,
 }
 
 pub(crate) struct CanonicalPaintedEdge<Points = Vec<LayoutPoint>> {
@@ -90,6 +114,7 @@ impl CanonicalRoutes {
         profiles: &[ShapePortProfile],
         group_corner_radius: impl Fn(u32) -> f64,
         edge_ids: impl ExactSizeIterator<Item = &'id str>,
+        captions: CaptionClearance,
         work: &mut OperationLayoutWorkControl,
     ) -> Result<Self> {
         let invalid = |message: &str| Error::InvalidModel {
@@ -106,6 +131,7 @@ impl CanonicalRoutes {
         work.charge_adapter(work.checked_add(edge_ids.len(), solved.border_stitches.len())?)?;
         let mut paths = FxHashMap::with_capacity_and_hasher(edge_ids.len(), Default::default());
         let mut stitch_contacts = Vec::with_capacity(solved.border_stitches.len());
+        let mut obstacles = obstacle_inventory(solved, captions, work)?;
         let group_contact = |id, side, port| {
             let radius = group_corner_radius(id);
             if radius == 0.0 {
@@ -184,16 +210,34 @@ impl CanonicalRoutes {
                     0.0
                 },
             };
+            if matches!(captions, CaptionClearance::Avoid) {
+                work.charge_adapter(2)?;
+                obstacles.extend(
+                    [
+                        (edge.source, from, start_side, measured.start_marker),
+                        (edge.target, to, end_side, measured.end_marker),
+                    ]
+                    .into_iter()
+                    .filter_map(|(endpoint, port, side, marker)| {
+                        route_paint::marker_obstacle(occurrence, endpoint, port, side, marker)
+                    }),
+                );
+            }
             if paths.insert(id.to_owned(), path).is_some() {
                 return Err(invalid("Duplicate canonical route identifier"));
             }
         }
+        let levels = obstacles
+            .len()
+            .checked_ilog2()
+            .map_or(0, |levels| levels as usize + 1);
+        work.charge_adapter(work.checked_mul(obstacles.len(), levels)?)?;
         Ok(Self {
             placement: Default::default(),
             paths,
             stitches: solved.border_stitches.clone(),
             stitch_contacts,
-            clearance: obstacles(solved, work)?,
+            clearance: AxisClearance::new(obstacles),
         })
     }
 
@@ -373,19 +417,23 @@ impl CanonicalRoutes {
             route_paint::marker_lead(contacts.0, route.sides.0, route.markers.0);
         let (end_ref, end_lead) =
             route_paint::marker_lead(contacts.1, route.sides.1, route.markers.1);
-        let clearance = if !matches!(style, RouteStyle::Curved | RouteStyle::Rounded(_))
-            || (style == RouteStyle::Curved
-                && route.corridor_clearance > stroke_outset
-                && stitches.is_empty())
+        let clearance = if style == RouteStyle::Curved
+            && route.corridor_clearance > stroke_outset
+            && stitches.is_empty()
         {
             None
         } else {
-            Some(self.clearance.resolve(work)?.for_edge(
-                route.occurrence,
-                route.endpoints,
-                -translation,
-                stroke_outset,
-            ))
+            Some(
+                self.clearance
+                    .resolve(work)?
+                    .for_edge(
+                        route.occurrence,
+                        route.endpoints,
+                        -translation,
+                        stroke_outset,
+                    )
+                    .with_terminal_contacts(route.contacts),
+            )
         };
         let path = route_paint::build_svg_path_with_scratch(
             points,
@@ -417,13 +465,25 @@ fn label_bounds(label: &LayoutLabel) -> kurbo::Rect {
     kurbo::Rect::from_center_size((label.x, label.y), (label.width, label.height))
 }
 
-fn obstacles(solved: &SolvedGraph, work: &mut OperationLayoutWorkControl) -> Result<AxisClearance> {
+fn obstacle_inventory(
+    solved: &SolvedGraph,
+    captions: CaptionClearance,
+    work: &mut OperationLayoutWorkControl,
+) -> Result<Vec<(kurbo::Rect, ObstacleOwner)>> {
     if solved.edges.is_empty() {
-        return Ok(AxisClearance::default());
+        return Ok(Vec::new());
     }
     let shapes = work.checked_add(solved.nodes.len(), solved.groups.len())?;
     work.charge_adapter(work.checked_add(shapes, solved.edges.len())?)?;
     let mut entries = Vec::new();
+    let edge_slots = if matches!(captions, CaptionClearance::Avoid) {
+        work.checked_mul(solved.edges.len(), 5)?
+    } else {
+        0
+    };
+    entries
+        .try_reserve_exact(work.checked_add(shapes, edge_slots)?)
+        .map_err(|_| Error::LayoutAllocationFailed { backend: "shoal" })?;
     for (index, &node) in solved.nodes.iter().enumerate() {
         entries.push((bounds(node), ObstacleOwner::Node(index as u32)));
     }
@@ -432,18 +492,15 @@ fn obstacles(solved: &SolvedGraph, work: &mut OperationLayoutWorkControl) -> Res
             entries.push((label_bounds(title), ObstacleOwner::GroupTitle(index as u32)));
         }
     }
-    for (index, edge) in solved.edges.iter().enumerate() {
-        for label in [&edge.label, &edge.start_label, &edge.end_label]
-            .into_iter()
-            .flatten()
-        {
-            entries.push((label_bounds(label), ObstacleOwner::EdgeLabel(index)));
+    if matches!(captions, CaptionClearance::Avoid) {
+        for (index, edge) in solved.edges.iter().enumerate() {
+            for label in [&edge.label, &edge.start_label, &edge.end_label]
+                .into_iter()
+                .flatten()
+            {
+                entries.push((label_bounds(label), ObstacleOwner::EdgeLabel(index)));
+            }
         }
     }
-    let levels = entries
-        .len()
-        .checked_ilog2()
-        .map_or(0, |levels| levels as usize + 1);
-    work.charge_adapter(work.checked_mul(entries.len(), levels)?)?;
-    Ok(AxisClearance::new(entries))
+    Ok(entries)
 }

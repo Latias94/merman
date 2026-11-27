@@ -18,18 +18,9 @@ pub fn write_odd(out: &mut impl SvgOutput, mut body: NodeBodySvg<'_>, label_dx: 
             out,
             r#"<g class="basic label-container outer-path" transform="translate({},0)" style="{}">"#,
             fmt(dx),
-            escape_attr(body.rough_group_style),
+            escape_attr(body.hand_drawn_group_style()),
         );
-        let _ = write!(
-            out,
-            r#"<path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/>"#,
-            escape_attr(&fill_d),
-            escape_attr(body.fill_color),
-            escape_attr(&stroke_d),
-            escape_attr(body.stroke_color),
-            fmt(body.geometry.stroke_width as f64),
-            escape_attr(body.geometry.stroke_dasharray),
-        );
+        body.write_hand_drawn_path_pair(out, &path_data, &fill_d, &stroke_d, 4.0);
         out.push_str("</g>");
     } else if body.geometry.hand_drawn {
         let _ = write!(

@@ -51,6 +51,7 @@ pub struct SceneMetadata<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub enum SceneRole {
+    Depth,
     Node,
     Edge,
     EdgeLabel,
@@ -63,6 +64,7 @@ pub enum SceneRole {
 impl SceneRole {
     const fn as_str(self) -> &'static str {
         match self {
+            Self::Depth => "depth",
             Self::Node => "node",
             Self::Edge => "edge",
             Self::EdgeLabel => "edge-label",
@@ -153,6 +155,8 @@ pub struct SceneMarker<'a> {
     pub height: f64,
     pub units: SceneMarkerUnits,
     pub orient: SceneMarkerOrient,
+    /// Paint the marker stroke with round caps and joins.
+    pub round_stroke: bool,
     pub commands: &'a [ScenePathCommand],
     pub paint: ScenePaint,
 }
@@ -322,6 +326,9 @@ impl SceneSvgWriter<'_, '_> {
         let scope = self.scope;
         let role = group.role.as_str();
         self.emit(format_args!(r#"<g data-scene-role="{role}""#))?;
+        if matches!(group.role, SceneRole::Depth) {
+            self.emit(format_args!(r#" aria-hidden="true" pointer-events="none""#))?;
+        }
         if let Some(id) = group.id {
             self.emit(format_args!(r#" id="{scope}-scene-group-{index}-{id}""#))?;
         }
@@ -393,6 +400,11 @@ impl SceneSvgWriter<'_, '_> {
         self.emit(format_args!(">"))?;
         self.path_open(marker.commands)?;
         self.paint(marker.paint)?;
+        if marker.round_stroke {
+            self.emit(format_args!(
+                r#" stroke-linecap="round" stroke-linejoin="round""#
+            ))?;
+        }
         self.emit(format_args!("/></marker>"))
     }
 

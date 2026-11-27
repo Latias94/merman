@@ -67,11 +67,18 @@ fn hits(points: &[Point], r: Rect) -> bool {
         .any(|leg| leg.x0 < r.x1 && leg.x1 > r.x0 && leg.y0 < r.y1 && leg.y1 > r.y0)
 }
 
+fn node<'a, 'i>(doc: &'a Document<'i>, id: &str) -> Node<'a, 'i> {
+    let legacy_id = format!("{}-{id}", doc.root_element().attribute("id").unwrap());
+    doc.descendants()
+        .find(|n| {
+            (n.attribute("data-et") == Some("node") && n.attribute("data-id") == Some(id))
+                || n.attribute("id") == Some(legacy_id.as_str())
+        })
+        .unwrap()
+}
+
 fn svg_rect(doc: &Document<'_>, id: &str) -> Rect {
-    let group = doc
-        .descendants()
-        .find(|n| n.attribute("id") == Some(id))
-        .unwrap();
+    let group = node(doc, id);
     let rect = group.children().find(|n| n.has_tag_name("rect")).unwrap();
     let origin = translate(group);
     Rect::from_origin_size(
@@ -110,25 +117,22 @@ fn enabled_block_grid_routes_around_a_drawn_box_through_its_composite_shell() {
 
     let doc = Document::parse(&svg).unwrap();
     let legacy = Document::parse(&legacy).unwrap();
-    let blocker = svg_rect(&doc, "block-route-X");
-    let shell = svg_rect(&doc, "block-route-zone");
+    let blocker = svg_rect(&doc, "X");
+    let shell = svg_rect(&doc, "zone");
     let old = BezPath::from_svg(edge(&legacy, "-A-B").attribute("d").unwrap()).unwrap();
     assert!(old.segments().any(|s| blocker.contains(s.eval(0.5))));
     let arrow = edge(&doc, "-A-B");
     let path = axis_path(arrow);
     assert!(!hits(&path, blocker.inflate(0.5, 0.5)));
     assert!(shell.contains(path[0]) && !shell.contains(*path.last().unwrap()));
-    let shell_group = |svg: &str, doc: &Document<'_>| {
-        let g = doc
-            .descendants()
-            .find(|n| n.attribute("id") == Some("block-route-zone"))
-            .unwrap();
-        svg[g.range()].to_owned()
+    let shell_content = |doc: &Document<'_>| {
+        node(doc, "zone")
+            .children()
+            .filter(Node::is_element)
+            .map(|child| doc.input_text()[child.range()].to_owned())
+            .collect::<Vec<_>>()
     };
-    assert_eq!(
-        shell_group(&svg, &doc),
-        shell_group(legacy.input_text(), &legacy)
-    );
+    assert_eq!(shell_content(&doc), shell_content(&legacy));
 
     let points = base64::engine::general_purpose::STANDARD
         .decode(arrow.attribute("data-points").unwrap())
@@ -140,7 +144,7 @@ fn enabled_block_grid_routes_around_a_drawn_box_through_its_composite_shell() {
     for (point, published) in points.iter().zip(published) {
         assert!((point.x - published.x).abs() < 1e-10 && (point.y - published.y).abs() < 1e-10);
     }
-    let target = svg_rect(&doc, "block-route-B");
+    let target = svg_rect(&doc, "B");
     let contact = points.last().unwrap();
     assert!((target.x0 - contact.x).abs() < 1e-3);
     let tip = path.last().unwrap();
@@ -219,7 +223,7 @@ fn enabled_block_grid_keeps_a_label_attached_and_routes_the_other_edge_around_it
     let legacy = Document::parse(&legacy).unwrap();
     let label = doc
         .descendants()
-        .find(|n| n.attribute("data-id") == Some("1-C-D"))
+        .find(|n| n.attribute("class") == Some("label") && n.attribute("data-id") == Some("1-C-D"))
         .unwrap();
     let box_node = label.first_element_child().unwrap();
     assert!(box_node.has_tag_name("foreignObject"));
@@ -237,5 +241,18 @@ fn enabled_block_grid_keeps_a_label_attached_and_routes_the_other_edge_around_it
 #[test]
 fn enabled_block_grid_falls_back_when_an_anchored_label_is_blocked() {
     let source = "block\n  columns 5\n  A space X space B\n  A --\"Over X\"--> B\n";
-    assert_eq!(render(source, true), render(source, false));
+    let (layout, svg) = render(source, true);
+    let (legacy_layout, legacy_svg) = render(source, false);
+    assert_eq!(layout, legacy_layout);
+    let doc = Document::parse(&svg).unwrap();
+    let legacy = Document::parse(&legacy_svg).unwrap();
+    assert_eq!(
+        doc.root_element().attribute("viewBox"),
+        legacy.root_element().attribute("viewBox")
+    );
+    let path = edge(&doc, "-A-B");
+    let legacy_path = edge(&legacy, "-A-B");
+    for attribute in ["d", "data-points", "marker-end"] {
+        assert_eq!(path.attribute(attribute), legacy_path.attribute(attribute));
+    }
 }

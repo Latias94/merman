@@ -326,9 +326,12 @@ fn label_layer(
     }
 }
 
-fn offset(port: PortSideHint) -> f64 {
-    match port {
-        PortSideHint::FixedOffset { offset, .. } => offset,
+fn offset(direction: crate::Direction, port: PortSideHint) -> f64 {
+    match super::to_canonical_port(direction, port) {
+        PortSideHint::FixedOffset {
+            side: crate::Side::Top | crate::Side::Bottom,
+            offset,
+        } => offset,
         _ => 0.0,
     }
 }
@@ -487,12 +490,12 @@ pub(super) fn build(
             g.to.push(pair[1]);
             g.weight.push(e.weight);
             g.source_offset.push(if pair[0] == e.from {
-                offset(source_port)
+                offset(graph.direction, source_port)
             } else {
                 0.0
             });
             g.target_offset.push(if pair[1] == e.to {
-                offset(target_port)
+                offset(graph.direction, target_port)
             } else {
                 0.0
             });
@@ -627,6 +630,42 @@ mod tests {
         assert_eq!(g.target_offset, [0.0, 3.5, 0.0, 0.0]);
         assert_eq!(g.pred.at(1), [1, 3]);
         assert_eq!(g.succ.at(0), [0, 2]);
+    }
+
+    #[test]
+    fn a_lateral_fixed_offset_does_not_shift_the_expand_chain_across_its_rank() {
+        for (direction, source, target) in [
+            (Direction::Up, Side::Left, Side::Right),
+            (Direction::Left, Side::Top, Side::Bottom),
+        ] {
+            let (mut graph, links, order) = input(2, &[(1, 0, 3)]);
+            graph.direction = direction;
+            graph.edges[0].source_port = PortSideHint::FixedOffset {
+                side: source,
+                offset: 8.,
+            };
+            graph.edges[0].target_port = PortSideHint::FixedOffset {
+                side: target,
+                offset: -4.,
+            };
+            let mut g = Expanded::default();
+            build(
+                &graph.nodes,
+                &links,
+                &order,
+                &graph,
+                &Options::default(),
+                &mut Work::new(&mut NoopWorkControl),
+                &mut g,
+            )
+            .unwrap();
+            assert!(
+                g.source_offset
+                    .iter()
+                    .chain(&g.target_offset)
+                    .all(|&offset| offset == 0.)
+            );
+        }
     }
 
     #[test]

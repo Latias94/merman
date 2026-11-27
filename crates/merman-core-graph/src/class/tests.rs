@@ -65,6 +65,40 @@ fn class_model_replay_keeps_warning_prefix_and_grammar_priority() {
 }
 
 #[test]
+fn class_replay_keeps_nested_heads_and_tuple_members() {
+    let source = concat!(
+        "classDiagram\n",
+        "class `Storage Box` ~Map~string, List~int~~, Set~Entry~~ [\"Store\"] {\n",
+        "  +Tuple~(int, string)~ pair\n",
+        "  +save(Tuple~(int, string)~ item) Result~Tuple~(int, string)~~$\n",
+        "}\n",
+        "`Storage Box`~Map~string, List~int~~~ --> Sink\n",
+    );
+    let control = OperationControl::new();
+    let model = ClassSyntax::lex(source, &control)
+        .unwrap()
+        .into_model(
+            &MermaidConfig::empty_object(),
+            "classDiagram",
+            None,
+            &control,
+        )
+        .unwrap()
+        .unwrap();
+    let class = &model.classes["Storage Box"];
+    assert_eq!(class.label, "Store");
+    assert_eq!(class.type_param, "Map<string, List<int>>, Set<Entry>");
+    assert_eq!(class.members[0].display_text, "+Tuple<(int, string)> pair");
+    assert_eq!(class.methods[0].id, "save");
+    assert_eq!(class.methods[0].classifier, "$");
+    assert_eq!(
+        class.methods[0].display_text,
+        "+save(Tuple<(int, string)> item) : Result<Tuple<(int, string)>>"
+    );
+    assert_eq!(model.relations[0].id1, "Storage Box");
+}
+
+#[test]
 #[cfg(feature = "editor-facts")]
 fn normalized_names_preserve_their_authored_byte_spans() {
     let source = concat!(

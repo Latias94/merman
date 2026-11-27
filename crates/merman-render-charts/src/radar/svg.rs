@@ -11,7 +11,7 @@ use merman_render_core::{
         write_mermaid_base_css_prefix, write_mermaid_base_css_root_rule,
     },
     svg_output::{BoundedSvgOutput, SvgOutput, XmlTextOutput},
-    xml::escape_xml,
+    xml::{escape_attr_display, escape_xml},
 };
 
 use super::{
@@ -287,8 +287,7 @@ pub fn render_radar_svg(
                 let points = format_points(&graticule.points);
                 let _ = write!(
                     &mut out,
-                    r#"<polygon points="{points}" class="radarGraticule"/>"#,
-                    points = escape_xml(&points)
+                    r#"<polygon points="{points}" class="radarGraticule"/>"#
                 );
             }
         } else if let Some(r) = graticule.r {
@@ -309,14 +308,13 @@ pub fn render_radar_svg(
             let _ = write!(
                 &mut out,
                 r#"<polygon points="{points}" class="radarCurve-{idx}"/>"#,
-                points = escape_xml(&points),
                 idx = curve.class_index
             );
         } else {
             let _ = write!(
                 &mut out,
                 r#"<path d="{d}" class="radarCurve-{idx}"/>"#,
-                d = escape_xml(&curve.path_d),
+                d = escape_attr_display(&curve.path_d),
                 idx = curve.class_index
             );
         }

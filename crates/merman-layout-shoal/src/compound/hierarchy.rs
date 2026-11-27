@@ -1,13 +1,15 @@
 use crate::validate;
 use crate::work::{LayoutResult, Work, filled, push, reserved};
 use crate::{
-    Direction, Endpoint, Graph, GroupId, LayoutError, NodeId, Options, PortSideHint, WorkError,
+    Axis, Direction, Endpoint, Graph, GroupId, GroupSpec, LayoutError, NodeId, NodeSpec, Options,
+    PortSideHint, WorkError,
 };
 
 #[derive(Debug)]
 pub(super) struct Hierarchy {
     pub(super) levels: Vec<Level>,
     pub(super) order: Vec<usize>,
+    pub(super) depth: usize,
     pub(super) borders: Vec<Border>,
     pub(super) paths: Vec<Vec<(usize, usize)>>,
     pub(super) truncated: usize,
@@ -155,12 +157,12 @@ fn validate_endpoint(graph: &Graph, endpoint: Endpoint, port: PortSideHint) -> L
     }
 }
 
-fn normalize_parents(graph: &Graph, work: &mut Work<'_>) -> LayoutResult<Vec<usize>> {
-    let root = graph.groups.len();
+fn normalize_parents(groups: &[GroupSpec], work: &mut Work<'_>) -> LayoutResult<Vec<usize>> {
+    let root = groups.len();
     let count = root.checked_add(1).ok_or(WorkError::ArithmeticOverflow)?;
     admit(count, 2, work)?;
     let mut parents = reserved(count)?;
-    for group in &graph.groups {
+    for group in groups {
         work.visit(1)?;
         if !validate::measured_group(group) {
             return Err(LayoutError::InvalidInput("invalid group measurements"));
@@ -203,6 +205,86 @@ fn normalize_parents(graph: &Graph, work: &mut Work<'_>) -> LayoutResult<Vec<usi
         }
     }
     Ok(parents)
+}
+
+pub(crate) struct AuthoredLevels {
+    parents: Vec<usize>,
+    directions: Vec<Option<Direction>>,
+    root_direction: Direction,
+}
+
+impl AuthoredLevels {
+    pub(crate) fn axis(&self, level: Option<GroupId>) -> Axis {
+        let direction = level.and_then(|id| self.directions[id.0 as usize]);
+        direction.unwrap_or(self.root_direction).axis()
+    }
+
+    pub(crate) fn group_port_axis(
+        &self,
+        group: GroupId,
+        opposite: Endpoint,
+        nodes: &[NodeSpec],
+        work: &mut Work<'_>,
+    ) -> LayoutResult<Axis> {
+        let root = self.parents.len() - 1;
+        let outer = self.parents[group.0 as usize];
+        let outer_axis = self.directions[outer].unwrap_or(self.root_direction).axis();
+        let inner_axis = self.axis(Some(group));
+        if outer_axis == inner_axis || opposite == Endpoint::Group(group) {
+            return Ok(outer_axis);
+        }
+
+        // An edge to a descendant attaches to the group's own boundary. Otherwise the parent
+        // routes the contact on the group as an item, including an edge from the group to itself.
+        let mut level = match opposite {
+            Endpoint::Node(id) => nodes[id.0 as usize].parent.map_or(root, |id| id.0 as usize),
+            Endpoint::Group(id) => id.0 as usize,
+        };
+        while level != root && level != group.0 as usize {
+            work.visit(1)?;
+            level = self.parents[level];
+        }
+        Ok(if level == root {
+            outer_axis
+        } else {
+            inner_axis
+        })
+    }
+}
+
+// Width turns honor authored directions even where the natural trial inherited a crossed scope.
+pub(crate) fn authored_directions(
+    groups: &[GroupSpec],
+    root_direction: Direction,
+    work: &mut Work<'_>,
+) -> LayoutResult<AuthoredLevels> {
+    let parents = normalize_parents(groups, work)?;
+    work.charge(parents.len())?;
+    let mut directions = reserved(parents.len())?;
+    directions.extend(groups.iter().map(|group| group.direction));
+    directions.push(Some(root_direction));
+    let mut path = Vec::new();
+    for start in 0..groups.len() {
+        work.visit(1)?;
+        let mut at = start;
+        let inherited = loop {
+            if let Some(direction) = directions[at] {
+                break direction;
+            }
+            work.visit(1)?;
+            push(&mut path, at)?;
+            at = parents[at];
+        };
+        work.visit(path.len())?;
+        for group in path.drain(..) {
+            directions[group] = Some(inherited);
+        }
+    }
+    Ok(AuthoredLevels {
+        parents,
+        directions,
+        root_direction,
+    })
 }
 
 fn breadth_first(
@@ -409,6 +491,7 @@ impl Hierarchy {
         Ok(Self {
             levels,
             order,
+            depth: 0,
             borders: Vec::new(),
             paths: reserved(graph.edges.len())?,
             truncated: 0,
@@ -561,7 +644,7 @@ pub(super) fn build(
         .len()
         .checked_add(graph.groups.len())
         .ok_or(WorkError::ArithmeticOverflow)?;
-    let mut parents = normalize_parents(graph, work)?;
+    let mut parents = normalize_parents(&graph.groups, work)?;
     let lanes = if graph.lane_order.is_empty() {
         None
     } else {
@@ -574,6 +657,7 @@ pub(super) fn build(
     };
     let mut hierarchy = Hierarchy::new(graph, &parents, lanes, work)?;
     let tree = Tree::index(parents, &hierarchy.order, work)?;
+    hierarchy.depth = tree.depth[*hierarchy.order.last().expect("root level")];
     work.charge(tree.parent.len())?;
     let mut crossed = filled(tree.parent.len(), 0_i64)?;
     let mut remaining = options.caps.max_border_ports;

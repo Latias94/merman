@@ -43,6 +43,8 @@ pub(super) fn render_c4_diagram_svg_typed(
             viewport: options.root_viewport(DiagramFamilyId::C4, diagram_id),
             work_meter: options.work_meter(),
             operation: options.family.session().operation_context(),
+            #[cfg(feature = "layout-shoal")]
+            text_measurer: options.text_measurer(),
         },
     )
 }

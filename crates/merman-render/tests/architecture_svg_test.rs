@@ -33,6 +33,103 @@ const DEEP_ARCHITECTURE_RENDER_STACK_SIZE: usize = 512 * 1024;
 #[cfg(not(windows))]
 const DEEP_ARCHITECTURE_RENDER_STACK_SIZE: usize = 128 * 1024;
 
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_architecture_sketch_paints_the_shaft_and_covers_all_caption_rows() {
+    let source = r##"---
+config:
+  layout: shoal
+  look: neo
+---
+architecture-beta
+service api[API]
+service worker[Worker]
+api:R -[Write Stream<br/>Parquet]-> L:worker
+"##;
+    let render = |edge_style| {
+        let parsed = MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let theme = ThemeCompiler::new()
+            .compile_json(
+                json!({"schema_version": 2, "extends": "studio", "roles": {"canvas": "#243648"},
+                    "form": {"edge_style": edge_style, "elevation": "flat"}})
+                .to_string()
+                .as_bytes(),
+                None,
+            )
+            .unwrap();
+        let session = RenderEnvironment::deterministic()
+            .begin_session_with_native_theme(NativeTheme::new(theme))
+            .unwrap();
+        family::prepare(
+            parsed.presentation(),
+            &LayoutOptions::headless_svg_defaults(),
+            session,
+        )
+        .unwrap()
+        .render_svg(&Default::default(), &Default::default())
+        .unwrap()
+        .svg()
+        .to_owned()
+    };
+
+    let straight = render("straight");
+    let straight = roxmltree::Document::parse(&straight).unwrap();
+    let sketch = render("sketch");
+    let sketch = roxmltree::Document::parse(&sketch).unwrap();
+    let shaft = |document: &roxmltree::Document<'_>| {
+        let path = document
+            .descendants()
+            .find(|node| node.attribute("data-et") == Some("edge"))
+            .unwrap();
+        (
+            path.attribute("d").unwrap().to_owned(),
+            path.attribute("data-points").unwrap().to_owned(),
+        )
+    };
+    let (d, points) = shaft(&sketch);
+    let (straight_d, straight_points) = shaft(&straight);
+    assert!(d.contains('C'), "sketch must paint cubic strokes: {d}");
+    assert_ne!(d, straight_d);
+    assert_eq!(points, straight_points);
+
+    let caption = sketch
+        .descendants()
+        .find(|node| node.attribute("data-et") == Some("edge-label"))
+        .unwrap();
+    let backplate = caption
+        .descendants()
+        .find(|node| node.has_tag_name("rect"))
+        .unwrap();
+    assert_eq!(backplate.attribute("fill"), Some("#243648"));
+    let size = |name| backplate.attribute(name).unwrap().parse::<f64>().unwrap();
+    assert!(size("width") > 40.0 && size("height") > 24.0);
+    assert_eq!(
+        caption
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("text-outer-tspan row"))
+            .count(),
+        2
+    );
+
+    let root = sketch.root_element();
+    let scope = root.attribute("id").unwrap();
+    for suffix in ["drop-shadow", "drop-shadow-small"] {
+        let id = format!("{scope}-{suffix}");
+        assert_eq!(
+            root.descendants()
+                .filter(
+                    |node| node.has_tag_name("filter") && node.attribute("id") == Some(id.as_str())
+                )
+                .count(),
+            1,
+            "missing {id}"
+        );
+    }
+}
+
 #[test]
 fn native_theme_v2_architecture_layers_service_cards_and_owns_edge_color() {
     let parsed = MermaidEngine::new()

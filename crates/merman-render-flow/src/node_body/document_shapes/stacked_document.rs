@@ -2,10 +2,10 @@
 
 use merman_render_core::{
     number_format::canonical_number as fmt, rough_svg::paths::RoughGeometryTarget,
-    svg_output::SvgOutput, xml::escape_xml_display,
+    svg_output::SvgOutput,
 };
 
-use super::super::{NodeBodyGeometry, NodeBodySvg, prepare_node_path};
+use super::super::{NodeBodyGeometry, NodeBodySvg, escape_attr, prepare_node_path};
 use super::path_from_points;
 
 pub struct StackedDocumentBody {
@@ -29,7 +29,7 @@ impl StackedDocumentBody {
                 out,
                 r#"<g class="basic label-container outer-path" transform="translate(0,{})" style="{}">"#,
                 fmt(self.group_dy),
-                escape_xml_display(body.rough_group_style),
+                escape_attr(body.hand_drawn_group_style()),
             );
         } else {
             let _ = write!(
@@ -61,39 +61,31 @@ fn write_layer(out: &mut impl SvgOutput, body: &mut NodeBodySvg<'_>, path: &str)
     };
     if let Some((fill_d, stroke_d)) = paths {
         if body.geometry.hand_drawn {
-            let _ = write!(
-                out,
-                r#"<path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/>"#,
-                escape_xml_display(&fill_d),
-                escape_xml_display(body.fill_color),
-                escape_xml_display(&stroke_d),
-                escape_xml_display(body.stroke_color),
-                fmt(body.geometry.stroke_width as f64),
-                escape_xml_display(body.geometry.stroke_dasharray),
-            );
+            body.write_hand_drawn_path_pair(out, path, &fill_d, &stroke_d, 4.0);
         } else {
             let _ = write!(
                 out,
                 r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
-                escape_xml_display(&fill_d),
-                escape_xml_display(body.fill_color),
-                escape_xml_display(body.style),
-                escape_xml_display(&stroke_d),
-                escape_xml_display(body.stroke_color),
+                escape_attr(&fill_d),
+                escape_attr(body.fill_color),
+                escape_attr(body.style),
+                escape_attr(&stroke_d),
+                escape_attr(body.stroke_color),
                 fmt(body.geometry.stroke_width as f64),
-                escape_xml_display(body.geometry.stroke_dasharray),
-                escape_xml_display(body.style),
+                escape_attr(body.geometry.stroke_dasharray),
+                escape_attr(body.style),
             );
         }
     } else if body.geometry.hand_drawn {
+        let style = body.grouped_child_style();
         let _ = write!(
             out,
             r#"<path d="{}" fill="{}" stroke="{}" stroke-width="{}" style="{}"/>"#,
-            escape_xml_display(path),
-            escape_xml_display(body.fill_color),
-            escape_xml_display(body.stroke_color),
+            escape_attr(path),
+            escape_attr(body.fill_color),
+            escape_attr(body.stroke_color),
             fmt(body.geometry.stroke_width as f64),
-            escape_xml_display(body.style),
+            escape_attr(&style),
         );
     }
 }

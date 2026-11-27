@@ -54,6 +54,7 @@ pub enum FlowchartNodeLayoutView<'a> {
         solved_parents: Option<&'a [Option<u32>]>,
         uses_elk_adapter_dom: bool,
         uses_projected_edges: bool,
+        canonical: bool,
     },
     Swimlane {
         nodes: &'a [SwimlaneNodeLayout],
@@ -374,17 +375,18 @@ impl FlowchartPreparedNodes {
         } else {
             &typography.text_style
         };
-        let (owners, use_projected_edges) = match layout {
+        let (owners, use_projected_edges, canonical) = match layout {
             FlowchartNodeLayoutView::Flowchart {
                 edge_owners,
                 uses_projected_edges,
+                canonical,
                 ..
-            } => (edge_owners, uses_projected_edges),
+            } => (edge_owners, uses_projected_edges, canonical),
             FlowchartNodeLayoutView::Swimlane {
                 edge_owners,
                 canonical,
                 ..
-            } => (edge_owners, canonical),
+            } => (edge_owners, canonical, canonical),
         };
         let helper_ids =
             flowchart_helper_node_ids(model, render_context, owners, use_projected_edges);
@@ -397,7 +399,13 @@ impl FlowchartPreparedNodes {
             render_context,
             use_projected_edges,
         );
-        let render_model = FlowchartRenderModelRef::new(model, render_context);
+        let mut render_model = FlowchartRenderModelRef::new(model, render_context);
+        if canonical {
+            render_model = render_model.with_shoal_svg_text(
+                render_config.node_html_labels,
+                render_config.edge_html_labels,
+            );
+        }
         let selection_inputs = NodeSelectionInputs::new(
             &prepared_theme.compatibility,
             render_config,

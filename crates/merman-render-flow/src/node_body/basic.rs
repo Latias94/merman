@@ -1,5 +1,7 @@
 //! Flowchart v2 basic geometry shapes.
 
+use std::borrow::Cow;
+
 use merman_model::OperationPhase;
 use merman_render_core::{
     Result,
@@ -20,7 +22,7 @@ use crate::{
     style::flowchart_split_mermaid_style_decls,
 };
 
-use super::{NodeBodyGeometry, NodeBodySvg, OptionalStyleAttr, escape_attr, fmt};
+use super::{NodeBodyGeometry, NodeBodySvg, OptionalStyleAttr, circle_backing, escape_attr, fmt};
 
 mod hexagon;
 mod odd;
@@ -46,12 +48,12 @@ pub fn write_diamond(
     let tx = -w / 2.0 + if centered_diamond { 0.0 } else { 0.5 };
     let ty = h / 2.0;
 
-    let rough_paths = if body.geometry.hand_drawn {
+    if body.geometry.hand_drawn {
         // RoughJS normalizes this path to a left-edge hachure start. `roughr` is start-point
         // sensitive for this diamond, so feed the same polygon from the left vertex to keep the
         // hand-drawn silhouette centered instead of visually skewing into a parallelogram.
         let path_data = diamond_path(w, h);
-        body.timed_rough(|geometry| {
+        if let Some((fill_d, stroke_d)) = body.timed_rough(|geometry| {
             roughjs_hachure_paths_for_svg_path(
                 &path_data,
                 geometry.stroke_width,
@@ -62,27 +64,24 @@ pub fn write_diamond(
                 geometry.work_meter,
                 geometry.randomness,
             )
-        })
-    } else {
-        None
-    };
-
-    if let Some((fill_d, stroke_d)) = rough_paths {
-        let _ = write!(
-            out,
-            r#"<g transform="translate({},{})" style="{}"><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"#,
-            fmt(tx),
-            fmt(ty),
-            escape_attr(body.rough_group_style),
-            escape_attr(&fill_d),
-            escape_attr(body.fill_color),
-            fmt(FLOWCHART_DIAMOND_HAND_DRAWN_FILL_WEIGHT as f64),
-            escape_attr(&stroke_d),
-            escape_attr(body.stroke_color),
-            fmt(body.geometry.stroke_width as f64),
-            escape_attr(body.geometry.stroke_dasharray),
-        );
-        return;
+        }) {
+            let _ = write!(
+                out,
+                r#"<g transform="translate({},{})" style="{}">"#,
+                fmt(tx),
+                fmt(ty),
+                escape_attr(body.hand_drawn_group_style()),
+            );
+            body.write_hand_drawn_path_pair(
+                out,
+                &path_data,
+                &fill_d,
+                &stroke_d,
+                f64::from(FLOWCHART_DIAMOND_HAND_DRAWN_FILL_WEIGHT),
+            );
+            out.push_str("</g>");
+            return;
+        }
     }
 
     let effect_style;
@@ -132,9 +131,9 @@ pub fn write_circle(
             let _ = write!(
                 out,
                 r#"<g class="basic label-container" style="{}">"#,
-                escape_attr(&hand_drawn_circle_style(source_styles)),
+                escape_attr(&circle_group_style(&body, source_styles)),
             );
-            write_rough_circle_paths(out, &body, &paths, body.geometry.stroke_width);
+            write_rough_circle_paths(out, &body, &paths, body.geometry.stroke_width, r);
             out.push_str("</g>");
             out.checkpoint()?;
             return Ok(());
@@ -204,11 +203,11 @@ pub fn write_double_circle(
                 out,
                 r#"<g class="{}" style="{}"><g>"#,
                 escape_attr(&classes),
-                escape_attr(&hand_drawn_circle_style(source_styles)),
+                escape_attr(&circle_group_style(&body, source_styles)),
             );
-            write_rough_circle_paths(out, &body, &outer, 2.5);
+            write_rough_circle_paths(out, &body, &outer, 2.5, rings.outer_radius);
             out.push_str("</g><g>");
-            write_rough_circle_paths(out, &body, &inner, 1.5);
+            write_rough_circle_paths(out, &body, &inner, 1.5, rings.inner_radius);
             out.push_str("</g></g>");
             out.checkpoint()?;
             return Ok(());
@@ -219,13 +218,14 @@ pub fn write_double_circle(
     } else {
         ""
     };
+    let child_style = body.grouped_child_style();
     let _ = write!(
         out,
         r#"<g class="basic label-container" style="{}{}"><circle class="outer-circle" cx="0" cy="0" r="{}" style="{}"#,
         escape_attr(body.style),
         effect_filter_style,
         fmt(rings.outer_radius),
-        escape_attr(body.style),
+        escape_attr(&child_style),
     );
     if suppress_neo_filter {
         out.push_str(SUPPRESS_NEO_FILTER_STYLE);
@@ -234,7 +234,7 @@ pub fn write_double_circle(
         out,
         r#""/><circle class="inner-circle" cx="0" cy="0" r="{}" style="{}"#,
         fmt(rings.inner_radius),
-        escape_attr(body.style)
+        escape_attr(&child_style)
     );
     if suppress_neo_filter {
         out.push_str(SUPPRESS_NEO_FILTER_STYLE);
@@ -256,18 +256,22 @@ fn hand_drawn_circle_style(styles: &[String]) -> String {
         .join(",")
 }
 
+fn circle_group_style<'a>(body: &NodeBodySvg<'a>, source_styles: &[String]) -> Cow<'a, str> {
+    if body.rough_fill_opacity.is_some() {
+        Cow::Borrowed(body.style)
+    } else {
+        Cow::Owned(hand_drawn_circle_style(source_styles))
+    }
+}
+
 fn write_rough_circle_paths(
     out: &mut impl SvgOutput,
     body: &NodeBodySvg<'_>,
     paths: &(String, String),
     stroke_width: f32,
+    radius: f64,
 ) {
-    let _ = write!(
-        out,
-        r#"<path d="{}" stroke="{}" stroke-width="1.5" fill="none" stroke-dasharray="0 0"/>"#,
-        escape_attr(&paths.0),
-        escape_attr(body.fill_color),
-    );
+    body.write_hachure(out, &circle_backing(body, radius), &paths.0, 1.5);
     // RoughGenerator.ellipse still generates the outline before the fill for PRNG ordering,
     // but excludes that opset from the drawable when the requested stroke is "none".
     if body.stroke_color != "none" {

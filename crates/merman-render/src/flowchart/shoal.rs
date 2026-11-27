@@ -5,13 +5,12 @@ mod groups;
 use super::measured::{FlowchartMeasurement, MeasuredNode as LeafSize};
 use super::{
     FlowchartConfigView, FlowchartEdgeOwners, FlowchartRenderModelRef, FlowchartSvgLabelOwner,
-    FlowchartSvgLabelSidecarBuilder, ProjectedFlowchartEdge,
+    FlowchartSvgLabelSidecarBuilder,
 };
 use crate::graph_layout::axis_clearance::AxisClearance;
 use crate::graph_layout::contour::{ShapePortProfile, shoal_contour};
 use crate::graph_layout::ir::{
-    Axis, Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredNode, RoutingStyle, Side, Size,
-    SolvedGraph,
+    Axis, Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredNode, Side, Size, SolvedGraph,
 };
 use crate::graph_layout::{
     AxisRoutes, FlowchartSvgEdgeGeometry, RouteContract, RouteTopology, placement,
@@ -24,6 +23,7 @@ use merman_model::families::flowchart::{FlowchartModel, FlowchartRenderContext};
 use merman_model::presentation::PresentationConfig;
 use merman_render_flow::edge_labels::HTML_EDGE_LABEL_INSET_PX;
 use merman_render_flow::node_geometry::contour as flow_contour;
+use merman_render_flow::projection::ProjectedFlowchartEdge;
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 
@@ -39,7 +39,10 @@ fn admit_paint_clearance(
     }
     let shapes = work.checked_add(nodes, clusters)?;
     work.charge_adapter(work.checked_add(shapes, edges)?)?;
-    let boxes = work.checked_add(shapes, labels)?;
+    let boxes = work.checked_add(
+        work.checked_add(shapes, labels)?,
+        work.checked_mul(edges, 2)?,
+    )?;
     let levels = boxes.checked_ilog2().unwrap_or(0) as usize + 1;
     work.charge_adapter(work.checked_mul(boxes, levels)?)
 }
@@ -60,7 +63,11 @@ pub(crate) fn layout(
 ) -> Result<FlowchartLayout> {
     let mut work = OperationLayoutWorkControl::new(execution.work_meter());
     work.charge_adapter(0)?;
-    let view = FlowchartRenderModelRef::new(model, render_context);
+    let config_view = FlowchartConfigView::new(config);
+    let view = FlowchartRenderModelRef::new(model, render_context).with_shoal_svg_text(
+        config_view.node_html_labels(),
+        config_view.effective_html_labels(),
+    );
     let measurement = FlowchartMeasurement::new(
         view,
         class_defs,
@@ -169,11 +176,8 @@ fn measure(
         .flatten();
     let mut graph = MeasuredGraph {
         direction,
-        routing: match curve {
-            "rounded" | "step" | "stepBefore" | "stepAfter" => RoutingStyle::Orthogonal,
-            "linear" => RoutingStyle::Polyline,
-            _ => RoutingStyle::Curved,
-        },
+        routing: crate::graph_layout::route_paint::RouteStyle::from_interpolate(curve, 0.0)
+            .routing_style(),
         node_spacing: measurement.settings.nodesep,
         rank_spacing: measurement.settings.ranksep,
         component_spacing: measurement.settings.nodesep,

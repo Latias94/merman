@@ -5,7 +5,7 @@ use super::{
     Component, Expanded, Kind, acyclic::Orientation, position::extents, to_canonical_port,
 };
 use crate::scratch::{capacity_bytes, clear_reserve};
-use crate::work::{LayoutResult, Work};
+use crate::work::{LayoutResult, Work, filled};
 use crate::{Direction, Graph, LayoutError, Options, PortSideHint, RoutingStyle, Side, WorkError};
 
 mod mental_map;
@@ -128,6 +128,7 @@ struct Geometry<'a> {
     columns: Option<super::lanes::Columns<'a>>,
     data: &'a mut GeometryScratch,
     envelope: Interval,
+    boundary_pitch: f64,
     has_position_hints: bool,
 }
 
@@ -170,6 +171,7 @@ impl<'a> Geometry<'a> {
             g,
             columns: None,
             data: geometry,
+            boundary_pitch: options.spacing.edge.max(MIN_BOUNDARY_PITCH),
             envelope: Interval {
                 lo: f64::INFINITY,
                 hi: f64::NEG_INFINITY,
@@ -742,6 +744,24 @@ fn weighted_pava(
     pools: &mut Vec<Pool>,
     weight: impl Fn(usize) -> f64,
 ) -> bool {
+    if values.is_empty() {
+        return true;
+    }
+    if bounds.contains(values[0])
+        && bounds.contains(values[values.len() - 1])
+        && values
+            .windows(2)
+            .zip(gap.iter().skip(1))
+            .all(|(pair, &gap)| {
+                if zero_gap == ZeroGap::Equal && gap == 0.0 {
+                    pair[0] == pair[1]
+                } else {
+                    pair[1] - pair[0] >= gap
+                }
+            })
+    {
+        return true;
+    }
     let total = gap.iter().skip(1).sum::<f64>();
     let hi = bounds.hi - total;
     if bounds.lo.is_nan() || hi.is_nan() || bounds.lo > hi {
@@ -1181,7 +1201,11 @@ fn lerp(s: &Geometry<'_>, a: u32, b: u32, v: u32, from: f64, to: f64) -> f64 {
 
 fn align_ports(
     s: &mut Geometry<'_>,
-    targets: &mut Vec<f64>,
+    RowScratch {
+        values,
+        gaps,
+        pools,
+    }: &mut RowScratch,
     work: &mut Work<'_>,
 ) -> LayoutResult<()> {
     let g = s.g;
@@ -1193,7 +1217,7 @@ fn align_ports(
         else {
             continue;
         };
-        let target = |v: usize| -> Option<f64> {
+        let target = |s: &Geometry<'_>, v: usize| -> Option<f64> {
             let [edge] = incident(g, v, side) else {
                 return None;
             };
@@ -1205,23 +1229,65 @@ fn align_ports(
             Some(s.at(attached, 1 - side) - s.data.dx[side][edge])
         };
         work.charge(row.len())?;
-        clear_reserve(targets, row.len())?;
-        let mut last_right = f64::NEG_INFINITY;
-        for &v in row {
+        clear_reserve(values, row.len())?;
+        clear_reserve(gaps, row.len())?;
+        clear_reserve(pools, row.len())?;
+        let pitch = |a: u32, b: u32| {
+            g.width[a as usize] * 0.5 + MIN_BOUNDARY_PITCH + g.width[b as usize] * 0.5
+        };
+        let mut first = 0;
+        for end in 0..=row.len() {
             work.visit(1)?;
-            let v = v as usize;
-            let Some(at) = target(v) else { break };
-            let half = g.width[v] * 0.5;
-            if at - half < last_right + MIN_BOUNDARY_PITCH {
-                break;
+            if let Some(&v) = row.get(end)
+                && let Some(at) = target(s, v as usize)
+            {
+                gaps.push(if let Some(&before) = values.last() {
+                    let minimum = pitch(row[end - 1], v);
+                    if at - before < minimum {
+                        minimum + (s.boundary_pitch - MIN_BOUNDARY_PITCH)
+                    } else {
+                        minimum
+                    }
+                } else {
+                    0.0
+                });
+                values.push(at);
+                continue;
             }
-            targets.push(at);
-            last_right = at + half;
-        }
-        if targets.len() == row.len() {
-            for (&v, &at) in row.iter().zip(targets.iter()) {
-                s.data.x[v as usize] = at;
+            if first < end {
+                let room = Interval {
+                    lo: if first == 0 {
+                        f64::NEG_INFINITY
+                    } else {
+                        s.data.x[row[first - 1] as usize] + pitch(row[first - 1], row[first])
+                    },
+                    hi: if end == row.len() {
+                        f64::INFINITY
+                    } else {
+                        s.data.x[row[end] as usize] - pitch(row[end - 1], row[end])
+                    },
+                };
+                work.visit(values.len())?;
+                let mut fits = pava(values, gaps, room, ZeroGap::Ordered, pools);
+                if !fits {
+                    // Preferred pitch may exceed the span between pinned ports. Retry at the
+                    // validated minimum spacing before giving up the whole run.
+                    work.visit(gaps.len())?;
+                    for (gap, pair) in gaps[1..].iter_mut().zip(row[first..end].windows(2)) {
+                        *gap = pitch(pair[0], pair[1]);
+                    }
+                    work.visit(values.len())?;
+                    fits = pava(values, gaps, room, ZeroGap::Ordered, pools);
+                }
+                if fits {
+                    for (&v, &at) in row[first..end].iter().zip(values.iter()) {
+                        s.data.x[v as usize] = at;
+                    }
+                }
             }
+            values.clear();
+            gaps.clear();
+            first = end + 1;
         }
     }
     Ok(())
@@ -1410,6 +1476,13 @@ fn straighten(
     let g = s.g;
     let sep = options.spacing.edge;
     let curved = options.routing == RoutingStyle::Curved;
+    let across = |s: &Geometry<'_>, lo, hi, v, a, b| {
+        if options.routing == RoutingStyle::Orthogonal {
+            a
+        } else {
+            lerp(s, lo, hi, v, a, b)
+        }
+    };
     let PassScratch {
         want,
         indices: twins,
@@ -1438,7 +1511,7 @@ fn straighten(
             let (a, b) = chord(s, chain, lo, i);
             work.visit(i - lo)?;
             for &v in &chain[lo + 1..i] {
-                want[v as usize] = lerp(s, chain[lo], chain[i], v, a, b);
+                want[v as usize] = across(s, chain[lo], chain[i], v, a, b);
             }
         }
     }
@@ -1468,9 +1541,21 @@ fn straighten(
             (s.data.twin[a], s.data.pos[a]).cmp(&(s.data.twin[b], s.data.pos[b]))
         })?;
         for group in twins.chunk_by(|&a, &b| s.data.twin[a] == s.data.twin[b]) {
-            let center = want[group[0]].midpoint(want[*group.last().unwrap()]);
-            for (k, &v) in group.iter().enumerate() {
-                want[v] = center + (k as f64 - (group.len() - 1) as f64 * 0.5) * sep;
+            work.visit(group.len())?;
+            if group
+                .windows(2)
+                .all(|pair| want[pair[1]] - want[pair[0]] >= sep)
+            {
+                continue;
+            }
+            values.clear();
+            values.extend(group.iter().map(|&v| want[v]));
+            gaps.clear();
+            gaps.resize(group.len(), sep);
+            if pava(values, gaps, Interval::ALL, ZeroGap::Ordered, pools) {
+                for (&v, &value) in group.iter().zip(values.iter()) {
+                    want[v] = value;
+                }
             }
         }
         let mut first = 0;
@@ -1545,7 +1630,7 @@ fn straighten(
             g.kind[v] == Kind::Dummy
                 && (s.data.bare[r] || !curved && s.data.labels_only[r])
                 && !s.data.protected[v]
-                && s.data.twin[v] == END
+                && (s.data.twin[v] == END || (sep > 0.0 && s.data.bare[r]))
         };
         let mut i = 1;
         while i + 1 < chain.len() {
@@ -1576,10 +1661,15 @@ fn straighten(
                 let mut blocker = None;
                 for k in lo + 1..hi {
                     let v = chain[k] as usize;
-                    let desired = lerp(s, chain[lo], chain[hi], chain[k], a, b);
-                    if (clearance
-                        .get(v)
-                        .is_some_and(|room| !room.contains(a.min(b)) || !room.contains(a.max(b)))
+                    let desired = across(s, chain[lo], chain[hi], chain[k], a, b);
+                    // A twin can omit the waypoint only when its chord already has the
+                    // projected separation. A tightened lane needs its own waypoint.
+                    let displaced_twin =
+                        s.data.twin[v] != END && (desired - s.data.x[v]).abs() >= COLLINEAR;
+                    if (displaced_twin
+                        || clearance.get(v).is_some_and(|room| {
+                            !room.contains(a.min(b)) || !room.contains(a.max(b))
+                        })
                         || !s.movable(v).contains(desired))
                         && blocker.is_none_or(|old: usize| k.abs_diff(mid) < old.abs_diff(mid))
                     {
@@ -1591,7 +1681,7 @@ fn straighten(
                     crate::work::push(ranges, (k, hi))?;
                 } else {
                     for &v in &chain[lo + 1..hi] {
-                        s.data.x[v as usize] = lerp(s, chain[lo], chain[hi], v, a, b);
+                        s.data.x[v as usize] = across(s, chain[lo], chain[hi], v, a, b);
                         s.data.keep[v as usize] = false;
                     }
                 }
@@ -1760,11 +1850,11 @@ fn refine_with_scratch(
         )?;
     }
     if c.boundaries {
-        align_ports(&mut s, &mut passes.row.values, work)?;
+        align_ports(&mut s, &mut passes.row, work)?;
     }
     straighten(&mut s, options, passes, work)?;
     if c.boundaries {
-        align_ports(&mut s, &mut passes.row.values, work)?;
+        align_ports(&mut s, &mut passes.row, work)?;
     }
     if s.data
         .x
@@ -1777,6 +1867,119 @@ fn refine_with_scratch(
     }
     work.charge(x.len())?;
     work.finish()
+}
+
+// Rejoin straight chains whose contacts moved after terminal docking. Row neighbors and
+// protected waypoints retain the clearances established during refinement.
+pub(super) fn follow_final_ports(
+    g: &Expanded,
+    options: &Options,
+    x: &mut [f64],
+    columns: Option<super::lanes::Columns<'_>>,
+    old_offsets: &[[f64; 2]],
+    docked: impl Fn(usize) -> bool,
+    work: &mut Work<'_>,
+) -> LayoutResult<()> {
+    let geometry = &g.refine_scratch.geometry;
+    let mut segment = 0;
+    let mut proposals = None;
+    for (edge, chain) in g.chains.iter().enumerate() {
+        work.visit(1)?;
+        if g.direct[edge] {
+            continue;
+        }
+        let first = segment;
+        segment += chain.len() - 1;
+        let last = segment - 1;
+        let [old_source, old_target] = old_offsets[edge];
+        if chain.len() < 3
+            || docked(edge)
+            || (old_source == g.source_offset[first] && old_target == g.target_offset[last])
+        {
+            continue;
+        }
+        let a = chain[0] as usize;
+        let b = *chain.last().unwrap() as usize;
+        let contact = |v: usize, offset: f64| (x[v] - g.width[v] / 2.0) + g.width[v] / 2.0 + offset;
+        let from = contact(a, g.source_offset[first]);
+        let to = contact(b, g.target_offset[last]);
+        let old_from = contact(a, old_source);
+        let old_to = contact(b, old_target);
+        let orthogonal = options.routing == RoutingStyle::Orthogonal;
+        let on_chord = |v: usize, from: f64, to: f64| {
+            let rank = |v: usize| g.logical_rank[g.rank[v] as usize];
+            let t = (rank(v) - rank(a)) as f64 / (rank(b) - rank(a)) as f64;
+            if orthogonal {
+                from
+            } else {
+                from + (to - from) * t
+            }
+        };
+        let interiors = &chain[1..chain.len() - 1];
+        work.visit(interiors.len())?;
+        for &v in interiors {
+            let v = v as usize;
+            let desired = on_chord(v, from, to);
+            let previous = on_chord(v, old_from, old_to);
+            let room = {
+                let row = &g.layers[g.rank[v] as usize];
+                let slot = geometry.pos[v];
+                let (left, right) = geometry.extent[v];
+                let lo = slot.checked_sub(1).map_or(f64::NEG_INFINITY, |slot| {
+                    let neighbor = row[slot];
+                    x[neighbor as usize] + geometry.extent[neighbor as usize].1 + left
+                });
+                let hi = row.get(slot + 1).map_or(f64::INFINITY, |&neighbor| {
+                    x[neighbor as usize] - geometry.extent[neighbor as usize].0 - right
+                });
+                let [lane_lo, lane_hi] = columns
+                    .map_or([f64::NEG_INFINITY, f64::INFINITY], |columns| {
+                        columns.content[columns.owners[v]]
+                    });
+                Interval {
+                    lo: lo.max(lane_lo + left),
+                    hi: hi.min(lane_hi - right),
+                }
+            };
+            if g.kind[v] == Kind::Dummy
+                && !geometry.protected[v]
+                && x[v] == geometry.x[v]
+                && (x[v] - previous).abs() < COLLINEAR
+                && room.contains(desired)
+            {
+                let proposed = match &mut proposals {
+                    Some(values) => values,
+                    slot => {
+                        work.charge(x.len())?;
+                        slot.insert(filled(x.len(), None)?)
+                    }
+                };
+                proposed[v] = Some(desired);
+            }
+        }
+    }
+    if let Some(mut proposals) = proposals {
+        for row in &g.layers {
+            work.visit(row.len())?;
+            for pair in row.windows(2) {
+                let (a, b) = (pair[0] as usize, pair[1] as usize);
+                if let (Some(left), Some(right)) = (proposals[a], proposals[b])
+                    && left + geometry.extent[a].1 > right - geometry.extent[b].0
+                {
+                    // Each proposal already clears the neighbor's original position.
+                    proposals[a] = None;
+                    proposals[b] = None;
+                }
+            }
+        }
+        work.visit(x.len())?;
+        for (at, proposed) in x.iter_mut().zip(proposals) {
+            if let Some(proposed) = proposed {
+                *at = proposed;
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

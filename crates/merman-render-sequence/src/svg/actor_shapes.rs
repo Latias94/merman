@@ -168,6 +168,7 @@ impl ActorLabelContext<'_> {
         identity: ActorLifelineIdentity<'_>,
     ) {
         let ActorLifelineIdentity { actor_id, actor } = identity;
+        let actor_id = escape_attr(actor_id);
         let actor_type = actor.actor_type.as_str();
         out.push_str("<g>");
         let root_class = if actor_type == "queue" {
@@ -180,13 +181,11 @@ impl ActorLabelContext<'_> {
         };
         let _ = write!(
             out,
-            r##"<line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="{stroke_width}px" stroke="#999" name="{name}" data-et="life-line" data-id="{data_id}"/><g id="root-{idx}"{root_class} data-et="participant" data-type="{actor_type}" data-id="{data_id}"{look_attr}"##,
+            r##"<line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="{stroke_width}px" stroke="#999" name="{actor_id}" data-et="life-line" data-id="{actor_id}"/><g id="root-{idx}"{root_class} data-et="participant" data-type="{actor_type}" data-id="{actor_id}"{look_attr}"##,
             idx = idx,
             cx = fmt(cx),
             y1 = fmt(y1),
             y2 = fmt(y2),
-            name = escape_xml(actor_id),
-            data_id = escape_attr(actor_id),
             root_class = root_class,
             actor_type = escape_attr(actor_type),
             stroke_width = fmt(LIFELINE_STROKE_WIDTH_PX),
@@ -426,9 +425,8 @@ fn write_rect_actor_body(
         y = fmt(y),
         w = fmt(n.width),
         h = fmt(n.height),
-        fill = escape_xml_display(fill),
     );
-    let _ = write!(out, r#" name="{}""#, escape_xml(actor_id));
+    let _ = write!(out, r#" name="{}""#, escape_attr_display(actor_id));
     let _ = write!(
         out,
         r#" rx="{radius}" ry="{radius}" class="{class}""#,

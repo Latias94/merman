@@ -7,7 +7,7 @@ use merman_render_core::icon_registry::{
 use merman_render_core::rough_svg::{RoughRectSpec, roughjs_paths_for_rect};
 
 pub(super) fn write_dagre_helper(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     node: &LayoutNode,
     config: &merman_model::presentation::PresentationConfig,
 ) {
@@ -27,7 +27,7 @@ pub(super) fn write_dagre_helper(
 }
 
 pub(super) fn write_empty_edge_label(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     id: &str,
     config: &merman_model::presentation::PresentationConfig,
 ) {
@@ -51,7 +51,7 @@ pub(super) fn write_empty_edge_label(
 }
 
 pub(super) fn rect(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     class: &str,
     x: f64,
     y: f64,
@@ -78,12 +78,11 @@ pub(super) struct UsecaseNodeRenderContext<'a> {
     pub(super) labels: UsecaseLabelRenderContext<'a>,
     pub(super) diagram_id: SvgId<'a>,
     pub(super) options: &'a UsecaseSvgContext<'a>,
-    #[cfg(feature = "layout-shoal")]
     pub(super) canonical: bool,
 }
 
 fn write_usecase_body(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     node: &LayoutNode,
     plan: &UsecaseNodePlan,
     source: Option<&UsecaseNode>,
@@ -137,11 +136,18 @@ fn write_usecase_body(
 }
 
 pub(super) fn write_node(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     node: &LayoutNode,
     plan: &UsecaseNodePlan,
     context: &UsecaseNodeRenderContext<'_>,
 ) -> Result<()> {
+    let caption_kind = |class| {
+        if context.canonical {
+            UsecaseLabelKind::CenteredNode(class)
+        } else {
+            UsecaseLabelKind::PositionedNode(class)
+        }
+    };
     if let Some(actor) = context
         .source
         .filter(|node| node.kind == UsecaseNodeKind::Actor)
@@ -167,7 +173,7 @@ pub(super) fn write_node(
             write_label(
                 out,
                 stereotype,
-                UsecaseLabelKind::PositionedNode("label usecase-stereotype"),
+                caption_kind("label usecase-stereotype"),
                 0.0,
                 y + stereotype.metrics.height / 2.0,
                 context.labels,
@@ -177,7 +183,7 @@ pub(super) fn write_node(
         write_label(
             out,
             &plan.label,
-            UsecaseLabelKind::PositionedNode("label actor-label usecase-actor-label"),
+            caption_kind("label actor-label usecase-actor-label"),
             0.0,
             y + plan.label.metrics.height / 2.0,
             context.labels,
@@ -324,7 +330,7 @@ pub(super) fn write_node(
         );
         let mut row_top = top + table.title_height;
         for (index, row) in table.rows.iter().enumerate() {
-            context.options.checkpoint_emit()?;
+            out.checkpoint()?;
             let _ = write!(
                 out,
                 r#"<g class="usecase-json-row" data-row-index="{index}" transform="translate(0,{})">"#,
@@ -392,7 +398,7 @@ pub(super) fn write_node(
                 phase: merman_model::OperationPhase::Emit,
                 randomness: &randomness,
             });
-            context.options.checkpoint_emit()?;
+            out.checkpoint()?;
             let (fill, stroke) = paths.ok_or_else(|| Error::InvalidModel {
                 message: "failed to construct Usecase note geometry".into(),
             })?;
@@ -419,35 +425,33 @@ pub(super) fn write_node(
             write_label(
                 out,
                 stereotype,
-                UsecaseLabelKind::PositionedNode("label usecase-stereotype"),
+                caption_kind("label usecase-stereotype"),
                 0.0,
                 -height / 2.0 + stereo_height / 2.0,
                 context.labels,
             );
         }
         let label_start = out.len();
-        let canonical_ellipse_label = {
-            #[cfg(feature = "layout-shoal")]
-            {
-                context.canonical
-            }
-            #[cfg(not(feature = "layout-shoal"))]
-            {
-                false
-            }
-        };
         write_label(
             out,
             &plan.label,
             if context.note {
                 UsecaseLabelKind::PositionedNode("label noteLabel")
+            } else if context.canonical {
+                let class = if context
+                    .source
+                    .is_some_and(|node| node.business && plan.ellipse)
+                {
+                    "label usecase-label"
+                } else {
+                    "label"
+                };
+                UsecaseLabelKind::CenteredNode(class)
             } else if context
                 .source
                 .is_some_and(|node| node.business && plan.ellipse)
             {
                 UsecaseLabelKind::PositionedNode("label usecase-label")
-            } else if canonical_ellipse_label {
-                UsecaseLabelKind::PositionedNode("label")
             } else {
                 UsecaseLabelKind::Node("label")
             },
@@ -462,11 +466,12 @@ pub(super) fn write_node(
     Ok(())
 }
 
-fn annotate_folded_stereotype(out: &mut String, start: usize) -> Result<()> {
+fn annotate_folded_stereotype(out: &mut impl SvgOutput, start: usize) -> Result<()> {
     // Match the first emitted label text node, as annotateUsecaseElements does.
     // The fragment is our own complete label group, so byte ranges can be applied
     // without reparsing the entire diagram or depending on literal label content.
-    let fragment = &out[start..];
+    out.checkpoint()?;
+    let fragment = &out.as_str()[start..];
     let document = roxmltree::Document::parse(fragment).map_err(|error| Error::InvalidModel {
         message: format!("invalid prepared Usecase stereotype label: {error}"),
     })?;
@@ -480,8 +485,10 @@ fn annotate_folded_stereotype(out: &mut String, start: usize) -> Result<()> {
             .unwrap_or(span);
         if let Some(text) = container.first_child().filter(|node| node.is_text()) {
             let range = text.range();
-            out.insert_str(start + range.end, "</span>");
-            out.insert_str(start + range.start, "<span class=\"usecase-stereotype\">");
+            let open = start + range.start;
+            let close = start + range.end;
+            out.replace_range(close..close, "</span>")?;
+            out.replace_range(open..open, "<span class=\"usecase-stereotype\">")?;
         }
     } else if let Some(span) = document
         .descendants()
@@ -490,8 +497,8 @@ fn annotate_folded_stereotype(out: &mut String, start: usize) -> Result<()> {
             .attributes()
             .find(|attribute| attribute.name() == "class")
     {
-        let insertion = attribute.range_value().end;
-        out.insert_str(start + insertion, " usecase-stereotype");
+        let insertion = start + attribute.range_value().end;
+        out.replace_range(insertion..insertion, " usecase-stereotype")?;
     }
     Ok(())
 }

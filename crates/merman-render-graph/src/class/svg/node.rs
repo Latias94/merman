@@ -1,10 +1,13 @@
-use crate::class::ClassPreparedSvgTitle;
 use crate::class::model::{Bounds, ClassNodeLabelPlan, ClassPreparedHtmlLabel, LayoutNode};
+use crate::class::{ClassPreparedSvgTitle, ClassSvgLabel};
 use merman_model::families::class::ClassMember;
 use merman_render_core::svg_security::{
     MermaidNavigationSecurity, prepare_mermaid_navigation_href,
 };
-use merman_render_core::text::{TextMeasurer, TextStyle, WrapMode};
+use merman_render_core::text::{
+    TextMeasurer, TextStyle, WrapMode, inline_html::SvgTextEntityMode,
+    svg_label::write_svg_markdown_word_lines_with_style,
+};
 use std::time::Duration;
 
 use super::SvgDiagramId;
@@ -19,7 +22,7 @@ use super::label::{
 use super::rough::{
     class_rough_hachure_rect_paths, class_rough_hand_drawn_line_path,
     class_rough_line_double_path_and_bounds, class_rough_rect_stroke_path_and_bounds,
-    class_rough_seed,
+    class_rough_seed, write_class_rough_backing, write_class_rough_hatch,
 };
 use super::{ClassSvgNode, Rect};
 use super::{SvgOutput, escape_attr_display, escape_xml_into, fmt, fmt_into};
@@ -54,6 +57,7 @@ pub(super) struct ClassNodeShellContext<'a> {
     pub security_level_loose: bool,
     pub color_index: Option<usize>,
     pub palette_size: usize,
+    pub opacity_style: &'a str,
 }
 
 pub(super) struct ClassNodeBasicContainerContext<'a> {
@@ -65,6 +69,9 @@ pub(super) struct ClassNodeBasicContainerContext<'a> {
     pub node_stroke: &'a str,
     pub node_stroke_width: &'a str,
     pub node_stroke_dasharray: &'a str,
+    pub fill_opacity: Option<&'a str>,
+    pub rough_outline_style: &'a str,
+    pub rough_backing: bool,
     pub look: &'a str,
     pub radius: Option<f64>,
     pub hand_drawn_seed: roughr::core::RoughRandomness,
@@ -118,6 +125,7 @@ pub(super) struct ClassHtmlNodeRowsContext<'a> {
 pub(super) struct ClassSvgNodeLabelRun {
     pub text: String,
     pub literal_fallback: bool,
+    pub type_label: Option<ClassSvgLabel>,
     pub style: String,
     pub metrics: merman_render_core::text::TextMetrics,
     pub y_offset: f64,
@@ -261,6 +269,13 @@ pub(super) fn render_class_node_shell_open(
         out.push('"');
     }
     write_class_color_slot(out, ctx.color_index, ctx.palette_size);
+    if !ctx.opacity_style.is_empty() {
+        let _ = write!(
+            out,
+            r#" style="{}""#,
+            escape_attr_display(ctx.opacity_style)
+        );
+    }
     if has_tooltip {
         out.push_str(r#" title=""#);
         merman_render_core::xml::escape_attr_into(out, tooltip);
@@ -331,7 +346,10 @@ pub(super) fn render_class_node_basic_container<O: SvgOutput>(
             stats,
         };
     }
-    if !hand_drawn {
+    let backed_hand_drawn = hand_drawn && ctx.rough_backing;
+    if backed_hand_drawn {
+        write_class_rough_backing(out, left, top, w, h, ctx.node_fill, ctx.fill_opacity);
+    } else if !hand_drawn {
         let _ = write!(
             out,
             r#"<path d="M{} {} L{} {} L{} {} L{} {}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
@@ -389,11 +407,12 @@ pub(super) fn render_class_node_basic_container<O: SvgOutput>(
         stats.path_bounds_calls += 1;
     }
     if hand_drawn {
-        let _ = write!(
+        write_class_rough_hatch(
             out,
-            r#"<path d="{}" stroke="{}" stroke-width="1.5" fill="none" stroke-dasharray="0 0"/>"#,
-            escape_attr_display(&fill_d),
-            escape_attr_display(ctx.node_fill),
+            &fill_d,
+            ctx.node_fill,
+            backed_hand_drawn.then_some(ctx.node_stroke),
+            ctx.fill_opacity,
         );
     }
     let _ = write!(
@@ -403,7 +422,11 @@ pub(super) fn render_class_node_basic_container<O: SvgOutput>(
         escape_attr_display(ctx.node_stroke),
         escape_attr_display(ctx.node_stroke_width),
         escape_attr_display(ctx.node_stroke_dasharray),
-        escape_attr_display(ctx.node_stroke_style_attr),
+        escape_attr_display(if backed_hand_drawn {
+            ctx.rough_outline_style
+        } else {
+            ctx.node_stroke_style_attr
+        }),
     );
     out.push_str("</g>");
 
@@ -932,6 +955,7 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
         annotation_runs.push(ClassSvgNodeLabelRun {
             text,
             literal_fallback: false,
+            type_label: None,
             style: String::new(),
             metrics,
             y_offset: 0.0,
@@ -1294,8 +1318,13 @@ fn measure_class_svg_node_rows(
     let mut rect: Option<Rect> = None;
     let mut y_offset = 0.0;
     for row in rows {
+        let generic_source =
+            crate::class::node_binding::class_generic_member_source(row, ["&lt;", "&gt;"]);
         let mut text = row.display_text_for_render();
-        let fallback = crate::class::class_svg_empty_markdown_fallback(&text);
+        let fallback = generic_source
+            .is_none()
+            .then(|| crate::class::class_svg_empty_markdown_fallback(&text))
+            .flatten();
         let literal_fallback = fallback.is_some();
         let text_style = crate::class::class_svg_row_text_style(
             ctx.native
@@ -1304,24 +1333,40 @@ fn measure_class_svg_node_rows(
             literal_fallback,
         );
         let text_style = crate::class::class_svg_text_with_family(&text_style, ctx.font_family);
+        let probe_style = if ctx.native.is_some() {
+            &text_style
+        } else {
+            ctx.html_calc_text_style
+        };
+        let type_label = generic_source.as_deref().map(|source| {
+            ClassSvgLabel::from_type_source(
+                source,
+                ctx.measurer,
+                &text_style,
+                probe_style,
+                ctx.wrap_probe_font_size,
+                WrapMode::SvgLike,
+            )
+        });
         if let Some(fallback) = fallback {
             text = fallback;
         }
-        if !literal_fallback && crate::class::analyze_class_svg_markdown(&text).all_runs_normal() {
+        if type_label.is_none()
+            && !literal_fallback
+            && crate::class::analyze_class_svg_markdown(&text).all_runs_normal()
+        {
             text = wrap_class_svg_text_like_mermaid(
                 &text,
                 ctx.measurer,
                 &text_style,
-                if ctx.native.is_some() {
-                    &text_style
-                } else {
-                    ctx.html_calc_text_style
-                },
+                probe_style,
                 ctx.wrap_probe_font_size,
                 false,
             );
         }
-        let metrics = if literal_fallback {
+        let metrics = if let Some(label) = &type_label {
+            label.type_metrics(ctx.measurer, &text_style)
+        } else if literal_fallback {
             ctx.measurer
                 .measure_wrapped(&text, &text_style, None, WrapMode::SvgLike)
         } else {
@@ -1343,6 +1388,7 @@ fn measure_class_svg_node_rows(
         runs.push(ClassSvgNodeLabelRun {
             text,
             literal_fallback,
+            type_label,
             style: row.css_style.trim().to_owned(),
             metrics,
             y_offset,
@@ -1392,6 +1438,13 @@ pub(super) fn render_class_svg_node_runs_group(
                 out,
                 run.text.as_str(),
                 group_style,
+            );
+        } else if let Some(label) = &run.type_label {
+            write_svg_markdown_word_lines_with_style(
+                out,
+                label.lines(),
+                Some(group_style),
+                SvgTextEntityMode::DecodedModel,
             );
         } else {
             write_class_svg_text_markdown_with_style(out, run.text.as_str(), group_style);

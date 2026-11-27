@@ -22,6 +22,7 @@ pub(crate) struct FlowchartRootPaint<'a, 'data> {
     pub hierarchy_plan: &'a FlowchartHierarchyPlan<'data>,
     pub marker_plan: &'a FlowchartMarkerEmissionPlan<'a>,
     pub(in crate::svg) edge_fills: &'a FlowchartEdgeFillPlan,
+    pub(in crate::svg) label_cutouts: &'a FxHashSet<crate::projection::FlowchartEdgeKey>,
     pub edge_labels: &'a mut FlowchartEdgeLabels,
     pub step_badges: &'a StepBadges<'a>,
 }
@@ -74,15 +75,6 @@ impl FlowchartRootPaint<'_, '_> {
         Ok(())
     }
 
-    pub(crate) fn write_edge_casings(
-        &self,
-        out: &mut impl SvgOutput,
-        edges: &[FlowchartRenderEdgeRef<'_>],
-    ) -> Result<()> {
-        self.edge_fills
-            .write_casings(out, self.ctx, self.marker_plan, edges, self.edge_cache)
-    }
-
     pub(crate) fn write_edge(
         &self,
         out: &mut impl SvgOutput,
@@ -94,7 +86,8 @@ impl FlowchartRootPaint<'_, '_> {
             out,
             self.ctx,
             self.marker_plan,
-            self.edge_fills.ink(edge.key),
+            self.edge_fills,
+            self.label_cutouts.contains(&edge.key),
             edge,
             x,
             y,

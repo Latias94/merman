@@ -16,7 +16,7 @@ use merman_render_core::{
         svg_label::write_measured_svg_title,
     },
     theme_svg::edge_label_background::literal_fill,
-    xml::{escape_attr_display, escape_xml_display},
+    xml::escape_attr_display,
 };
 use merman_theme_contract::v2::Color;
 use roughr::core::RoughRandomness;
@@ -62,6 +62,7 @@ impl<'a> ClusterHandDrawn<'a> {
         Self {
             stroke_width: styles.stroke_width.as_deref(),
             stroke_dasharray: styles.stroke_dasharray.as_deref(),
+            solid_backing: false,
             work_meter,
             randomness,
         }
@@ -77,9 +78,14 @@ impl<'a> FlowchartClusterShape<'a> {
         }
     }
 
-    pub(super) fn hand_drawn(&self, look: DiagramLook<'_>) -> Option<ClusterHandDrawn<'a>> {
-        look.is_hand_drawn().then(|| {
-            ClusterHandDrawn::for_compiled_styles(
+    pub(super) fn hand_drawn(
+        &self,
+        look: DiagramLook<'_>,
+        solid_backing: bool,
+    ) -> Option<ClusterHandDrawn<'a>> {
+        look.is_hand_drawn().then(|| ClusterHandDrawn {
+            solid_backing,
+            ..ClusterHandDrawn::for_compiled_styles(
                 &self.terminal.compiled,
                 self.work_meter,
                 self.randomness,
@@ -124,17 +130,18 @@ impl FlowchartClusterSvg<'_> {
         pass: FlowchartClusterPass,
         shape: FlowchartClusterShape<'_>,
         title: FlowchartClusterTitle<'_>,
+        canvas: Option<Color>,
+        solid_backing: bool,
     ) -> Result<()> {
-        let color_slot = self.color_slot(self.semantic_id);
         if pass == FlowchartClusterPass::Background {
-            return self.write_background(out, shape, color_slot);
+            return self.write_background(out, shape, solid_backing);
         }
         let halo = self
             .struck
-            .then(|| self.title_halo_color(title.config, shape.work_meter))
+            .then(|| self.title_halo_color(canvas, shape.work_meter))
             .transpose()?
             .flatten();
-        self.write_foreground(out, pass, shape, title, halo, color_slot);
+        self.write_foreground(out, pass, shape, title, halo, solid_backing);
         Ok(())
     }
 
@@ -147,7 +154,7 @@ impl FlowchartClusterSvg<'_> {
         self.palette.slot_for_ordinal(self.diagram_type, ordinal)
     }
 
-    /// The compatibility canvas is also used by the facade's edge fill policy.
+    /// Default compatibility canvas when the source theme leaves it unspecified.
     pub fn compat_theme_canvas_fallback(config: &PresentationConfig) -> Color {
         match config.get_str("theme") {
             Some("dark" | "redux-dark" | "redux-dark-color" | "neo-dark") => {
@@ -159,14 +166,9 @@ impl FlowchartClusterSvg<'_> {
 
     fn title_halo_color(
         &self,
-        config: &PresentationConfig,
+        canvas: Option<Color>,
         work: &OperationWorkMeter,
     ) -> Result<Option<Color>> {
-        let canvas = self.native.map(|native| native.canvas).or_else(|| {
-            config
-                .get_str("themeVariables.background")
-                .and_then(literal_fill)
-        });
         let mut surface = Color::TRANSPARENT;
         let mut current = Some(self.semantic_id);
         while let Some(id) = current {
@@ -197,15 +199,9 @@ impl FlowchartClusterSvg<'_> {
             }
             current = self.parent.get(id).copied();
         }
-        match canvas {
-            Some(canvas) if canvas.channels()[3] == u8::MAX => {
-                Ok(Some(surface.composite(canvas, 1.0)))
-            }
-            Some(_) => Ok(None),
-            None => Ok(Some(
-                surface.composite(Self::compat_theme_canvas_fallback(config), 1.0),
-            )),
-        }
+        Ok(canvas
+            .filter(|canvas| canvas.channels()[3] == u8::MAX)
+            .map(|canvas| surface.composite(canvas, 1.0)))
     }
 
     fn write_shape(
@@ -213,6 +209,7 @@ impl FlowchartClusterSvg<'_> {
         out: &mut impl SvgOutput,
         shape: FlowchartClusterShape<'_>,
         color_slot: Option<usize>,
+        solid_backing: bool,
     ) {
         let ClusterShellPaint {
             style,
@@ -258,7 +255,7 @@ impl FlowchartClusterSvg<'_> {
                 stroke,
             },
             form,
-            shape.hand_drawn(self.compatibility.look),
+            shape.hand_drawn(self.compatibility.look, solid_backing),
         );
     }
 
@@ -291,8 +288,9 @@ impl FlowchartClusterSvg<'_> {
         self,
         out: &mut impl SvgOutput,
         shape: FlowchartClusterShape<'_>,
-        color_slot: Option<usize>,
+        solid_backing: bool,
     ) -> Result<()> {
+        let color_slot = self.color_slot(self.semantic_id);
         let (class_attr, color_attr) = self.attributes(color_slot);
         let cluster_dom_id = self.document_id;
         let data_look = self.compatibility.look.as_str();
@@ -306,11 +304,11 @@ impl FlowchartClusterSvg<'_> {
             let _ = write!(
                 out,
                 r#" id="{cluster_dom_id}" data-id="{}" data-et="cluster""#,
-                escape_xml_display(self.semantic_id),
+                escape_attr_display(self.semantic_id),
             );
         }
         out.push('>');
-        self.write_shape(out, shape, color_slot);
+        self.write_shape(out, shape, color_slot, solid_backing);
         out.push_str("</g>");
         out.checkpoint()
     }
@@ -322,29 +320,30 @@ impl FlowchartClusterSvg<'_> {
         shape: FlowchartClusterShape<'_>,
         title: FlowchartClusterTitle<'_>,
         halo: Option<Color>,
-        color_slot: Option<usize>,
+        solid_backing: bool,
     ) {
+        let color_slot = self.color_slot(self.semantic_id);
         let (class_attr, color_attr) = self.attributes(color_slot);
         let cluster_dom_id = self.document_id;
         let data_look = self.compatibility.look.as_str();
         let overlay = self.struck && pass == FlowchartClusterPass::Label;
         let frame_top = self.frame.origin.y;
         let terminal = shape.terminal;
-        let _ = write!(out, r#"<g class="{}""#, escape_xml_display(&class_attr));
+        let _ = write!(out, r#"<g class="{}""#, escape_attr_display(&class_attr));
         if !overlay {
             let _ = write!(
                 out,
                 r#" id="{cluster_dom_id}" data-id="{}" data-et="cluster""#,
-                escape_xml_display(self.semantic_id),
+                escape_attr_display(self.semantic_id),
             );
         }
         let _ = write!(
             out,
             r#" data-look="{}"{color_attr}>"#,
-            escape_xml_display(data_look),
+            escape_attr_display(data_look),
         );
         if pass == FlowchartClusterPass::Complete {
-            self.write_shape(out, shape, color_slot);
+            self.write_shape(out, shape, color_slot, solid_backing);
         }
         title.write(out, cluster_dom_id, frame_top, terminal, halo, overlay);
         out.push_str("</g></g>");
@@ -497,7 +496,7 @@ impl FlowchartClusterTitle<'_> {
                 number(label_w),
                 number(label_h),
                 HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
-                escape_xml_display(&div_style),
+                escape_attr_display(&div_style),
                 span_style_attr,
                 title_html
             );

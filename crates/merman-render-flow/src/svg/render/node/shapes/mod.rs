@@ -204,6 +204,7 @@ fn body_svg<'a>(
         geometry: body_geometry(common),
         style: common.style,
         rough_group_style: common.rough_group_style,
+        rough_fill_opacity: helpers::rough_fill_opacity(common),
         fill_color: common.fill_color,
         stroke_color: common.stroke_color,
         timing: common.timing,

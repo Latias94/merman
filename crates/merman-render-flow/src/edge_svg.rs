@@ -13,7 +13,7 @@ use merman_render_core::{
     svg_edge_parity::path_numbers::json_stringify_points_into,
     svg_edge_parity::{edge_path::neo_marker_mask_offset, line_hops::rewrite_style_after_line_hop},
     svg_output::SvgOutput,
-    xml::{escape_attr_display, escape_xml_display, escaped_xml_len},
+    xml::{escape_attr_display, escaped_attr_len},
 };
 
 use crate::{document::FlowchartDocumentId, source_style::FlowchartStyleDeclaration};
@@ -109,6 +109,7 @@ struct FlowchartEdgeSvgEmission<'a> {
     class_attr: &'a str,
     marker_attrs: &'a str,
     default_edge_style: &'a [String],
+    repeat_inline: bool,
     adaptive_ink: Option<&'static str>,
     neo_edge_mask: Option<FlowchartNeoEdgeMaskPlan>,
     line_hop_applied: bool,
@@ -120,13 +121,13 @@ impl FlowchartEdgeSvgEmission<'_> {
         out: &mut impl SvgOutput,
         source_style_svg_bytes: usize,
         work_meter: &OperationWorkMeter,
-    ) -> Result<()> {
+    ) -> Result<Option<String>> {
         let neo_mask_svg_bytes = self
             .neo_edge_mask
             .map_or(0, FlowchartNeoEdgeMaskPlan::serialized_bytes);
         let ink_svg_bytes = self
             .adaptive_ink
-            .map_or(0, |ink| "stroke:;".len() + ink.len());
+            .map_or(0, |ink| ";stroke:!important;".len() + ink.len());
         // The caller supplies the already formatted marker attributes.
         let Some(projected_contribution) = source_style_svg_bytes
             .checked_add(neo_mask_svg_bytes)
@@ -142,11 +143,7 @@ impl FlowchartEdgeSvgEmission<'_> {
         let rewritten_style = if self.line_hop_applied {
             work_meter.check_svg_append(0, projected_contribution)?;
             let mut style = String::with_capacity(projected_contribution);
-            if let Some(mask) = self.neo_edge_mask {
-                mask.write_to(&mut style)
-                    .expect("writing into a String cannot fail");
-            }
-            self.write_source_style(&mut style)
+            self.write_paint_style(&mut style, None)
                 .expect("writing into a String cannot fail");
             Some(rewrite_style_after_line_hop(&style, self.d, work_meter)?.into_owned())
         } else {
@@ -175,7 +172,48 @@ impl FlowchartEdgeSvgEmission<'_> {
         }
         out.checkpoint()?;
         debug_assert_eq!(out.len() - before, serialized_bytes);
-        Ok(())
+        Ok(rewritten_style)
+    }
+
+    /// Write the recolored shaft inside the caller's surface clip, leaving room for its markers.
+    fn write_surface_path(
+        &self,
+        out: &mut impl SvgOutput,
+        ink: &impl fmt::Display,
+        rewritten_style: Option<&str>,
+    ) -> Result<()> {
+        fn write_path(
+            path: &FlowchartEdgeSvgEmission<'_>,
+            out: &mut impl fmt::Write,
+            ink: &impl fmt::Display,
+            rewritten_style: Option<&str>,
+        ) -> fmt::Result {
+            write!(
+                out,
+                r#"<path d="{}" class="{}" data-look="{}" style=""#,
+                path.d,
+                path.class_attr,
+                escape_attr_display(path.data_look.as_str()),
+            )?;
+            if let Some(style) = rewritten_style {
+                write!(out, "{style};stroke:{ink}!important;")?;
+            } else {
+                path.write_paint_style(out, Some(ink))?;
+            }
+            if path.hand_drawn {
+                out.write_str(HAND_DRAWN_ATTRIBUTES)?;
+                out.write_char('"')
+            } else {
+                out.write_str(r#"" fill="none""#)
+            }
+        }
+        if write_path(self, out, ink, rewritten_style).is_err() {
+            return out.checkpoint().and(Err(Error::InvalidModel {
+                message: "prepared Flowchart surface writer failed without an output error"
+                    .to_string(),
+            }));
+        }
+        out.checkpoint()
     }
 
     fn serialized_bytes(
@@ -194,9 +232,9 @@ impl FlowchartEdgeSvgEmission<'_> {
             .and_then(|bytes| bytes.checked_add(self.edge_dom_id.serialized_len()))
             .and_then(|bytes| bytes.checked_add(self.class_attr.len()))
             .and_then(|bytes| bytes.checked_add(projected_style_bytes))
-            .and_then(|bytes| bytes.checked_add(escaped_xml_len(&self.edge.id)))
+            .and_then(|bytes| bytes.checked_add(escaped_attr_len(&self.edge.id)))
             .and_then(|bytes| bytes.checked_add(self.data_points_b64.len()))
-            .and_then(|bytes| bytes.checked_add(escaped_xml_len(self.data_look.as_str())))
+            .and_then(|bytes| bytes.checked_add(escaped_attr_len(self.data_look.as_str())))
             .and_then(|bytes| bytes.checked_add(self.marker_attrs.len()));
         let Some(bytes) = bytes else {
             work_meter.check_svg_append(usize::MAX, 1)?;
@@ -210,12 +248,26 @@ impl FlowchartEdgeSvgEmission<'_> {
         if let Some(style) = rewritten_style {
             out.write_str(style)?;
         } else {
-            if let Some(mask) = self.neo_edge_mask {
-                mask.write_to(out)?;
-            }
-            self.write_source_style(out)?;
+            self.write_paint_style(out, None)?;
         }
         self.write_suffix_to(out)
+    }
+
+    fn write_paint_style(
+        &self,
+        out: &mut impl fmt::Write,
+        layer_ink: Option<&dyn fmt::Display>,
+    ) -> fmt::Result {
+        if let Some(mask) = self.neo_edge_mask {
+            mask.write_to(out)?;
+        }
+        self.write_source_style(out)?;
+        if let Some(ink) = layer_ink {
+            write!(out, ";stroke:{ink}!important;")?;
+        } else if let Some(ink) = self.adaptive_ink {
+            write!(out, ";stroke:{ink}!important;")?;
+        }
+        Ok(())
     }
 
     fn write_prefix_to(&self, out: &mut impl fmt::Write) -> fmt::Result {
@@ -233,20 +285,17 @@ impl FlowchartEdgeSvgEmission<'_> {
             out.write_str(HAND_DRAWN_ATTRIBUTES)?;
         }
         out.write_str(DATA_ID_ATTRIBUTE)?;
-        write!(out, "{}", escape_xml_display(&self.edge.id))?;
+        write!(out, "{}", escape_attr_display(&self.edge.id))?;
         out.write_str(DATA_POINTS_ATTRIBUTE)?;
         out.write_str(self.data_points_b64)?;
         out.write_str(DATA_LOOK_ATTRIBUTE)?;
-        write!(out, "{}", escape_xml_display(self.data_look.as_str()))?;
+        write!(out, "{}", escape_attr_display(self.data_look.as_str()))?;
         out.write_str(ATTRIBUTE_END)?;
         out.write_str(self.marker_attrs)?;
         out.write_str(PATH_END)
     }
 
     fn write_source_style(&self, out: &mut impl fmt::Write) -> fmt::Result {
-        if let Some(ink) = self.adaptive_ink {
-            write!(out, "stroke:{ink};")?;
-        }
         if self.hand_drawn {
             return write_style_joined(out, self.default_edge_style, &self.edge.style);
         }
@@ -265,10 +314,12 @@ impl FlowchartEdgeSvgEmission<'_> {
         if !self.class_declarations.is_empty() {
             out.write_char(';')?;
         }
-        if self.default_edge_style.is_empty() && self.edge.style.is_empty() {
+        write_style_joined(out, self.default_edge_style, &self.edge.style)?;
+        if !self.repeat_inline {
+            Ok(())
+        } else if self.default_edge_style.is_empty() && self.edge.style.is_empty() {
             out.write_char(';')
         } else {
-            write_style_joined(out, self.default_edge_style, &self.edge.style)?;
             out.write_str(";;;")?;
             write_style_joined(out, self.default_edge_style, &self.edge.style)
         }
@@ -539,7 +590,8 @@ mod tests {
                 .into_edge_artifact(false);
         let source_style_svg_bytes = emitted_styles
             .projected_edge_source_style_bytes(&default_edge_style, &edge.style, false)
-            .expect("finite source-style projection");
+            .expect("finite source-style projection")
+            .parity;
         let neo_edge_mask = neo_mask(16.0, &edge, false);
         let key = FlowchartEdgeKey::self_loop_segment(12, 2);
         let document_ids = FlowchartDocumentIds::prepare(FlowchartDocumentIdRequest {
@@ -563,11 +615,12 @@ mod tests {
             class_attr: "edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link",
             marker_attrs: r#" marker-start="url(#diagram-flowchart-v2-circleStart)" marker-end="url(#diagram-flowchart-v2-pointEnd)""#,
             default_edge_style: &default_edge_style,
+            repeat_inline: true,
             adaptive_ink: None,
             neo_edge_mask: Some(neo_edge_mask),
             line_hop_applied: false,
         };
-        let expected_edge = r##"<path d="M0,0L16,0" id="diagram-merman-flowchart-document-edge-12-segment-2" class="edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 2 2 2 2 2 2 2 2 0; stroke-dashoffset: 0;stroke:#2563eb;opacity:0.5;stroke:#ef4444;;;opacity:0.5;stroke:#ef4444" data-edge="true" data-et="edge" data-id="边&quot;&amp;&lt;]]&gt;" data-points="W3sieCI6MH1d" data-look="neo" marker-start="url(#diagram-flowchart-v2-circleStart)" marker-end="url(#diagram-flowchart-v2-pointEnd)" />"##;
+        let expected_edge = r##"<path d="M0,0L16,0" id="diagram-merman-flowchart-document-edge-12-segment-2" class="edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 2 2 2 2 2 2 2 2 0; stroke-dashoffset: 0;stroke:#2563eb;opacity:0.5;stroke:#ef4444;;;opacity:0.5;stroke:#ef4444" data-edge="true" data-et="edge" data-id="边#quot;&amp;&lt;]]>" data-points="W3sieCI6MH1d" data-look="neo" marker-start="url(#diagram-flowchart-v2-circleStart)" marker-end="url(#diagram-flowchart-v2-pointEnd)" />"##;
         let initial = "prefix";
         let probe_meter =
             OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
@@ -657,7 +710,8 @@ mod tests {
         };
         let hand_drawn_style_bytes = emitted_styles
             .projected_edge_source_style_bytes(&default_edge_style, &edge.style, true)
-            .unwrap();
+            .unwrap()
+            .parity;
         let mut hand_drawn_svg = String::new();
         hand_drawn
             .append_to(&mut hand_drawn_svg, hand_drawn_style_bytes, &probe_meter)

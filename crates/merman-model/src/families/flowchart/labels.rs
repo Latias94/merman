@@ -4,14 +4,15 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use serde::{Serialize, Serializer};
 use std::sync::Arc;
 
-/// Sanitized label spellings indexed by canonical identity and encounter ordinal.
+/// Label spellings indexed by canonical identity and encounter ordinal.
 ///
-/// Core records these before the compatibility projection loses entity provenance. They are
-/// markup sources, not decoded display text. Clones share storage; insertion uses copy on write.
-/// Independently supplied strings remain caller-owned data and certify no sanitization history.
+/// Core retains distinct source spellings for Mermaid markup and native SVG text before the
+/// compatibility projection loses entity provenance. Clones share storage with copy-on-write
+/// insertion. Independently supplied strings certify no sanitization history.
 #[derive(Debug, Clone, Default)]
 pub struct FlowchartRenderLabelSources {
     sources: Option<Arc<LabelSources>>,
+    svg_text: Option<Arc<LabelSources>>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -19,6 +20,57 @@ struct LabelSources {
     nodes: FxHashMap<String, String>,
     edges: Vec<(usize, String)>,
     subgraphs: Vec<Option<SubgraphLabelSource>>,
+}
+
+/// Prepares literal SVG text while preserving the source's authored line breaks.
+#[doc(hidden)]
+#[cfg(feature = "html-entities")]
+pub fn flowchart_svg_text_source(raw: &str, fallback: &str) -> Option<String> {
+    if !raw.contains(['&', '#', 'ﬂ', '¶', '<', '>']) {
+        return None;
+    }
+    let append_text = |text: &str, out: &mut String| {
+        for ch in crate::text::decode_mermaid_entities_to_unicode(text).chars() {
+            match ch {
+                '&' => out.push_str("&amp;"),
+                '<' => out.push_str("&lt;"),
+                '>' => out.push_str("&gt;"),
+                _ => out.push(ch),
+            }
+        }
+    };
+    // Recognize only authored break tokens before expanding entities. Encode the other angle
+    // brackets and ampersands for the SVG row tokenizer, which decodes them after tokenization.
+    let mut source = String::with_capacity(raw.len());
+    let mut copied = 0;
+    for (start, _) in raw.match_indices('<') {
+        let tail = &raw[start + 1..];
+        let name = tail.strip_prefix('/').unwrap_or(tail);
+        if !name
+            .get(..2)
+            .is_some_and(|name| name.eq_ignore_ascii_case("br"))
+        {
+            continue;
+        }
+        let tail = name[2..].trim_start_matches(crate::text::is_ecmascript_whitespace);
+        let tail = tail.strip_prefix('/').unwrap_or(tail);
+        if let Some(after) = tail.strip_prefix('>') {
+            append_text(&raw[copied..start], &mut source);
+            source.push_str("<br/>");
+            copied = raw.len() - after.len();
+        }
+    }
+    append_text(&raw[copied..], &mut source);
+    (source != fallback).then_some(source)
+}
+
+/// Identifies the owner of an alternate Flowchart label spelling.
+#[doc(hidden)]
+#[derive(Clone, Copy)]
+pub enum FlowchartLabelSourceOwner<'a> {
+    Node(&'a str),
+    Edge(usize),
+    Subgraph(usize, &'a str),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -39,7 +91,7 @@ impl Serialize for FlowchartRenderLabelSources {
 }
 
 impl FlowchartRenderLabelSources {
-    /// Returns whether no source facts are retained. An empty-string source is still a fact.
+    /// Returns whether the serialized markup table is empty. An empty string is still a fact.
     pub fn is_empty(&self) -> bool {
         self.sources.as_deref().is_none_or(|sources| {
             sources.nodes.is_empty()
@@ -51,30 +103,31 @@ impl FlowchartRenderLabelSources {
     /// Returns only a retained source fact, without interpreting a canonical label as markup.
     pub fn node_source(&self, node_id: &str) -> Option<&str> {
         self.sources
-            .as_deref()
-            .and_then(|sources| sources.nodes.get(node_id))
-            .map(String::as_str)
+            .as_deref()?
+            .get(FlowchartLabelSourceOwner::Node(node_id))
     }
 
     /// Returns only the source fact at the edge's semantic ordinal, even if its ID repeats.
     pub fn edge_source(&self, semantic_index: usize) -> Option<&str> {
-        self.sources.as_deref().and_then(|sources| {
-            sources
-                .edges
-                .binary_search_by_key(&semantic_index, |(index, _)| *index)
-                .ok()
-                .map(|position| sources.edges[position].1.as_str())
-        })
+        self.sources
+            .as_deref()?
+            .get(FlowchartLabelSourceOwner::Edge(semantic_index))
     }
 
     /// Returns only a source fact owned by this exact declaration ordinal and subgraph ID.
     pub fn subgraph_source(&self, declaration_ordinal: usize, subgraph_id: &str) -> Option<&str> {
         self.sources
-            .as_deref()
-            .and_then(|sources| sources.subgraphs.get(declaration_ordinal))
-            .and_then(Option::as_ref)
-            .filter(|source| source.id == subgraph_id)
-            .map(|source| source.source.as_str())
+            .as_deref()?
+            .get(FlowchartLabelSourceOwner::Subgraph(
+                declaration_ordinal,
+                subgraph_id,
+            ))
+    }
+
+    /// Source for native SVG text tokenization. The writer still escapes the visible text.
+    #[doc(hidden)]
+    pub fn svg_text_source(&self, owner: FlowchartLabelSourceOwner<'_>) -> Option<&str> {
+        self.svg_text.as_deref()?.get(owner)
     }
 
     pub fn node_label_for_render<'a>(&'a self, node: &'a FlowNode) -> Option<&'a str> {
@@ -99,23 +152,11 @@ impl FlowchartRenderLabelSources {
     }
 
     pub fn insert_node(&mut self, id: String, source: String) {
-        self.sources_mut().nodes.insert(id, source);
+        Self::table_mut(&mut self.sources).nodes.insert(id, source);
     }
 
     pub fn insert_edge(&mut self, semantic_index: usize, source: String) {
-        let edges = &mut self.sources_mut().edges;
-        if edges
-            .last()
-            .is_none_or(|(last_index, _)| *last_index < semantic_index)
-        {
-            edges.push((semantic_index, source));
-            return;
-        }
-
-        match edges.binary_search_by_key(&semantic_index, |(index, _)| *index) {
-            Ok(position) => edges[position].1 = source,
-            Err(position) => edges.insert(position, (semantic_index, source)),
-        }
+        Self::table_mut(&mut self.sources).insert_edge(semantic_index, source);
     }
 
     pub fn insert_subgraph(
@@ -125,24 +166,40 @@ impl FlowchartRenderLabelSources {
         source: Option<String>,
     ) {
         if let Some(source) = source {
-            let subgraphs = &mut self.sources_mut().subgraphs;
-            if subgraphs.len() <= declaration_ordinal {
-                subgraphs.resize_with(declaration_ordinal + 1, || None);
-            }
-            subgraphs[declaration_ordinal] = Some(SubgraphLabelSource { id, source });
+            Self::table_mut(&mut self.sources).insert_subgraph(id, declaration_ordinal, source);
         }
     }
 
-    fn sources_mut(&mut self) -> &mut LabelSources {
-        Arc::make_mut(
-            self.sources
-                .get_or_insert_with(|| Arc::new(LabelSources::default())),
-        )
+    #[doc(hidden)]
+    pub fn insert_svg_text(&mut self, owner: FlowchartLabelSourceOwner<'_>, source: String) {
+        let table = Self::table_mut(&mut self.svg_text);
+        match owner {
+            FlowchartLabelSourceOwner::Node(id) => {
+                table.nodes.insert(id.to_owned(), source);
+            }
+            FlowchartLabelSourceOwner::Edge(index) => table.insert_edge(index, source),
+            FlowchartLabelSourceOwner::Subgraph(index, id) => {
+                table.insert_subgraph(id.to_owned(), index, source);
+            }
+        }
+    }
+
+    fn table_mut(table: &mut Option<Arc<LabelSources>>) -> &mut LabelSources {
+        Arc::make_mut(table.get_or_insert_with(|| Arc::new(LabelSources::default())))
     }
 
     #[cfg(any(feature = "presentation-data", test))]
     pub(super) fn shares_storage_with(&self, other: &Self) -> bool {
-        match (&self.sources, &other.sources) {
+        Self::tables_share_storage(&self.sources, &other.sources)
+            && Self::tables_share_storage(&self.svg_text, &other.svg_text)
+    }
+
+    #[cfg(any(feature = "presentation-data", test))]
+    fn tables_share_storage(
+        left: &Option<Arc<LabelSources>>,
+        right: &Option<Arc<LabelSources>>,
+    ) -> bool {
+        match (left, right) {
             (Some(left), Some(right)) => Arc::ptr_eq(left, right),
             (None, None) => true,
             _ => false,
@@ -156,11 +213,129 @@ impl FlowchartRenderLabelSources {
         control: &OperationControl,
     ) -> OperationControlResult<Result<(), &'static str>> {
         control.checkpoint()?;
-        // Historical caller-authored presentations may keep their only source facts in context.
-        if other.is_empty() {
+        if let Err(message) = LabelSources::validate_compatible_with_controlled(
+            self.svg_text.as_deref(),
+            other.svg_text.as_deref(),
+            control,
+        )? {
+            return Ok(Err(message));
+        }
+        LabelSources::validate_compatible_with_controlled(
+            self.sources.as_deref(),
+            other.sources.as_deref(),
+            control,
+        )
+    }
+
+    /// Checks node identities, edge semantic ordinals, and subgraph declaration owners.
+    pub fn validate_for_model_controlled(
+        &self,
+        model: &FlowchartModel,
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<(), &'static str>> {
+        control.checkpoint()?;
+        if self.sources.is_none() && self.svg_text.is_none() {
             return Ok(Ok(()));
         }
-        let (Some(left), Some(right)) = (&self.sources, &other.sources) else {
+        let mut node_ids = FxHashSet::default();
+        for node in &model.nodes {
+            control.checkpoint()?;
+            node_ids.insert(node.id.as_str());
+        }
+        self.validate_with_node_ids(model, &node_ids, control)
+    }
+
+    pub(super) fn validate_with_node_ids(
+        &self,
+        model: &FlowchartModel,
+        node_ids: &FxHashSet<&str>,
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<(), &'static str>> {
+        control.checkpoint()?;
+        for sources in [&self.sources, &self.svg_text].into_iter().flatten() {
+            if let Err(message) = sources.validate_with_node_ids(model, node_ids, control)? {
+                return Ok(Err(message));
+            }
+        }
+        Ok(Ok(()))
+    }
+
+    /// Counts retained string bytes, excluding shared allocation overhead.
+    pub fn retained_bytes(&self) -> usize {
+        [&self.sources, &self.svg_text]
+            .into_iter()
+            .flatten()
+            .fold(0usize, |total, sources| {
+                total.saturating_add(sources.retained_bytes())
+            })
+    }
+
+    #[cfg(feature = "presentation-data")]
+    pub(super) fn unshared_retained_bytes(&self, other: &Self) -> usize {
+        [
+            (&self.sources, &other.sources),
+            (&self.svg_text, &other.svg_text),
+        ]
+        .into_iter()
+        .filter(|(left, right)| !Self::tables_share_storage(left, right))
+        .filter_map(|(left, _)| left.as_deref())
+        .fold(0usize, |total, sources| {
+            total.saturating_add(sources.retained_bytes())
+        })
+    }
+}
+
+impl LabelSources {
+    fn get(&self, owner: FlowchartLabelSourceOwner<'_>) -> Option<&str> {
+        match owner {
+            FlowchartLabelSourceOwner::Node(id) => self.nodes.get(id).map(String::as_str),
+            FlowchartLabelSourceOwner::Edge(index) => self
+                .edges
+                .binary_search_by_key(&index, |(index, _)| *index)
+                .ok()
+                .map(|position| self.edges[position].1.as_str()),
+            FlowchartLabelSourceOwner::Subgraph(index, id) => self
+                .subgraphs
+                .get(index)
+                .and_then(Option::as_ref)
+                .filter(|source| source.id == id)
+                .map(|source| source.source.as_str()),
+        }
+    }
+
+    fn insert_edge(&mut self, semantic_index: usize, source: String) {
+        let edges = &mut self.edges;
+        if edges
+            .last()
+            .is_none_or(|(last_index, _)| *last_index < semantic_index)
+        {
+            edges.push((semantic_index, source));
+            return;
+        }
+        match edges.binary_search_by_key(&semantic_index, |(index, _)| *index) {
+            Ok(position) => edges[position].1 = source,
+            Err(position) => edges.insert(position, (semantic_index, source)),
+        }
+    }
+
+    fn insert_subgraph(&mut self, id: String, ordinal: usize, source: String) {
+        if self.subgraphs.len() <= ordinal {
+            self.subgraphs.resize_with(ordinal + 1, || None);
+        }
+        self.subgraphs[ordinal] = Some(SubgraphLabelSource { id, source });
+    }
+
+    #[cfg(feature = "presentation-data")]
+    fn validate_compatible_with_controlled(
+        left: Option<&Self>,
+        right: Option<&Self>,
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<(), &'static str>> {
+        // Historical caller-authored presentations may keep their only source facts in context.
+        let Some(right) = right else {
+            return Ok(Ok(()));
+        };
+        let Some(left) = left else {
             return Ok(Err(
                 "flowchart label sources differ between model and render context",
             ));
@@ -208,42 +383,21 @@ impl FlowchartRenderLabelSources {
         Ok(Ok(()))
     }
 
-    /// Checks node identities, edge semantic ordinals, and subgraph declaration owners.
-    pub fn validate_for_model_controlled(
-        &self,
-        model: &FlowchartModel,
-        control: &OperationControl,
-    ) -> OperationControlResult<Result<(), &'static str>> {
-        control.checkpoint()?;
-        if self.sources.is_none() {
-            return Ok(Ok(()));
-        }
-        let mut node_ids = FxHashSet::default();
-        for node in &model.nodes {
-            control.checkpoint()?;
-            node_ids.insert(node.id.as_str());
-        }
-        self.validate_with_node_ids(model, &node_ids, control)
-    }
-
-    pub(super) fn validate_with_node_ids(
+    fn validate_with_node_ids(
         &self,
         model: &FlowchartModel,
         node_ids: &FxHashSet<&str>,
         control: &OperationControl,
     ) -> OperationControlResult<Result<(), &'static str>> {
         control.checkpoint()?;
-        let Some(sources) = &self.sources else {
-            return Ok(Ok(()));
-        };
-        for id in sources.nodes.keys() {
+        for id in self.nodes.keys() {
             control.checkpoint()?;
             if !node_ids.contains(id.as_str()) {
                 return Ok(Err("flowchart node label refers to an unknown node"));
             }
         }
         let mut previous_edge_index = None;
-        for (index, _) in &sources.edges {
+        for (index, _) in &self.edges {
             control.checkpoint()?;
             if *index >= model.edges.len() {
                 return Ok(Err("flowchart edge label semantic index is out of range"));
@@ -255,12 +409,12 @@ impl FlowchartRenderLabelSources {
             }
             previous_edge_index = Some(*index);
         }
-        if sources.subgraphs.len() > model.subgraphs.len() {
+        if self.subgraphs.len() > model.subgraphs.len() {
             return Ok(Err(
                 "flowchart subgraph label declaration ordinal is out of range",
             ));
         }
-        for (ordinal, source) in sources.subgraphs.iter().enumerate() {
+        for (ordinal, source) in self.subgraphs.iter().enumerate() {
             control.checkpoint()?;
             if let Some(source) = source
                 && model.subgraphs[ordinal].id != source.id
@@ -274,23 +428,17 @@ impl FlowchartRenderLabelSources {
         Ok(Ok(()))
     }
 
-    /// Counts retained string bytes, excluding shared allocation overhead.
-    pub fn retained_bytes(&self) -> usize {
-        let Some(sources) = &self.sources else {
-            return 0;
-        };
-        sources
-            .nodes
+    fn retained_bytes(&self) -> usize {
+        self.nodes
             .iter()
             .fold(0usize, |total, (id, label)| {
                 total.saturating_add(id.len()).saturating_add(label.len())
             })
-            .saturating_add(sources.edges.iter().fold(0usize, |total, (_, source)| {
+            .saturating_add(self.edges.iter().fold(0usize, |total, (_, source)| {
                 total.saturating_add(source.len())
             }))
             .saturating_add(
-                sources
-                    .subgraphs
+                self.subgraphs
                     .iter()
                     .flatten()
                     .fold(0usize, |total, source| {

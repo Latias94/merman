@@ -9,7 +9,7 @@ use merman_render_core::{
 use super::{FlowchartEdgeDataPoints, FlowchartEdgeSvgEmission, FlowchartNeoEdgeMaskPlan};
 use crate::{
     document::{FlowchartDocumentId, FlowchartDocumentIds},
-    markers::FlowchartMarkerEmissionPlan,
+    markers::{FlowchartMarkerEmissionPlan, FlowchartMarkerSurface},
     projection::FlowchartRenderEdgeRef,
     style::{
         FlowchartEdgeAnimationResolution, FlowchartEdgeStylePlan, compiled::FlowchartCompiledStyles,
@@ -54,6 +54,9 @@ pub struct FlowchartEdgeSvgContext<'a> {
     pub steps: &'a super::FlowchartSteps,
     pub default_edge_style: &'a [String],
     pub adaptive_ink: Option<&'static str>,
+    pub surface_layers: &'a [FlowchartMarkerSurface],
+    pub label_cutout: bool,
+    pub canonical: bool,
     pub work_meter: &'a OperationWorkMeter,
 }
 
@@ -119,14 +122,29 @@ impl FlowchartEdgeTerminal<'_> {
         let d = geometry.emitted_d_for_label.unwrap_or(geometry.d);
 
         scratch.class_attr.clear();
-        write_flowchart_edge_class_attr(&mut scratch.class_attr, edge, self.animation);
+        write_flowchart_edge_class_attr(
+            &mut scratch.class_attr,
+            edge,
+            self.animation,
+            ctx.canonical,
+        );
         if hand_drawn {
             scratch.class_attr.push_str(" transition");
         }
         scratch.marker_attrs.clear();
         ctx.marker_plan
             .push_edge_marker_attributes_for(&mut scratch.marker_attrs, key)?;
-        let source_style_svg_bytes = ctx.style_plan.edge_source_style_svg_bytes_for(key)?;
+        if ctx.label_cutout {
+            crate::svg::edge_label_cutout::write_attribute(
+                &mut scratch.marker_attrs,
+                self.edge_dom_id,
+            );
+        }
+        // Mermaid parity preserves the legacy duplicate inline list. Canonical SVG emits it once.
+        let repeat_inline = !ctx.canonical;
+        let source_style_svg_bytes = ctx
+            .style_plan
+            .edge_source_style_svg_bytes_for(key, repeat_inline)?;
         let path = FlowchartEdgeSvgEmission {
             edge_dom_id: self.edge_dom_id,
             edge,
@@ -138,12 +156,31 @@ impl FlowchartEdgeTerminal<'_> {
             class_attr: &scratch.class_attr,
             marker_attrs: &scratch.marker_attrs,
             default_edge_style: ctx.default_edge_style,
+            repeat_inline,
             adaptive_ink: ctx.adaptive_ink,
             neo_edge_mask,
             line_hop_applied: geometry.line_hop_applied,
         };
         ctx.work_meter.checkpoint(OperationPhase::Emit)?;
-        path.append_to(out, source_style_svg_bytes, ctx.work_meter)?;
+        let rewritten_style = path.append_to(out, source_style_svg_bytes, ctx.work_meter)?;
+        for surface in ctx.surface_layers {
+            ctx.work_meter.charge_emit_work(d.len().div_ceil(16) + 1)?;
+            out.push_str(r#"<g class="merman-edge-surface-ink" aria-hidden="true" pointer-events="none" clip-path="url(#"#);
+            let _ = crate::svg::edge_fill::FlowchartEdgeFillPlan::write_clip_id(
+                out,
+                ctx.document_ids.scope().as_str(),
+                surface.clip,
+            );
+            out.push_str(r#")">"#);
+            path.write_surface_path(out, &surface.color, rewritten_style.as_deref())?;
+            if ctx.label_cutout {
+                crate::svg::edge_label_cutout::write_attribute(out, self.edge_dom_id);
+            }
+            ctx.marker_plan
+                .push_surface_marker_attributes_for(out, (key, surface.clip))?;
+            out.push_str("/></g>");
+            out.checkpoint()?;
+        }
         super::step::write_edge_marks(out, ctx, self.edge_ref, geometry.d)
     }
 }
@@ -153,6 +190,7 @@ fn write_flowchart_edge_class_attr(
     out: &mut impl SvgOutput,
     edge: &FlowEdge,
     animation: FlowchartEdgeAnimationResolution,
+    canonical: bool,
 ) {
     // Mermaid includes a 2-part class tuple (thickness/pattern) for flowchart edge paths. The
     // second tuple is `edge-thickness-normal edge-pattern-solid` in Mermaid@11.12.2 baselines,
@@ -176,7 +214,10 @@ fn write_flowchart_edge_class_attr(
     out.push_str(thickness_1);
     out.push(' ');
     out.push_str(pattern_1);
-    out.push_str(" edge-thickness-normal edge-pattern-solid flowchart-link");
+    if !canonical {
+        out.push_str(" edge-thickness-normal edge-pattern-solid");
+    }
+    out.push_str(" flowchart-link");
 
     if let Some(cls) = animation.class() {
         out.push(' ');

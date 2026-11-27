@@ -233,7 +233,7 @@ fn write_hand_drawn_cylinder(
         r#"<g class="basic label-container outer-path" transform="translate({},{})" style="{}""#,
         fmt(tx),
         fmt(ty),
-        escape_attr(svg.rough_group_style),
+        escape_attr(svg.hand_drawn_group_style()),
     );
     if let Some(offset) = label_offset {
         let _ = write!(out, r#" label-offset-y="{}""#, fmt(offset));
@@ -241,12 +241,27 @@ fn write_hand_drawn_cylinder(
     out.push('>');
     let sw = fmt(svg.geometry.stroke_width as f64);
     if let Some((fill, stroke)) = svg.hand_drawn_path_pair(body) {
+        if let Some(fill_opacity) = svg.rough_fill_opacity {
+            super::write_backed_hachure(
+                out,
+                body,
+                &fill,
+                4.0,
+                (svg.fill_color, svg.stroke_color),
+                fill_opacity,
+            );
+        } else {
+            let _ = write!(
+                out,
+                r#"<path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0" style="fill:none !important;stroke:{} !important;stroke-width:4px !important"/>"#,
+                escape_attr(&fill),
+                escape_attr(svg.fill_color),
+                escape_attr(svg.fill_color),
+            );
+        }
         let _ = write!(
             out,
-            r#"<path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0" style="fill:none !important;stroke:{} !important;stroke-width:4px !important"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="fill:none !important;stroke:{} !important;stroke-width:{}px !important"/>"#,
-            escape_attr(&fill),
-            escape_attr(svg.fill_color),
-            escape_attr(svg.fill_color),
+            r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="fill:none !important;stroke:{} !important;stroke-width:{}px !important"/>"#,
             escape_attr(&stroke),
             escape_attr(svg.stroke_color),
             sw,

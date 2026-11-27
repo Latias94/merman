@@ -1,6 +1,6 @@
 mod bvh;
 
-pub use bvh::{Bvh, BvhEntry};
+pub use bvh::{BoundsIndex, Bvh, BvhEntry};
 
 use crate::{MarkerMetrics, Point, Rect, Side, Size};
 

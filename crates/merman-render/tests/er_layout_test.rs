@@ -29,6 +29,131 @@ fn layout_er(text: &str) -> ErDiagramLayout {
     serde_json::from_value(projection["layout"]["ErDiagram"].clone()).expect("ER layout projection")
 }
 
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn er_shoal_gives_cardinality_markers_room_on_a_crowded_face() {
+    for direction in ["LR", "RL", "TB", "BT"] {
+        let source = format!(
+            "---\nconfig:\n  layout: shoal\n  look: classic\n  htmlLabels: false\n---\nerDiagram\n  direction {direction}\n  A }}|--|{{ B : first\n  A }}|--|{{ B : second\n  A }}|--|{{ B : third\n  A }}|--|{{ B : fourth\n  A }}|--|{{ B : fifth\n"
+        );
+        let layout = layout_er(&source);
+        let horizontal = matches!(direction, "LR" | "RL");
+        for node in &layout.nodes {
+            let length = if horizontal { node.height } else { node.width };
+            let mut ports = layout
+                .edges
+                .iter()
+                .map(|edge| {
+                    let point = if edge.from == node.id {
+                        edge.points.first().unwrap()
+                    } else {
+                        edge.points.last().unwrap()
+                    };
+                    if horizontal { point.y } else { point.x }
+                })
+                .collect::<Vec<_>>();
+            ports.sort_by(f64::total_cmp);
+            assert_eq!(ports.len(), 5);
+            assert!(
+                ports.windows(2).all(|pair| pair[1] - pair[0] >= 18.0),
+                "{direction} {}: {ports:?}",
+                node.id
+            );
+            assert!(length >= 5.0 * 18.0, "{direction} {}: {length}", node.id);
+        }
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn er_shoal_uses_the_largest_face_and_checks_reversed_assignments() {
+    for direction in ["LR", "RL", "TB", "BT"] {
+        let layout = |body: &str| {
+            layout_er(&format!(
+                "---\nconfig:\n  layout: shoal\n  htmlLabels: false\n---\nerDiagram\ndirection {direction}\n{body}"
+            ))
+        };
+        let horizontal = matches!(direction, "LR" | "RL");
+        let face_length = |node: &merman_render::model::LayoutNode| {
+            if horizontal { node.height } else { node.width }
+        };
+        let chain = layout(
+            "A }|--|{ B : ab1\nA }|--|{ B : ab2\nA }|--|{ B : ab3\nB }|--|{ C : bc1\nB }|--|{ C : bc2\nB }|--|{ C : bc3\n",
+        );
+        let [a, b, c] = chain.nodes.as_slice() else {
+            panic!("three chain entities")
+        };
+        assert!(
+            face_length(b) <= face_length(a).max(face_length(c)) + 0.01,
+            "{direction}: opposite faces share the same reserve"
+        );
+
+        let cycle = layout(
+            "A }|--|{ B : ab1\nA }|--|{ B : ab2\nA }|--|{ B : ab3\nB }|--|{ A : ba1\nB }|--|{ A : ba2\n",
+        );
+        for node in &cycle.nodes {
+            let mut faces = [Vec::new(), Vec::new()];
+            for edge in &cycle.edges {
+                let point = if edge.from == node.id {
+                    edge.points.first()
+                } else {
+                    edge.points.last()
+                }
+                .unwrap();
+                let (cross, rank, center) = if horizontal {
+                    (point.y, point.x, node.x)
+                } else {
+                    (point.x, point.y, node.y)
+                };
+                faces[usize::from(rank > center)].push(cross);
+            }
+            assert!(
+                faces.iter().any(|face| face.len() > 3),
+                "{direction}: backedges must exercise the shared face"
+            );
+            for face in &mut faces {
+                face.sort_by(f64::total_cmp);
+                assert!(
+                    face.windows(2).all(|pair| pair[1] - pair[0] >= 18.0),
+                    "{direction} {}: {face:?}",
+                    node.id
+                );
+            }
+        }
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn er_shoal_reserves_the_physical_axis_of_a_nested_direction() {
+    let layout = layout_er(concat!(
+        "---\nconfig:\n  layout: shoal\n  htmlLabels: false\n---\nerDiagram\n",
+        "direction LR\nsubgraph Inner [Inner]\ndirection BT\n",
+        "A }|--|{ B : first\nA }|--|{ B : second\nA }|--|{ B : third\n",
+        "A }|--|{ B : fourth\nA }|--|{ B : fifth\nend\n",
+    ));
+    assert_eq!(layout.clusters[0].effective_dir, "BT");
+    for node in layout.nodes.iter().filter(|node| !node.is_cluster) {
+        assert!(
+            node.width >= 5.0 * 18.0 && node.height < node.width,
+            "{node:?}"
+        );
+        let mut contacts = Vec::new();
+        for edge in &layout.edges {
+            let point = if edge.from == node.id {
+                edge.points.first()
+            } else {
+                edge.points.last()
+            }
+            .unwrap();
+            assert!(((point.y - node.y).abs() - node.height / 2.0).abs() < 1e-6);
+            contacts.push(point.x);
+        }
+        contacts.sort_by(f64::total_cmp);
+        assert!(contacts.windows(2).all(|pair| pair[1] - pair[0] >= 18.0));
+    }
+}
+
 #[cfg(not(feature = "layout-shoal"))]
 #[test]
 fn er_shoal_reports_the_missing_build_capability() {

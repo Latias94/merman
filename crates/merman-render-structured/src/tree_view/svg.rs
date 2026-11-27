@@ -14,7 +14,7 @@ use merman_render_core::{
     root_svg::{self, RootViewportContext, RootedSvg},
     svg_css::{CssSelectorDiagramId, SvgId},
     svg_output::{BoundedSvgOutput, SvgOutput, XmlTextOutput},
-    xml::escape_xml_display,
+    xml::{escape_attr_display, escape_xml_display},
 };
 
 use super::{
@@ -229,7 +229,7 @@ fn push_tree_view_node(
     let _ = write!(
         out,
         r#"<text dominant-baseline="middle" class="{}" x="{}" y="{}">{}</text>"#,
-        escape_xml_display(&label_classes),
+        escape_attr_display(&label_classes),
         fmt(node.label_x),
         fmt(node.label_y),
         escape_xml_display(&node.name)

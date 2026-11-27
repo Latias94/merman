@@ -58,7 +58,7 @@ pub(super) fn render_class_diagram_svg_model_with_config(
     #[cfg(feature = "layout-shoal")]
     let canonical_routes = paint.as_ref().map(|paint| class::ClassCanonicalRoutes {
         paint,
-        rough_stroke: super::canonical_rough::constrained_rough_edge_path,
+        rough_stroke: merman_render_core::rough_svg::constrained_rough_edge_path,
     });
     let context = ClassSvgContext {
         diagram_id,

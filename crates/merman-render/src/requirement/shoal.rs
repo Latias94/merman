@@ -1,10 +1,9 @@
 use super::RequirementPreparedArtifact;
 use crate::Result;
-use crate::graph_layout::canonical::CanonicalRoutes;
+use crate::graph_layout::canonical::{CanonicalRoutes, CaptionClearance, theme_routing_style};
 use crate::graph_layout::contour::{ShapePortProfile, shoal_contour};
 use crate::graph_layout::ir::{
-    Direction, Endpoint, Marker, MeasuredEdge, MeasuredGraph, MeasuredNode, RoutingStyle, Side,
-    Size,
+    Direction, Endpoint, Marker, MeasuredEdge, MeasuredGraph, MeasuredNode, Side, Size,
 };
 use crate::graph_layout::placement;
 use crate::layout_work::OperationLayoutWorkControl;
@@ -46,7 +45,7 @@ pub(super) fn layout(
     };
     let mut graph = MeasuredGraph {
         direction,
-        routing: RoutingStyle::Curved,
+        routing: theme_routing_style(css_binding.edge_style()),
         node_spacing: settings.nodesep,
         rank_spacing: settings.ranksep,
         component_spacing: settings.nodesep.max(settings.ranksep),
@@ -75,10 +74,8 @@ pub(super) fn layout(
         profiles.push(profile);
     }
 
-    let effective_config = config.as_value();
-    let neo = crate::config::config_diagram_look(effective_config).is_neo();
-    let stroke_width = RequirementConfigView::new(effective_config).canonical_stroke_width();
-    let (contains_marker, arrow_marker) = relation_markers(neo, stroke_width);
+    let (contains_marker, arrow_marker) =
+        css_binding.relation_markers(&RequirementConfigView::new(config.as_value()));
     let endpoint = |id: &str, terminal: &str| {
         nodes
             .get_index_of(id)
@@ -127,6 +124,7 @@ pub(super) fn layout(
         &profiles,
         |_| 0.0,
         measured_edges.iter().map(|edge| edge.identity().name),
+        CaptionClearance::Avoid,
         &mut work,
     )?;
     canonical_routes.placement = placement;
@@ -180,31 +178,4 @@ pub(super) fn layout(
         ),
         route_contract: crate::graph_layout::RouteContract::canonical_graph(canonical_routes),
     })
-}
-
-fn relation_markers(neo: bool, stroke_width: f64) -> (Marker, Marker) {
-    let half_stroke = stroke_width / 2.0;
-    let contains_radius = (9.0 + half_stroke).min(10.0);
-    let contains = Marker {
-        trim: 0.0,
-        depth: 10.0 + contains_radius,
-        width: 2.0 * contains_radius,
-    };
-    let arrow_trim = half_stroke / 5.0_f64.sqrt();
-    let arrow_half_width = 10.0 + 2.0 * arrow_trim;
-    let arrow = if neo {
-        let scale = 20.0 / 25.0;
-        Marker {
-            trim: arrow_trim.min(5.0) * scale,
-            depth: 20.0 * scale,
-            width: 2.0 * arrow_half_width.min(12.5) * scale,
-        }
-    } else {
-        Marker {
-            trim: 0.0,
-            depth: 20.0,
-            width: 20.0,
-        }
-    };
-    (contains, arrow)
 }

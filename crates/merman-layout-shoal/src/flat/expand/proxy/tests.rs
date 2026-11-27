@@ -67,8 +67,19 @@ fn separated_proxy_lanes_remain_straight_for_parallel_and_antiparallel_semantic_
         Direction::Right,
         Direction::Left,
     ] {
-        for reverse in [false, true] {
-            let graph = fixed_graph(direction, &[(-23., -23., false), (23., 23., reverse)]);
+        for (proxies, reverse) in [
+            (2, false),
+            (2, true),
+            (1, false),
+            (1, true),
+            (0, false),
+            (0, true),
+        ] {
+            let mut graph = fixed_graph(direction, &[(-23., -23., false), (23., 23., reverse)]);
+            if proxies != 2 {
+                graph.nodes[proxies].group_proxy = false;
+                assert_eq!(expanded(&graph).layers.len(), 2);
+            }
             for cycle_policy in [CyclePolicy::SccGreedyFas, CyclePolicy::SccDfs] {
                 let options = Options {
                     cycle_policy,
@@ -132,6 +143,7 @@ fn any_shared_reversed_close_unheld_or_labeled_lane_keeps_the_parallel_tier() {
     });
     assert_eq!(expanded(&graph).layers.len(), 3);
     let mut graph = template();
+    graph.nodes[0].group_proxy = false;
     graph.nodes[1].group_proxy = false;
     assert_eq!(expanded(&graph).layers.len(), 3);
     let mut graph = template();

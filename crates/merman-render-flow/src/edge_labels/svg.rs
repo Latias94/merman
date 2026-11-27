@@ -6,7 +6,7 @@ use merman_render_core::{
     number_format::canonical_number as fmt_display,
     svg_output::SvgOutput,
     text::{TextMeasurer, TextStyle, WrapMode, literal_label::FlowchartSvgLabelSource, svg_label},
-    xml::escape_xml_display,
+    xml::escape_attr_display,
 };
 
 // Edge labels use Mermaid's createText default independently of flowchart.wrappingWidth.
@@ -62,7 +62,7 @@ impl SvgEdgeLabel<'_> {
             r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({},{})"><g><rect class="background" style="" x="{}" y="{}" width="{}" height="{}"/>"#,
             fmt_display(self.position.x),
             fmt_display(self.position.y),
-            escape_xml_display(self.edge_id),
+            escape_attr_display(self.edge_id),
             fmt_display(label_box.translate_x),
             fmt_display(label_box.translate_y),
             fmt_display(label_box.background_x),
@@ -114,7 +114,7 @@ pub fn write_empty_svg_edge_label(out: &mut impl SvgOutput, edge_id: &str) {
     let _ = write!(
         out,
         r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0,0)">"#,
-        escape_xml_display(edge_id)
+        escape_attr_display(edge_id)
     );
     svg_label::write_svg_text_source_word_lines(out, &[Vec::new()], false, true);
     out.push_str("</g></g>");

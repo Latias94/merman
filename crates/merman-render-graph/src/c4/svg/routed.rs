@@ -16,47 +16,35 @@ pub(super) fn open_shaft(
     stroke: &str,
     stroke_width: f64,
     diagram_id: SvgId<'_>,
-    viewport: root_svg::DiagramBounds,
+    clip: Option<(&str, root_svg::DiagramBounds)>,
     points: &mut Vec<u8>,
 ) -> Result<()> {
-    let cutout = (!route.shaft_cutouts.is_empty()).then(|| {
-        let id = format!("{}-label-cutout", route.id);
-        let mut outer = Rect::new(
+    let clip = clip.zip(route.shaft_cutout);
+    if let Some(((id, viewport), gap)) = clip {
+        let outer = Rect::new(
             viewport.min_x,
             viewport.min_y,
             viewport.min_x + viewport.width,
             viewport.min_y + viewport.height,
-        );
-        for &gap in &route.shaft_cutouts {
-            outer = outer.union(gap);
-        }
-        // Knock out only this shaft. The boundary or canvas already behind it shows through.
-        outer = outer.inflate(1.0, 1.0);
+        )
+        .union(gap)
+        .inflate(1.0, 1.0);
+        // The relation's text blocks share one ink box, so the hole never toggles in an overlap.
         let _ = write!(
             out,
-            r#"<defs><clipPath id="{}"><path clip-rule="evenodd" d="M{} {}H{}V{}H{}Z"#,
-            escape_attr_display(scoped_svg_id(diagram_id, &id)),
+            r#"<defs><clipPath id="{}"><path clip-rule="evenodd" d="M{} {}H{}V{}H{}ZM{} {}V{}H{}V{}Z"/></clipPath></defs>"#,
+            escape_attr_display(scoped_svg_id(diagram_id, id)),
             fmt(outer.x0),
             fmt(outer.y0),
             fmt(outer.x1),
             fmt(outer.y1),
             fmt(outer.x0),
+            fmt(gap.x0),
+            fmt(gap.y0),
+            fmt(gap.y1),
+            fmt(gap.x1),
+            fmt(gap.y0),
         );
-        for &gap in &route.shaft_cutouts {
-            let _ = write!(
-                out,
-                "M{} {}V{}H{}V{}Z",
-                fmt(gap.x0),
-                fmt(gap.y0),
-                fmt(gap.y1),
-                fmt(gap.x1),
-                fmt(gap.y0),
-            );
-        }
-        out.push_str(r#""/></clipPath></defs>"#);
-        id
-    });
-    if cutout.is_some() {
         out.checkpoint()?;
     }
     points.clear();
@@ -72,11 +60,11 @@ pub(super) fn open_shaft(
         escape_attr_display(stroke),
         escape_attr_display(&route.path),
     );
-    if let Some(id) = cutout {
+    if let Some(((id, _), _)) = clip {
         let _ = write!(
             out,
             r#" clip-path="{}""#,
-            escape_attr_display(scoped_svg_url(diagram_id, &id))
+            escape_attr_display(scoped_svg_url(diagram_id, id))
         );
     }
     out.checkpoint()

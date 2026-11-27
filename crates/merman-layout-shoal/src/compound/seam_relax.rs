@@ -208,6 +208,7 @@ fn inboard_track(
     terminal: usize,
     travel: Travel,
     stub_limit: f64,
+    orthogonal: bool,
     work: &mut Work<'_>,
 ) -> LayoutResult<Option<usize>> {
     let next = |index: usize| {
@@ -244,7 +245,7 @@ fn inboard_track(
     let anchor_lane = travel.across(route[anchor]);
     Ok((anchor != terminal
         && (travel.along(old) - travel.along(route[first])).abs() >= stub_limit
-        && travel.along(old) != travel.along(route[anchor])
+        && (orthogonal || travel.along(old) != travel.along(route[anchor]))
         && (lane - anchor_lane) * (track - lane) > 0.0)
         .then_some(far))
 }
@@ -331,6 +332,9 @@ fn fixed_seams(
     let lane = travel.across(route[left]);
     let delta = travel.across(route[right]) - lane;
     if delta != 0.0 {
+        if ctx.options.routing == RoutingStyle::Orthogonal {
+            return Ok(None);
+        }
         let mut steps = outer
             .windows(2)
             .filter(|pair| travel.across(pair[0]) != travel.across(pair[1]));
@@ -354,10 +358,20 @@ fn fixed_seams(
         return Ok(None);
     }
     let stub_limit = ctx.options.spacing.port_sep;
-    let Some(start) = inboard_track(route, left, 0, travel, stub_limit, work)? else {
+    let orthogonal = ctx.options.routing == RoutingStyle::Orthogonal;
+    let Some(start) = inboard_track(route, left, 0, travel, stub_limit, orthogonal, work)? else {
         return Ok(None);
     };
-    let Some(end) = inboard_track(route, right, route.len() - 1, travel, stub_limit, work)? else {
+    let Some(end) = inboard_track(
+        route,
+        right,
+        route.len() - 1,
+        travel,
+        stub_limit,
+        orthogonal,
+        work,
+    )?
+    else {
         return Ok(None);
     };
     if travel.across(route[start]) != travel.across(route[end])
@@ -514,8 +528,10 @@ fn prepare_slide<'a>(
     }
     let terminal = points.len() - 1;
     let stub = ctx.options.spacing.port_sep;
-    let start = inboard_track(points, left, 0, travel, stub, work)?.unwrap_or(left - 1);
-    let end = inboard_track(points, right, terminal, travel, stub, work)?.unwrap_or(right + 1);
+    let orthogonal = ctx.options.routing == RoutingStyle::Orthogonal;
+    let start = inboard_track(points, left, 0, travel, stub, orthogonal, work)?.unwrap_or(left - 1);
+    let end = inboard_track(points, right, terminal, travel, stub, orthogonal, work)?
+        .unwrap_or(right + 1);
     if start < 2 || end + 1 >= terminal {
         return Ok(None);
     }
@@ -523,6 +539,10 @@ fn prepare_slide<'a>(
     let after = points[end + 1];
     let first_track = travel.across(points[start]);
     let last_track = travel.across(points[end]);
+    let leads_forward = |a, b| {
+        let run = travel.along(b) - travel.along(a);
+        run > 0.0 || orthogonal && run == 0.0 && travel.across(a) != travel.across(b)
+    };
     if points[start..left]
         .iter()
         .chain(&points[right + 1..=end])
@@ -537,12 +557,11 @@ fn prepare_slide<'a>(
             travel,
         )
         || !keeps_anchor(points[end + 2], after, points[end], last_track, travel)
-        || travel.along(before) >= travel.along(points[start])
+        || !leads_forward(before, points[start])
         || travel.along(points[start]) >= travel.along(points[left])
         || travel.along(points[right]) >= travel.along(points[end])
-        || travel.along(points[end]) >= travel.along(after)
-        || points[start].axis != travel.axis
-        || after.axis != travel.axis
+        || !leads_forward(points[end], after)
+        || !orthogonal && (points[start].axis != travel.axis || after.axis != travel.axis)
     {
         return Ok(None);
     }
@@ -570,6 +589,7 @@ fn sliding_candidate(
     output: &LayoutOutput,
     slide: Slide<'_>,
     lane: f64,
+    style: RoutingStyle,
     work: &mut Work<'_>,
 ) -> LayoutResult<Option<Candidate>> {
     let Slide {
@@ -599,7 +619,7 @@ fn sliding_candidate(
     for leg in moved.windows(2) {
         let run = travel.along(leg[1]) - travel.along(leg[0]);
         let shift = (travel.across(leg[1]) - travel.across(leg[0])).abs();
-        if run <= 0.0 || shift > 2.0 * run {
+        if run < 0.0 || (style != RoutingStyle::Orthogonal && (run == 0.0 || shift > 2.0 * run)) {
             return Ok(None);
         }
     }
@@ -625,10 +645,18 @@ fn sliding_candidate(
     }))
 }
 
-fn route_length(route: &[RoutePoint]) -> f64 {
+fn route_length(route: &[RoutePoint], style: RoutingStyle) -> f64 {
     route
         .windows(2)
-        .map(|leg| (leg[1].x - leg[0].x).hypot(leg[1].y - leg[0].y))
+        .map(|leg| {
+            let x = (leg[1].x - leg[0].x).abs();
+            let y = (leg[1].y - leg[0].y).abs();
+            if style == RoutingStyle::Orthogonal {
+                x + y
+            } else {
+                x.hypot(y)
+            }
+        })
         .sum()
 }
 
@@ -644,6 +672,7 @@ fn make_edit(
     pair: SiblingRoute<'_>,
     stitch: usize,
     candidate: Candidate,
+    style: RoutingStyle,
     work: &mut Work<'_>,
 ) -> LayoutResult<Edit> {
     let SiblingRoute {
@@ -656,24 +685,54 @@ fn make_edit(
             .lane
             .map_or(points[index], |lane| travel.on_lane(points[index], lane))
     };
-    work.charge(points.len())?;
-    let mut route = reserved(points.len())?;
+    let orthogonal = style == RoutingStyle::Orthogonal;
+    let across_axis = match travel.axis {
+        Axis::Horizontal => Axis::Vertical,
+        Axis::Vertical => Axis::Horizontal,
+    };
+    let capacity = points
+        .len()
+        .checked_add(2 * usize::from(orthogonal))
+        .ok_or(crate::WorkError::ArithmeticOverflow)?;
+    work.charge(capacity)?;
+    let mut route = reserved(capacity)?;
     route.extend_from_slice(&points[..candidate.start]);
     if candidate.start < first.point {
-        route.push(RoutePoint {
-            axis: travel.axis,
-            ..at(candidate.start)
-        });
+        let mut start = at(candidate.start);
+        start.axis = travel.axis;
+        let previous = points[candidate.start - 1];
+        if orthogonal && travel.across(previous) != travel.across(start) {
+            if travel.along(previous) != travel.along(start) {
+                route.push(travel.on_lane(start, travel.across(previous)));
+            }
+            start.axis = across_axis;
+        }
+        route.push(start);
     }
     let point = route.len();
     route.extend([at(first.point), at(last.point)]);
+    let mut tail = &points[candidate.end + 1..];
     if candidate.end > last.point {
-        route.push(RoutePoint {
-            axis: travel.axis,
-            ..at(candidate.end)
-        });
+        let mut end = at(candidate.end);
+        end.axis = travel.axis;
+        route.push(end);
+        let next = tail[0];
+        if orthogonal && travel.across(next) != travel.across(end) {
+            if travel.along(next) == travel.along(end) {
+                route.push(RoutePoint {
+                    axis: across_axis,
+                    ..next
+                });
+                tail = &tail[1..];
+            } else {
+                route.push(RoutePoint {
+                    axis: across_axis,
+                    ..travel.on_lane(end, travel.across(next))
+                });
+            }
+        }
     }
-    route.extend_from_slice(&points[candidate.end + 1..]);
+    route.extend_from_slice(tail);
     Ok(Edit {
         edge: first.edge.0 as usize,
         stitch,
@@ -727,7 +786,10 @@ fn fixed_edits(
         )? {
             continue;
         }
-        push(&mut edits, make_edit(pair, stitch, candidate, work)?)?;
+        push(
+            &mut edits,
+            make_edit(pair, stitch, candidate, ctx.options.routing, work)?,
+        )?;
     }
     Ok(edits)
 }
@@ -806,7 +868,9 @@ fn slide_edits(
             if slide.originals == [lane.target; 2] {
                 continue;
             }
-            let Some(candidate) = sliding_candidate(output, slide, lane.target, work)? else {
+            let Some(candidate) =
+                sliding_candidate(output, slide, lane.target, ctx.options.routing, work)?
+            else {
                 continue 'corridors;
             };
             if obstacles.is_none() {
@@ -828,12 +892,20 @@ fn slide_edits(
             )? {
                 continue 'corridors;
             }
-            let edit = make_edit(slide.pair, slide.stitch, candidate, work)?;
+            let edit = make_edit(
+                slide.pair,
+                slide.stitch,
+                candidate,
+                ctx.options.routing,
+                work,
+            )?;
             let previous = fixed
                 .binary_search_by_key(&edge, |fixed| fixed.edge)
                 .ok()
                 .map_or(slide.pair.points, |index| fixed[index].route.as_slice());
-            if route_length(&edit.route) > route_length(previous) {
+            if route_length(&edit.route, ctx.options.routing)
+                > route_length(previous, ctx.options.routing)
+            {
                 continue 'corridors;
             }
             planned.push(edit);
@@ -849,8 +921,7 @@ fn slide_edits(
 
 pub(super) fn eligible(options: &Options, output: &LayoutOutput) -> bool {
     let caps = options.caps;
-    options.routing == RoutingStyle::Curved
-        && output.truncated_routes.is_empty()
+    output.truncated_routes.is_empty()
         && output.groups.len() >= 2
         && (2..=caps.max_ordered_compound_ports).contains(&output.border_stitches.len())
         && output.edges.len() <= caps.max_ordered_compound_edges

@@ -4,8 +4,8 @@ use super::config::SwimlaneConfig;
 use super::prepare::{normalize_direction, synthetic_node};
 use super::working::{WorkingLayout, WorkingNode, WorkingNodeKind};
 use crate::flowchart::{
-    FlowchartEdgeKey, FlowchartRenderModelRef, FlowchartShape, FlowchartSvgLabelOwner,
-    FlowchartSvgLabelSidecarBuilder, ProjectedFlowchartEdge, resolve_flowchart_shape,
+    FlowchartRenderModelRef, FlowchartShape, FlowchartSvgLabelOwner,
+    FlowchartSvgLabelSidecarBuilder, resolve_flowchart_shape,
 };
 use crate::graph_layout::axis_clearance::AxisClearance;
 use crate::graph_layout::contour::{ShapePortProfile, shoal_contour};
@@ -13,7 +13,7 @@ use crate::graph_layout::ir::{
     Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, RoutingStyle,
     Side, Size, SolvedGraph, TitlePosition,
 };
-use crate::graph_layout::route_paint::ObstacleOwner;
+use crate::graph_layout::route_paint::{ObstacleOwner, marker_obstacle};
 use crate::graph_layout::{AxisRoutes, RouteContract, RouteTopology, placement};
 use crate::layout_frame::GraphPlacement;
 use crate::layout_work::OperationLayoutWorkControl;
@@ -21,8 +21,11 @@ use crate::model::{LayoutNode, LayoutPoint, SwimlaneDirection, SwimlaneTitleRect
 use crate::{Error, LayoutExecution, Result};
 use merman_model::presentation::PresentationConfig;
 use merman_render_flow::node_geometry::contour as flow_contour;
+use merman_render_flow::projection::{FlowchartEdgeKey, ProjectedFlowchartEdge};
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
+
+mod columns;
 
 #[derive(Clone, Debug)]
 pub(crate) struct SwimlaneShoal {
@@ -69,36 +72,44 @@ pub(super) fn solve(
     view: &FlowchartRenderModelRef<'_>,
     visible_edges: &[(FlowchartEdgeKey, ProjectedFlowchartEdge<'_>)],
     effective_config: &PresentationConfig,
-    config: SwimlaneConfig,
+    (config, routing): (SwimlaneConfig, RoutingStyle),
     execution: &LayoutExecution<'_>,
     labels: Option<&FlowchartSvgLabelSidecarBuilder>,
 ) -> Result<SwimlaneShoal> {
     let mut work = OperationLayoutWorkControl::new(execution.work_meter());
-    let (graph, lane_order, bindings) = measure(
+    let (graph, columns, bindings) = measure(
         working,
         view,
         visible_edges,
         effective_config,
-        config,
+        (config, routing),
         labels,
         &mut work,
     )?;
     let ids = |&slot: &usize| working.nodes[slot].id.as_str();
-    let (solved, placement) = placement::solve(
+    let edge_ports = columns.edge_ports(&graph, &mut work)?;
+    let (mut solved, placement) = placement::solve(
         &graph,
         bindings.node_slots.iter().map(ids),
         bindings.group_slots.iter().map(ids),
         Some(execution),
         placement::Constraints {
-            lane_order: &lane_order,
+            lane_order: &columns.order,
+            lane_boundaries: &columns.boundaries,
+            edge_ports: &edge_ports,
             capture_ranks: true,
             ..Default::default()
         },
         &mut work,
     )?;
     drop(graph);
+    columns.restore_shells(&mut solved, &mut work)?;
     let routes = bindings.project(working, solved, view.edges.len(), visible_edges, &mut work)?;
     Ok(SwimlaneShoal { routes, placement })
+}
+
+fn is_lane_shell(node: &WorkingNode) -> bool {
+    matches!(node.shape.as_str(), "pool" | "swimlane") || node.parent_id.is_none()
 }
 
 fn measure(
@@ -106,10 +117,10 @@ fn measure(
     view: &FlowchartRenderModelRef<'_>,
     visible_edges: &[(FlowchartEdgeKey, ProjectedFlowchartEdge<'_>)],
     effective_config: &PresentationConfig,
-    config: SwimlaneConfig,
+    (config, routing): (SwimlaneConfig, RoutingStyle),
     labels: Option<&FlowchartSvgLabelSidecarBuilder>,
     work: &mut OperationLayoutWorkControl,
-) -> Result<(MeasuredGraph, Vec<u32>, Bindings)> {
+) -> Result<(MeasuredGraph, columns::Columns, Bindings)> {
     work.charge_adapter(working.nodes.len())?;
     let flow = direction(working.direction);
     let horizontal = matches!(flow, Direction::Left | Direction::Right);
@@ -144,14 +155,16 @@ fn measure(
         _ => Err(invalid_endpoint(id)),
     };
     let parent = |id: Option<&str>| id.map(group_of).transpose();
-    let mut authored_order = vec![None; group_slots.len()];
+    let mut authored_order = vec![usize::MAX; group_slots.len()];
     for (ordinal, id) in working.top_lane_order.iter().enumerate() {
         work.charge_adapter(1)?;
-        authored_order[group_of(id)? as usize] = Some(ordinal);
+        authored_order[group_of(id)? as usize] = ordinal;
     }
+    let mut columns =
+        columns::Columns::new(&group_slots, working, parent, authored_order, flow, work)?;
     let mut graph = MeasuredGraph {
         direction: flow,
-        routing: RoutingStyle::Orthogonal,
+        routing,
         node_spacing: config.node_gap,
         rank_spacing: config.layer_gap,
         component_spacing: config.node_gap,
@@ -160,20 +173,15 @@ fn measure(
         groups: Vec::with_capacity(group_slots.len()),
         edges: Vec::with_capacity(visible_edges.len()),
     };
-    let mut lane_order = Vec::new();
     for (id, &slot) in group_slots.iter().enumerate() {
         work.charge_adapter(1)?;
         let node = &working.nodes[slot];
-        let parent = parent(node.parent_id.as_deref())?;
-        let is_lane = parent.is_none();
-        if is_lane {
-            lane_order.push(index(id, work)?);
-        }
+        let is_column = columns.is_column(id);
         let mut title = (node.label_width > 0.0 && node.label_height > 0.0).then_some(Size {
             width: node.label_width,
             height: node.label_height,
         });
-        if is_lane
+        if is_lane_shell(node)
             && horizontal
             && let Some(title) = &mut title
         {
@@ -181,12 +189,12 @@ fn measure(
         }
         let padding = node.padding.max(0.0);
         let mut insets = kurbo::Insets::uniform(padding);
-        if !is_lane && let Some(title) = title {
+        if !is_column && let Some(title) = title {
             insets.y0 += title.height;
         }
         graph.groups.push(MeasuredGroup {
             seq: index(slot, work)?,
-            parent,
+            parent: columns.solver_parent(id),
             direction: node
                 .requested_dir
                 .as_deref()
@@ -200,9 +208,6 @@ fn measure(
             title_position: TitlePosition::TopCenter,
         });
     }
-    let lane_levels = lane_order.len().checked_ilog2().unwrap_or(0) as usize + 1;
-    work.charge_adapter(work.checked_mul(lane_order.len(), lane_levels)?)?;
-    lane_order.sort_unstable_by_key(|&id| (authored_order[id as usize].unwrap_or(usize::MAX), id));
 
     let source_nodes: HashMap<_, _> = view
         .nodes
@@ -292,6 +297,7 @@ fn measure(
         });
         profiles.push(profile);
     }
+    columns.reserve_shell_titles(&mut graph, work)?;
     for ((_, edge), binding) in visible_edges.iter().zip(&working.original_edges) {
         work.charge_adapter(1)?;
         let endpoint = |id: &str| {
@@ -319,7 +325,7 @@ fn measure(
     }
     Ok((
         graph,
-        lane_order,
+        columns,
         Bindings {
             node_slots,
             group_slots,
@@ -409,14 +415,31 @@ impl Bindings {
         }
         work.charge_adapter(semantic_edge_count)?;
         let mut routes = vec![None; semantic_edge_count];
-        for ((binding, route), (owner, _)) in working
+        for ((binding, route), (owner, source)) in working
             .original_edges
             .iter_mut()
             .zip(solved.edges)
             .zip(visible_edges)
         {
-            work.charge_adapter(route.points.len())?;
+            work.charge_adapter(work.checked_add(route.points.len(), 2)?)?;
             let edge = owner.semantic_index();
+            if let [first, .., last] = route.points.as_slice() {
+                let (start, end) = crate::svg::flowchart_marker_metrics(source.semantic);
+                obstacles.extend(marker_obstacle(
+                    edge,
+                    route.source,
+                    *first,
+                    route.ports.0,
+                    start,
+                ));
+                obstacles.extend(marker_obstacle(
+                    edge,
+                    route.target,
+                    *last,
+                    route.ports.1,
+                    end,
+                ));
+            }
             let (points, knots) = route
                 .points
                 .into_iter()

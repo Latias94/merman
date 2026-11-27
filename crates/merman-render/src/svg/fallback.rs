@@ -10,11 +10,11 @@ mod css;
 mod html;
 mod transform;
 
+use crate::svg::foreign_objects::{ForeignObjectSwitches, MAX_SELECTOR_ANCESTRY_DEPTH};
 use crate::svg::pipeline::{
     SvgPostprocessExecution, SvgStructureMetrics, SvgTagScanner, checkpoint_loop, end_tag_name,
     escape_xml_attr_with_checkpoints, escape_xml_text_with_checkpoints,
-    extract_exact_double_quoted_attr_with_checkpoints, find_tag_end_with_checkpoints,
-    find_with_checkpoints, rfind_with_checkpoints, start_tag_name,
+    extract_exact_double_quoted_attr_with_checkpoints, find_with_checkpoints, start_tag_name,
 };
 use crate::text::TextMeasurer;
 use std::collections::HashSet;
@@ -24,8 +24,10 @@ use std::fmt::{self, Write};
 use attr::is_self_closing;
 use context::{SourceFrame, attribute, source_class_attr_tokens};
 use html::{foreign_object_html_wrapping, standalone_node_label_box};
+#[cfg(test)]
+use merman_render_core::text::styled_html::cascade;
 use merman_render_core::text::styled_html::{
-    cascade::{self, CascadeIndex, Namespace, SourceElement},
+    cascade::{CascadeIndex, Namespace, SourceElement},
     normalized_foreign_object_text,
 };
 
@@ -133,31 +135,27 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
     let mut source_stack: Vec<SourceElement> = Vec::new();
     let mut source_stack_overflow_depth = 0usize;
     let mut cascade_index = None;
-    let mut switch_search_from = 0usize;
+    let ancestry_limit = MAX_SELECTOR_ANCESTRY_DEPTH;
+    let switches = ForeignObjectSwitches::scan(svg, checkpoint, |depth| {
+        selector_limit(depth, ancestry_limit)
+    })?;
+    let mut scanner = SvgTagScanner::new(svg);
+    let mut root_name = None;
+    let mut root_close = None;
     let mut i = 0usize;
     let mut iteration = 0usize;
-    while let Some(lt_rel) = find_with_checkpoints(&svg[i..], "<", checkpoint)? {
+    while let Some(scanned) = scanner.next_with_checkpoints(checkpoint)? {
         checkpoint_loop(iteration, checkpoint)?;
         iteration = iteration.saturating_add(1);
-        let lt = i + lt_rel;
+        let lt = scanned.start();
+        let gt = scanner.cursor();
+        let tag = scanned.raw();
         out.push_str(&svg[i..lt]);
 
-        let Some(gt) = find_tag_end_with_checkpoints(svg, lt, checkpoint)? else {
-            out.push_str(&svg[lt..]);
-            i = svg.len();
-            break;
-        };
-        let gt = gt + 1;
-        let tag = &svg[lt..gt];
-
-        // Comments / declarations: passthrough.
-        if tag.starts_with("<!--") || tag.starts_with("<!") || tag.starts_with("<?") {
-            out.push_str(tag);
-            i = gt;
-            continue;
-        }
-
         if let Some(name) = end_tag_name(tag) {
+            if root_name == Some(name) && geometry_stack.len() == 1 {
+                root_close = Some(out.len());
+            }
             geometry_stack.pop();
             if source_stack_overflow_depth > 0 {
                 source_stack_overflow_depth -= 1;
@@ -173,29 +171,20 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
         }
 
         let start_name = start_tag_name(tag);
-        if start_name.is_some_and(|name| name.eq_ignore_ascii_case("foreignObject")) {
-            let (inner, i_next) = if is_self_closing(tag) {
-                ("", gt)
-            } else {
-                let Some((inner_end, close_end)) =
-                    find_foreign_object_end_tag(svg, gt, checkpoint)?
-                else {
-                    out.push_str(&svg[lt..]);
-                    i = svg.len();
-                    break;
-                };
-                (&svg[gt..inner_end], close_end)
+        root_name = root_name.or(start_name);
+        if start_name == Some("foreignObject") {
+            let Some(close) = scanner.matching_end_with_checkpoints(scanned, checkpoint)? else {
+                i = lt;
+                break;
             };
-
+            let i_next = scanner.cursor();
+            let inner = if scanned.is_self_closing() {
+                ""
+            } else {
+                &svg[gt..close.start()]
+            };
             out.push_str(&svg[lt..i_next]);
-
-            let from_switch = is_foreign_object_switch_native_fallback(
-                svg,
-                lt,
-                i_next,
-                &mut switch_search_from,
-                checkpoint,
-            )?;
+            let from_switch = switches.native_objects.contains(&lt);
 
             let width = parse_attr_f64(tag, "width", checkpoint)?.unwrap_or(0.0);
             let height = parse_attr_f64(tag, "height", checkpoint)?.unwrap_or(0.0);
@@ -782,28 +771,18 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
             continue;
         }
 
-        // Source styles are consumed by `CascadeIndex` in its first pass. Do
-        // not treat CSS text (or CDATA containing a literal `</style>`) as SVG
-        // structure while building the source ancestry for conversion.
-        if start_name.is_some_and(|name| name.eq_ignore_ascii_case("style"))
-            && !is_self_closing(tag)
-        {
-            let mut scanner = SvgTagScanner::new(svg);
-            scanner.skip_to(gt);
-            let mut close_end = None;
-            while let Some(candidate) = scanner.next_with_checkpoints(checkpoint)? {
-                if end_tag_name(candidate.raw())
-                    .is_some_and(|name| name.eq_ignore_ascii_case("style"))
-                {
-                    close_end = Some(scanner.cursor());
-                    break;
-                }
+        // Source styles are consumed by `CascadeIndex` in its first pass.
+        if start_name == Some("style") && !scanned.is_self_closing() {
+            if scanner
+                .matching_end_with_checkpoints(scanned, checkpoint)?
+                .is_none()
+            {
+                i = lt;
+                break;
             }
-            if let Some(close_end) = close_end {
-                out.push_str(&svg[lt..close_end]);
-                i = close_end;
-                continue;
-            }
+            i = scanner.cursor();
+            out.push_str(&svg[lt..i]);
+            continue;
         }
 
         if let Some(name) = start_name
@@ -811,11 +790,8 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
         {
             if source_stack_overflow_depth > 0 {
                 source_stack_overflow_depth = source_stack_overflow_depth.saturating_add(1);
-            } else if source_stack.len() >= cascade::MAX_SELECTOR_ANCESTRY_DEPTH {
-                selector_limit(
-                    source_stack.len().saturating_add(1),
-                    cascade::MAX_SELECTOR_ANCESTRY_DEPTH,
-                )?;
+            } else if source_stack.len() >= ancestry_limit {
+                selector_limit(source_stack.len().saturating_add(1), ancestry_limit)?;
                 source_stack_overflow_depth = 1;
             } else {
                 source_stack.push(CascadeIndex::source_element(
@@ -842,7 +818,7 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
     }
 
     if !overlays.is_empty()
-        && let Some(close) = rfind_with_checkpoints(&out, "</svg>", checkpoint)?
+        && let Some(close) = root_close
     {
         preflight_generated(out.len().saturating_add(overlays.len()), generated_elements)?;
         out.insert_str(close, &overlays);
@@ -862,7 +838,7 @@ fn collect_svg_ids<E>(
     while let Some(tag) = scanner.next_with_checkpoints(checkpoint)? {
         if let Some(name) = start_tag_name(tag.raw()) {
             let id = attribute(tag.raw(), "id", checkpoint)?;
-            if !saw_root && name.eq_ignore_ascii_case("svg") {
+            if !saw_root && name.rsplit(':').next() == Some("svg") {
                 saw_root = true;
                 // Renderer roots carry document-unique, fragment-safe diagram IDs.
                 namespace = id
@@ -1071,114 +1047,6 @@ fn writer_owned_fallback_background<'a, E>(
     }
     Ok(Some((occurrence, fill)))
 }
-
-fn is_foreign_object_switch_native_fallback<E>(
-    svg: &str,
-    foreign_object_start: usize,
-    foreign_object_end: usize,
-    switch_search_from: &mut usize,
-    checkpoint: &mut impl FnMut() -> Result<(), E>,
-) -> Result<bool, E> {
-    let Some(switch_start) =
-        find_wrapping_switch_start(svg, foreign_object_start, switch_search_from, checkpoint)?
-    else {
-        return Ok(false);
-    };
-    let Some(switch_close_rel) =
-        find_with_checkpoints(&svg[foreign_object_end..], "</switch>", checkpoint)?
-    else {
-        return Ok(false);
-    };
-
-    let has_intervening_close = find_with_checkpoints(
-        &svg[switch_start..foreign_object_start],
-        "</switch>",
-        checkpoint,
-    )?
-    .is_some();
-    let has_native_text = find_with_checkpoints(
-        &svg[foreign_object_end..foreign_object_end + switch_close_rel],
-        "<text",
-        checkpoint,
-    )?
-    .is_some();
-    Ok(!has_intervening_close && has_native_text)
-}
-
-fn find_wrapping_switch_start<E>(
-    svg: &str,
-    before: usize,
-    search_from: &mut usize,
-    checkpoint: &mut impl FnMut() -> Result<(), E>,
-) -> Result<Option<usize>, E> {
-    const PREFIX: &str = "<switch";
-    let mut search_end = before;
-    while search_end > *search_from {
-        let Some(relative) =
-            rfind_with_checkpoints(&svg[*search_from..search_end], PREFIX, checkpoint)?
-        else {
-            if search_end == before {
-                // Later labels have increasing offsets. A miss proves the earlier prefix empty;
-                // keep enough overlap for an incomplete literal, rounded to a UTF-8 boundary.
-                *search_from = svg.floor_char_boundary(before.saturating_sub(PREFIX.len() - 1));
-            }
-            return Ok(None);
-        };
-        let start = *search_from + relative;
-        let Some(open_end) = find_tag_end_with_checkpoints(svg, start, checkpoint)? else {
-            return Ok(None);
-        };
-        if open_end >= before {
-            search_end = start;
-            continue;
-        }
-
-        let tag = &svg[start..=open_end];
-        if is_start_switch_tag(tag) {
-            // Keep the last accepted opening: later lookups must still apply the existing
-            // intervening-close and native-text checks, including malformed markup behavior.
-            *search_from = start;
-            return Ok(Some(start));
-        }
-
-        search_end = start;
-    }
-    Ok(None)
-}
-
-fn is_start_switch_tag(tag: &str) -> bool {
-    let bytes = tag.as_bytes();
-    tag.starts_with("<switch")
-        && bytes
-            .get("<switch".len())
-            .is_some_and(|b| b.is_ascii_whitespace() || *b == b'>' || *b == b'/')
-        && !tag.trim_end().ends_with("/>")
-}
-
-fn find_foreign_object_end_tag<E>(
-    svg: &str,
-    from: usize,
-    checkpoint: &mut impl FnMut() -> Result<(), E>,
-) -> Result<Option<(usize, usize)>, E> {
-    let mut cursor = from;
-    while let Some(rel) = find_with_checkpoints(&svg[cursor..], "</", checkpoint)? {
-        let start = cursor + rel;
-        let Some(end) = find_tag_end_with_checkpoints(svg, start, checkpoint)? else {
-            return Ok(None);
-        };
-        if end_tag_name(&svg[start..=end])
-            .is_some_and(|name| name.eq_ignore_ascii_case("foreignObject"))
-        {
-            return Ok(Some((start, end + 1)));
-        }
-        cursor = end + 1;
-    }
-    Ok(None)
-}
-
-#[cfg(test)]
-#[path = "fallback/switch_search_tests.rs"]
-mod switch_search_tests;
 
 #[cfg(test)]
 mod tests;

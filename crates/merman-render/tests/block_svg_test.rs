@@ -83,6 +83,131 @@ fn native_theme_v2_block_preserves_authored_fill_and_marker_references() {
     assert!(arrow.attribute("style").unwrap().contains("fill:none;"));
 }
 
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_block_paints_double_circle_opacity_once_and_keeps_definition_ids_unique() {
+    let source = r#"---
+config:
+  layout: shoal
+  look: neo
+  themeVariables:
+    useGradient: true
+---
+block
+  columns 2
+  gradient((("Outer"))) B["Inner"]
+  gradient --> B
+  style gradient opacity:0.5,fill-opacity:0.75
+"#;
+    let svg = render_block_svg_from_text(source);
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let rebased = merman_render::svg::rebase_svg_ids(&svg, "preview", &session).unwrap();
+    let doc = roxmltree::Document::parse(&rebased).unwrap();
+    let ids = doc
+        .descendants()
+        .filter_map(|node| node.attribute("id"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        ids.iter().collect::<std::collections::HashSet<_>>().len(),
+        ids.len()
+    );
+    let circle = doc
+        .descendants()
+        .find(|node| node.attribute("class") == Some("outer-circle"))
+        .unwrap();
+    let group = circle.parent_element().unwrap();
+    let opacity = |node: roxmltree::Node<'_, '_>| {
+        node.attribute("style")
+            .unwrap_or_default()
+            .split(';')
+            .any(|declaration| declaration.starts_with("opacity:0.5"))
+    };
+    assert!(opacity(group));
+    for child in group.children().filter(roxmltree::Node::is_element) {
+        assert!(!opacity(child));
+        assert!(
+            child
+                .attribute("style")
+                .unwrap_or_default()
+                .contains("fill-opacity:0.75")
+        );
+    }
+    let edge = doc
+        .descendants()
+        .find(|node| node.attribute("data-et") == Some("edge"))
+        .unwrap();
+    assert!(
+        !edge
+            .attribute("style")
+            .unwrap_or_default()
+            .contains("undefined")
+    );
+    let classes = edge.attribute("class").unwrap();
+    assert_eq!(classes.matches("edge-thickness-normal").count(), 1);
+    assert_eq!(classes.matches("edge-pattern-solid").count(), 1);
+    let reference = edge.attribute("marker-end").unwrap();
+    let marker_id = reference
+        .strip_prefix("url(#")
+        .unwrap()
+        .strip_suffix(')')
+        .unwrap();
+    assert!(
+        doc.descendants()
+            .any(|node| node.has_tag_name("marker") && node.attribute("id") == Some(marker_id))
+    );
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_block_honors_native_styles_on_routed_edges() {
+    let source = "---\nconfig:\n  layout: shoal\n---\nblock\ncolumns 3\nA[\"Alpha\"] X[\"Obstacle\"] B[\"Beta\"]\nA --> B\n";
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    for (style, has_curves) in [("orthogonal", false), ("curved", true), ("sketch", true)] {
+        let theme = ThemeCompiler::new()
+            .compile_json(
+                format!(
+                    r#"{{"schema_version":2,"extends":"paper","form":{{"edge_style":"{style}"}}}}"#
+                )
+                .as_bytes(),
+                None,
+            )
+            .unwrap();
+        let session = RenderEnvironment::deterministic()
+            .begin_session_with_native_theme(NativeTheme::new(theme))
+            .unwrap();
+        let rendered = family::prepare(
+            parsed.presentation(),
+            &LayoutOptions::headless_svg_defaults(),
+            session,
+        )
+        .unwrap()
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+        let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let edge = doc
+            .descendants()
+            .find(|node| node.attribute("data-et") == Some("edge"))
+            .unwrap();
+        assert_eq!(
+            edge.attribute("d").unwrap().contains('C'),
+            has_curves,
+            "{style}: {edge:?}"
+        );
+    }
+}
+
+#[test]
+fn block_digit_prefixed_classes_are_css_identifiers() {
+    let svg = render_block_svg_from_text(
+        "block\nA[\"Alpha\"]\nclassDef 2done fill:#123456\nclass A 2done\n",
+    );
+    assert!(block_stylesheet_text(&svg).contains(r#".\32 done"#));
+    assert!(svg.contains(" 2done"));
+}
+
 fn independent_block_presentation(
     model: merman_model::families::block::BlockDiagramModel,
 ) -> merman_model::presentation::PresentationDiagram {

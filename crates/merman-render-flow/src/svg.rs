@@ -18,7 +18,7 @@ use merman_render_core::{
         timing::{self, RenderTiming},
     },
     text::{TextMeasurer, TextStyle, WrapMode},
-    xml::{escape_attr_display, escape_xml_display, escape_xml_into},
+    xml::escape_attr_display,
 };
 use merman_theme_contract::v2::{Canvas, Color, FamilyTheme};
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -39,8 +39,9 @@ mod cluster_geometry;
 ))]
 mod compact;
 mod defs;
-mod edge_fill;
+pub(crate) mod edge_fill;
 mod edge_geom;
+pub(crate) mod edge_label_cutout;
 mod hierarchy;
 mod label;
 mod layout;

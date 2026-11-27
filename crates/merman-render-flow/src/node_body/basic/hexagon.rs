@@ -44,14 +44,13 @@ pub fn write_hexagon(out: &mut impl SvgOutput, mut body: NodeBodySvg<'_>, neo: b
             r#"<g transform="translate({},{})" style="{}">"#,
             fmt(-w / 2.0),
             fmt(h / 2.0),
-            escape_attr(body.rough_group_style)
+            escape_attr(body.hand_drawn_group_style())
         );
-        let _ = write!(
+        body.write_hachure(
             out,
-            r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"/>"#,
-            escape_attr(&fill_d),
-            escape_attr(body.fill_color),
-            fmt(FLOWCHART_HEXAGON_HAND_DRAWN_FILL_WEIGHT as f64),
+            &path_data,
+            &fill_d,
+            f64::from(FLOWCHART_HEXAGON_HAND_DRAWN_FILL_WEIGHT),
         );
         let _ = write!(
             out,
@@ -60,7 +59,7 @@ pub fn write_hexagon(out: &mut impl SvgOutput, mut body: NodeBodySvg<'_>, neo: b
             escape_attr(body.stroke_color),
             fmt(body.geometry.stroke_width as f64),
             escape_attr(body.geometry.stroke_dasharray),
-            escape_attr(body.style)
+            escape_attr(&body.grouped_child_style())
         );
         out.push_str("</g>");
     } else {

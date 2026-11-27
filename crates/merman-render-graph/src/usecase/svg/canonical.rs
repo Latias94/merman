@@ -1,7 +1,6 @@
 use super::super::UsecaseMarker;
-use super::{SvgId, fmt};
+use super::{SvgId, SvgOutput, fmt};
 use merman_render_core::LayoutPoint;
-use std::fmt::Write as _;
 
 pub struct UsecasePaintedEdge {
     pub path: String,
@@ -10,7 +9,7 @@ pub struct UsecasePaintedEdge {
 }
 
 pub(super) fn write_marker(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     diagram_id: SvgId<'_>,
     marker: &UsecaseMarker,
     start: bool,
@@ -41,8 +40,13 @@ pub(super) fn write_marker(
     }
     let _ = write!(
         out,
-        r#" style="stroke-width:{};stroke-dasharray:0;stroke-linecap:round;stroke-linejoin:round;"/></marker></defs>"#,
-        fmt(marker.stroke_width)
+        r#" style="stroke-width:{};stroke-dasharray:0;stroke-linecap:round;stroke-linejoin:round;{}"/></marker></defs>"#,
+        fmt(marker.stroke_width),
+        if marker.is_open_point() {
+            "fill:none;"
+        } else {
+            ""
+        },
     );
     format!("url(#{id})")
 }

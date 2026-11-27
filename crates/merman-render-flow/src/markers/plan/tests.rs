@@ -826,7 +826,7 @@ fn marker_admission_stops_before_resolving_the_next_occurrence() {
             },
             source_color: Some("#2468ac"),
             adaptive_ink: None,
-            casing_color: None,
+            surfaces: &[],
             margin: false,
         })
     });

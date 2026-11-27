@@ -104,6 +104,10 @@ impl SpinePorts {
             .is_some_and(|sides| sides[side] == Some(segment as u32))
     }
 
+    pub(in crate::flat) fn has_pending(&self) -> bool {
+        !self.pending.is_empty()
+    }
+
     /// Decide narrow faces against actual docked terminals. The rank and box placement is
     /// already fixed. If the remaining rank-face terminals still need the full width, restore
     /// their original spread in the same order before collecting the gap pieces.

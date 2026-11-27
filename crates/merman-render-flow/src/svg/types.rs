@@ -73,6 +73,8 @@ pub struct FlowchartRenderCtx<'a> {
     pub(in crate::svg) config: &'a merman_model::presentation::PresentationConfig,
     pub(in crate::svg) compatibility: &'a crate::theme::FlowchartCompatibilityBinding,
     pub(in crate::svg) native: Option<&'a crate::theme::FlowchartNativeStyle>,
+    /// A known canvas color, including transparent, or `None` for unsampled paint.
+    pub(in crate::svg) canvas: Option<Color>,
     pub(in crate::svg) container_label_layers:
         std::cell::OnceCell<super::render::edge_label::ContainerLabelLayers>,
     pub(in crate::svg) palette: super::agentflow::ContainerPalette<'a>,

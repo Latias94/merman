@@ -2,12 +2,8 @@ use super::{SequenceActorPalette, SequencePreparedActivationGeometry};
 use crate::model::SequenceActivationLayout;
 use crate::rect_paint::include_rect_stroke_bounds;
 use merman_render_core::{
-    Bounds, Result,
-    number_format::canonical_number as fmt,
-    resources::OperationWorkMeter,
-    svg_output::SvgOutput,
-    theme_svg::cssom_color_value,
-    xml::{escape_attr, escape_xml},
+    Bounds, Result, number_format::canonical_number as fmt, resources::OperationWorkMeter,
+    svg_output::SvgOutput, theme_svg::cssom_color_value, xml::escape_attr,
 };
 use std::fmt::Write as _;
 
@@ -17,8 +13,6 @@ pub struct SequenceActivationPlan<'a> {
     geometry: &'a SequencePreparedActivationGeometry,
     palette: &'a SequenceActorPalette,
     is_neo: bool,
-    fill: String,
-    stroke: String,
     stroke_width: Option<f32>,
     radius: Option<f32>,
     bounds: Option<Bounds>,
@@ -39,8 +33,6 @@ impl<'a> SequenceActivationPlan<'a> {
             geometry,
             palette,
             is_neo,
-            fill: "#EDF2AE".to_owned(),
-            stroke: "#666".to_owned(),
             stroke_width,
             radius,
             bounds: None,
@@ -76,14 +68,12 @@ impl<'a> SequenceActivationPlan<'a> {
             let layout = &self.layouts[group.layout_index];
             let _ = write!(
                 out,
-                r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="{stroke}" width="{w}" height="{h}" class="activation{idx}"{look_attr}"##,
+                r##"<rect x="{x}" y="{y}" fill="#EDF2AE" stroke="#666" width="{w}" height="{h}" class="activation{idx}"{look_attr}"##,
                 x = fmt(layout.x),
                 y = fmt(layout.y),
                 w = fmt(layout.width),
                 h = fmt(layout.height),
                 idx = layout.depth % 3,
-                fill = escape_xml(&self.fill),
-                stroke = escape_xml(&self.stroke),
                 look_attr = if self.is_neo {
                     r#" data-look="neo""#
                 } else {

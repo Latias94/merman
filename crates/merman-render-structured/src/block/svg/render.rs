@@ -1,4 +1,4 @@
-use std::fmt::Write as _;
+use std::{borrow::Cow, fmt::Write as _};
 
 use base64::Engine as _;
 use merman_render_core::{
@@ -8,11 +8,11 @@ use merman_render_core::{
     resources::OperationWorkMeter,
     root_svg,
     rough_svg::{
-        closed_path_d_from_points, operation_randomness,
-        paths::{roughjs_hand_drawn_stroke_path_for_svg_path, roughjs_paths_for_svg_path},
+        closed_path_d_from_points, constrained_rough_edge_path, operation_randomness,
+        paths::roughjs_paths_for_svg_path,
     },
-    svg_bounds::svg_emitted_bounds_from_svg,
-    svg_css::{SvgId as SvgDiagramId, write_mermaid_base_css_root_rule},
+    svg_bounds::{svg_emitted_bounds_from_svg, svg_path_bounds_from_d},
+    svg_css::{SvgId as SvgDiagramId, available_local_svg_id, write_mermaid_base_css_root_rule},
     svg_edge_parity::{
         curve,
         markers::{self, BaseEdgeMarkerKind},
@@ -20,15 +20,15 @@ use merman_render_core::{
     },
     svg_output::{BoundedSvgOutput, SvgOutput, XmlTextOutput},
     text::{literal_label::flowchart_non_markdown_svg_plain_text, svg_label as label},
-    xml::escape_attr,
+    xml::{escape_attr, escape_attr_into},
 };
 use merman_theme_contract::v2::EdgeStyle;
 
 use super::super::{
-    BlockCssThemeBinding, BlockDiagramLayout, BlockNodeBindings, BlockOrthogonalRoute,
-    BlockPreparedLabels, BlockRectangleKind, BlockShapeBoundary, BlockShapeGeometry,
-    BlockTypographyThemePlan, SVG_EDGE_LABEL_BACKGROUND_PADDING, block_label_is_effectively_empty,
-    block_render_edge_points, resolve_block_node_sources,
+    BlockCssThemeBinding, BlockDiagramLayout, BlockEdgeMarkerGeometry, BlockNodeBindings,
+    BlockOrthogonalRoute, BlockPreparedLabels, BlockRectangleKind, BlockShapeBoundary,
+    BlockShapeGeometry, BlockTypographyThemePlan, SVG_EDGE_LABEL_BACKGROUND_PADDING,
+    block_label_is_effectively_empty, block_render_edge_points, resolve_block_node_sources,
 };
 use super::BlockSvgContext;
 
@@ -383,7 +383,7 @@ pub fn render_block_diagram_svg_model_with_theme(
         }
         for class_def in &theme.class_definitions {
             options.checkpoint_emit()?;
-            let class = class_def.id.as_str();
+            let class = merman_render_core::svg_css::escape_css_identifier(&class_def.id);
             let mut shape_declarations = declarations(&class_def.shape);
             if let Some((key, value)) = shape_declarations.next() {
                 let _ = write!(out, r#"#{diagram_id} .{class}>*{{"#);
@@ -630,7 +630,13 @@ pub fn render_block_diagram_svg_model_with_theme(
 
     if let Some(look_defs) = &node_theme.look_defs {
         look_defs.write_shadow_defs(&mut out, diagram_id)?;
-        look_defs.write_gradient(&mut out, diagram_id)?;
+        if options.shoal && look_defs.uses_gradient() {
+            out.push_str("<defs>");
+            look_defs.write_gradient(&mut out, diagram_id)?;
+            out.push_str("</defs>");
+        } else {
+            look_defs.write_gradient(&mut out, diagram_id)?;
+        }
     }
     if let Some(style) = native {
         super::native::write_markers(&mut out, diagram_id, style.form.marker_style)?;
@@ -696,7 +702,40 @@ pub fn render_block_diagram_svg_model_with_theme(
                 .ok_or_else(|| Error::InvalidModel {
                     message: format!("missing Block shape geometry for node `{}`", n.id),
                 })?;
-        let id_attr = format!(r#" id="{}""#, escape_attr(&dom_id(diagram_id, &n.id)));
+        let disambiguated = if !options.shoal
+            && node_theme
+                .look_defs
+                .as_ref()
+                .is_some_and(|defs| defs.defines_local_id(&n.id, true))
+        {
+            Some(available_local_svg_id(
+                format!("block-node-{node_index}"),
+                nodes_by_id.len().saturating_add(layout.edges.len()),
+                |id| {
+                    nodes_by_id.contains_key(id)
+                        || id
+                            .strip_prefix(diagram_id.semantic_str())
+                            .and_then(|suffix| suffix.strip_prefix('-'))
+                            .is_some_and(|edge_id| layout_edges_by_id.get(edge_id).is_some())
+                },
+                options.work_meter,
+            )?)
+        } else {
+            None
+        };
+        let mut id_attr = if options.shoal {
+            format!(r#" id="{diagram_id}-block-node-{node_index}""#)
+        } else {
+            let id = disambiguated.as_deref().unwrap_or(&n.id);
+            format!(r#" id="{}""#, escape_attr(&dom_id(diagram_id, id)))
+        };
+        if options.shoal || disambiguated.is_some() {
+            let _ = write!(
+                id_attr,
+                r#" data-et="node" data-id="{}""#,
+                escape_attr(&n.id)
+            );
+        }
         options.checkpoint_emit()?;
         let _ = write!(
             &mut out,
@@ -751,13 +790,33 @@ pub fn render_block_diagram_svg_model_with_theme(
                 inner_radius,
                 ..
             } => {
+                let circle_style = if options.shoal {
+                    let mut style = String::new();
+                    merman_render_core::mermaid_style::visit_parsed_style_declarations(
+                        node_box_style,
+                        |decl| {
+                            if decl.property() != "opacity" {
+                                let _ = write!(
+                                    style,
+                                    "{}:{};",
+                                    decl.property_source(),
+                                    decl.source_value()
+                                );
+                            }
+                        },
+                    );
+                    Cow::Owned(style)
+                } else {
+                    Cow::Borrowed(node_box_style.as_str())
+                };
+                let circle_style = escape_attr(&circle_style);
                 let _ = write!(
                     &mut out,
                     r#"<g class="basic label-container" style="{}"><circle class="outer-circle" style="{}" r="{}" cx="0" cy="0"/><circle class="inner-circle" style="{}" r="{}" cx="0" cy="0"/></g>"#,
                     escape_attr(node_box_style),
-                    escape_attr(node_box_style),
+                    circle_style,
                     fmt(*outer_radius),
-                    escape_attr(node_box_style),
+                    circle_style,
                     fmt(*inner_radius),
                 );
             }
@@ -931,9 +990,10 @@ pub fn render_block_diagram_svg_model_with_theme(
             continue;
         };
         let fallback_points;
-        let mut fallback_d;
+        let fallback_d;
+        let route = edge_routes.get(edge_index).and_then(Option::as_ref);
         let (d, points, marker_refs) = 'geometry: {
-            if let Some(route) = edge_routes.get(edge_index).and_then(Option::as_ref) {
+            if let Some(route) = route {
                 let b = &route.bounds;
                 union_block_bounds(&mut content_bounds, (b.min_x, b.min_y, b.max_x, b.max_y));
                 break 'geometry (
@@ -952,17 +1012,6 @@ pub fn render_block_diagram_svg_model_with_theme(
                 }
             };
             fallback_d = d;
-            if edge_style == Some(EdgeStyle::Sketch)
-                && fallback_points.rendered_points.len() >= 2
-                && let Some(rough) = roughjs_hand_drawn_stroke_path_for_svg_path(
-                    &fallback_d,
-                    0.3,
-                    options.work_meter,
-                    &hand_drawn_seed,
-                )
-            {
-                fallback_d = rough;
-            }
             if let Some(b) = bounds {
                 union_block_bounds(&mut content_bounds, (b.min_x, b.min_y, b.max_x, b.max_y));
             }
@@ -975,28 +1024,72 @@ pub fn render_block_diagram_svg_model_with_theme(
                 ],
             )
         };
+        let marker_kinds = [
+            BaseEdgeMarkerKind::from_arrow(e.arrow_type_start.as_deref(), true),
+            BaseEdgeMarkerKind::from_arrow(e.arrow_type_end.as_deref(), false),
+        ];
+        let rough_d = if edge_style == Some(EdgeStyle::Sketch) && points.len() >= 2 {
+            let markers = route.map_or_else(
+                || {
+                    let [start, end] = marker_kinds.map(|kind| {
+                        kind.and_then(BlockEdgeMarkerGeometry::from_kind)
+                            .map(|geometry| geometry.routing)
+                            .unwrap_or_default()
+                    });
+                    (start, end)
+                },
+                |route| route.markers,
+            );
+            let d = constrained_rough_edge_path(d, markers, options.work_meter, &hand_drawn_seed)?;
+            options.work_meter.charge(d.len())?;
+            if let Some(bounds) = svg_path_bounds_from_d(&d) {
+                union_block_bounds(
+                    &mut content_bounds,
+                    (bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y),
+                );
+            }
+            Some(d)
+        } else {
+            None
+        };
+        let d = rough_d.as_deref().unwrap_or(d);
         has_rendered_edge |= !points.is_empty();
         let data_points =
             base64::engine::general_purpose::STANDARD.encode(json_stringify_points(points));
         let thickness = e.thickness.as_str();
         has_thick_edge |= thickness == "thick";
         let pattern = e.pattern.as_str();
-        let class_attr = format!(
-            "edge-thickness-{thickness} edge-pattern-{pattern} edge-thickness-{thickness} edge-pattern-{pattern} flowchart-link LS-a1 LE-b1"
-        );
-        let prefixed_edge_id = dom_id(diagram_id, &e.id);
-        let path_id = dom_id(diagram_id, &prefixed_edge_id);
+        let (path_id, data_id) = if options.shoal {
+            (
+                format!("{diagram_id}-block-edge-{edge_index}"),
+                Cow::Borrowed(e.id.as_str()),
+            )
+        } else {
+            let data_id = dom_id(diagram_id, &e.id);
+            let path_id = dom_id(diagram_id, &data_id);
+            (path_id, Cow::Owned(data_id))
+        };
         let _ = write!(
             &mut out,
-            r#"<path d="{}" id="{}" class="{}" style="undefined;;;undefined" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
+            r#"<path d="{}" id="{}" class="edge-thickness-{} edge-pattern-{}"#,
             escape_attr(d),
             escape_attr(&path_id),
-            escape_attr(&class_attr),
-            escape_attr(&prefixed_edge_id),
-            escape_attr(&data_points)
+            thickness,
+            pattern,
         );
+        if options.shoal {
+            out.push_str(r#" flowchart-link""#);
+        } else {
+            let _ = write!(
+                &mut out,
+                r#" edge-thickness-{thickness} edge-pattern-{pattern} flowchart-link LS-a1 LE-b1" style="undefined;;;undefined""#
+            );
+        }
+        out.push_str(r#" data-edge="true" data-et="edge" data-id=""#);
+        escape_attr_into(&mut out, &data_id);
+        let _ = write!(&mut out, r#"" data-points="{data_points}""#);
 
-        if let Some(kind) = BaseEdgeMarkerKind::from_arrow(e.arrow_type_start.as_deref(), true) {
+        if let Some(kind) = marker_kinds[0] {
             if let Some(point) = marker_refs[0] {
                 include_block_marker_bounds(&mut marker_bounds, point, kind.suffix());
             }
@@ -1006,7 +1099,7 @@ pub fn render_block_diagram_svg_model_with_theme(
                 escape_attr(&marker_url(diagram_id, kind.suffix()))
             );
         }
-        if let Some(kind) = BaseEdgeMarkerKind::from_arrow(e.arrow_type_end.as_deref(), false) {
+        if let Some(kind) = marker_kinds[1] {
             if let Some(point) = marker_refs[1] {
                 include_block_marker_bounds(&mut marker_bounds, point, kind.suffix());
             }

@@ -3,8 +3,15 @@ use super::*;
 use merman_model::families::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
 use rustc_hash::FxHashMap;
 
+#[cfg(feature = "layout-shoal")]
+mod canonical_line_hops;
 mod cluster;
 mod endpoint_clip;
+#[cfg(feature = "layout-shoal")]
+pub(super) mod label_seating;
+
+#[cfg(feature = "layout-shoal")]
+pub(super) use canonical_line_hops::apply_canonical_line_hops;
 
 pub(super) use crate::cluster_shell::swimlane_terminal_geometry;
 pub(super) use endpoint_clip::clip_swimlane_endpoints;
@@ -27,26 +34,41 @@ fn is_pool_cluster(ctx: &FlowchartRenderCtx<'_>, id: &str) -> bool {
 }
 
 fn uses_pool_shell(ctx: &FlowchartRenderCtx<'_>, id: &str) -> bool {
-    is_pool_cluster(ctx, id)
-        && (id != "__swimlane_default__"
-            || ctx
-                .layout
-                .nodes
-                .iter()
-                .all(|node| ctx.parent.contains_key(node.id.as_str())))
+    is_pool_cluster(ctx, id) && !reuses_default_lane(ctx, id)
+}
+
+fn reuses_default_lane(ctx: &FlowchartRenderCtx<'_>, id: &str) -> bool {
+    if id != "__swimlane_default__" {
+        return false;
+    }
+    if ctx.layout.route_contract.is_canonical_axis() {
+        // Preparation reuses the reserved group as a lane when it must adopt loose cards.
+        // The solved parent map already contains those synthetic memberships.
+        let authored: FxHashSet<_> = ctx.model.visible_memberships().map(|(id, _)| id).collect();
+        ctx.swimlane_layout.is_some_and(|layout| {
+            layout.nodes.iter().any(|node| {
+                !node.is_edge_label
+                    && node.parent_id.as_deref() == Some(id)
+                    && !authored.contains(node.id.as_str())
+            })
+        })
+    } else {
+        ctx.layout
+            .nodes
+            .iter()
+            .any(|node| !ctx.parent.contains_key(node.id.as_str()))
+    }
 }
 
 pub(super) fn is_lane_or_pool_cluster(ctx: &FlowchartRenderCtx<'_>, id: &str) -> bool {
     ctx.swimlane_lanes_by_id.get(id).is_some_and(|group| {
-        if ctx.layout.route_contract.group_parents().is_some() {
-            return group.parent_id.is_none();
-        }
         group.parent_id.is_none()
             || is_pool_cluster(ctx, id)
             || group
                 .parent_id
                 .as_deref()
                 .is_some_and(|parent| is_pool_cluster(ctx, parent))
+            || (ctx.layout.route_contract.is_canonical_axis() && reuses_default_lane(ctx, id))
     })
 }
 
@@ -80,23 +102,18 @@ pub(super) fn apply_line_hops_to_edge_geometries(
     preserve_dash_mask_length: impl Fn(&super::render_input::FlowchartRenderEdge<'_>) -> bool,
 ) -> Result<()> {
     use merman_render_core::svg_edge_parity::line_hops::{
-        LineHopConfig, LineHopEdge, LineHopStyle, curve_supports_line_hops, line_hop_overrides,
+        LineHopEdge, curve_supports_line_hops, line_hop_overrides,
     };
 
-    let line_hops_value = effective_config
-        .get(if uses_elk_adapter_dom {
+    let Some(config) = line_hop_config(
+        effective_config,
+        if uses_elk_adapter_dom {
             "elk"
         } else {
             "swimlane"
-        })
-        .and_then(|value| value.get("lineHops"));
-    if line_hops_value.and_then(serde_json::Value::as_bool) == Some(false) {
+        },
+    ) else {
         return Ok(());
-    }
-    let jump_style = if line_hops_value.and_then(serde_json::Value::as_str) == Some("gap") {
-        LineHopStyle::Gap
-    } else {
-        LineHopStyle::Arc
     };
 
     let preparation_work = render_edges
@@ -139,15 +156,7 @@ pub(super) fn apply_line_hops_to_edge_geometries(
         })
         .unzip();
 
-    let paths = line_hop_overrides(
-        &edges,
-        LineHopConfig {
-            jump_radius: 6.0,
-            jump_style,
-        },
-        curve_supports_line_hops,
-        work_meter,
-    )?;
+    let paths = line_hop_overrides(&edges, config, curve_supports_line_hops, work_meter)?;
 
     for (index, path) in paths {
         let edge = owners[index];
@@ -163,6 +172,26 @@ pub(super) fn apply_line_hops_to_edge_geometries(
         cache_entry.geom.line_hop_applied = true;
     }
     Ok(())
+}
+
+fn line_hop_config(
+    config: &merman_model::presentation::PresentationConfig,
+    family: &str,
+) -> Option<merman_render_core::svg_edge_parity::line_hops::LineHopConfig> {
+    use merman_render_core::svg_edge_parity::line_hops::{LineHopConfig, LineHopStyle};
+
+    let mode = config.get(family).and_then(|value| value.get("lineHops"));
+    if mode.and_then(serde_json::Value::as_bool) == Some(false) {
+        return None;
+    }
+    Some(LineHopConfig {
+        jump_radius: 6.0,
+        jump_style: if mode.and_then(serde_json::Value::as_str) == Some("gap") {
+            LineHopStyle::Gap
+        } else {
+            LineHopStyle::Arc
+        },
+    })
 }
 
 #[cfg(test)]

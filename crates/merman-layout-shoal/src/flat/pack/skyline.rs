@@ -1,4 +1,4 @@
-use super::{Placement, Tile, aspect_measure, aspect_shelves, shelves};
+use super::{Placement, Tile, aspect_measure, aspect_shelves, reserve_zero_extent, shelves};
 use crate::work::{LayoutResult, Work, reserved};
 use crate::{Point, Size};
 use std::collections::VecDeque;
@@ -81,7 +81,7 @@ fn place(
     work: &mut Work<'_>,
 ) -> LayoutResult<Option<Placement>> {
     let mut remaining = (tiles.len() * SPAN_VISITS_PER_TILE).min(MAX_SPAN_VISITS);
-    let mut offsets = reserved(tiles.len())?;
+    let mut positions = reserved(tiles.len())?;
     let mut spans = reserved(tiles.len() + 1)?;
     let mut peaks = VecDeque::from(reserved(tiles.len() + 1)?);
     spans.push(Span {
@@ -103,10 +103,12 @@ fn place(
             return Ok(None);
         };
         let (right, bottom) = (x + w, y + h);
-        let (end, depth) = (right + gap, bottom + gap);
+        let end = reserve_zero_extent(x, right + gap, w);
+        let depth = reserve_zero_extent(y, bottom + gap, h);
         if !end.is_finite()
             || !depth.is_finite()
             || end <= x
+            || depth <= y
             || (w > 0.0 && right <= x)
             || (h > 0.0 && bottom <= y)
             || (gap > 0.0 && (end <= right || depth <= bottom))
@@ -114,21 +116,17 @@ fn place(
             return Ok(None);
         }
         let (physical_x, physical_y) = orient(vertical, x, y);
-        let offset = Point {
-            x: physical_x - b.x,
-            y: physical_y - b.y,
-        };
-        if !offset.x.is_finite() || !offset.y.is_finite() {
-            return Ok(None);
-        }
-        offsets.push(offset);
+        positions.push(Point {
+            x: physical_x,
+            y: physical_y,
+        });
         across = across.max(right);
         along = along.max(bottom);
         // The trailing gap is reserved in both axes and excluded from the reported extent.
         raise(&mut spans, first, end, depth);
     }
     let (width, height) = orient(vertical, across, along);
-    Ok(Some((offsets, Size { width, height })))
+    Ok(Some((positions, Size { width, height })))
 }
 
 fn orient(vertical: bool, x: f64, y: f64) -> (f64, f64) {
@@ -147,7 +145,7 @@ fn bottom_left(
     let mut best: Option<(usize, f64, f64)> = None;
     for (first, span) in spans.iter().enumerate() {
         let right = x + width;
-        let end = right + gap;
+        let end = reserve_zero_extent(x, right + gap, width);
         if right > limit || !end.is_finite() {
             break;
         }
@@ -188,4 +186,42 @@ fn raise(spans: &mut Vec<Span>, mut first: usize, mut end: f64, depth: f64) {
         past += 1;
     }
     drop(spans.splice(first..past, [Span { end, depth }]));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{NoopWorkControl, Rect};
+
+    #[test]
+    fn skyline_keeps_zero_width_zero_depth_and_points_on_distinct_spans() {
+        for vertical in [false, true] {
+            for (w, h) in [(0.0, 20.0), (20.0, 0.0), (0.0, 0.0)] {
+                let (width, height) = orient(vertical, w, h);
+                let tiles: [Tile; 3] = std::array::from_fn(|_| Tile {
+                    ids: Vec::new(),
+                    ranks: Vec::new(),
+                    drawing: Default::default(),
+                    bounds: Rect {
+                        width,
+                        height,
+                        ..Default::default()
+                    },
+                });
+                let mut control = NoopWorkControl;
+                let mut work = Work::new(&mut control);
+                let (positions, bounds) =
+                    place(&tiles, 0.0, w, vertical, &mut work).unwrap().unwrap();
+                assert!(positions.windows(2).all(|pair| pair[0] != pair[1]));
+                let last = positions[2];
+                assert_eq!(
+                    bounds,
+                    Size {
+                        width: last.x + width,
+                        height: last.y + height
+                    }
+                );
+            }
+        }
+    }
 }

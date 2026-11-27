@@ -21,7 +21,7 @@ use merman_render_core::{
         timing::{RenderTiming, RenderTimings},
     },
     text::{TextMeasurer, TextStyle, mermaid_markdown_svg_plain_text, svg_label},
-    xml::{escape_attr, escape_xml, normalize_html_entities_for_xml},
+    xml::{escape_attr, normalize_html_entities_for_xml},
 };
 use std::fmt::Write as _;
 
@@ -267,8 +267,8 @@ fn mindmap_gradient_defs(diagram_id: &str, binding: &MindmapCssBinding) -> Strin
     format!(
         r#"<defs><linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient></defs>"#,
         diagram_id,
-        escape_xml(gradient_start),
-        escape_xml(gradient_stop)
+        escape_attr(gradient_start),
+        escape_attr(gradient_stop)
     )
 }
 
@@ -519,7 +519,7 @@ fn write_mindmap_edge_label(
         let _ = write!(
             out,
             r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)">"#,
-            escape_xml(edge_id),
+            escape_attr(edge_id),
         );
         out.checkpoint()?;
         svg_label::write_svg_text_centered_from_create_text_source(out, "", false);
@@ -531,7 +531,7 @@ fn write_mindmap_edge_label(
     let _ = write!(
         out,
         r#"<g class="edgeLabel"><g class="label" data-id="{id}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
-        id = escape_xml(edge_id),
+        id = escape_attr(edge_id),
     );
     out.checkpoint()
 }
@@ -946,7 +946,7 @@ pub fn render_mindmap_diagram_svg(
             let _ = write!(
                 out,
                 r#"<g class="cluster swimlane" id="{id}" data-id="{id}" data-et="cluster" data-look="{look}"><rect class="swimlane-body" style="" x="{x}" y="{y}" width="{width}" height="{height}" fill="none" stroke="{stroke}"/><rect class="swimlane-title" style="" x="{x}" y="{y}" width="{width}" height="0" fill="{fill}" stroke="{stroke}"/><g class="cluster-label swimlane-label" transform="translate({center}, {y})"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {width}px; text-align: center;"><span class="nodeLabel"></span></div></foreignObject></g></g>"#,
-                id = escape_xml(&lane.id),
+                id = escape_attr(&lane.id),
                 look = escape_attr(binding.map_or("classic", |style| style.look.as_ref())),
                 x = fmt(x),
                 y = fmt(y),
@@ -1063,8 +1063,8 @@ pub fn render_mindmap_diagram_svg(
             &mut out,
             r#"<path d="{d}" id="{dom_id}" class="{class}"{look_attr}"#,
             d = escape_attr(&d),
-            dom_id = escape_xml(&edge_dom_id),
-            class = escape_xml(&class),
+            dom_id = escape_attr(&edge_dom_id),
+            class = escape_attr(&class),
             look_attr = data_look_attr,
         );
         if let Some(theme) = native {
@@ -1085,8 +1085,8 @@ pub fn render_mindmap_diagram_svg(
         let _ = write!(
             &mut out,
             r#" data-edge="true" data-et="edge" data-id="{id}" data-points="{pts}"/>"#,
-            id = escape_xml(&e.id),
-            pts = escape_xml(&data_points),
+            id = escape_attr(&e.id),
+            pts = escape_attr(&data_points),
         );
         out.checkpoint()?;
     }
@@ -1133,8 +1133,8 @@ pub fn render_mindmap_diagram_svg(
         let _ = write!(
             &mut out,
             r#"<g class="{class}" id="{dom_id}""#,
-            class = escape_xml(&class),
-            dom_id = escape_xml(&node_dom_id),
+            class = escape_attr(&class),
+            dom_id = escape_attr(&node_dom_id),
         );
         if let Some(theme) = native {
             let ink = if is_root {
@@ -1201,7 +1201,7 @@ pub fn render_mindmap_diagram_svg(
                 let _ = write!(
                     &mut out,
                     r#"<path id="{id}" class="node-bkg node-0" style="" d="{d}"/>"#,
-                    id = escape_xml(&mindmap_dom_id(diagram_id, &n.dom_id)),
+                    id = escape_attr(&mindmap_dom_id(diagram_id, &n.dom_id)),
                     d = escape_attr(&rect_path),
                 );
                 context.work_meter.checkpoint(OperationPhase::Emit)?;

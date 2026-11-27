@@ -392,6 +392,7 @@ pub struct StateCompatibilityPlan {
     pub(crate) state_border: String,
     end_inner_fill: String,
     pub(crate) composite_title_background: String,
+    pub(crate) composite_title_foreground: Option<String>,
     pub(crate) state_label_color: String,
     pub(crate) drop_shadow: String,
     pub(crate) use_gradient: bool,
@@ -403,6 +404,8 @@ pub struct StateCompatibilityPlan {
     pub(crate) native_title: Option<merman_render_core::text::TextStyle>,
     pub(crate) native_label_weight: Option<String>,
     pub(crate) native_layout_scale: [f64; 3],
+    pub(crate) native_edge_style: Option<merman_theme_contract::v2::EdgeStyle>,
+    native_connector_width: Option<String>,
     pub(crate) native_marker: merman_theme_contract::v2::MarkerStyle,
 }
 
@@ -577,6 +580,7 @@ impl StateCompatibilityPlan {
             state_border: border_css,
             end_inner_fill: connector,
             composite_title_background,
+            composite_title_foreground: Some(roles.text_on_emphasis.to_string()),
             state_label_color: primary,
             drop_shadow: "none".to_owned(),
             use_gradient: false,
@@ -595,6 +599,11 @@ impl StateCompatibilityPlan {
             }),
             native_label_weight: Some(typography.label_weight.to_string()),
             native_layout_scale,
+            native_edge_style: Some(theme.form.edge_style),
+            native_connector_width: Some(
+                merman_render_core::number_format::canonical_number(theme.form.connector_width)
+                    .to_string(),
+            ),
             native_marker: theme.form.marker_style,
         }
     }
@@ -840,6 +849,7 @@ impl StateCompatibilityPlan {
             state_border: state_border.value,
             end_inner_fill: end_inner_fill.value,
             composite_title_background: composite_title_background.value,
+            composite_title_foreground: None,
             state_label_color: state_label_color.value,
             drop_shadow: drop_shadow.value,
             use_gradient: use_gradient.value,
@@ -851,8 +861,29 @@ impl StateCompatibilityPlan {
             native_title: None,
             native_label_weight: None,
             native_layout_scale: [1.0; 3],
+            native_edge_style: None,
+            native_connector_width: None,
             native_marker: merman_theme_contract::v2::MarkerStyle::Classic,
         }
+    }
+
+    pub fn native_edge_style(&self) -> Option<merman_theme_contract::v2::EdgeStyle> {
+        self.native_edge_style
+    }
+
+    pub(crate) fn native_edge_curve(&self) -> Option<&'static str> {
+        use merman_theme_contract::v2::EdgeStyle;
+        self.native_edge_style.map(|style| match style {
+            EdgeStyle::Orthogonal => "step",
+            EdgeStyle::Straight | EdgeStyle::Sketch => "linear",
+            EdgeStyle::Curved => "basis",
+        })
+    }
+
+    pub(crate) fn transition_width(&self) -> &str {
+        self.native_connector_width
+            .as_deref()
+            .unwrap_or(&self.stroke_width)
     }
 
     pub fn diagram_look(&self) -> &str {
@@ -945,7 +976,7 @@ impl StateCompatibilityPlan {
                 Stroke,
             ) => StateTerminalPaintRef::Css(&self.node_border),
             #[cfg(feature = "layout-shoal")]
-            (Transition, StrokeWidth) => StateTerminalPaintRef::Css(&self.stroke_width),
+            (Transition, StrokeWidth) => StateTerminalPaintRef::Css(self.transition_width()),
             #[cfg(feature = "layout-shoal")]
             (Transition, Fill | Stroke) => return None,
             (NoteClassic | NoteHandDrawn | NoteNeo, Fill) => {
@@ -979,7 +1010,13 @@ impl StateCompatibilityPlan {
                 | SpecialStartNeo,
                 StrokeWidth,
             ) => StateTerminalPaintRef::Css("1"),
-            (CompositeDividerHandDrawn, Fill) => StateTerminalPaintRef::Css("lightgrey"),
+            (CompositeDividerHandDrawn, Fill) => {
+                StateTerminalPaintRef::Css(if self.native_edge_style.is_some() || self.dark_mode {
+                    &self.alt_background
+                } else {
+                    "lightgrey"
+                })
+            }
             (
                 CompositeBodyNeo | CompositeBodyNeoAlt | CompositeDividerNeo | CompositeHeaderNeo,
                 Stroke,

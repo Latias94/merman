@@ -8,6 +8,9 @@ use super::*;
 #[cfg(feature = "canonical-edge-paint")]
 use merman_render_core::rough_svg::constrained_rough_edge_path;
 
+#[cfg(feature = "layout-shoal")]
+use super::swimlane::label_seating as swimlane_label_seating;
+
 pub fn with_flowchart_paint_context<T>(
     request: FlowchartSvgModelRequest<'_>,
     services: &FlowchartSvgServices<'_>,
@@ -31,7 +34,13 @@ pub fn with_flowchart_paint_context<T>(
         svg_label_sidecar,
         edge_style_plan,
     } = request;
-    let render_model = crate::projection::FlowchartRenderModelRef::new(model, render_context);
+    let mut render_model = crate::projection::FlowchartRenderModelRef::new(model, render_context);
+    if layout.route_contract.is_canonical_axis() {
+        render_model = render_model.with_shoal_svg_text(
+            render_config.node_html_labels,
+            render_config.edge_html_labels,
+        );
+    }
     let model = &render_model;
     if model.nodes.iter().any(|node| {
         node.layout_shape.as_deref() == Some("ellipse")
@@ -246,6 +255,7 @@ pub fn with_flowchart_paint_context<T>(
         config: effective_config,
         compatibility: &prepared_theme.compatibility,
         native: prepared_theme.native.as_ref(),
+        canvas: render::cluster::resolve_canvas_color(effective_config, services),
         container_label_layers: std::cell::OnceCell::new(),
         palette,
         hand_drawn_seed,
@@ -429,22 +439,36 @@ pub fn prepare_edge_routes(
             }
         }
     }
-    if matches!(ctx.layout.route_contract, FlowchartSvgRoute::Swimlane) || ctx.uses_elk_adapter_dom
-    {
+    let preserve_dash_mask_length = |edge: &FlowchartRenderEdge<'_>| {
+        ctx.compatibility.look.is_neo()
+            && flowchart_neo_mask_uses_dash_pairs(edge.edge.as_ref())
+            && ctx
+                .edge_style_plan
+                .animation_for(edge.key)
+                .is_ok_and(|animation| !animation.is_active())
+    };
+    let legacy_hops = matches!(ctx.layout.route_contract, FlowchartSvgRoute::Swimlane)
+        || ctx.uses_elk_adapter_dom;
+    #[cfg(feature = "layout-shoal")]
+    if ctx.swimlane_direction.is_some() && ctx.layout.route_contract.is_canonical_axis() {
+        super::swimlane::apply_canonical_line_hops(
+            &mut cache,
+            render_edges,
+            ctx,
+            preserve_dash_mask_length,
+        )?;
+        ctx.work_meter
+            .checkpoint(merman_model::OperationPhase::Layout)?;
+        return Ok(cache);
+    }
+    if legacy_hops {
         super::swimlane::apply_line_hops_to_edge_geometries(
             &mut cache,
             render_edges,
             ctx.config,
             ctx.work_meter,
             ctx.uses_elk_adapter_dom,
-            |edge| {
-                ctx.compatibility.look.is_neo()
-                    && flowchart_neo_mask_uses_dash_pairs(edge.edge.as_ref())
-                    && ctx
-                        .edge_style_plan
-                        .animation_for(edge.key)
-                        .is_ok_and(|animation| !animation.is_active())
-            },
+            preserve_dash_mask_length,
         )?;
     }
     ctx.work_meter
@@ -452,15 +476,35 @@ pub fn prepare_edge_routes(
     Ok(cache)
 }
 
+pub(super) fn paints_rough_edges_first(
+    ctx: &FlowchartRenderCtx<'_>,
+    adaptive_edges: bool,
+    cutout_labels: bool,
+) -> bool {
+    #[cfg(feature = "layout-shoal")]
+    if swimlane_label_seating::applies(ctx) {
+        return true;
+    }
+    adaptive_edges
+        || cutout_labels
+        || uses_theme_sketch(ctx)
+        || !ctx.hand_drawn_seed.seed().may_use_math_random()
+}
+
 pub(super) fn prepare_rough_edge_paths(
     ctx: &FlowchartRenderCtx<'_>,
     edges: &[super::render_input::FlowchartRenderEdgeRef<'_>],
     cache: &mut FxHashMap<crate::projection::FlowchartEdgeKey, FlowchartEdgePathCacheEntry>,
 ) -> Result<()> {
-    if !ctx.compatibility.look.is_hand_drawn() {
+    let hand_drawn = ctx.compatibility.look.is_hand_drawn();
+    let theme_sketch = uses_theme_sketch(ctx);
+    if !hand_drawn && !theme_sketch {
         return Ok(());
     }
     for edge in edges {
+        if !hand_drawn && has_authored_curve(ctx, edge.key) {
+            continue;
+        }
         let Some(entry) = cache.get_mut(&edge.key) else {
             continue;
         };
@@ -473,6 +517,25 @@ pub(super) fn prepare_rough_edge_paths(
             ctx.layout.route_contract,
             FlowchartSvgRoute::CanonicalAxis(_)
         ) {
+            #[cfg(feature = "layout-shoal")]
+            if theme_sketch {
+                let (path, shaft) =
+                    merman_render_core::rough_svg::constrained_rough_edge_with_geometry(
+                        &entry.geom.d,
+                        flowchart_marker_metrics(edge.edge),
+                        ctx.work_meter,
+                        &ctx.hand_drawn_seed,
+                    )?;
+                let bounds = kurbo::Shape::bounding_box(&shaft);
+                entry.geom.pb = Some(path_bounds::SvgPathBounds {
+                    min_x: bounds.x0,
+                    min_y: bounds.y0,
+                    max_x: bounds.x1,
+                    max_y: bounds.y1,
+                });
+                entry.geom.emitted_d_for_label = Some(path);
+                continue;
+            }
             entry.geom.emitted_d_for_label = Some(constrained_rough_edge_path(
                 &entry.geom.d,
                 flowchart_marker_metrics(edge.edge),
@@ -490,6 +553,31 @@ pub(super) fn prepare_rough_edge_paths(
             );
     }
     Ok(())
+}
+
+pub(super) fn uses_theme_sketch(ctx: &FlowchartRenderCtx<'_>) -> bool {
+    use merman_theme_contract::v2::EdgeStyle;
+
+    ctx.layout.route_contract.is_canonical_axis()
+        && ctx.native.is_some_and(|native| {
+            native.form.edge_style == EdgeStyle::Sketch
+                && crate::theme::default_curve(native.form.edge_style, ctx.model, ctx.config)
+                    .is_some()
+        })
+}
+
+pub(super) fn has_authored_curve(
+    ctx: &FlowchartRenderCtx<'_>,
+    key: crate::projection::FlowchartEdgeKey,
+) -> bool {
+    ctx.model
+        .edges
+        .get(key.semantic_index())
+        .is_some_and(|edge| {
+            edge.interpolate
+                .as_ref()
+                .is_some_and(|curve| !curve.is_empty())
+        })
 }
 
 #[derive(Default)]
@@ -516,6 +604,10 @@ impl FlowchartEdgeLabels {
                 .collect(),
         };
         result.update(ctx, hierarchy, cache, &ctx.edge_order)?;
+        #[cfg(feature = "layout-shoal")]
+        if swimlane_label_seating::applies(ctx) && !result.positions.is_empty() {
+            swimlane_label_seating::reseat(ctx, cache, &mut result.positions)?;
+        }
         Ok(result)
     }
 
@@ -533,6 +625,13 @@ impl FlowchartEdgeLabels {
                 .edge_label_for_occurrence(edge.key, edge.edge)
                 .unwrap_or_default();
             if ctx.swimlane_direction.is_some() && !self.synthetic.contains(&edge.key) {
+                continue;
+            }
+            // Keep the resolved canonical seat during subsequent root-local paint updates.
+            if ctx.swimlane_direction.is_some()
+                && ctx.layout.route_contract.is_canonical_axis()
+                && self.positions.contains_key(&edge.key)
+            {
                 continue;
             }
             if ctx.uses_elk_adapter_dom
@@ -652,8 +751,9 @@ pub fn prepare_query_rough_paths(
     hierarchy: &FlowchartHierarchyPlan<'_>,
     routes: &mut FxHashMap<crate::projection::FlowchartEdgeKey, FlowchartEdgePathCacheEntry>,
     labels: &FlowchartEdgeLabels,
+    services: &FlowchartSvgServices<'_>,
 ) -> Result<bool> {
-    if !ctx.compatibility.look.is_hand_drawn() {
+    if !ctx.compatibility.look.is_hand_drawn() && !uses_theme_sketch(ctx) {
         return Ok(false);
     }
     let mut needed: FxHashSet<_> = ctx
@@ -678,6 +778,21 @@ pub fn prepare_query_rough_paths(
             .filter(|edge| needed.contains(&edge.key))
         {
             prepare_rough_edge_paths(ctx, std::slice::from_ref(edge), routes)?;
+        }
+        return Ok(true);
+    }
+
+    if paints_rough_edges_first(
+        ctx,
+        super::edge_fill::FlowchartEdgeFillPlan::applies(ctx),
+        super::edge_label_cutout::applies(ctx, services),
+    ) {
+        for edge in hierarchy.ordered_edges() {
+            prepare_rough_edge_paths(ctx, std::slice::from_ref(edge), routes)?;
+            needed.remove(&edge.key);
+            if needed.is_empty() {
+                break;
+            }
         }
         return Ok(true);
     }
@@ -737,8 +852,12 @@ pub fn edge_geometry(
 ) -> Result<Vec<merman_render_core::EdgePaintGeometry>> {
     with_flowchart_paint_context(request, services, |ctx, edges, hierarchy| {
         let mut routes = prepare_edge_routes(ctx, edges, hierarchy, false)?;
+        #[cfg(feature = "layout-shoal")]
+        if swimlane_label_seating::applies(ctx) {
+            prepare_rough_edge_paths(ctx, hierarchy.ordered_edges(), &mut routes)?;
+        }
         let mut labels = FlowchartEdgeLabels::prepare(ctx, hierarchy, &routes)?;
-        if prepare_query_rough_paths(ctx, hierarchy, &mut routes, &labels)? {
+        if prepare_query_rough_paths(ctx, hierarchy, &mut routes, &labels, services)? {
             labels.update(ctx, hierarchy, &routes, &ctx.edge_order)?;
         }
         let mut result = Vec::with_capacity(edges.len());

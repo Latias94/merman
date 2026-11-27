@@ -3,7 +3,10 @@ use kurbo::Rect;
 use merman_model::families::c4::C4DiagramModel;
 use merman_render_core::{Bounds, LayoutPoint};
 
-use super::{C4BoundaryLayout, C4DiagramLayout, C4LayoutSettings, C4RelLayout, C4ShapeLayout};
+use super::{
+    C4BoundaryLayout, C4DiagramLayout, C4LayoutSettings, C4RelLayout, C4ShapeLayout,
+    C4TextBlockLayout,
+};
 
 /// The placed C4 facts used by SVG emission when the facade selects Shoal.
 #[derive(Debug)]
@@ -18,7 +21,9 @@ pub struct C4RoutedRelation {
     pub path: String,
     pub points: Vec<LayoutPoint>,
     pub label_origin: Option<LayoutPoint>,
-    pub shaft_cutouts: Vec<Rect>,
+    /// SVG-only endpoint reference for a caption placed outside the drawing.
+    pub label_reference: Option<Box<C4TextBlockLayout>>,
+    pub shaft_cutout: Option<Rect>,
 }
 
 impl C4DiagramLayout {

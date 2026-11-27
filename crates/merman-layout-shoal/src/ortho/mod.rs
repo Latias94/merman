@@ -4,6 +4,7 @@ pub(crate) mod comb;
 mod search;
 mod visibility;
 
+use crate::RoutingStyle;
 use crate::model::{Axis, Point, Rect, RoutePoint, Side};
 use crate::work::{LayoutError, LayoutResult, Work, WorkControl, reserved};
 use search::{Search, Trails};
@@ -39,6 +40,27 @@ pub fn route_orthogonal_spans(
     spans: &[OrthogonalSpan],
     control: &mut impl WorkControl,
 ) -> Result<Vec<Option<Vec<RoutePoint>>>, LayoutError> {
+    route_fixed_spans(
+        obstacles,
+        bounds,
+        edge_sep,
+        spans,
+        RoutingStyle::Orthogonal,
+        control,
+    )
+}
+
+/// Routes fixed spans with the same walls and terminal leads as [`route_orthogonal_spans`].
+/// Polyline routing may use a direct diagonal in a clear corridor. Curved routing
+/// returns channel knots for the caller's curve painter.
+pub fn route_fixed_spans(
+    obstacles: &[Rect],
+    bounds: Option<Rect>,
+    edge_sep: f64,
+    spans: &[OrthogonalSpan],
+    routing: RoutingStyle,
+    control: &mut impl WorkControl,
+) -> Result<Vec<Option<Vec<RoutePoint>>>, LayoutError> {
     let mut work = Work::new(control);
     work.check()?;
     if spans.is_empty() {
@@ -49,16 +71,22 @@ pub fn route_orthogonal_spans(
     let mut router =
         OrthoRouter::new(obstacles, edge_sep, DEFAULT_MAX_ORTHO_GRID_NODES, &mut work)?;
     for &span in spans {
-        let path = router.route(
-            OrthoRequest {
-                start: span.start.0,
-                end: span.end.0,
-                start_side: Some(span.start.1),
-                end_side: Some(span.end.1),
-                bounds,
-            },
-            &mut work,
-        )?;
+        let path = if routing == RoutingStyle::Polyline
+            && let Some(path) = router.direct_polyline(span, bounds, &mut work)?
+        {
+            Some(path)
+        } else {
+            router.route(
+                OrthoRequest {
+                    start: span.start.0,
+                    end: span.end.0,
+                    start_side: Some(span.start.1),
+                    end_side: Some(span.end.1),
+                    bounds,
+                },
+                &mut work,
+            )?
+        };
         if let Some(points) = &path {
             router.record_route(points, &mut work)?;
         }
@@ -151,6 +179,39 @@ impl OrthoRouter {
             search: Search::default(),
             trails: Trails::default(),
         })
+    }
+
+    pub(crate) fn direct_polyline(
+        &self,
+        span: OrthogonalSpan,
+        frame: Option<Rect>,
+        work: &mut Work<'_>,
+    ) -> LayoutResult<Option<Vec<RoutePoint>>> {
+        let start = at(span.start.0);
+        let end = at(span.end.0);
+        let leaves = |side, from: Point, to: Point| match side {
+            Side::Top => to.y <= from.y,
+            Side::Right => to.x >= from.x,
+            Side::Bottom => to.y >= from.y,
+            Side::Left => to.x <= from.x,
+        };
+        if !search::distance(start, end).is_finite()
+            || start.x == end.x
+            || start.y == end.y
+            || !leaves(span.start.1, start, end)
+            || !leaves(span.end.1, end, start)
+        {
+            return Ok(None);
+        }
+        let frame = frame.map(Bounds::new).transpose()?;
+        if frame.is_some_and(|frame| !frame.contains(start) || !frame.contains(end))
+            || !self.obstacles.diagonal_is_clear(start, end, work)?
+        {
+            return Ok(None);
+        }
+        let mut path = reserved(2)?;
+        path.extend([span.start.0, span.end.0]);
+        Ok(Some(path))
     }
 
     /// Returns the complete inner span, including both unchanged endpoint knots.

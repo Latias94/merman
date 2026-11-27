@@ -101,6 +101,49 @@ fn check_path(points: &[RoutePoint], boxes: &[Rect]) {
         }
     }
 }
+
+fn check_simple_coincident_loop(edge: &EdgeGeometry, at: Point, marker_length: f64) {
+    let mut points: Vec<_> = edge.points.iter().copied().map(point).collect();
+    points.dedup();
+    assert_eq!(points.first(), Some(&at));
+    assert_eq!(points.last(), Some(&at));
+    let shaft = Bounds::between(at, points[1]).along(edge.ports.0);
+    assert!(shaft.1 - shaft.0 >= marker_length);
+
+    // Strip the reverse traversal of the shared lead. The remaining closed part must be
+    // simple and must meet the shared lead only at the fork.
+    let common = points
+        .iter()
+        .zip(points.iter().rev())
+        .take_while(|(a, b)| a == b)
+        .count();
+    assert!(common > 1 && 2 * common + 3 <= points.len(), "{points:?}");
+    let fork = common - 1;
+    let last_leg = points.len() - common - 1;
+    let legs = &points[..=last_leg + 1];
+    for (i, a) in legs.windows(2).enumerate() {
+        for (j, b) in legs.windows(2).enumerate().skip(i + 1) {
+            let neighbors = j == i + 1 || (j == last_leg && (i == fork || i + 1 == fork));
+            let [a, b] = [Bounds::between(a[0], a[1]), Bounds::between(b[0], b[1])];
+            let intersection = [
+                a.x[1].min(b.x[1]) - a.x[0].max(b.x[0]),
+                a.y[1].min(b.y[1]) - a.y[0].max(b.y[0]),
+            ];
+            if neighbors {
+                assert_eq!(
+                    intersection,
+                    [0.0, 0.0],
+                    "overlap at {i}, {j} in {points:?}"
+                );
+            } else {
+                assert!(
+                    intersection.iter().any(|&v| v < 0.0),
+                    "intersection at {i}, {j} in {points:?}"
+                );
+            }
+        }
+    }
+}
 fn label_rect(at: Point, s: Size) -> Rect {
     rect(
         at.x - s.width / 2.0,
@@ -438,7 +481,10 @@ fn coincident_loop_anchors_still_enclose_area_and_markers_can_share_a_shaft() {
         };
     }
     graph.edges[2].target_port = graph.edges[2].source_port;
-    graph.edges[2].end_marker = graph.edges[2].start_marker;
+    graph.edges[2].end_marker = MarkerMetrics {
+        length: 12.,
+        width: 6.,
+    };
     c.loops.push(super::super::Loop {
         edge: 2,
         node: 0,
@@ -456,6 +502,38 @@ fn coincident_loop_anchors_still_enclose_area_and_markers_can_share_a_shaft() {
     assert_eq!(point(*ring.last().unwrap()), at);
     assert!(ring.iter().any(|q| q.y > at.y) && ring.iter().any(|q| q.y < at.y));
     assert!(ring.iter().any(|q| q.x > at.x && q.y != at.y));
+    check_simple_coincident_loop(&d.edges[2].1, at, 12.0);
+}
+
+#[test]
+fn coincident_boundary_loop_routes_a_simple_ring_around_a_wall() {
+    let mut options = Options::default();
+    options.spacing.edge = 0.0;
+    let owner = rect(0.0, 0.0, 20.0, 20.0);
+    let obstacle = rect(31.0, -100.0, 60.0, 200.0);
+    let mut routes = BoundaryRoutes::new();
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    routes.obstacle(owner, &mut work).unwrap();
+    routes.obstacle(obstacle, &mut work).unwrap();
+    let mut spec = edge(0, 0);
+    spec.start_marker = MarkerMetrics {
+        length: 3.0,
+        width: 2.0,
+    };
+    spec.end_marker = MarkerMetrics {
+        length: 10.0,
+        width: 2.0,
+    };
+    spec.label = Some(size(8.0, 4.0));
+    let at = p(20.0, 10.0);
+    let result = routes
+        .draw(0, &spec, [(at, Side::Right); 2], &options, &mut work)
+        .unwrap();
+    check_path(&result.points, &[owner, obstacle]);
+    check_simple_coincident_loop(&result, at, 10.0);
+    let label = label_rect(result.label_center.unwrap(), spec.label.unwrap());
+    assert!(label.x >= result.points.iter().map(|p| p.x).reduce(f64::max).unwrap());
 }
 
 #[test]

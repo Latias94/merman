@@ -1081,6 +1081,13 @@ fn encode_entity_placeholders_matches_mermaid_ascii_word_shape() {
     );
     assert_eq!(
         transformed(
+            r#"style a fill:#fff,font-family:"a;b""#,
+            encode_mermaid_entities_like_upstream_controlled,
+        ),
+        r#"style a fill:#fff,font-family:"a;b""#,
+    );
+    assert_eq!(
+        transformed(
             "#é; #+123; #has-dash;",
             encode_mermaid_entities_like_upstream_controlled,
         ),

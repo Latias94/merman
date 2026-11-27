@@ -4,6 +4,7 @@ use crate::{DiagramFamilyId, Result, graph_layout::RouteContract, model::ErDiagr
 use merman_model::{families::er::ErDiagramModel, presentation::PresentationConfig};
 use merman_render_core::{root_svg::RootedSvg, text::TextMeasurer};
 use merman_render_graph::er::{self, ErEntityThemePlan, ErSvgContext};
+use merman_theme_contract::v2::{Paint, Texture};
 
 use super::super::SvgExecution;
 
@@ -63,9 +64,28 @@ pub(crate) fn render_er_diagram_svg_model(
         .map(|routes| er_canonical_edge_painter(routes, binding, work_meter));
     let rough_randomness =
         options.rough_randomness(binding.render_settings.hand_drawn_seed, "render.er.roughjs");
+    let session = options.family.session();
+    let canvas_background = session.canvas_background().or_else(|| {
+        options
+            .native_family_theme()
+            .and_then(|theme| match theme.roles.canvas {
+                Paint::Solid(color) => Some(color),
+                Paint::LinearGradient(_) => None,
+            })
+    });
+    let canvas_has_texture = session.native_theme().is_some_and(|theme| {
+        theme
+            .resolved()
+            .canvas()
+            .textures
+            .iter()
+            .any(|texture| !matches!(texture, Texture::None))
+    });
     let context = ErSvgContext {
         diagram_id,
         viewport: options.root_viewport(DiagramFamilyId::ER, diagram_id),
+        canvas_background,
+        canvas_has_texture,
         elk_parity: route_contract.is_elk_parity(),
         swimlane: matches!(route_contract, RouteContract::Swimlane),
         #[cfg(feature = "layout-shoal")]
@@ -81,7 +101,7 @@ pub(crate) fn render_er_diagram_svg_model(
         layout.svg_layout(),
         model,
         entity_theme,
-        effective_config.as_value(),
+        effective_config,
         diagram_title,
         measurer,
         &context,

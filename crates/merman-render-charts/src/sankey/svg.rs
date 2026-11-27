@@ -8,7 +8,7 @@ use merman_render_core::{
     resources::OperationWorkMeter,
     svg_css::SvgId,
     svg_output::SvgOutput,
-    xml::{escape_attr, escape_attr_display, escape_xml, escape_xml_raw_into},
+    xml::{escape_attr, escape_attr_display, escape_xml_raw_into},
 };
 
 use super::{SankeyDiagramLayout, SankeyNodeLayout};
@@ -317,8 +317,7 @@ impl<'a> SankeySvgBody<'a> {
             let stroke_width = link.width.max(1.0);
             let _ = write!(
                 out,
-                r#"<path d="{d}" stroke="{stroke}" stroke-width="{sw}"/></g>"#,
-                d = escape_xml(&path_d),
+                r#"<path d="{path_d}" stroke="{stroke}" stroke-width="{sw}"/></g>"#,
                 stroke = escape_attr(&stroke),
                 sw = fmt(stroke_width),
             );

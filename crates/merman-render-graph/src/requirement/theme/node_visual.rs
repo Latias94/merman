@@ -1,5 +1,6 @@
 use super::*;
 use indexmap::IndexMap;
+use std::borrow::Cow;
 use std::fmt::Write;
 
 #[derive(Debug)]
@@ -16,6 +17,7 @@ pub(crate) struct RequirementNodeVisual {
     pub(crate) stroke_width: f64,
     pub(crate) fill_style_attr: String,
     pub(crate) stroke_style_attr: String,
+    pub(crate) opacity: Option<String>,
 }
 
 #[derive(Debug)]
@@ -28,6 +30,7 @@ struct NodeStyleOverrides {
     color: Option<String>,
     stroke: Option<String>,
     stroke_width: Option<f64>,
+    opacity: Option<String>,
 }
 
 fn parse_node_style_overrides(css_styles: &[String], html_labels: bool) -> NodeStyleOverrides {
@@ -118,6 +121,7 @@ fn parse_node_style_overrides(css_styles: &[String], html_labels: bool) -> NodeS
     let fill = styles.get("fill").cloned();
     let color = styles.get("color").cloned();
     let stroke = styles.get("stroke").cloned();
+    let opacity = styles.get("opacity").cloned();
     let stroke_width = styles
         .get("stroke-width")
         .and_then(|v| v.trim_end_matches("px").trim().parse::<f64>().ok());
@@ -131,6 +135,7 @@ fn parse_node_style_overrides(css_styles: &[String], html_labels: bool) -> NodeS
         color,
         stroke,
         stroke_width,
+        opacity,
     }
 }
 
@@ -142,6 +147,8 @@ impl RequirementPaintThemePlan {
         work: &OperationWorkMeter,
     ) -> merman_render_core::Result<Self> {
         let config = config.as_value();
+        let canonical = cfg!(feature = "layout-shoal")
+            && config.get("layout").and_then(serde_json::Value::as_str) == Some("shoal");
         let html = merman_render_core::config::config_bool(config, &["htmlLabels"]).unwrap_or(true);
         let hand_drawn =
             merman_render_core::config::config_diagram_look(config).as_str() == "handDrawn";
@@ -175,11 +182,32 @@ impl RequirementPaintThemePlan {
                 .unwrap_or(&self.css.default_stroke)
                 .to_owned();
             let path_style = if !hand_drawn && self.css.source_path_style_active {
-                source.node_styles.as_str()
+                if canonical && source.opacity.is_some() {
+                    let mut path_style = String::new();
+                    merman_render_core::mermaid_style::visit_parsed_style_declarations(
+                        &source.node_styles,
+                        |decl| {
+                            if decl.property() != "opacity" {
+                                if !path_style.is_empty() {
+                                    path_style.push(';');
+                                }
+                                let _ = write!(
+                                    path_style,
+                                    "{}:{}",
+                                    decl.property_source(),
+                                    decl.source_value()
+                                );
+                            }
+                        },
+                    );
+                    Cow::Owned(path_style)
+                } else {
+                    Cow::Borrowed(source.node_styles.as_str())
+                }
             } else {
-                ""
+                Cow::Borrowed("")
             };
-            let mut fill_style = path_style.to_owned();
+            let mut fill_style = path_style.as_ref().to_owned();
             if source_owns_fill {
                 if !fill_style.is_empty() {
                     fill_style.push(';');
@@ -191,10 +219,10 @@ impl RequirementPaintThemePlan {
             } else {
                 format!(
                     r#" style="{}""#,
-                    merman_render_core::xml::escape_xml(&fill_style)
+                    merman_render_core::xml::escape_attr_display(&fill_style)
                 )
             };
-            let mut stroke_style = path_style.to_owned();
+            let mut stroke_style = path_style.into_owned();
             if source_owns_stroke {
                 if !stroke_style.is_empty() {
                     stroke_style.push(';');
@@ -206,7 +234,7 @@ impl RequirementPaintThemePlan {
             } else {
                 format!(
                     r#" style="{}""#,
-                    merman_render_core::xml::escape_xml(&stroke_style)
+                    merman_render_core::xml::escape_attr_display(&stroke_style)
                 )
             };
             let visual = RequirementNodeVisual {
@@ -227,6 +255,7 @@ impl RequirementPaintThemePlan {
                 }),
                 fill_style_attr,
                 stroke_style_attr,
+                opacity: canonical.then_some(source.opacity).flatten(),
             };
             let bytes = [
                 &visual.label_styles,
@@ -241,7 +270,9 @@ impl RequirementPaintThemePlan {
             .into_iter()
             .fold(0usize, |bytes, value| bytes.saturating_add(value.len()));
             work.charge(
-                bytes.saturating_add(visual.source_text_color.as_deref().map_or(0, str::len)),
+                bytes
+                    .saturating_add(visual.source_text_color.as_deref().map_or(0, str::len))
+                    .saturating_add(visual.opacity.as_deref().map_or(0, str::len)),
             )?;
             self.node_visuals.insert(id.to_owned(), visual);
         }

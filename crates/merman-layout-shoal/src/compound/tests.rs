@@ -123,3 +123,54 @@ fn geometry_omits_crossing_work_when_compound_ports_cannot_be_reordered() {
     assert_eq!(geometry, crate::LayoutGeometry::from(full));
     assert!(geometry_work.0 < full_work.0);
 }
+
+#[test]
+fn a_nested_crossing_exposed_by_the_first_port_retry_is_rechecked() {
+    let mut graph = Graph {
+        groups: (0..3).map(GroupSpec::new).collect(),
+        ..Graph::default()
+    };
+    graph.groups[0].parent = Some(GroupId(1));
+    for (id, (parent, width, height)) in [
+        (Some(0), 127., 45.),
+        (Some(0), 109., 45.),
+        (Some(0), 107., 56.),
+        (Some(1), 75., 37.),
+        (Some(1), 45., 60.),
+        (Some(2), 139., 61.),
+        (Some(2), 46., 66.),
+        (None, 93., 61.),
+        (None, 102., 27.),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut node = NodeSpec::new(Size { width, height }, id as u32);
+        node.parent = parent.map(GroupId);
+        graph.nodes.push(node);
+    }
+    graph.edges = [
+        (5, 8),
+        (5, 6),
+        (7, 1),
+        (8, 4),
+        (7, 0),
+        (1, 4),
+        (1, 7),
+        (3, 7),
+        (3, 4),
+        (0, 7),
+        (6, 3),
+        (8, 7),
+        (0, 3),
+        (6, 8),
+        (4, 6),
+    ]
+    .into_iter()
+    .map(|(from, to)| EdgeSpec::new(NodeId(from).into(), NodeId(to).into()))
+    .collect();
+    let options = Options::default();
+    let drawing = crate::layout(&graph, &options).unwrap();
+    assert_eq!(drawing.stats.routed_crossings, 2);
+    assert_eq!(drawing, crate::layout(&graph, &options).unwrap());
+}

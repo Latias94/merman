@@ -2,7 +2,7 @@ use super::builtin::{
     css_sanitize::apply_sanitize_style_elements,
     foreign_object::{
         apply_drop_switch_native_fallbacks, apply_foreign_object_fallback_with_outcome,
-        apply_strip_foreign_objects, drop_native_duplicate_fallbacks_with_checkpoints,
+        apply_strip_foreign_objects,
     },
     id_suffix::apply_lower_id_suffix_selectors,
     prepared_math::project_prepared_math_with_checkpoints,
@@ -101,10 +101,10 @@ impl BuiltinSvgStage {
                 apply_foreign_object_fallback_with_outcome(svg, &measurer, execution, structure)
             }
             Self::StripForeignObject => {
-                apply_strip_foreign_objects(svg, checkpoint).map(|svg| (svg, true))
+                apply_strip_foreign_objects(svg, execution).map(|svg| (svg, true))
             }
             Self::DropSwitchNativeFallbacks => {
-                apply_drop_switch_native_fallbacks(svg, checkpoint).map(|svg| (svg, true))
+                apply_drop_switch_native_fallbacks(svg, execution).map(|svg| (svg, true))
             }
             Self::SanitizeCss => {
                 apply_sanitize_style_elements(svg, execution).map(|svg| (svg, true))
@@ -177,11 +177,9 @@ pub(crate) fn apply_preset_cow<'a>(
         execution.checkpoint()?;
         execution.preflight_svg_byte_count(current.len())?;
         if *stage == BuiltinSvgStage::ForeignObjectFallback && drop_native_duplicates {
+            // Only switch provenance establishes that native text replaces the HTML branch.
             changed = true;
-            current = Cow::Owned(drop_native_duplicate_fallbacks_with_checkpoints(
-                &current,
-                &mut || execution.checkpoint(),
-            )?);
+            current = apply_drop_switch_native_fallbacks(current, execution)?;
             execution.checkpoint()?;
             execution.preflight_svg_byte_count(current.len())?;
         }

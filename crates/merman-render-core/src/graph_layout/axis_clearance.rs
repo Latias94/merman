@@ -1,5 +1,5 @@
 use crate::resources::OperationWorkMeter;
-use crate::route_paint::{Clearance, ObstacleOwner};
+use crate::route_paint::{Clearance, ObstacleOwner, RoutePaintError};
 use merman_model::OperationPhase;
 use std::sync::{Mutex, OnceLock, PoisonError};
 
@@ -7,7 +7,7 @@ use std::sync::{Mutex, OnceLock, PoisonError};
 #[derive(Debug, Default)]
 pub struct AxisClearance {
     obstacles: Mutex<Option<Vec<(kurbo::Rect, ObstacleOwner)>>>,
-    tree: OnceLock<Clearance>,
+    tree: OnceLock<Result<Clearance, RoutePaintError>>,
 }
 
 impl AxisClearance {
@@ -29,8 +29,9 @@ impl AxisClearance {
         work: &OperationWorkMeter,
         obstacles: impl FnOnce() -> Vec<(kurbo::Rect, ObstacleOwner)>,
     ) -> crate::Result<&Clearance> {
+        let allocation_error = |_| crate::Error::LayoutAllocationFailed { backend: "shoal" };
         if let Some(tree) = self.tree.get() {
-            return Ok(tree);
+            return tree.as_ref().map_err(allocation_error);
         }
         work.checkpoint(OperationPhase::Layout)?;
         let tree = self.tree.get_or_init(|| {
@@ -42,7 +43,7 @@ impl AxisClearance {
             Clearance::new(prepared.unwrap_or_else(obstacles))
         });
         work.checkpoint(OperationPhase::Layout)?;
-        Ok(tree)
+        tree.as_ref().map_err(allocation_error)
     }
 }
 

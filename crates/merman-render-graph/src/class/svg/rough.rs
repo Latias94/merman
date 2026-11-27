@@ -1,6 +1,79 @@
 use super::*;
 use merman_render_core::rough_svg::{controlled, ops_to_svg_path_d, parse_hex_color_to_srgba};
 
+pub(super) fn write_class_rough_backing(
+    out: &mut impl SvgOutput,
+    left: f64,
+    top: f64,
+    width: f64,
+    height: f64,
+    fill: &str,
+    fill_opacity: Option<&str>,
+) {
+    let fill = escape_attr_display(fill);
+    let _ = write!(
+        out,
+        r#"<path class="merman-rough-backing" d="M{} {}H{}V{}H{}Z" fill="{fill}" stroke="none" style="fill:{fill} !important;stroke:none !important"#,
+        fmt(left),
+        fmt(top),
+        fmt(left + width),
+        fmt(top + height),
+        fmt(left),
+    );
+    if let Some(opacity) = fill_opacity {
+        let _ = write!(out, ";fill-opacity:{}", escape_attr_display(opacity));
+    }
+    out.push_str(r#""/>"#);
+}
+
+pub(super) fn write_class_rough_hatch(
+    out: &mut impl SvgOutput,
+    d: &str,
+    fill: &str,
+    backing_stroke: Option<&str>,
+    fill_opacity: Option<&str>,
+) {
+    use merman_markup::theme_color::{ColorChannel, ThemeColor};
+
+    let Some(stroke) = backing_stroke else {
+        let _ = write!(
+            out,
+            r#"<path d="{}" stroke="{}" stroke-width="1.5" fill="none" stroke-dasharray="0 0"/>"#,
+            escape_attr_display(d),
+            escape_attr_display(fill),
+        );
+        return;
+    };
+    if d.is_empty() || fill.eq_ignore_ascii_case("none") {
+        return;
+    }
+    let alpha = ThemeColor::parse(fill).map_or(1.0, |color| color.channel(ColorChannel::Alpha));
+    let opacity = fill_opacity
+        .and_then(|opacity| {
+            let opacity = opacity.trim();
+            let (value, scale) = opacity
+                .strip_suffix('%')
+                .map_or((opacity, 1.0), |value| (value, 0.01));
+            value
+                .trim()
+                .parse::<f64>()
+                .ok()
+                .filter(|value| value.is_finite())
+                .map(|value| (value * scale).clamp(0.0, 1.0))
+        })
+        .unwrap_or(1.0);
+    let hatch_opacity = 0.15 * alpha * opacity;
+    if hatch_opacity > 0.0 {
+        let _ = write!(
+            out,
+            r#"<path d="{}" stroke="{}" stroke-opacity="{}" stroke-width="1.5" fill="none" stroke-dasharray="0 0"/>"#,
+            escape_attr_display(d),
+            escape_attr_display(stroke),
+            fmt(hatch_opacity),
+        );
+    }
+}
+
 fn class_parse_stroke_dash_pair(stroke_dasharray: &str) -> (f64, f64) {
     let dash = stroke_dasharray.trim().replace(',', " ");
     let mut nums = dash

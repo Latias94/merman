@@ -4,7 +4,12 @@ use crate::Result;
 use crate::config::{config_string, json_bool, value_at};
 use crate::svg_css::SvgDiagramIdValue;
 use crate::svg_output::SvgOutput;
-use crate::xml::escape_xml;
+use crate::xml::escape_attr_display;
+
+use super::id::DROP_SHADOW_ID;
+
+const SMALL_DROP_SHADOW_ID: &str = "drop-shadow-small";
+const GRADIENT_ID: &str = "gradient";
 
 #[derive(Debug, Clone)]
 pub struct PreparedLookDefs {
@@ -26,6 +31,21 @@ impl PreparedLookDefs {
     pub fn uses_gradient(&self) -> bool {
         self.gradient.is_some()
     }
+
+    /// Checks the diagram-local suffixes of the definitions this renderer will emit.
+    pub fn defines_local_id(&self, id: &str, emit_shadow_defs: bool) -> bool {
+        match id {
+            DROP_SHADOW_ID | SMALL_DROP_SHADOW_ID => emit_shadow_defs,
+            GRADIENT_ID => self.uses_gradient(),
+            _ => false,
+        }
+    }
+
+    pub fn with_shadow_flood_color(mut self, flood_color: &'static str) -> Self {
+        self.flood_color = flood_color;
+        self
+    }
+
     pub fn new(config: &(impl crate::config::ConfigLookup + ?Sized)) -> Self {
         let flood_color = config
             .get("theme")
@@ -59,8 +79,7 @@ impl PreparedLookDefs {
         let flood_color = self.flood_color;
         let _ = write!(
             out,
-            r#"<defs><filter id="{}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs><defs><filter id="{}-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
-            diagram_id, flood_color, diagram_id, flood_color
+            r#"<defs><filter id="{diagram_id}-{DROP_SHADOW_ID}" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{flood_color}"/></filter></defs><defs><filter id="{diagram_id}-{SMALL_DROP_SHADOW_ID}" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="{flood_color}"/></filter></defs>"#,
         );
         out.checkpoint()
     }
@@ -73,12 +92,11 @@ impl PreparedLookDefs {
         let Some((start, stop)) = &self.gradient else {
             return out.checkpoint();
         };
-        let start = escape_xml(start);
-        let stop = escape_xml(stop);
         let _ = write!(
             out,
-            r#"<linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient>"#,
-            diagram_id, start, stop
+            r#"<linearGradient id="{diagram_id}-{GRADIENT_ID}" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient>"#,
+            escape_attr_display(start),
+            escape_attr_display(stop)
         );
         out.checkpoint()
     }

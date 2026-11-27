@@ -9,6 +9,8 @@ pub mod baseline;
 #[doc(hidden)]
 pub mod benchmark_stages;
 pub mod config;
+#[doc(hidden)]
+pub mod css_color;
 pub mod families;
 pub mod family;
 pub mod json;

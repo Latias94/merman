@@ -51,8 +51,7 @@ impl ProxyPorts<'_> {
         for (i, arc) in arcs.iter().enumerate() {
             work.visit(1)?;
             let (from, to) = (arc.from as usize, arc.to as usize);
-            if !self.nodes[from].group_proxy
-                || !self.nodes[to].group_proxy
+            if (!self.nodes[from].group_proxy && !self.nodes[to].group_proxy)
                 || ranks[to].checked_sub(ranks[from]) != Some(1)
             {
                 continue;

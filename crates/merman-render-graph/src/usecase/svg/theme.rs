@@ -2,7 +2,7 @@
 
 use super::super::UsecaseCssBinding;
 use super::*;
-use merman_render_core::svg_output::{SvgOutput, XmlTextOutput};
+use merman_render_core::svg_output::XmlTextOutput;
 
 pub(super) fn appearance_attributes(
     binding: &UsecaseCssBinding,
@@ -20,10 +20,9 @@ pub(super) fn appearance_attributes(
 }
 
 pub(super) fn write_css(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     id: SvgId<'_>,
     binding: &UsecaseCssBinding,
-    mermaid_parity: bool,
 ) -> Result<()> {
     let UsecaseCssBinding {
         main,
@@ -48,12 +47,14 @@ pub(super) fn write_css(
         look,
         ..
     } = binding;
-    let mut css = String::new();
+    out.push_str("<style>");
+    let mut css = XmlTextOutput::new(out);
     // HTML label metrics exclude the browser's default paragraph margins, as does
     // Mermaid's shared styles.ts reset. Apply it before the family-specific styles.
     let _ = write!(css, "#{id} p{{margin:0;}}");
-    let _ = css.checkpoint();
+    css.checkpoint()?;
     let font = &binding.root_font;
+    let connector_width = fmt(binding.connector_width);
     let _ = write!(
         css,
         "#{id}{{font-family:{};font-size:{}px;fill:{root_text}}}",
@@ -86,25 +87,26 @@ pub(super) fn write_css(
                 );
             }
         }
+        css.checkpoint()?;
     }
     let _ = write!(
         css,
         r#"
 #{id} text,#{id} .nodeLabel{{fill:{text};color:{text}}}
 #{id} .usecase-element ellipse,#{id} .usecase-element rect{{fill:{body};stroke:{border};stroke-width:2px}}
-#{id} .usecase-actor-shape,#{id} .usecase-actor-hollow,#{id} .usecase-actor-awesome,#{id} .usecase-actor-icon{{fill:{actor};stroke:{actor_border};stroke-width:2px}}
-#{id} .usecase-actor .nodeLabel,#{id} .actor-label{{color:{actor_text};fill:{actor_text}}}
+#{id} .usecase-actor-glyph{{fill:{actor};stroke:{actor_border};stroke-width:2px}}
+#{id} .usecase-actor .nodeLabel,#{id} .actor-label,#{id} .actor-label text{{color:{actor_text};fill:{actor_text};stroke:none}}
 #{id} .usecase-actor .nodeLabel,#{id} .actor-label{{font-family:var(--mermaid-usecase-actor-font-family);font-size:var(--mermaid-usecase-actor-font-size);font-weight:var(--mermaid-usecase-actor-font-weight)}}
 #{id} .usecase-element .nodeLabel,#{id} .usecase-label{{font-family:var(--mermaid-usecase-font-family);font-size:var(--mermaid-usecase-font-size);font-weight:var(--mermaid-usecase-font-weight)}}
 #{id} .system-boundary rect.boundary-body,#{id} .system-boundary rect.boundary-tab,#{id} .system-boundary-package-tab{{fill:{boundary};stroke:{boundary_border};stroke-width:1px}}
 #{id} .system-boundary-title text,#{id} .system-boundary-title span{{fill:{title};color:{title}}}
-#{id} .relationship{{fill:none;stroke:{line};stroke-width:1px}}
+#{id} .relationship{{fill:none;stroke:{line};stroke-width:{connector_width}px}}
 #{id} .relationship-include{{stroke:{include};stroke-dasharray:3}}
 #{id} .relationship-extend{{stroke:{extend};stroke-dasharray:3}}
 #{id} .relationship-note{{stroke-dasharray:3}}
 #{id} .marker{{fill:{line};stroke:{line}}}#{id} .marker.extension{{fill:{main};stroke:{line}}}
 #{id} .usecase-note{{fill:{note};stroke:{note_border};color:{note_text}}}
-#{id} .usecase-note .nodeLabel{{color:{note_text};fill:{note_text}}}
+#{id} .usecase-note .nodeLabel,#{id} .usecase-note .noteLabel text{{color:{note_text};fill:{note_text};stroke:none}}
 #{id} .usecase-json-table,#{id} .usecase-json-table rect,#{id} .usecase-json-cell{{fill:{main};stroke:{node_border}}}
 #{id} .usecase-stereotype,#{id} .usecase-business-marker{{stroke:{border};fill:{text};color:{text}}}
 #{id} .usecase-json-title,#{id} .usecase-json-key,#{id} .usecase-json-value{{fill:{text};color:{text}}}
@@ -125,9 +127,8 @@ pub(super) fn write_css(
 #{id} [data-look="{look}"].node.usecase-element .usecase-business-marker{{stroke:{border}}}"#
         );
     }
-    // Shared Neo paint can reference resources emitted only for Mermaid parity.
-    if mermaid_parity {
-        binding.neo.write(&mut css, id)?;
+    if let Some(look) = &binding.mermaid_look {
+        look.css.write(&mut css, id)?;
     }
     if let Some(font) = &binding.native_title_font {
         let _ = write!(
@@ -138,9 +139,7 @@ pub(super) fn write_css(
             font.font_weight.as_deref().unwrap_or("normal"),
         );
     }
-    // CSS is XML character data. Preserve declarations while preventing a token from closing style.
-    out.push_str("<style>");
-    XmlTextOutput::new(out).push_str(&css);
+    css.checkpoint()?;
     out.push_str("</style>");
-    Ok(())
+    out.checkpoint()
 }

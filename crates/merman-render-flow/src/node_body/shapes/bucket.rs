@@ -3,10 +3,7 @@
 use super::super::{NodeBodyGeometry, NodeBodySvg, escape_attr, prepare_node_path};
 use merman_render_core::{
     number_format::canonical_number as fmt,
-    rough_svg::{
-        closed_path_d_from_points as path_from_points,
-        paths::{RoughGeometryTarget, roughjs_paths_for_hand_drawn_svg_path},
-    },
+    rough_svg::{closed_path_d_from_points as path_from_points, paths::RoughGeometryTarget},
     svg_output::SvgOutput,
     text::TextMetrics,
 };
@@ -66,37 +63,20 @@ pub(super) fn render_bucket(
         let _ = write!(
             out,
             r#"<g class="basic label-container" style="{}">"#,
-            escape_attr(svg.rough_group_style)
+            escape_attr(svg.hand_drawn_group_style())
         );
     } else {
         out.push_str(r#"<g class="basic label-container">"#);
     }
     if svg.geometry.hand_drawn {
-        if let Some((fill_d, stroke_d)) = svg.timed_rough(|geometry| {
-            roughjs_paths_for_hand_drawn_svg_path(
-                &hand_drawn_body,
-                geometry.stroke_width,
-                geometry.stroke_dasharray,
-                geometry.work_meter,
-                geometry.randomness,
-            )
-        }) {
-            let _ = write!(
-                out,
-                r#"<path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/>"#,
-                escape_attr(&fill_d),
-                escape_attr(svg.fill_color),
-                escape_attr(&stroke_d),
-                escape_attr(svg.stroke_color),
-                fmt(svg.geometry.stroke_width as f64),
-                escape_attr(svg.geometry.stroke_dasharray),
-            );
+        if let Some((fill_d, stroke_d)) = svg.hand_drawn_path_pair(&hand_drawn_body) {
+            svg.write_hand_drawn_path_pair(out, &hand_drawn_body, &fill_d, &stroke_d, 4.0);
         } else {
             let _ = write!(
                 out,
                 r#"<path d="{}" style="{}"/>"#,
                 escape_attr(&body),
-                escape_attr(svg.style),
+                escape_attr(&svg.grouped_child_style()),
             );
         }
     } else {

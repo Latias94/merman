@@ -96,6 +96,73 @@ fn native_svg_theme_obeys_source_precedence_and_survives_prepared_source_reuse()
     assert_eq!(reused, host_first);
 }
 
+#[cfg(all(
+    feature = "png",
+    feature = "jpeg",
+    feature = "pdf",
+    feature = "diagram-info",
+    feature = "native-fonts"
+))]
+#[test]
+fn dark_mermaid_background_sets_the_default_matte_in_each_export_format() {
+    use merman::svg::export::{NativeFontContext, NativeFontLimits, PdfOptions, RasterOptions};
+    use merman::theme::Color;
+    use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
+
+    let fonts = NativeFontContext::from_font_bytes(
+        [include_bytes!("../../merman-export/tests/fonts/Cousine-Regular.ttf").to_vec()],
+        NativeFontLimits::default(),
+        &OperationControl::new(),
+    )
+    .unwrap();
+    let control = OperationControl::new;
+    let renderer = Renderer::new();
+    let source = "---\nconfig:\n  theme: base\n  themeVariables:\n    darkMode: true\n    background: '#0008'\n---\ninfo\n";
+    let document = |mut request: SvgRequest| {
+        request.environment = request
+            .environment
+            .with_native_font_context(fonts.clone())
+            .unwrap();
+        let RenderOutput::Document(Some(document)) = renderer
+            .render(RenderRequest::document(source, control(), request))
+            .unwrap()
+        else {
+            panic!("expected a rendered document");
+        };
+        document
+    };
+    let rendered = document(SvgRequest::default());
+    let transparent = document(SvgRequest::default().with_background(Color::TRANSPARENT));
+    let raster = RasterOptions::default();
+    let pdf = PdfOptions::default();
+
+    let png = rendered.export_png(&raster, control()).unwrap();
+    let explicit_png = rendered
+        .export_png(&raster.clone().with_matte("#00000088"), control())
+        .unwrap();
+    assert_eq!(png.bytes(), explicit_png.bytes());
+    assert_ne!(
+        png.bytes(),
+        transparent.export_png(&raster, control()).unwrap().bytes()
+    );
+
+    let jpeg = rendered.export_jpeg(&raster, control()).unwrap();
+    let explicit_jpeg = rendered
+        .export_jpeg(&raster.with_matte("#777777"), control())
+        .unwrap();
+    assert_eq!(jpeg.bytes(), explicit_jpeg.bytes());
+
+    let actual = rendered.export_pdf(&pdf, control()).unwrap();
+    let explicit = rendered
+        .export_pdf(&pdf.clone().with_page_paint("#00000088"), control())
+        .unwrap();
+    assert_eq!(actual.bytes(), explicit.bytes());
+    assert_ne!(
+        actual.bytes(),
+        transparent.export_pdf(&pdf, control()).unwrap().bytes()
+    );
+}
+
 #[cfg(all(feature = "ascii", feature = "diagram-flowchart"))]
 #[test]
 fn native_theme_reaches_a_truecolor_terminal_render() {

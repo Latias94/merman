@@ -21,6 +21,7 @@ use crate::{
 pub struct PreparedNodeTerminal {
     pub source_text_style: Arc<FlowchartNodeSourceTypography>,
     pub source: FlowchartCompiledStyles,
+    pub(crate) has_structural_label_foreground: bool,
     pub rough_group_style: String,
     pub selection: PreparedNodeSelection,
 }
@@ -278,6 +279,7 @@ impl PreparedNodeTerminal {
         Ok(Some(Self {
             source_text_style,
             source,
+            has_structural_label_foreground: structural.foreground.is_some(),
             rough_group_style,
             selection,
         }))

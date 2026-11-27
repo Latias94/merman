@@ -10,7 +10,7 @@ use merman_render_core::{
     number_format::canonical_number as fmt_display,
     resources::OperationWorkMeter,
     svg_output::SvgOutput,
-    xml::escape_xml_display,
+    xml::escape_attr_display,
 };
 
 use crate::document::FlowchartDocumentIds;
@@ -126,7 +126,7 @@ fn write_shape(
     if shape != BpmnShape::Activity {
         write_bounds(out, geometry);
     }
-    let style = escape_xml_display(style);
+    let style = escape_attr_display(style);
     if let Some((rings, stroke_width)) = shape.event_rings() {
         let _ = write!(out, r#"<g class="bpmn-event-body" style="{style}">"#);
         for ring in 0..rings {
@@ -143,7 +143,7 @@ fn write_shape(
             );
             // The event ring owns its notation width; a native palette can supply its fill.
             if !theme_style.is_empty() {
-                let _ = write!(out, "{};", escape_xml_display(theme_style));
+                let _ = write!(out, "{};", escape_attr_display(theme_style));
             }
             out.push_str(r#""/>"#);
             out.checkpoint()?;

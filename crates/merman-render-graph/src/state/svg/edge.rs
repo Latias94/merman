@@ -2,9 +2,11 @@ use super::*;
 use base64::Engine as _;
 #[cfg(feature = "layout-shoal")]
 use merman_render_core::svg_bounds::svg_path_bounds_from_d;
+#[cfg(test)]
+use merman_render_core::svg_edge_parity::curve::curve_basis_path_d;
 use merman_render_core::{
     svg_edge_parity::{
-        curve::curve_basis_path_d,
+        curve::interpolated_path_d,
         edge_label_geometry::position_edge_label,
         edge_path::{render_path, write_neo_edge_mask},
         line_hops::rewrite_style_after_line_hop,
@@ -13,7 +15,7 @@ use merman_render_core::{
     svg_output::{FALLBACK_BACKGROUND_FILL_DATA_ATTR, FALLBACK_OCCURRENCE_DATA_ATTR},
     text::{MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, line_break::mermaid_html_breaks_to_newlines},
     theme_svg::edge_label_background::{adaptive_text_ink, literal_fill, write_backplate},
-    xml::escape_xml_into,
+    xml::escape_attr_into,
 };
 use merman_theme_contract::v2::{Color, EdgeLabelBackground};
 
@@ -439,6 +441,7 @@ fn state_edge_finish_geometry(
     data_points: Vec<LayoutPoint>,
     label_path_points: Vec<LayoutPoint>,
     arrow_type_end: Option<&str>,
+    curve: &str,
     points_were_explicitly_updated: bool,
 ) -> StatePreparedEdgeGeometry {
     // Mermaid keeps `paths.updatedPath` before `fixCorners`, marker offsets, and curve encoding.
@@ -448,16 +451,29 @@ fn state_edge_finish_geometry(
         .filter(|point| !point.y.is_nan())
         .cloned()
         .collect::<Vec<_>>();
-    points_for_curve = state_edge_fix_corners(&points_for_curve);
+    if curve == "basis" {
+        points_for_curve = state_edge_fix_corners(&points_for_curve);
+    }
     points_for_curve = state_line_with_end_marker_offset_points(&points_for_curve, arrow_type_end);
 
     StatePreparedEdgeGeometry {
         original_label_path_points,
         data_points,
         label_path_points,
-        rendered_d: curve_basis_path_d(&points_for_curve),
+        rendered_d: interpolated_path_d(&points_for_curve, curve),
         points_were_explicitly_updated,
     }
+}
+
+pub(super) fn state_elk_edge_curve(ctx: &StateRenderCtx<'_>, edge: &LayoutEdge) -> &'static str {
+    ctx.style_plan
+        .compatibility()
+        .native_edge_curve()
+        .unwrap_or(if edge.points.is_empty() {
+            "linear"
+        } else {
+            "rounded"
+        })
 }
 
 pub(super) fn state_edge_prepare_geometry(
@@ -480,11 +496,7 @@ pub(super) fn state_edge_prepare_geometry(
                 y: point.y - origin_y,
             })
             .collect();
-        let curve = if le.points.is_empty() {
-            "linear"
-        } else {
-            "rounded"
-        };
+        let curve = state_elk_edge_curve(ctx, le);
         let mut curve_points = data_points.clone();
         let marker_end = if curve == "rounded" {
             curve_points = state_rounded_end_marker_offset_points(&curve_points, arrow_type_end);
@@ -540,6 +552,10 @@ pub(super) fn state_edge_prepare_geometry(
         data_points,
         label_path_points,
         arrow_type_end,
+        ctx.style_plan
+            .compatibility()
+            .native_edge_curve()
+            .unwrap_or("basis"),
         points_were_explicitly_updated,
     )
 }
@@ -656,16 +672,19 @@ fn write_state_edge_path(
 
     let work_meter = ctx.work_meter;
     let look = state_data_look(ctx);
+    let compatibility = ctx.style_plan.compatibility();
+    let sketch =
+        compatibility.native_edge_style == Some(merman_theme_contract::v2::EdgeStyle::Sketch);
     #[cfg(feature = "layout-shoal")]
     let canonical = match ctx.canonical_routes {
         Some(paint) => {
-            if look == "neo" {
+            if look == "neo" && !sketch {
                 scratch.canonical.route.measure_length();
             }
             let origin = kurbo::Vec2::new(origin_x, origin_y);
             let outset = state_edge_stroke_outset(ctx);
-            let randomness =
-                (state_effective_look(ctx) == "handDrawn").then_some(&ctx.hand_drawn_seed);
+            let randomness = (sketch || state_effective_look(ctx) == "handDrawn")
+                .then_some(&ctx.hand_drawn_seed);
             let geometry = paint(le, -origin, outset, randomness, &mut scratch.canonical)?;
             let bounds = state_canonical_edge_bounds(&geometry, outset) + origin;
             *canonical_bounds = Some(canonical_bounds.map_or(bounds, |cur| cur.union(bounds)));
@@ -691,12 +710,23 @@ fn write_state_edge_path(
     };
     let hopped_d = ctx.elk_line_hop_paths.get(edge_id).map(String::as_str);
     let rendered_d = hopped_d.unwrap_or(paint_d);
+    let rough_d = if sketch && !ctx.uses_canonical_routes() && !rendered_d.is_empty() {
+        Some(merman_render_core::rough_svg::constrained_rough_edge_path(
+            rendered_d,
+            Default::default(),
+            work_meter,
+            &ctx.hand_drawn_seed,
+        )?)
+    } else {
+        None
+    };
+    let rendered_d = rough_d.as_deref().unwrap_or(rendered_d);
     write_serde_points_json(&mut scratch.json, points, &mut scratch.ryu);
     scratch.base64.clear();
     base64::engine::general_purpose::STANDARD.encode_string(&scratch.json, &mut scratch.base64);
     let original_style = &mut scratch.style;
     original_style.clear();
-    if look == "neo" {
+    if look == "neo" && !sketch {
         #[cfg(feature = "layout-shoal")]
         let length = if ctx.canonical_routes.is_some() {
             scratch
@@ -723,7 +753,11 @@ fn write_state_edge_path(
             );
         }
     }
-    original_style.push_str("fill:none;;;fill:none");
+    original_style.push_str(if ctx.uses_canonical_routes() {
+        "fill:none"
+    } else {
+        "fill:none;;;fill:none"
+    });
     let style = if let Some(path) = hopped_d {
         rewrite_style_after_line_hop(original_style, path, work_meter)?
     } else {
@@ -732,21 +766,21 @@ fn write_state_edge_path(
     out.push_str(r#"<path d=""#);
     out.push_str(rendered_d);
     out.push_str(r#"" id=""#);
-    let _ = write!(out, "{}", state_scoped_dom_id(ctx, edge_id).attr());
+    let _ = write!(out, "{}", state_scoped_dom_id(ctx, edge_id));
     out.push_str(r#"" class=""#);
-    escape_xml_into(out, classes);
+    escape_attr_into(out, classes);
     out.push_str(r#"" style=""#);
-    escape_xml_into(out, &style);
+    escape_attr_into(out, &style);
     out.push_str(r#"" data-edge="true" data-et="edge" data-id=""#);
-    escape_xml_into(out, edge_id);
+    escape_attr_into(out, edge_id);
     out.push_str(r#"" data-points=""#);
     out.push_str(&scratch.base64);
     out.push_str(r#"" data-look=""#);
-    escape_xml_into(out, look);
+    escape_attr_into(out, look);
     out.push('"');
     if let Some(marker_end) = marker_end {
         out.push_str(r#" marker-end=""#);
-        escape_xml_into(out, marker_end);
+        escape_attr_into(out, marker_end);
         out.push('"');
     }
     out.push_str("/>");
@@ -1177,6 +1211,7 @@ mod tests {
             label_path_points.clone(),
             label_path_points.clone(),
             Some("arrow_barb_neo"),
+            "basis",
             true,
         );
 
@@ -1213,6 +1248,7 @@ mod tests {
             clipped.clone(),
             clipped,
             Some("arrow_barb_neo"),
+            "basis",
             true,
         );
         let position = position_edge_label(

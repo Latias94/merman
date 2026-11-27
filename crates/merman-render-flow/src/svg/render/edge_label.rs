@@ -5,6 +5,8 @@ use crate::edge_labels::{
     SwimlaneEdgeLabelPaint, write_ordinary_edge_label,
 };
 use kurbo::Size;
+use merman_render_core::theme_svg::edge_label_background::{literal_fill, write_backplate};
+use merman_theme_contract::v2::EdgeLabelBackground;
 
 use super::super::*;
 
@@ -95,8 +97,6 @@ fn render_native_label_background(
     (origin_x, origin_y): (f64, f64),
     (width, height): (f64, f64),
 ) -> merman_render_core::Result<Option<merman_theme_contract::v2::Color>> {
-    use merman_theme_contract::v2::EdgeLabelBackground;
-
     let Some(native) = ctx.native else {
         return Ok(None);
     };
@@ -120,13 +120,7 @@ fn render_native_label_background(
         }
     };
     let bounds = kurbo::Rect::from_center_size((position.x, position.y), (width, height));
-    let _ = merman_render_core::theme_svg::edge_label_background::write_backplate(
-        out,
-        bounds,
-        mode,
-        fill,
-        native.border,
-    );
+    let _ = write_backplate(out, bounds, mode, fill, native.border);
     out.checkpoint()?;
     Ok(Some(fill))
 }
@@ -185,9 +179,7 @@ impl ContainerLabelLayers {
             };
             let paint = match ctx.prepared_nodes.cluster(id) {
                 Ok(terminal) => {
-                    let authored = terminal.compiled.fill.as_deref().and_then(
-                        merman_render_core::theme_svg::edge_label_background::literal_fill,
-                    );
+                    let authored = terminal.compiled.fill.as_deref().and_then(literal_fill);
                     Ok(ContainerLabelPaint {
                         body: authored.unwrap_or(native.container),
                         title: authored.unwrap_or(native.emphasis),
@@ -372,6 +364,14 @@ pub(in crate::svg) fn render_swimlane_edge_label_node(
             (width, height),
         )?
     } else {
+        if !ctx.edge_html_labels
+            && ctx.layout.route_contract.is_canonical_axis()
+            && let Some(fill) = literal_fill(&ctx.compatibility.edge_label_background)
+        {
+            let bounds = kurbo::Rect::from_center_size((position.x, position.y), (width, height));
+            let _ = write_backplate(out, bounds, EdgeLabelBackground::Canvas, fill, fill);
+            out.checkpoint()?;
+        }
         None
     };
     bound.write(

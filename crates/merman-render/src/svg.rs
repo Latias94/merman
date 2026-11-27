@@ -8,6 +8,7 @@
 #![forbid(unsafe_code)]
 
 mod fallback;
+mod foreign_objects;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(

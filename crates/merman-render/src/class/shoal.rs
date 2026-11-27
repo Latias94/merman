@@ -2,7 +2,7 @@ use super::{
     ClassDiagramModel, ClassPreparedLabels, ClassRenderConfig, class_namespace_label,
     measured::measure_for_shoal,
 };
-use crate::graph_layout::canonical::CanonicalRoutes;
+use crate::graph_layout::canonical::{CanonicalRoutes, CaptionClearance};
 use crate::graph_layout::ir::Endpoint;
 use crate::graph_layout::placement;
 use crate::layout_work::OperationLayoutWorkControl;
@@ -27,6 +27,9 @@ pub(crate) fn layout(
         execution.text_measurer(),
         execution.math_renderer(),
         render,
+        execution
+            .native_family_theme()
+            .map(|theme| theme.form.edge_style),
         work,
     )?;
     let graph = &measured.graph;
@@ -44,6 +47,7 @@ pub(crate) fn layout(
         &measured.profiles,
         |_| 0.0,
         measured.edge_ids.iter().map(|id| id.as_ref()),
+        CaptionClearance::Avoid,
         work,
     )?;
     routes.placement = placement;

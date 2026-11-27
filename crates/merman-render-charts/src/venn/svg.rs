@@ -303,7 +303,7 @@ pub fn render_venn_svg(
             class = VENN_TITLE_CLASS,
             font_size = fmt(title_size),
             y = fmt(title_size),
-            fill = escape_xml(title_fill),
+            fill = escape_attr(title_fill),
             text = escape_xml(title)
         );
         out.checkpoint()?;

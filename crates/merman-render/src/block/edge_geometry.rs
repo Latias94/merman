@@ -7,7 +7,7 @@ use std::sync::Arc;
 #[derive(Debug, Default)]
 pub(crate) struct BlockEdgeRoutes {
     #[cfg(feature = "layout-shoal")]
-    orthogonal: Vec<Option<BlockOrthogonalRoute>>,
+    orthogonal: Option<Vec<Option<BlockOrthogonalRoute>>>,
 }
 
 #[cfg(feature = "layout-shoal")]
@@ -22,9 +22,9 @@ impl BlockEdgeRoutes {
         work: &Arc<OperationWorkMeter>,
     ) -> crate::Result<Self> {
         #[cfg(feature = "layout-shoal")]
-        if !layout.edges.is_empty() && backend == crate::layout_backend::GraphLayoutBackend::Shoal {
+        if backend == crate::layout_backend::GraphLayoutBackend::Shoal {
             return Ok(Self {
-                orthogonal: super::orthogonal::prepare(model, layout, typography, work)?,
+                orthogonal: Some(super::orthogonal::prepare(model, layout, typography, work)?),
             });
         }
         #[cfg(not(feature = "layout-shoal"))]
@@ -37,11 +37,22 @@ impl BlockEdgeRoutes {
     ) -> &[Option<merman_render_structured::block::BlockOrthogonalRoute>] {
         #[cfg(feature = "layout-shoal")]
         {
-            &self.orthogonal
+            self.orthogonal.as_deref().unwrap_or_default()
         }
         #[cfg(not(feature = "layout-shoal"))]
         {
             &[]
+        }
+    }
+
+    pub(crate) fn is_shoal(&self) -> bool {
+        #[cfg(feature = "layout-shoal")]
+        {
+            self.orthogonal.is_some()
+        }
+        #[cfg(not(feature = "layout-shoal"))]
+        {
+            false
         }
     }
 }

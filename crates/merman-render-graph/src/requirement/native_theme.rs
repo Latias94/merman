@@ -1,8 +1,12 @@
 use merman_model::presentation::PresentationConfig;
-use merman_theme_contract::v2::{EdgeLabelBackground, EdgeStyle};
+use merman_render_core::{
+    config::{config_css_number_or_string, config_f64_css_absolute_px},
+    mermaid_style::font_family_css,
+    route_types::Marker,
+};
+use merman_theme_contract::v2::{Color, EdgeLabelBackground, EdgeStyle, FamilyTheme, MarkerStyle};
 
-use merman_render_core::mermaid_style::font_family_css;
-use merman_theme_contract::v2::{Color, FamilyTheme};
+use super::{RequirementConfigView, RequirementCssBinding};
 
 #[derive(Debug)]
 pub(crate) struct RequirementNativeStyle {
@@ -14,13 +18,19 @@ pub(crate) struct RequirementNativeStyle {
     pub(crate) guide: String,
     pub(crate) radius: f64,
     pub(crate) border_width: f64,
-    #[cfg(feature = "layout-shoal")]
-    pub(crate) connector_width: Option<f64>,
+    pub(crate) connector_width: f64,
     pub(crate) edge_style: EdgeStyle,
+    pub(crate) marker_style: MarkerStyle,
     risk_ink: Option<[String; 4]>,
 }
 
 impl RequirementNativeStyle {
+    pub(crate) const ARROW_SIZE: f64 = 20.0;
+
+    pub(crate) fn arrow_path(&self) -> Option<&'static str> {
+        merman_render_core::theme_svg::marker::arrow_path(self.marker_style)
+    }
+
     pub(crate) fn risk_ink(&self, risk: &str) -> Option<&str> {
         let risk = risk.trim();
         let [low, medium, high, other] = self.risk_ink.as_ref()?;
@@ -36,7 +46,49 @@ impl RequirementNativeStyle {
     }
 }
 
-impl super::RequirementCssBinding {
+impl RequirementCssBinding {
+    pub fn edge_style(&self) -> Option<EdgeStyle> {
+        self.native.as_ref().map(|style| style.edge_style)
+    }
+
+    pub(crate) fn canonical_stroke_width(&self, config: &RequirementConfigView<'_>) -> f64 {
+        self.native.as_ref().map_or_else(
+            || config.canonical_stroke_width(),
+            |style| style.connector_width,
+        )
+    }
+
+    pub fn relation_markers(&self, config: &RequirementConfigView<'_>) -> (Marker, Marker) {
+        let half_stroke = self.canonical_stroke_width(config) / 2.0;
+        let contains_radius = (9.0 + half_stroke).min(10.0);
+        let contains = Marker {
+            trim: 0.0,
+            depth: 10.0 + contains_radius,
+            width: 2.0 * contains_radius,
+        };
+        let custom_arrow = self
+            .native
+            .as_ref()
+            .and_then(RequirementNativeStyle::arrow_path);
+        let arrow = if config.look().is_neo() && custom_arrow.is_none() {
+            let trim = half_stroke / 5.0_f64.sqrt();
+            let half_width = 10.0 + 2.0 * trim;
+            let scale = 20.0 / 25.0;
+            Marker {
+                trim: trim.min(5.0) * scale,
+                depth: 20.0 * scale,
+                width: 2.0 * half_width.min(12.5) * scale,
+            }
+        } else {
+            Marker {
+                trim: 0.0,
+                depth: RequirementNativeStyle::ARROW_SIZE,
+                width: RequirementNativeStyle::ARROW_SIZE,
+            }
+        };
+        (contains, arrow)
+    }
+
     pub(super) fn resolve_native(
         theme: &FamilyTheme,
         config: &PresentationConfig,
@@ -77,6 +129,12 @@ impl super::RequirementCssBinding {
                 .clone_from(&binding.default_stroke);
             binding.node_border.clone_from(&binding.default_stroke);
         }
+        if !owns("themeVariables.textColor") {
+            binding.common = binding
+                .common
+                .clone()
+                .with_text_color(&roles.text_primary.to_string());
+        }
         let authored_ink = owns("themeVariables.nodeTextColor")
             || owns("themeVariables.textColor")
             || owns("themeVariables.requirementTextColor");
@@ -95,16 +153,19 @@ impl super::RequirementCssBinding {
         if !owns("themeVariables.relationColor") {
             binding.relation_color.clone_from(&binding.line_color);
         }
-        let connector_width =
-            (!owns("themeVariables.strokeWidth")).then_some(theme.form.connector_width);
-        if let Some(width) = connector_width {
+        let connector_width = if owns("themeVariables.strokeWidth") {
+            let path = &["themeVariables", "strokeWidth"];
+            if let Some(width) = config_css_number_or_string(config.as_value(), path) {
+                binding.relationship_line_stroke_width = width;
+            }
+            config_f64_css_absolute_px(config.as_value(), path)
+                .filter(|width| *width >= 0.0)
+                .unwrap_or(theme.form.connector_width)
+        } else {
+            let width = theme.form.connector_width;
             binding.relationship_line_stroke_width = format!("{width}px");
-        } else if let Some(width) = merman_render_core::config::config_css_number_or_string(
-            config.as_value(),
-            &["themeVariables", "strokeWidth"],
-        ) {
-            binding.relationship_line_stroke_width = width;
-        }
+            width
+        };
         if !owns("themeVariables.edgeLabelBackground")
             && !owns("themeVariables.requirementEdgeLabelBackground")
         {
@@ -148,9 +209,9 @@ impl super::RequirementCssBinding {
             guide: roles.stroke_guide.first_color().to_string(),
             radius: theme.form.radius,
             border_width,
-            #[cfg(feature = "layout-shoal")]
             connector_width,
             edge_style: theme.form.edge_style,
+            marker_style: theme.form.marker_style,
             risk_ink: (!authored_ink).then(|| {
                 [
                     roles.status_success,

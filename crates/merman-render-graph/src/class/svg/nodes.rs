@@ -43,6 +43,7 @@ pub(super) struct ClassNodesRenderState<'a, O: SvgOutput> {
 
 pub(super) struct ClassNodesRenderContext<'a> {
     pub(super) layout: &'a ClassDiagramLayout,
+    pub(super) namespace_ids: &'a HashMap<&'a str, String>,
     pub(super) prepared_svg_titles: &'a FxHashMap<String, crate::class::ClassPreparedSvgTitle>,
     pub(super) class_nodes_by_id: &'a FxHashMap<&'a str, ClassSvgNode<'a>>,
     pub(super) class_color_indices: &'a FxHashMap<&'a str, usize>,
@@ -61,6 +62,7 @@ pub(super) struct ClassNodesRenderContext<'a> {
     pub(super) content_tx: f64,
     pub(super) content_ty: f64,
     pub(super) uses_canonical_routes: bool,
+    pub(super) rough_backing: bool,
     pub(super) timing: RenderTiming,
     pub(super) emit: ClassEmitCheckpoint<'a>,
 }
@@ -157,6 +159,7 @@ pub(super) fn render_class_render_tree<O: SvgOutput>(
                             .collect::<Vec<_>>(),
                         ClassNamespaceClusterGroupContext {
                             diagram_id: ctx.diagram_id,
+                            namespace_ids: ctx.namespace_ids,
                             content_tx: ctx.content_tx,
                             content_ty: ctx.content_ty,
                             bounds_dx: 0.0,
@@ -191,6 +194,7 @@ pub(super) fn render_class_render_tree<O: SvgOutput>(
                         &clusters,
                         ClassNamespaceClusterGroupContext {
                             diagram_id: ctx.diagram_id,
+                            namespace_ids: ctx.namespace_ids,
                             content_tx: ctx.content_tx,
                             content_ty: ctx.content_ty,
                             bounds_dx: 0.0,
@@ -331,6 +335,7 @@ pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
         &ctx.layout.clusters,
         ClassNamespaceClusterGroupContext {
             diagram_id: ctx.diagram_id,
+            namespace_ids: ctx.namespace_ids,
             content_tx: ctx.content_tx,
             content_ty: ctx.content_ty,
             bounds_dx: 0.0,
@@ -688,6 +693,7 @@ fn render_class_node_id<O: SvgOutput>(
                 line_height: settings.line_height,
                 use_html_labels,
                 uses_canonical_routes: ctx.uses_canonical_routes,
+                rough_backing: ctx.rough_backing,
                 mermaid_config: ctx.mermaid_config,
                 relation_theme: ctx.relation_theme,
                 math_renderer: ctx.math_renderer,
@@ -766,6 +772,7 @@ fn render_class_node_id<O: SvgOutput>(
             security_level_loose: settings.security_level_loose,
             color_index: ctx.class_color_indices.get(n.id.as_str()).copied(),
             palette_size: ctx.typography_theme.css_binding().palette.len(),
+            opacity_style: &binding.opacity_style,
         },
     )?;
     let basic_container = render_class_node_basic_container(
@@ -785,6 +792,9 @@ fn render_class_node_id<O: SvgOutput>(
             node_stroke,
             node_stroke_width,
             node_stroke_dasharray,
+            fill_opacity: binding.fill_opacity.as_deref(),
+            rough_outline_style: &binding.rough_outline_style,
+            rough_backing: ctx.rough_backing,
             look: settings.look.as_str(),
             radius: native.map(|style| style.radius),
             hand_drawn_seed: ctx.hand_drawn_seed.clone(),
