@@ -1,8 +1,3 @@
-use crate::common_db::LangiumCommonDbFields;
-use crate::diagrams::langium_common::{
-    LangiumCommonFacts, LangiumCommonParse, parse_langium_common, parse_langium_string,
-    strip_langium_inline_comment,
-};
 #[cfg(feature = "editor-facts")]
 use crate::diagrams::langium_common::{
     push_langium_common_editor_fact, push_langium_common_recovery,
@@ -14,16 +9,18 @@ use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol,
 };
-use crate::{Error, SourceSpan, family};
+use crate::{Error, family};
 #[cfg(feature = "presentation")]
 use crate::{Result, SourcePresentationMetadata};
+#[cfg(feature = "editor-facts")]
+use merman_core_structured::pie::PieObservation;
+use merman_core_structured::pie::{PieBodyIssue, PieHeader, pie_body_start_controlled};
 #[cfg(feature = "compat-json")]
 use serde_json::Value;
-use std::collections::HashSet;
 
+use merman_model::families::pie::PieDiagramModel;
 #[cfg(feature = "presentation")]
 use merman_model::families::pie::PieOutputData;
-use merman_model::families::pie::{PieDiagramModel, PieSection};
 
 pub(crate) fn sanitize_common_db_fields(
     model: &mut PieDiagramModel,
@@ -233,9 +230,6 @@ fn construct_pie_semantic_source_controlled(
         }
         PieHeader::Body(body) => body,
     };
-    let mut offset = body.offset;
-    let mut common = LangiumCommonFacts::default();
-    let mut parsed_sections = Vec::new();
     #[cfg(feature = "editor-facts")]
     let mut editor_facts = match editor_demand {
         EditorFactsDemand::Omit => None,
@@ -247,382 +241,99 @@ fn construct_pie_semantic_source_controlled(
         }
     };
     #[cfg(feature = "editor-facts")]
-    if let (Some(facts), Some(span)) = (
-        editor_facts
+    let mut observe = editor_facts.as_mut().map(|facts| {
+        move |observation: PieObservation<'_>| project_pie_observation(facts, observation)
+    });
+    #[cfg(feature = "editor-facts")]
+    let parsed = body.parse_with_observer_controlled(
+        editor_demand.captures_rich(),
+        observe
             .as_mut()
-            .filter(|_| editor_demand.captures_rich()),
-        body.show_data_span,
-    ) {
-        push_show_data_editor_fact(facts, span);
-    }
-    let mut first_error = None;
-
-    while offset < code.len() {
-        control.checkpoint()?;
-        match parse_pie_statement(code, offset) {
-            PieStatement::Common(parsed) => {
-                if let Some(diagnostic) = &parsed.diagnostic {
-                    #[cfg(feature = "editor-facts")]
-                    if let Some(facts) = &mut editor_facts {
-                        push_langium_common_recovery(facts, diagnostic);
-                    }
-                    first_error.get_or_insert_with(|| {
-                        Error::diagram_parse_insertion_point(
-                            diagram_type.to_string(),
-                            diagnostic.message.clone(),
-                            diagnostic.span.start,
-                        )
-                    });
-                }
-                #[cfg(feature = "editor-facts")]
-                if let Some(facts) = editor_facts
-                    .as_mut()
-                    .filter(|_| editor_demand.captures_rich())
-                {
-                    push_langium_common_editor_fact(facts, &parsed.fact, "pie");
-                }
-                common.push(parsed.fact);
-                offset += parsed.consumed;
-            }
-            PieStatement::Section {
-                section,
-                next_offset,
-            } => {
-                #[cfg(feature = "editor-facts")]
-                if let Some(facts) = editor_facts
-                    .as_mut()
-                    .filter(|_| editor_demand.captures_rich())
-                {
-                    push_pie_section_editor_fact(facts, &section);
-                }
-                parsed_sections.push(section);
-                offset = next_offset;
-            }
-            PieStatement::Empty { next_offset } => offset = next_offset,
-            PieStatement::Unexpected {
-                text,
-                #[cfg(feature = "editor-facts")]
-                span,
-                next_offset,
-            } => {
-                #[cfg(feature = "editor-facts")]
-                if let Some(facts) = &mut editor_facts {
-                    facts.mark_recovered_from_parse_error("unexpected pie statement", Some(span));
-                }
-                first_error.get_or_insert_with(|| {
-                    Error::diagram_parse_fallback(
-                        diagram_type.to_string(),
-                        format!("unexpected pie statement: {text}"),
-                    )
-                });
-                offset = next_offset;
-            }
-        }
-    }
-
-    let mut sections = Vec::new();
-    let mut seen = HashSet::new();
-    for (index, section) in parsed_sections.into_iter().enumerate() {
-        if index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        if section.value < 0.0 {
-            if {
-                #[cfg(feature = "editor-facts")]
-                {
-                    editor_facts.is_some()
-                }
-                #[cfg(not(feature = "editor-facts"))]
-                {
-                    false
-                }
-            } || first_error.is_none()
-            {
-                let message = format!(
-                    "\"{}\" has invalid value: {}. Negative values are not allowed in pie charts. All slice values must be >= 0.",
-                    section.label,
-                    crate::utils::format_js_number(section.value)
-                );
-                #[cfg(feature = "editor-facts")]
-                if let Some(facts) = &mut editor_facts {
-                    facts
-                        .mark_recovered_from_parse_error(message.clone(), Some(section.value_span));
-                }
-                first_error.get_or_insert_with(|| {
-                    Error::diagram_parse_exact(
-                        diagram_type.to_string(),
-                        message,
-                        section.value_span,
-                    )
-                });
-            }
-            continue;
-        }
-        if seen.insert(section.label.clone()) {
-            sections.push(PieSection {
-                label: section.label,
-                value: section.value,
-            });
-        }
-    }
-
-    let common = LangiumCommonDbFields::from_facts(&common);
-    if let Some(error) = first_error {
-        return Ok(Err(family::CombinedSemanticFailure::new(
-            error,
+            .map(|observe| observe as &mut dyn FnMut(PieObservation<'_>)),
+        control,
+    )?;
+    #[cfg(not(feature = "editor-facts"))]
+    let parsed = body.parse_controlled(control)?;
+    Ok(match parsed {
+        Ok(model) => Ok(PieSemanticSource {
+            model,
+            #[cfg(feature = "presentation")]
+            output_data: PieOutputData::Model,
             #[cfg(feature = "editor-facts")]
             editor_facts,
-        )));
-    }
-
-    control.checkpoint()?;
-    Ok(Ok(PieSemanticSource {
-        model: PieDiagramModel {
-            show_data: body.show_data_span.is_some(),
-            title: common.title,
-            acc_title: common.acc_title,
-            acc_descr: common.acc_descr,
-            sections,
-        },
-        #[cfg(feature = "presentation")]
-        output_data: PieOutputData::Model,
-        #[cfg(feature = "editor-facts")]
-        editor_facts,
-    }))
+        }),
+        Err(issue) => Err(family::CombinedSemanticFailure::new(
+            pie_body_error(diagram_type, issue),
+            #[cfg(feature = "editor-facts")]
+            editor_facts,
+        )),
+    })
 }
 
-enum PieStatement {
-    Common(LangiumCommonParse),
-    Section {
-        section: PieParsedSection,
-        next_offset: usize,
-    },
-    Empty {
-        next_offset: usize,
-    },
-    Unexpected {
-        text: String,
-        #[cfg(feature = "editor-facts")]
-        span: SourceSpan,
-        next_offset: usize,
-    },
-}
-
-struct PieParsedSection {
-    label: String,
-    value: f64,
-    #[cfg(feature = "editor-facts")]
-    statement_span: SourceSpan,
-    #[cfg(feature = "editor-facts")]
-    label_span: SourceSpan,
-    value_span: SourceSpan,
-}
-
-fn parse_pie_statement(code: &str, offset: usize) -> PieStatement {
-    if let Some(parsed) = parse_langium_common(code, offset) {
-        return PieStatement::Common(parsed);
-    }
-
-    let (line, next_offset) = physical_line(code, offset);
-    let visible = strip_inline_comment(line);
-    let trimmed = visible.trim_matches(is_horizontal_whitespace);
-    if trimmed.is_empty() {
-        return PieStatement::Empty { next_offset };
-    }
-
-    if let Some((section, next_offset)) = parse_pie_section(code, offset) {
-        return PieStatement::Section {
-            section,
-            next_offset,
-        };
-    }
-
-    PieStatement::Unexpected {
-        text: trimmed.to_string(),
-        #[cfg(feature = "editor-facts")]
-        span: SourceSpan::new(
-            offset + visible.find(trimmed).unwrap_or_default(),
-            offset + visible.find(trimmed).unwrap_or_default() + trimmed.len(),
+fn pie_body_error(diagram_type: &str, issue: PieBodyIssue) -> Error {
+    match issue {
+        PieBodyIssue::Common(diagnostic) => Error::diagram_parse_insertion_point(
+            diagram_type,
+            diagnostic.message,
+            diagnostic.span.start,
         ),
-        next_offset,
+        PieBodyIssue::Unexpected(text) => {
+            Error::diagram_parse_fallback(diagram_type, format!("unexpected pie statement: {text}"))
+        }
+        PieBodyIssue::NegativeValue { message, span } => {
+            Error::diagram_parse_exact(diagram_type, message, span)
+        }
     }
 }
 
-fn parse_pie_section(code: &str, statement_start: usize) -> Option<(PieParsedSection, usize)> {
-    let (input, input_start) = trim_start_with_offset(&code[statement_start..], statement_start);
-    // STRING owns its physical newlines and escapes; only the value's EOL ends a section.
-    let parsed_label = parse_langium_string(input, input_start)?;
-    let (line, next_offset) = physical_line(code, parsed_label.raw_span.end);
-    let visible = strip_inline_comment(line);
-    let (rest, rest_start) = trim_start_with_offset(visible, parsed_label.raw_span.end);
-    let rest = rest.strip_prefix(':')?;
-    let (number_and_trailing, number_start) = trim_start_with_offset(rest, rest_start + 1);
-    let number = number_and_trailing.trim_end_matches(is_horizontal_whitespace);
-    let value = parse_number_pie(number)?;
-    let value_span = SourceSpan::new(number_start, number_start + number.len());
-
-    Some((
-        PieParsedSection {
-            label: parsed_label.value,
-            value,
-            #[cfg(feature = "editor-facts")]
-            statement_span: SourceSpan::new(
-                statement_start,
-                parsed_label.raw_span.end + line.len(),
-            ),
-            #[cfg(feature = "editor-facts")]
-            label_span: parsed_label.value_span,
+#[cfg(feature = "editor-facts")]
+fn project_pie_observation(facts: &mut EditorSemanticFacts, observation: PieObservation<'_>) {
+    match observation {
+        PieObservation::CommonRecovery(diagnostic) => {
+            push_langium_common_recovery(facts, diagnostic);
+        }
+        PieObservation::Common(fact) => push_langium_common_editor_fact(facts, fact, "pie"),
+        PieObservation::ShowData(span) => {
+            facts.push_directive_prefix("showData");
+            facts.push_expected_syntax(EditorExpectedSyntax::new(
+                EditorExpectedSyntaxKind::Payload,
+                span,
+            ));
+        }
+        PieObservation::Section {
+            label,
+            statement_span,
+            label_span,
             value_span,
-        },
-        next_offset,
-    ))
-}
-
-fn parse_number_pie(input: &str) -> Option<f64> {
-    let unsigned = input.strip_prefix('-').unwrap_or(input);
-    let (integer, fraction) = match unsigned.split_once('.') {
-        Some((integer, fraction)) => (integer, Some(fraction)),
-        None => (unsigned, None),
-    };
-    if integer.is_empty() || !integer.bytes().all(|byte| byte.is_ascii_digit()) {
-        return None;
-    }
-    match fraction {
-        Some(fraction)
-            if fraction.is_empty() || !fraction.bytes().all(|byte| byte.is_ascii_digit()) =>
-        {
-            return None;
+        } => {
+            facts.push_symbol(EditorSemanticSymbol::outline(
+                label.to_owned(),
+                Some("pie section".to_string()),
+                EditorSemanticKind::String,
+                statement_span,
+                label_span,
+            ));
+            for span in [label_span, value_span] {
+                facts.push_expected_syntax(EditorExpectedSyntax::new(
+                    EditorExpectedSyntaxKind::Payload,
+                    span,
+                ));
+            }
         }
-        None if integer.len() > 1 && integer.starts_with('0') => return None,
-        _ => {}
-    }
-    input.parse().ok()
-}
-
-fn trim_start_with_offset(input: &str, input_start: usize) -> (&str, usize) {
-    let trimmed = input.trim_start_matches(is_horizontal_whitespace);
-    (trimmed, input_start + input.len() - trimmed.len())
-}
-
-fn is_horizontal_whitespace(ch: char) -> bool {
-    matches!(ch, ' ' | '\t')
-}
-
-#[cfg(feature = "editor-facts")]
-fn push_show_data_editor_fact(facts: &mut EditorSemanticFacts, span: SourceSpan) {
-    facts.push_directive_prefix("showData");
-    facts.push_expected_syntax(EditorExpectedSyntax::new(
-        EditorExpectedSyntaxKind::Payload,
-        span,
-    ));
-}
-
-#[cfg(feature = "editor-facts")]
-fn push_pie_section_editor_fact(facts: &mut EditorSemanticFacts, section: &PieParsedSection) {
-    facts.push_symbol(EditorSemanticSymbol::outline(
-        section.label.clone(),
-        Some("pie section".to_string()),
-        EditorSemanticKind::String,
-        section.statement_span,
-        section.label_span,
-    ));
-    facts.push_expected_syntax(EditorExpectedSyntax::new(
-        EditorExpectedSyntaxKind::Payload,
-        section.label_span,
-    ));
-    facts.push_expected_syntax(EditorExpectedSyntax::new(
-        EditorExpectedSyntaxKind::Payload,
-        section.value_span,
-    ));
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PieHeader {
-    Empty,
-    ExpectedPie(SourceSpan),
-    Body(PieBodyStart),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct PieBodyStart {
-    offset: usize,
-    show_data_span: Option<SourceSpan>,
-}
-
-fn pie_body_start_controlled(
-    code: &str,
-    control: &crate::OperationControl,
-) -> crate::OperationControlResult<PieHeader> {
-    let mut offset = 0usize;
-    while offset < code.len() {
-        control.checkpoint()?;
-        let (line, next_offset) = physical_line(code, offset);
-        let visible = strip_inline_comment(line);
-        let trimmed = visible.trim_start_matches(is_horizontal_whitespace);
-        if trimmed.is_empty() {
-            offset = next_offset;
-            continue;
+        PieObservation::Unexpected(span) => {
+            facts.mark_recovered_from_parse_error("unexpected pie statement", Some(span));
         }
-        let Some(header_len) = keyword_token_len(trimmed, "pie") else {
-            let start = offset + visible.len() - trimmed.len();
-            let token_length = trimmed
-                .char_indices()
-                .find_map(|(index, ch)| ch.is_whitespace().then_some(index))
-                .unwrap_or(trimmed.len());
-            return Ok(PieHeader::ExpectedPie(SourceSpan::new(
-                start,
-                start + token_length,
-            )));
-        };
-        let leading = visible.len() - trimmed.len();
-        let header_start = offset + leading;
-        let after_header = header_start + header_len;
-        let horizontal = code[after_header..]
-            .chars()
-            .take_while(|ch| matches!(ch, ' ' | '\t'))
-            .map(char::len_utf8)
-            .sum::<usize>();
-        let show_data_start = after_header + horizontal;
-        let show_data_span = keyword_token_len(&code[show_data_start..], "showData").map(|len| {
-            debug_assert_eq!(len, "showData".len());
-            SourceSpan::new(show_data_start, show_data_start + len)
-        });
-        let body_start = show_data_span.map_or(after_header, |span| span.end);
-        return Ok(PieHeader::Body(PieBodyStart {
-            offset: body_start,
-            show_data_span,
-        }));
+        PieObservation::NegativeValue { message, span } => {
+            facts.mark_recovered_from_parse_error(message, Some(span));
+        }
     }
-    Ok(PieHeader::Empty)
-}
-
-fn keyword_token_len(input: &str, keyword: &str) -> Option<usize> {
-    let rest = input.strip_prefix(keyword)?;
-    (rest.is_empty()
-        || rest.starts_with("%%")
-        || rest.chars().next().is_some_and(char::is_whitespace))
-    .then_some(keyword.len())
-}
-
-fn physical_line(source: &str, offset: usize) -> (&str, usize) {
-    let rest = &source[offset..];
-    if let Some(newline) = rest.find('\n') {
-        let line = rest[..newline]
-            .strip_suffix('\r')
-            .unwrap_or(&rest[..newline]);
-        (line, offset + newline + 1)
-    } else {
-        (rest, source.len())
-    }
-}
-
-fn strip_inline_comment(line: &str) -> &str {
-    strip_langium_inline_comment(line)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(all(feature = "editor-facts", not(feature = "compat-json")))]
+    use crate::SourceSpan;
 
     #[test]
     fn canonical_empty_capture_keeps_an_available_empty_journal() {

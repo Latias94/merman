@@ -279,25 +279,6 @@ pub(super) fn prepare_node_path(
     }
 }
 
-pub(super) fn prepare_node_polygon(
-    common: &super::FlowchartNodeGeometry<'_>,
-    points: &[(f64, f64)],
-    path: &str,
-    target: super::roughjs::RoughGeometryTarget,
-) -> Option<super::roughjs::RoughPathPair> {
-    if common.look_is_hand_drawn() {
-        prepare_node_path(common, path, target)
-    } else {
-        super::roughjs::roughjs_prepare_paths_for_polygon(
-            target,
-            points,
-            common.stroke_width,
-            common.work_meter,
-            common.hand_drawn_seed,
-        )
-    }
-}
-
 /// Generate the complete RoughJS hand-drawn pair for a node path.
 ///
 /// Shape renderers still own their DOM wrappers and classic fallback markup, but the admission

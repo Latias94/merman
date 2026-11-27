@@ -12,7 +12,9 @@ use crate::{
 use crate::{Result, SourcePresentationMetadata};
 use merman_core_structured::venn::parse_venn_source_controlled;
 #[cfg(feature = "editor-facts")]
-use merman_core_structured::venn::{VennFieldKind, VennIssueKind, VennObservation};
+use merman_core_structured::venn::{
+    VennFieldKind, VennIssueKind, VennObservation, parse_venn_source_with_observer_controlled,
+};
 pub(crate) use merman_model::families::venn::VennDiagramModel;
 #[cfg(all(test, feature = "compat-json"))]
 use merman_model::families::venn::{VennSubsetModel, VennTextNodeModel};
@@ -195,19 +197,18 @@ fn construct_venn_parse_outcome_controlled(
         .needs_recovery()
         .then(EditorSemanticFacts::new);
     #[cfg(feature = "editor-facts")]
-    let mut observe = editor_facts.as_mut().map(|facts| {
-        move |observation: VennObservation<'_>| project_venn_observation(facts, observation)
-    });
-    let outcome = parse_venn_source_controlled(
-        code,
-        #[cfg(feature = "editor-facts")]
-        editor_demand.captures_rich(),
-        #[cfg(feature = "editor-facts")]
-        observe
-            .as_mut()
-            .map(|observe| observe as &mut dyn for<'a> FnMut(VennObservation<'a>)),
-        control,
-    )?;
+    let outcome = if let Some(facts) = editor_facts.as_mut() {
+        parse_venn_source_with_observer_controlled(
+            code,
+            editor_demand.captures_rich(),
+            &mut |observation| project_venn_observation(facts, observation),
+            control,
+        )
+    } else {
+        parse_venn_source_controlled(code, control)
+    }?;
+    #[cfg(not(feature = "editor-facts"))]
+    let outcome = parse_venn_source_controlled(code, control)?;
     Ok(VennParseOutcome {
         source: VennSemanticSource {
             model: outcome.model,

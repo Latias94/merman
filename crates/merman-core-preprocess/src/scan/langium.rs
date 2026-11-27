@@ -161,6 +161,37 @@ impl LangiumCommonFacts {
     }
 }
 
+/// Final nonempty CommonDB assignments from a family’s ordered Langium facts.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct LangiumCommonDbFields {
+    pub title: Option<String>,
+    pub acc_title: Option<String>,
+    pub acc_descr: Option<String>,
+}
+
+impl LangiumCommonDbFields {
+    pub fn from_facts(facts: &LangiumCommonFacts) -> Self {
+        // `populateCommonDb` observes the final AST assignments in this order and ignores empty
+        // values. Looking up each field independently also preserves Langium's last-assignment
+        // semantics when a common fragment appears more than once.
+        let acc_descr = nonempty_last(facts, LangiumCommonField::AccDescr);
+        let acc_title = nonempty_last(facts, LangiumCommonField::AccTitle);
+        let title = nonempty_last(facts, LangiumCommonField::Title);
+        Self {
+            title,
+            acc_title,
+            acc_descr,
+        }
+    }
+}
+
+fn nonempty_last(facts: &LangiumCommonFacts, field: LangiumCommonField) -> Option<String> {
+    facts
+        .last(field)
+        .map(|fact| fact.value.clone())
+        .filter(|value| !value.is_empty())
+}
+
 pub fn parse_langium_common(source: &str, offset: usize) -> Option<LangiumCommonParse> {
     let input = source.get(offset..)?;
     let leading = horizontal_whitespace_len(input);

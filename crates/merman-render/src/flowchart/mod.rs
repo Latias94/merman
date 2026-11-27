@@ -12,7 +12,6 @@ pub mod elk;
 pub(crate) mod native_theme;
 use crate::graph_label as label;
 mod image;
-mod lane_title;
 #[cfg(any(feature = "layout-elk", feature = "layout-shoal"))]
 mod measured;
 mod node;
@@ -32,7 +31,7 @@ pub(crate) use class_style::{
 };
 pub(crate) use compatibility::{FlowchartCompatibilityBinding, FlowchartPreparedTheme};
 pub(crate) use edge_occurrence::FlowchartEdgeOwners;
-pub(crate) use lane_title::zero_width_lane_title_rows;
+pub(crate) use merman_render_flow::lane_title::zero_width_lane_title_rows;
 pub(crate) use merman_render_flow::projection::{
     FlowchartEdgeKey, FlowchartEdgeTransportPlan, FlowchartRenderModelRef, ProjectedFlowchartEdge,
     project_flowchart_edge,

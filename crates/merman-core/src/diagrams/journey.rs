@@ -28,7 +28,9 @@ pub(crate) fn journey_syntax_construction_count() -> usize {
 }
 
 #[cfg(feature = "editor-facts")]
-use merman_core_structured::journey::{JourneyObservation, JourneyTextKind};
+use merman_core_structured::journey::{
+    JourneyObservation, JourneyTextKind, parse_journey_source_with_observer_controlled,
+};
 use merman_core_structured::journey::{JourneySourceIssue, parse_journey_source_controlled};
 use merman_model::families::journey::JourneyDiagramModel;
 #[cfg(feature = "presentation")]
@@ -235,17 +237,18 @@ fn construct_journey_semantic_source_controlled(
         .needs_recovery()
         .then(EditorSemanticFacts::new);
     #[cfg(feature = "editor-facts")]
-    let mut observe = editor_facts
-        .as_mut()
-        .map(|facts| move |observation| project_journey_observation(facts, observation));
-    let outcome = parse_journey_source_controlled(
-        code,
-        #[cfg(feature = "editor-facts")]
-        editor_demand.captures_rich(),
-        #[cfg(feature = "editor-facts")]
-        observe.as_mut().map(|observe| observe as &mut dyn FnMut(_)),
-        control,
-    )?;
+    let outcome = if let Some(facts) = editor_facts.as_mut() {
+        parse_journey_source_with_observer_controlled(
+            code,
+            editor_demand.captures_rich(),
+            &mut |observation| project_journey_observation(facts, observation),
+            control,
+        )
+    } else {
+        parse_journey_source_controlled(code, control)
+    }?;
+    #[cfg(not(feature = "editor-facts"))]
+    let outcome = parse_journey_source_controlled(code, control)?;
     Ok(match outcome {
         Ok(source) => Ok(JourneySemanticSource {
             model: source.model,

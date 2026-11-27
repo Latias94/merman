@@ -12,15 +12,15 @@ use crate::{
 use crate::{Error, SourceSpan};
 #[cfg(feature = "presentation")]
 use crate::{Result, SourcePresentationMetadata};
-#[cfg(feature = "presentation")]
-use merman_core_structured::treemap::TreemapParsedInput;
 #[cfg(feature = "editor-facts")]
 use merman_core_structured::treemap::{
     ItemType, SpannedText, TreemapRow, TreemapSyntaxEvent, TreemapSyntaxObserver,
+    scan_treemap_with_observer_controlled,
 };
+#[cfg(feature = "presentation")]
+use merman_core_structured::treemap::{TreemapParsedInput, TreemapSemanticSource};
 use merman_core_structured::treemap::{
-    TreemapSemanticSource, TreemapSyntax, scan_treemap_controlled,
-    treemap_semantic_source_from_parsed_controlled,
+    TreemapSyntax, scan_treemap_controlled, treemap_semantic_source_from_parsed_controlled,
 };
 #[cfg(feature = "compat-json")]
 use serde_json::Value;
@@ -214,26 +214,29 @@ fn parse_treemap_outcome_controlled(
     #[cfg(feature = "editor-facts")]
     let mut editor_facts = EditorSemanticFacts::new();
     #[cfg(feature = "editor-facts")]
-    let mut observe = |event: TreemapSyntaxEvent<'_>| match event {
-        TreemapSyntaxEvent::Common(fact) => {
-            push_langium_common_editor_fact(&mut editor_facts, fact, "treemap");
-        }
-        TreemapSyntaxEvent::Row(row) => push_treemap_row_editor_facts(&mut editor_facts, row),
-        TreemapSyntaxEvent::Issue(issue) => {
-            editor_facts.mark_recovered_from_parse_error(issue.message.clone(), issue.span);
-        }
-    };
-    let syntax = scan_treemap_controlled(
-        code,
-        #[cfg(feature = "editor-facts")]
-        editor_demand
-            .needs_recovery()
-            .then_some(TreemapSyntaxObserver {
+    let syntax = if editor_demand.needs_recovery() {
+        let mut observe = |event: TreemapSyntaxEvent<'_>| match event {
+            TreemapSyntaxEvent::Common(fact) => {
+                push_langium_common_editor_fact(&mut editor_facts, fact, "treemap");
+            }
+            TreemapSyntaxEvent::Row(row) => push_treemap_row_editor_facts(&mut editor_facts, row),
+            TreemapSyntaxEvent::Issue(issue) => {
+                editor_facts.mark_recovered_from_parse_error(issue.message.clone(), issue.span);
+            }
+        };
+        scan_treemap_with_observer_controlled(
+            code,
+            TreemapSyntaxObserver {
                 captures_rich: editor_demand.captures_rich(),
                 observe: &mut observe,
-            }),
-        control,
-    )?;
+            },
+            control,
+        )
+    } else {
+        scan_treemap_controlled(code, control)
+    }?;
+    #[cfg(not(feature = "editor-facts"))]
+    let syntax = scan_treemap_controlled(code, control)?;
     Ok(TreemapParseOutcome {
         syntax,
         #[cfg(feature = "editor-facts")]

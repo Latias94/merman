@@ -539,10 +539,35 @@ impl<'a> VennCursor<'a> {
 }
 
 /// Scans one preprocessed source after the caller's entry checkpoint.
-///
-/// Every span is relative to `code`. When an observer is present, recovery is always
-/// reported, and `capture_fields` also enables directive and field observations.
 pub fn parse_venn_source_controlled(
+    code: &str,
+    control: &OperationControl,
+) -> OperationControlResult<VennParseOutcome> {
+    parse_venn_source_impl(
+        code,
+        #[cfg(feature = "editor-facts")]
+        false,
+        #[cfg(feature = "editor-facts")]
+        None,
+        control,
+    )
+}
+
+/// Scans one preprocessed source and reports editor observations as it parses.
+///
+/// Every span is relative to `code`. Recovery is always reported, and `capture_fields`
+/// also enables directive and field observations.
+#[cfg(feature = "editor-facts")]
+pub fn parse_venn_source_with_observer_controlled(
+    code: &str,
+    capture_fields: bool,
+    observe: &mut dyn FnMut(VennObservation<'_>),
+    control: &OperationControl,
+) -> OperationControlResult<VennParseOutcome> {
+    parse_venn_source_impl(code, capture_fields, Some(observe), control)
+}
+
+fn parse_venn_source_impl(
     code: &str,
     #[cfg(feature = "editor-facts")] capture_fields: bool,
     #[cfg(feature = "editor-facts")] observe: Option<&mut dyn FnMut(VennObservation<'_>)>,

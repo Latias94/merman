@@ -4,9 +4,7 @@ pub(in crate::svg::parity::flowchart) use merman_render_flow::markers::Flowchart
 
 use super::FlowchartCompiledStyles;
 
-pub(super) fn flowchart_neo_mask_uses_dash_pairs(edge: &crate::flowchart::FlowEdge) -> bool {
-    matches!(edge.stroke.as_deref(), Some("dotted" | "dashed"))
-}
+pub(super) use merman_render_flow::edge_svg::flowchart_neo_mask_uses_dash_pairs;
 
 pub(super) fn flowchart_edge_marker_end_base(
     edge: &crate::flowchart::FlowEdge,
