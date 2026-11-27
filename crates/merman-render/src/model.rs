@@ -298,7 +298,6 @@ pub struct FlowchartLayout {
     pub(crate) placement: crate::layout_frame::GraphPlacement,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
@@ -306,49 +305,7 @@ pub struct FlowchartLayout {
     feature = "diagram-er",
     feature = "diagram-mindmap"
 ))]
-pub enum SwimlaneDirection {
-    #[serde(rename = "TB")]
-    Tb,
-    #[serde(rename = "LR")]
-    Lr,
-    #[serde(rename = "BT")]
-    Bt,
-    #[serde(rename = "RL")]
-    Rl,
-}
-
-#[cfg(any(
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-agentflow",
-    feature = "diagram-er",
-    feature = "diagram-mindmap"
-))]
-impl SwimlaneDirection {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Tb => "TB",
-            Self::Lr => "LR",
-            Self::Bt => "BT",
-            Self::Rl => "RL",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(any(
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-agentflow",
-    feature = "diagram-er",
-    feature = "diagram-mindmap"
-))]
-pub struct SwimlaneTitleRect {
-    pub left: f64,
-    pub right: f64,
-    pub top: f64,
-    pub bottom: f64,
-}
+pub use merman_render_core::{SwimlaneDirection, SwimlaneLaneLayout, SwimlaneTitleRect};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(any(
@@ -376,36 +333,6 @@ pub struct SwimlaneNodeLayout {
     pub layer: usize,
     pub order: usize,
     pub is_edge_label: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(any(
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-agentflow",
-    feature = "diagram-er",
-    feature = "diagram-mindmap"
-))]
-pub struct SwimlaneLaneLayout {
-    pub id: String,
-    pub title: String,
-    #[serde(default)]
-    pub parent_id: Option<String>,
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-    pub padding: f64,
-    /// Prepared terminal label width shared by Swimlane layout and SVG rendering.
-    pub title_label_width: f64,
-    /// Prepared terminal label height shared by Swimlane layout and SVG rendering.
-    pub title_label_height: f64,
-    #[serde(default)]
-    pub content_top: Option<f64>,
-    #[serde(default)]
-    pub title_rect: Option<SwimlaneTitleRect>,
-    #[serde(default)]
-    pub requested_dir: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
