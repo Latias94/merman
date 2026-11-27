@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
@@ -71,6 +72,23 @@ test("Shoal preview opts into the experimental artifact through its own entrypoi
   assert.match(scripts["dev:shoal"], /^npm run prepare:browser-runtime:shoal && vite$/u);
   assert.match(scripts["build:shoal"], /^npm run prepare:browser-runtime:shoal && npm run build:prepared$/u);
   assert.doesNotMatch(scripts["verify:wasm-inputs"], /--local-shoal/);
+});
+
+test("Grid and Layered use the same explicit local Playground entrypoints", () => {
+  for (const [script, action] of [
+    ["assemble:layout", "assemble"],
+    ["prepare:browser-runtime:layout", "prepare"],
+    ["dev:layout", "dev"],
+    ["build:layout", "build"],
+  ]) {
+    assert.equal(packageJson.scripts[script], `node scripts/local-layout.mjs ${action}`);
+  }
+  const entry = path.join(import.meta.dirname, "local-layout.mjs");
+  for (const args of [[], ["--local-shoal"], ["--local-layout", "grid", "--local-layout=layered"]]) {
+    const result = spawnSync(process.execPath, [entry, "prepare", ...args], { encoding: "utf8" });
+    assert.equal(result.status, 2, result.stderr);
+    assert.match(result.stderr, /--local-layout/u);
+  }
 });
 
 test("browser test tooling is isolated from the companion runtime tree", async () => {

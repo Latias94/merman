@@ -33,6 +33,8 @@ import {
   recoverOutputTransaction,
 } from "./wasm-build/output-transaction.mjs";
 import { repositoryRoot } from "./wasm-build/paths.mjs";
+import { expectedWebOperationIds } from "./wasm-build/runtime-evidence.mjs";
+import { parseFullWasmTarget } from "./wasm-build/targets.mjs";
 import { defaultWebPackage } from "./wasm-build/web-surface-descriptor.mjs";
 
 const roots = [];
@@ -57,8 +59,8 @@ describe("WASM output transaction", () => {
     ["empty", { homepage: "" }, "https://github.com/example/merman"],
     ["explicit", { homepage: "https://example.com/merman" }, "https://example.com/merman"],
   ]) {
-    it(`publishes the npm homepage from ${label} Cargo homepage metadata`, () => {
-      const output = buildPackageFixture(fields);
+    it(`publishes the npm homepage from ${label} Cargo homepage metadata`, async () => {
+      const output = await buildPackageFixture(fields);
       const packageJson = JSON.parse(read(output, "package.json"));
 
       assert.equal(packageJson.homepage, expectedHomepage);
@@ -77,13 +79,30 @@ describe("WASM output transaction", () => {
   }
 
   for (const field of ["description", "license", "repository"]) {
-    it(`rejects missing Cargo ${field} even with an explicit homepage`, () => {
-      assert.throws(
+    it(`rejects missing Cargo ${field} even with an explicit homepage`, async () => {
+      await assert.rejects(
         () => buildPackageFixture({ [field]: "", homepage: "https://example.com/merman" }),
         { message: `Cargo metadata field merman-wasm.${field} is missing.` },
       );
     });
   }
+
+  for (const layout of ["grid", "layered"]) {
+    it(`publishes ${layout} only after the staged runtime matches its recipe`, async () => {
+      const output = await buildPackageFixture({}, layout);
+      const manifest = JSON.parse(read(output, "merman_wasm_inputs.json"));
+      assert.equal(manifest.preset.name, `web-full-local-${layout}`);
+      assert.ok(manifest.preset.runtime_capability_ids.includes(`layout-${layout}`));
+      assert.equal(existsSync(path.join(output, "old.txt")), false);
+    });
+  }
+
+  it("refuses to publish a local selection with a stock runtime catalog", async () => {
+    await assert.rejects(
+      () => buildPackageFixture({}, "grid", null),
+      /runtime capability IDs do not match their artifact owner evidence/,
+    );
+  });
 
   it("atomically replaces one package-owned artifact directory", () => {
     const root = fixtureRoot();
@@ -310,7 +329,7 @@ describe("WASM output transaction", () => {
   });
 });
 
-function buildPackageFixture(fields) {
+async function buildPackageFixture(fields, localLayout = null, runtimeLayout = localLayout) {
   const root = fixtureRoot();
   const output = path.join(root, "pkg", "full");
   const targetDirectory = path.join(root, "target");
@@ -359,6 +378,18 @@ function buildPackageFixture(fields) {
     for (const name of ["merman_wasm.js", "merman_wasm.d.ts", "merman_wasm_bg.wasm.d.ts"]) {
       write(stage, name, "export {};\n");
     }
+    if (localLayout !== null) {
+      const { profile } = parseFullWasmTarget(runtimeLayout === null ? [] : ["--local-layout", runtimeLayout]);
+      const capabilities = {
+        capability_ids: profile.runtime_capability_ids,
+        operation_ids: expectedWebOperationIds(profile.runtime_capability_ids),
+        output_ids: profile.runtime_output_ids,
+      };
+      write(stage, "merman_wasm.js", [
+        "export default ({ module_or_path }) => WebAssembly.compile(module_or_path);",
+        `export const runtimeCatalog = () => ({ capabilities: ${JSON.stringify(capabilities)} });`,
+      ].join("\n"));
+    }
     write(stage, "merman_wasm_bg.wasm", Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]));
     write(stage, ".gitignore", "*\n");
     write(
@@ -372,12 +403,19 @@ function buildPackageFixture(fields) {
   process.env.CARGO_TARGET_DIR = targetDirectory;
   syncBuiltinESMExports();
   try {
-    buildWasm({
+    const target = localLayout === null
+      ? { descriptor: defaultWebPackage }
+      : parseFullWasmTarget(["--local-layout", localLayout]);
+    await buildWasm({
+      ...target,
       outputDir: { absolute: output },
-      descriptor: defaultWebPackage,
       repositoryMetadata: { packages: [packageInfo], target_directory: targetDirectory },
       toolVersions: { cargo: "fixture", node: process.version, rustc: "fixture", wasm_pack: "fixture" },
     });
+  } catch (error) {
+    assert.equal(read(output, "old.txt"), "old artifact");
+    assert.equal(lockExists(output), false);
+    throw error;
   } finally {
     tool.mock.restore();
     syncBuiltinESMExports();

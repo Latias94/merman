@@ -9,7 +9,9 @@ const webRoot = path.join(repositoryRoot, "platforms/web");
 const packageRoot = path.join(webRoot, "packages/full");
 
 export async function fullWebPackageProvenance(): Promise<{
+  artifact_profile: string;
   runtime_capability_ids: readonly string[];
+  outputs: readonly string[];
   artifact_files: unknown;
 }> {
   return JSON.parse(await readFile(path.join(packageRoot, "artifacts/provenance.json"), "utf8"));
@@ -17,16 +19,18 @@ export async function fullWebPackageProvenance(): Promise<{
 
 export async function verifyAssembledFullWebPackage(label: string): Promise<void> {
   const provenance = await fullWebPackageProvenance();
-  const shoal = provenance.runtime_capability_ids.includes("layout-shoal");
-  const args = ["platforms/web/scripts/verify-wasm-inputs.mjs", "--package", "full", "--assembled"];
-  if (shoal) args.push("--local-shoal");
+  const { fullWasmTargetForProvenance } = await import(
+    pathToFileURL(path.join(webRoot, "scripts/wasm-build/targets.mjs")).href
+  );
+  const target = fullWasmTargetForProvenance(provenance);
+  const args = ["platforms/web/scripts/verify-wasm-inputs.mjs", "--package", "full", "--assembled", ...target.localArgs];
   await promisify(execFile)(process.execPath, args, { cwd: repositoryRoot });
   const { assertArtifactFileEvidence } = await import(
     pathToFileURL(path.join(webRoot, "scripts/prepack-check.mjs")).href
   );
   assertArtifactFileEvidence({
     packageWasmRoot: path.join(packageRoot, "artifacts/wasm"),
-    sourceWasmRoot: path.join(webRoot, "pkg", shoal ? "full-local-shoal" : "full"),
+    sourceWasmRoot: target.outputDir.absolute,
     packageDistRoot: path.join(packageRoot, "dist"),
     sourceDistRoot: path.join(webRoot, "dist"),
     packageId: "full",

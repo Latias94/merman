@@ -8,47 +8,99 @@ import { webPackageRoot } from "./paths.mjs";
 import { defaultWebPackage, webPackageDescriptors } from "./web-surface-descriptor.mjs";
 
 const packagesById = new Map(webPackageDescriptors.map((descriptor) => [descriptor.id, descriptor]));
+const LOCAL_LAYOUTS = ["grid", "layered"];
+const LOCAL_LAYOUT_FLAG = "--local-layout";
+const LOCAL_SHOAL_FLAG = "--local-shoal";
+
+export const LOCAL_WASM_LAYOUT_USAGE = "[--local-shoal | --local-layout <grid|layered>]";
 
 export function parseWasmTargets(args, additionalFlags = []) {
   assertKnownArgs(args, {
-    valueArgs: ["--package"],
-    booleanArgs: ["--all-packages", "--local-shoal", "--help", "-h", ...additionalFlags],
+    valueArgs: ["--package", LOCAL_LAYOUT_FLAG],
+    booleanArgs: ["--all-packages", LOCAL_SHOAL_FLAG, "--help", "-h", ...additionalFlags],
   });
   const allPackages = args.includes("--all-packages");
   const packageArg = parseArgValue(args, "--package");
   const id = packageArg ?? defaultWebPackage.id;
-  const localShoal = args.includes("--local-shoal");
+  const localShoal = args.includes(LOCAL_SHOAL_FLAG);
+  const localLayout = parseArgValue(args, LOCAL_LAYOUT_FLAG);
+  if (localLayout !== null) {
+    if (!LOCAL_LAYOUTS.includes(localLayout)) {
+      throw new Error(`${LOCAL_LAYOUT_FLAG} must be grid or layered.`);
+    }
+    if (localShoal) {
+      throw new Error(`${LOCAL_LAYOUT_FLAG} and ${LOCAL_SHOAL_FLAG} are mutually exclusive.`);
+    }
+    if (countValueArgs(args, LOCAL_LAYOUT_FLAG) !== 1 || countValueArgs(args, "--package") > 1) {
+      throw new Error(`${LOCAL_LAYOUT_FLAG} requires a single layout and package selection.`);
+    }
+  }
   if (allPackages && packageArg !== null) {
     throw new Error("--all-packages and --package are mutually exclusive.");
   }
-  if (localShoal && (allPackages || id !== "full")) {
-    throw new Error("--local-shoal requires the full package.");
+  const local = localShoal ? "shoal" : localLayout;
+  const localArgs = localSelectorArgs(local);
+  if (local !== null && (allPackages || id !== "full")) {
+    throw new Error(`${localArgs[0]} requires the full package.`);
   }
   if (!allPackages && !packagesById.has(id)) {
     throw new Error(`Unknown browser package ${id}.`);
   }
   const descriptors = allPackages ? webPackageDescriptors : [packagesById.get(id)];
   return descriptors.map((descriptor) => {
-    const directory = localShoal ? "full-local-shoal" : descriptor.id;
+    const directory = local === null ? descriptor.id : `full-local-${local}`;
     return {
       descriptor,
-      profile: wasmArtifactProfile(descriptor, localShoal),
+      profile: wasmArtifactProfile(descriptor, local),
       outputDir: resolvePackageSubdir(webPackageRoot, `pkg/${directory}`, `package ${descriptor.id} output`),
+      localArgs,
     };
   });
 }
 
-export function wasmArtifactProfile(descriptor, localShoal = false) {
+export function parseFullWasmTarget(args) {
+  assertKnownArgs(args, { valueArgs: [LOCAL_LAYOUT_FLAG], booleanArgs: [LOCAL_SHOAL_FLAG] });
+  return parseWasmTargets(["--package", "full", ...args])[0];
+}
+
+export function fullWasmTargetForProvenance(provenance) {
+  const full = packagesById.get("full");
+  const local = [null, "shoal", ...LOCAL_LAYOUTS].find((layout) => {
+    const profile = wasmArtifactProfile(full, layout);
+    return provenance?.artifact_profile === profile.name &&
+      isDeepStrictEqual(provenance.runtime_capability_ids, profile.runtime_capability_ids) &&
+      isDeepStrictEqual(provenance.outputs, profile.runtime_output_ids);
+  });
+  if (local === undefined) {
+    throw new Error("Assembled full Web provenance does not match a known WASM target.");
+  }
+  return parseFullWasmTarget(localSelectorArgs(local));
+}
+
+function localSelectorArgs(local) {
+  if (local === null) return [];
+  if (local === "shoal") return [LOCAL_SHOAL_FLAG];
+  return [LOCAL_LAYOUT_FLAG, local];
+}
+
+function countValueArgs(args, flag) {
+  return args.filter((arg) => arg === flag || arg.startsWith(`${flag}=`)).length;
+}
+
+export function wasmArtifactProfile(descriptor, local = null) {
   if (!descriptor || typeof descriptor !== "object" || !descriptor.artifact_profile) {
     throw new Error("Web package descriptor is invalid.");
   }
   const profile = descriptor.artifact_profile;
-  if (localShoal && (descriptor.id !== "full" || profile.id !== "web-full")) {
-    throw new Error("--local-shoal requires the full package.");
+  if (local !== null && local !== "shoal" && !LOCAL_LAYOUTS.includes(local)) {
+    throw new Error(`${LOCAL_LAYOUT_FLAG} must be grid or layered.`);
   }
-  const selectedIds = (ids) => localShoal ? [...new Set([...ids, "layout-shoal"])].sort() : [...ids];
+  if (local !== null && (descriptor.id !== "full" || profile.id !== "web-full")) {
+    throw new Error(`${localSelectorArgs(local)[0]} requires the full package.`);
+  }
+  const selectedIds = (ids) => local === null ? [...ids] : [...new Set([...ids, `layout-${local}`])].sort();
   return {
-    name: profile.id,
+    name: local === null || local === "shoal" ? profile.id : `${profile.id}-local-${local}`,
     surface: "web",
     default_features: profile.cargo.default_features,
     features: selectedIds(profile.cargo.features),
