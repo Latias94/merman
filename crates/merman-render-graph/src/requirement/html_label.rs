@@ -6,9 +6,9 @@ use std::sync::Arc;
 use merman_markup::sanitize::SanitizeFailure;
 use merman_model::{MermaidConfig, OperationPhase};
 
-use crate::Result;
-use crate::html::{HtmlOutputError, HtmlSanitizeSink};
-use crate::resources::{OperationWorkMeter, PreparedTextRetainedReservation};
+use merman_render_core::Result;
+use merman_render_core::html::{HtmlOutputError, HtmlSanitizeSink};
+use merman_render_core::resources::{OperationWorkMeter, PreparedTextRetainedReservation};
 
 #[derive(Debug)]
 pub(crate) struct RequirementHtmlLabel {
@@ -17,7 +17,7 @@ pub(crate) struct RequirementHtmlLabel {
 }
 
 /// The node writer and native admission must sanitize the same decoded row source.
-pub(crate) fn sanitize_label_with_sink(
+pub fn sanitize_label_with_sink(
     raw: &str,
     config: &MermaidConfig,
     sink: &HtmlSanitizeSink<'_>,
@@ -60,7 +60,8 @@ impl RequirementHtmlLabel {
             Err(_) => String::new(),
         };
         work_meter.charge(sanitized.len())?;
-        let xhtml = crate::text::mermaid_markdown_to_xhtml_label_fragment(&sanitized, true);
+        let xhtml =
+            merman_render_core::text::mermaid_markdown_to_xhtml_label_fragment(&sanitized, true);
         work_meter.checkpoint(OperationPhase::Layout)?;
         let retained = work_meter
             .reserve_prepared_text_retained_bytes(owner_bytes.saturating_add(xhtml.capacity()))?;
@@ -78,7 +79,7 @@ impl RequirementHtmlLabel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::resources::RenderResourcePolicy;
+    use merman_render_core::resources::RenderResourcePolicy;
 
     #[test]
     fn prepared_xhtml_retains_breaks_code_and_inline_fonts_until_its_last_owner_drops() {
@@ -93,7 +94,7 @@ mod tests {
         )
         .expect("prepare Requirement's final HTML projection");
         let fragment = format!("<root>{}</root>", label.as_str());
-        let document = crate::xml_dom::Document::parse(&fragment).expect("valid prepared XHTML");
+        let document = roxmltree::Document::parse(&fragment).expect("valid prepared XHTML");
         assert_eq!(
             document
                 .descendants()

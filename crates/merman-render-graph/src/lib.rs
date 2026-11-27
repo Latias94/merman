@@ -10,6 +10,10 @@ pub mod er;
 #[doc(hidden)]
 pub mod gitgraph;
 
+#[cfg(feature = "diagram-requirement")]
+#[doc(hidden)]
+pub mod requirement;
+
 #[cfg(feature = "diagram-state")]
 #[doc(hidden)]
 pub mod state;

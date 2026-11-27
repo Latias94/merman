@@ -4,6 +4,7 @@
 
 use merman_markup::theme_color::{ColorChannel, ThemeColor, rgba};
 use merman_render_core::svg_css::CssSelectorDiagramId;
+#[cfg(test)]
 use merman_render_core::svg_edge_parity::path_numbers::fmt_path_into;
 
 use super::SvgOutput;
@@ -72,53 +73,9 @@ pub(super) fn fmt_into(out: &mut impl SvgOutput, v: f64) {
     let _ = write!(out, "{}", crate::number_format::canonical_number(v));
 }
 
-pub(super) fn fmt_path(v: f64) -> String {
-    let mut out = String::new();
-    fmt_path_into(&mut out, v);
-    out
-}
-
-pub(super) fn json_stringify_points(points: &[crate::model::LayoutPoint]) -> String {
-    // Mermaid encodes `data-points` as Base64(JSON.stringify(points)).
-    // JS `JSON.stringify` prints whole numbers without a `.0` suffix.
-    //
-    // For strict SVG XML parity we must also match V8's number-to-string behavior, including
-    // tie-breaking cases where Rust's default float formatting can pick a different shortest
-    // round-trippable decimal (e.g. `...0312` vs `...0313`).
-    let mut out = String::new();
-    let mut buf = ryu_js::Buffer::new();
-    json_stringify_points_into(&mut out, points, &mut buf);
-    out
-}
-
-pub(super) fn json_stringify_points_into(
-    out: &mut String,
-    points: &[crate::model::LayoutPoint],
-    buf: &mut ryu_js::Buffer,
-) {
-    out.push('[');
-    for (i, p) in points.iter().enumerate() {
-        if i > 0 {
-            out.push(',');
-        }
-        out.push_str(r#"{"x":"#);
-        out.push_str(js_number_to_string(p.x, buf));
-        out.push_str(r#","y":"#);
-        out.push_str(js_number_to_string(p.y, buf));
-        out.push('}');
-    }
-    out.push(']');
-}
-
-fn js_number_to_string(mut v: f64, buf: &mut ryu_js::Buffer) -> &str {
-    if !v.is_finite() {
-        return "0";
-    }
-    if v == -0.0 {
-        v = 0.0;
-    }
-    buf.format_finite(v)
-}
+pub(super) use merman_render_core::svg_edge_parity::path_numbers::{
+    fmt_path, json_stringify_points, json_stringify_points_into,
+};
 
 #[cfg(test)]
 mod tests {

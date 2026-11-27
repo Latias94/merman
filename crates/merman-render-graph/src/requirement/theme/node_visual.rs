@@ -61,7 +61,7 @@ fn parse_node_style_overrides(css_styles: &[String], html_labels: bool) -> NodeS
 
     let mut styles: IndexMap<String, String> = IndexMap::new();
     for raw in css_styles {
-        let Some(parsed) = crate::mermaid_style::parse_style_declaration(raw) else {
+        let Some(parsed) = merman_render_core::mermaid_style::parse_style_declaration(raw) else {
             continue;
         };
         let k = parsed.property().to_string();
@@ -140,10 +140,11 @@ impl RequirementPaintThemePlan {
         model: &RequirementDiagramModel,
         config: &PresentationConfig,
         work: &OperationWorkMeter,
-    ) -> crate::Result<Self> {
+    ) -> merman_render_core::Result<Self> {
         let config = config.as_value();
-        let html = crate::config::config_bool(config, &["htmlLabels"]).unwrap_or(true);
-        let hand_drawn = crate::config::config_diagram_look(config).as_str() == "handDrawn";
+        let html = merman_render_core::config::config_bool(config, &["htmlLabels"]).unwrap_or(true);
+        let hand_drawn =
+            merman_render_core::config::config_diagram_look(config).as_str() == "handDrawn";
         // Match the writer's last requirement/element lookup, with requirement priority.
         let mut styles_by_id = BTreeMap::new();
         for node in &model.elements {
@@ -188,7 +189,10 @@ impl RequirementPaintThemePlan {
             let fill_style_attr = if fill_style.is_empty() {
                 String::new()
             } else {
-                format!(r#" style="{}""#, crate::svg::escape_xml(&fill_style))
+                format!(
+                    r#" style="{}""#,
+                    merman_render_core::xml::escape_xml(&fill_style)
+                )
             };
             let mut stroke_style = path_style.to_owned();
             if source_owns_stroke {
@@ -200,7 +204,10 @@ impl RequirementPaintThemePlan {
             let stroke_style_attr = if stroke_style.is_empty() {
                 String::new()
             } else {
-                format!(r#" style="{}""#, crate::svg::escape_xml(&stroke_style))
+                format!(
+                    r#" style="{}""#,
+                    merman_render_core::xml::escape_xml(&stroke_style)
+                )
             };
             let visual = RequirementNodeVisual {
                 label_styles: source.label_styles,
@@ -256,11 +263,10 @@ mod tests {
             "elements": [{"name": "same", "type": "component", "cssStyles": ["fill:#ffffff"]}]
         })).unwrap();
         let work = OperationWorkMeter::new(
-            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            merman_render_core::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
         for html in [false, true] {
-            let config =
-                crate::test_support::presentation_config(serde_json::json!({"htmlLabels": html}));
+            let config = crate::requirement::test_config(serde_json::json!({"htmlLabels": html}));
             let plan = RequirementPaintThemePlan::resolve(None, &config, &model, &work).unwrap();
             let visual = plan.node_visual("same").unwrap();
             assert_eq!(visual.fill, "#778899");

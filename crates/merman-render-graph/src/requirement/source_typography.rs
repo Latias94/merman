@@ -1,20 +1,20 @@
 //! Authored Requirement typography used by measurement and SVG label preparation.
 
 use super::RequirementMeasurementStyles;
-use crate::Result;
-use crate::mermaid_style::{
+use merman_model::{OperationControl, OperationControlResult};
+use merman_render_core::Result;
+use merman_render_core::mermaid_style::{
     ParsedStyleDeclaration, is_static_css_font_family_list, is_supported_css_font_style_value,
     is_supported_css_font_weight_value, parse_style_declaration,
 };
-use crate::resources::{OperationWorkMeter, PreparedTextRetainedReservation};
-use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
-use merman_model::{OperationControl, OperationControlResult};
+use merman_render_core::resources::{OperationWorkMeter, PreparedTextRetainedReservation};
+use merman_render_core::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
 use std::borrow::Cow;
 use std::sync::Arc;
 
 /// Source declarations are retained once, including when opaque render measurements replay them.
 #[derive(Debug, Clone, Default)]
-pub(crate) struct RequirementNodeTypography {
+pub struct RequirementNodeTypography {
     source: Option<Arc<SourceTypography>>,
 }
 
@@ -64,15 +64,17 @@ fn static_font_weight(value: &str) -> bool {
 }
 
 fn static_font_size_px(value: &str) -> Option<f64> {
-    if let Some(size) = crate::mermaid_style::resolve_explicit_css_absolute_font_size_px(value) {
+    if let Some(size) =
+        merman_render_core::mermaid_style::resolve_explicit_css_absolute_font_size_px(value)
+    {
         return Some(size);
     }
     // Unitless zero is valid CSS; other unitless numbers are configuration-only syntax.
-    crate::mermaid_style::parse_svg_number_or_px(value).filter(|size| *size == 0.0)
+    merman_render_core::mermaid_style::parse_svg_number_or_px(value).filter(|size| *size == 0.0)
 }
 
 impl RequirementNodeTypography {
-    pub(crate) fn has_unmeasured_font_size(
+    pub fn has_unmeasured_font_size(
         declarations: &[String],
         control: &OperationControl,
     ) -> OperationControlResult<bool> {
@@ -269,7 +271,7 @@ impl TextMeasurer for RequirementNodeMeasurer<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::resources::RenderResourcePolicy;
+    use merman_render_core::resources::RenderResourcePolicy;
 
     fn resolve(declarations: &[&str]) -> RequirementNodeTypography {
         RequirementNodeTypography::resolve(

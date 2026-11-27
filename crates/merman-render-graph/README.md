@@ -5,6 +5,10 @@ binding, label preparation, and complete SVG emission. `merman-render` selects t
 supplies canonical routes and the operation context, and applies terminal SVG policies.
 `layout-shoal` adds marker footprints for routing and viewport geometry.
 
+The `diagram-requirement` feature owns Requirement preparation, Dagre layout, ELK graph
+projections, and complete SVG emission. `merman-render` selects the backend and supplies
+canonical geometry, viewport settings, and terminal policies.
+
 The `diagram-git-graph` feature owns GitGraph preparation, layout, theme binding, and
 complete SVG emission. `merman-render` supplies routed measurement, viewport context,
 and terminal SVG policies.

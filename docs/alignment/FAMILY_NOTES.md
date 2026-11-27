@@ -649,8 +649,8 @@ position errors instead of clamping spans or overflowing integer arithmetic.
 Nonfinite Block layout bounds remain a typed SVG root-admission error; the shared finite-root
 contract is stricter than browser SVG recovery and does not replace invalid dimensions with zero.
 
-Owners: [Requirement config](../../crates/merman-render/src/requirement/config.rs),
-[palette binding](../../crates/merman-render/src/requirement/css_binding.rs),
+Owners: [Requirement config](../../crates/merman-render-graph/src/requirement/config.rs),
+[palette binding](../../crates/merman-render-graph/src/requirement/css_binding.rs),
 [Block model](../../crates/merman-model/src/families/block.rs), and
 [Block SVG tests](../../crates/merman-render/tests/block_svg_test.rs).
 

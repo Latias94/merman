@@ -1,11 +1,12 @@
-use super::super::*;
 use crate::requirement::RequirementCssBinding;
+use merman_render_core::svg_css::{CssSelectorDiagramId, SvgDiagramIdValue};
+use std::fmt::Write as _;
 
 pub(super) fn write_requirement_css<I>(diagram_id: I, binding: &RequirementCssBinding) -> String
 where
     I: SvgDiagramIdValue,
 {
-    let id = super::super::util::css_selector_diagram_id(diagram_id);
+    let id = CssSelectorDiagramId(diagram_id);
     let mut out = String::new();
     binding
         .common
@@ -86,9 +87,9 @@ mod tests {
             }
         });
 
-        let config = crate::test_support::presentation_config(cfg);
-        let meter = crate::resources::OperationWorkMeter::new(
-            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        let config = crate::requirement::test_config(cfg);
+        let meter = merman_render_core::resources::OperationWorkMeter::new(
+            merman_render_core::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
         let plan = crate::requirement::RequirementPaintThemePlan::resolve(
             None,

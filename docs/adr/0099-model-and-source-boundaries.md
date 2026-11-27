@@ -107,9 +107,10 @@ It reuses the controlled token cursor and pinned Mermaid Unicode rules in
 `merman-core-preprocess`. `merman-core` owns source mapping, diagnostic projection, resource
 admission, and editor and compatibility projections.
 
-`merman-render-graph` owns ER label preparation, styling, and complete SVG emission.
-`merman-render` selects the layout backend, supplies the route geometry and operation context,
-and applies terminal SVG policies.
+`merman-render-graph` owns ER and Requirement label preparation, styling, and complete SVG
+emission. It also owns Requirement Dagre layout and the ELK graph projections. `merman-render`
+selects the layout backend, supplies canonical routes and the operation context, and applies
+terminal SVG policies.
 
 ### Sequence diagrams
 

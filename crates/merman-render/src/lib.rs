@@ -37,7 +37,6 @@ pub mod cynefin;
         feature = "diagram-agentflow",
         feature = "diagram-er",
         feature = "diagram-flowchart",
-        feature = "diagram-requirement",
         feature = "diagram-state",
         feature = "diagram-swimlane"
     )
@@ -101,11 +100,7 @@ mod elk_options;
     feature = "diagram-swimlane",
     all(
         feature = "layout-elk",
-        any(
-            feature = "diagram-class",
-            feature = "diagram-requirement",
-            feature = "diagram-state"
-        )
+        any(feature = "diagram-class", feature = "diagram-state")
     )
 ))]
 use merman_render_core::graph_layout::elk_terminal_jogs;

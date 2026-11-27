@@ -6,11 +6,7 @@
 ))]
 pub(crate) mod self_loop;
 
-#[cfg(any(
-    feature = "diagram-er",
-    feature = "diagram-requirement",
-    feature = "diagram-state"
-))]
+#[cfg(any(feature = "diagram-er", feature = "diagram-state"))]
 pub(crate) fn rankdir(direction: crate::graph_layout::ir::Direction) -> dugong::RankDir {
     use crate::graph_layout::ir::Direction;
     use dugong::RankDir;

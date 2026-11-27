@@ -171,13 +171,8 @@ pub struct BlockDiagramLayout {
     pub bounds: Option<Bounds>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-requirement")]
-pub struct RequirementDiagramLayout {
-    pub nodes: Vec<LayoutNode>,
-    pub edges: Vec<LayoutEdge>,
-    pub bounds: Option<Bounds>,
-}
+pub use merman_render_graph::requirement::RequirementDiagramLayout;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-architecture")]

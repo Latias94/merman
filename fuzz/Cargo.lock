@@ -1264,9 +1264,11 @@ version = "0.11.0"
 dependencies = [
  "base64 0.23.1",
  "cssparser",
+ "dugong",
  "euclid",
  "indexmap",
  "kurbo",
+ "merman-layout-elk",
  "merman-markup",
  "merman-model",
  "merman-render-core",

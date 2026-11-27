@@ -1,22 +1,23 @@
+use super::RequirementDiagramLayout;
 use super::{
     MeasuredRequirementEdge, RequirementEdgeIdentity, RequirementEdgeLabelPlan,
     RequirementEdgeLabels, RequirementMeasurements, RequirementNodeRenderPlan,
     RequirementPreparedArtifact, bounds_for_nodes_edges, measure_requirement_relationship,
     requirement_layout_node_from_center, validate_relationship_endpoints,
 };
-use crate::graph_layout::ir::Size;
-use crate::layout_work::OperationLayoutWorkControl;
-use crate::model::{LayoutLabel, LayoutPoint, RequirementDiagramLayout};
-use crate::text::TextMeasurer;
-use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel};
 use merman_model::families::requirement::RequirementRelationship;
+use merman_render_core::graph_layout::{Direction, Size};
+use merman_render_core::layout_work::OperationLayoutWorkControl;
+use merman_render_core::text::TextMeasurer;
+use merman_render_core::{Error, Result};
+use merman_render_core::{LayoutLabel, LayoutPoint};
 use std::collections::{HashMap, HashSet};
 
 type DagreGraph = Graph<NodeLabel, EdgeLabel, GraphLabel>;
 
-pub(super) fn layout(
+pub fn layout(
     relationships: &[RequirementRelationship],
     measured: RequirementMeasurements<'_>,
     settings: &super::config::RequirementLayoutSettings,
@@ -35,7 +36,12 @@ pub(super) fn layout(
         compound: true,
     });
     graph.set_graph(GraphLabel {
-        rankdir: crate::dagre::rankdir(direction),
+        rankdir: match direction {
+            Direction::Down => dugong::RankDir::TB,
+            Direction::Up => dugong::RankDir::BT,
+            Direction::Right => dugong::RankDir::LR,
+            Direction::Left => dugong::RankDir::RL,
+        },
         nodesep: settings.nodesep,
         ranksep: settings.ranksep,
         marginx: 8.0,
@@ -72,8 +78,14 @@ pub(super) fn layout(
         }
     }
 
-    crate::layout_work::measure_layout_solve!(dugong::layout_controlled(&mut graph, work))
-        .map_err(|error| work.map_dugong_error(error))?;
+    let solved = {
+        #[cfg(feature = "benchmark-stages")]
+        let _stage = merman_model::benchmark_stages::enter(
+            merman_model::benchmark_stages::Stage::LayoutSolve,
+        );
+        dugong::layout_controlled(&mut graph, work)
+    };
+    solved.map_err(|error| work.map_dugong_error(error))?;
 
     let mut out_nodes = Vec::new();
     for id in graph.nodes() {
@@ -166,7 +178,6 @@ pub(super) fn layout(
             edges: out_edges,
             bounds,
         },
-        route_contract: crate::graph_layout::RouteContract::DagreParity,
         render_layout: None,
         nodes: prepared_nodes,
         edges: prepared_edges,

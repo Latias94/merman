@@ -210,7 +210,6 @@ mod requirement;
     feature = "diagram-class",
     feature = "diagram-er",
     feature = "diagram-flowchart",
-    feature = "diagram-requirement",
     feature = "diagram-state",
     feature = "diagram-swimlane",
     feature = "diagram-usecase"
@@ -290,8 +289,6 @@ use merman_render_core::svg_bounds::svg_emitted_bounds_from_svg;
 pub use merman_render_core::svg_bounds::{
     SvgEmittedBoundsContributor, SvgEmittedBoundsDebug, debug_svg_emitted_bounds,
 };
-#[cfg(feature = "diagram-requirement")]
-use roughjs_common::{ops_to_svg_path_d as roughjs_ops_to_svg_path_d, roughjs_paths_for_rect};
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(

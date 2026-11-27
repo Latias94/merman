@@ -1,4 +1,4 @@
-use crate::config::{
+use merman_render_core::config::{
     DiagramLook, MERMAID_DEFAULT_FONT_FAMILY_CSS, config_bool, config_diagram_look,
     config_effective_html_labels, config_f64, config_f64_css_px,
     config_font_family_or_first_array_css, config_string_or_first_array,
@@ -13,20 +13,27 @@ const DEFAULT_VIEWPORT_PADDING: f64 = 8.0;
 const DEFAULT_USE_MAX_WIDTH: bool = true;
 const DEFAULT_TITLE_TOP_MARGIN: f64 = 25.0;
 
-pub(crate) struct RequirementConfigView<'a> {
+pub struct RequirementConfigView<'a> {
     effective_config: &'a Value,
     state_config: &'a Value,
 }
 
 impl<'a> RequirementConfigView<'a> {
-    pub(crate) fn new(effective_config: &'a Value) -> Self {
+    pub fn new(effective_config: &'a Value) -> Self {
         Self {
             effective_config,
             state_config: effective_config.get("state").unwrap_or(&Value::Null),
         }
     }
 
-    pub(crate) fn layout_settings(&self) -> RequirementLayoutSettings {
+    pub fn hand_drawn_seed(&self) -> f64 {
+        self.effective_config
+            .get("handDrawnSeed")
+            .and_then(Value::as_f64)
+            .unwrap_or(0.0)
+    }
+
+    pub fn layout_settings(&self) -> RequirementLayoutSettings {
         RequirementLayoutSettings {
             html_labels: config_bool(self.effective_config, &["htmlLabels"]).unwrap_or(true),
             edge_html_labels: config_effective_html_labels(self.effective_config),
@@ -66,11 +73,6 @@ impl<'a> RequirementConfigView<'a> {
             viewport_padding: DEFAULT_VIEWPORT_PADDING,
             use_max_width: config_bool(self.state_config, &["useMaxWidth"])
                 .unwrap_or(DEFAULT_USE_MAX_WIDTH),
-            hand_drawn_seed: self
-                .effective_config
-                .get("handDrawnSeed")
-                .and_then(Value::as_f64)
-                .unwrap_or(0.0),
             title_top_margin: self
                 .config_f64(&["state", "titleTopMargin"])
                 .unwrap_or(DEFAULT_TITLE_TOP_MARGIN),
@@ -92,11 +94,6 @@ impl<'a> RequirementConfigView<'a> {
             viewport_padding: DEFAULT_VIEWPORT_PADDING,
             use_max_width: config_bool(self.state_config, &["useMaxWidth"])
                 .unwrap_or(DEFAULT_USE_MAX_WIDTH),
-            hand_drawn_seed: self
-                .effective_config
-                .get("handDrawnSeed")
-                .and_then(Value::as_f64)
-                .unwrap_or(0.0),
             title_top_margin: self
                 .config_f64(&["state", "titleTopMargin"])
                 .unwrap_or(DEFAULT_TITLE_TOP_MARGIN),
@@ -106,9 +103,9 @@ impl<'a> RequirementConfigView<'a> {
     }
 
     #[cfg(feature = "layout-shoal")]
-    pub(crate) fn canonical_stroke_width(&self) -> f64 {
+    pub fn canonical_stroke_width(&self) -> f64 {
         if config_diagram_look(self.effective_config).is_neo() {
-            crate::config::config_f64_css_absolute_px(
+            merman_render_core::config::config_f64_css_absolute_px(
                 self.effective_config,
                 &["themeVariables", "strokeWidth"],
             )
@@ -169,11 +166,11 @@ impl<'a> RequirementConfigView<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct RequirementLayoutSettings {
-    pub(crate) html_labels: bool,
+pub struct RequirementLayoutSettings {
+    pub html_labels: bool,
     pub(crate) edge_html_labels: bool,
-    pub(crate) nodesep: f64,
-    pub(crate) ranksep: f64,
+    pub nodesep: f64,
+    pub ranksep: f64,
     pub(crate) font_family: String,
     pub(crate) font_size: f64,
     pub(crate) calculation_font_family: String,
@@ -182,13 +179,12 @@ pub(crate) struct RequirementLayoutSettings {
 
 #[derive(Debug, Clone)]
 pub(crate) struct RequirementRenderSettings<'a> {
-    pub(crate) html_labels: bool,
+    pub html_labels: bool,
     pub(crate) edge_html_labels: bool,
     pub(crate) body_text_start: bool,
     pub(crate) look: DiagramLook<'a>,
     pub(crate) viewport_padding: f64,
     pub(crate) use_max_width: bool,
-    pub(crate) hand_drawn_seed: f64,
     pub(crate) title_top_margin: f64,
     pub(crate) font_family: String,
     pub(crate) font_size: f64,
@@ -208,12 +204,12 @@ mod tests {
         assert_eq!(settings.ranksep, DEFAULT_RANK_SPACING);
         assert_eq!(
             settings.font_family,
-            crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS
+            merman_render_core::config::MERMAID_DEFAULT_FONT_FAMILY_CSS
         );
         assert_eq!(settings.font_size, DEFAULT_FONT_SIZE);
         assert_eq!(
             settings.calculation_font_family,
-            crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS
+            merman_render_core::config::MERMAID_DEFAULT_FONT_FAMILY_CSS
         );
         assert_eq!(settings.calculation_font_size, DEFAULT_FONT_SIZE);
         assert!(settings.html_labels);
@@ -274,7 +270,7 @@ mod tests {
         assert_eq!(settings.font_size, 18.0);
         assert_eq!(
             settings.calculation_font_family,
-            crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS
+            merman_render_core::config::MERMAID_DEFAULT_FONT_FAMILY_CSS
         );
         assert_eq!(settings.calculation_font_size, DEFAULT_FONT_SIZE);
     }
@@ -327,7 +323,7 @@ mod tests {
         assert_eq!(settings.look.as_str(), "neo");
         assert_eq!(settings.viewport_padding, DEFAULT_VIEWPORT_PADDING);
         assert!(!settings.use_max_width);
-        assert_eq!(settings.hand_drawn_seed, 7.0);
+        assert_eq!(RequirementConfigView::new(&cfg).hand_drawn_seed(), 7.0);
         assert_eq!(settings.title_top_margin, DEFAULT_TITLE_TOP_MARGIN);
         assert_eq!(settings.font_family, "Inter,sans-serif");
         assert_eq!(settings.font_size, 20.0);

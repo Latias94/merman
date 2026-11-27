@@ -1,16 +1,16 @@
 use serde_json::Value;
 
-use crate::config::{config_css_number_or_string, config_string, config_string_vec};
-use crate::svg::PreparedCommonCss;
+use merman_render_core::config::{config_css_number_or_string, config_string, config_string_vec};
+use merman_render_core::svg_css::PreparedCommonCss;
 
 use super::config::{RequirementConfigView, RequirementLayoutSettings};
 
 /// Operation-local final Requirement CSS and the typography used by layout.
 #[derive(Debug)]
-pub(crate) struct RequirementCssBinding {
+pub struct RequirementCssBinding {
     pub(crate) common: PreparedCommonCss,
     pub(crate) native: Option<super::RequirementNativeStyle>,
-    pub(crate) layout: RequirementLayoutSettings,
+    pub layout: RequirementLayoutSettings,
     pub(crate) border_colors: Vec<String>,
     pub(crate) background_colors: Vec<String>,
     pub(crate) default_fill: String,
@@ -46,24 +46,21 @@ impl RequirementCssBinding {
             })
     }
 
-    pub(super) fn resolve(
-        config: &Value,
-        font_family: Option<&str>,
-        font_size_css: Option<&str>,
-    ) -> Self {
+    pub fn resolve(config: &Value, font_family: Option<&str>, font_size_css: Option<&str>) -> Self {
         let common = match font_size_css {
             Some(size) => PreparedCommonCss::with_resolved_typography(
                 config,
                 font_family
                     .map(str::to_owned)
-                    .unwrap_or_else(|| crate::config::config_font_family_css(config)),
+                    .unwrap_or_else(|| merman_render_core::config::config_font_family_css(config)),
                 size.to_owned(),
             ),
             None => PreparedCommonCss::new(config, font_family),
         };
-        let font_size_px = crate::mermaid_style::resolve_explicit_css_absolute_font_size_px(
-            common.font_size_css(),
-        );
+        let font_size_px =
+            merman_render_core::mermaid_style::resolve_explicit_css_absolute_font_size_px(
+                common.font_size_css(),
+            );
         let layout = RequirementConfigView::new(config)
             .layout_settings_with_resolved_typography(font_family, font_size_px);
         let option = |key: &str, fallback: &str| {
@@ -87,7 +84,7 @@ impl RequirementCssBinding {
         let node_text_color = Self::node_text_color_source(config)
             .unwrap_or_else(|| common.text_color())
             .to_owned();
-        let neo = crate::config::config_diagram_look(config).is_neo();
+        let neo = merman_render_core::config::config_diagram_look(config).is_neo();
         Self {
             common,
             native: None,
