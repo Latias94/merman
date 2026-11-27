@@ -20,7 +20,6 @@ exclude = [
 [package.metadata.merman]
 artifact-profile-required = true
 fixed-capabilities = ["svg"]
-wasm-inputs = ["assets/zenuml"]
 
 [features]
 # Diagram selection is independent of output formats and optional layout engines.
@@ -84,7 +83,7 @@ diagram-radar = ["merman-model/diagram-radar", "dep:merman-render-charts", "merm
 diagram-railroad = ["merman-model/diagram-railroad", "dep:merman-render-structured", "merman-render-structured/diagram-railroad"]
 diagram-requirement = ["merman-model/diagram-requirement", "dep:merman-render-graph", "merman-render-graph/diagram-requirement", "markdown-labels", "dep:roughr", "merman-render-core/rough-svg", "dep:indexmap", "merman-render-core/graph-layout"]
 diagram-sankey = ["merman-model/diagram-sankey", "dep:merman-render-charts", "merman-render-charts/diagram-sankey"]
-diagram-sequence = ["merman-model/diagram-sequence", "dep:merman-render-sequence", "merman-render-sequence/svg"]
+diagram-sequence = ["merman-model/diagram-sequence", "dep:merman-render-sequence", "merman-render-sequence/diagram-sequence", "merman-render-sequence/svg"]
 diagram-state = ["merman-model/diagram-state", "dep:merman-render-graph", "merman-render-graph/diagram-state", "markdown-labels", "dep:roughr", "dep:indexmap", "merman-render-core/graph-layout"]
 diagram-swimlane = ["merman-model/diagram-swimlane", "merman-render-core/icon-svg", "merman-render-core/resources-swimlane", "merman-render-core/theme-elevation", "merman-render-core/theme-label-background", "dep:merman-render-flow", "merman-render-flow/diagram-swimlane", "dep:imagesize", "markdown-labels", "dep:roughr", "merman-render-core/rough-svg", "dep:indexmap", "merman-render-core/graph-layout"]
 diagram-timeline = ["merman-model/diagram-timeline", "dep:merman-render-structured", "merman-render-structured/diagram-timeline"]
@@ -93,7 +92,7 @@ diagram-treemap = ["merman-model/diagram-treemap", "dep:merman-render-charts", "
 diagram-venn = ["merman-model/diagram-venn", "dep:merman-render-charts", "merman-render-charts/diagram-venn"]
 diagram-wardley = ["merman-model/diagram-wardley", "dep:merman-render-charts", "merman-render-charts/diagram-wardley"]
 diagram-xychart = ["merman-model/diagram-xychart", "dep:merman-render-charts", "merman-render-charts/diagram-xychart"]
-diagram-zenuml = ["merman-model/diagram-zenuml", "merman-render-core/resources-zenuml", "merman-render-core/theme-elevation", "cssparser/fast_match_color", "dep:pulldown-cmark"]
+diagram-zenuml = ["merman-model/diagram-zenuml", "merman-render-core/resources-zenuml", "dep:merman-render-sequence", "merman-render-sequence/diagram-zenuml"]
 default = []
 markdown-labels = ["dep:pulldown-cmark", "merman-render-core/markdown-labels"]
 native-compact = ["merman-render-core/paint-scene", "merman-render-sequence?/native-compact"]

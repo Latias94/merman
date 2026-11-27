@@ -1,10 +1,13 @@
 # merman-render-sequence
 
-Mermaid Sequence preparation, layout, and complete SVG emission. This crate owns typography,
-text and math measurement, participant drawing, control frames, and activation rendering.
-`svg` enables Mermaid parity output and `native-compact` adds the opt-in compact profile. The
-facade supplies the original operation context, finalizes diagram IDs, and checks terminal output.
-Preparation and emission share the same operation budget. Select `math` to include RaTeX.
+This crate owns layout preparation and complete SVG emission for Sequence and ZenUML.
+Both families use the operation's text measurer, viewport policy, and bounded SVG writer.
+The facade selects the operation context, finalizes diagram IDs, and admits terminal output.
+
+The default `diagram-sequence` feature provides Mermaid Sequence preparation, typography,
+and layout. Add `svg` for Mermaid parity, `native-compact` for compact SVG, or `math` for RaTeX.
+Select `--no-default-features --features diagram-zenuml` for ZenUML layout and SVG. That feature
+owns ZenUML style, label measurement, and embedded [companion assets](assets/zenuml/README.md).
 
 This crate exposes a workspace-internal service provider interface (SPI). It is published in
 lockstep with Merman and expects an exact version match with the Merman crates that use it.

@@ -123,6 +123,7 @@ for both Mermaid parity and the opt-in NativeCompact profile. It uses the shared
 bounded SVG contracts from `merman-render-core`. `merman-render` supplies the paired semantic
 model and operation context, finalizes diagram IDs, and owns terminal output admission. This
 follows the vertical renderer boundary in [ADR-0103](0103-vertical-workspace-crate-boundaries.md).
+The same provider owns ZenUML layout, styling, and complete SVG emission under `diagram-zenuml`.
 
 ### Chart rendering
 

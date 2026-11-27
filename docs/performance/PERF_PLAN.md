@@ -69,7 +69,7 @@ optimization, changed runtime contract or different release baseline does not cl
 1. Renew the unresolved public SVG comparisons, then attribute parse, layout, emission and E2E
    separately. Revalidate the generated CSS/XML and bounded append leads from the
    [October 21 investigation](theme_regression_root_cause_macos_2026-10-21.md) against current owners.
-   ZenUML already has an [exact default CSS fast path](../../crates/merman-render/src/svg/parity/zenuml.rs);
+   ZenUML already has an [exact default CSS fast path](../../crates/merman-render-sequence/src/zenuml/svg.rs);
    its diagnostics and other allocation repairs do not close the release comparison.
    Contract-bypassing interventions are not production candidates or recoveries.
 2. Resolve identity/capability blockers before timing; use size/density curves for Flowchart and

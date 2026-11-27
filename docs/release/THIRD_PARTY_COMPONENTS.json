@@ -1687,8 +1687,8 @@
       "relationships": ["behavior-reference", "copied", "modified", "translated"],
       "local_paths": [
         "crates/merman-core/src/diagrams/zenuml",
-        "crates/merman-render/assets/zenuml",
-        "crates/merman-render/src/zenuml.rs"
+        "crates/merman-render-sequence/assets/zenuml",
+        "crates/merman-render-sequence/src/zenuml"
       ],
       "license_expression": "MIT",
       "license_files": [

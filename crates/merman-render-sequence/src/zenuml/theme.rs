@@ -1,19 +1,19 @@
+use merman_render_core::config;
+use merman_theme_contract::v2::{Color, FamilyTheme};
+
 use super::native_theme::ZenumlNativeStyle;
 
 /// Prepared source compatibility values shared by ZenUML measurement and paint.
 #[derive(Debug, Default)]
-pub(crate) struct ZenumlSourceStyle {
-    pub(crate) typography: super::ZenumlTypography,
-    pub(crate) native: Option<Box<ZenumlNativeStyle>>,
+pub struct ZenumlSourceStyle {
+    pub(super) typography: super::ZenumlTypography,
+    pub(super) native: Option<Box<ZenumlNativeStyle>>,
     colors: std::collections::BTreeMap<&'static str, String>,
     transparent_frame: bool,
 }
 
 impl ZenumlSourceStyle {
-    pub(crate) fn for_native(
-        theme: &crate::theme::FamilyTheme,
-        background: Option<crate::theme::Color>,
-    ) -> Self {
+    pub(super) fn for_native(theme: &FamilyTheme, background: Option<Color>) -> Self {
         Self {
             typography: super::ZenumlTypography::from_native(theme),
             native: Some(Box::new(ZenumlNativeStyle::resolve(theme, background))),
@@ -21,8 +21,8 @@ impl ZenumlSourceStyle {
         }
     }
 
-    pub(crate) fn new(config: &serde_json::Value) -> Self {
-        let Some(config) = crate::config::value_at(config, &["themeVariables", "zenuml"])
+    pub(super) fn new(config: &serde_json::Value) -> Self {
+        let Some(config) = config::value_at(config, &["themeVariables", "zenuml"])
             .and_then(serde_json::Value::as_object)
         else {
             return Self::default();
@@ -96,24 +96,24 @@ impl ZenumlSourceStyle {
         }
     }
 
-    pub(crate) fn color<'a>(&'a self, key: &str, fallback: &'a str) -> &'a str {
+    pub(super) fn color<'a>(&'a self, key: &str, fallback: &'a str) -> &'a str {
         self.configured_color(key).unwrap_or(fallback)
     }
 
-    pub(crate) fn transparent_frame(&self) -> bool {
+    pub(super) fn transparent_frame(&self) -> bool {
         self.transparent_frame
     }
 
-    pub(crate) fn configured_color(&self, key: &str) -> Option<&str> {
+    pub(super) fn configured_color(&self, key: &str) -> Option<&str> {
         self.colors.get(key).map(String::as_str)
     }
 
-    pub(crate) fn with_canvas_replacement(mut self) -> Self {
+    pub(super) fn with_canvas_replacement(mut self) -> Self {
         self.transparent_frame = true;
         self
     }
 
-    pub(crate) fn uses_default_css(&self) -> bool {
+    pub(super) fn uses_default_css(&self) -> bool {
         !self.transparent_frame && self.colors.is_empty() && self.typography.uses_default_css()
     }
 }

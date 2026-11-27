@@ -1,29 +1,27 @@
-use merman_theme_contract::v2::{Elevation, Form, MarkerStyle};
+use merman_render_core::{mermaid_style::font_family_css, text::TextMeasurer};
+use merman_theme_contract::v2::{Color, Elevation, FamilyTheme, Form, MarkerStyle};
 use rustc_hash::FxHashMap;
-
-use crate::text::TextMeasurer;
-use crate::theme::{Color, FamilyTheme, font_family_css};
 
 use super::{ZenumlDiagramLayout, ZenumlTypography};
 
 #[derive(Debug)]
-pub(crate) struct ZenumlNativeStyle {
-    pub(crate) form: Form,
-    pub(crate) elevation: Elevation,
-    pub(crate) actor: Color,
-    pub(crate) container: Color,
-    pub(crate) callout: Color,
-    pub(crate) emphasis: Color,
-    pub(crate) border: Color,
-    pub(crate) connector: Color,
-    pub(crate) guide: Color,
-    pub(crate) primary: Color,
-    pub(crate) muted: Color,
-    pub(crate) title: Color,
-    pub(crate) callout_text: Color,
-    pub(crate) emphasis_text: Color,
-    pub(crate) number_text: Color,
-    pub(crate) number_widths: FxHashMap<String, f64>,
+pub(super) struct ZenumlNativeStyle {
+    pub(super) form: Form,
+    pub(super) elevation: Elevation,
+    pub(super) actor: Color,
+    pub(super) container: Color,
+    pub(super) callout: Color,
+    pub(super) emphasis: Color,
+    pub(super) border: Color,
+    pub(super) connector: Color,
+    pub(super) guide: Color,
+    pub(super) primary: Color,
+    pub(super) muted: Color,
+    pub(super) title: Color,
+    pub(super) callout_text: Color,
+    pub(super) emphasis_text: Color,
+    pub(super) number_text: Color,
+    pub(super) number_widths: FxHashMap<String, f64>,
 }
 
 impl ZenumlNativeStyle {
@@ -60,7 +58,7 @@ impl ZenumlNativeStyle {
         }
     }
 
-    pub(crate) fn measure_numbers(
+    pub(super) fn measure_numbers(
         &mut self,
         layout: &mut ZenumlDiagramLayout,
         typography: &ZenumlTypography,
@@ -94,7 +92,7 @@ impl ZenumlNativeStyle {
         }
     }
 
-    pub(crate) fn filled_arrow(&self) -> Option<&'static str> {
+    pub(super) fn filled_arrow(&self) -> Option<&'static str> {
         match self.form.marker_style {
             MarkerStyle::Classic => Some("M1 1.25 L6.15 4.5 L1 7.75 Z"),
             MarkerStyle::Filled => Some("M0.75 0.75 L6.25 4.5 L0.75 8.25 Z"),

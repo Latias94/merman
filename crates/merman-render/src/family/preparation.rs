@@ -979,32 +979,14 @@ fn prepare_zenuml_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    use crate::zenuml::ZenumlSourceStyle;
-
-    let background = execution.family.session().canvas_background();
-    let mut style = if let Some(native) = execution.native_family_theme() {
-        ZenumlSourceStyle::for_native(native, background)
-    } else {
-        let style = ZenumlSourceStyle::new(meta.effective_config.as_value());
-        if background.is_some() {
-            style.with_canvas_replacement()
-        } else {
-            style
-        }
-    };
-    let measurer = execution.text_measurer();
-    let mut layout =
-        crate::zenuml::layout_zenuml_diagram_typed(model, &style.typography, measurer)?;
-    if let Some(native) = style.native.as_mut() {
-        if let Some(title) = crate::zenuml::resolve_zenuml_title(model, meta.title.as_deref()) {
-            let title = crate::zenuml::resolve_zenuml_emojis_in_text(title);
-            let title_style = style.typography.native_title_style();
-            layout.width = layout
-                .width
-                .max(measurer.measure(&title, &title_style).width);
-        }
-        native.measure_numbers(&mut layout, &style.typography, measurer);
-    }
+    let (layout, style) = crate::zenuml::prepare_zenuml_diagram(
+        model,
+        &meta.effective_config,
+        meta.title.as_deref(),
+        execution.native_family_theme(),
+        execution.family.session().canvas_background(),
+        execution.text_measurer(),
+    )?;
     Ok(BuiltinFamilyArtifact::Zenuml(Box::new(
         ZenumlFamilyArtifact {
             pair: FamilyPair::new(model, layout),
