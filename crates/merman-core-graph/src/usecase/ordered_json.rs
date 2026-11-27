@@ -1,5 +1,5 @@
 use super::{ParseIssue, UsecaseJsonInfinity, UsecaseJsonStringEncoding, json_string};
-use crate::SourceSpan;
+use merman_model::SourceSpan;
 use serde::de::IgnoredAny;
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
@@ -152,7 +152,7 @@ impl Collector<'_> {
                             self.non_finite_numbers.insert(pointer.to_owned(), infinity);
                             Ok(Value::Null)
                         } else {
-                            Ok(crate::json_value::number_value(number))
+                            Ok(merman_model::json::number_value(number))
                         }
                     }
                 }

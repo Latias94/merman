@@ -87,10 +87,8 @@ traversal, text measurement, asset policy, layout output projection, and SVG bod
 
 ### Structured diagrams
 
-`merman-core-structured` owns Info syntax and model construction, Ishikawa syntax and cause-tree
-construction, Packet field scanning and bounded row expansion, Railroad dialect parsing and
-recovery, Sankey CSV parsing and graph construction, and Treemap row parsing and hierarchy
-construction. It also owns Journey and Timeline parsing and model construction, using shared
+`merman-core-structured` owns parsing and model construction for Cynefin, Gantt, Info,
+Ishikawa, Journey, Packet, Pie, Railroad, Sankey, Timeline, Treemap, and Venn. It uses shared
 scanners in `merman-core-preprocess`. `merman-core` prepares the source, supplies config-dependent
 sanitization, and maps models and syntax diagnostics into public parse results with optional editor
 facts.
@@ -103,7 +101,8 @@ policies, and owns final canvas and SVG admission.
 
 ### Graph syntax
 
-`merman-core-graph` owns Class, ER, and State tokenization, parsing, and model construction.
+`merman-core-graph` owns Class, ER, GitGraph, Mindmap, Requirement, State, and Usecase
+syntax and model construction.
 It reuses the controlled token cursor and pinned Mermaid Unicode rules in
 `merman-core-preprocess`. `merman-core` owns source mapping, diagnostic projection, resource
 admission, and editor and compatibility projections.

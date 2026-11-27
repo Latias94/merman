@@ -1,71 +1,15 @@
 use crate::MermaidConfig;
-#[cfg(any(
-    feature = "diagram-cynefin",
-    feature = "diagram-event-modeling",
-    feature = "diagram-packet",
-    feature = "diagram-pie",
-    feature = "diagram-radar",
-    feature = "diagram-wardley"
-))]
-use crate::diagrams::langium_common::{LangiumCommonFacts, LangiumCommonField};
 use crate::diagrams::scan::is_ecmascript_whitespace;
 use crate::sanitize::sanitize_text;
+#[cfg(any(
+    feature = "diagram-event-modeling",
+    feature = "diagram-packet",
+    feature = "diagram-radar",
+    feature = "diagram-wardley"
+))]
+pub(crate) use merman_core_preprocess::scan::langium::LangiumCommonDbFields;
 #[cfg(feature = "presentation")]
 use serde_json::{Map, Value};
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-#[cfg(any(
-    feature = "diagram-cynefin",
-    feature = "diagram-event-modeling",
-    feature = "diagram-packet",
-    feature = "diagram-pie",
-    feature = "diagram-radar",
-    feature = "diagram-wardley"
-))]
-pub(crate) struct LangiumCommonDbFields {
-    pub(crate) title: Option<String>,
-    pub(crate) acc_title: Option<String>,
-    pub(crate) acc_descr: Option<String>,
-}
-
-#[cfg(any(
-    feature = "diagram-cynefin",
-    feature = "diagram-event-modeling",
-    feature = "diagram-packet",
-    feature = "diagram-pie",
-    feature = "diagram-radar",
-    feature = "diagram-wardley"
-))]
-impl LangiumCommonDbFields {
-    pub(crate) fn from_facts(facts: &LangiumCommonFacts) -> Self {
-        // `populateCommonDb` observes the final AST assignments in this order and ignores empty
-        // values. Looking up each field independently also preserves Langium's last-assignment
-        // semantics when a common fragment appears more than once.
-        let acc_descr = nonempty_last(facts, LangiumCommonField::AccDescr);
-        let acc_title = nonempty_last(facts, LangiumCommonField::AccTitle);
-        let title = nonempty_last(facts, LangiumCommonField::Title);
-        Self {
-            title,
-            acc_title,
-            acc_descr,
-        }
-    }
-}
-
-#[cfg(any(
-    feature = "diagram-cynefin",
-    feature = "diagram-event-modeling",
-    feature = "diagram-packet",
-    feature = "diagram-pie",
-    feature = "diagram-radar",
-    feature = "diagram-wardley"
-))]
-fn nonempty_last(facts: &LangiumCommonFacts, field: LangiumCommonField) -> Option<String> {
-    facts
-        .last(field)
-        .map(|fact| fact.value.clone())
-        .filter(|value| !value.is_empty())
-}
 
 fn strip_leading_whitespace(s: &str) -> String {
     s.trim_start_matches(is_ecmascript_whitespace).to_string()

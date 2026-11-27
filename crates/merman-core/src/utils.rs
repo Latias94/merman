@@ -7,7 +7,6 @@ pub(crate) use merman_markup::url::format_url;
     feature = "diagram-block",
     feature = "diagram-kanban",
     feature = "diagram-packet",
-    feature = "diagram-pie",
     feature = "diagram-radar",
     feature = "diagram-wardley",
     feature = "diagram-xychart"

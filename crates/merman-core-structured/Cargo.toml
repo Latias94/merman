@@ -17,11 +17,13 @@ third-party-bundle = true
 
 [features]
 default = []
+diagram-cynefin = ["dep:merman-core-preprocess", "merman-model/diagram-cynefin"]
 diagram-gantt = ["dep:merman-core-preprocess", "dep:merman-markup", "merman-model/diagram-gantt"]
 diagram-info = ["dep:merman-core-preprocess", "merman-model/diagram-info"]
 diagram-ishikawa = ["merman-model/diagram-ishikawa"]
 diagram-journey = ["dep:merman-core-preprocess", "merman-model/diagram-journey"]
 diagram-packet = ["merman-model/diagram-packet"]
+diagram-pie = ["dep:merman-core-preprocess", "dep:ryu-js", "merman-model/diagram-pie"]
 diagram-railroad = ["merman-model/diagram-railroad"]
 diagram-sankey = ["merman-model/diagram-sankey", "dep:serde_json"]
 diagram-timeline = ["dep:merman-core-preprocess", "merman-model/diagram-timeline"]
@@ -36,6 +38,7 @@ test-support = []
 merman-core-preprocess = { workspace = true, optional = true }
 merman-markup = { workspace = true, features = ["url"], optional = true }
 merman-model.workspace = true
+ryu-js = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 
 [dev-dependencies]

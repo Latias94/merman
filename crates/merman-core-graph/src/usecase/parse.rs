@@ -1,8 +1,8 @@
 use super::lexer::{Token, TokenKind as K};
 use super::*;
-use crate::diagrams::scan::is_ecmascript_whitespace;
 #[cfg(feature = "editor-facts")]
-use crate::{EditorRenamePolicy, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol};
+use super::{UsecaseOccurrenceKind as OccurrenceKind, UsecaseOccurrenceRole as OccurrenceRole};
+use merman_model::text::is_ecmascript_whitespace;
 
 #[derive(Debug, Clone)]
 pub(super) struct Label {
@@ -96,10 +96,8 @@ pub(super) struct Parser<'a> {
     at: usize,
     control: &'a OperationControl,
     #[cfg(feature = "editor-facts")]
-    editor_demand: EditorFactsDemand,
+    observer: Option<&'a mut dyn UsecaseEditorObserver>,
     pub draft: Draft,
-    #[cfg(feature = "editor-facts")]
-    pub facts: EditorSemanticFacts,
     anonymous: usize,
 }
 
@@ -107,16 +105,12 @@ impl<'a> Parser<'a> {
     pub fn new(
         source: &'a str,
         tokens: Vec<Token>,
-        #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
+        #[cfg(feature = "editor-facts")] mut observer: Option<&'a mut dyn UsecaseEditorObserver>,
         control: &'a OperationControl,
     ) -> Self {
         #[cfg(feature = "editor-facts")]
-        let mut facts = EditorSemanticFacts::new();
-        #[cfg(feature = "editor-facts")]
-        if editor_demand == EditorFactsDemand::Capture {
-            #[cfg(test)]
-            crate::editor::test_work::record_collection();
-            for keyword in [
+        if let Some(observer) = observer.as_deref_mut() {
+            observer.begin(&[
                 "actor",
                 "systemBoundary",
                 "direction",
@@ -127,9 +121,7 @@ impl<'a> Parser<'a> {
                 "style",
                 "accTitle:",
                 "accDescr:",
-            ] {
-                facts.push_directive_prefix(keyword);
-            }
+            ]);
         }
         Self {
             source,
@@ -137,10 +129,8 @@ impl<'a> Parser<'a> {
             at: 0,
             control,
             #[cfg(feature = "editor-facts")]
-            editor_demand,
+            observer,
             draft: Draft::default(),
-            #[cfg(feature = "editor-facts")]
-            facts,
             anonymous: 0,
         }
     }
@@ -503,14 +493,15 @@ impl<'a> Parser<'a> {
                 span: self.content_span(&key),
             };
             #[cfg(feature = "editor-facts")]
-            if self.editor_demand == EditorFactsDemand::Capture {
-                self.facts.push_symbol(EditorSemanticSymbol::payload(
-                    property.key.clone(),
-                    None,
-                    EditorSemanticKind::Property,
-                    SourceSpan::new(key.span.start, value.span.end),
-                    self.content_span(&key),
-                ));
+            if let Some(observer) = self.observer.as_deref_mut() {
+                observer.record(UsecaseOccurrence {
+                    name: &property.key,
+                    detail: None,
+                    kind: OccurrenceKind::Property,
+                    role: OccurrenceRole::Payload,
+                    span: SourceSpan::new(key.span.start, value.span.end),
+                    selection: property.span,
+                });
             }
             properties.push(property);
             if self.eat(K::RightBrace) {
@@ -546,14 +537,15 @@ impl<'a> Parser<'a> {
             let token = self.expect(K::Identifier)?;
             classes.push(self.text(&token).to_string());
             #[cfg(feature = "editor-facts")]
-            if self.editor_demand == EditorFactsDemand::Capture {
-                self.facts.push_symbol(EditorSemanticSymbol::payload(
-                    self.text(&token),
-                    Some("class".to_string()),
-                    EditorSemanticKind::Class,
-                    token.span,
-                    token.span,
-                ));
+            if let Some(observer) = self.observer.as_deref_mut() {
+                observer.record(UsecaseOccurrence {
+                    name: token.text(self.source),
+                    detail: Some("class"),
+                    kind: OccurrenceKind::Class,
+                    role: OccurrenceRole::Payload,
+                    span: token.span,
+                    selection: token.span,
+                });
             }
             if !self.eat(K::Comma) {
                 break;
@@ -567,21 +559,17 @@ impl<'a> Parser<'a> {
         let mut entity = self.entity_name(false, None, false)?;
         entity.declaration = true;
         #[cfg(feature = "editor-facts")]
-        if self.editor_demand == EditorFactsDemand::Capture {
-            self.facts.push_symbol(
-                EditorSemanticSymbol::new(
-                    entity.id.clone(),
-                    Some(entity.label.text.clone()),
-                    EditorSemanticKind::Namespace,
-                    entity.full_span,
-                    entity.span,
-                )
-                .with_rename_policy(if entity.generated {
-                    EditorRenamePolicy::None
-                } else {
-                    EditorRenamePolicy::UsecaseIdentifier
-                }),
-            );
+        if let Some(observer) = self.observer.as_deref_mut() {
+            observer.record(UsecaseOccurrence {
+                name: &entity.id,
+                detail: Some(&entity.label.text),
+                kind: OccurrenceKind::Boundary,
+                role: OccurrenceRole::Declaration {
+                    generated: entity.generated,
+                },
+                span: entity.full_span,
+                selection: entity.span,
+            });
         }
         if !entity.metadata.is_empty() {
             self.draft.metadata.push(Assignment {
@@ -742,18 +730,16 @@ impl<'a> Parser<'a> {
             });
         #[cfg(feature = "editor-facts")]
         if let Some(token) = &explicit
-            && self.editor_demand == EditorFactsDemand::Capture
+            && let Some(observer) = self.observer.as_deref_mut()
         {
-            self.facts.push_symbol(
-                EditorSemanticSymbol::new(
-                    id.clone(),
-                    Some("relationship".to_string()),
-                    EditorSemanticKind::Event,
-                    SourceSpan::new(start, target.full_span.end),
-                    token.span,
-                )
-                .with_rename_policy(EditorRenamePolicy::UsecaseIdentifier),
-            );
+            observer.record(UsecaseOccurrence {
+                name: &id,
+                detail: Some("relationship"),
+                kind: OccurrenceKind::Relationship,
+                role: OccurrenceRole::Declaration { generated: false },
+                span: SourceSpan::new(start, target.full_span.end),
+                selection: token.span,
+            });
         }
         for entity in [&source, &target] {
             #[cfg(feature = "editor-facts")]
@@ -823,17 +809,15 @@ impl<'a> Parser<'a> {
         let parsed_json = super::ordered_json::parse(self.text(&literal), literal.span.start)?;
         let classes = self.class_suffix()?;
         #[cfg(feature = "editor-facts")]
-        if self.editor_demand == EditorFactsDemand::Capture {
-            self.facts.push_symbol(
-                EditorSemanticSymbol::new(
-                    id.clone(),
-                    Some("JSON".to_string()),
-                    EditorSemanticKind::Object,
-                    SourceSpan::new(opening.span.start, literal.span.end),
-                    span,
-                )
-                .with_rename_policy(EditorRenamePolicy::UsecaseIdentifier),
-            );
+        if let Some(observer) = self.observer.as_deref_mut() {
+            observer.record(UsecaseOccurrence {
+                name: &id,
+                detail: Some("JSON"),
+                kind: OccurrenceKind::Object,
+                role: OccurrenceRole::Declaration { generated: false },
+                span: SourceSpan::new(opening.span.start, literal.span.end),
+                selection: span,
+            });
         }
         self.draft.json.push(JsonDraft {
             node: UsecaseJsonNode {
@@ -862,15 +846,15 @@ impl<'a> Parser<'a> {
         let styles = self.styles()?;
         for token in names {
             #[cfg(feature = "editor-facts")]
-            if self.editor_demand == EditorFactsDemand::Capture {
-                self.facts
-                    .push_symbol(EditorSemanticSymbol::class_definition(
-                        self.text(&token),
-                        None,
-                        EditorSemanticKind::Class,
-                        token.span,
-                        token.span,
-                    ));
+            if let Some(observer) = self.observer.as_deref_mut() {
+                observer.record(UsecaseOccurrence {
+                    name: token.text(self.source),
+                    detail: None,
+                    kind: OccurrenceKind::Class,
+                    role: OccurrenceRole::ClassDefinition,
+                    span: token.span,
+                    selection: token.span,
+                });
             }
             self.draft.class_defs.push(UsecaseClassDef {
                 id: self.text(&token).to_string(),
@@ -947,153 +931,60 @@ impl<'a> Parser<'a> {
     }
     #[cfg(feature = "editor-facts")]
     fn reference(&mut self, id: &str, span: SourceSpan, generated: bool) {
-        #[cfg(feature = "editor-facts")]
-        if self.editor_demand == EditorFactsDemand::Capture {
-            self.facts.push_symbol(
-                EditorSemanticSymbol::reference(id, None, EditorSemanticKind::Object, span, span)
-                    .with_rename_policy(if generated {
-                        EditorRenamePolicy::None
-                    } else {
-                        EditorRenamePolicy::UsecaseIdentifier
-                    }),
-            );
+        if let Some(observer) = self.observer.as_deref_mut() {
+            observer.record(UsecaseOccurrence {
+                name: id,
+                detail: None,
+                kind: OccurrenceKind::Object,
+                role: OccurrenceRole::Reference { generated },
+                span,
+                selection: span,
+            });
         }
     }
+
     #[cfg(feature = "editor-facts")]
     fn record_entity(&mut self, entity: &Entity) {
-        let role = if entity.declaration {
-            EditorSemanticRole::Entity
-        } else {
-            EditorSemanticRole::Reference
-        };
-        #[cfg(feature = "editor-facts")]
-        if self.editor_demand == EditorFactsDemand::Capture {
-            self.facts.push_symbol(
-                EditorSemanticSymbol::with_role(
-                    entity.id.clone(),
-                    Some(entity.label.text.clone()),
-                    if entity.actor {
-                        EditorSemanticKind::Variable
-                    } else {
-                        EditorSemanticKind::Function
-                    },
-                    role,
-                    entity.full_span,
-                    entity.span,
-                )
-                .with_rename_policy(if entity.generated {
-                    EditorRenamePolicy::None
+        if let Some(observer) = self.observer.as_deref_mut() {
+            let role = if entity.declaration {
+                OccurrenceRole::Declaration {
+                    generated: entity.generated,
+                }
+            } else {
+                OccurrenceRole::Reference {
+                    generated: entity.generated,
+                }
+            };
+            observer.record(UsecaseOccurrence {
+                name: &entity.id,
+                detail: Some(&entity.label.text),
+                kind: if entity.actor {
+                    OccurrenceKind::Actor
                 } else {
-                    EditorRenamePolicy::UsecaseIdentifier
-                }),
-            );
-        }
-        #[cfg(feature = "editor-facts")]
-        if entity.label.span != entity.span && self.editor_demand == EditorFactsDemand::Capture {
-            self.facts.push_symbol(EditorSemanticSymbol::payload(
-                entity.label.text.clone(),
-                Some("label".to_string()),
-                EditorSemanticKind::String,
-                entity.label.span,
-                entity.label.span,
-            ));
+                    OccurrenceKind::Usecase
+                },
+                role,
+                span: entity.full_span,
+                selection: entity.span,
+            });
+            if entity.label.span != entity.span {
+                observer.record(UsecaseOccurrence {
+                    name: &entity.label.text,
+                    detail: Some("label"),
+                    kind: OccurrenceKind::Label,
+                    role: OccurrenceRole::Payload,
+                    span: entity.label.span,
+                    selection: entity.label.span,
+                });
+            }
         }
     }
+
     #[cfg(feature = "editor-facts")]
     pub fn finalize_editor_facts(&mut self) -> OperationControlResult<()> {
-        #[cfg(feature = "editor-facts")]
-        if !self.editor_demand.captures_rich() {
-            return Ok(());
-        }
-        use std::collections::{HashMap, HashSet};
-
-        // Completed declarations own identity even if a later statement is incomplete. Do not
-        // require a renderable model to bind references from the parser's recovery journal.
-        let declarations =
-            self.draft
-                .entities
-                .iter()
-                .map(|entity| {
-                    (
-                        entity.id.as_str(),
-                        if entity.actor {
-                            EditorSemanticKind::Variable
-                        } else {
-                            EditorSemanticKind::Function
-                        },
-                    )
-                })
-                .chain(
-                    self.draft.boundaries.iter().map(|boundary| {
-                        (boundary.entity.id.as_str(), EditorSemanticKind::Namespace)
-                    }),
-                )
-                .chain(
-                    self.draft
-                        .json
-                        .iter()
-                        .map(|json| (json.node.id.as_str(), EditorSemanticKind::Object)),
-                )
-                .chain(self.draft.relationships.iter().filter_map(|relation| {
-                    relation
-                        .edge
-                        .explicit_id
-                        .then_some((relation.edge.id.as_str(), EditorSemanticKind::Event))
-                }));
-        let mut kinds: HashMap<&str, Option<EditorSemanticKind>> = HashMap::new();
-        for (id, kind) in declarations {
-            self.control.checkpoint()?;
-            kinds
-                .entry(id)
-                .and_modify(|previous| {
-                    if *previous != Some(kind)
-                        || matches!(kind, EditorSemanticKind::Object | EditorSemanticKind::Event)
-                    {
-                        *previous = None;
-                    }
-                })
-                .or_insert(Some(kind));
-        }
-        // Only completed relationships can introduce implicit use cases. A dangling style or
-        // note target must not become a declaration merely because parsing stopped later.
-        for relation in &self.draft.relationships {
-            self.control.checkpoint()?;
-            for entity in [&relation.source, &relation.target] {
-                kinds
-                    .entry(entity.id.as_str())
-                    .or_insert(Some(EditorSemanticKind::Function));
-            }
-        }
-        let mut defined = HashSet::new();
-        for symbol in &self.facts.symbols {
-            self.control.checkpoint()?;
-            if symbol.role == EditorSemanticRole::Entity {
-                defined.insert(symbol.name.clone());
-            }
-        }
-        for symbol in &mut self.facts.symbols {
-            self.control.checkpoint()?;
-            if !matches!(
-                symbol.role,
-                EditorSemanticRole::Entity | EditorSemanticRole::Reference
-            ) {
-                continue;
-            }
-            match kinds.get(symbol.name.as_str()) {
-                Some(Some(kind)) => {
-                    symbol.kind = *kind;
-                    if symbol.role == EditorSemanticRole::Reference
-                        && defined.insert(symbol.name.clone())
-                    {
-                        symbol.role = EditorSemanticRole::Entity;
-                    }
-                }
-                Some(None) => {
-                    // Conflicting kinds and duplicate JSON/edge declarations cannot be renamed together.
-                    symbol.rename_policy = EditorRenamePolicy::None;
-                }
-                None => {}
-            }
+        if let Some(observer) = self.observer.as_deref_mut() {
+            let bindings = UsecaseBindings::from_draft(&self.draft, self.control)?;
+            observer.bind(&bindings, self.control)?;
         }
         Ok(())
     }

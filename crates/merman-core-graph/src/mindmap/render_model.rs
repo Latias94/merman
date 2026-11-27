@@ -1,29 +1,23 @@
-#[cfg(feature = "compat-json")]
-use serde_json::Value;
-
+use merman_model::config::MermaidConfig;
 #[cfg(test)]
-use super::NODE_TYPE_DEFAULT;
-use super::{MindmapDisplayPolicy, NODE_TYPE_HEXAGON, NODE_TYPE_RECT, NODE_TYPE_ROUNDED_RECT};
-#[cfg(feature = "compat-json")]
-use crate::Error;
-use crate::{
-    MermaidConfig, OperationControl, OperationControlResult, Result, SourcePresentationMetadata,
-};
-
+use merman_model::families::mindmap::NODE_TYPE_DEFAULT;
 use merman_model::families::mindmap::{
-    MindmapDiagramRenderEdge, MindmapDiagramRenderModel, MindmapDiagramRenderNode,
+    MindmapDiagramModel, MindmapDiagramRenderEdge, MindmapDiagramRenderModel,
+    MindmapDiagramRenderNode, MindmapDisplayPolicy, NODE_TYPE_HEXAGON, NODE_TYPE_RECT,
+    NODE_TYPE_ROUNDED_RECT,
 };
+use merman_model::{OperationControl, OperationControlResult};
 
+/// Projects the canonical tree into Mermaid's configured render model.
 pub(super) fn model_into_render_model_controlled(
-    model: super::MindmapDiagramModel,
-    meta: &SourcePresentationMetadata,
+    model: MindmapDiagramModel,
+    config: &MermaidConfig,
     control: &OperationControl,
-) -> OperationControlResult<Result<MindmapDiagramRenderModel>> {
+) -> OperationControlResult<MindmapDiagramRenderModel> {
     control.checkpoint()?;
     let Some(root_id) = model.nodes.first().map(|node| node.id) else {
-        return Ok(Ok(MindmapDiagramRenderModel::default()));
+        return Ok(MindmapDiagramRenderModel::default());
     };
-    let config = meta.effective_config.as_config();
     let width = super::utils::get_f64(config, "mindmap.maxNodeWidth").unwrap_or(200.0);
     let base_padding = super::utils::get_f64(config, "mindmap.padding").unwrap_or(10.0);
     let mut nodes = Vec::with_capacity(model.nodes.len());
@@ -60,7 +54,7 @@ pub(super) fn model_into_render_model_controlled(
         projection.to_layout_nodes_for_render_controlled(root_id, config, display, control)?;
     let edges = projection.to_edges_for_render_controlled(root_id, config, control)?;
     control.checkpoint()?;
-    Ok(Ok(MindmapDiagramRenderModel { nodes, edges }))
+    Ok(MindmapDiagramRenderModel { nodes, edges })
 }
 
 struct MindmapProjection {
@@ -287,25 +281,6 @@ impl MindmapProjection {
         Ok(edges)
     }
 }
-#[cfg(feature = "compat-json")]
-pub(crate) fn render_model_to_compat_json(
-    model: &MindmapDiagramRenderModel,
-    meta: &SourcePresentationMetadata,
-) -> Result<Value> {
-    render_model_to_compat_json_controlled(model, meta, &OperationControl::new())
-        .expect("a private parse control cannot be cancelled")
-}
-
-#[cfg(feature = "compat-json")]
-pub(crate) fn render_model_to_compat_json_controlled(
-    model: &MindmapDiagramRenderModel,
-    meta: &SourcePresentationMetadata,
-    control: &OperationControl,
-) -> OperationControlResult<Result<Value>> {
-    let projection = meta.compat_json_metadata();
-    merman_model::families::mindmap::compat::project_controlled(model, &projection, control)
-        .map(|result| result.map_err(Error::from))
-}
 
 #[cfg(test)]
 mod tests {
@@ -323,7 +298,6 @@ mod tests {
                 descr_raw: "root",
                 descr_is_markdown: false,
                 ty: NODE_TYPE_DEFAULT,
-                diagram_type: "mindmap",
             },
             &config,
         )
@@ -338,27 +312,17 @@ mod tests {
                     descr_raw: &id,
                     descr_is_markdown: false,
                     ty: NODE_TYPE_DEFAULT,
-                    diagram_type: "mindmap",
                 },
                 &config,
             )
             .expect("root child");
         }
 
-        let metadata = SourcePresentationMetadata {
-            diagram_type: "mindmap".to_string(),
-            config: config.clone(),
-            effective_config: crate::presentation::SourcePresentationConfig::from_value(
-                crate::json_value::clone_value_nonrecursive(config.as_value()),
-            ),
-            title: None,
-        };
         let model = model_into_render_model_controlled(
             db.into_semantic_model(),
-            &metadata,
+            &config,
             &OperationControl::new(),
         )
-        .unwrap()
         .unwrap();
         let sections: Vec<_> = model
             .nodes

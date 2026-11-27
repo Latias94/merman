@@ -1,4 +1,4 @@
-#[cfg(any(feature = "diagram-c4", feature = "diagram-requirement"))]
+#[cfg(feature = "diagram-c4")]
 pub(crate) use merman_core_preprocess::scan::LineCursor;
 #[cfg(any(
     test,
@@ -9,18 +9,9 @@ pub(crate) use merman_core_preprocess::scan::LineCursor;
 pub(crate) use merman_core_preprocess::scan::physical_line_at;
 #[cfg(test)]
 pub(crate) use merman_core_preprocess::scan::split_statement_suffix_hash_or_semi;
-#[cfg(any(
-    test,
-    feature = "diagram-kanban",
-    feature = "diagram-mindmap",
-    feature = "diagram-requirement"
-))]
+#[cfg(any(test, feature = "diagram-kanban"))]
 pub(crate) use merman_core_preprocess::scan::starts_with_case_insensitive;
-#[cfg(any(
-    feature = "diagram-architecture",
-    feature = "diagram-cynefin",
-    feature = "diagram-kanban"
-))]
+#[cfg(any(feature = "diagram-architecture", feature = "diagram-kanban"))]
 pub(crate) use merman_core_preprocess::scan::strip_line_ending;
 pub(crate) use merman_model::text::is_ecmascript_whitespace;
 

@@ -2,6 +2,10 @@
 
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "diagram-cynefin")]
+#[doc(hidden)]
+pub mod cynefin;
+
 #[cfg(feature = "diagram-gantt")]
 #[doc(hidden)]
 pub mod gantt;
@@ -20,6 +24,10 @@ pub mod journey;
 
 #[cfg(feature = "diagram-packet")]
 pub mod packet;
+
+#[cfg(feature = "diagram-pie")]
+#[doc(hidden)]
+pub mod pie;
 
 #[cfg(feature = "diagram-railroad")]
 pub mod railroad;

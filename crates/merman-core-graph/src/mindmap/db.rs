@@ -1,7 +1,7 @@
-use crate::sanitize::sanitize_text;
-use crate::{Error, MermaidConfig, OperationControl, OperationControlResult, Result};
-
+use merman_markup::sanitize::sanitize_text;
+use merman_model::config::MermaidConfig;
 use merman_model::families::mindmap::{MindmapDiagramModel, MindmapNodeModel};
+use merman_model::{OperationControl, OperationControlResult};
 
 #[derive(Debug, Default)]
 pub(super) struct MindmapDb {
@@ -16,7 +16,6 @@ pub(super) struct MindmapNodeInput<'a> {
     pub(super) descr_raw: &'a str,
     pub(super) descr_is_markdown: bool,
     pub(super) ty: i32,
-    pub(super) diagram_type: &'a str,
 }
 
 impl MindmapDb {
@@ -35,7 +34,7 @@ impl MindmapDb {
         &mut self,
         input: MindmapNodeInput<'_>,
         config: &MermaidConfig,
-    ) -> Result<()> {
+    ) -> Result<(), String> {
         let control = OperationControl::new();
         self.add_node_controlled(input, config, &control)
             .expect("a private parse control cannot be cancelled")
@@ -46,7 +45,7 @@ impl MindmapDb {
         input: MindmapNodeInput<'_>,
         config: &MermaidConfig,
         control: &OperationControl,
-    ) -> OperationControlResult<Result<()>> {
+    ) -> OperationControlResult<Result<(), String>> {
         control.checkpoint()?;
         let mut level = input.indent_level;
         let is_root;
@@ -108,12 +107,9 @@ impl MindmapDb {
             return Ok(Ok(()));
         }
 
-        Ok(Err(Error::diagram_parse_fallback(
-            input.diagram_type.to_string(),
-            format!(
-                "There can be only one root. No parent could be found for (\"{}\")",
-                node.descr
-            ),
+        Ok(Err(format!(
+            "There can be only one root. No parent could be found for (\"{}\")",
+            node.descr
         )))
     }
 

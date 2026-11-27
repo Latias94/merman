@@ -2454,6 +2454,7 @@ dependencies = [
  "merman-core-preprocess",
  "merman-markup",
  "merman-model",
+ "serde",
  "serde_json",
 ]
 
@@ -2486,6 +2487,7 @@ dependencies = [
  "merman-core-preprocess",
  "merman-markup",
  "merman-model",
+ "ryu-js",
  "serde_json",
 ]
 

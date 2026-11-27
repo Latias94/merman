@@ -1,7 +1,6 @@
 use super::ParseIssue;
-use crate::{
-    OperationControl, OperationControlResult, SourceSpan, diagrams::scan::is_ecmascript_whitespace,
-};
+use merman_model::text::is_ecmascript_whitespace;
+use merman_model::{OperationControl, OperationControlResult, SourceSpan};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum TokenKind {
