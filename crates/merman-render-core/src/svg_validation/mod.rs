@@ -1,6 +1,7 @@
 //! Shared XML and resource validation for SVG consumers.
 
 mod id_rebase;
+mod mindmap_ids;
 mod resource_closure;
 mod static_inline;
 mod terminal;

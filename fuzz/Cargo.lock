@@ -1177,7 +1177,6 @@ dependencies = [
  "pulldown-cmark",
  "quick-xml",
  "roughr-merman",
- "roxmltree 0.21.2",
  "rustc-hash",
  "ryu-js",
  "serde",

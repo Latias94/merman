@@ -184,6 +184,7 @@ pub mod venn;
 #[cfg(feature = "diagram-wardley")]
 pub mod wardley;
 use merman_render_core::xml;
+#[cfg(test)]
 use roxmltree as xml_dom;
 #[cfg(feature = "diagram-xychart")]
 pub mod xychart;
