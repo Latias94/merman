@@ -5,12 +5,8 @@ use merman_model::{OperationPhase, families::flowchart::FlowEdge};
 use merman_render_core::{
     LayoutPoint,
     route_types::RoutePoint,
-    svg_edge_parity::{
-        layered_route,
-        line_hops::{LineHopEdge, LineHopStyle},
-    },
+    svg_edge_parity::{layered_route, line_hops::LineHopEdge},
 };
-use serde_json::Value;
 
 use super::intersect::intersect_node_outline;
 use super::*;
@@ -24,27 +20,12 @@ fn draw_curve(
     edge: &FlowEdge,
     routing: FlowLayeredRouting,
 ) -> layered_route::Curve {
-    use layered_route::Curve;
-    let authored = || {
-        Curve::from_mermaid(
-            edge.interpolate
-                .as_deref()
-                .unwrap_or(ctx.default_edge_interpolate),
-        )
-    };
-    match routing {
-        FlowLayeredRouting::Rounded => Curve::Rounded,
-        FlowLayeredRouting::Straight => Curve::Linear,
-        FlowLayeredRouting::Curved => authored(),
-        FlowLayeredRouting::Stepped => {
-            let curve = authored();
-            if curve.is_stepped() {
-                curve
-            } else {
-                Curve::Step
-            }
-        }
-    }
+    layered_route::Curve::for_edge_routing(
+        routing,
+        edge.interpolate
+            .as_deref()
+            .unwrap_or(ctx.default_edge_interpolate),
+    )
 }
 
 pub(super) fn paint(
@@ -194,14 +175,12 @@ pub(in crate::svg) fn apply_layered_line_hops(
     render_edges: &[crate::svg::render_input::FlowchartRenderEdge<'_>],
     routing: FlowLayeredRouting,
 ) -> Result<()> {
-    let style = match ctx
-        .config
-        .get("layered")
-        .and_then(|section| section.get("lineHops"))
-    {
-        Some(Value::Bool(false)) => return Ok(()),
-        Some(Value::String(style)) if style == "gap" => LineHopStyle::Gap,
-        _ => LineHopStyle::Arc,
+    let Some(style) = layered_route::line_hop_style(
+        ctx.config
+            .get("layered")
+            .and_then(|section| section.get("lineHops")),
+    ) else {
+        return Ok(());
     };
     let work = ctx.work_meter;
     work.charge_emit_work(render_edges.len())?;

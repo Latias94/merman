@@ -253,7 +253,8 @@ fn compiled_capabilities_for_auto_detection() -> Vec<&'static str> {
                 feature = "diagram-flowchart",
                 feature = "diagram-swimlane",
                 feature = "diagram-agentflow",
-                feature = "diagram-mindmap"
+                feature = "diagram-mindmap",
+                feature = "diagram-requirement"
             )
         ))]
         "layout-layered",
@@ -1155,6 +1156,12 @@ fn workflow_layered() {
                 "mindmap",
                 "mindmap\n  root((Start))\n    Done\n",
                 "MindmapDiagram",
+            ),
+            #[cfg(feature = "diagram-requirement")]
+            (
+                "requirement",
+                "requirementDiagram\n  requirement checkout {\n    id: 1\n  }\n",
+                "RequirementDiagram",
             ),
         ],
     );

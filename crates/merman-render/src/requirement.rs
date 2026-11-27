@@ -66,7 +66,11 @@ pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
         text_measurer,
         &binding,
         &work_meter,
-        #[cfg(any(feature = "layout-elk", feature = "layout-shoal"))]
+        #[cfg(any(
+            feature = "layout-elk",
+            feature = "layout-layered",
+            feature = "layout-shoal"
+        ))]
         None,
     )
 }
@@ -77,6 +81,7 @@ pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
         feature = "layout-dagre",
         feature = "layout-elk",
         feature = "layout-grid",
+        feature = "layout-layered",
         feature = "layout-shoal"
     )),
     allow(
@@ -91,9 +96,12 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
     text_measurer: &dyn TextMeasurer,
     css_binding: &graph::RequirementCssBinding,
     work_meter: &std::sync::Arc<OperationWorkMeter>,
-    #[cfg(any(feature = "layout-elk", feature = "layout-shoal"))] execution: Option<
-        &crate::LayoutExecution<'_>,
-    >,
+    #[cfg(any(
+        feature = "layout-elk",
+        feature = "layout-layered",
+        feature = "layout-shoal"
+    ))]
+    execution: Option<&crate::LayoutExecution<'_>>,
 ) -> Result<RequirementPreparedArtifact> {
     work_meter
         .policy()
@@ -106,6 +114,27 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
                 config,
                 &css_binding.layout,
                 text_measurer,
+                work_meter,
+            )?,
+            #[cfg(feature = "layout-shoal")]
+            route_contract: crate::graph_layout::RouteContract::default(),
+        });
+    }
+    #[cfg(feature = "layout-layered")]
+    if backend == GraphLayoutBackend::Layered {
+        let allow_dagre_retry = execution.map_or(cfg!(feature = "layout-dagre"), |execution| {
+            execution
+                .family
+                .session()
+                .supports_capability(crate::RenderCapability::LayoutDagre)
+        });
+        return Ok(RequirementPreparedArtifact {
+            prepared: graph::layout_layered(
+                model,
+                config,
+                &css_binding.layout,
+                text_measurer,
+                allow_dagre_retry,
                 work_meter,
             )?,
             #[cfg(feature = "layout-shoal")]

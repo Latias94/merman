@@ -1,20 +1,40 @@
-#![cfg(all(feature = "svg", feature = "diagram-flowchart"))]
+#![cfg(all(
+    feature = "svg",
+    any(feature = "diagram-flowchart", feature = "diagram-requirement")
+))]
 
 use merman::svg::{
-    RenderCapability, RenderCapabilityPolicy, RenderError as SvgError, layout_layered_available,
+    DiagramFamilyId, RenderCapability, RenderCapabilityPolicy, RenderError as SvgError,
+    layout_layered_available,
 };
 use merman::{LayoutBackend, OperationControl, RenderError, RenderOutput, RenderRequest, Renderer};
 
 #[test]
-fn layered_builder_matches_planning_and_host_admission() {
-    const SOURCE: &str = "flowchart LR\nA[Start] -->|Approved| B[Done]\n";
+#[cfg(feature = "diagram-flowchart")]
+fn flowchart_layered_builder_matches_planning_and_host_admission() {
+    assert_layered_admission(
+        DiagramFamilyId::FLOWCHART,
+        "flowchart LR\nA[Start] -->|Approved| B[Done]\n",
+    );
+}
+
+#[test]
+#[cfg(feature = "diagram-requirement")]
+fn requirement_layered_builder_matches_planning_and_host_admission() {
+    assert_layered_admission(
+        DiagramFamilyId::REQUIREMENT,
+        "requirementDiagram\n  requirement checkout {\n    id: 1\n  }\n",
+    );
+}
+
+fn assert_layered_admission(family: DiagramFamilyId, source: &str) {
     let renderer = Renderer::builder()
         .with_default_layout(LayoutBackend::Layered)
         .build()
         .unwrap();
     assert_eq!(layout_layered_available(), cfg!(feature = "layout-layered"));
     let plan = renderer.render(RenderRequest::svg_plan(
-        SOURCE,
+        source,
         OperationControl::new(),
         renderer.default_svg_request(),
     ));
@@ -31,13 +51,15 @@ fn layered_builder_matches_planning_and_host_admission() {
     let RenderOutput::SvgPlan(Some(plan)) = plan.unwrap() else {
         panic!("expected an SVG plan");
     };
+    assert_eq!(plan.family_id(), family);
     assert_eq!(
         plan.required_capabilities(),
         [RenderCapability::LayoutLayered]
     );
     assert_eq!(plan.is_ready(), layout_layered_available());
     if plan.is_ready() {
-        let svg = renderer.render_svg(SOURCE).unwrap();
+        let svg = renderer.render_svg(source).unwrap();
+        assert_eq!(svg.evidence().family_id(), family);
         assert_eq!(
             svg.evidence().required_capabilities(),
             plan.required_capabilities()
@@ -51,7 +73,7 @@ fn layered_builder_matches_planning_and_host_admission() {
         RenderCapabilityPolicy::unrestricted().with_denied(RenderCapability::LayoutLayered),
     );
     assert!(matches!(
-        renderer.render_svg_with(SOURCE, request, OperationControl::new()),
+        renderer.render_svg_with(source, request, OperationControl::new()),
         Err(RenderError::Svg(SvgError::MissingCapability {
             capability: RenderCapability::LayoutLayered,
             ..

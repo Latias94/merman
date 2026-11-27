@@ -663,8 +663,8 @@ Additional leaves are `jpeg`, `layout-cytoscape`, `layout-dagre`, `layout-elk`, 
 In a source build, enable `layout-grid` and the matching Flowchart, Swimlane, Agentflow, Class,
 ER, Mindmap, or Requirement diagram feature to use `layout: grid` in diagram or site config.
 `merman-cli capabilities --json` reports `layout-grid` when the built CLI can accept that selection.
-Enable `layout-layered` and the matching Flowchart, Swimlane, Agentflow, or Mindmap diagram
-feature for `layout: layered`. Add `layout-dagre` to allow a retry after a recoverable Layered error.
+Enable `layout-layered` and the matching Flowchart, Swimlane, Agentflow, Mindmap, or Requirement
+diagram feature for `layout: layered`. Add `layout-dagre` to allow a retry after a recoverable Layered error.
 
 The current source build requires an explicit layout leaf for defaults-off recipes that render
 ordinary graph diagrams. Default CLI builds include Dagre, ELK, and Cytoscape. An explicit Shoal

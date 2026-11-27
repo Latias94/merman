@@ -200,6 +200,7 @@ pub(crate) fn resolve(
                 | DiagramFamilyId::AGENTFLOW
                 | DiagramFamilyId::SWIMLANE
                 | DiagramFamilyId::MINDMAP
+                | DiagramFamilyId::REQUIREMENT
         )
     {
         return Ok(Backend::Layered);
@@ -396,14 +397,12 @@ mod tests {
                 );
                 if let Some(backend) = available
                     && (flow_family
-                        || family == DiagramFamilyId::MINDMAP
+                        || matches!(
+                            family,
+                            DiagramFamilyId::MINDMAP | DiagramFamilyId::REQUIREMENT
+                        )
                         || (backend == Backend::Grid
-                            && matches!(
-                                family,
-                                DiagramFamilyId::CLASS
-                                    | DiagramFamilyId::ER
-                                    | DiagramFamilyId::REQUIREMENT
-                            )))
+                            && matches!(family, DiagramFamilyId::CLASS | DiagramFamilyId::ER)))
                 {
                     assert_eq!(resolve(family, diagram_type, &config).unwrap(), backend);
                     continue;

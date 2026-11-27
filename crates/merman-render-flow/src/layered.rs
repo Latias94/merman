@@ -4,8 +4,9 @@ use std::collections::HashMap;
 use std::fmt;
 
 use merman_model::{OperationPhase, presentation::PresentationConfig};
+pub use merman_render_core::graph_layout::mermaid_layered::EdgeRouting as FlowLayeredRouting;
 use merman_render_core::graph_layout::{
-    BorderStitch, RoutingStyle, SolvedEdge,
+    BorderStitch, SolvedEdge,
     mermaid_layered::{self, LayeredError, Options},
 };
 use merman_render_core::{
@@ -25,37 +26,6 @@ mod input;
 mod projection;
 #[cfg(test)]
 mod tests;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FlowLayeredRouting {
-    Rounded,
-    Curved,
-    Stepped,
-    Straight,
-}
-
-impl FlowLayeredRouting {
-    fn from_config(config: &PresentationConfig) -> Self {
-        match config
-            .get("layered")
-            .and_then(|layered| layered.get("edgeRouting"))
-            .and_then(serde_json::Value::as_str)
-        {
-            Some("curved") => Self::Curved,
-            Some("stepped") => Self::Stepped,
-            Some("straight") => Self::Straight,
-            _ => Self::Rounded,
-        }
-    }
-
-    const fn geometry(self) -> RoutingStyle {
-        match self {
-            Self::Rounded | Self::Stepped => RoutingStyle::Orthogonal,
-            Self::Curved => RoutingStyle::Curved,
-            Self::Straight => RoutingStyle::Polyline,
-        }
-    }
-}
 
 #[derive(Debug)]
 pub struct FlowLayeredRoutes {
@@ -147,7 +117,11 @@ pub fn layout(
     edge_style: &FlowchartEdgeStylePlan,
     work: &OperationWorkMeter,
 ) -> Result<FlowLayeredLayout, FlowLayeredError> {
-    let routing = FlowLayeredRouting::from_config(config);
+    let routing = FlowLayeredRouting::from_name(
+        config
+            .get_path(&["layered", "edgeRouting"])
+            .and_then(serde_json::Value::as_str),
+    );
     let measurement = FlowchartMeasurement::new(
         view,
         class_defs,

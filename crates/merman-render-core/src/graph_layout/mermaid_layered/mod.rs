@@ -22,6 +22,34 @@ pub use level::{InputError, Owner};
 
 pub type LayeredError = CompoundError<OperationWorkError>;
 
+/// The effective Mermaid `layered.edgeRouting` option.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EdgeRouting {
+    Rounded,
+    Curved,
+    Stepped,
+    Straight,
+}
+
+impl EdgeRouting {
+    pub fn from_name(name: Option<&str>) -> Self {
+        match name {
+            Some("curved") => Self::Curved,
+            Some("stepped") => Self::Stepped,
+            Some("straight") => Self::Straight,
+            _ => Self::Rounded,
+        }
+    }
+
+    pub const fn geometry(self) -> Routing {
+        match self {
+            Self::Rounded | Self::Stepped => Routing::Orthogonal,
+            Self::Curved => Routing::Curved,
+            Self::Straight => Routing::Polyline,
+        }
+    }
+}
+
 /// Controls that are specific to Layered. The shared measured graph supplies node and rank spacing.
 #[derive(Clone, Copy, Debug)]
 pub struct Options {

@@ -890,6 +890,12 @@ fn mermaid_layouts_require_artifact_admission() {
             "MindmapDiagram",
             b"mindmap\n  root((Start))\n    Done\n",
         ),
+        #[cfg(feature = "diagram-requirement")]
+        (
+            "requirement",
+            "RequirementDiagram",
+            b"requirementDiagram\n  requirement checkout {\n    id: 1\n  }\n",
+        ),
     ];
     const GRID_ONLY_DIAGRAMS: &[(&str, &str, &[u8])] = &[
         #[cfg(feature = "diagram-class")]
@@ -899,12 +905,6 @@ fn mermaid_layouts_require_artifact_admission() {
             "er",
             "ErDiagram",
             b"erDiagram\n  CUSTOMER ||--o{ ORDER : places\n",
-        ),
-        #[cfg(feature = "diagram-requirement")]
-        (
-            "requirement",
-            "RequirementDiagram",
-            b"requirementDiagram\n  requirement checkout {\n    id: 1\n  }\n",
         ),
     ];
 

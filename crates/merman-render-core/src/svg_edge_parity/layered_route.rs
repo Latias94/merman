@@ -30,6 +30,28 @@ pub enum Curve {
 }
 
 impl Curve {
+    #[cfg(feature = "layout-layered")]
+    pub fn for_edge_routing(
+        routing: crate::graph_layout::mermaid_layered::EdgeRouting,
+        authored: &str,
+    ) -> Self {
+        use crate::graph_layout::mermaid_layered::EdgeRouting;
+
+        match routing {
+            EdgeRouting::Rounded => Self::Rounded,
+            EdgeRouting::Straight => Self::Linear,
+            EdgeRouting::Curved => Self::from_mermaid(authored),
+            EdgeRouting::Stepped => {
+                let curve = Self::from_mermaid(authored);
+                if curve.is_stepped() {
+                    curve
+                } else {
+                    Self::Step
+                }
+            }
+        }
+    }
+
     pub fn from_mermaid(curve: &str) -> Self {
         match curve {
             "linear" => Self::Linear,
@@ -71,6 +93,18 @@ pub fn marker_trim(arrow_type: Option<&str>) -> f64 {
         5.5
     } else {
         super::edge_path::marker_offset_for(arrow_type).unwrap_or(0.0)
+    }
+}
+
+#[cfg(feature = "layout-layered")]
+pub fn line_hop_style(value: Option<&serde_json::Value>) -> Option<super::line_hops::LineHopStyle> {
+    use super::line_hops::LineHopStyle;
+    use serde_json::Value;
+
+    match value {
+        Some(Value::Bool(false)) => None,
+        Some(Value::String(style)) if style == "gap" => Some(LineHopStyle::Gap),
+        _ => Some(LineHopStyle::Arc),
     }
 }
 

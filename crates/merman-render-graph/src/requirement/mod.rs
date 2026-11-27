@@ -27,6 +27,8 @@ mod elk;
 #[cfg(feature = "layout-grid")]
 mod grid;
 mod html_label;
+#[cfg(feature = "layout-layered")]
+mod layered;
 mod native_theme;
 mod source_typography;
 mod svg;
@@ -39,6 +41,8 @@ use css_binding::requirement_color_indices;
 pub use grid::layout as layout_grid;
 use html_label::RequirementHtmlLabel;
 pub use html_label::sanitize_label_with_sink;
+#[cfg(feature = "layout-layered")]
+pub use layered::layout as layout_layered;
 use native_theme::RequirementNativeStyle;
 pub use source_typography::RequirementNodeTypography;
 #[cfg(feature = "layout-shoal")]
@@ -144,6 +148,8 @@ pub struct RequirementPreparedArtifact {
     measurement_binding: Option<RequirementLabelMeasurementBinding>,
     #[cfg(feature = "layout-grid")]
     grid: Option<grid::RequirementGridPaint>,
+    #[cfg(feature = "layout-layered")]
+    layered: Option<layered::Paint>,
 }
 
 impl RequirementPreparedArtifact {
@@ -170,6 +176,8 @@ impl RequirementPreparedArtifact {
             measurement_binding,
             #[cfg(feature = "layout-grid")]
             grid: None,
+            #[cfg(feature = "layout-layered")]
+            layered: None,
         }
     }
 
@@ -1063,7 +1071,8 @@ pub fn requirement_layout_node(id: String, rect: Rect) -> LayoutNode {
 #[cfg(any(
     feature = "layout-dagre",
     feature = "layout-elk",
-    feature = "layout-grid"
+    feature = "layout-grid",
+    feature = "layout-layered"
 ))]
 fn requirement_layout_node_from_center(
     id: String,
@@ -1086,7 +1095,8 @@ fn requirement_layout_node_from_center(
 #[cfg(any(
     feature = "layout-dagre",
     feature = "layout-elk",
-    feature = "layout-grid"
+    feature = "layout-grid",
+    feature = "layout-layered"
 ))]
 fn bounds_for_nodes_edges(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> {
     if nodes.is_empty() && edges.is_empty() {

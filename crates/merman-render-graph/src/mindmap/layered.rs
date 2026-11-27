@@ -9,15 +9,14 @@ use merman_model::{OperationPhase, presentation::PresentationConfig};
 use merman_render_core::{
     Error, LayoutNode, LayoutPoint, Result,
     graph_layout::{
-        Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredNode, RoutingStyle, Size,
-        SolvedEdge,
-        mermaid_layered::{self, LayeredError, Options},
+        Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredNode, Size, SolvedEdge,
+        mermaid_layered::{self, EdgeRouting, LayeredError, Options},
     },
     resources::OperationWorkMeter,
     route_types::RoutePoint,
     svg_edge_parity::{
         layered_route::{self, Curve},
-        line_hops::{LineHopEdge, LineHopStyle},
+        line_hops::LineHopEdge,
         path_numbers::json_stringify_axis_points_into,
     },
 };
@@ -40,51 +39,9 @@ impl fmt::Display for Rejection {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-enum Routing {
-    Rounded,
-    Curved,
-    Stepped,
-    Straight,
-}
-
-impl Routing {
-    fn resolve(config: &PresentationConfig) -> Self {
-        match config
-            .get_path(&["layered", "edgeRouting"])
-            .and_then(Value::as_str)
-        {
-            Some("curved") => Self::Curved,
-            Some("stepped") => Self::Stepped,
-            Some("straight") => Self::Straight,
-            _ => Self::Rounded,
-        }
-    }
-
-    const fn solver(self) -> RoutingStyle {
-        match self {
-            Self::Rounded | Self::Stepped => RoutingStyle::Orthogonal,
-            Self::Curved => RoutingStyle::Curved,
-            Self::Straight => RoutingStyle::Polyline,
-        }
-    }
-
-    fn curve(self, source: &str) -> Curve {
-        match self {
-            Self::Rounded => Curve::Rounded,
-            Self::Straight => Curve::Linear,
-            Self::Curved => Curve::from_mermaid(source),
-            Self::Stepped => match Curve::from_mermaid(source) {
-                curve if curve.is_stepped() => curve,
-                _ => Curve::Step,
-            },
-        }
-    }
-}
-
 #[derive(Debug)]
 pub(super) struct Paint {
-    routing: Routing,
+    routing: EdgeRouting,
     // One route per DB edge. Internal solver ordering stays private to the kernel.
     routes: Vec<SolvedEdge>,
 }
@@ -101,7 +58,11 @@ pub(super) fn layout(
     if model.nodes.len() != nodes.len() || model.edges.len() != edge_indices.len() {
         return Err(invalid_projection("measurement slots do not match the model").into());
     }
-    let routing = Routing::resolve(config);
+    let routing = EdgeRouting::from_name(
+        config
+            .get_path(&["layered", "edgeRouting"])
+            .and_then(Value::as_str),
+    );
     let mut measured_nodes = buffer(nodes.len(), Layout, work)?;
     for (index, (node, source)) in nodes.iter().zip(&model.nodes).enumerate() {
         work.charge(1)?;
@@ -148,7 +109,7 @@ pub(super) fn layout(
     // MindmapDB emits only flat leaves in preorder, and supplies TB and 50/50 spacing.
     let graph = MeasuredGraph {
         direction: Direction::Down,
-        routing: routing.solver(),
+        routing: routing.geometry(),
         node_spacing: 50.0,
         rank_spacing: 50.0,
         component_spacing: 0.0,
@@ -266,7 +227,7 @@ impl Paint {
                     work,
                 )?;
             }
-            let curve = self.routing.curve(&edge.curve);
+            let curve = Curve::for_edge_routing(self.routing, &edge.curve);
             let path = layered_route::path(&route, curve, 0.0, 0.0, work)?;
             let mut points = buffer(route.len(), Emit, work)?;
             points.extend(route.iter().map(layout_point));
@@ -286,10 +247,9 @@ impl Paint {
             });
         }
 
-        let style = match config.get_path(&["layered", "lineHops"]) {
-            Some(Value::Bool(false)) => return Ok(painted),
-            Some(Value::String(style)) if style == "gap" => LineHopStyle::Gap,
-            _ => LineHopStyle::Arc,
+        let Some(style) = layered_route::line_hop_style(config.get_path(&["layered", "lineHops"]))
+        else {
+            return Ok(painted);
         };
         let mut edges = buffer(painted.len(), Emit, work)?;
         edges.extend(

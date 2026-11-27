@@ -212,6 +212,8 @@ pub fn layout(
             labels,
             _storage: storage,
         }),
+        #[cfg(feature = "layout-layered")]
+        layered: None,
     })
 }
 

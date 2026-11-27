@@ -184,6 +184,8 @@ pub fn layout(
         measurement_binding,
         #[cfg(feature = "layout-grid")]
         grid: None,
+        #[cfg(feature = "layout-layered")]
+        layered: None,
     })
 }
 

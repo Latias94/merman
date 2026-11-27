@@ -271,7 +271,7 @@ Grid uses the selected family's authored placements and preserves its diagram id
 explicit Grid request without a compiled adapter returns `UnsupportedLayoutBackend`. A host
 that denies an available adapter gets `MissingCapability` for `layout-grid`.
 
-Enable `layout-layered` alongside the Flowchart, Swimlane, Agentflow, or Mindmap diagram feature.
+Enable `layout-layered` alongside the Flowchart, Swimlane, Agentflow, Mindmap, or Requirement diagram feature.
 Select Layered with `layout: layered` in Mermaid config or `LayoutBackend::Layered` in the Rust
 builder. A recoverable Layered failure retries with Dagre when the operation can use
 `layout-dagre`, and the SVG root reports `data-layout-fallback="dagre"`. Both attempts count

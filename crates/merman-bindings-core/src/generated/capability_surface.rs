@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 pub const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION: u32 = 1;
-pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:1689cf4aacf0d72e2cae34e65d6c1d7192908fe03b657afa91e14439a78a9e33";
+pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:226a4a1510519a273fcae4b92749888c1209ec59d5cc2a2c04fdb1e02029c06a";
 
 pub const TARGET_IDS: &[&str] = &[
     "native",
@@ -736,7 +736,7 @@ pub const CAPABILITIES: &[CapabilityDescriptor] = &[
         key: CapabilityKey::LayoutLayered,
         id: "layout-layered",
         kind: "engine",
-        description: "Select Mermaid Layered for Flowchart, Swimlane, Agentflow, and Mindmap SVG layout.",
+        description: "Select Mermaid Layered for Flowchart, Swimlane, Agentflow, Mindmap, and Requirement SVG layout.",
         targets: &[TargetKey::Native, TargetKey::Web, ],
         implications: &[CapabilityKey::Svg, ],
     },

@@ -197,6 +197,8 @@ pub fn layout(
         render_layout: Some(render_layout),
         #[cfg(feature = "layout-grid")]
         grid: None,
+        #[cfg(feature = "layout-layered")]
+        layered: None,
         nodes: prepared_nodes,
         edges: prepared_edges,
         measurement_binding,

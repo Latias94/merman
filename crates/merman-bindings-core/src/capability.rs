@@ -37,7 +37,8 @@ macro_rules! mermaid_layout_capabilities {
                     feature = "diagram-flowchart",
                     feature = "diagram-agentflow",
                     feature = "diagram-swimlane",
-                    feature = "diagram-mindmap"
+                    feature = "diagram-mindmap",
+                    feature = "diagram-requirement"
                 )
             ))]
             $crate::CapabilityKey::LayoutLayered,
