@@ -26,7 +26,6 @@ pub(crate) use merman_render_core::theme_svg::edge_label_background as edge_labe
     feature = "diagram-zenuml",
     feature = "diagram-kanban",
     feature = "diagram-block",
-    feature = "diagram-xychart",
     feature = "diagram-usecase",
     feature = "diagram-state",
 ))]
@@ -39,8 +38,6 @@ pub(crate) use merman_render_core::theme_svg::elevation as elevation_svg;
     feature = "diagram-state",
 ))]
 pub(crate) use merman_render_core::theme_svg::marker as marker_svg;
-#[cfg(any(feature = "diagram-treemap", feature = "diagram-xychart"))]
-pub(crate) use merman_render_core::theme_svg::pattern as pattern_svg;
 
 pub use merman_theme_contract::v2::{
     Appearance, BuiltinPreset, Color, FamilyTheme, ResolvedThemeV2, ThemeCapabilityFlags,

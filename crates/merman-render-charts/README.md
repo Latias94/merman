@@ -28,8 +28,9 @@ The `diagram-wardley` feature provides preparation, typed layout, annotation mea
 binding, and complete SVG emission. `merman-render` supplies the selected theme, viewport,
 measurement, and canvas context and applies the terminal SVG policies.
 
-The `diagram-xychart` feature provides typed XY Chart layout, plot geometry, and bar label
-placement. `merman-render` supplies text measurement and writes the SVG.
+The `diagram-xychart` feature provides preparation, typed layout, theme binding, and complete
+SVG emission for XY Chart. `merman-render` supplies routed text measurement, viewport context,
+and terminal SVG policies.
 
 This crate exposes a workspace-internal service provider interface (SPI). It is published in
 lockstep with Merman and expects an exact version match with the Merman crates that use it.

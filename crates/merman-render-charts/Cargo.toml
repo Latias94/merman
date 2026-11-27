@@ -50,13 +50,16 @@ diagram-wardley = [
     "merman-render-core/root-svg",
 ]
 diagram-xychart = [
-    "dep:cssparser", "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract",
-    "dep:rustc-hash", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-xychart",
+    "dep:cssparser", "dep:kurbo", "dep:merman-model", "dep:merman-render-core",
+    "dep:merman-theme-contract", "dep:rustc-hash", "dep:ryu-js", "dep:serde", "dep:serde_json",
+    "dep:svgtypes", "merman-model/diagram-xychart", "merman-render-core/root-svg",
+    "merman-render-core/theme-elevation",
 ]
 
 [dependencies]
 cssparser = { workspace = true, optional = true }
 indexmap = { workspace = true, optional = true }
+kurbo = { workspace = true, optional = true }
 libm = { workspace = true, optional = true }
 merman-markup = { workspace = true, features = ["color"], optional = true }
 merman-model = { workspace = true, features = ["presentation-data"], optional = true }

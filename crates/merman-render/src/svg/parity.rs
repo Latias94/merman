@@ -296,8 +296,6 @@ mod usecase;
     )
 )]
 mod util;
-#[cfg(feature = "diagram-xychart")]
-mod xychart;
 #[cfg(feature = "diagram-zenuml")]
 mod zenuml;
 use output::{BoundedSvgOutput, SvgOutput};
@@ -1489,7 +1487,21 @@ fn render_builtin_family_artifact_raw(
         }
         #[cfg(feature = "diagram-xychart")]
         BuiltinFamilyArtifact::XyChart(artifact) => {
-            xychart::render_xychart_diagram_svg(artifact, options)
+            use merman_render_charts::xychart::{XyChartSvgContext, render_xychart_svg};
+
+            let diagram_id = options.diagram_id_or("xychart");
+            let context = XyChartSvgContext {
+                diagram_id,
+                viewport: options.root_viewport(crate::DiagramFamilyId::XY_CHART, diagram_id),
+                work_meter: options.work_meter(),
+                native_theme: options.native_family_theme(),
+            };
+            render_xychart_svg(
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
+                artifact.style(),
+                &context,
+            )
         }
         #[cfg(feature = "diagram-git-graph")]
         BuiltinFamilyArtifact::GitGraph(artifact) => gitgraph::render_gitgraph_diagram_svg_model(

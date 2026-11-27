@@ -2740,6 +2740,7 @@ version = "0.11.0"
 dependencies = [
  "cssparser",
  "indexmap",
+ "kurbo 0.13.1",
  "libm",
  "merman-markup",
  "merman-model",

@@ -1,13 +1,35 @@
-use super::super::*;
-use crate::model::{XyChartDrawableElem, XyChartRectData};
-use crate::theme::{FamilyTheme, elevation_svg, pattern_svg::data_pattern};
+use std::collections::hash_map::Entry;
+use std::fmt::Write as _;
+
 use kurbo::{BezPath, PathEl, Rect, RoundedRect, RoundedRectRadii, Shape};
 use merman_model::families::xy_chart::{
     XyChartAxisModel, XyChartDiagramRenderModel, XyChartPlotType,
 };
-use merman_theme_contract::v2::Elevation;
+use merman_render_core::{
+    Result,
+    number_format::canonical_number,
+    resources::OperationWorkMeter,
+    root_svg,
+    svg_css::SvgId,
+    svg_output::{BoundedSvgOutput, SvgOutput, XmlTextOutput},
+    theme_svg::{data_pattern, elevation as elevation_svg},
+    xml::escape_xml,
+};
+use merman_theme_contract::v2::{Elevation, FamilyTheme};
+use rustc_hash::FxHashMap;
 
-// XYChart diagram SVG renderer implementation (split from parity.rs).
+use super::{
+    XY_CHART_DATA_LABEL_INSET_PX, XyChartDiagramLayout, XyChartDrawableElem, XyChartRectData,
+    XyChartStyle, XyChartTextRole, rect_data_labels,
+};
+
+/// The host state used to emit the complete XYChart document.
+pub struct XyChartSvgContext<'a> {
+    pub diagram_id: SvgId<'a>,
+    pub viewport: root_svg::RootViewportContext<'a>,
+    pub work_meter: &'a OperationWorkMeter,
+    pub native_theme: Option<&'a FamilyTheme>,
+}
 
 fn write_xychart_temporary_group(out: &mut impl SvgOutput) -> Result<()> {
     out.push_str(r#"<g class="mermaid-tmp-group"/>"#);
@@ -81,7 +103,7 @@ fn bar_outline(
 
 fn write_native_chart_defs(
     out: &mut BoundedSvgOutput<'_>,
-    diagram_id: SvgDiagramId<'_>,
+    diagram_id: SvgId<'_>,
     theme: &FamilyTheme,
     model: &XyChartDiagramRenderModel,
     layout: &XyChartDiagramLayout,
@@ -192,16 +214,15 @@ fn render_node(out: &mut impl SvgOutput, arena: &[Node], id: usize) -> Result<()
     Ok(())
 }
 
-pub(crate) fn render_xychart_diagram_svg(
-    artifact: &crate::family::XyChartFamilyArtifact,
-    options: &SvgExecution<'_>,
+/// Emits the balanced XYChart SVG before shared canvas and terminal processing.
+pub fn render_xychart_svg(
+    layout: &XyChartDiagramLayout,
+    model: &XyChartDiagramRenderModel,
+    style: &XyChartStyle,
+    context: &XyChartSvgContext<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let layout = artifact.pair().layout();
-    let model = artifact.pair().semantic();
-    let typography_theme = artifact.typography_theme();
-    let native = options.native_family_theme();
-    use rustc_hash::FxHashMap;
-    use std::collections::hash_map::Entry;
+    let typography_theme = &style.typography;
+    let native = context.native_theme;
 
     fn text_anchor(horizontal_pos: &str) -> &'static str {
         match horizontal_pos {
@@ -249,10 +270,10 @@ pub(crate) fn render_xychart_diagram_svg(
         if !v.is_finite() {
             return "NaN".to_string();
         }
-        fmt_string(v)
+        canonical_number(v).to_string()
     }
 
-    let diagram_id = options.diagram_id_or("xychart");
+    let diagram_id = context.diagram_id;
     let acc_title = model.acc_title.as_deref().filter(|title| !title.is_empty());
     let acc_descr = model
         .acc_descr
@@ -263,7 +284,7 @@ pub(crate) fn render_xychart_diagram_svg(
     let data_label_config = if layout.show_data_label {
         Some((
             layout.show_data_label_outside_bar,
-            artifact.data_label_color(),
+            style.data_label_color.as_str(),
         ))
     } else {
         None
@@ -321,7 +342,7 @@ pub(crate) fn render_xychart_diagram_svg(
                     };
                     let series = bar_plot_index.or_else(|| {
                         if group_texts.as_slice() == ["legend", "markers"] {
-                            artifact.bar_legend_plots().get(mark_index).copied()
+                            style.bar_legend_plots.get(mark_index).copied()
                         } else {
                             None
                         }
@@ -367,12 +388,9 @@ pub(crate) fn render_xychart_diagram_svg(
                         .zip(bar_plot_index)
                         .map(|(theme, plot)| theme.data.fill_ink(plot).to_string());
                     let data_label_color = native_fill_ink.as_deref().unwrap_or(data_label_color);
-                    let bar_data_label_inset_px = crate::xychart::XY_CHART_DATA_LABEL_INSET_PX;
-                    let labels = crate::xychart::rect_data_labels(
-                        data,
-                        &layout.label_data,
-                        &layout.chart_orientation,
-                    );
+                    let bar_data_label_inset_px = XY_CHART_DATA_LABEL_INSET_PX;
+                    let labels =
+                        rect_data_labels(data, &layout.label_data, &layout.chart_orientation);
                     let valid_items = labels.items;
                     let uniform = labels.font_size;
 
@@ -440,18 +458,15 @@ pub(crate) fn render_xychart_diagram_svg(
                     n.attr("x", "0");
                     n.attr("y", "0");
                     n.attr("fill", escape_xml(&t.fill));
-                    let role = crate::xychart::XyChartTextRole::from_groups(
-                        group_texts,
-                        &layout.chart_orientation,
-                    );
+                    let role = XyChartTextRole::from_groups(group_texts, &layout.chart_orientation);
                     let raw_size = role
                         .map(|role| typography_theme.svg_font_size(role).to_owned())
-                        .unwrap_or_else(|| fmt_string(t.font_size));
+                        .unwrap_or_else(|| canonical_number(t.font_size).to_string());
                     n.attr("font-size", escape_xml(&raw_size));
                     if let Some(weight) = role.and_then(|role| typography_theme.font_weight(role)) {
                         n.attr("font-weight", weight);
                     }
-                    if role == Some(crate::xychart::XyChartTextRole::Title)
+                    if role == Some(XyChartTextRole::Title)
                         && let Some(font) = typography_theme.native_title_family_css()
                     {
                         n.attr("font-family", escape_xml(font));
@@ -511,7 +526,7 @@ pub(crate) fn render_xychart_diagram_svg(
         }
     }
 
-    let mut out = BoundedSvgOutput::new(options.work_meter());
+    let mut out = BoundedSvgOutput::new(context.work_meter);
     let root_bounds = if let Some(theme) = native.filter(|theme| theme.elevation != Elevation::Flat)
     {
         let bounds = bar_surfaces(layout).fold(
@@ -536,8 +551,8 @@ pub(crate) fn render_xychart_diagram_svg(
     root_chrome.aria_describedby = aria_describedby.as_deref();
     root_chrome.dom.style_viewbox_order = root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle;
     root_chrome.dom.trailing_newline = false;
-    let root_document = options
-        .root_viewport(crate::DiagramFamilyId::XY_CHART, diagram_id)
+    let root_document = context
+        .viewport
         .write_open(&mut out, root_spec, root_chrome)?;
     out.checkpoint()?;
 
@@ -560,10 +575,9 @@ pub(crate) fn render_xychart_diagram_svg(
 
     out.push_str("<style>");
     out.checkpoint()?;
-    typography_theme.common_css().write(
-        &mut super::super::output::XmlTextOutput::new(&mut out),
-        diagram_id.semantic_str(),
-    )?;
+    typography_theme
+        .common_css()
+        .write(&mut XmlTextOutput::new(&mut out), diagram_id.semantic_str())?;
     out.checkpoint()?;
     out.push_str("</style>");
     out.checkpoint()?;
@@ -630,14 +644,14 @@ mod tests {
             self.retained.as_str()
         }
 
-        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()> {
+        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> Result<()> {
             self.retained.replace_range(range, replacement);
             Ok(())
         }
 
-        fn checkpoint(&mut self) -> crate::Result<()> {
+        fn checkpoint(&mut self) -> Result<()> {
             if self.rejected {
-                Err(crate::Error::InvalidModel {
+                Err(merman_render_core::Error::InvalidModel {
                     message: "test SVG sink rejected a write".to_string(),
                 })
             } else {
@@ -653,7 +667,10 @@ mod tests {
         let error = write_xychart_temporary_group(&mut out)
             .expect_err("the rejecting sink must stop XYChart temporary-group emission");
 
-        assert!(matches!(error, crate::Error::InvalidModel { .. }));
+        assert!(matches!(
+            error,
+            merman_render_core::Error::InvalidModel { .. }
+        ));
         assert_eq!(
             out.write_attempts, 1,
             "XYChart temporary-group emission must stop at the first failed sink checkpoint"

@@ -26,8 +26,6 @@ pub(crate) mod architecture_metrics;
 pub mod block;
 #[cfg(feature = "diagram-c4")]
 pub mod c4;
-#[cfg(feature = "diagram-xychart")]
-mod chart_palette;
 #[cfg(feature = "diagram-class")]
 pub mod class;
 use merman_render_core::{config, entities, mermaid_style, number_format};

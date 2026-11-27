@@ -354,25 +354,3 @@ fn er_css_rejects_unsupported_tertiary_color() {
 
     assert!(error.to_string().contains("not-a-css-color"));
 }
-
-#[cfg(feature = "diagram-xychart")]
-#[test]
-fn xychart_common_css_keeps_source_colors_with_its_resolved_font_stack() {
-    let config = crate::test_support::presentation_config(serde_json::json!({
-        "fontFamily": "Inter, sans-serif",
-        "themeVariables": { "textColor": "#123456", "lineColor": "#abcdef" }
-    }));
-    let typography = crate::xychart::XyChartTypographyThemePlan::resolve(&config);
-    let mut css = String::new();
-    typography.common_css().write(&mut css, "chart").unwrap();
-    assert_css_properties(
-        &css,
-        "#chart",
-        &[("font-family", "Inter,sans-serif"), ("fill", "#123456")],
-    );
-    assert_css_properties(
-        &css,
-        "#chart .marker",
-        &[("fill", "#abcdef"), ("stroke", "#abcdef")],
-    );
-}

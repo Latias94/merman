@@ -555,9 +555,7 @@ impl<'parsed> QuadrantChartFamilyArtifact<'parsed> {
 #[cfg(feature = "diagram-xychart")]
 pub(crate) struct XyChartFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::xy_chart::XyChartDiagramRenderModel, XyChartDiagramLayout>,
-    typography_theme: crate::xychart::XyChartTypographyThemePlan,
-    bar_legend_plots: Vec<usize>,
-    data_label_color: String,
+    style: merman_render_charts::xychart::XyChartStyle,
 }
 
 #[derive(Debug)]
@@ -929,16 +927,8 @@ impl<'parsed> XyChartFamilyArtifact<'parsed> {
         &self.pair
     }
 
-    pub(crate) const fn typography_theme(&self) -> &crate::xychart::XyChartTypographyThemePlan {
-        &self.typography_theme
-    }
-
-    pub(crate) fn bar_legend_plots(&self) -> &[usize] {
-        &self.bar_legend_plots
-    }
-
-    pub(crate) fn data_label_color(&self) -> &str {
-        &self.data_label_color
+    pub(crate) const fn style(&self) -> &merman_render_charts::xychart::XyChartStyle {
+        &self.style
     }
 }
 

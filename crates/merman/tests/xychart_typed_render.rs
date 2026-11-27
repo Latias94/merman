@@ -64,19 +64,40 @@ line [2 "low", 8 "high"]
     assert!(svg.svg().contains("rotate(45)"));
 }
 
-#[cfg(all(feature = "png", feature = "diagram-xychart"))]
+#[cfg(all(feature = "png", feature = "native-fonts", feature = "diagram-xychart"))]
 #[test]
 fn native_xychart_bar_elevation_survives_export() {
-    use merman::theme::{BuiltinPreset, ThemeSelection};
+    use merman::svg::SvgEnvironment;
+    use merman::svg::export::{NativeFontContext, NativeFontLimits};
+    use merman::theme::{ThemeCompiler, ThemeSelection};
     use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
+    let fonts = NativeFontContext::from_font_bytes(
+        [include_bytes!("../../merman-export/tests/fonts/Cousine-Regular.ttf").to_vec()],
+        NativeFontLimits::default(),
+        &OperationControl::new(),
+    )
+    .unwrap();
+    let environment = SvgEnvironment::deterministic()
+        .with_native_font_context(fonts)
+        .unwrap();
+    let theme = ThemeCompiler::new()
+        .compile_json(
+            br#"{"schema_version":2,"extends":"studio",
+                  "typography":{"sans":["Cousine","sans-serif"]}}"#,
+            None,
+        )
+        .unwrap();
     let source = "xychart\nx-axis [A, B]\ny-axis 0 --> 10\nbar [3, 7]\nline [2, 6]\n";
     let RenderOutput::Document(Some(document)) = Renderer::new()
         .render(RenderRequest::document(
             source,
             OperationControl::new(),
-            SvgRequest::default()
-                .with_native_theme(ThemeSelection::preset(BuiltinPreset::Studio, None)),
+            SvgRequest {
+                environment,
+                ..Default::default()
+            }
+            .with_native_theme(ThemeSelection::compiled(theme)),
         ))
         .unwrap()
     else {

@@ -789,32 +789,18 @@ fn prepare_xy_chart_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    use crate::xychart::{XyChartTypographyThemePlan, resolve_series_paint};
-
-    let native = execution.native_family_theme();
-    let config = &meta.effective_config;
-    let series_paint = resolve_series_paint(config, model, native);
-    let typography_theme = native.map_or_else(
-        || XyChartTypographyThemePlan::resolve(config),
-        |theme| XyChartTypographyThemePlan::native(config, &theme.typography),
-    );
-    let (mut layout, bar_legend_plots) = crate::xychart::layout_xychart_diagram_typed(
+    let (layout, style) = merman_render_charts::xychart::prepare_xychart_diagram(
         model,
         meta.title.as_deref(),
-        &series_paint,
-        &typography_theme,
-        native,
+        &meta.effective_config,
+        execution.native_family_theme(),
+        execution.family.session().canvas_background().is_some(),
         execution.text_measurer(),
     )?;
-    if execution.family.session().canvas_background().is_some() {
-        layout.background_color = "none".to_owned();
-    }
     Ok(BuiltinFamilyArtifact::XyChart(Box::new(
         XyChartFamilyArtifact {
             pair: FamilyPair::new(model, layout),
-            typography_theme,
-            bar_legend_plots,
-            data_label_color: series_paint.into_data_label_color(),
+            style,
         },
     )))
 }

@@ -5,6 +5,9 @@
 //! background. Keeping that contract here prevents renderer-local palette heuristics from
 //! diverging from theme resolution.
 
+use merman_render_core::config::{ConfigLookup, selected_config_string};
+use serde_json::Value;
+
 const DEFAULT_PALETTE: &str =
     "#ECECFF,#8493A6,#FFC3A0,#DCDDE1,#B8E994,#D1A36F,#C3CDE6,#FFB6C1,#496078,#F8F3E3";
 const BASE_PALETTE: &str =
@@ -35,10 +38,7 @@ fn upstream_palette(theme_name: &str) -> &'static str {
     }
 }
 
-pub(crate) fn resolve_xychart_plot_palette(
-    theme_name: &str,
-    explicit_palette: Option<&str>,
-) -> Vec<String> {
+fn resolve_xychart_plot_palette(theme_name: &str, explicit_palette: Option<&str>) -> Vec<String> {
     if let Some(explicit_palette) = explicit_palette {
         let palette = parse_palette(explicit_palette);
         if !palette.is_empty() {
@@ -48,7 +48,7 @@ pub(crate) fn resolve_xychart_plot_palette(
     parse_palette(upstream_palette(theme_name))
 }
 
-pub(crate) fn plot_color_from_palette(palette: &[String], plot_index: usize) -> String {
+pub(super) fn plot_color_from_palette(palette: &[String], plot_index: usize) -> String {
     if palette.is_empty() {
         return String::new();
     }
@@ -58,6 +58,17 @@ pub(crate) fn plot_color_from_palette(palette: &[String], plot_index: usize) -> 
         plot_index % palette.len()
     };
     palette[index].clone()
+}
+
+pub(super) fn mermaid_plot_palette(config: &impl ConfigLookup) -> Vec<String> {
+    let palette = selected_config_string(config, &["themeVariables.xyChart.plotColorPalette"]);
+    resolve_xychart_plot_palette(
+        config
+            .get("theme")
+            .and_then(Value::as_str)
+            .unwrap_or("default"),
+        palette.map(|(_, value)| value),
+    )
 }
 
 #[cfg(test)]
