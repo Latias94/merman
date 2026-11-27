@@ -1,3 +1,11 @@
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
+#[doc(hidden)]
+pub mod svg;
+
 use kurbo::Size;
 use merman_render_core::LayoutPoint;
 
