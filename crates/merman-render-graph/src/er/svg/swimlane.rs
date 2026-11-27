@@ -181,10 +181,8 @@ fn write_lane_rect(
         .and_then(|source| source.rect_value("stroke"))
         .unwrap_or(&context.theme.css_binding().cluster_border);
     if context.data_look == "handDrawn" {
-        let fill = fill.unwrap_or(&context.theme.css_binding().cluster_bkg);
         let opacity = |property| source.and_then(|source| source.rect_value(property));
         let fill_opacity = opacity("fill-opacity").unwrap_or("1");
-        let alpha = ThemeColor::parse(fill).map_or(1.0, |color| color.channel(ColorChannel::Alpha));
         let opacity_value = |value: &str| {
             let (number, scale) = value.strip_suffix('%').map_or((value, 1.0), |v| (v, 0.01));
             number
@@ -194,11 +192,13 @@ fn write_lane_rect(
                 .filter(|value| value.is_finite())
                 .map_or(1.0, |value| (value * scale).clamp(0.0, 1.0))
         };
-        let hatch_opacity = if fill.eq_ignore_ascii_case("none") {
-            0.0
-        } else {
-            0.15 * alpha * opacity_value(fill_opacity)
-        };
+        let hatch_opacity = fill
+            .filter(|fill| !fill.eq_ignore_ascii_case("none"))
+            .map_or(0.0, |fill| {
+                let alpha =
+                    ThemeColor::parse(fill).map_or(1.0, |color| color.channel(ColorChannel::Alpha));
+                0.15 * alpha * opacity_value(fill_opacity)
+            });
         let stroke_width = source
             .and_then(|source| source.rect_value("stroke-width"))
             .and_then(|value| {
@@ -252,17 +252,20 @@ fn write_lane_rect(
         if let Some(group_opacity) = opacity("opacity") {
             let _ = write!(out, r#" style="opacity:{}""#, escape_attr(group_opacity));
         }
-        let _ = write!(
-            out,
-            r#"><rect class="merman-rough-backing" x="{}" y="{}" width="{}" height="{}" fill="{}" stroke="none" style="fill:{} !important;fill-opacity:{};stroke:none !important"/>"#,
-            fmt(rect.x0),
-            fmt(rect.y0),
-            fmt(rect.width()),
-            fmt(rect.height()),
-            escape_attr(fill),
-            escape_attr(fill),
-            escape_attr(fill_opacity),
-        );
+        out.push('>');
+        if let Some(fill) = fill {
+            let _ = write!(
+                out,
+                r#"<rect class="merman-rough-backing" x="{}" y="{}" width="{}" height="{}" fill="{}" stroke="none" style="fill:{} !important;fill-opacity:{};stroke:none !important"/>"#,
+                fmt(rect.x0),
+                fmt(rect.y0),
+                fmt(rect.width()),
+                fmt(rect.height()),
+                escape_attr(fill),
+                escape_attr(fill),
+                escape_attr(fill_opacity),
+            );
+        }
         for set in drawable.sets {
             let outline = set.op_set_type == roughr::core::OpSetType::Path;
             let path = merman_render_core::rough_svg::ops_to_svg_path_d(&set);

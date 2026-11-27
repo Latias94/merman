@@ -2,8 +2,7 @@
 use super::ClassCanonicalRoutes;
 use super::ClassSvgRelation;
 use super::bounds::{
-    include_class_marker_paint_bounds, include_path_bounds_with_outset, include_path_d_with_outset,
-    include_xywh,
+    include_class_marker_paint_bounds, include_path_bounds_with_outset, include_xywh,
 };
 use super::context::{ClassEmitCheckpoint, ClassRenderDetails};
 use super::defs::{class_canonical_marker, class_marker_name, class_marker_paint_spec};
@@ -17,11 +16,13 @@ use merman_render_core::entities::decode_entities_minimal_cow;
 use merman_render_core::html::html_label_overflow_attr;
 #[cfg(feature = "layout-shoal")]
 use merman_render_core::route_paint::{CanonicalPaintScratch, RouteStyle};
+use merman_render_core::svg_bounds::{SvgPathBounds, svg_path_bounds_from_d};
 use merman_render_core::svg_css::SvgId as SvgDiagramId;
 use merman_render_core::svg_edge_parity::edge_label_geometry::position_edge_label;
 use merman_render_core::svg_output::timing::RenderTiming;
 use merman_render_core::text::{MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, TextMeasurer, TextStyle};
 use merman_render_core::{Bounds, LayoutEdge, LayoutLabel, LayoutPoint};
+use merman_theme_contract::v2::{Color, EdgeLabelBackground};
 use std::fmt::Write as _;
 
 use super::{SvgOutput, escape_attr_display, escape_xml_into, fmt};
@@ -74,6 +75,30 @@ impl ClassEdgeGroupsRenderContext<'_> {
             false
         }
     }
+
+    fn auto_namespace_fill(&self) -> Option<Color> {
+        self.native_style
+            .filter(|native| native.edge_label_bg == EdgeLabelBackground::Auto)
+            .map(|native| native.container)
+    }
+
+    fn edge_label_fill(&self, (center_x, center_y): (f64, f64)) -> Option<Color> {
+        let default = self.relation_theme.native_edge_label_fill;
+        let x = center_x - self.content_tx;
+        let y = center_y - self.content_ty;
+        self.auto_namespace_fill()
+            .filter(|_| {
+                self.clusters.iter().any(|cluster| {
+                    let hw = cluster.width / 2.0;
+                    let hh = cluster.height / 2.0;
+                    x >= cluster.x - hw
+                        && x <= cluster.x + hw
+                        && y >= cluster.y - hh
+                        && y <= cluster.y + hh
+                })
+            })
+            .or(default)
+    }
 }
 
 pub(super) use crate::class::class_arrow_type_for_relation_end;
@@ -103,6 +128,10 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
     let mut paint_scratch = CanonicalPaintScratch::default();
     let uses_canonical_routes = ctx.uses_canonical_routes();
     let sketch = ctx.relation_theme.sketch_edges;
+    let default_label_fill = ctx.relation_theme.native_edge_label_fill;
+    let is_transparent = |fill: Color| fill.channels()[3] == 0;
+    let has_transparent_label_fill = default_label_fill.is_some_and(is_transparent)
+        || ctx.auto_namespace_fill().is_some_and(is_transparent);
 
     let edge_paths_start = ctx.timing.start();
     let ordered_edges = class_edge_render_order(ctx.edges, ctx.relation_index_by_id);
@@ -178,7 +207,7 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
                 let bounds = &geometry.path.bounds;
                 break 'geometry (
                     geometry.path.d.as_str(),
-                    Some(merman_render_core::svg_bounds::SvgPathBounds {
+                    Some(SvgPathBounds {
                         min_x: bounds.min_x,
                         min_y: bounds.min_y,
                         max_x: bounds.max_x,
@@ -292,10 +321,14 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
         let paint_d = rough_d.as_deref().unwrap_or(d);
         let hopped_d = ctx.line_hop_paths.get(e.id.as_str());
         let render_d = hopped_d.map(String::as_str).unwrap_or(paint_d);
-        if !uses_canonical_routes && let Some(lbl) = e.label.as_ref() {
-            edge_label_centers.insert(
-                e.id.as_str(),
-                if missing_section.is_some() {
+        let label_center = e.label.as_ref().map(|lbl| {
+            if uses_canonical_routes {
+                LayoutPoint {
+                    x: lbl.x + ctx.content_tx,
+                    y: lbl.y + ctx.content_ty,
+                }
+            } else {
+                let center = if missing_section.is_some() {
                     let first = &edge_raw_points[0];
                     let last = &edge_raw_points[edge_raw_points.len() - 1];
                     LayoutPoint {
@@ -312,9 +345,11 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
                         ctx.content_tx,
                         ctx.content_ty,
                     )
-                },
-            );
-        }
+                };
+                edge_label_centers.insert(e.id.as_str(), center.clone());
+                center
+            }
+        });
         let path_bounds_start = ctx.timing.start();
         // RoughJS replaces the stable curve endpoints with jittered path data. Use the rendered
         // path bbox plus a rotation-independent marker radius to cover its actual first/final
@@ -333,21 +368,16 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
             })
         };
         let path_paint_outset = stroke_outset.max(rough_marker_outset);
-        if rough_d.is_none()
-            && hopped_d.is_none()
-            && let Some(pb) = d_pb.as_ref()
-        {
+        let path_bounds = if rough_d.is_none() && hopped_d.is_none() {
+            d_pb
+        } else {
+            None
+        }
+        .or_else(|| svg_path_bounds_from_d(render_d));
+        if let Some(pb) = &path_bounds {
             include_path_bounds_with_outset(
                 content_bounds,
                 pb,
-                ctx.bounds_dx,
-                ctx.bounds_dy,
-                path_paint_outset,
-            );
-        } else {
-            include_path_d_with_outset(
-                content_bounds,
-                render_d,
                 ctx.bounds_dx,
                 ctx.bounds_dy,
                 path_paint_outset,
@@ -415,7 +445,43 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
         }
         edge_class_buf.push_str(" relation");
 
+        let label_cutout = if has_transparent_label_fill
+            && let (Some(center), Some(label), Some(bounds), Some(&ordinal)) = (
+                &label_center,
+                &e.label,
+                &path_bounds,
+                ctx.relation_index_by_id.get(e.id.as_str()),
+            )
+            && label.width > 0.0
+            && label.height > 0.0
+            && relation.is_some_and(|relation| {
+                !decode_entities_minimal_cow(&relation.source.title)
+                    .trim()
+                    .is_empty()
+            })
+            && ctx
+                .edge_label_fill((center.x, center.y))
+                .is_some_and(is_transparent)
+        {
+            let gap =
+                kurbo::Rect::from_center_size((center.x, center.y), (label.width, label.height));
+            let width = relation_stroke_width.map_or(1.0, f64::from);
+            let outset = [start_marker_paint, end_marker_paint]
+                .into_iter()
+                .flatten()
+                .map(|marker| marker.conservative_radius(width))
+                .fold(width, f64::max);
+            write_class_edge_label_cutout(out, ctx.diagram_id, ordinal, bounds, gap, outset)?;
+            Some(ordinal)
+        } else {
+            None
+        };
+
         let _ = write!(out, r#"<path d="{}""#, escape_attr_display(render_d));
+        if let Some(ordinal) = label_cutout {
+            let id = ctx.diagram_id;
+            let _ = write!(out, r#" clip-path="url(#{id}_class-edge-label-{ordinal})""#);
+        }
         if ctx.look == "handDrawn" {
             let _ = write!(
                 out,
@@ -524,6 +590,36 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
         ordered_edges,
         label_centers: edge_label_centers,
     })
+}
+
+fn write_class_edge_label_cutout(
+    out: &mut impl SvgOutput,
+    id: SvgDiagramId<'_>,
+    ordinal: usize,
+    bounds: &SvgPathBounds,
+    gap: kurbo::Rect,
+    outset: f64,
+) -> merman_render_core::Result<()> {
+    // Keep the label hole inside the outer contour and retain the shaft and marker paint around it.
+    let frame = kurbo::Rect::new(bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y)
+        .inflate(outset, outset)
+        .union(gap)
+        .inflate(1.0, 1.0);
+    let _ = write!(
+        out,
+        r#"<defs><clipPath id="{id}_class-edge-label-{ordinal}"><path clip-rule="evenodd" d="M{} {}H{}V{}H{}ZM{} {}H{}V{}H{}Z"/></clipPath></defs>"#,
+        fmt(frame.x0),
+        fmt(frame.y0),
+        fmt(frame.x1),
+        fmt(frame.y1),
+        fmt(frame.x0),
+        fmt(gap.x0),
+        fmt(gap.y0),
+        fmt(gap.x1),
+        fmt(gap.y1),
+        fmt(gap.x0),
+    );
+    out.checkpoint()
 }
 
 pub(super) fn render_class_edge_labels<O: SvgOutput>(
@@ -668,27 +764,7 @@ fn render_class_edge_label_group(
     let trimmed = decoded.trim();
     let use_html_labels =
         ctx.edge_use_html_labels || merman_render_core::math::contains_delimited_math(trimmed);
-    let container_sampled_bg = ctx.native_style.and_then(|native| {
-        if native.edge_label_bg != merman_theme_contract::v2::EdgeLabelBackground::Auto
-            || ctx.clusters.is_empty()
-        {
-            return None;
-        }
-        let lx = center_x - ctx.content_tx;
-        let ly = center_y - ctx.content_ty;
-        let inside_namespace = ctx.clusters.iter().any(|cluster| {
-            let hw = cluster.width * 0.5;
-            let hh = cluster.height * 0.5;
-            lx >= cluster.x - hw
-                && lx <= cluster.x + hw
-                && ly >= cluster.y - hh
-                && ly <= cluster.y + hh
-        });
-        inside_namespace.then(|| native.container.to_string())
-    });
-    let background_css = container_sampled_bg
-        .as_deref()
-        .or_else(|| ctx.relation_theme.native_edge_label_background());
+    let background_fill = ctx.edge_label_fill((center_x, center_y));
     if use_html_labels {
         let empty_div_style =
             class_html_div_style(0.0, MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX as i64);
@@ -705,7 +781,7 @@ fn render_class_edge_label_group(
             let mut div_style =
                 class_html_div_style(width, MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX as i64);
             let background_style =
-                background_css.map(|css| format!("background-color:{css} !important;"));
+                background_fill.map(|fill| format!("background-color:{fill} !important;"));
             if let Some(style) = &background_style {
                 div_style.push_str(style);
             }
@@ -770,8 +846,8 @@ fn render_class_edge_label_group(
         let prepared = prepared_svg_label.expect("nonempty prepared Class edge label");
         let bounds = &prepared.text_bounds;
         let padding = crate::class::CLASS_SVG_EDGE_LABEL_PADDING_PX;
-        let background_style = background_css
-            .map(|css| format!("fill:{css} !important;"))
+        let background_style = background_fill
+            .map(|fill| format!("fill:{fill} !important;"))
             .unwrap_or_default();
         let _ = write!(
             out,

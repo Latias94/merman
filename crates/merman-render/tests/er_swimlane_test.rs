@@ -712,6 +712,68 @@ fn er_swimlane_title_html_labels_follow_flowchart_and_hand_drawn_lanes_keep_both
 }
 
 #[test]
+fn hand_drawn_er_swimlane_bodies_only_paint_authored_fills() {
+    const SOURCE: &str = concat!(
+        "---\nconfig: {\"layout\":\"swimlane\",\"look\":\"handDrawn\",\"handDrawnSeed\":42,\"htmlLabels\":false}\n---\n",
+        "erDiagram\nsubgraph Plain[Plain lane]\nA\nend\n",
+        "subgraph Painted[Painted lane]\nB\nend\n",
+        "A ||--|| B : connects\nB ||--|| OUTSIDE : reaches\n",
+        "style Plain stroke:#123456,stroke-width:2px\n",
+        "style Painted fill:#ddeeff80\n",
+    );
+    let parsed = parse_er(SOURCE);
+    let svg = prepare_er(&parsed)
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap()
+        .svg()
+        .to_owned();
+    let doc = roxmltree::Document::parse(&svg).unwrap();
+    for id in ["Plain", "Painted", "__swimlane_default__"] {
+        let lane = doc
+            .descendants()
+            .find(|node| has_class(*node, "swimlane") && node.attribute("data-id") == Some(id))
+            .unwrap();
+        let body = lane
+            .children()
+            .find(|node| has_class(*node, "swimlane-body"))
+            .unwrap();
+        let backing = body
+            .children()
+            .find(|node| has_class(*node, "merman-rough-backing"));
+        let mut paths = body.children().filter(|node| node.has_tag_name("path"));
+        if id == "Painted" {
+            let backing = backing.unwrap();
+            assert_eq!(backing.attribute("fill"), Some("#ddeeff80"));
+            assert!(
+                paths.count() > 1,
+                "authored translucent fill still has hachure"
+            );
+        } else {
+            assert!(backing.is_none(), "{id} has no body fill");
+            let outline = paths.next().unwrap();
+            assert_eq!(outline.attribute("fill"), Some("none"));
+            assert!(paths.next().is_none(), "{id} needs only the rough outline");
+            if id == "Plain" {
+                assert_eq!(outline.attribute("stroke"), Some("#123456"));
+                assert_eq!(outline.attribute("stroke-width"), Some("2"));
+            }
+        }
+        if id == "Plain" {
+            let header = lane
+                .children()
+                .find(|node| has_class(*node, "swimlane-title"))
+                .unwrap();
+            assert!(
+                header
+                    .children()
+                    .any(|node| has_class(node, "merman-rough-backing")),
+                "the unstyled title keeps its theme fill"
+            );
+        }
+    }
+}
+
+#[test]
 fn er_swimlane_relationship_labels_keep_literal_markdown_in_html_and_svg() {
     // Mermaid 12.3 batch 8 cases 10 and 11 preserve the asterisks in both modes.
     for html in [true, false] {
