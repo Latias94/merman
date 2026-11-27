@@ -45,6 +45,29 @@ pub fn adaptive_text_ink(backdrop: Color, default_ink: Color) -> Option<&'static
     )
 }
 
+const PILL_BORDER_WIDTH: f64 = 0.75;
+
+fn backplate_rect(label_bounds: kurbo::Rect) -> kurbo::Rect {
+    label_bounds.inflate(4.0, 2.0)
+}
+
+/// Returns the label's full paint envelope, allowing for a backplate in the given mode.
+/// `Auto` reserves its backplate before the eventual surface opacity is known.
+pub fn backplate_footprint(label_bounds: kurbo::Rect, mode: EdgeLabelBackground) -> kurbo::Rect {
+    if mode == EdgeLabelBackground::Transparent
+        || label_bounds.width() <= 0.0
+        || label_bounds.height() <= 0.0
+    {
+        return label_bounds;
+    }
+    let bounds = backplate_rect(label_bounds);
+    if mode == EdgeLabelBackground::Pill {
+        bounds.inflate(PILL_BORDER_WIDTH / 2.0, PILL_BORDER_WIDTH / 2.0)
+    } else {
+        bounds
+    }
+}
+
 /// Paints a label's measured box in the edge coordinate space.
 pub fn write_backplate(
     out: &mut impl Write,
@@ -63,7 +86,7 @@ pub fn write_backplate(
     {
         return Ok(());
     }
-    let bounds = label_bounds.inflate(4.0, 2.0);
+    let bounds = backplate_rect(label_bounds);
     let radius = canonical_number(if pill { bounds.height() / 2.0 } else { 4.0 });
     write!(
         out,
@@ -75,7 +98,7 @@ pub fn write_backplate(
     )?;
     write_color(out, "fill", fill, 1.0)?;
     if pill {
-        out.write_str(r#" stroke-width="0.75" "#)?;
+        write!(out, r#" stroke-width="{PILL_BORDER_WIDTH}" "#)?;
         write_color(out, "stroke", border, 1.0)?;
     }
     out.write_str("/>")

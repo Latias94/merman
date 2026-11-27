@@ -8,6 +8,9 @@ use super::*;
 #[cfg(any(feature = "layout-shoal", test))]
 use merman_render_core::rough_svg::constrained_rough_edge_path;
 
+#[cfg(feature = "layout-shoal")]
+mod swimlane_label_seating;
+
 pub(super) fn with_flowchart_paint_context<T>(
     request: FlowchartSvgModelRequest<'_>,
     options: &SvgExecution<'_>,
@@ -467,6 +470,10 @@ pub(super) fn paints_rough_edges_first(
     adaptive_edges: bool,
     cutout_labels: bool,
 ) -> bool {
+    #[cfg(feature = "layout-shoal")]
+    if swimlane_label_seating::applies(ctx) {
+        return true;
+    }
     adaptive_edges
         || cutout_labels
         || uses_theme_sketch(ctx)
@@ -590,6 +597,10 @@ impl FlowchartEdgeLabels {
                 .collect(),
         };
         result.update(ctx, hierarchy, cache, &ctx.edge_order)?;
+        #[cfg(feature = "layout-shoal")]
+        if swimlane_label_seating::applies(ctx) && !result.positions.is_empty() {
+            swimlane_label_seating::reseat(ctx, cache, &mut result.positions)?;
+        }
         Ok(result)
     }
 
@@ -607,6 +618,14 @@ impl FlowchartEdgeLabels {
                 .edge_label_for_occurrence(edge.key, edge.edge)
                 .unwrap_or_default();
             if ctx.swimlane_direction.is_some() && !self.synthetic.contains(&edge.key) {
+                continue;
+            }
+            // A canonical Swimlane label has no path-midpoint update. Keep its prepared seat
+            // when the root writer revisits labels after preparing hand-drawn paths.
+            if ctx.swimlane_direction.is_some()
+                && ctx.layout.route_contract.is_canonical_axis()
+                && self.positions.contains_key(&edge.key)
+            {
                 continue;
             }
             if ctx.uses_elk_adapter_dom
@@ -825,6 +844,10 @@ pub(super) fn edge_geometry(
 ) -> Result<Vec<crate::model::EdgePaintGeometry>> {
     with_flowchart_paint_context(request, options, |ctx, edges, hierarchy| {
         let mut routes = prepare_edge_routes(ctx, edges, hierarchy)?;
+        #[cfg(feature = "layout-shoal")]
+        if swimlane_label_seating::applies(ctx) {
+            prepare_rough_edge_paths(ctx, hierarchy.ordered_edges(), &mut routes)?;
+        }
         let mut labels = FlowchartEdgeLabels::prepare(ctx, hierarchy, &routes)?;
         if prepare_query_rough_paths(ctx, hierarchy, &mut routes, &labels, options)? {
             labels.update(ctx, hierarchy, &routes, &ctx.edge_order)?;

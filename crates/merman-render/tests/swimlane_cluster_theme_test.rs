@@ -12,6 +12,21 @@ use serde_json::{Value, json};
 const SOURCE: &str = "swimlane-beta TD\nsubgraph Lane[Lane]\nA\nend\n";
 
 fn render(source: &str, config: Value, theme: Option<NativeTheme>) -> String {
+    with_artifact(source, config, theme, |artifact| {
+        artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap()
+            .svg()
+            .to_owned()
+    })
+}
+
+fn with_artifact<T>(
+    source: &str,
+    config: Value,
+    theme: Option<NativeTheme>,
+    use_artifact: impl FnOnce(family::FamilyRenderArtifact<'_>) -> T,
+) -> T {
     let parsed = MermaidEngine::new()
         .with_site_config(SourcePresentationConfig::from_value(config))
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
@@ -24,12 +39,9 @@ fn render(source: &str, config: Value, theme: Option<NativeTheme>) -> String {
         None => environment.begin_session(),
     }
     .unwrap();
-    family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
-        .unwrap()
-        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        .unwrap()
-        .svg()
-        .to_owned()
+    use_artifact(
+        family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap(),
+    )
 }
 
 fn lane<'a, 'input>(document: &'a Document<'input>) -> Node<'a, 'input> {
@@ -453,6 +465,91 @@ fn shoal_swimlane_forest_draws_a_measured_svg_edge_label_backplate() {
     assert!(plate.attribute("height").unwrap().parse::<f64>().unwrap() > 12.0);
     assert_eq!(plate.attribute("fill"), Some("#E8E8E8"));
     assert_eq!(plate.attribute("fill-opacity"), None);
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_swimlane_keeps_foreign_stroke_clear_of_caption_backplate() {
+    use kurbo::{BezPath, ParamCurve, ParamCurveNearest, Shape};
+    use merman_render::theme::{Appearance, BuiltinPreset};
+
+    let theme = ThemeCompiler::new()
+        .compile_preset(BuiltinPreset::Studio, Some(Appearance::Light))
+        .unwrap();
+    for direction in ["LR", "RL"] {
+        let source = format!(
+            "swimlane-beta {direction}\n\
+            subgraph One\nA\nB\nend\n\
+            subgraph Two\nC\nD\nend\n\
+            A caption@-->|Caption| D\nC passing@--> B\n\
+            linkStyle 1 stroke-width:64px"
+        );
+        let config = json!({"layout":"shoal", "htmlLabels":false,
+            "flowchart":{"htmlLabels":false, "curve":"basis"}});
+        let native = NativeTheme::new(theme.clone());
+        let svg = render(&source, config.clone(), Some(native.clone()));
+        let geometry = with_artifact(&source, config, Some(native), |artifact| {
+            artifact.edge_geometry_json().unwrap()
+        });
+        let document = Document::parse(&svg).unwrap();
+        let element = |kind, id| {
+            document
+                .descendants()
+                .find(|node| {
+                    node.attribute("data-et") == Some(kind) && node.attribute("data-id") == Some(id)
+                })
+                .unwrap()
+        };
+        let label = element("edge-label", "caption");
+        let plate = label.prev_sibling_element().unwrap();
+        assert_eq!(
+            plate.attribute("class"),
+            Some("merman-edge-label-background")
+        );
+        let number = |attribute| plate.attribute(attribute).unwrap().parse::<f64>().unwrap();
+        let bounds = kurbo::Rect::from_origin_size(
+            (number("x"), number("y")),
+            (number("width"), number("height")),
+        );
+        let center = geometry
+            .iter()
+            .find(|edge| edge.id == "caption")
+            .unwrap()
+            .label_position
+            .as_ref()
+            .unwrap();
+        assert!((bounds.center().x - center.x).abs() < 1e-6);
+        assert!((bounds.center().y - center.y).abs() < 1e-6);
+        let foreign = element("edge", "passing");
+        assert!(
+            foreign
+                .ancestors()
+                .all(|node| node.attribute("mask").is_none())
+        );
+        assert!(foreign.attribute("clip-path").is_none());
+        let path = |node: Node<'_, '_>| BezPath::from_svg(node.attribute("d").unwrap()).unwrap();
+        let guard = bounds.inflate(32.0, 32.0);
+        assert!(
+            path(foreign).segments().all(|segment| {
+                !guard.contains(segment.start())
+                    && !guard.contains(segment.end())
+                    && guard
+                        .to_path(0.0)
+                        .segments()
+                        .filter_map(|side| match side {
+                            kurbo::PathSeg::Line(line) => Some(line),
+                            _ => None,
+                        })
+                        .all(|side| segment.intersect_line(side).is_empty())
+            }),
+            "{direction}: foreign stroke enters the caption backplate",
+        );
+        assert!(
+            path(element("edge", "caption"))
+                .segments()
+                .any(|segment| { segment.nearest(bounds.center(), 1e-6).distance_sq < 1e-6 })
+        );
+    }
 }
 
 #[test]

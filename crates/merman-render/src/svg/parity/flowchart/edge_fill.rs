@@ -5,6 +5,9 @@ use crate::flowchart::FlowchartEdgeKey;
 use crate::theme::Color;
 use kurbo::RoundedRect;
 
+#[cfg(feature = "layout-shoal")]
+pub(super) use shoal::{EdgeInk, segment_enters_surface, spatial_bounds};
+
 #[derive(Default)]
 pub(super) struct FlowchartEdgeFillPlan {
     inks: FxHashMap<FlowchartEdgeKey, &'static str>,
@@ -112,7 +115,7 @@ mod shoal {
         index: Bvh<Surface>,
     }
 
-    struct EdgeInk<'a> {
+    pub(in crate::svg::parity::flowchart) struct EdgeInk<'a> {
         shaft: &'a BezPath,
         markers: [Option<Rect>; 2],
         offset: Vec2,
@@ -502,7 +505,7 @@ mod shoal {
     }
 
     impl<'a> EdgeInk<'a> {
-        fn new(
+        pub(in crate::svg::parity::flowchart) fn new(
             shaft: &'a BezPath,
             edge: &crate::flowchart::FlowEdge,
             geom: &FlowchartEdgePathGeom,
@@ -553,6 +556,15 @@ mod shoal {
                 bounds: bounds + offset,
                 half_width,
             }
+        }
+
+        pub(in crate::svg::parity::flowchart) fn marker_bounds(
+            &self,
+        ) -> impl Iterator<Item = Rect> {
+            self.markers
+                .into_iter()
+                .flatten()
+                .map(|rect| rect + self.offset)
         }
 
         fn touches(
