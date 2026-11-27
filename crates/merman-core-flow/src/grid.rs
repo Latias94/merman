@@ -3,6 +3,10 @@
 use merman_core_preprocess::grid_coordinate::{
     GridCoordinateError, GridCoordinateField, GridCoordinateValue, validate_grid_coordinate,
 };
+use merman_model::grid::{
+    GridCoordinate, GridHorizontalAlign, GridInlinePlacement, GridInlinePlacements,
+    GridPlacementOwner, GridPlacementSpec, GridVerticalAlign,
+};
 use merman_model::{OperationControl, OperationControlResult, SourceSpan};
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
@@ -19,23 +23,73 @@ pub struct InlineGridCoordinate<'a> {
     pub span: SourceSpan,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn grid_presentation_alignment_does_not_advance_coordinate_cancellation() {
+        let align = json!({"horizontalAlign": "left"});
+        let invalid = json!({"row": false});
+        let span = SourceSpan::new(50, 64);
+        for capture in [false, true] {
+            let mut replay = InlineGridReplay::new(capture);
+            replay
+                .vertices
+                .update(0, align.as_object().unwrap(), Some(span));
+            replay
+                .vertices
+                .update(256, invalid.as_object().unwrap(), Some(span));
+
+            let finish = OperationControl::new();
+            finish.cancel_after_checkpoints(1);
+            let coordinates = replay
+                .finish(
+                    |slot| {
+                        assert!(capture || slot == 256);
+                        Ok((
+                            if slot == 0 { "A" } else { "B" },
+                            Some(GridPlacementOwner::Vertex(slot)),
+                        ))
+                    },
+                    |_| unreachable!("only vertices were recorded"),
+                    &finish,
+                )
+                .unwrap();
+
+            let validate = OperationControl::new();
+            validate.cancel_after_checkpoints(1);
+            let (error, actual_span) = if capture {
+                coordinates
+                    .validate_placements_controlled(&validate)
+                    .unwrap()
+                    .unwrap_err()
+            } else {
+                coordinates
+                    .validate_controlled(&validate)
+                    .unwrap()
+                    .unwrap_err()
+            };
+            assert_eq!(error.placement_id, "B");
+            assert_eq!(actual_span, span);
+        }
+    }
+}
+
 impl InlineGridCoordinates {
     /// Visits vertices and then subgraphs in DB order, with row before column on each item.
     pub fn iter(&self) -> impl Iterator<Item = InlineGridCoordinate<'_>> {
         self.0.iter().flat_map(|placement| {
-            [
-                (GridCoordinateField::Row, &placement.fields.row),
-                (GridCoordinateField::Column, &placement.fields.column),
-            ]
-            .into_iter()
-            .filter_map(|(field, assignment)| {
-                assignment.as_ref().map(|assignment| InlineGridCoordinate {
+            placement
+                .fields
+                .coordinates()
+                .map(move |(field, assignment)| InlineGridCoordinate {
                     id: &placement.id,
                     field,
                     value: assignment.value.as_value(),
                     span: assignment.span,
                 })
-            })
         })
     }
 
@@ -58,11 +112,54 @@ impl InlineGridCoordinates {
         control.checkpoint()?;
         Ok(Ok(()))
     }
+
+    /// Validates DB coordinates and freezes the fields with an owner in the render model.
+    /// Call after admitting effective configured placements.
+    pub fn validate_placements_controlled(
+        &self,
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<GridInlinePlacements, (GridCoordinateError<'_>, SourceSpan)>>
+    {
+        if let Err(error) = self.validate_controlled(control)? {
+            return Ok(Err(error));
+        }
+        let mut entries = Vec::new();
+        for placement in &self.0 {
+            control.checkpoint()?;
+            let Some(owner) = placement.owner else {
+                continue;
+            };
+            let fields = GridPlacementSpec {
+                row: placement
+                    .fields
+                    .row
+                    .as_ref()
+                    .map(GridAssignment::coordinate),
+                column: placement
+                    .fields
+                    .column
+                    .as_ref()
+                    .map(GridAssignment::coordinate),
+                horizontal_align: placement.fields.horizontal_align,
+                vertical_align: placement.fields.vertical_align,
+            };
+            if fields != GridPlacementSpec::default() {
+                entries.push(GridInlinePlacement {
+                    owner,
+                    id: placement.id.clone(),
+                    placement: fields,
+                });
+            }
+        }
+        control.checkpoint()?;
+        Ok(Ok(GridInlinePlacements::from_entries(entries)))
+    }
 }
 
 #[derive(Debug, Clone)]
 struct InlineGridPlacement {
     id: String,
+    owner: Option<GridPlacementOwner>,
     fields: InlineGridFields,
 }
 
@@ -70,12 +167,34 @@ struct InlineGridPlacement {
 struct InlineGridFields {
     row: Option<GridAssignment>,
     column: Option<GridAssignment>,
+    horizontal_align: Option<GridHorizontalAlign>,
+    vertical_align: Option<GridVerticalAlign>,
+}
+
+impl InlineGridFields {
+    fn coordinates(&self) -> impl Iterator<Item = (GridCoordinateField, &GridAssignment)> {
+        [
+            (GridCoordinateField::Row, self.row.as_ref()),
+            (GridCoordinateField::Column, self.column.as_ref()),
+        ]
+        .into_iter()
+        .filter_map(|(field, assignment)| Some((field, assignment?)))
+    }
 }
 
 #[derive(Debug, Clone)]
 struct GridAssignment {
     value: RetainedCoordinateValue,
     span: SourceSpan,
+}
+
+impl GridAssignment {
+    fn coordinate(&self) -> GridCoordinate {
+        let GridCoordinateValue::Number(number) = self.value.as_value() else {
+            unreachable!("a validated grid coordinate is a number");
+        };
+        GridCoordinate::new(number as i64).expect("validated grid coordinate is a safe integer")
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -104,37 +223,49 @@ impl RetainedCoordinateValue {
 }
 
 /// Sparse assignments indexed by the existing DB slots, independent of metadata write order.
-#[derive(Default)]
 pub(crate) struct InlineGridReplay {
     pub(crate) vertices: GridMetadata,
     pub(crate) subgraphs: GridMetadata,
 }
 
 impl InlineGridReplay {
+    pub(crate) fn new(capture_placements: bool) -> Self {
+        Self {
+            vertices: GridMetadata::new(capture_placements),
+            subgraphs: GridMetadata::new(capture_placements),
+        }
+    }
+
     pub(crate) fn finish<'a>(
         self,
-        vertex_id: impl Fn(usize) -> &'a str,
-        subgraph_id: impl Fn(usize) -> &'a str,
+        mut vertex: impl FnMut(usize) -> OperationControlResult<(&'a str, Option<GridPlacementOwner>)>,
+        mut subgraph: impl FnMut(usize) -> (&'a str, Option<GridPlacementOwner>),
         control: &OperationControl,
     ) -> OperationControlResult<InlineGridCoordinates> {
         let entries = self
             .vertices
-            .0
+            .entries
             .into_iter()
-            .map(|(slot, fields)| (vertex_id(slot), fields))
+            .map(|(slot, fields)| (true, slot, fields))
             .chain(
                 self.subgraphs
-                    .0
+                    .entries
                     .into_iter()
-                    .map(|(slot, fields)| (subgraph_id(slot), fields)),
+                    .map(|(slot, fields)| (false, slot, fields)),
             );
         let mut placements = Vec::new();
-        for (index, (id, fields)) in entries.enumerate() {
+        for (index, (is_vertex, slot, fields)) in entries.enumerate() {
             if index.is_multiple_of(128) {
                 control.checkpoint()?;
             }
+            let (id, owner) = if is_vertex {
+                vertex(slot)?
+            } else {
+                subgraph(slot)
+            };
             placements.push(InlineGridPlacement {
                 id: id.to_owned(),
+                owner,
                 fields,
             });
         }
@@ -142,10 +273,19 @@ impl InlineGridReplay {
     }
 }
 
-#[derive(Default)]
-pub(crate) struct GridMetadata(BTreeMap<usize, InlineGridFields>);
+pub(crate) struct GridMetadata {
+    entries: BTreeMap<usize, InlineGridFields>,
+    capture_alignments: bool,
+}
 
 impl GridMetadata {
+    fn new(capture_alignments: bool) -> Self {
+        Self {
+            entries: BTreeMap::new(),
+            capture_alignments,
+        }
+    }
+
     pub(crate) fn update(
         &mut self,
         slot: usize,
@@ -155,10 +295,21 @@ impl GridMetadata {
         let Some(span) = span else { return };
         let row = metadata.get("row");
         let column = metadata.get("column");
-        if row.is_none() && column.is_none() {
+        let horizontal_align = self
+            .capture_alignments
+            .then(|| metadata.get("horizontalAlign"))
+            .flatten();
+        let vertical_align = self
+            .capture_alignments
+            .then(|| metadata.get("verticalAlign"))
+            .flatten();
+        if [row, column, horizontal_align, vertical_align]
+            .iter()
+            .all(Option::is_none)
+        {
             return;
         }
-        let fields = self.0.entry(slot).or_default();
+        let fields = self.entries.entry(slot).or_default();
         for (target, value) in [(&mut fields.row, row), (&mut fields.column, column)] {
             if let Some(value) = value {
                 *target = Some(GridAssignment {
@@ -167,10 +318,16 @@ impl GridMetadata {
                 });
             }
         }
+        if let Some(value) = horizontal_align {
+            fields.horizontal_align = value.as_str().and_then(GridHorizontalAlign::from_keyword);
+        }
+        if let Some(value) = vertical_align {
+            fields.vertical_align = value.as_str().and_then(GridVerticalAlign::from_keyword);
+        }
     }
 
     #[cfg(feature = "diagram-agentflow")]
     pub(crate) fn clear(&mut self, slot: usize) {
-        self.0.remove(&slot);
+        self.entries.remove(&slot);
     }
 }

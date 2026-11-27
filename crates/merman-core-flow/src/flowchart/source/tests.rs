@@ -12,6 +12,103 @@ pub(super) fn parse_ast(source: &str) -> FlowchartAst {
         .expect("valid Flowchart test source")
 }
 
+#[cfg(feature = "presentation")]
+#[test]
+fn grid_presentation_freezes_vertex_and_group_owners() {
+    use merman_model::grid::{
+        GridHorizontalAlign, GridInlinePlacements, GridPlacementOwner, GridVerticalAlign,
+    };
+
+    let source = concat!(
+        "flowchart LR\n",
+        "G@{ row: -9007199254740991, horizontalAlign: left }\n",
+        "G@{ column: 0, verticalAlign: bottom }\n",
+        "subgraph G\n  Child\nend\n",
+        "G@{ row: 5, horizontalAlign: center, verticalAlign: top }\n",
+        "G@{ horizontalAlign: Left }\n",
+        "subgraph H\n  Hidden\nend\n",
+        "H@{ view: collapsed, row: 9, horizontalAlign: right }\n",
+        "Only@{ horizontalAlign: center, verticalAlign: bottom }\n",
+    );
+    let config = MermaidConfig::from_value(json!({"layout": "grid"}));
+    let control = OperationControl::new();
+    let build = |source| {
+        parse_ast(source)
+            .into_model_with_render_context_and_grid_coordinates(
+                "flowchart-v2",
+                &config,
+                None,
+                None,
+                &control,
+            )
+            .unwrap()
+            .unwrap()
+    };
+    let (mut model, mut context, replay) = build(source);
+    let prior_bytes = context.retained_bytes_for_model(&model);
+    let placements = replay
+        .validate_placements_controlled(&control)
+        .unwrap()
+        .unwrap();
+    let placement_bytes = placements.retained_bytes();
+    context.set_grid_placements(placements);
+    assert_eq!(
+        context.retained_bytes_for_model(&model),
+        prior_bytes + placement_bytes
+    );
+    assert_eq!(
+        context.validate_for_model_controlled(&model, &control),
+        Ok(Ok(()))
+    );
+    let [vertex, alignment_only, group] = context.grid_placements().entries() else {
+        panic!("expected two vertices and the expanded group");
+    };
+    assert_eq!(vertex.owner, GridPlacementOwner::Vertex(0));
+    assert_eq!(vertex.id, "G");
+    let fields = vertex.placement;
+    assert_eq!(fields.row.unwrap().get(), -9_007_199_254_740_991);
+    assert_eq!(fields.column.unwrap().get(), 0);
+    assert_eq!(fields.horizontal_align, Some(GridHorizontalAlign::Left));
+    assert_eq!(fields.vertical_align, Some(GridVerticalAlign::Bottom));
+
+    assert_eq!(alignment_only.id, "Only");
+    assert_eq!(alignment_only.placement.row, None);
+    assert_eq!(
+        alignment_only.placement.horizontal_align,
+        Some(GridHorizontalAlign::Center)
+    );
+    assert_eq!(
+        alignment_only.placement.vertical_align,
+        Some(GridVerticalAlign::Bottom)
+    );
+
+    assert_eq!(
+        (group.owner, group.id.as_str()),
+        (GridPlacementOwner::Subgraph(0), "G")
+    );
+    assert_eq!(group.placement.row.unwrap().get(), 5);
+    assert_eq!(group.placement.horizontal_align, None);
+    assert_eq!(group.placement.vertical_align, Some(GridVerticalAlign::Top));
+    model.subgraphs[0].metadata.as_mut().unwrap()["row"] = json!(1234);
+    assert_eq!(group.placement.row.unwrap().get(), 5);
+    let mut mismatched = context.clone();
+    let mut entries = context.grid_placements().entries().to_vec();
+    entries[0].owner = GridPlacementOwner::Connector(0);
+    mismatched.set_grid_placements(GridInlinePlacements::from_entries(entries));
+    assert_eq!(
+        mismatched.validate_for_model_controlled(&model, &control),
+        Ok(Err("grid placement owner does not match its model slot"))
+    );
+
+    let invalid = source.replace("row: 9", "row: null");
+    let (_, _, replay) = build(&invalid);
+    let (error, _) = replay
+        .validate_placements_controlled(&control)
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(error.placement_id, "H");
+}
+
 #[test]
 fn inline_grid_uses_db_order_and_the_last_writer_of_each_field() {
     for (header, diagram_type) in [("flowchart", "flowchart-v2"), ("swimlane-beta", "swimlane")] {

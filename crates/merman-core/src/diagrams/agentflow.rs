@@ -33,8 +33,6 @@ use merman_model::families::agentflow::{AgentflowDiagramRenderModel, AgentflowVi
 use merman_model::families::agentflow::{AgentflowEdgeSemantic, AgentflowVertexKind};
 #[cfg(all(test, feature = "compat-json"))]
 use serde_json::Value;
-#[cfg(feature = "presentation")]
-use std::collections::HashMap;
 #[cfg(feature = "editor-facts")]
 use std::collections::HashSet;
 
@@ -50,7 +48,7 @@ pub(crate) fn sanitize_common_db_fields(
 struct Construction {
     model: AgentflowDiagramModel,
     #[cfg(feature = "presentation")]
-    visuals: Option<HashMap<String, usize>>,
+    visuals: Option<AgentflowVisuals>,
     #[cfg(feature = "editor-facts")]
     editor_facts: Option<EditorSemanticFacts>,
 }
@@ -150,11 +148,9 @@ pub(crate) fn parse_agentflow_model_for_render_controlled(
     )?
     .map(|construction| AgentflowDiagramRenderModel {
         model: construction.model,
-        visuals: AgentflowVisuals::from_node_dom_indices(
-            construction
-                .visuals
-                .expect("full rendering requests DOM indices"),
-        ),
+        visuals: construction
+            .visuals
+            .expect("full rendering requests visuals"),
     })
     .map_err(family::CombinedSemanticFailure::into_error))
 }
@@ -248,25 +244,35 @@ fn finish_construction(
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<Construction, family::CombinedSemanticFailure>> {
     Ok(match result {
-        Ok(parsed) => match super::grid::validate_inline_grid(
-            config,
-            diagram_type,
-            &parsed.grid_coordinates,
-            control,
-        )? {
-            Ok(()) => Ok(Construction {
-                model: parsed.model,
-                #[cfg(feature = "presentation")]
-                visuals: parsed.node_dom_indices,
-                #[cfg(feature = "editor-facts")]
-                editor_facts: facts,
-            }),
-            Err(error) => Err(family::CombinedSemanticFailure::new(
-                error,
-                #[cfg(feature = "editor-facts")]
-                facts,
-            )),
-        },
+        Ok(parsed) => {
+            #[cfg(feature = "presentation")]
+            let capture_placements = parsed.node_dom_indices.is_some();
+            #[cfg(not(feature = "presentation"))]
+            let capture_placements = false;
+            match super::grid::validate_inline_grid(
+                config,
+                diagram_type,
+                &parsed.grid_coordinates,
+                capture_placements,
+                control,
+            )? {
+                Ok(_placements) => Ok(Construction {
+                    model: parsed.model,
+                    #[cfg(feature = "presentation")]
+                    visuals: parsed.node_dom_indices.map(|indices| {
+                        AgentflowVisuals::from_node_dom_indices(indices)
+                            .with_grid_placements(_placements)
+                    }),
+                    #[cfg(feature = "editor-facts")]
+                    editor_facts: facts,
+                }),
+                Err(error) => Err(family::CombinedSemanticFailure::new(
+                    error,
+                    #[cfg(feature = "editor-facts")]
+                    facts,
+                )),
+            }
+        }
         Err(AgentflowSyntaxIssue { message, span }) => {
             #[cfg(feature = "editor-facts")]
             if let Some(facts) = &mut facts {

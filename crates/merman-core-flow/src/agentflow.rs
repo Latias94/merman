@@ -11,6 +11,7 @@ use merman_model::families::agentflow::{
     AgentflowNode, AgentflowSubGraph, AgentflowVertexKind,
 };
 use merman_model::families::flowchart::shapes;
+use merman_model::grid::GridPlacementOwner;
 use merman_model::text::is_ecmascript_whitespace;
 use merman_model::warnings::DiagramWarningFact;
 use merman_model::{
@@ -88,7 +89,6 @@ pub fn parse_agentflow_source_controlled(
         title,
         #[cfg(feature = "editor-facts")]
         None,
-        #[cfg(feature = "presentation")]
         false,
         control,
     )
@@ -103,15 +103,7 @@ pub fn parse_agentflow_source_with_observer_controlled(
     observe: &mut dyn FnMut(AgentflowObservation<'_>),
     control: &OperationControl,
 ) -> OperationControlResult<Result<ParsedAgentflow, AgentflowSyntaxIssue>> {
-    parse_source(
-        code,
-        config,
-        title,
-        Some(observe),
-        #[cfg(feature = "presentation")]
-        false,
-        control,
-    )
+    parse_source(code, config, title, Some(observe), false, control)
 }
 
 /// Constructs the model and its render-only DOM ordinals without editor collection.
@@ -138,7 +130,7 @@ fn parse_source(
     config: &MermaidConfig,
     title: Option<&str>,
     #[cfg(feature = "editor-facts")] mut observe: Option<&mut dyn FnMut(AgentflowObservation<'_>)>,
-    #[cfg(feature = "presentation")] capture_visuals: bool,
+    capture_visuals: bool,
     control: &OperationControl,
 ) -> OperationControlResult<Result<ParsedAgentflow, AgentflowSyntaxIssue>> {
     control.checkpoint()?;
@@ -156,7 +148,6 @@ fn parse_source(
         observe
             .as_mut()
             .map(|observe| &mut **observe as &mut dyn FnMut(AgentflowObservation<'_>)),
-        #[cfg(feature = "presentation")]
         capture_visuals,
         control,
     );
@@ -228,7 +219,7 @@ impl<'a> Parser<'a> {
         #[cfg(feature = "editor-facts")] observe: Option<
             &'a mut dyn FnMut(AgentflowObservation<'_>),
         >,
-        #[cfg(feature = "presentation")] capture_visuals: bool,
+        capture_visuals: bool,
         control: &'a OperationControl,
     ) -> Self {
         Self {
@@ -244,7 +235,8 @@ impl<'a> Parser<'a> {
             #[cfg(feature = "presentation")]
             vertex_counter: 0,
             diagnostic_spans: HashMap::new(),
-            grid_replay: (config.get_str("layout") == Some("grid")).then(InlineGridReplay::default),
+            grid_replay: (config.get_str("layout") == Some("grid"))
+                .then(|| InlineGridReplay::new(capture_visuals)),
             direction: "TB".to_string(),
             nodes: Vec::new(),
             node_index: HashMap::new(),
@@ -568,14 +560,50 @@ impl<'a> Parser<'a> {
                 SourceSpan::new(0, self.source.len()),
             )));
         }
-        // Both ordinary vertices shadowed by flows and connectors remain in the upstream DB.
-        // The canonical model below projects the connector and flow collections separately.
         let grid_coordinates = match self.grid_replay.take() {
-            Some(replay) => replay.finish(
-                |slot| &self.nodes[slot].id,
-                |slot| &self.sub_graphs[slot].id,
-                self.control,
-            )?,
+            Some(replay) => {
+                #[cfg(feature = "presentation")]
+                let capture_placements = self.visuals.is_some();
+                #[cfg(not(feature = "presentation"))]
+                let capture_placements = false;
+                let mut vertex_slot = 0;
+                let mut nodes = self.nodes.iter().enumerate();
+                replay.finish(
+                    |slot| {
+                        if !capture_placements {
+                            return Ok((self.nodes[slot].id.as_str(), None));
+                        }
+                        // The replay visits distinct DB slots in order. Walk each intervening
+                        // vertex once to project to the canonical connector or vertex slot.
+                        for (index, node) in nodes.by_ref() {
+                            if index.is_multiple_of(128) {
+                                self.control.checkpoint()?;
+                            }
+                            let owner = if let Some(&slot) = self.connector_index.get(&node.id) {
+                                Some(GridPlacementOwner::Connector(slot))
+                            } else if self.sub_graph_index.contains_key(&node.id) {
+                                // A shadowed vertex still participates in DB validation.
+                                None
+                            } else {
+                                let slot = vertex_slot;
+                                vertex_slot += 1;
+                                Some(GridPlacementOwner::Vertex(slot))
+                            };
+                            if index == slot {
+                                return Ok((node.id.as_str(), owner));
+                            }
+                        }
+                        unreachable!("Grid placement slot must have a DB owner");
+                    },
+                    |slot| {
+                        (
+                            self.sub_graphs[slot].id.as_str(),
+                            capture_placements.then_some(GridPlacementOwner::Subgraph(slot)),
+                        )
+                    },
+                    self.control,
+                )?
+            }
             None => InlineGridCoordinates::default(),
         };
         for graph in &self.sub_graphs {
@@ -2078,6 +2106,120 @@ mod tests {
             Ok(parsed) => parsed,
             Err(issue) => panic!("{} at {:?}", issue.message, issue.span),
         }
+    }
+
+    #[cfg(feature = "presentation")]
+    #[test]
+    fn grid_presentation_passes_agentflow_owners_to_the_layout_context() {
+        use merman_model::families::agentflow::{AgentflowDiagramRenderModel, AgentflowVisuals};
+        use merman_model::grid::{GridHorizontalAlign, GridVerticalAlign};
+        use merman_model::presentation::{PresentationContext, RenderSemanticModel};
+
+        let source = concat!(
+            "agentflow LR\n",
+            "Dock@{ row: 7, horizontalAlign: left }\n",
+            "G@{ row: 9 }\n",
+            "N@{ row: 2 }\n",
+            "flow G@{ view: collapsed, row: -4, column: 0, verticalAlign: bottom }\n",
+            "  Child\nend\n",
+            "connector Other@{ horizontalAlign: left }\n",
+            "connector Dock@{ column: 3, horizontalAlign: right, verticalAlign: top }\n",
+            "Dock@{ verticalAlign: false, horizontalAlign: center }\n",
+        );
+        let control = OperationControl::new();
+        let config = MermaidConfig::from_value(json!({"layout": "grid"}));
+        let parsed = parse_agentflow_source_for_render_controlled(source, &config, None, &control)
+            .unwrap()
+            .unwrap_or_else(|issue| panic!("{} at {:?}", issue.message, issue.span));
+        let placements = parsed
+            .grid_coordinates
+            .validate_placements_controlled(&control)
+            .unwrap()
+            .unwrap();
+        let mut model = AgentflowDiagramRenderModel {
+            model: parsed.model,
+            visuals: AgentflowVisuals::from_node_dom_indices(parsed.node_dom_indices.unwrap()),
+        };
+        let wire = serde_json::to_vec(&model).unwrap();
+        model.visuals = model.visuals.with_grid_placements(placements);
+        assert_eq!(serde_json::to_vec(&model).unwrap(), wire);
+        let decoded: AgentflowDiagramRenderModel = serde_json::from_slice(&wire).unwrap();
+        assert!(decoded.visuals.grid_placements().entries().is_empty());
+
+        let [dock, vertex, other, group] = model.visuals.grid_placements().entries() else {
+            panic!("expected two connectors, one vertex, and the flow");
+        };
+        assert_eq!(
+            (dock.owner, dock.id.as_str()),
+            (GridPlacementOwner::Connector(1), "Dock")
+        );
+        assert_eq!(dock.placement.row, None);
+        assert_eq!(dock.placement.column.unwrap().get(), 3);
+        assert_eq!(
+            dock.placement.horizontal_align,
+            Some(GridHorizontalAlign::Center)
+        );
+        assert_eq!(dock.placement.vertical_align, None);
+        assert_eq!(
+            (vertex.owner, vertex.id.as_str()),
+            (GridPlacementOwner::Vertex(0), "N")
+        );
+        assert_eq!(
+            (other.owner, other.id.as_str()),
+            (GridPlacementOwner::Connector(0), "Other")
+        );
+        assert_eq!(
+            other.placement.horizontal_align,
+            Some(GridHorizontalAlign::Left)
+        );
+        assert_eq!(
+            (group.owner, group.id.as_str()),
+            (GridPlacementOwner::Subgraph(0), "G")
+        );
+        assert_eq!(group.placement.row.unwrap().get(), -4);
+        assert_eq!(group.placement.column.unwrap().get(), 0);
+        assert_eq!(
+            group.placement.vertical_align,
+            Some(GridVerticalAlign::Bottom)
+        );
+
+        model.connectors[1]
+            .metadata
+            .insert("column".into(), json!(1234));
+        let (flowchart, context) = model.to_flowchart_model();
+        assert!(context.is_subgraph_collapsed("G"));
+        assert!(std::ptr::eq(
+            context.grid_placements().entries(),
+            model.visuals.grid_placements().entries()
+        ));
+        let dock_slot = flowchart
+            .nodes
+            .iter()
+            .position(|node| node.id == "Dock")
+            .unwrap();
+        assert_eq!(
+            context.grid_node_owner(dock_slot),
+            GridPlacementOwner::Connector(1)
+        );
+        assert_eq!(
+            context.grid_placements().entries()[0]
+                .placement
+                .column
+                .unwrap()
+                .get(),
+            3
+        );
+        assert_eq!(
+            context.validate_for_model_controlled(&flowchart, &control),
+            Ok(Ok(()))
+        );
+
+        let placement_bytes = model.visuals.grid_placements().retained_bytes();
+        assert_eq!(
+            PresentationContext::None
+                .retained_text_bytes_for_model(&RenderSemanticModel::Agentflow(model)),
+            placement_bytes
+        );
     }
 
     #[test]

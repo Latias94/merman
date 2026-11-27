@@ -15,6 +15,7 @@ use merman_model::families::flowchart::{
     FlowSubgraph, FlowSubgraphVertexStyle, FlowchartLabelSourceOwner, FlowchartModel,
     FlowchartRenderLabelSources, FlowchartSubgraphStyles, flowchart_svg_text_source,
 };
+use merman_model::grid::GridPlacementOwner;
 use merman_model::warnings::{DiagramWarningFact, FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID};
 use merman_model::{OperationControl, OperationControlResult, SourceSpan, config::MermaidConfig};
 use serde_json::Value;
@@ -185,7 +186,7 @@ fn build_flowchart_source(
     acc_title: Option<String>,
     acc_descr: Option<String>,
     config: &MermaidConfig,
-    _collect_render_context: bool,
+    collect_render_context: bool,
     control: &OperationControl,
 ) -> OperationControlResult<Result<FlowchartSemanticSource>> {
     let shape_data_documents = prepare_flowchart_shape_data(&ast, control)?;
@@ -215,11 +216,11 @@ fn build_flowchart_source(
     let mut class_defs: IndexMap<String, Vec<String>> = IndexMap::new();
     let mut subgraph_vertex_styles = FlowchartSubgraphStyles::default();
     #[cfg(feature = "presentation")]
-    let mut collapsed_subgraphs = _collect_render_context.then(rustc_hash::FxHashSet::default);
+    let mut collapsed_subgraphs = collect_render_context.then(rustc_hash::FxHashSet::default);
     let mut vertex_calls = Vec::new();
     let mut warning_facts = Vec::new();
-    let mut grid_replay =
-        (config.get_str("layout") == Some("grid")).then(InlineGridReplay::default);
+    let mut grid_replay = (config.get_str("layout") == Some("grid"))
+        .then(|| InlineGridReplay::new(collect_render_context));
     let mut tooltips: HashMap<String, String> = HashMap::new();
     let mut edge_defaults = EdgeDefaults {
         style: Vec::new(),
@@ -259,8 +260,26 @@ fn build_flowchart_source(
 
     let grid_coordinates = match grid_replay {
         Some(replay) => replay.finish(
-            |slot| &nodes[slot].id,
-            |slot| &builder.subgraphs[slot].id,
+            |slot| {
+                Ok((
+                    nodes[slot].id.as_str(),
+                    collect_render_context.then_some(GridPlacementOwner::Vertex(slot)),
+                ))
+            },
+            |slot| {
+                let subgraph = &builder.subgraphs[slot];
+                // The upstream Flowchart renderer omits metadata from collapsed groups.
+                let collapsed = subgraph
+                    .metadata
+                    .as_ref()
+                    .and_then(|metadata| metadata.get("view").and_then(Value::as_str))
+                    == Some("collapsed");
+                (
+                    subgraph.id.as_str(),
+                    (collect_render_context && !collapsed)
+                        .then_some(GridPlacementOwner::Subgraph(slot)),
+                )
+            },
             control,
         )?,
         None => InlineGridCoordinates::default(),

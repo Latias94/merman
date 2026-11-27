@@ -266,16 +266,33 @@ pub(crate) fn parse_flowchart_model_with_render_context_controlled(
         Err(error) => return Ok(Err(error)),
     };
     let (acc_title, acc_descr) = flowchart_accessibility_metadata(&accessibility, code);
-    let parsed = ast
+    let (model, mut context, coordinates) = match ast
         .into_model_with_render_context_and_grid_coordinates(
             meta.diagram_type(),
             meta.diagram_config(),
             acc_title,
             acc_descr,
             control,
-        )?
-        .map(|(model, context, coordinates)| ((model, context), coordinates));
-    finish_grid_validation(parsed, meta, control)
+        )? {
+        Ok(parsed) => parsed,
+        Err(message) => {
+            return Ok(Err(Error::diagram_parse_fallback(
+                meta.diagram_type(),
+                message,
+            )));
+        }
+    };
+    Ok(super::grid::validate_inline_grid(
+        meta.diagram_config(),
+        meta.diagram_type(),
+        &coordinates,
+        true,
+        control,
+    )?
+    .map(|placements| {
+        context.set_grid_placements(placements);
+        (model, context)
+    }))
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -360,9 +377,10 @@ fn finish_grid_validation<T>(
         meta.diagram_config(),
         meta.diagram_type(),
         &coordinates,
+        false,
         control,
     )?
-    .map(|()| model))
+    .map(|_| model))
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
