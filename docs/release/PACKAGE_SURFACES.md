@@ -89,23 +89,20 @@ ZenUML syntax and semantic replay.
 `merman-core-structured` owns source parsing and model construction for Block, Cynefin, Event
 Modeling, Gantt, Info, Ishikawa, Journey, Kanban, Packet, Pie, Quadrant Chart, Radar, Railroad, Sankey,
 Timeline, Tree View, Treemap, Venn, Wardley, and XY Chart.
-`merman-render-core` provides layout geometry, bounded SVG writing, and shared CSS and text
-contracts. `merman-render-structured` provides complete layout and SVG for Block, Cynefin, Event
-Modeling, Gantt, Info, Ishikawa, Journey, Kanban, Packet, Railroad, Timeline, and Tree View.
-[Structured diagram ownership](../adr/0099-model-and-source-boundaries.md#structured-diagrams)
+`merman-render-core` provides shared geometry, text, CSS, and SVG emission and validation.
+`merman-render` dispatches families and owns the render session and selected output pipeline.
+Family crates own SVG emission and the family implementations behind the existing selectors.
 
-`merman-render-charts` provides Pie layout and SVG content through `diagram-pie`. It provides
-Quadrant Chart, Radar, Sankey, Treemap, and Venn layout through `diagram-quadrant-chart`,
-`diagram-radar`, `diagram-sankey`, `diagram-treemap`, and `diagram-venn`.
-`diagram-xychart` selects XY Chart layout and plot geometry.
-`merman-render-flow` provides shape geometry, authored styling, hierarchy indexes, and the
-parity SVG document, markers, and edge paths through `diagram-flowchart`, `diagram-swimlane`,
-and `diagram-agentflow`.
-`merman-render-graph` provides complete SVG writers for Architecture, C4, Class, ER, GitGraph,
-Mindmap, Requirement, State, and Usecase.
-`merman-render-sequence` provides complete layout and SVG for Sequence and ZenUML through
-`diagram-sequence` and `diagram-zenuml`.
-[Chart renderer ownership](../adr/0099-model-and-source-boundaries.md#chart-rendering)
+| Renderer crate | Diagram families |
+| --- | --- |
+| `merman-render-charts` | Pie, Quadrant Chart, Radar, Sankey, Treemap, Venn, Wardley, XY Chart |
+| `merman-render-flow` | Agentflow, Flowchart, Swimlane |
+| `merman-render-graph` | Architecture, C4, Class, ER, GitGraph, Mindmap, Requirement, State, Usecase |
+| `merman-render-sequence` | Sequence, ZenUML |
+| `merman-render-structured` | Block, Cynefin, Event Modeling, Gantt, Info, Ishikawa, Journey, Kanban, Packet, Railroad, Timeline, Tree View |
+
+See [vertical workspace crate boundaries](../adr/0103-vertical-workspace-crate-boundaries.md) for
+the internal package and feature contracts.
 
 Homebrew/core owns formula publication; this repository only validates the external formula after
 a stable release.
