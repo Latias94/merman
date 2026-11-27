@@ -113,8 +113,8 @@ impl<'a> FlowchartEdgeTransportPlan<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub struct FlowchartRenderModelRef<'a> {
-    semantic: &'a FlowchartModel,
-    render_context: &'a FlowchartRenderContext,
+    pub semantic: &'a FlowchartModel,
+    pub render_context: &'a FlowchartRenderContext,
 }
 
 impl<'a> FlowchartRenderModelRef<'a> {
@@ -126,14 +126,6 @@ impl<'a> FlowchartRenderModelRef<'a> {
             semantic,
             render_context,
         }
-    }
-
-    pub const fn semantic(&self) -> &'a FlowchartModel {
-        self.semantic
-    }
-
-    pub const fn render_context(&self) -> &'a FlowchartRenderContext {
-        self.render_context
     }
 
     pub fn node_label_for_render<'b>(&'b self, node: &'b FlowNode) -> Option<&'b str> {

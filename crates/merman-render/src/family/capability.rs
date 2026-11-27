@@ -101,7 +101,7 @@ fn visible_flowchart_requires_math(model: crate::flowchart::FlowchartRenderModel
         model
             .edge_label_for_render(index, edge)
             .is_some_and(crate::math::contains_delimited_math)
-            && crate::flowchart::project_flowchart_edge(edge, model.render_context()).is_some()
+            && crate::flowchart::project_flowchart_edge(edge, model.render_context).is_some()
     }) || model.subgraphs.iter().enumerate().any(|(index, subgraph)| {
         crate::math::contains_delimited_math(model.subgraph_title_for_render(index, subgraph))
             && model.collapsed_replacement(&subgraph.id).is_none()
