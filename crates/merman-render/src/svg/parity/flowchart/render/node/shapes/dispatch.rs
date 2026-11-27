@@ -1,5 +1,7 @@
 //! Flowchart node shape dispatch.
 
+use merman_render_flow::node_body::{RectangleBody, RectangleStyle};
+
 use crate::flowchart::{FlowchartShape, LeanGeometry, LeanKind, resolve_flowchart_shape};
 use crate::{Error, Result};
 
@@ -129,10 +131,10 @@ pub(in super::super) fn render_flowchart_shape(
             super::render_odd(out, common, label, details);
         }
         FlowchartShape::Process => {
-            super::render_process_rectangle(out, ctx, common, details);
+            render_rectangle(out, ctx, common, details, RectangleBody::Process);
         }
         FlowchartShape::RoundedRectangle => {
-            super::render_rounded_rect(out, ctx, common, details);
+            render_rectangle(out, ctx, common, details, RectangleBody::Rounded);
         }
         FlowchartShape::StackedDocument => {
             super::render_stacked_document(out, ctx, common, label, details);
@@ -156,6 +158,28 @@ pub(in super::super) fn render_flowchart_shape(
     }
 
     Ok(false)
+}
+
+fn render_rectangle(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeRenderCommon<'_>,
+    details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
+    rectangle: RectangleBody,
+) {
+    let rect = ctx.rectangle_geometry(common.layout_node).shape;
+    rectangle.write(
+        out,
+        body_svg(common, details),
+        rect,
+        RectangleStyle {
+            source_radii: common.source_corner_radii,
+            native_radius: common.native_corner_radius,
+            configured_radius: common.configured_corner_radius,
+            effect_filter_style: common.effect_filter_style,
+        },
+        ctx.compatibility,
+    );
 }
 
 fn render_lean(

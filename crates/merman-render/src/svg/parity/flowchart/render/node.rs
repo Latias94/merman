@@ -84,60 +84,10 @@ impl<'a> std::ops::Deref for FlowchartNodeRenderCommon<'a> {
 }
 
 impl FlowchartNodeRenderCommon<'_> {
-    pub(super) fn write_effect_style(&self, out: &mut impl crate::svg::parity::SvgOutput) {
-        out.push_str(self.effect_filter_style);
-    }
-
     pub(super) fn write_child_filter_style(&self, out: &mut impl crate::svg::parity::SvgOutput) {
         if self.suppress_child_filters {
             out.push_str(";filter:none !important");
         }
-    }
-
-    pub(super) fn write_rectangle_radii(
-        &self,
-        out: &mut impl crate::svg::parity::SvgOutput,
-        fallback: Option<f64>,
-    ) {
-        for (axis, source) in ["rx", "ry"].into_iter().zip(self.source_corner_radii) {
-            if let Some(radius) = source.or(fallback) {
-                let _ = write!(
-                    out,
-                    " {axis}=\"{}\"",
-                    crate::svg::parity::fmt_display(radius)
-                );
-            }
-        }
-    }
-
-    fn write_rectangle_start(
-        &self,
-        out: &mut impl crate::svg::parity::SvgOutput,
-        rect: kurbo::Rect,
-    ) {
-        let _ = write!(
-            out,
-            r#"<rect class="basic label-container" style="{}"#,
-            escape_attr(self.style),
-        );
-        self.write_effect_style(out);
-
-        // Keep admitted source winners and typed geometry consistent with native attributes.
-        // Neo defaults and differently cased source spellings must not override them in CSS.
-        for (axis, source) in ["rx", "ry"].into_iter().zip(self.source_corner_radii) {
-            if let Some(radius) = source.or(self.native_corner_radius) {
-                let radius = crate::svg::parity::fmt_display(radius);
-                let _ = write!(out, ";{axis}:{radius}px !important");
-            }
-        }
-        let _ = write!(
-            out,
-            r#"" x="{}" y="{}" width="{}" height="{}""#,
-            fmt(rect.x0),
-            fmt(rect.y0),
-            fmt(rect.width()),
-            fmt(rect.height()),
-        );
     }
 }
 

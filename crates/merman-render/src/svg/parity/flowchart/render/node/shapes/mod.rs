@@ -1,7 +1,8 @@
 //! Flowchart node shape renderers.
 
 use merman_render_flow::node_body::{
-    self, LayoutNodeBody, MeasuredNodeBody, NodeBodyGeometry, NodeBodySvg, RectangleWithDivider,
+    self, LayoutNodeBody, MeasuredNodeBody, NodeBodyGeometry, NodeBodySvg, RectangleBody,
+    RectangleWithDivider,
 };
 
 use crate::flowchart::FlowchartShape;
@@ -26,8 +27,6 @@ mod manuals;
 mod no_label;
 mod odd;
 mod outer_path;
-mod process;
-mod rounded_rect;
 mod stadium;
 mod triangle;
 
@@ -52,8 +51,6 @@ pub(super) use image_square::try_render_image_square;
 pub(super) use manuals::{render_manual_file, render_manual_input};
 pub(super) use no_label::try_render_flowchart_no_label;
 pub(super) use odd::render_odd;
-pub(super) use process::render_process_rectangle;
-pub(super) use rounded_rect::render_rounded_rect;
 pub(super) use stadium::render_stadium;
 pub(super) use triangle::render_triangle_extract;
 
@@ -300,8 +297,12 @@ pub(super) fn advance_rough_geometry(
             .prepare(ctx, common, label)
             .advance_rough_geometry(body_geometry(common)),
         FlowchartShape::Odd => odd::advance_odd_rough_geometry(ctx, common, label),
-        FlowchartShape::Process => process::advance_rough_geometry(common),
-        FlowchartShape::RoundedRectangle => rounded_rect::advance_rough_geometry(ctx, common),
+        FlowchartShape::Process => {
+            RectangleBody::Process.advance_rough_geometry(body_geometry(common), ctx.compatibility)
+        }
+        FlowchartShape::RoundedRectangle => {
+            RectangleBody::Rounded.advance_rough_geometry(body_geometry(common), ctx.compatibility)
+        }
         FlowchartShape::StackedDocument => {
             document_shapes::advance_stacked_document_rough_geometry(ctx, common, label)
         }
