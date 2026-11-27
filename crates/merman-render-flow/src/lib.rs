@@ -18,6 +18,13 @@ pub mod class_style;
     feature = "diagram-swimlane"
 ))]
 #[doc(hidden)]
+pub mod cluster_shell;
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
+#[doc(hidden)]
 pub mod document;
 #[cfg(any(
     feature = "diagram-agentflow",

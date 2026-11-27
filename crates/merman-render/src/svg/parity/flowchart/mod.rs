@@ -73,7 +73,7 @@ use render::{
     render_flowchart_elk_root_groups, render_flowchart_node, render_flowchart_root,
 };
 use types::*;
-use util::{OptionalStyleAttr, OptionalStyleXmlAttr};
+use util::OptionalStyleAttr;
 
 // Flowchart SVG renderer implementation (split from parity.rs).
 

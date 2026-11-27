@@ -3,111 +3,9 @@ use crate::flowchart::FLOWCHART_FIXED_LABEL_WRAP_WIDTH;
 use crate::model::SwimlaneLaneLayout;
 use crate::svg::parity::flowchart::util::HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR;
 
-const SWIMLANE_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
-const SWIMLANE_HAND_DRAWN_FILL_WEIGHT: f32 = 3.0;
-const SWIMLANE_HAND_DRAWN_HACHURE_GAP: f32 = 1.5;
-
-fn rough_style_from_node_style(node_style: &str, mut keep: impl FnMut(&str) -> bool) -> String {
-    let mut out = String::new();
-    for declaration in node_style.split(';') {
-        let declaration = declaration.trim();
-        let Some((key, _)) = declaration.split_once(':') else {
-            continue;
-        };
-        if !keep(key.trim()) {
-            continue;
-        }
-        if !out.is_empty() {
-            out.push(';');
-        }
-        out.push_str(declaration);
-    }
-    out
-}
-
-fn parse_css_px_f32(value: Option<&String>, fallback: f32) -> f32 {
-    value
-        .and_then(|raw| raw.trim_end_matches("px").trim().parse::<f32>().ok())
-        .unwrap_or(fallback)
-}
-
-#[allow(clippy::too_many_arguments)]
-fn write_swimlane_rect(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    ctx: &FlowchartRenderCtx<'_>,
-    compiled: &FlowchartCompiledStyles,
-    class_name: &str,
-    node_style: &str,
-    x: f64,
-    y: f64,
-    width: f64,
-    height: f64,
-    fill: Option<&str>,
-    stroke: &str,
-) {
-    if ctx.compatibility.look.as_str() == "handDrawn" {
-        let stroke_width = parse_css_px_f32(compiled.stroke_width.as_ref(), 1.3);
-        let stroke_dasharray = compiled.stroke_dasharray.as_deref().unwrap_or("0 0").trim();
-        // RoughJS creates the outline before the fill. Generating both paths
-        // and omitting the fill path for the body therefore preserves the
-        // exact seeded outline used by `fill: none` upstream.
-        if let Some((fill_d, stroke_d)) =
-            super::super::render::node::roughjs::roughjs_hachure_paths_for_rect(
-                x,
-                y,
-                width,
-                height,
-                stroke_width,
-                stroke_dasharray,
-                SWIMLANE_HAND_DRAWN_FILL_WEIGHT,
-                SWIMLANE_HAND_DRAWN_HACHURE_GAP,
-                SWIMLANE_HAND_DRAWN_ROUGHNESS,
-                ctx.work_meter,
-                &ctx.hand_drawn_seed,
-            )
-        {
-            let _ = write!(out, r#"<g class="{}">"#, escape_xml_display(class_name));
-            if let Some(fill) = fill {
-                let background_style = rough_style_from_node_style(node_style, |key| key == "fill")
-                    .replace("fill", "stroke");
-                let _ = write!(
-                    out,
-                    r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{} />"#,
-                    escape_xml_display(&fill_d),
-                    escape_xml_display(fill),
-                    fmt_display(SWIMLANE_HAND_DRAWN_FILL_WEIGHT as f64),
-                    OptionalStyleXmlAttr(&background_style),
-                );
-            }
-            let border_style =
-                rough_style_from_node_style(node_style, |key| key.contains("stroke"));
-            let _ = write!(
-                out,
-                r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"{} /></g>"#,
-                escape_xml_display(&stroke_d),
-                escape_xml_display(stroke),
-                fmt_display(stroke_width as f64),
-                escape_xml_display(stroke_dasharray),
-                OptionalStyleXmlAttr(&border_style),
-            );
-
-            return;
-        }
-    }
-
-    let _ = write!(
-        out,
-        r#"<rect class="{}" style="{}" x="{}" y="{}" width="{}" height="{}" fill="{}" stroke="{}"/>"#,
-        escape_xml_display(class_name),
-        escape_xml_display(node_style),
-        fmt_display(x),
-        fmt_display(y),
-        fmt_display(width),
-        fmt_display(height),
-        escape_xml_display(fill.unwrap_or("none")),
-        escape_xml_display(stroke),
-    );
-}
+use merman_render_flow::cluster_shell::{
+    ClusterHandDrawn, ClusterShellPaint, write_swimlane_shell,
+};
 
 pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
     out: &mut impl crate::svg::parity::SvgOutput,
@@ -163,16 +61,6 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
     let lane_fill = terminal.fill.as_str();
     let lane_stroke = terminal.stroke.as_str();
     let is_pool = super::uses_pool_shell(ctx, lane.id.as_str());
-    let body_class = if is_pool {
-        "pool-body swimlane-body"
-    } else {
-        "swimlane-body"
-    };
-    let title_class = if is_pool {
-        "pool-title swimlane-title"
-    } else {
-        "swimlane-title"
-    };
     let label_class = if is_pool {
         "pool-label swimlane-label"
     } else {
@@ -224,24 +112,27 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
     }
     out.push('>');
 
-    for (rect, class, fill) in [
-        (body, body_class, None),
-        (title, title_class, Some(lane_fill)),
-    ] {
-        write_swimlane_rect(
-            out,
-            ctx,
-            compiled,
-            class,
-            node_style,
-            rect.x0 + ctx.tx - origin_x,
-            rect.y0 + ctx.ty - origin_y,
-            rect.width().max(0.0),
-            rect.height().max(0.0),
-            fill,
-            lane_stroke,
-        );
-    }
+    write_swimlane_shell(
+        out,
+        [body, title],
+        kurbo::Vec2::new(ctx.tx, ctx.ty),
+        kurbo::Point::new(origin_x, origin_y),
+        is_pool,
+        ClusterShellPaint {
+            style: node_style,
+            fill: lane_fill,
+            stroke: lane_stroke,
+        },
+        ctx.compatibility
+            .look
+            .is_hand_drawn()
+            .then_some(ClusterHandDrawn {
+                stroke_width: compiled.stroke_width.as_deref(),
+                stroke_dasharray: compiled.stroke_dasharray.as_deref(),
+                work_meter: ctx.work_meter,
+                randomness: &ctx.hand_drawn_seed,
+            }),
+    );
 
     let (label_x, label_y, label_transform) = if horizontal {
         let center_x = geometry.title_label.x + ctx.tx - origin_x;
