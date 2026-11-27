@@ -17,6 +17,11 @@ use merman_model::OperationPhase;
 use merman_render_core::root_svg;
 use merman_render_core::svg_css::{SvgDiagramIdProjection, SvgId};
 use merman_render_core::svg_output as output;
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 use std::fmt::Write as _;
 
 pub(crate) const C4_PERSON_IMG: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAACD0lEQVR4Xu2YoU4EMRCGT+4j8Ai8AhaH4QHgAUjQuFMECUgMIUgwJAgMhgQsAYUiJCiQIBBY+EITsjfTdme6V24v4c8vyGbb+ZjOtN0bNcvjQXmkH83WvYBWto6PLm6v7p7uH1/w2fXD+PBycX1Pv2l3IdDm/vn7x+dXQiAubRzoURa7gRZWd0iGRIiJbOnhnfYBQZNJjNbuyY2eJG8fkDE3bbG4ep6MHUAsgYxmE3nVs6VsBWJSGccsOlFPmLIViMzLOB7pCVO2AtHJMohH7Fh6zqitQK7m0rJvAVYgGcEpe//PLdDz65sM4pF9N7ICcXDKIB5Nv6j7tD0NoSdM2QrU9Gg0ewE1LqBhHR3BBdvj2vapnidjHxD/q6vd7Pvhr31AwcY8eXMTXAKECZZJFXuEq27aLgQK5uLMohCenGGuGewOxSjBvYBqeG6B+Nqiblggdjnc+ZXDy+FNFpFzw76O3UBAROuXh6FoiAcf5g9eTvUgzy0nWg6I8cXHRUpg5bOVBCo+KDpFajOf23GgPme7RSQ+lacIENUgJ6gg1k6HjgOlqnLqip4tEuhv0hNEMXUD0clyXE3p6pZA0S2nnvTlXwLJEZWlb7cTQH1+USgTN4VhAenm/wea1OCAOmqo6fE1WCb9WSKBah+rbUWPWAmE2Rvk0ApiB45eOyNAzU8xcTvj8KvkKEoOaIYeHNA3ZuygAvFMUO0AAAAASUVORK5CYII=";
@@ -76,7 +81,6 @@ use merman_render_core::svg_edge_parity::edge_path;
 mod er;
 #[cfg(all(feature = "diagram-er", feature = "layout-shoal"))]
 pub(crate) use er::er_canonical_marker;
-mod error;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
@@ -226,7 +230,7 @@ mod usecase;
 mod util;
 #[cfg(feature = "diagram-zenuml")]
 mod zenuml;
-use output::{BoundedSvgOutput, SvgOutput};
+use output::SvgOutput;
 use path_bounds::{svg_path_bounds_from_d, svg_path_length_from_d};
 
 pub use merman_render_core::svg_bounds::{
@@ -1085,11 +1089,16 @@ fn render_builtin_family_artifact_raw(
     let title = metadata.title.as_deref();
 
     match family {
-        BuiltinFamilyArtifact::Error(artifact) => error::render_error_diagram_svg_model(
-            artifact.pair().layout(),
-            artifact.typography_theme(),
-            options,
-        ),
+        BuiltinFamilyArtifact::Error(artifact) => {
+            let diagram_id = options.diagram_id_or("merman");
+            crate::error::render_error_diagram_svg(
+                artifact.pair().layout(),
+                artifact.typography_theme(),
+                diagram_id,
+                &options.root_viewport(crate::DiagramFamilyId::ERROR, diagram_id),
+                options.work_meter(),
+            )
+        }
         #[cfg(all(
             feature = "diagram-architecture",
             any(feature = "layout-cytoscape", feature = "layout-shoal")

@@ -19,6 +19,7 @@ third-party-bundle = true
 default = []
 benchmark-stages = ["merman-model?/benchmark-stages"]
 css-style = ["dep:cssparser", "dep:merman-markup", "dep:merman-model", "dep:serde_json", "dep:unicode-segmentation"]
+error-diagram = ["root-svg", "text-layout"]
 euclid-geometry = ["dep:euclid"]
 graph-layout = ["dep:kurbo"]
 html = ["svg-output", "merman-markup/html"]

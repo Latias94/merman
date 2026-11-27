@@ -11,7 +11,8 @@ limits and cancellation across layout and SVG emission. The `layout-dagre`, `lay
 feature provides the metered adapter for Shoal.
 `svg-output` provides bounded SVG writing, XML text serialization, base styles, and the output
 and compatibility error variants. `root-svg` provides viewport planning and emission for family
-SVG documents.
+SVG documents. The SVG facade uses `error-diagram` for its always-available Error diagram's
+typography, viewport, and complete SVG writer.
 `layout-elk` provides shared Mermaid ELK hierarchy, group frames, and endpoint geometry. With
 `graph-layout`, it also provides missing-section and terminal-jog projection. With `css-style`,
 it provides ELK option projection and feedback edge handling. The geometry helpers also remain

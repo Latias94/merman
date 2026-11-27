@@ -139,8 +139,8 @@ mod tests {
         FlowchartDocumentIdRequest, FlowchartDocumentIds,
     };
     use crate::svg::parity::flowchart::render_input::FlowchartRenderEdgeRef;
-    use crate::svg::parity::{BoundedSvgOutput, SvgOutput};
     use indexmap::IndexMap;
+    use merman_render_core::svg_output::{BoundedSvgOutput, SvgOutput};
 
     fn edge(edge_type: &str, stroke: &str) -> crate::flowchart::FlowEdge {
         crate::flowchart::FlowEdge {

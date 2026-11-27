@@ -1,4 +1,12 @@
-use serde::{Deserialize, Serialize};
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow",
+    feature = "diagram-er",
+    feature = "diagram-mindmap"
+))]
+use serde::Deserialize;
+use serde::Serialize;
 #[cfg(feature = "diagram-er")]
 use std::sync::Arc;
 
@@ -410,9 +418,4 @@ pub use merman_render_graph::c4::{
     C4BoundaryLayout, C4DiagramLayout, C4ImageLayout, C4RelLayout, C4ShapeLayout, C4TextBlockLayout,
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ErrorDiagramLayout {
-    pub viewbox_width: f64,
-    pub viewbox_height: f64,
-    pub max_width_px: f64,
-}
+pub use merman_render_core::error_diagram::ErrorDiagramLayout;

@@ -1,39 +1,47 @@
-use super::super::*;
+use std::fmt::Write as _;
 
-// Error diagram SVG renderer implementation (split from parity.rs).
+use merman_model::OperationPhase;
 
-pub(crate) fn render_error_diagram_svg_model(
+use super::{ErrorDiagramLayout, ErrorTypographyThemePlan};
+use crate::{
+    Result,
+    number_format::canonical_number as fmt,
+    resources::OperationWorkMeter,
+    root_svg::{
+        DiagramBounds, RootChrome, RootMaxWidth, RootViewportContext, RootViewportSpec, RootedSvg,
+        SvgRootStyleViewBoxOrder,
+    },
+    svg_css::SvgId,
+    svg_output::{BoundedSvgOutput, SvgOutput, XmlTextOutput},
+    xml::{escape_xml, escape_xml_serialized_text_into},
+};
+
+/// Emits the diagnostic SVG before the host canvas and terminal output checks.
+pub fn render_error_diagram_svg(
     layout: &ErrorDiagramLayout,
-    typography_theme: &crate::error::ErrorTypographyThemePlan,
-    options: &SvgExecution<'_>,
-) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id_or("merman");
-
-    let mut out = BoundedSvgOutput::new(options.work_meter());
-    let root_bounds = root_svg::DiagramBounds::from_view_box(
-        0.0,
-        0.0,
-        layout.viewbox_width,
-        layout.viewbox_height,
-    );
-    let root_spec = root_svg::RootViewportSpec::responsive(root_bounds)
-        .with_max_width(root_svg::RootMaxWidth::SvgNumber(layout.max_width_px));
-    let mut root_chrome = root_svg::RootChrome::new(diagram_id, "error");
-    root_chrome.dom.style_viewbox_order = root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle;
+    typography_theme: &ErrorTypographyThemePlan,
+    diagram_id: SvgId<'_>,
+    root_viewport: &RootViewportContext<'_>,
+    work_meter: &OperationWorkMeter,
+) -> Result<RootedSvg> {
+    let mut out = BoundedSvgOutput::new(work_meter);
+    let root_bounds =
+        DiagramBounds::from_view_box(0.0, 0.0, layout.viewbox_width, layout.viewbox_height);
+    let root_spec = RootViewportSpec::responsive(root_bounds)
+        .with_max_width(RootMaxWidth::SvgNumber(layout.max_width_px));
+    let mut root_chrome = RootChrome::new(diagram_id, "error");
+    root_chrome.dom.style_viewbox_order = SvgRootStyleViewBoxOrder::ViewBoxThenStyle;
     root_chrome.dom.trailing_newline = false;
-    let root_document = options
-        .root_viewport(crate::DiagramFamilyId::ERROR, diagram_id)
-        .write_open(&mut out, root_spec, root_chrome)?;
+    let root_document = root_viewport.write_open(&mut out, root_spec, root_chrome)?;
     out.push_str(r#"<style>"#);
-    typography_theme.css_binding().write(
-        &mut super::super::output::XmlTextOutput::new(&mut out),
-        diagram_id,
-    )?;
+    typography_theme
+        .css_binding()
+        .write(&mut XmlTextOutput::new(&mut out), diagram_id)?;
     out.push_str("</style>");
     out.checkpoint()?;
 
     out.push_str(r#"<g/>"#);
-    options.checkpoint_emit()?;
+    work_meter.checkpoint(OperationPhase::Emit)?;
     out.push_str(r#"<g>"#);
     out.checkpoint()?;
     out.push_str(r#"<path class="error-icon" d="m411.313,123.313c6.25-6.25 6.25-16.375 0-22.625s-16.375-6.25-22.625,0l-32,32-9.375,9.375-20.688-20.688c-12.484-12.5-32.766-12.5-45.25,0l-16,16c-1.261,1.261-2.304,2.648-3.31,4.051-21.739-8.561-45.324-13.426-70.065-13.426-105.867,0-192,86.133-192,192s86.133,192 192,192 192-86.133 192-192c0-24.741-4.864-48.327-13.426-70.065 1.402-1.007 2.79-2.049 4.051-3.31l16-16c12.5-12.492 12.5-32.758 0-45.25l-20.688-20.688 9.375-9.375 32.001-31.999zm-219.313,100.687c-52.938,0-96,43.063-96,96 0,8.836-7.164,16-16,16s-16-7.164-16-16c0-70.578 57.422-128 128-128 8.836,0 16,7.164 16,16s-7.164,16-16,16z"/>"#);
@@ -74,7 +82,7 @@ pub(crate) fn render_error_diagram_svg_model(
             fmt(detail.y()),
             fmt(detail.font_size_px()),
         );
-        util::escape_xml_serialized_text_into(&mut out, detail.text());
+        escape_xml_serialized_text_into(&mut out, detail.text());
         out.push_str("</text>");
         out.checkpoint()?;
     }
@@ -85,38 +93,26 @@ pub(crate) fn render_error_diagram_svg_model(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_model::families::error::ErrorDiagramModel;
+    use crate::{
+        error_diagram::prepare_error_diagram, resources::RenderResourcePolicy,
+        text::DeterministicTextMeasurer,
+    };
+    use merman_model::{family::DiagramFamilyId, presentation::PresentationConfig};
 
     fn render_message_with_viewport(message: Option<&str>) -> (String, f64) {
-        let model = ErrorDiagramModel {
-            diagram_type: "error".to_string(),
-            error_message: message.map(str::to_string),
-        };
-        let session = crate::environment::RenderEnvironment::deterministic()
-            .begin_session()
-            .unwrap();
-        let request = SvgRenderOptions::default();
-        let debug = SvgDebugOptions::default();
-        let execution = SvgExecution::unthemed_for_test(
-            &request,
-            &debug,
-            &session,
-            crate::DiagramFamilyId::ERROR,
-        )
-        .unwrap();
-        let config = serde_json::json!({});
-        let typography = crate::error::ErrorTypographyThemePlan::resolve_with_message(
-            &crate::test_support::presentation_config(config.clone()),
-            execution.text_measurer(),
-            model.error_message.as_deref(),
+        let (layout, typography) = prepare_error_diagram(
+            &PresentationConfig::default(),
+            &DeterministicTextMeasurer::default(),
+            message,
         );
-        let layout = crate::error::layout_error_diagram_typed(&model, &typography).unwrap();
-        let viewport_height = typography.viewport_height_px();
-        let svg = render_error_diagram_svg_model(&layout, &typography, &execution)
+        let diagram_id = SvgId::new("merman").unwrap();
+        let viewport = RootViewportContext::new(DiagramFamilyId::ERROR, diagram_id);
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::default());
+        let svg = render_error_diagram_svg(&layout, &typography, diagram_id, &viewport, &meter)
             .unwrap()
-            .into_string_for(crate::DiagramFamilyId::ERROR)
+            .into_string_for(DiagramFamilyId::ERROR)
             .unwrap();
-        (svg, viewport_height)
+        (svg, layout.viewbox_height)
     }
 
     fn render_message(message: Option<&str>) -> String {

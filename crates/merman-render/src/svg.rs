@@ -19,7 +19,6 @@ pub(crate) use fallback::measure_styled_html_label;
 )]
 mod icon_registry;
 mod parity;
-pub(crate) use merman_render_core::svg_css::PreparedCommonCss;
 #[cfg(all(feature = "diagram-block", feature = "layout-shoal"))]
 pub(crate) use merman_render_core::svg_edge_parity::markers::BaseEdgeMarkerKind;
 #[cfg(all(feature = "diagram-class", feature = "layout-shoal"))]

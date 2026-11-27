@@ -244,12 +244,11 @@ fn prepare_error_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let typography_theme = crate::error::ErrorTypographyThemePlan::resolve_with_message(
+    let (layout, typography_theme) = crate::error::prepare_error_diagram(
         &meta.effective_config,
         execution.text_measurer(),
         model.error_message.as_deref(),
     );
-    let layout = crate::error::layout_error_diagram_typed(model, &typography_theme)?;
     Ok(BuiltinFamilyArtifact::Error(Box::new(
         ErrorFamilyArtifact {
             pair: FamilyPair::new(model, layout),
