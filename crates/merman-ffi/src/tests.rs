@@ -1,6 +1,8 @@
+use super::records::{checked_record_array_byte_len, validate_record_array_shape};
 use super::result::{initialized_native_result, native_error_json, result_allocation_is_live};
 use super::*;
 use std::collections::BTreeSet;
+use std::mem::align_of;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 #[repr(C)]
