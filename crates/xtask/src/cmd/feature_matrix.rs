@@ -174,6 +174,7 @@ const NATIVE_RUNTIME_FORWARDERS: &[(&str, &str)] = &[
     ("merman-uniffi", "merman-bindings-core"),
 ];
 const LOCAL_FONT_FEATURE_CONTRACTS: &[(&str, &str, &str)] = &[
+    ("merman-android-jni", "system-fonts", "svg"),
     ("merman-export", "bundled-fonts", "native-fonts"),
     ("merman-bindings-core", "native-fonts", "svg"),
     ("merman-bindings-core", "system-fonts", "native-fonts"),
@@ -192,6 +193,7 @@ const LOCAL_FONT_FEATURE_CONTRACTS: &[(&str, &str, &str)] = &[
     ("merman-ffi", "system-fonts", "native-fonts"),
     ("merman-wasi", "native-fonts", "svg"),
     ("merman-wasi", "bundled-fonts", "native-fonts"),
+    ("merman-uniffi", "system-fonts", "svg"),
 ];
 const PRODUCT_FEATURE_CONTRACTS: usize = 3;
 const CLI_RELEASE_ONLY_FEATURES: &[&str] = &["math", "platform-system-font-default"];
@@ -2278,6 +2280,7 @@ mod tests {
     #[test]
     fn font_owners_require_local_prerequisites_despite_dependency_forwarding() {
         for (name, feature, prerequisite) in [
+            ("merman-android-jni", "system-fonts", "svg"),
             ("merman-export", "bundled-fonts", "native-fonts"),
             ("merman-bindings-core", "native-fonts", "svg"),
             ("merman-bindings-core", "system-fonts", "native-fonts"),
@@ -2296,6 +2299,7 @@ mod tests {
             ("merman-ffi", "system-fonts", "native-fonts"),
             ("merman-wasi", "native-fonts", "svg"),
             ("merman-wasi", "bundled-fonts", "native-fonts"),
+            ("merman-uniffi", "system-fonts", "svg"),
         ] {
             let mut graph = manifest_feature_graph();
             graph
