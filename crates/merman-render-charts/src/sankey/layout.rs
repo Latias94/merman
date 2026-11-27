@@ -2,8 +2,9 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, VecDeque};
 
 use merman_model::families::sankey::SankeyDiagramModel;
-use merman_render_core::{Bounds, Error, Result, resources::OperationWorkMeter};
-use serde_json::Value;
+use merman_render_core::{
+    Bounds, Error, Result, config::ConfigLookup, resources::OperationWorkMeter,
+};
 
 use super::config::{NodeAlign, SankeyConfigView, SankeyLayoutSettings};
 use super::model::{SankeyDiagramLayout, SankeyLinkLayout, SankeyNodeLayout};
@@ -157,7 +158,7 @@ fn compute_node_heights(nodes: &mut [Node], links: &[Link]) -> Result<()> {
 /// Lays out a Sankey model under the cumulative work meter owned by the render operation.
 pub fn layout_sankey_diagram_typed(
     model: &SankeyDiagramModel,
-    effective_config: &Value,
+    effective_config: &(impl ConfigLookup + ?Sized),
     work_meter: &OperationWorkMeter,
 ) -> Result<SankeyDiagramLayout> {
     work_meter.charge(sankey_layout_work_units(model))?;

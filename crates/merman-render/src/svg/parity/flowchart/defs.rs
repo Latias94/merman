@@ -6,13 +6,21 @@ use indexmap::IndexMap;
 use merman_theme_contract::v2::MarkerStyle;
 use rustc_hash::FxHashMap;
 
+#[cfg(any(
+    feature = "layout-shoal",
+    test,
+    all(
+        feature = "native-compact",
+        feature = "diagram-flowchart",
+        feature = "layout-dagre"
+    )
+))]
+use merman_render_flow::markers::flowchart_marker_shape_spec;
 use merman_render_flow::markers::{
-    FlowchartMarkerVariantKey, FlowchartMarkerVariantMode, base_marker_count, casing_marker_filled,
-    flowchart_marker_shape_spec, push_base_markers, push_colored_marker,
-    write_flowchart_marker_id_xml,
+    FlowchartMarkerVariantKey, FlowchartMarkerVariantMode, base_marker_count, push_base_markers,
+    push_colored_marker, write_flowchart_marker_id_xml,
 };
 
-use super::super::util::escape_xml_display;
 use super::edge_fill::FlowchartEdgeFillPlan;
 use super::{
     FlowchartHierarchyPlan, FlowchartMarkerBase, FlowchartRenderCtx,
@@ -105,7 +113,6 @@ struct FlowchartEdgeMarkerReferences {
 enum FlowchartMarkerColor<'a> {
     Source(&'a str),
     Adaptive(&'a str),
-    Casing(&'a str),
 }
 
 #[derive(Debug)]
@@ -123,7 +130,6 @@ impl<'a> PreparedFlowchartMarkerColor<'a> {
         let (raw, mode) = match color {
             FlowchartMarkerColor::Source(raw) => (raw, FlowchartMarkerVariantMode::Source),
             FlowchartMarkerColor::Adaptive(raw) => (raw, FlowchartMarkerVariantMode::AdaptiveInk),
-            FlowchartMarkerColor::Casing(raw) => (raw, FlowchartMarkerVariantMode::Casing),
         };
         let normalization_work = 1usize
             .checked_add(raw.len().div_ceil(64))
@@ -134,7 +140,6 @@ impl<'a> PreparedFlowchartMarkerColor<'a> {
             FlowchartMarkerVariantMode::Source => {}
             // Mermaid source colors normalize to alphanumerics and underscores only.
             FlowchartMarkerVariantMode::AdaptiveInk => id.insert_str(0, "shoal-"),
-            FlowchartMarkerVariantMode::Casing => id.insert_str(0, "shoal-casing-"),
         }
         Ok(Self { raw, id, mode })
     }
@@ -145,8 +150,8 @@ pub(in crate::svg::parity::flowchart) struct FlowchartMarkerEmissionPlan {
     #[cfg(test)]
     edges: FxHashMap<String, Vec<FlowchartEdgeMarkerReferences>>,
     edge_occurrences: FxHashMap<crate::flowchart::FlowchartEdgeKey, FlowchartEdgeMarkerReferences>,
-    casing_edge_occurrences:
-        FxHashMap<crate::flowchart::FlowchartEdgeKey, FlowchartEdgeMarkerReferences>,
+    surface_occurrences:
+        FxHashMap<(crate::flowchart::FlowchartEdgeKey, usize), FlowchartEdgeMarkerReferences>,
     variants: IndexMap<FlowchartMarkerVariantKey, String>,
     marker_style: MarkerStyle,
     base_marker_bytes: usize,
@@ -162,7 +167,7 @@ impl FlowchartMarkerEmissionPlan {
             #[cfg(test)]
             edges: FxHashMap::default(),
             edge_occurrences: FxHashMap::default(),
-            casing_edge_occurrences: FxHashMap::default(),
+            surface_occurrences: FxHashMap::default(),
             variants: IndexMap::new(),
             marker_style: MarkerStyle::Classic,
             base_marker_bytes: 0,
@@ -188,10 +193,14 @@ impl FlowchartMarkerEmissionPlan {
         for &edge in hierarchy_plan.ordered_edges() {
             Self::bind_path_sources_for(ctx, hierarchy_plan, edge.key)?;
             let edge_styles = ctx.edge_style_plan.edge_for(edge.key)?;
-            let marker_color = edge_styles
-                .edge_marker_color(hand_drawn)
-                .map(FlowchartMarkerColor::Source)
-                .or_else(|| fill_plan.ink(edge.key).map(FlowchartMarkerColor::Adaptive));
+            let marker_color = fill_plan
+                .ink(edge.key)
+                .map(FlowchartMarkerColor::Adaptive)
+                .or_else(|| {
+                    edge_styles
+                        .edge_marker_color(hand_drawn)
+                        .map(FlowchartMarkerColor::Source)
+                });
             let margin = neo && !ctx.edge_style_plan.animation_for(edge.key)?.is_active();
             plan.register_edge_with_identity(
                 edge.key,
@@ -202,10 +211,10 @@ impl FlowchartMarkerEmissionPlan {
                 ctx.diagram_type,
                 ctx.work_meter,
             )?;
-            if let Some(casing_color) = fill_plan.casing_color(edge.key) {
-                let hex = casing_color.to_string();
-                plan.register_casing_edge(
-                    edge.key,
+            for layer in fill_plan.layers(edge.key) {
+                let hex = layer.color.to_string();
+                plan.register_surface_edge(
+                    (edge.key, layer.clip),
                     edge.edge,
                     &hex,
                     margin,
@@ -327,13 +336,13 @@ impl FlowchartMarkerEmissionPlan {
 
     #[allow(
         clippy::too_many_arguments,
-        reason = "Casing marker registration parallels edge marker registration at one checked emission boundary."
+        reason = "Surface marker registration parallels edge marker registration at one checked emission boundary."
     )]
-    fn register_casing_edge(
+    fn register_surface_edge(
         &mut self,
-        key: crate::flowchart::FlowchartEdgeKey,
+        key: (crate::flowchart::FlowchartEdgeKey, usize),
         edge: &crate::flowchart::FlowEdge,
-        casing_color: &str,
+        color: &str,
         margin: bool,
         diagram_id: &str,
         diagram_type: &str,
@@ -346,7 +355,7 @@ impl FlowchartMarkerEmissionPlan {
             return Ok(());
         }
         let prepared_color = PreparedFlowchartMarkerColor::prepare(
-            FlowchartMarkerColor::Casing(casing_color),
+            FlowchartMarkerColor::Adaptive(color),
             work_meter,
         )?;
         let start = start_base
@@ -388,7 +397,7 @@ impl FlowchartMarkerEmissionPlan {
             .edge_marker_attribute_bytes
             .checked_add(references.serialized_bytes)
             .ok_or_else(|| work_meter.arithmetic_overflow())?;
-        self.casing_edge_occurrences.insert(key, references);
+        self.surface_occurrences.insert(key, references);
         Ok(())
     }
 
@@ -494,7 +503,7 @@ impl FlowchartMarkerEmissionPlan {
                     .len()
                     .checked_mul(2)
                     .ok_or_else(|| work_meter.arithmetic_overflow())?;
-                let color_scan_count = key.color_scan_count(self.marker_style);
+                let color_scan_count = key.color_scan_count();
                 let raw_color_bytes = raw_color
                     .len()
                     .checked_mul(color_scan_count)
@@ -603,15 +612,15 @@ impl FlowchartMarkerEmissionPlan {
         out.checkpoint()
     }
 
-    pub(in crate::svg::parity::flowchart) fn push_casing_marker_attributes_for(
+    pub(in crate::svg::parity::flowchart) fn push_surface_marker_attributes_for(
         &self,
         out: &mut impl crate::svg::parity::SvgOutput,
         diagram_id: &str,
         diagram_type: &str,
-        key: crate::flowchart::FlowchartEdgeKey,
+        key: (crate::flowchart::FlowchartEdgeKey, usize),
         work_meter: &crate::resources::OperationWorkMeter,
     ) -> crate::Result<()> {
-        let Some(references) = self.casing_edge_occurrences.get(&key) else {
+        let Some(references) = self.surface_occurrences.get(&key) else {
             return Ok(());
         };
         work_meter.check_svg_append(out.len(), references.serialized_bytes)?;
@@ -762,139 +771,6 @@ fn marker_color_id(color: &str) -> String {
     out
 }
 
-fn push_casing_marker(
-    out: &mut impl fmt::Write,
-    diagram_id: &str,
-    diagram_type: &str,
-    key: &FlowchartMarkerVariantKey,
-    color: Option<&str>,
-    marker_style: MarkerStyle,
-) {
-    use crate::number_format::canonical_number as number;
-
-    let spec = flowchart_marker_shape_spec(key.base, key.margin);
-    let [width, height] = spec.viewport.view_box;
-    let [reference_x, reference_y] = spec.viewport.reference;
-    let [marker_width, marker_height] = spec.viewport.size;
-    let scale = (marker_width / width).min(marker_height / height);
-    let custom_arrow = matches!(
-        key.base,
-        FlowchartMarkerBase::PointStart | FlowchartMarkerBase::PointEnd
-    )
-    .then(|| crate::theme::marker_svg::arrow_path(marker_style))
-    .flatten();
-    let base_stroke_vb = if custom_arrow.is_some() {
-        1.0
-    } else {
-        match (key.base, key.margin) {
-            (
-                FlowchartMarkerBase::PointStart
-                | FlowchartMarkerBase::PointEnd
-                | FlowchartMarkerBase::CircleStart
-                | FlowchartMarkerBase::CircleEnd,
-                true,
-            ) => 0.0,
-            (
-                FlowchartMarkerBase::PointStart
-                | FlowchartMarkerBase::PointEnd
-                | FlowchartMarkerBase::CircleStart
-                | FlowchartMarkerBase::CircleEnd,
-                false,
-            ) => 1.0,
-            (FlowchartMarkerBase::CrossStart | FlowchartMarkerBase::CrossEnd, false) => 2.0,
-            (FlowchartMarkerBase::CrossStart | FlowchartMarkerBase::CrossEnd, true) => 2.5,
-            (
-                FlowchartMarkerBase::OpenArrowStart
-                | FlowchartMarkerBase::OpenArrowEnd
-                | FlowchartMarkerBase::HollowCircleStart
-                | FlowchartMarkerBase::HollowCircleEnd,
-                _,
-            ) => 1.4,
-        }
-    };
-    let casing_stroke_vb = base_stroke_vb + super::edge_fill::CASING_WIDTH_ADD / scale;
-    let pad = (casing_stroke_vb / 2.0 + 1.0).ceil();
-    let padded_w = width + 2.0 * pad;
-    let padded_h = height + 2.0 * pad;
-
-    let _ = out.write_str(r#"<marker id=""#);
-    write_flowchart_marker_id_xml(
-        out,
-        diagram_id,
-        diagram_type,
-        key.base,
-        key.margin,
-        Some(key.color_id.as_str()),
-    );
-    let _ = write!(
-        out,
-        r#"" class="merman-edge-casing-marker" viewBox="0 0 {} {}" refX="{}" refY="{}" markerUnits="userSpaceOnUse" markerWidth="{}" markerHeight="{}" orient="auto">"#,
-        number(padded_w),
-        number(padded_h),
-        number(reference_x + pad),
-        number(reference_y + pad),
-        number(padded_w * scale),
-        number(padded_h * scale),
-    );
-
-    if let Some(path) = custom_arrow {
-        let start = matches!(key.base, FlowchartMarkerBase::PointStart);
-        let (translate, sx) = if start { (width, -width) } else { (0.0, width) };
-        let _ = write!(
-            out,
-            r#"<path d="{path}" transform="matrix({} 0 0 {} {} {})""#,
-            number(sx / 10.0),
-            number(height / 10.0),
-            number(translate + pad),
-            number(pad),
-        );
-    } else {
-        let geom = match (key.base, key.margin) {
-            (FlowchartMarkerBase::PointEnd, false) => r#"<path d="M 0 0 L 10 5 L 0 10 z""#,
-            (FlowchartMarkerBase::PointStart, false) => r#"<path d="M 0 5 L 10 10 L 10 0 z""#,
-            (FlowchartMarkerBase::PointEnd, true) => r#"<path d="M 0 0 L 11.5 7 L 0 14 z""#,
-            (FlowchartMarkerBase::PointStart, true) => r#"<polygon points="0,7 11.5,14 11.5,0""#,
-            (FlowchartMarkerBase::CircleEnd | FlowchartMarkerBase::CircleStart, _) => {
-                r#"<circle cx="5" cy="5" r="5""#
-            }
-            (FlowchartMarkerBase::CrossEnd | FlowchartMarkerBase::CrossStart, false) => {
-                r#"<path d="M 1,1 l 9,9 M 10,1 l -9,9""#
-            }
-            (FlowchartMarkerBase::CrossEnd | FlowchartMarkerBase::CrossStart, true) => {
-                r#"<path d="M 1,1 L 14,14 M 1,14 L 14,1""#
-            }
-            (FlowchartMarkerBase::OpenArrowEnd, _) => r#"<path d="M 1 1 L 11 6 L 1 11""#,
-            (FlowchartMarkerBase::OpenArrowStart, _) => r#"<path d="M 11 1 L 1 6 L 11 11""#,
-            (FlowchartMarkerBase::HollowCircleStart | FlowchartMarkerBase::HollowCircleEnd, _) => {
-                r#"<circle cx="5" cy="5" r="3.6""#
-            }
-        };
-        let _ = write!(
-            out,
-            r#"{geom} transform="translate({} {})""#,
-            number(pad),
-            number(pad)
-        );
-    }
-
-    let filled = casing_marker_filled(key.base, marker_style);
-    if let Some(color) = color {
-        let color = escape_xml_display(color);
-        if filled {
-            let _ = write!(out, r#" fill="{color}" stroke="{color}""#);
-        } else {
-            let _ = write!(out, r#" fill="none" stroke="{color}""#);
-        }
-    } else if !filled {
-        let _ = out.write_str(r#" fill="none""#);
-    }
-    let _ = write!(
-        out,
-        r#" stroke-width="{}" stroke-linecap="round" stroke-linejoin="round"/></marker>"#,
-        number(casing_stroke_vb),
-    );
-}
-
 fn push_extra_marker(
     out: &mut impl fmt::Write,
     diagram_id: &str,
@@ -913,10 +789,6 @@ fn push_extra_marker(
             merman_markup::sanitize::dompurify_normalize_dom_uri_attribute(raw_color);
         normalized_color.as_deref()
     };
-    if key.mode == FlowchartMarkerVariantMode::Casing {
-        push_casing_marker(out, diagram_id, diagram_type, key, color, marker_style);
-        return;
-    }
     push_colored_marker(out, diagram_id, diagram_type, key, color, marker_style);
 }
 

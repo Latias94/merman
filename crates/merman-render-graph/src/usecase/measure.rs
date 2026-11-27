@@ -477,6 +477,7 @@ pub(super) fn measure(
     let config = full_config.as_value();
     let sanitize =
         |text: &str| merman_markup::sanitize::sanitize_text(text, full_config.as_config());
+    let source_text = |text, kind| sanitize_source_label(text, kind, full_config);
     let min_width = number(config, "minNodeWidth", 120.0);
     let wrapping_width = Some(number(config, "wrappingWidth", 120.0));
     let html = config
@@ -521,8 +522,11 @@ pub(super) fn measure(
                 root_font_size,
             };
             // Sanitize before escaping or folding stereotypes, as UsecaseDB does.
-            let source_label = sanitize(&node.label);
-            let source_stereotype = node.stereotype.as_deref().map(sanitize);
+            let source_label = source_text(&node.label, node.label_type);
+            let source_stereotype = node
+                .stereotype
+                .as_deref()
+                .map(|text| source_text(text, UsecaseLabelType::Text));
             let folded_stereotype = !actor
                 && (node.kind == UsecaseNodeKind::UseCaseRect || !node.business)
                 && source_stereotype
@@ -633,7 +637,7 @@ pub(super) fn measure(
             root_font_size,
         };
         let main = label(
-            &sanitize(&note.label),
+            &source_text(&note.label, note.label_type),
             note.label_type,
             &style,
             wrapping_width,
@@ -755,7 +759,7 @@ pub(super) fn measure(
             root_font_size,
         };
         let main = label(
-            &sanitize(&boundary.label),
+            &source_text(&boundary.label, boundary.label_type),
             boundary.label_type,
             &style,
             Some(200.0),
@@ -847,7 +851,7 @@ pub(super) fn measure(
             label: text
                 .map(|text| {
                     let mut plan = label(
-                        &sanitize(text),
+                        &source_text(text, kind),
                         kind,
                         generic,
                         Some(200.0),

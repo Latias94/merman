@@ -1,6 +1,10 @@
+mod index;
+
+pub use index::BoundsIndex;
+
 use super::Bounds;
 use crate::work::{LayoutResult, Work, push, reserved};
-use crate::{LayoutError, NoopWorkControl, WorkError};
+use crate::{LayoutError, NoopWorkControl, WorkControl, WorkError};
 use std::ops::{ControlFlow, Range};
 
 const LEAF_SIZE: usize = 8;
@@ -130,6 +134,19 @@ impl<T> Bvh<T> {
     /// Partitions items in place, using the midpoint of their bounds on the longest axis.
     pub fn build(items: Vec<T>, bounds: impl Fn(&T) -> Bounds) -> Result<Self, LayoutError> {
         Self::build_with_work(items, bounds, &mut Work::new(&mut NoopWorkControl))
+    }
+
+    /// Builds the same tree with its sorting and traversal charged to the caller.
+    pub fn build_controlled(
+        items: Vec<T>,
+        bounds: impl Fn(&T) -> Bounds,
+        control: &mut impl WorkControl,
+    ) -> Result<Self, LayoutError> {
+        let mut work = Work::new(control);
+        work.check()?;
+        let tree = Self::build_with_work(items, bounds, &mut work)?;
+        work.finish()?;
+        Ok(tree)
     }
 
     pub(crate) fn build_with_work(

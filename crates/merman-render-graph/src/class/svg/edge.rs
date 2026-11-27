@@ -6,7 +6,7 @@ use super::bounds::{
     include_xywh,
 };
 use super::context::{ClassEmitCheckpoint, ClassRenderDetails};
-use super::defs::{class_marker_name, class_marker_paint_spec};
+use super::defs::{class_canonical_marker, class_marker_name, class_marker_paint_spec};
 use super::label::{
     ClassHtmlLabelSpec, class_html_div_style, class_math_html_label, render_class_html_label,
     write_class_svg_edge_text,
@@ -102,6 +102,7 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
     #[cfg(feature = "layout-shoal")]
     let mut paint_scratch = CanonicalPaintScratch::default();
     let uses_canonical_routes = ctx.uses_canonical_routes();
+    let sketch = ctx.relation_theme.sketch_edges;
 
     let edge_paths_start = ctx.timing.start();
     let ordered_edges = class_edge_render_order(ctx.edges, ctx.relation_index_by_id);
@@ -154,7 +155,7 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
         let canonical = ctx
             .canonical_routes
             .map(|routes| {
-                if ctx.look == "neo" {
+                if ctx.look == "neo" && !sketch {
                     paint_scratch.route.measure_length();
                 }
                 (routes.paint)(
@@ -253,7 +254,7 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
             detail.edge_curve += s.elapsed();
         }
         let rough_d = 'rough: {
-            if ctx.look != "handDrawn" {
+            if ctx.look != "handDrawn" && !sketch {
                 break 'rough None;
             }
             #[cfg(feature = "layout-shoal")]
@@ -262,6 +263,21 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
                 break 'rough Some((routes.rough_stroke)(
                     d,
                     geometry.markers,
+                    ctx.work_meter,
+                    &ctx.hand_drawn_seed,
+                )?);
+            }
+            if sketch {
+                let markers = relation.map_or_else(Default::default, |relation| {
+                    let neo = ctx.look == "neo";
+                    (
+                        class_canonical_marker(relation.relation.type1, true, neo),
+                        class_canonical_marker(relation.relation.type2, false, neo),
+                    )
+                });
+                break 'rough Some(merman_render_core::rough_svg::constrained_rough_edge_path(
+                    d,
+                    markers,
                     ctx.work_meter,
                     &ctx.hand_drawn_seed,
                 )?);
@@ -304,7 +320,7 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
         // path bbox plus a rotation-independent marker radius to cover its actual first/final
         // marker anchors without maintaining a second SVG path interpreter. Classic and ELK paths
         // retain one stable endpoint pair and can use the tighter rotated marker boxes below.
-        let stable_marker_points = rough_d.is_none() || uses_canonical_routes;
+        let stable_marker_points = rough_d.is_none() || uses_canonical_routes || sketch;
         let rough_marker_outset = if stable_marker_points {
             0.0
         } else {
@@ -444,7 +460,7 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
             );
         }
         edge_style_buf.clear();
-        if ctx.look == "neo" {
+        if ctx.look == "neo" && !sketch {
             #[cfg(feature = "layout-shoal")]
             let length = canonical.as_ref().and_then(|_| {
                 paint_scratch
@@ -470,10 +486,19 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
                 );
             }
         }
-        edge_style_buf.push_str(class_edge_path_style(
-            e.id.as_str(),
-            ctx.look == "handDrawn",
-        ));
+        if uses_canonical_routes {
+            if is_note_edge {
+                if !edge_style_buf.is_empty() && !edge_style_buf.ends_with(';') {
+                    edge_style_buf.push(';');
+                }
+                edge_style_buf.push_str("fill: none");
+            }
+        } else {
+            edge_style_buf.push_str(class_edge_path_style(
+                e.id.as_str(),
+                ctx.look == "handDrawn",
+            ));
+        }
         let path_style = if let Some(hopped_d) = hopped_d {
             merman_render_core::svg_edge_parity::line_hops::rewrite_style_after_line_hop(
                 &edge_style_buf,
@@ -483,7 +508,9 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
         } else {
             std::borrow::Cow::Borrowed(edge_style_buf.as_str())
         };
-        let _ = write!(out, r#" style="{}""#, escape_attr_display(&path_style));
+        if !uses_canonical_routes || !path_style.is_empty() {
+            let _ = write!(out, r#" style="{}""#, escape_attr_display(&path_style));
+        }
         out.push_str("/>");
         out.checkpoint()?;
     }

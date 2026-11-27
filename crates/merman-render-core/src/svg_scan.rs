@@ -1,5 +1,8 @@
 //! Lexical scanning and text handling for SVG postprocessing.
 
+#[cfg(feature = "svg-parse")]
+use std::{borrow::Cow, ops::Range};
+
 const POSTPROCESS_CHECKPOINT_BATCH: usize = 64;
 
 pub fn checkpoint_loop<E>(
@@ -12,11 +15,11 @@ pub fn checkpoint_loop<E>(
     Ok(())
 }
 
-fn pattern_prefix_table<E>(
+fn fill_pattern_prefix_table<E>(
     pattern: &[u8],
+    prefix: &mut [usize],
     checkpoint: &mut impl FnMut() -> Result<(), E>,
-) -> Result<Vec<usize>, E> {
-    let mut prefix = vec![0usize; pattern.len()];
+) -> Result<(), E> {
     let mut matched = 0usize;
     for index in 1..pattern.len() {
         checkpoint_loop(index, checkpoint)?;
@@ -28,7 +31,7 @@ fn pattern_prefix_table<E>(
             prefix[index] = matched;
         }
     }
-    Ok(prefix)
+    Ok(())
 }
 
 fn find_pattern_with_checkpoints<E>(
@@ -43,7 +46,16 @@ fn find_pattern_with_checkpoints<E>(
     }
 
     let needle = needle.as_bytes();
-    let prefix = pattern_prefix_table(needle, checkpoint)?;
+    // Tag and markup delimiters fit inline, including on the bounds scanner's hot path.
+    let mut short_prefix = [0; 8];
+    let mut long_prefix;
+    let prefix = if needle.len() <= short_prefix.len() {
+        &mut short_prefix[..needle.len()]
+    } else {
+        long_prefix = vec![0; needle.len()];
+        &mut long_prefix
+    };
+    fill_pattern_prefix_table(needle, prefix, checkpoint)?;
     let mut matched = 0usize;
     let mut last_match = None;
     for (index, byte) in haystack.bytes().enumerate() {
@@ -265,8 +277,13 @@ impl<'a> SvgTag<'a> {
         self.start
     }
 
+    /// The exclusive byte offset of the tag's end.
+    pub fn end(self) -> usize {
+        self.end + 1
+    }
+
     pub fn is_self_closing(self) -> bool {
-        self.raw().trim_end().ends_with("/>")
+        self.raw().ends_with("/>")
     }
 }
 
@@ -289,8 +306,7 @@ impl<'a> SvgTagScanner<'a> {
         self.cursor = self.source.floor_char_boundary(cursor);
     }
 
-    #[cfg(test)]
-    fn next(&mut self) -> Option<SvgTag<'a>> {
+    pub fn next_tag(&mut self) -> Option<SvgTag<'a>> {
         let mut checkpoint = || Ok::<(), std::convert::Infallible>(());
         match self.next_with_checkpoints(&mut checkpoint) {
             Ok(tag) => tag,
@@ -345,6 +361,27 @@ impl<'a> SvgTagScanner<'a> {
         }
         Ok(None)
     }
+}
+
+/// SVG containers whose descendants do not paint at their definition site.
+pub fn is_non_rendering_container(name: &str) -> bool {
+    matches!(
+        name,
+        "defs"
+            | "symbol"
+            | "clipPath"
+            | "mask"
+            | "marker"
+            | "pattern"
+            | "filter"
+            | "linearGradient"
+            | "radialGradient"
+            | "metadata"
+            | "title"
+            | "desc"
+            | "style"
+            | "script"
+    )
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -406,30 +443,32 @@ pub fn next_svg_quoted_attr_with_checkpoints<E>(
 }
 
 pub fn start_tag_name(tag: &str) -> Option<&str> {
-    let tag = tag.trim_start();
-    if !tag.starts_with('<')
-        || tag.starts_with("</")
-        || tag.starts_with("<!--")
-        || tag.starts_with("<!")
-        || tag.starts_with("<?")
+    let tag = tag.trim_start().strip_prefix('<')?.strip_suffix('>')?;
+    if !tag
+        .as_bytes()
+        .first()
+        .is_some_and(|byte| is_svg_attr_name_start_byte(*byte))
+        || (!tag.ends_with('/') && tag.trim_end().ends_with('/'))
     {
         return None;
     }
 
-    let start = 1;
-    let end = start
-        + tag[start..]
-            .find(|ch: char| ch.is_whitespace() || ch == '/' || ch == '>')
-            .unwrap_or(tag.len() - start);
-    (start < end).then_some(&tag[start..end])
+    let end = tag
+        .find(|ch: char| ch.is_whitespace() || ch == '/' || ch == '>')
+        .unwrap_or(tag.len());
+    (end > 0).then_some(&tag[..end])
 }
 
 pub fn end_tag_name(tag: &str) -> Option<&str> {
-    let tag = tag.trim_start().strip_prefix("</")?;
-    let end = tag
-        .find(|ch: char| ch.is_whitespace() || ch == '>')
-        .unwrap_or(tag.len());
-    (end > 0).then_some(&tag[..end])
+    let name = tag
+        .trim_start()
+        .strip_prefix("</")?
+        .strip_suffix('>')?
+        .trim_end();
+    let mut bytes = name.bytes();
+    (bytes.next().is_some_and(is_svg_attr_name_start_byte)
+        && bytes.all(is_svg_attr_name_continue_byte))
+    .then_some(name)
 }
 
 fn svg_quoted_attr_at(tag: &str, full_start: usize, name_start: usize) -> Option<SvgQuotedAttr> {
@@ -581,10 +620,38 @@ pub fn extract_quoted_attr<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
     Some(tag[start..end].trim())
 }
 
+pub fn extract_exact_quoted_attr<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
+    let (start, end) = find_quoted_attr_value_span_by(tag, |candidate| candidate == name)?;
+    Some(tag[start..end].trim())
+}
+
+pub fn extract_quoted_attr_with_checkpoints<'a, E>(
+    tag: &'a str,
+    name: &str,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Option<&'a str>, E> {
+    let mut cursor = 0;
+    while let Some(attr) = next_svg_quoted_attr_with_checkpoints(tag, cursor, checkpoint)? {
+        if tag[attr.name_start..attr.name_end].eq_ignore_ascii_case(name) {
+            return trim_with_checkpoints(&tag[attr.value_start..attr.value_end], checkpoint)
+                .map(Some);
+        }
+        cursor = attr.full_end;
+    }
+    Ok(None)
+}
+
 pub fn find_quoted_attr_value_span(tag: &str, name: &str) -> Option<(usize, usize)> {
+    find_quoted_attr_value_span_by(tag, |candidate| candidate.eq_ignore_ascii_case(name))
+}
+
+fn find_quoted_attr_value_span_by(
+    tag: &str,
+    matches_name: impl Fn(&str) -> bool,
+) -> Option<(usize, usize)> {
     let mut cursor = 0usize;
     while let Some(attr) = next_svg_quoted_attr(tag, cursor) {
-        if tag[attr.name_start..attr.name_end].eq_ignore_ascii_case(name) {
+        if matches_name(&tag[attr.name_start..attr.name_end]) {
             return Some((attr.value_start, attr.value_end));
         }
         cursor = attr.full_end;
@@ -621,6 +688,7 @@ pub fn set_or_insert_quoted_attr(tag: &str, name: &str, value: &str) -> String {
     out
 }
 
+#[cfg(feature = "svg-parse")]
 pub fn escape_xml_attr(value: &str) -> String {
     let mut checkpoint = || Ok::<(), std::convert::Infallible>(());
     match escape_xml_attr_with_checkpoints(value, &mut checkpoint) {
@@ -631,47 +699,182 @@ pub fn escape_xml_attr(value: &str) -> String {
 
 /// Reads logical XML stylesheet text exactly once before handing it to a CSS parser.
 /// CDATA stays literal, while XML references never enter CSS tokenization as source spelling.
+#[cfg(feature = "svg-parse")]
 pub fn decode_xml_style_text_with_checkpoints<'a, E>(
     serialized: &'a str,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<Option<std::borrow::Cow<'a, str>>, E> {
-    use quick_xml::events::Event;
-    checkpoint()?;
-    if !serialized.contains('&') && !serialized.contains('<') {
-        return Ok(Some(std::borrow::Cow::Borrowed(serialized)));
-    }
-    let mut reader = quick_xml::Reader::from_str(serialized);
-    let mut logical = String::with_capacity(serialized.len());
-    loop {
-        checkpoint()?;
-        let event = reader.read_event();
-        checkpoint()?;
-        match event {
-            Ok(Event::Text(text)) => logical.push_str(&text.xml10_content()),
-            Ok(Event::CData(text)) => logical.push_str(&text.xml10_content()),
-            Ok(Event::GeneralRef(reference)) => {
-                if let Ok(Some(character)) = reference.resolve_char_ref() {
-                    if !crate::xml::is_xml_1_0_char(character) {
-                        return Ok(None);
-                    }
-                    logical.push(character);
-                } else if let Some(value) =
-                    quick_xml::escape::resolve_xml_entity(reference.as_ref())
-                {
-                    logical.push_str(value);
-                } else {
-                    return Ok(None);
-                }
-            }
-            Ok(Event::Comment(_)) => {}
-            Ok(Event::Eof) => break,
-            _ => return Ok(None),
-        }
-    }
-    checkpoint()?;
-    Ok(Some(std::borrow::Cow::Owned(logical)))
+    XmlCssSource::new(serialized, CssXmlLocation::Stylesheet, checkpoint)
+        .map(|source| source.map(|source| source.logical))
 }
 
+#[cfg(feature = "svg-parse")]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum CssXmlLocation {
+    Attribute,
+    Stylesheet,
+}
+
+/// Logical CSS and its original XML spelling. Re-project edits without serializing unaffected
+/// entities, XML comments, or CDATA delimiters.
+#[cfg(feature = "svg-parse")]
+pub struct XmlCssSource<'a> {
+    source: &'a str,
+    logical: Cow<'a, str>,
+    location: CssXmlLocation,
+}
+
+#[cfg(feature = "svg-parse")]
+impl<'a> XmlCssSource<'a> {
+    pub fn new<E>(
+        source: &'a str,
+        location: CssXmlLocation,
+        checkpoint: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<Self>, E> {
+        checkpoint()?;
+        let logical = if source.contains(['&', '<'])
+            || (location == CssXmlLocation::Attribute && source.contains(['\r', '\n', '\t']))
+        {
+            let mut decoded = String::with_capacity(source.len());
+            if !visit_css_xml_fragments(source, location, checkpoint, |_, text| {
+                decoded.push_str(text);
+            })? {
+                return Ok(None);
+            }
+            Cow::Owned(decoded)
+        } else {
+            Cow::Borrowed(source)
+        };
+        Ok(Some(Self {
+            source,
+            logical,
+            location,
+        }))
+    }
+
+    pub fn logical(&self) -> &str {
+        &self.logical
+    }
+
+    /// Visits nonempty, ordered edits in source order. One logical range can cross several XML
+    /// fragments, so each callback also receives the index of its originating edit.
+    pub fn visit_source_spans<E>(
+        &self,
+        edits: &[Range<usize>],
+        checkpoint: &mut impl FnMut() -> Result<(), E>,
+        mut visit: impl FnMut(usize, Range<usize>),
+    ) -> Result<(), E> {
+        if edits.is_empty() {
+            return Ok(());
+        }
+        if matches!(self.logical, Cow::Borrowed(_)) {
+            for (index, edit) in edits.iter().enumerate() {
+                checkpoint_loop(index, checkpoint)?;
+                visit(index, edit.clone());
+            }
+            return Ok(());
+        }
+
+        let mut index = 0;
+        let mut logical_start = 0;
+        visit_css_xml_fragments(self.source, self.location, checkpoint, |source, text| {
+            let logical_end = logical_start + text.len();
+            while let Some(edit) = edits.get(index).filter(|edit| edit.start < logical_end) {
+                // References and normalized line endings are each one logical character.
+                let range = if source.len() == text.len() {
+                    let start = edit.start.max(logical_start) - logical_start;
+                    let end = edit.end.min(logical_end) - logical_start;
+                    source.start + start..source.start + end
+                } else {
+                    source.clone()
+                };
+                visit(index, range);
+                if edit.end > logical_end {
+                    break;
+                }
+                index += 1;
+            }
+            logical_start = logical_end;
+        })?;
+        Ok(())
+    }
+}
+
+#[cfg(feature = "svg-parse")]
+fn visit_css_xml_fragments<E>(
+    source: &str,
+    location: CssXmlLocation,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+    mut visit: impl FnMut(Range<usize>, &str),
+) -> Result<bool, E> {
+    use quick_xml::events::Event;
+
+    let mut reader = quick_xml::Reader::from_str(source);
+    loop {
+        checkpoint()?;
+        let start = reader.buffer_position() as usize;
+        let event = reader.read_event();
+        let end = reader.buffer_position() as usize;
+        checkpoint()?;
+        let fragment = match event {
+            Ok(Event::Text(_)) => start..end,
+            Ok(Event::CData(_)) if location == CssXmlLocation::Stylesheet => {
+                start + "<![CDATA[".len()..end - "]]>".len()
+            }
+            Ok(Event::GeneralRef(reference)) => {
+                let Ok(character) = crate::svg_xml::resolve_xml_reference_value(&reference) else {
+                    return Ok(false);
+                };
+                visit(start..end, character.encode_utf8(&mut [0; 4]));
+                continue;
+            }
+            Ok(Event::Comment(_) | Event::PI(_)) if location == CssXmlLocation::Stylesheet => {
+                continue;
+            }
+            Ok(Event::Eof) => return Ok(true),
+            _ => return Ok(false),
+        };
+        visit_normalized_css_xml_literal(source, fragment, location, checkpoint, &mut visit)?;
+    }
+}
+
+#[cfg(feature = "svg-parse")]
+fn visit_normalized_css_xml_literal<E>(
+    source: &str,
+    fragment: Range<usize>,
+    location: CssXmlLocation,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+    visit: &mut impl FnMut(Range<usize>, &str),
+) -> Result<(), E> {
+    let attribute = location == CssXmlLocation::Attribute;
+    // XML normalizes literal CRLF, and literal attribute whitespace becomes spaces.
+    // Character references take a separate path and retain their values.
+    let mut from = fragment.start;
+    let text = &source[fragment.clone()];
+    if attribute || text.contains('\r') {
+        for (index, byte) in text.bytes().enumerate() {
+            checkpoint_loop(index, checkpoint)?;
+            let at = fragment.start + index;
+            if at < from || !(byte == b'\r' || (attribute && matches!(byte, b'\t' | b'\n'))) {
+                continue;
+            }
+            if at > from {
+                visit(from..at, &source[from..at]);
+            }
+            from = at + 1;
+            if byte == b'\r' && from < fragment.end && source.as_bytes()[from] == b'\n' {
+                from += 1;
+            }
+            visit(at..from, if attribute { " " } else { "\n" });
+        }
+    }
+    if from < fragment.end {
+        visit(from..fragment.end, &source[from..fragment.end]);
+    }
+    Ok(())
+}
+
+#[cfg(feature = "svg-parse")]
 pub fn escape_xml_text_with_checkpoints<E>(
     value: &str,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
@@ -693,6 +896,7 @@ pub fn escape_xml_text_with_checkpoints<E>(
     Ok(out)
 }
 
+#[cfg(feature = "svg-parse")]
 pub fn escape_xml_attr_with_checkpoints<E>(
     value: &str,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
@@ -728,10 +932,11 @@ mod tests {
         let text_start = input.find('\u{03bb}').unwrap();
         scanner.skip_to(text_start + 1);
         assert_eq!(scanner.cursor(), text_start);
-        assert_eq!(scanner.next().unwrap().raw(), "</tag>");
+        assert_eq!(scanner.next_tag().unwrap().raw(), "</tag>");
     }
 
     #[test]
+    #[cfg(feature = "svg-parse")]
     fn logical_stylesheet_xml_text_decodes_only_xml_references_once() {
         let mut checkpoint = || Ok::<(), std::convert::Infallible>(());
         for (serialized, expected) in [
@@ -758,6 +963,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "svg-parse")]
     fn logical_stylesheet_xml_text_observes_cancellation_between_reference_events() {
         let serialized = "&amp;".repeat(256);
         let mut checkpoints = 0;
@@ -806,24 +1012,24 @@ mod tests {
         let svg = r#"<svg><g class="a > b"><rect width="1"/></g><!-- > <style>x</style> --><![CDATA[</style>]]></svg>"#;
         let mut scanner = SvgTagScanner::new(svg);
 
-        let svg_tag = scanner.next().unwrap();
+        let svg_tag = scanner.next_tag().unwrap();
         assert_eq!(svg_tag.raw(), "<svg>");
         assert_eq!(svg_tag.start(), 0);
         assert!(!svg_tag.is_self_closing());
 
-        let g_tag = scanner.next().unwrap();
+        let g_tag = scanner.next_tag().unwrap();
         assert_eq!(g_tag.raw(), r#"<g class="a > b">"#);
 
-        let rect_tag = scanner.next().unwrap();
+        let rect_tag = scanner.next_tag().unwrap();
         assert!(rect_tag.is_self_closing());
 
-        let g_close = scanner.next().unwrap();
+        let g_close = scanner.next_tag().unwrap();
         assert_eq!(g_close.raw(), "</g>");
 
-        let comment = scanner.next().unwrap();
+        let comment = scanner.next_tag().unwrap();
         assert_eq!(comment.raw(), "<!-- > <style>x</style> -->");
 
-        let cdata = scanner.next().unwrap();
+        let cdata = scanner.next_tag().unwrap();
         assert_eq!(cdata.raw(), "<![CDATA[</style>]]>");
     }
 }

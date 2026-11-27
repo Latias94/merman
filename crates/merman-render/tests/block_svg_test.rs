@@ -85,6 +85,80 @@ fn native_theme_v2_block_preserves_authored_fill_and_marker_references() {
 
 #[cfg(feature = "layout-shoal")]
 #[test]
+fn shoal_block_paints_double_circle_opacity_once_and_keeps_definition_ids_unique() {
+    let source = r#"---
+config:
+  layout: shoal
+  look: neo
+  themeVariables:
+    useGradient: true
+---
+block
+  columns 2
+  gradient((("Outer"))) B["Inner"]
+  gradient --> B
+  style gradient opacity:0.5,fill-opacity:0.75
+"#;
+    let svg = render_block_svg_from_text(source);
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let rebased = merman_render::svg::rebase_svg_ids(&svg, "preview", &session).unwrap();
+    let doc = roxmltree::Document::parse(&rebased).unwrap();
+    let ids = doc
+        .descendants()
+        .filter_map(|node| node.attribute("id"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        ids.iter().collect::<std::collections::HashSet<_>>().len(),
+        ids.len()
+    );
+    let circle = doc
+        .descendants()
+        .find(|node| node.attribute("class") == Some("outer-circle"))
+        .unwrap();
+    let group = circle.parent_element().unwrap();
+    let opacity = |node: roxmltree::Node<'_, '_>| {
+        node.attribute("style")
+            .unwrap_or_default()
+            .split(';')
+            .any(|declaration| declaration.starts_with("opacity:0.5"))
+    };
+    assert!(opacity(group));
+    for child in group.children().filter(roxmltree::Node::is_element) {
+        assert!(!opacity(child));
+        assert!(
+            child
+                .attribute("style")
+                .unwrap_or_default()
+                .contains("fill-opacity:0.75")
+        );
+    }
+    let edge = doc
+        .descendants()
+        .find(|node| node.attribute("data-et") == Some("edge"))
+        .unwrap();
+    assert!(
+        !edge
+            .attribute("style")
+            .unwrap_or_default()
+            .contains("undefined")
+    );
+    let classes = edge.attribute("class").unwrap();
+    assert_eq!(classes.matches("edge-thickness-normal").count(), 1);
+    assert_eq!(classes.matches("edge-pattern-solid").count(), 1);
+    let reference = edge.attribute("marker-end").unwrap();
+    let marker_id = reference
+        .strip_prefix("url(#")
+        .unwrap()
+        .strip_suffix(')')
+        .unwrap();
+    assert!(
+        doc.descendants()
+            .any(|node| node.has_tag_name("marker") && node.attribute("id") == Some(marker_id))
+    );
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
 fn shoal_block_honors_native_styles_on_routed_edges() {
     let source = "---\nconfig:\n  layout: shoal\n---\nblock\ncolumns 3\nA[\"Alpha\"] X[\"Obstacle\"] B[\"Beta\"]\nA --> B\n";
     let parsed = MermaidEngine::new()

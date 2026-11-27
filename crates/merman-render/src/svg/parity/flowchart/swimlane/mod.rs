@@ -8,13 +8,13 @@ use rustc_hash::FxHashMap;
 
 mod canonical_line_hops;
 mod cluster;
-#[cfg(feature = "layout-shoal")]
-pub(super) mod edge_contrast;
 mod endpoint_clip;
 
 pub(super) use endpoint_clip::clip_swimlane_endpoints;
 
 pub(super) use canonical_line_hops::apply_canonical_line_hops;
+#[cfg(feature = "layout-shoal")]
+pub(super) use cluster::lane_color_slot;
 pub(super) use cluster::render_swimlane_cluster;
 
 fn is_pool_cluster(ctx: &FlowchartRenderCtx<'_>, id: &str) -> bool {
@@ -71,6 +71,7 @@ pub(super) fn svg_label_ink(
     ctx: &FlowchartRenderCtx<'_>,
     id: &str,
     style: &FlowchartCompiledStyles,
+    default_fill: Option<crate::theme::Color>,
     default_ink: &str,
     text_style: &crate::text::TextStyle,
 ) -> Result<Option<std::borrow::Cow<'static, str>>> {
@@ -87,15 +88,11 @@ pub(super) fn svg_label_ink(
             .terminal_foreground;
         return Ok(ink.map(|ink| Cow::Owned(ink.value().to_owned())));
     }
-    if ctx.compatibility.look.is_hand_drawn() {
-        return Ok(None);
-    }
-    let Some((fill, default_ink)) = style
-        .fill
-        .as_deref()
-        .and_then(literal_fill)
-        .zip(literal_fill(default_ink))
-    else {
+    let fill = match style.fill.as_deref() {
+        Some(fill) => literal_fill(fill),
+        None => default_fill,
+    };
+    let Some((fill, default_ink)) = fill.zip(literal_fill(default_ink)) else {
         return Ok(None);
     };
     let mut backdrop = fill.composite(Color::TRANSPARENT, style.fill_opacity);
@@ -104,7 +101,10 @@ pub(super) fn svg_label_ink(
         let Some(id) = parent else { break };
         ctx.work_meter.charge_emit_work(1)?;
         let terminal = ctx.prepared_nodes.cluster(id)?;
-        let fallback = ctx.native.map(|native| native.container);
+        let fallback = cluster::lane_color_slot(ctx, id)
+            .and_then(|slot| ctx.palette.background_color(slot))
+            .and_then(literal_fill)
+            .or_else(|| ctx.native.map(|native| native.container));
         let layer = match terminal.compiled.fill.as_deref() {
             Some(fill) => literal_fill(fill),
             None => fallback.or_else(|| literal_fill(&terminal.fill)),
@@ -114,11 +114,15 @@ pub(super) fn svg_label_ink(
         backdrop = backdrop.composite(layer, 1.0);
         parent = ctx.parent.get(id).copied();
     }
-    let canvas = ctx.native.map(|native| native.canvas).or_else(|| {
-        ctx.config
-            .get_str("themeVariables.background")
-            .and_then(literal_fill)
-    });
+    let canvas = ctx
+        .native
+        .map(|native| native.canvas)
+        .or_else(|| {
+            ctx.config
+                .get_str("themeVariables.background")
+                .and_then(literal_fill)
+        })
+        .or_else(|| Some(super::render::compat_theme_canvas_fallback(ctx)));
     let backdrop = canvas.map_or(backdrop, |canvas| backdrop.composite(canvas, 1.0));
     Ok(adaptive_text_ink(backdrop, default_ink).map(Cow::Borrowed))
 }
@@ -132,7 +136,7 @@ pub(super) fn write_mermaid_svg_edge_label_background(
     use crate::theme::edge_label_bg::{literal_fill, write_backplate};
     use merman_theme_contract::v2::EdgeLabelBackground;
 
-    if ctx.node_html_labels || !ctx.layout.route_contract.is_canonical_axis() {
+    if ctx.edge_html_labels || !ctx.layout.route_contract.is_canonical_axis() {
         return;
     }
     if let Some(fill) = literal_fill(&ctx.compatibility.edge_label_background) {

@@ -157,45 +157,51 @@ fn native_theme_v2_swimlane_layers_container_and_title_paints_beneath_authored_s
 
 #[cfg(feature = "layout-shoal")]
 #[test]
-fn shoal_swimlane_adapts_svg_ink_to_authored_lane_and_node_fills() {
+fn shoal_swimlane_adapts_html_and_svg_ink_to_authored_fills() {
     use merman_render::theme::{Appearance, BuiltinPreset, Color};
 
     let theme = ThemeCompiler::new()
         .compile_preset(BuiltinPreset::Studio, Some(Appearance::Dark))
         .unwrap();
-    let svg = render(
-        "swimlane-beta LR\n\
-         subgraph Lane[Light custom lane]\nA[Verify Checksum] --> B[Retain authored ink]\nend\n\
-         style Lane fill:#FEF9C3\nstyle A fill:#FFFBEB\nstyle B fill:#FFFBEB,color:#624D00",
-        json!({"layout":"shoal", "htmlLabels":false, "flowchart":{"htmlLabels":false}}),
-        Some(NativeTheme::new(theme)),
-    );
-    let document = Document::parse(&svg).unwrap();
-    for (id, fill) in [("Lane", "#FEF9C3"), ("A", "#FFFBEB"), ("B", "#FFFBEB")] {
-        let text = document
-            .descendants()
-            .find(|node| node.attribute("data-id") == Some(id))
-            .unwrap()
-            .descendants()
-            .find(|node| node.has_tag_name("text"))
-            .unwrap();
-        let style = text.attribute("style").unwrap();
-        let ink = style
-            .split(';')
-            .find_map(|declaration| declaration.strip_prefix("fill:"))
-            .map(|value| value.split_whitespace().next().unwrap());
-        if id == "B" {
-            // The authored foreground may live on a text run rather than the text element.
-            assert!(
-                text.descendants().any(|run| {
-                    run.attribute("style")
-                        .is_some_and(|style| style.to_ascii_lowercase().contains("#624d00"))
-                }),
-                "missing authored foreground in {id}"
-            );
-        } else {
-            let ink = Color::parse(ink.expect("adaptive SVG text fill")).unwrap();
+    let source = "swimlane-beta LR\n\
+        subgraph Lane[Light custom lane]\nA[Verify Checksum] --> B[Retain authored ink]\nend\n\
+        style Lane fill:#FEF9C3\nstyle A fill:#FFFBEB\nstyle B fill:#FFFBEB,color:#624D00";
+    for html in [false, true] {
+        let svg = render(
+            source,
+            json!({"layout":"shoal", "htmlLabels":html, "flowchart":{"htmlLabels":html}}),
+            Some(NativeTheme::new(theme.clone())),
+        );
+        let document = Document::parse(&svg).unwrap();
+        for (id, fill) in [("Lane", "#FEF9C3"), ("A", "#FFFBEB"), ("B", "#FFFBEB")] {
+            let text = document
+                .descendants()
+                .find(|node| node.attribute("data-id") == Some(id))
+                .unwrap()
+                .descendants()
+                .find(|node| {
+                    if html {
+                        node.has_tag_name("span") && node.attribute("class") == Some("nodeLabel")
+                    } else {
+                        node.has_tag_name("text")
+                    }
+                })
+                .unwrap();
+            let ink = text
+                .descendants()
+                .filter_map(|node| node.attribute("style"))
+                .flat_map(|style| style.split(';'))
+                .filter_map(|declaration| declaration.split_once(':'))
+                .filter(|(property, _)| property.trim() == if html { "color" } else { "fill" })
+                .filter_map(|(_, value)| {
+                    Color::parse(value.trim().trim_end_matches("!important").trim()).ok()
+                })
+                .next_back()
+                .unwrap_or_else(|| panic!("missing ink for {id} (htmlLabels={html})"));
             assert!(ink.contrast(Color::parse(fill).unwrap()) >= 4.5, "{id}");
+            if id == "B" {
+                assert_eq!(ink, Color::parse("#624D00").unwrap());
+            }
         }
     }
 }
@@ -250,7 +256,7 @@ style N3 fill:#FFFBEB,stroke:#D97706";
             .flat_map(|style| style.split(';'))
             .filter_map(|declaration| declaration.split_once(':'))
             .rfind(|(name, _)| name.trim() == property)
-            .map(|(_, value)| value.split_whitespace().next().unwrap())
+            .map(|(_, value)| value.trim().trim_end_matches("!important").trim_end())
             .or_else(|| node.attribute(property))
             .map(|value| Color::parse(value).unwrap())
     };
@@ -265,6 +271,37 @@ style N3 fill:#FFFBEB,stroke:#D97706";
     let mut measured = Vec::new();
     let mut record = |name: String, ink: Color, fill: Color| {
         measured.push((name, ink.contrast(fill)));
+    };
+    let visible_shaft = |base, point: kurbo::Point| {
+        let mut path = base;
+        let mut layer = Node::next_sibling_element(&base);
+        while let Some(group) =
+            layer.filter(|node| node.attribute("class") == Some("merman-edge-surface-ink"))
+        {
+            let clip_id = group
+                .attribute("clip-path")
+                .unwrap()
+                .strip_prefix("url(#")
+                .unwrap()
+                .strip_suffix(')')
+                .unwrap();
+            let clip = document
+                .descendants()
+                .find(|node| node.has_tag_name("clipPath") && node.attribute("id") == Some(clip_id))
+                .unwrap()
+                .first_element_child()
+                .unwrap();
+            let number = |attribute| clip.attribute(attribute).unwrap().parse::<f64>().unwrap();
+            let bounds = Rect::from_origin_size(
+                (number("x"), number("y")),
+                (number("width"), number("height")),
+            );
+            if bounds.contains(point) {
+                path = group.first_element_child().unwrap();
+            }
+            layer = group.next_sibling_element();
+        }
+        path
     };
     let lanes = ["L1", "L2"].map(|id| {
         let group = owner(id, "cluster");
@@ -321,22 +358,22 @@ style N3 fill:#FFFBEB,stroke:#D97706";
 
         let path = owner(label_group.attribute("data-id").unwrap(), "edge");
         let geometry = BezPath::from_svg(path.attribute("d").unwrap()).unwrap();
-        let stroke = paint(path, "stroke").unwrap_or(default_connector);
         for &lane in shaft_lanes {
             let (bounds, fill) = lanes[lane];
-            assert!(
-                geometry.segments().any(|segment| {
-                    [0.25, 0.5, 0.75]
-                        .into_iter()
-                        .any(|t| bounds.contains(segment.eval(t)))
-                }),
-                "{label} must exercise lane {lane}"
-            );
+            let point = geometry
+                .segments()
+                .flat_map(|segment| [0.25, 0.5, 0.75].map(|t| segment.eval(t)))
+                .find(|&point| bounds.contains(point))
+                .unwrap_or_else(|| panic!("{label} must exercise lane {lane}"));
+            let stroke = paint(visible_shaft(path, point), "stroke").unwrap_or(default_connector);
             record(format!("{label} shaft on lane {lane}"), stroke, fill);
         }
 
         let (bounds, fill) = lanes[arrow_lane];
-        assert!(bounds.contains(geometry.segments().last().unwrap().end()));
+        let end = geometry.segments().last().unwrap().end();
+        assert!(bounds.contains(end));
+        let path = visible_shaft(path, end);
+        let stroke = paint(path, "stroke").unwrap_or(default_connector);
         let marker_id = path
             .attribute("marker-end")
             .unwrap()

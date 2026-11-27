@@ -1,7 +1,13 @@
-use merman_model::presentation::PresentationConfig;
-use serde_json::Value;
-
-use crate::config::{config_bool, value_at};
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-mindmap",
+    feature = "diagram-swimlane"
+))]
+use {
+    crate::config::{config_bool, value_at},
+    merman_model::presentation::PresentationConfig,
+    serde_json::Value,
+};
 
 pub(super) const DEFAULT_LANE_ID: &str = "__swimlane_default__";
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -40,6 +46,11 @@ pub(super) struct SwimlaneConfig {
     pub automatic_lane_ordering: bool,
 }
 
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-mindmap",
+    feature = "diagram-swimlane"
+))]
 fn number_at(root: &Value, path: &[&str]) -> Option<f64> {
     let value = value_at(root, path)?;
     value.as_f64().or_else(|| {
@@ -49,6 +60,11 @@ fn number_at(root: &Value, path: &[&str]) -> Option<f64> {
     })
 }
 
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-mindmap",
+    feature = "diagram-swimlane"
+))]
 impl SwimlaneConfig {
     pub fn from_config(config: &PresentationConfig) -> Self {
         let root = config.as_value();

@@ -1,9 +1,10 @@
 //! Flowchart v2 person shape.
 
 use crate::svg::parity::flowchart::escape_attr;
-use crate::svg::parity::{fmt, fmt_display};
+use crate::svg::parity::fmt;
 
 use super::super::geom::{path_from_points, rounded_rect_points};
+use super::super::helpers;
 use super::super::roughjs::{roughjs_paths_for_circle, roughjs_paths_for_hand_drawn_svg_path};
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_person(
@@ -19,7 +20,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_person(
         let _ = write!(
             out,
             r#"<g class="basic label-container" style="{}">"#,
-            escape_attr(common.rough_group_style)
+            escape_attr(helpers::hand_drawn_group_style(common))
         );
     } else {
         out.push_str(r#"<g class="basic label-container">"#);
@@ -36,22 +37,13 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_person(
                 )
             })
         {
-            let _ = write!(
-                out,
-                r#"<path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/>"#,
-                escape_attr(&fill_d),
-                escape_attr(common.fill_color),
-                escape_attr(&stroke_d),
-                escape_attr(common.stroke_color),
-                fmt_display(common.stroke_width as f64),
-                escape_attr(common.stroke_dasharray),
-            );
+            helpers::write_hand_drawn_path_pair(out, common, &body_path, &fill_d, &stroke_d);
         } else {
             let _ = write!(
                 out,
                 r#"<path d="{}" style="{}"/>"#,
                 escape_attr(&body_path),
-                escape_attr(common.style),
+                escape_attr(&helpers::grouped_shape_child_style(common)),
             );
         }
         if let Some((fill_d, stroke_d)) =
@@ -68,22 +60,23 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_person(
         {
             let _ = write!(
                 out,
-                r#"<g transform="translate(0,{})"><path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"#,
+                r#"<g transform="translate(0,{})">"#,
                 fmt(head_center_y),
-                escape_attr(&fill_d),
-                escape_attr(common.fill_color),
-                escape_attr(&stroke_d),
-                escape_attr(common.stroke_color),
-                fmt_display(common.stroke_width as f64),
-                escape_attr(common.stroke_dasharray),
             );
+            let head = if common.solid_rough_fill {
+                helpers::circle_outline(head_radius)
+            } else {
+                String::new()
+            };
+            helpers::write_hand_drawn_path_pair(out, common, &head, &fill_d, &stroke_d);
+            out.push_str("</g>");
         } else {
             let _ = write!(
                 out,
                 r#"<circle cx="0" cy="{}" r="{}" style="{}"/>"#,
                 fmt(head_center_y),
                 fmt(head_radius),
-                escape_attr(common.style),
+                escape_attr(&helpers::grouped_shape_child_style(common)),
             );
         }
     } else {

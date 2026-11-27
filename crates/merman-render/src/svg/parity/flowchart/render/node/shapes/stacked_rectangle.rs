@@ -12,22 +12,8 @@ fn write_stacked_rectangle_path_group(
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     fill_d: &str,
     stroke_d: &str,
-    hand_drawn: bool,
+    style: &str,
 ) {
-    if hand_drawn {
-        let _ = write!(
-            out,
-            r#"<g><path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"#,
-            escape_attr(fill_d),
-            escape_attr(common.fill_color),
-            escape_attr(stroke_d),
-            escape_attr(common.stroke_color),
-            fmt_display(common.stroke_width as f64),
-            escape_attr(common.stroke_dasharray),
-        );
-        return;
-    }
-
     let _ = write!(
         out,
         r#"<g><path d="{} {}" fill="{}" fill-opacity="1" stroke="{}" stroke-opacity="1" stroke-width="{}"{} /></g>"#,
@@ -36,7 +22,7 @@ fn write_stacked_rectangle_path_group(
         escape_attr(common.fill_color),
         escape_attr(common.stroke_color),
         fmt_display(common.stroke_width as f64),
-        OptionalStyleAttr(common.style),
+        OptionalStyleAttr(style),
     );
 }
 
@@ -51,7 +37,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stacked_rectangle(
         let _ = write!(
             out,
             r#"<g class="basic label-container outer-path" style="{}">"#,
-            escape_attr(common.rough_group_style),
+            escape_attr(helpers::hand_drawn_group_style(common)),
         );
     } else {
         out.push_str(r#"<g class="basic label-container outer-path">"#);
@@ -73,9 +59,16 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stacked_rectangle(
         };
 
         if let Some((fill_d, stroke_d)) = paths {
-            write_stacked_rectangle_path_group(out, common, &fill_d, &stroke_d, hand_drawn);
+            if hand_drawn {
+                out.push_str("<g>");
+                helpers::write_hand_drawn_path_pair(out, common, path_data, &fill_d, &stroke_d);
+                out.push_str("</g>");
+            } else {
+                write_stacked_rectangle_path_group(out, common, &fill_d, &stroke_d, common.style);
+            }
         } else if hand_drawn {
-            write_stacked_rectangle_path_group(out, common, path_data, path_data, false);
+            let style = helpers::grouped_shape_child_style(common);
+            write_stacked_rectangle_path_group(out, common, path_data, path_data, &style);
         }
     }
     out.push_str("</g>");

@@ -134,6 +134,15 @@ fn assert_styles(diagram: &str, config: &str, count: usize) -> (Vec<Edge>, Vec<E
             .all(|(a, b)| a.points == b.points),
         "{diagram}: sketch must use the same route knots as straight"
     );
+    for edge in &sketch {
+        assert!(
+            edge.path
+                .segments()
+                .any(|segment| matches!(segment, PathSeg::Cubic(_))),
+            "{diagram}: sketch stroke missing on {}",
+            edge.id,
+        );
+    }
     assert_linear(&orthogonal, true, diagram);
     assert_linear(&straight, false, diagram);
     (curved, orthogonal, straight)

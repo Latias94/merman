@@ -10,6 +10,7 @@ use crate::{Error, Result};
 use kurbo::{Rect, Vec2};
 use merman_render_core::rough_svg::constrained_rough_edge_path;
 use merman_render_graph::er::er_marker_paint_bounds;
+use merman_theme_contract::v2::EdgeStyle;
 use roughr::core::RoughRandomness;
 
 pub(super) struct PaintedEdge<'points> {
@@ -51,7 +52,8 @@ pub(super) fn paint_edge<'points>(
         scratch,
     )?;
     let path = geometry.path;
-    let (d, path_bounds) = if look == "handDrawn" {
+    let sketch = native.is_some_and(|theme| theme.edge_style == EdgeStyle::Sketch);
+    let (d, path_bounds) = if sketch || look == "handDrawn" {
         work_meter.charge(path.d.len().max(1))?;
         let d = constrained_rough_edge_path(&path.d, geometry.markers, work_meter, randomness)?;
         let bounds = svg_path_bounds_from_d(&d).ok_or_else(|| Error::InvalidModel {

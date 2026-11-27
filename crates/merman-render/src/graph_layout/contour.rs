@@ -18,6 +18,13 @@ mod flowchart;
 #[cfg(all(feature = "diagram-usecase", feature = "layout-shoal"))]
 mod usecase;
 
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-state",
+    feature = "diagram-usecase"
+))]
 const ROUNDED_PORT_FRACTION: f64 = 0.55;
 
 /// The span is a full width (top/bottom) or height (left/right), centered on the port anchor.
@@ -55,6 +62,13 @@ impl ShapePortProfile {
         )
     }
 
+    #[cfg(any(
+        feature = "diagram-agentflow",
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-state",
+        feature = "diagram-usecase"
+    ))]
     pub(crate) fn ellipse(width: f64, height: f64) -> Self {
         Self::new(
             Outline::ellipse(width, height),
@@ -63,6 +77,12 @@ impl ShapePortProfile {
         )
     }
 
+    #[cfg(any(
+        feature = "diagram-agentflow",
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-state"
+    ))]
     pub(crate) fn diamond(width: f64, height: f64) -> Self {
         Self::new(Outline::diamond(width, height, 0.0), 0.0, 0.0)
     }
@@ -88,6 +108,13 @@ impl ShapePortProfile {
     }
 
     /// Offset from the top of the measured box for an icon's left/right port anchor.
+    #[cfg(any(
+        feature = "diagram-agentflow",
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-c4",
+        feature = "diagram-state"
+    ))]
     pub(crate) fn anchor_y(&self) -> Option<f64> {
         self.anchor_y
     }
@@ -184,6 +211,11 @@ impl ShapePortProfile {
     }
 }
 
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
 pub(crate) fn inset_endpoints(
     points: &mut [RoutePoint],
     source: (&ShapePortProfile, &LayoutPoint, Side),
@@ -196,6 +228,10 @@ pub(crate) fn inset_endpoints(
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[allow(
+    dead_code,
+    reason = "Each family constructs only the outlines used by its shapes."
+)]
 enum Outline {
     /// Includes a sharp rectangle, ellipse and elliptical cylinder caps as limiting cases.
     Box {
@@ -215,6 +251,10 @@ enum Outline {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[allow(
+    dead_code,
+    reason = "Flowchart-derived shapes construct line and arc outlines."
+)]
 enum Edge {
     Line(Point),
     Arc(Arc, Point),
@@ -299,10 +339,23 @@ impl Outline {
         }
     }
 
+    #[cfg(any(
+        feature = "diagram-agentflow",
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-state",
+        feature = "diagram-usecase"
+    ))]
     fn ellipse(w: f64, h: f64) -> Self {
         Self::rect(w, h, w * 0.5, h * 0.5)
     }
 
+    #[cfg(any(
+        feature = "diagram-agentflow",
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-state"
+    ))]
     fn diamond(w: f64, h: f64, cx: f64) -> Self {
         Self::Polygon(vec![
             (cx, -h / 2.0),
@@ -312,6 +365,11 @@ impl Outline {
         ])
     }
 
+    #[cfg(any(
+        feature = "diagram-agentflow",
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane"
+    ))]
     fn polygon_at(points: impl IntoIterator<Item = (f64, f64)>, dx: f64, dy: f64) -> Self {
         Self::Polygon(points.into_iter().map(|(x, y)| (x + dx, y + dy)).collect())
     }

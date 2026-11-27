@@ -150,6 +150,9 @@ pub(super) fn write_class_css(
         label_background,
         id.as_ref()
     );
+    if native.is_none() && note_text != class_text {
+        let _ = write!(out, "#{id} .noteLabel text{{fill:{note_text};}}");
+    }
     out.checkpoint()?;
     let _ = write!(
         out,

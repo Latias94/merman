@@ -2,7 +2,7 @@ use super::geometry::{SEQUENCE_GLYPH_BAND_HEIGHT, SequenceActorBands};
 use merman_render_core::number_format::canonical_number as fmt;
 use merman_render_core::svg_css::{SvgId, scoped_svg_id, scoped_svg_url};
 use merman_render_core::svg_output::SvgOutput;
-use merman_render_core::xml::{escape_attr, escape_attr_display, escape_xml};
+use merman_render_core::xml::{escape_attr, escape_attr_display};
 
 /// Resolved actor-man placement. The caller owns participant and label preparation.
 pub struct ActorManGlyph<'a> {
@@ -224,15 +224,14 @@ pub fn write_actor_man_lifeline(
     y2: f64,
     actor_id: &str,
 ) {
+    let actor_id = escape_attr(actor_id);
     let _ = write!(
         out,
-        r##"<g><line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="{stroke_width}px" stroke="#999" name="{name}" data-et="life-line" data-id="{data_id}"/></g>"##,
+        r##"<g><line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="{stroke_width}px" stroke="#999" name="{actor_id}" data-et="life-line" data-id="{actor_id}"/></g>"##,
         idx = idx,
         cx = fmt(cx),
         y1 = fmt(y1),
         y2 = fmt(y2),
         stroke_width = fmt(LIFELINE_STROKE_WIDTH_PX),
-        name = escape_xml(actor_id),
-        data_id = escape_attr(actor_id),
     );
 }

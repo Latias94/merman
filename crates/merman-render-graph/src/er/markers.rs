@@ -1,11 +1,12 @@
+use kurbo::{BezPath, Rect, Shape};
 use merman_render_core::{
-    Result, number_format::canonical_number as fmt, svg_css::SvgId, svg_output::SvgOutput,
-    xml::escape_attr,
+    Result, number_format::canonical_number as fmt, route_types::Marker, svg_css::SvgId,
+    svg_output::SvgOutput, xml::escape_attr,
 };
 #[cfg(feature = "layout-shoal")]
 use {
-    kurbo::{BezPath, Point, Rect, Shape, Vec2},
-    merman_render_core::{LayoutPoint, route_types::Marker},
+    kurbo::{Point, Vec2},
+    merman_render_core::LayoutPoint,
 };
 
 struct Cardinality {
@@ -21,7 +22,6 @@ struct MarkerGlyph {
     height: u8,
     path: &'static str,
     circle_x: Option<(f64, f64)>,
-    #[cfg(feature = "layout-shoal")]
     outline: std::sync::OnceLock<Rect>,
 }
 
@@ -43,7 +43,6 @@ impl MarkerGlyph {
             height,
             path,
             circle_x,
-            #[cfg(feature = "layout-shoal")]
             outline: std::sync::OnceLock::new(),
         }
     }
@@ -78,7 +77,6 @@ impl MarkerGlyph {
         out.push_str("/>");
     }
 
-    #[cfg(feature = "layout-shoal")]
     fn footprint(&self, neo: bool) -> Rect {
         let viewport = Rect::new(0.0, 0.0, f64::from(self.width), f64::from(self.height));
         if neo {
@@ -275,7 +273,28 @@ pub(super) fn er_zero_marker_circle(
 
 #[cfg(feature = "layout-shoal")]
 pub fn er_canonical_marker(card: &str, start: bool, neo: bool) -> Marker {
-    let Some(entry) = canonical_cardinality(card) else {
+    marker_metrics(canonical_cardinality(card), start, neo)
+}
+
+pub(super) fn er_compatibility_sketch_marker(
+    marker: Option<&str>,
+    neo: bool,
+    width: f64,
+) -> Marker {
+    let Some((card, start)) = marker.and_then(marker_suffix) else {
+        return Marker::default();
+    };
+    let metrics = marker_metrics(cardinality(card), start, neo);
+    let scale = if neo { 1.0 } else { width };
+    Marker {
+        depth: metrics.depth * scale,
+        width: metrics.width * scale,
+        trim: metrics.trim * scale,
+    }
+}
+
+fn marker_metrics(entry: Option<&Cardinality>, start: bool, neo: bool) -> Marker {
+    let Some(entry) = entry else {
         return Marker::default();
     };
     let glyph = &entry.ends[usize::from(!start)];

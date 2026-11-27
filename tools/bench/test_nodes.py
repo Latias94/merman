@@ -1,5 +1,5 @@
 from collections import Counter
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from copy import deepcopy
 import hashlib
 import io
@@ -584,6 +584,31 @@ class ProcessRoundTests(unittest.TestCase):
                         self.assertIsNone(row["ratio"])
                     else:
                         self.assertEqual(row["eligible_pairs"], 2)
+
+    def test_coverage_preserves_plan_and_comparison_inputs(self):
+        self.args.peer = ["pele"]
+        self.run_matrix()
+        bundle = self.args.out_dir
+        plan = bundle / "plan.json"
+        comparisons = [bundle / "rounds" / n / "merman-vs-pele.json" for n in ("001", "002")]
+        inputs = [plan, *comparisons]
+        originals = [path.read_bytes() for path in inputs]
+        alias = bundle / "aliased-comparison.json"
+        alias.hardlink_to(comparisons[-1])
+        args = ["coverage", "--plan", str(plan)]
+        for comparison in comparisons:
+            args.extend(["--comparison", str(comparison)])
+        for output in (plan, comparisons[-1], alias):
+            with redirect_stderr(io.StringIO()) as stderr, self.assertRaises(SystemExit) as caught:
+                bench_main([*args, "--out", str(output)])
+            self.assertEqual(caught.exception.code, 1)
+            self.assertIn("choose a coverage report output distinct from its inputs", stderr.getvalue())
+
+        output = bundle / "coverage.json"
+        output.write_bytes(b"old coverage")
+        self.assertEqual(bench_main([*args, "--out", str(output)]), 0)
+        self.assertEqual(len(json.loads(output.read_bytes())["comparisons"]), 2)
+        self.assertEqual([path.read_bytes() for path in inputs], originals)
 
     def test_no_options_bridge_keeps_raw_observations_and_withholds_comparisons(self):
         self.args.variant = ["matched=merman::{}", "no-options=merman", "peer=pele"]

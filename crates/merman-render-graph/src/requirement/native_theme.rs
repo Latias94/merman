@@ -129,6 +129,12 @@ impl RequirementCssBinding {
                 .clone_from(&binding.default_stroke);
             binding.node_border.clone_from(&binding.default_stroke);
         }
+        if !owns("themeVariables.textColor") {
+            binding.common = binding
+                .common
+                .clone()
+                .with_text_color(&roles.text_primary.to_string());
+        }
         let authored_ink = owns("themeVariables.nodeTextColor")
             || owns("themeVariables.textColor")
             || owns("themeVariables.requirementTextColor");

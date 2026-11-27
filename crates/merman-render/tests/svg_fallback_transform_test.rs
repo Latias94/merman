@@ -234,8 +234,9 @@ fn transformed_switch_native_fallback_is_kept_without_a_generated_duplicate() {
         group.parent().unwrap().attribute("transform"),
         Some("translate(20 30) rotate(-90)")
     );
-    assert!(group.attribute("requiredFeatures").is_none());
-    assert!(group.attribute("systemLanguage").is_none());
+    assert!(group.has_tag_name("switch"));
+    assert_eq!(group.attribute("requiredFeatures"), Some("unsupported"));
+    assert_eq!(group.attribute("systemLanguage"), Some("other"));
     assert_eq!(
         document
             .descendants()
@@ -244,7 +245,7 @@ fn transformed_switch_native_fallback_is_kept_without_a_generated_duplicate() {
         1
     );
     assert!(!output.contains("data-merman-foreignobject=\"fallback\""));
-    assert!(!output.contains("<switch"));
+    assert!(!output.contains("<foreignObject"));
 }
 
 #[test]

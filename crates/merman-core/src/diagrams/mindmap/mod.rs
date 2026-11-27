@@ -1,10 +1,6 @@
-mod db;
 mod parse;
-#[cfg(feature = "presentation")]
-mod render_model;
 #[cfg(test)]
 mod terminal;
-mod utils;
 
 #[cfg(all(test, feature = "compat-json"))]
 mod tests;
@@ -23,5 +19,3 @@ pub(crate) use parse::parse_mindmap_semantic_model_controlled;
 pub(crate) use parse::{
     mindmap_syntax_construction_count, reset_mindmap_syntax_construction_count,
 };
-#[cfg(feature = "compat-json")]
-pub(crate) use render_model::render_model_to_compat_json;

@@ -21,7 +21,7 @@ use super::ArchitectureEmitCheckpoints;
 use super::geometry::{arrow_shift, bounds_from_rect, extend_bounds, is_arch_dir_x, is_arch_dir_y};
 use super::labels::write_svg_text_lines;
 use super::settings::ArchitectureRenderSettings;
-use super::{SvgDiagramId, SvgOutput, escape_xml_into, fmt, fmt_into, fmt_string};
+use super::{SvgDiagramId, SvgOutput, escape_attr_into, fmt, fmt_into, fmt_string};
 use crate::architecture::ArchitectureDiagramLayout;
 
 pub(super) struct ArchitectureEdgeRenderContext<'a, O: SvgOutput> {
@@ -29,7 +29,7 @@ pub(super) struct ArchitectureEdgeRenderContext<'a, O: SvgOutput> {
     pub(super) diagram_id: SvgDiagramId<'a>,
     pub(super) layout: &'a ArchitectureDiagramLayout,
     #[cfg(feature = "layout-shoal")]
-    pub(super) shoal: Option<&'a dyn ArchitectureCanonicalSvg>,
+    pub(super) shoal: Option<ArchitectureShoalPaint<'a>>,
     pub(super) model: &'a ArchitectureDiagramModel,
     pub(super) node_xy: &'a rustc_hash::FxHashMap<&'a str, (f64, f64)>,
     pub(super) settings: &'a ArchitectureRenderSettings,
@@ -40,11 +40,21 @@ pub(super) struct ArchitectureEdgeRenderContext<'a, O: SvgOutput> {
     pub(super) checkpoints: ArchitectureEmitCheckpoints<'a>,
 }
 
+#[cfg(feature = "layout-shoal")]
+pub(super) struct ArchitectureShoalPaint<'a> {
+    pub(super) geometry: &'a dyn ArchitectureCanonicalSvg,
+    pub(super) operation: &'a merman_model::runtime::OperationContext,
+    pub(super) seed: f64,
+    pub(super) caption_fill: Cow<'a, str>,
+}
+
 struct ArchitectureEdgeLabelPlan<'a> {
     lines: Cow<'a, [SvgLine]>,
     bounds: Bounds,
     dominant_baseline: &'static str,
     transform: String,
+    #[cfg(feature = "layout-shoal")]
+    backplate: Option<kurbo::Rect>,
 }
 
 #[derive(Clone, Copy)]
@@ -193,11 +203,11 @@ fn write_architecture_edge_id_attr(
 ) {
     let _ = write!(out, "{diagram_id}");
     out.push('-');
-    escape_xml_into(out, prefix);
+    escape_attr_into(out, prefix);
     out.push('_');
-    escape_xml_into(out, from);
+    escape_attr_into(out, from);
     out.push('_');
-    escape_xml_into(out, to);
+    escape_attr_into(out, to);
     out.push('_');
     let _ = write!(out, "{counter}");
 }
@@ -536,6 +546,8 @@ fn architecture_edge_label_plan(
         bounds,
         dominant_baseline,
         transform,
+        #[cfg(feature = "layout-shoal")]
+        backplate: None,
     })
 }
 
@@ -570,15 +582,21 @@ impl ArchitectureShaft<'_> {
         ordinal: usize,
         #[cfg(feature = "layout-shoal")] points_json: &mut Vec<u8>,
         #[cfg(feature = "layout-shoal")] points_base64: &mut String,
+        #[cfg(feature = "layout-shoal")] clip_id: Option<&str>,
     ) -> merman_render_core::Result<()> {
         match self {
             Self::Legacy(points, edge, route) => {
                 write_architecture_edge_path(out, diagram_id, edge, *points, *route)
             }
             #[cfg(feature = "layout-shoal")]
-            Self::Shoal(shaft) => {
-                shaft.write(out, diagram_id, ordinal, points_json, points_base64)?
-            }
+            Self::Shoal(shaft) => shaft.write(
+                out,
+                diagram_id,
+                ordinal,
+                points_json,
+                points_base64,
+                clip_id,
+            )?,
         }
         #[cfg(not(feature = "layout-shoal"))]
         let _ = ordinal;
@@ -747,6 +765,18 @@ pub(super) fn push_architecture_edges<O: SvgOutput>(
         let arrow_points = ArchitectureArrowPoints::new(arrow_size, marker_style);
         let edge_style = ctx.native.map(|native| native.edge_style);
         #[cfg(feature = "layout-shoal")]
+        let sketch = ctx
+            .shoal
+            .as_ref()
+            .filter(|_| edge_style == Some(EdgeStyle::Sketch))
+            .map(|shoal| {
+                merman_render_core::rough_svg::operation_randomness(
+                    shoal.operation,
+                    shoal.seed,
+                    "render.architecture.roughjs",
+                )
+            });
+        #[cfg(feature = "layout-shoal")]
         let mut paint_scratch = merman_render_core::route_paint::CanonicalPaintScratch::default();
         #[cfg(feature = "layout-shoal")]
         let (mut points_json, mut points_base64) = (Vec::new(), String::new());
@@ -786,16 +816,40 @@ pub(super) fn push_architecture_edges<O: SvgOutput>(
                 )
             };
             #[cfg(feature = "layout-shoal")]
-            let (shaft, lhs_arrow, rhs_arrow, label_plan) = if let Some(geometry) = ctx.shoal {
-                let shaft = canonical::Shaft::new(
-                    geometry,
+            let (shaft, lhs_arrow, rhs_arrow, label_plan) = if let Some(shoal) = &ctx.shoal {
+                let mut shaft = canonical::Shaft::new(
+                    shoal.geometry,
                     layout,
                     edge_idx,
                     checkpoints.work_meter,
                     &mut paint_scratch,
                 )?;
+                if let Some(randomness) = &sketch {
+                    let path = &mut shaft.painted.path;
+                    let d = merman_render_core::rough_svg::constrained_rough_edge_path(
+                        &path.d,
+                        shaft.painted.markers,
+                        checkpoints.work_meter,
+                        randomness,
+                    )?;
+                    checkpoints.work_meter.charge(d.len())?;
+                    let bounds = merman_render_core::svg_bounds::svg_path_bounds_from_d(&d)
+                        .ok_or_else(|| merman_render_core::Error::InvalidModel {
+                            message: format!(
+                                "Architecture edge `{}` has no sketch bounds",
+                                shaft.edge.id
+                            ),
+                        })?;
+                    path.d = d;
+                    path.bounds = Bounds {
+                        min_x: bounds.min_x,
+                        min_y: bounds.min_y,
+                        max_x: bounds.max_x,
+                        max_y: bounds.max_y,
+                    };
+                }
                 let (lhs, rhs) = shaft.arrows(&arrow_points);
-                let label = shaft.label(geometry, edge_idx);
+                let label = shaft.label(shoal.geometry, edge_idx);
                 (ArchitectureShaft::Shoal(shaft), lhs, rhs, label)
             } else {
                 legacy()
@@ -803,7 +857,8 @@ pub(super) fn push_architecture_edges<O: SvgOutput>(
             #[cfg(not(feature = "layout-shoal"))]
             let (shaft, lhs_arrow, rhs_arrow, label_plan) = legacy();
 
-            extend_bounds(content_bounds, shaft.bounds(settings.edge_stroke_outset));
+            let shaft_bounds = shaft.bounds(settings.edge_stroke_outset);
+            extend_bounds(content_bounds, shaft_bounds.clone());
 
             for arrow in [lhs_arrow.as_ref(), rhs_arrow.as_ref()]
                 .into_iter()
@@ -825,6 +880,19 @@ pub(super) fn push_architecture_edges<O: SvgOutput>(
             }
 
             out.push_str("<g>");
+            #[cfg(feature = "layout-shoal")]
+            let clip_id = label_plan
+                .as_ref()
+                .filter(|label| label.backplate.is_some())
+                .map(|label| {
+                    canonical::write_caption_cutout(
+                        out,
+                        diagram_id,
+                        edge_idx,
+                        &shaft_bounds,
+                        &label.bounds,
+                    )
+                });
             shaft.write(
                 out,
                 diagram_id,
@@ -833,6 +901,8 @@ pub(super) fn push_architecture_edges<O: SvgOutput>(
                 &mut points_json,
                 #[cfg(feature = "layout-shoal")]
                 &mut points_base64,
+                #[cfg(feature = "layout-shoal")]
+                clip_id.as_deref(),
             )?;
             checkpoints.checkpoint()?;
 
@@ -856,7 +926,26 @@ pub(super) fn push_architecture_edges<O: SvgOutput>(
                     super::write_geometry_attrs(out, "edge-label", &shaft.edge.id);
                 }
                 out.push('>');
-                out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
+                out.push_str("<g>");
+                #[cfg(feature = "layout-shoal")]
+                let backplate = label_plan.backplate.zip(ctx.shoal.as_ref());
+                #[cfg(not(feature = "layout-shoal"))]
+                out.push_str(r#"<rect class="background" style="stroke: none"/>"#);
+                #[cfg(feature = "layout-shoal")]
+                if let Some((rect, shoal)) = backplate {
+                    let _ = write!(
+                        out,
+                        r#"<rect class="background" x="{}" y="{}" width="{}" height="{}" fill=""#,
+                        fmt(rect.x0),
+                        fmt(rect.y0),
+                        fmt(rect.width()),
+                        fmt(rect.height())
+                    );
+                    escape_attr_into(out, &shoal.caption_fill);
+                    out.push_str(r#"" stroke="none"/>"#);
+                } else {
+                    out.push_str(r#"<rect class="background" style="stroke: none"/>"#);
+                }
                 write_svg_text_lines(out, &label_plan.lines);
                 out.push_str("</g></g>");
             }
@@ -981,7 +1070,7 @@ mod tests {
                     &merman_model::presentation::PresentationConfig::empty_object(),
                     None,
                 );
-            let mut settings = ArchitectureRenderSettings::from_prepared(diagram_id, &typography);
+            let mut settings = ArchitectureRenderSettings::from_prepared(&typography, None);
             settings.icon_size_px = 20.0;
             settings.half_icon = 10.0;
             let node_xy =
@@ -1068,7 +1157,7 @@ mod tests {
                     &merman_model::presentation::PresentationConfig::empty_object(),
                     None,
                 );
-            let settings = ArchitectureRenderSettings::from_prepared(diagram_id, &typography);
+            let settings = ArchitectureRenderSettings::from_prepared(&typography, None);
             let mut node_xy = rustc_hash::FxHashMap::default();
             node_xy.insert("api", (0.0, 0.0));
             node_xy.insert("db", (80.0, 0.0));

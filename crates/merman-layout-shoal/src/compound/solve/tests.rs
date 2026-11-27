@@ -600,6 +600,148 @@ fn automatic_top_title_keeps_a_clear_trunk_and_reroutes_an_obstructed_one() {
 }
 
 #[test]
+fn automatic_title_placement_leaves_the_lateral_entry_clear() {
+    let spec = GroupSpec {
+        title: Some(size(80., 18.)),
+        title_position: TitlePosition::TopAuto,
+        min_size: size(320., 180.),
+        padding: Insets {
+            top: 32.5,
+            left: 15.,
+            right: 17.,
+            ..Insets::default()
+        },
+        ..GroupSpec::new(0)
+    };
+    let options = Options::default();
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    let frame = fit::Fit::new(
+        Some(&spec),
+        size(120., 50.),
+        &[],
+        &[],
+        0.,
+        &options,
+        &mut work,
+    )
+    .unwrap();
+    let lateral = Wire {
+        ends: [
+            End::Border {
+                slot: 0,
+                side: Side::Left,
+                flat: None,
+                hint: PortSideHint::Auto,
+            },
+            End::Item {
+                slot: 0,
+                hint: PortSideHint::Auto,
+                child: None,
+            },
+        ],
+        spec: edge(GroupId(0), NodeId(0)),
+        route: None,
+        contacts: [
+            None,
+            Some(Contact {
+                at: Point { x: 22., y: 24. },
+                side: Side::Left,
+            }),
+        ],
+    };
+    let title = frame
+        .title(
+            Some(&spec),
+            &[lateral],
+            &[Point { x: 0., y: 17. }],
+            &mut work,
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(title.rect.center().x, 263.);
+}
+
+#[test]
+fn fixed_contacts_under_a_title_do_not_consume_either_clear_port_run() {
+    let options = Options::default();
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    let frame = fit::Fit::new(None, size(100., 100.), &[], &[], 0., &options, &mut work).unwrap();
+    let spec = edge(GroupId(0), NodeId(0));
+    let mut points = [
+        Point { x: 40., y: 0. },
+        Point { x: 50., y: 0. },
+        Point { x: 64., y: 0. },
+    ];
+    let wires = std::array::from_fn::<_, 3, _>(|slot| Wire {
+        ends: [
+            End::Border {
+                slot,
+                side: Side::Top,
+                flat: None,
+                hint: if slot == 0 {
+                    PortSideHint::FixedOffset {
+                        side: Side::Top,
+                        offset: -10.,
+                    }
+                } else {
+                    PortSideHint::Auto
+                },
+            },
+            End::Item {
+                slot: 0,
+                hint: PortSideHint::Auto,
+                child: None,
+            },
+        ],
+        spec,
+        route: None,
+        contacts: [None; 2],
+    });
+    let title = centered(Point { x: 50., y: 15. }, size(60., 18.));
+    ports::beside_title(
+        &wires,
+        &mut points,
+        title,
+        Side::Top,
+        &frame,
+        &options,
+        &mut work,
+    )
+    .unwrap();
+    assert_eq!(points.map(|point| point.x), [40., 14., 86.]);
+}
+
+#[test]
+fn bottom_title_reports_a_strike_from_an_explicit_bottom_contact() {
+    let mut graph = Graph {
+        direction: Direction::Up,
+        groups: vec![GroupSpec {
+            title: Some(size(100.0, 20.0)),
+            title_position: TitlePosition::BottomCenter,
+            padding: Insets {
+                bottom: 24.0,
+                ..Insets::default()
+            },
+            ..GroupSpec::new(0)
+        }],
+        nodes: vec![node(0, 80.0, 30.0, Some(0))],
+        ..Graph::default()
+    };
+    let mut wire = edge(GroupId(0), NodeId(0));
+    wire.source_port = PortSideHint::FixedOffset {
+        side: Side::Bottom,
+        offset: 0.0,
+    };
+    graph.edges.push(wire);
+    let drawing = layout(&graph, &Options::default()).unwrap();
+    let frame = &drawing.groups[0];
+    assert_eq!(tip(&drawing.edges[0], 0).x, frame.rect.center().x);
+    assert!(frame.title_struck);
+}
+
+#[test]
 fn mixed_member_and_own_border_markers_have_a_full_shaft_on_both_sides_of_a_wide_title() {
     for own in [false, true] {
         let mut graph = Graph::default();
@@ -843,7 +985,9 @@ fn nested_title_fan_stitches_beside_the_measured_title_and_never_doubles_back() 
                 title.y - run[1].y
             };
             assert!(past_title >= TITLE_CLEAR - 1e-8);
-            assert!((run[2].x - run[1].x).abs() <= 2.0 * (run[2].y - run[1].y).abs() + 1e-8);
+            let shift = (run[2].x - run[1].x).abs();
+            let room = (run[2].y - run[1].y).abs();
+            assert!(room + 1e-8 >= (shift * 0.75).max(16.0), "{run:?}");
             let across: f64 = run
                 .windows(2)
                 .map(|pair| (pair[0].x - pair[1].x).abs())

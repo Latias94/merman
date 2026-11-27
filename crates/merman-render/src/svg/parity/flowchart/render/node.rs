@@ -263,20 +263,19 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         details.node_style_compile += s.elapsed();
     }
     let native_label_color = selection.native_label_color.as_deref();
-    let swimlane_label_color = if ctx.swimlane_direction.is_some()
-        && !ctx.node_html_labels
-        && !prepared.has_structural_label_foreground
-    {
-        super::super::swimlane::svg_label_ink(
-            ctx,
-            node_id,
-            compiled_styles,
-            native_label_color.unwrap_or(&ctx.compatibility.node_text_color),
-            prepared.source_text_style.as_ref(),
-        )?
-    } else {
-        None
-    };
+    let swimlane_label_color =
+        if ctx.swimlane_direction.is_some() && !prepared.has_structural_label_foreground {
+            super::super::swimlane::svg_label_ink(
+                ctx,
+                node_id,
+                compiled_styles,
+                None,
+                native_label_color.unwrap_or(&ctx.compatibility.node_text_color),
+                prepared.source_text_style.as_ref(),
+            )?
+        } else {
+            None
+        };
     let authored_svg_color =
         if !ctx.node_html_labels && ctx.layout.route_contract.is_canonical_axis() {
             compiled_styles.source_label_color()
@@ -310,9 +309,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         suppress_child_filters: suppress_look_filter,
         theme_style: &selection.theme_style,
         rough_group_style: &prepared.rough_group_style,
-        solid_rough_fill: ctx.layout.route_contract.is_canonical_axis()
-            && ctx.swimlane_direction.is_none()
-            && ctx.diagram_type != "agentflow",
+        solid_rough_fill: ctx.layout.route_contract.is_canonical_axis(),
         fill_color,
         fill_opacity: compiled_styles.fill_opacity,
         stroke_color,

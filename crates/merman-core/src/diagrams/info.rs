@@ -218,18 +218,17 @@ fn construct_info_semantic_source_controlled(
         }
     };
     #[cfg(feature = "editor-facts")]
-    let mut observe = editor_facts.as_mut().map(|facts| {
-        move |observation: InfoObservation<'_>| project_info_observation(facts, observation)
-    });
-    let parsed = body.parse_controlled(
-        #[cfg(feature = "editor-facts")]
-        editor_demand.captures_rich(),
-        #[cfg(feature = "editor-facts")]
-        observe
-            .as_mut()
-            .map(|observe| observe as &mut dyn FnMut(InfoObservation<'_>)),
-        control,
-    )?;
+    let parsed = if let Some(facts) = editor_facts.as_mut() {
+        body.parse_with_observer_controlled(
+            editor_demand.captures_rich(),
+            &mut |observation| project_info_observation(facts, observation),
+            control,
+        )
+    } else {
+        body.parse_controlled(control)
+    }?;
+    #[cfg(not(feature = "editor-facts"))]
+    let parsed = body.parse_controlled(control)?;
     Ok(match parsed {
         Ok(model) => Ok(InfoSemanticSource {
             model,

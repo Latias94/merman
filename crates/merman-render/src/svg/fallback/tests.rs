@@ -1622,13 +1622,13 @@ fn foreign_object_overlay_accounts_for_source_selector_width_in_match_work() {
 fn foreign_object_overlay_bounds_source_ancestry_before_building_paths() {
     let mut svg =
         String::from(r#"<svg xmlns="http://www.w3.org/2000/svg"><style>a{font-size:12px}</style>"#);
-    for _ in 0..=super::cascade::MAX_SELECTOR_ANCESTRY_DEPTH {
+    for _ in 0..=super::MAX_SELECTOR_ANCESTRY_DEPTH {
         svg.push_str("<a>");
     }
     svg.push_str(
             r#"<foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml">Alpha</div></foreignObject>"#,
         );
-    for _ in 0..=super::cascade::MAX_SELECTOR_ANCESTRY_DEPTH {
+    for _ in 0..=super::MAX_SELECTOR_ANCESTRY_DEPTH {
         svg.push_str("</a>");
     }
     svg.push_str("</svg>");
@@ -1646,8 +1646,8 @@ fn foreign_object_overlay_bounds_source_ancestry_before_building_paths() {
     let measurer = DeterministicTextMeasurer::default();
     let mut checkpoint = || Ok::<(), &'static str>(());
     let mut selector_limit = |actual, maximum| {
-        assert_eq!(actual, super::cascade::MAX_SELECTOR_ANCESTRY_DEPTH + 1);
-        assert_eq!(maximum, super::cascade::MAX_SELECTOR_ANCESTRY_DEPTH);
+        assert_eq!(actual, super::MAX_SELECTOR_ANCESTRY_DEPTH + 1);
+        assert_eq!(maximum, super::MAX_SELECTOR_ANCESTRY_DEPTH);
         Err("selector limit")
     };
     let mut preflight = |_, _| Ok::<(), &'static str>(());

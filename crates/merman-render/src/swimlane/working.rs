@@ -10,6 +10,10 @@ pub(super) enum WorkingNodeKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(
+    dead_code,
+    reason = "Flowchart and Swimlane supply these roles to the shared lane layout."
+)]
 pub(super) enum ProducerLaneRole {
     Pool,
     Lane,

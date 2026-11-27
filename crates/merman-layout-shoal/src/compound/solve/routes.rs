@@ -209,8 +209,9 @@ impl RouteWalls {
         index: usize,
         pair: [Contact; 2],
         title: Option<Rect>,
+        title_margin: f64,
         work: &mut Work<'_>,
-    ) -> LayoutResult<&[Rect]> {
+    ) -> LayoutResult<(&[Rect], Option<Rect>)> {
         let Walls { boxes, markers, .. } = &mut self.walls;
         boxes.truncate(self.fixed_count);
         let extra = markers
@@ -247,7 +248,8 @@ impl RouteWalls {
                 boxes.push(rect);
             }
         }
-        if let Some(title) = title {
+        let mut padded = None;
+        if let Some(title) = title.filter(|title| title.width > 0.0 && title.height > 0.0) {
             let on_title = |port: &Contact| {
                 let point = port.at;
                 point.x >= title.x
@@ -257,9 +259,15 @@ impl RouteWalls {
             };
             if !pair.iter().any(on_title) {
                 boxes.push(title);
+                padded = Some(Rect {
+                    x: finite(title.x - title_margin)?,
+                    y: finite(title.y - title_margin)?,
+                    width: finite(title.width + 2.0 * title_margin)?,
+                    height: finite(title.height + 2.0 * title_margin)?,
+                });
             }
         }
-        Ok(boxes)
+        Ok((boxes, padded))
     }
 }
 
@@ -605,57 +613,66 @@ fn title_sweep(
     clearance: f64,
     work: &mut Work<'_>,
 ) -> LayoutResult<Option<TitleSweep>> {
-    if outer.side.axis() != Axis::Vertical
-        || (outer.at.x > title.x - clearance && outer.at.x < title.x + title.width + clearance)
-    {
+    let vertical = outer.side.axis() == Axis::Vertical;
+    let low = Point {
+        x: title.x - clearance,
+        y: title.y - clearance,
+    };
+    let high = Point {
+        x: title.x + title.width + clearance,
+        y: title.y + title.height + clearance,
+    };
+    let across = |at: Point| cross(outer.side, at);
+    let along = |at: Point| if vertical { at.y } else { at.x };
+    let with_along = |at: Point, value| {
+        if vertical {
+            Point { y: value, ..at }
+        } else {
+            Point { x: value, ..at }
+        }
+    };
+    let lane = across(outer.at);
+    if across(low) < lane && lane < across(high) {
         return Ok(None);
     }
     let len = edge.points.len();
     let index = |step: usize| if border == 0 { step } else { len - 1 - step };
     let dummy = point(edge.points[index(0)]);
-    if dummy.x == outer.at.x {
+    let inner_lane = across(dummy);
+    if inner_lane == lane
+        || inner_lane.max(lane) <= across(low)
+        || inner_lane.min(lane) >= across(high)
+    {
         return Ok(None);
     }
-    let inward = if outer.side == Side::Bottom {
-        1.0
-    } else {
-        -1.0
+    let (inward, far) = match outer.side {
+        Side::Bottom | Side::Right => (1.0, high),
+        Side::Top | Side::Left => (-1.0, low),
     };
-    let exit_y = if inward > 0.0 {
-        title.y + title.height + clearance
-    } else {
-        title.y - clearance
-    };
-    let exit = Point {
-        x: outer.at.x,
-        y: exit_y,
-    };
+    let exit = with_along(outer.at, along(far));
+    if (along(exit) - along(outer.at)) * inward <= 0.0 {
+        return Ok(None);
+    }
     let mut run = 0;
     let mut last = dummy;
     while run + 1 < len {
         work.visit(1)?;
         let next = point(edge.points[index(run + 1)]);
-        if next.x != dummy.x || (next.y - last.y) * inward < 0.0 {
+        if across(next) != inner_lane || (along(next) - along(last)) * inward < 0.0 {
             break;
         }
         last = next;
         run += 1;
     }
     let join = if run + 1 == len {
-        Point {
-            y: last.y - inward * shaft,
-            ..last
-        }
+        with_along(last, along(last) - inward * shaft)
     } else {
         last
     };
-    if (exit.y - outer.at.y) * inward <= 0.0 {
-        return Ok(None);
-    }
     Ok(Some(TitleSweep {
         points: [outer.at, exit, join],
         remaining: run + usize::from(join == last),
-        depth: (join.y - exit.y) * inward,
+        depth: (along(join) - along(exit)) * inward,
     }))
 }
 
@@ -700,8 +717,9 @@ pub(super) fn title_room(
             fit.title_margin(),
             work,
         )? {
-            let across = (sweep.points[1].x - sweep.points[2].x).abs();
-            extra = extra.max((across / 2.0).min(options.spacing.rank) - sweep.depth);
+            let across = (cross(side, sweep.points[1]) - cross(side, sweep.points[2])).abs();
+            let room = (across * 0.75).max(options.spacing.edge.max(16.0));
+            extra = extra.max(room - sweep.depth);
         }
     }
     finite(extra)
@@ -711,6 +729,7 @@ fn through_title(
     edge: &mut EdgeGeometry,
     border: usize,
     sweep: TitleSweep,
+    axis: Axis,
     work: &mut Work<'_>,
 ) -> LayoutResult<()> {
     let len = edge.points.len();
@@ -720,9 +739,7 @@ fn through_title(
         .ok_or(WorkError::ArithmeticOverflow)?;
     work.charge(capacity)?;
     let mut points = reserved(capacity)?;
-    let sweep = sweep
-        .points
-        .map(|at| RoutePoint::new(at.x, at.y, Axis::Vertical));
+    let sweep = sweep.points.map(|at| RoutePoint::new(at.x, at.y, axis));
     if border == 0 {
         points.extend(sweep);
         points.extend_from_slice(&edge.points[remaining..]);
@@ -754,21 +771,6 @@ fn boundary_leg(
             || (outer.at.x - title.center().x).abs()
                 >= title.width / 2.0 + wire.title_clearance(border, fit.title_margin())
     });
-    let margin = fit.protected_title_margin;
-    let protected_title = if let Some(title) = measured_title
-        && margin > 0.0
-        && title.width > 0.0
-        && title.height > 0.0
-    {
-        Some(Rect {
-            x: finite(title.x - margin)?,
-            y: finite(title.y - margin)?,
-            width: finite(title.width + 2.0 * margin)?,
-            height: finite(title.height + 2.0 * margin)?,
-        })
-    } else {
-        None
-    };
     let markers = [wire.spec.start_marker.length, wire.spec.end_marker.length];
     let ports = (
         wire.contacts[0].unwrap().side,
@@ -789,9 +791,9 @@ fn boundary_leg(
         let at = point(edge.points[index_in_route]);
         if at != outer.at {
             let dummy = Contact { at, side };
-            let blockers = walls.for_leg(index, [dummy, outer], title, work)?;
-            if !fit.adaptive_top_title
-                && options.routing == crate::RoutingStyle::Curved
+            let (blockers, protected_title) =
+                walls.for_leg(index, [dummy, outer], title, fit.title_margin(), work)?;
+            if options.routing == crate::RoutingStyle::Curved
                 && let Some(title) = title
                 && let Some(sweep) = title_sweep(
                     &edge,
@@ -804,8 +806,9 @@ fn boundary_leg(
                 )?
                 && sweep.depth > 0.0
                 && clear(&sweep.points, blockers, work)?
+                && clear(&sweep.points, protected_title.as_slice(), work)?
             {
-                through_title(&mut edge, border, sweep, work)?;
+                through_title(&mut edge, border, sweep, side.axis(), work)?;
                 edge.ports = ports;
                 return Ok(edge);
             }
@@ -846,7 +849,8 @@ fn boundary_leg(
     let End::Item { slot, .. } = wire.ends[member] else {
         unreachable!()
     };
-    let blockers = walls.for_leg(index, [inner, outer], title, work)?;
+    let (blockers, protected_title) =
+        walls.for_leg(index, [inner, outer], title, fit.title_margin(), work)?;
     let connection = Connection {
         fit,
         walls: blockers,
@@ -877,18 +881,14 @@ fn boundary_leg(
 
 pub(super) fn title_struck(
     title: Rect,
-    wires: &[Wire],
     legs: &[EdgeGeometry],
     work: &mut Work<'_>,
 ) -> LayoutResult<bool> {
     if title.width == 0.0 || title.height == 0.0 {
         return Ok(false);
     }
-    for (wire, leg) in wires.iter().zip(legs) {
+    for leg in legs {
         work.visit(1)?;
-        if !matches!(wire.border(), Some((_, _, Side::Top))) {
-            continue;
-        }
         for (index, pair) in leg.points.windows(2).enumerate() {
             work.visit(1)?;
             let [from, to] = [point(pair[0]), point(pair[1])];
@@ -1160,12 +1160,11 @@ fn rehome_detached_border_captions(
                                 y: base.y,
                             }
                         };
-                        let margin = if beside { 0.0 } else { gap };
                         let footprint = centered(
                             center,
                             Size {
-                                width: size.width + 2.0 * margin,
-                                height: size.height + 2.0 * margin,
+                                width: size.width + 2.0 * gap,
+                                height: size.height + 2.0 * gap,
                             },
                         );
                         if footprint.x < 0.0

@@ -35,14 +35,19 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_tag_rect(
         {
             let _ = write!(
                 out,
-                r##"<g class="basic label-container outer-path" style="{}"><g><path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g><path d="{}" stroke="none" stroke-width="0" fill="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"##,
-                escape_attr(common.rough_group_style),
-                escape_attr(&rect_fill_d),
-                escape_attr(common.fill_color),
-                escape_attr(&rect_stroke_d),
-                escape_attr(common.stroke_color),
-                util::fmt_display(common.stroke_width as f64),
-                escape_attr(common.stroke_dasharray),
+                r##"<g class="basic label-container outer-path" style="{}"><g>"##,
+                escape_attr(helpers::hand_drawn_group_style(common)),
+            );
+            helpers::write_hand_drawn_path_pair(
+                out,
+                common,
+                &rect_path,
+                &rect_fill_d,
+                &rect_stroke_d,
+            );
+            let _ = write!(
+                out,
+                r##"</g><path d="{}" stroke="none" stroke-width="0" fill="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"##,
                 escape_attr(&tag_fill_d),
                 escape_attr(common.fill_color),
                 escape_attr(&tag_stroke_d),

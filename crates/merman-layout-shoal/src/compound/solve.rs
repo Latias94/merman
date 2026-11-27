@@ -511,9 +511,7 @@ pub(super) fn level(
         (ports, placement) = border(&fit, Some(group), work)?;
     }
     let mut title = placement.map(|title| title.rect);
-    if !fit.adaptive_top_title
-        && let (Some(rect), Some(group)) = (title, &group)
-    {
+    if let (Some(rect), Some(group)) = (title, &group) {
         let side = fit::title_side(group.title_position);
         let extra = routes::title_room(&wires, &ports, side, &fit, rect, ctx.options, work)?;
         if extra > 0.0 {
@@ -529,11 +527,10 @@ pub(super) fn level(
         rect.y += fit.offset.y;
     }
     let legs = routes::finish(&fit, title, &nodes, &mut wires, &ports, ctx.options, work)?;
-    let title = if let (Some(rect), Some(group)) = (title, group) {
+    let title = if let Some(rect) = title {
         Some(PlacedTitle {
             center: rect.center(),
-            struck: fit::title_side(group.title_position) == Side::Top
-                && routes::title_struck(rect, &wires, &legs, work)?,
+            struck: routes::title_struck(rect, &legs, work)?,
         })
     } else {
         None

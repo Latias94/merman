@@ -81,7 +81,7 @@ pub(super) fn render_sequence_backgrounds(
             y = fmt(box_layout.y),
             w = fmt(box_layout.width),
             h = fmt(box_layout.height),
-            fill = escape_xml_display(&box_layout.fill),
+            fill = escape_attr_display(&box_layout.fill),
         );
         if let Some(title) = box_layout.title.as_ref() {
             let cx = title.x;
@@ -298,7 +298,7 @@ impl<'a> RectBlock<'a> {
             y = fmt(self.y),
             w = fmt(self.width),
             h = fmt(self.height),
-            fill = escape_xml_display(self.fill)
+            fill = escape_attr_display(self.fill)
         );
     }
 }

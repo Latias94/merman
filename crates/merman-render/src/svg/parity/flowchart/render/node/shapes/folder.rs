@@ -1,7 +1,6 @@
 //! Mermaid 11.17 folder/directory flowchart shape.
 
 use crate::svg::parity::flowchart::escape_attr;
-use crate::svg::parity::util;
 
 use super::super::geom::path_from_points;
 use super::super::helpers;
@@ -50,15 +49,11 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_folder(
         if let Some((fill_d, stroke_d)) = rough_paths {
             let _ = write!(
                 out,
-                r#"<g class="basic label-container" style="{}"><path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"#,
-                escape_attr(common.rough_group_style),
-                escape_attr(&fill_d),
-                escape_attr(common.fill_color),
-                escape_attr(&stroke_d),
-                escape_attr(common.stroke_color),
-                util::fmt_display(common.stroke_width as f64),
-                escape_attr(common.stroke_dasharray),
+                r#"<g class="basic label-container" style="{}">"#,
+                escape_attr(helpers::hand_drawn_group_style(common)),
             );
+            helpers::write_hand_drawn_path_pair(out, common, &path_data, &fill_d, &stroke_d);
+            out.push_str("</g>");
         } else {
             let _ = write!(
                 out,
@@ -115,5 +110,5 @@ pub(super) fn advance_folder_rough_geometry(
     }
     let (_, _, path_data) = prepare_folder_geometry(ctx, common, label);
     let target = super::super::roughjs::RoughGeometryTarget::Query;
-    let _ = super::super::helpers::prepare_node_path(common, &path_data, target);
+    let _ = helpers::prepare_node_path(common, &path_data, target);
 }

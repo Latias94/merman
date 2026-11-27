@@ -675,6 +675,9 @@ jobs:
 
       - name: Test representative Cargo feature unification contract
         run: |
+          cargo check --locked --no-default-features --lib \
+            -p merman-core -p merman-core-flow -p merman-core-graph -p merman-core-sequence -p merman-core-structured \
+            --features merman-core/all-diagrams,merman-core-flow/editor-facts,merman-core-graph/editor-facts,merman-core-sequence/editor-facts,merman-core-structured/editor-facts
           ambient_render_features="merman-bindings-core/all-diagrams,merman-bindings-core/layout-cytoscape,merman-bindings-core/layout-dagre,merman-bindings-core/layout-elk,merman-bindings-core/math"
           cargo nextest run --locked -p merman-bindings-core -p merman-ffi \
             --no-default-features \

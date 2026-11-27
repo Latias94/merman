@@ -602,7 +602,7 @@ fn graph_curve_and_edge_overrides_reach_the_solver_and_painter() {
     use kurbo::BezPath;
     use merman_render::model::FlowchartLayout;
 
-    let source = "---\nconfig:\n  layout: shoal\n  flowchart:\n    curve: linear\n---\nflowchart TD\nA bend@--> B\nA line@--> B\nlinkStyle default interpolate rounded\nline@{ curve: linear }";
+    let source = "---\nconfig:\n  layout: shoal\n  flowchart:\n    curve: linear\n---\nflowchart TD\nA bend@-->|Rounded| B\nA line@-->|Linear| B\nlinkStyle default interpolate rounded\nline@{ curve: linear }";
     let parsed = parse(source);
     let artifact = family::prepare(
         &parsed,

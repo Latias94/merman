@@ -530,10 +530,12 @@ fn prepare_state_line_hop_paths(
     ctx: &StateRenderCtx<'_>,
     effective_config: &serde_json::Value,
 ) -> Result<FxHashMap<String, String>> {
-    if effective_config
-        .pointer("/elk/lineHops")
-        .and_then(serde_json::Value::as_bool)
-        == Some(false)
+    if ctx.style_plan.compatibility().native_edge_style()
+        == Some(merman_theme_contract::v2::EdgeStyle::Sketch)
+        || effective_config
+            .pointer("/elk/lineHops")
+            .and_then(serde_json::Value::as_bool)
+            == Some(false)
     {
         return Ok(FxHashMap::default());
     }

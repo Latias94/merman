@@ -199,7 +199,7 @@ fn write_mermaid_slices(
 ) -> Result<()> {
     for slice in slices {
         let slice_class = pie_slice_class(highlight, &slice.label);
-        let escaped_fill = escape_xml(&slice.fill);
+        let escaped_fill = escape_attr_display(&slice.fill);
         let d = pie_slice_path(slice, radius, inner_radius);
         let _ = write!(
             out,

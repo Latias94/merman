@@ -58,12 +58,7 @@ pub mod editor;
 pub mod error;
 mod family;
 pub mod generated;
-#[cfg(any(
-    test,
-    feature = "diagram-agentflow",
-    feature = "diagram-kanban",
-    feature = "diagram-sequence"
-))]
+#[cfg(any(test, feature = "diagram-kanban", feature = "diagram-sequence"))]
 mod inline_config;
 #[cfg(test)]
 mod operation_tests;

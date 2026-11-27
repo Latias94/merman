@@ -1,4 +1,4 @@
-use merman_render_core::config::{config_bool, config_f64, config_string};
+use merman_render_core::config::{ConfigLookup, config_bool, config_f64, config_string};
 use serde_json::{Map, Value};
 
 pub(super) const DEFAULT_NODE_WIDTH_PX: f64 = 10.0;
@@ -21,21 +21,20 @@ pub(super) enum NodeAlign {
 }
 
 pub struct SankeyConfigView<'a> {
-    effective_config: &'a Value,
-    sankey_config: &'a Value,
-    has_sankey_config: bool,
+    section: &'a Value,
+    settings: &'a Value,
 }
 
 impl<'a> SankeyConfigView<'a> {
-    pub fn new(effective_config: &'a Value) -> Self {
-        let sankey_config = effective_config.get("sankey").unwrap_or(&Value::Null);
-        Self {
-            effective_config,
-            sankey_config,
-            has_sankey_config: effective_config
-                .get("sankey")
-                .is_some_and(|cfg| !has_ref_object(cfg)),
-        }
+    pub fn new(effective_config: &'a (impl ConfigLookup + ?Sized)) -> Self {
+        let section = effective_config.get("sankey").unwrap_or(&Value::Null);
+        // The dimensions read the effective section even when it carries a schema reference.
+        let settings = if section.get("$ref").is_some() {
+            &Value::Null
+        } else {
+            section
+        };
+        Self { section, settings }
     }
 
     pub(super) fn layout_settings(&self) -> SankeyLayoutSettings {
@@ -44,8 +43,8 @@ impl<'a> SankeyConfigView<'a> {
             .configured_f64("nodePadding")
             .unwrap_or(DEFAULT_NODE_PADDING_BASE_PX);
         SankeyLayoutSettings {
-            width: self.root_f64("width").unwrap_or(DEFAULT_WIDTH),
-            height: self.root_f64("height").unwrap_or(DEFAULT_HEIGHT),
+            width: config_f64(self.section, &["width"]).unwrap_or(DEFAULT_WIDTH),
+            height: config_f64(self.section, &["height"]).unwrap_or(DEFAULT_HEIGHT),
             node_align: self.node_align(),
             node_width: self
                 .configured_f64("nodeWidth")
@@ -91,32 +90,20 @@ impl<'a> SankeyConfigView<'a> {
         }
     }
 
-    fn root_f64(&self, key: &str) -> Option<f64> {
-        config_f64(self.effective_config, &["sankey", key])
-    }
-
     fn configured_bool(&self, key: &str) -> Option<bool> {
-        self.has_sankey_config
-            .then(|| config_bool(self.sankey_config, &[key]))
-            .flatten()
+        config_bool(self.settings, &[key])
     }
 
     fn configured_f64(&self, key: &str) -> Option<f64> {
-        self.has_sankey_config
-            .then(|| config_f64(self.sankey_config, &[key]))
-            .flatten()
+        config_f64(self.settings, &[key])
     }
 
     fn configured_string(&self, key: &str) -> Option<String> {
-        self.has_sankey_config
-            .then(|| config_string(self.sankey_config, &[key]))
-            .flatten()
+        config_string(self.settings, &[key])
     }
 
     fn configured_object(&self, key: &str) -> Option<&'a Map<String, Value>> {
-        self.has_sankey_config
-            .then(|| self.sankey_config.get(key)?.as_object())
-            .flatten()
+        self.settings.get(key)?.as_object()
     }
 }
 
@@ -143,10 +130,6 @@ pub(super) fn sankey_node_padding_px_with_base(base: f64, show_values: bool) -> 
     } else {
         0.0
     }
-}
-
-fn has_ref_object(v: &Value) -> bool {
-    v.as_object().is_some_and(|m| m.contains_key("$ref"))
 }
 
 #[cfg(test)]
@@ -228,6 +211,8 @@ mod tests {
         let cfg = json!({
             "sankey": {
                 "$ref": "#/defs/sankey",
+                "width": 640,
+                "height": "430",
                 "useMaxWidth": false,
                 "showValues": false,
                 "nodeWidth": 24,
@@ -243,6 +228,8 @@ mod tests {
         let layout = config.layout_settings();
         let render = config.render_settings();
 
+        assert_eq!(layout.width, 640.0);
+        assert_eq!(layout.height, 430.0);
         assert_eq!(layout.node_width, DEFAULT_NODE_WIDTH_PX);
         assert_eq!(
             layout.node_padding,

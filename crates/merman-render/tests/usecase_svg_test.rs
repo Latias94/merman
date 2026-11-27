@@ -2330,6 +2330,56 @@ fn usecase_svg_accepts_exact_output_byte_limit() {
 
 #[cfg(feature = "layout-shoal")]
 #[test]
+fn usecase_shoal_decodes_plain_entities_once_for_labels_and_accessibility() {
+    let source = r#"usecase-beta
+direction TB
+actor Dev("Developer") <<Human>>
+systemBoundary Auth("Auth &amp; SSO")@{type:package}
+  Login("Sign in &amp; verify &amp;lt;MFA&amp;gt;")@{business:true}
+end
+json Claims@{"literal":"&amp;"}
+Dev -- status &amp; security --> Login
+Claims -- Login
+"#;
+    for html_labels in [false, true] {
+        let (_, svg) = render_config(
+            source,
+            json!({"layout": "shoal", "htmlLabels": html_labels}),
+        );
+        let doc = roxmltree::Document::parse(&svg).unwrap();
+        let find = |id| {
+            doc.descendants()
+                .find(|node| node.attribute("data-usecase-id") == Some(id))
+                .unwrap()
+        };
+        let visible = |node: roxmltree::Node<'_, '_>| -> String {
+            node.descendants()
+                .filter(roxmltree::Node::is_text)
+                .filter_map(|node| node.text())
+                .collect()
+        };
+        let login = find("Login");
+        let expected = "Sign in & verify &lt;MFA&gt;";
+        assert!(visible(login).contains(expected), "{}", visible(login));
+        assert_eq!(
+            login.attribute("aria-label").unwrap(),
+            format!("business use case {expected}")
+        );
+        assert!(visible(find("Auth")).contains("Auth & SSO"));
+        assert!(visible(find("Claims")).contains("&amp;"));
+        assert!(visible(doc.root_element()).contains("status & security"));
+        if !html_labels {
+            let stereotype = find("Dev")
+                .descendants()
+                .find(|n| n.attribute("class") == Some("label usecase-stereotype"))
+                .unwrap();
+            assert!(stereotype.descendants().any(|n| n.has_tag_name("text") && n.attribute("text-anchor") == Some("middle")));
+        }
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
 fn usecase_shoal_keeps_associations_clear_of_the_package_tab() {
     use kurbo::{BezPath, ParamCurve, Rect};
 

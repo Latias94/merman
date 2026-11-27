@@ -6,6 +6,8 @@ use crate::flowchart::{OrganicShapeGeometry, RelativeArc};
 use crate::svg::parity::flowchart::escape_attr;
 use crate::svg::parity::{fmt, fmt_display};
 
+use super::super::helpers;
+
 const HAND_DRAWN_ROUGHNESS: f32 = 0.7;
 const HAND_DRAWN_FILL_WEIGHT: f32 = 1.5;
 const HAND_DRAWN_HACHURE_GAP: f32 = 1.5;
@@ -38,7 +40,7 @@ fn render_organic_shape(
     let path = path_data(&geometry.arcs);
     if common.look_is_hand_drawn()
         && let Some((fill_d, stroke_d)) =
-            super::super::helpers::timed_node_roughjs(common.timing, details, || {
+            helpers::timed_node_roughjs(common.timing, details, || {
                 super::super::roughjs::roughjs_hachure_paths_for_svg_path(
                     &path,
                     common.stroke_width,
@@ -53,13 +55,21 @@ fn render_organic_shape(
     {
         let _ = write!(
             out,
-            r#"<g class="basic label-container" style="{}" transform="translate({},{})"><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"#,
-            escape_attr(common.rough_group_style),
+            r#"<g class="basic label-container" style="{}" transform="translate({},{})">"#,
+            escape_attr(helpers::hand_drawn_group_style(common)),
             fmt(geometry.translate_x),
             fmt(geometry.translate_y),
-            escape_attr(&fill_d),
-            escape_attr(common.fill_color),
-            fmt_display(HAND_DRAWN_FILL_WEIGHT as f64),
+        );
+        helpers::write_hand_drawn_hachure(
+            out,
+            common,
+            &path,
+            &fill_d,
+            f64::from(HAND_DRAWN_FILL_WEIGHT),
+        );
+        let _ = write!(
+            out,
+            r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"#,
             escape_attr(&stroke_d),
             escape_attr(common.stroke_color),
             fmt_display(common.stroke_width as f64),

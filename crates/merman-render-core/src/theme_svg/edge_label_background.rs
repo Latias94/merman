@@ -8,95 +8,15 @@ use crate::number_format::canonical_number;
 /// Resolves a literal SVG paint to the color visible behind a label.
 pub fn literal_fill(paint: &str) -> Option<Color> {
     let paint = paint.trim();
-    if paint.eq_ignore_ascii_case("none") || paint.eq_ignore_ascii_case("transparent") {
+    if paint.eq_ignore_ascii_case("none") {
         return Some(Color::TRANSPARENT);
     }
-    if paint.eq_ignore_ascii_case("rebeccapurple") {
-        return Some(Color::rgb(0x66, 0x33, 0x99));
-    }
-    if let Ok(color) = paint.parse::<svgtypes::Color>() {
-        return Some(Color::rgb(color.red, color.green, color.blue).composite(
-            Color::TRANSPARENT,
-            f64::from(color.alpha) / f64::from(u8::MAX),
-        ));
-    }
-    parse_css_color4_rgb(paint)
-}
-
-fn parse_css_color4_rgb(paint: &str) -> Option<Color> {
-    let open = paint.find('(')?;
-    let name = &paint[..open];
-    if !name.eq_ignore_ascii_case("rgb") && !name.eq_ignore_ascii_case("rgba") {
-        return None;
-    }
-    let body = paint.get(open + 1..paint.len().checked_sub(1)?)?;
-    if !paint.ends_with(')') {
-        return None;
-    }
-    let body = body.trim();
-    if body.is_empty() {
-        return None;
-    }
-
-    let (rgb_tokens, alpha_str) = if body.contains(',') {
-        if body.contains('/') {
-            return None;
-        }
-        let mut parts = body.split(',').map(str::trim);
-        let r = parts.next()?;
-        let g = parts.next()?;
-        let b = parts.next()?;
-        let a = parts.next();
-        if parts.next().is_some() {
-            return None;
-        }
-        ([r, g, b], a)
+    let [r, g, b, a] = merman_model::css_color::parse(paint)?.rgba.to_rgba8();
+    Some(if a == 0 {
+        Color::TRANSPARENT
     } else {
-        let (channels_part, alpha_part) = match body.split_once('/') {
-            Some((channels, alpha)) => {
-                if alpha.contains('/') {
-                    return None;
-                }
-                let alpha = alpha.trim();
-                if alpha.is_empty() {
-                    return None;
-                }
-                (channels.trim(), Some(alpha))
-            }
-            None => (body, None),
-        };
-        let mut parts = channels_part.split_ascii_whitespace();
-        let r = parts.next()?;
-        let g = parts.next()?;
-        let b = parts.next()?;
-        if parts.next().is_some() {
-            return None;
-        }
-        ([r, g, b], alpha_part)
-    };
-
-    let r = parse_rgb_channel(rgb_tokens[0])?;
-    let g = parse_rgb_channel(rgb_tokens[1])?;
-    let b = parse_rgb_channel(rgb_tokens[2])?;
-    let alpha = match alpha_str {
-        Some(raw) => literal_opacity(raw)?,
-        None => 1.0,
-    };
-    Some(Color::rgb(r, g, b).composite(Color::TRANSPARENT, alpha))
-}
-
-fn parse_rgb_channel(token: &str) -> Option<u8> {
-    if let Some(percent) = token.strip_suffix('%') {
-        let value = percent.trim().parse::<f64>().ok()?;
-        value
-            .is_finite()
-            .then(|| (value * 255.0 / 100.0).round().clamp(0.0, 255.0) as u8)
-    } else {
-        let value = token.parse::<f64>().ok()?;
-        value
-            .is_finite()
-            .then(|| value.round().clamp(0.0, 255.0) as u8)
-    }
+        Color::rgba(r, g, b, a)
+    })
 }
 
 pub fn literal_opacity(value: &str) -> Option<f64> {

@@ -84,13 +84,13 @@ fn check_requirement_geometry(source: &str, look: &str) {
     let mut scene = Scene::default();
     let mut bodies = HashMap::new();
     for node in &layout.nodes {
-        let id = format!("{diagram_id}-{}", node.id);
         let painted = document
             .descendants()
-            .find(|item| item.attribute("id") == Some(id.as_str()))
+            .find(|item| {
+                item.attribute("data-et") == Some("node")
+                    && item.attribute("data-id") == Some(node.id.as_str())
+            })
             .unwrap();
-        assert_eq!(painted.attribute("data-et"), Some("node"));
-        assert_eq!(painted.attribute("data-id"), Some(node.id.as_str()));
         let outline = painted
             .children()
             .find(|item| {

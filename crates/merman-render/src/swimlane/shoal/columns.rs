@@ -9,8 +9,16 @@ struct Header {
     padding: f64,
 }
 
+#[derive(Clone, Copy, Default)]
+struct ColumnMinimum {
+    span: f64,
+    columns: usize,
+    extra_per_column: f64,
+}
+
 pub(super) struct Columns {
     pub(super) order: Vec<u32>,
+    pub(super) boundaries: Vec<u32>,
     parents: Vec<Option<u32>>,
     on_grid: Vec<bool>,
     expanded: Vec<bool>,
@@ -83,8 +91,8 @@ impl Columns {
             siblings.sort_unstable_by_key(|&id| (priority[id], id));
         }
 
-        // Keep each enclosing shell's columns contiguous and its own content column first.
-        // This also leaves a stable outside face for authored edges to the shell itself.
+        // Keep each shell's columns contiguous, with its own slot on the outside face.
+        // An empty parent can keep that slot at zero width for authored edges to its face.
         let mut stack: Vec<_> = children[root].iter().rev().copied().collect();
         let mut order = Vec::with_capacity(count);
         while let Some(id) = stack.pop() {
@@ -98,6 +106,7 @@ impl Columns {
             .collect();
         Ok(Self {
             order,
+            boundaries: Vec::new(),
             parents,
             on_grid,
             expanded,
@@ -138,44 +147,77 @@ impl Columns {
             has_content[parent as usize] = true;
         }
         let horizontal = self.horizontal();
-        let mut descendants = vec![0.0; graph.groups.len()];
+        let cross = |size: Size| if horizontal { size.height } else { size.width };
+        let cross_size = |span| {
+            if horizontal {
+                Size {
+                    width: 0.0,
+                    height: span,
+                }
+            } else {
+                Size {
+                    width: span,
+                    height: 0.0,
+                }
+            }
+        };
+        let mut minima = vec![ColumnMinimum::default(); graph.groups.len()];
         for &id in self.order.iter().rev() {
             work.charge_adapter(1)?;
             let id = id as usize;
             let group = &mut graph.groups[id];
+            let minimum = &mut minima[id];
             if self.expanded[id] {
                 let padding = group.padding.x0;
                 if let Some(size) = group.title.take() {
                     self.headers[id] = Some(Header { size, padding });
                 }
-                if !has_content[id] {
-                    group.padding = kurbo::Insets::ZERO;
-                }
-                let title_span = self.headers[id].as_ref().map_or(0.0, |header| {
-                    let size = header.size;
-                    if horizontal { size.height } else { size.width }
-                });
-                let own_span = (title_span + 2.0 * padding - descendants[id]).max(1.0);
-                group.min_size = if horizontal {
-                    Size {
-                        width: 0.0,
-                        height: own_span,
-                    }
+                let title_span = self.headers[id]
+                    .as_ref()
+                    .map_or(0.0, |header| cross(header.size));
+                let deficit = (title_span + 2.0 * padding - minimum.span).max(0.0);
+                if has_content[id] {
+                    group.min_size = cross_size(deficit.max(1.0));
                 } else {
-                    Size {
-                        width: own_span,
-                        height: 0.0,
-                    }
-                };
+                    self.boundaries.push(id as u32);
+                    group.padding = kurbo::Insets::ZERO;
+                    group.min_size = Size::default();
+                    minimum.span += deficit;
+                    minimum.extra_per_column = deficit / minimum.columns as f64;
+                }
+            }
+            if !self.expanded[id] || has_content[id] {
+                minimum.span += cross(group.min_size).max(1.0);
+                minimum.columns += 1;
+            }
+            if !minimum.span.is_finite() {
+                return Err(work.record_arithmetic_overflow().into());
             }
             if let Some(parent) = self.parents[id] {
-                let size = group.min_size;
-                let span = if horizontal { size.height } else { size.width };
-                let total = descendants[parent as usize] + descendants[id] + span.max(1.0);
-                if !total.is_finite() {
+                let child = *minimum;
+                minima[parent as usize].span += child.span;
+                minima[parent as usize].columns += child.columns;
+            }
+        }
+
+        // A nested shell passes down its own deficit together with its ancestors' shares.
+        for &id in &self.order {
+            work.charge_adapter(1)?;
+            let id = id as usize;
+            let extra =
+                self.parents[id].map_or(0.0, |parent| minima[parent as usize].extra_per_column);
+            minima[id].extra_per_column += extra;
+            if !self.expanded[id] || has_content[id] {
+                let size = &mut graph.groups[id].min_size;
+                let width = cross(*size).max(1.0) + extra;
+                if !width.is_finite() {
                     return Err(work.record_arithmetic_overflow().into());
                 }
-                descendants[parent as usize] = total;
+                if horizontal {
+                    size.height = width;
+                } else {
+                    size.width = width;
+                }
             }
         }
         Ok(())

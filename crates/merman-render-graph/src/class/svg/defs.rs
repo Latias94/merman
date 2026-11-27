@@ -178,7 +178,6 @@ pub(super) fn class_marker_paint_spec(
     })
 }
 
-#[cfg(feature = "layout-shoal")]
 pub fn class_canonical_marker(
     ty: i32,
     is_start: bool,
@@ -314,10 +313,10 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
                     ctx.out,
                     r#"<marker id="{}_{}-{}" class="marker {} {}" refX="{}" refY="{}" markerWidth="{}" markerHeight="{}" orient="auto""#,
                     ctx.diagram_id,
-                    escape_xml_display(ctx.diagram_marker_class),
-                    escape_xml_display(spec.name),
-                    escape_xml_display(spec.kind),
-                    escape_xml_display(ctx.diagram_marker_class),
+                    escape_attr_display(ctx.diagram_marker_class),
+                    escape_attr_display(spec.name),
+                    escape_attr_display(spec.kind),
+                    escape_attr_display(ctx.diagram_marker_class),
                     spec.ref_x,
                     spec.ref_y,
                     spec.marker_w,
@@ -329,7 +328,7 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
                 if let Some(view_box) = spec.view_box {
                     let _ = write!(ctx.out, r#" viewBox="{}""#, view_box);
                 }
-                let _ = write!(ctx.out, r#"><path d="{}""#, escape_xml_display(d));
+                let _ = write!(ctx.out, r#"><path d="{}""#, escape_attr_display(d));
                 if let MarkerShape::StyledPath {
                     view_box,
                     stroke_width,
@@ -349,10 +348,10 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
                     ctx.out,
                     r#"<marker id="{}_{}-{}" class="marker {} {}" refX="{}" refY="{}" markerWidth="{}" markerHeight="{}" orient="auto""#,
                     ctx.diagram_id,
-                    escape_xml_display(ctx.diagram_marker_class),
-                    escape_xml_display(spec.name),
-                    escape_xml_display(spec.kind),
-                    escape_xml_display(ctx.diagram_marker_class),
+                    escape_attr_display(ctx.diagram_marker_class),
+                    escape_attr_display(spec.name),
+                    escape_attr_display(spec.kind),
+                    escape_attr_display(ctx.diagram_marker_class),
                     spec.ref_x,
                     spec.ref_y,
                     spec.marker_w,
@@ -367,7 +366,7 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
                 let _ = write!(
                     ctx.out,
                     r#"><polygon points="{}""#,
-                    escape_xml_display(points)
+                    escape_attr_display(points)
                 );
                 ctx.out
                     .push_str(r#" style="stroke-width: 2; stroke-dasharray: 0;"#);
@@ -382,10 +381,10 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
                     ctx.out,
                     r#"<marker id="{}_{}-{}" class="marker {} {}" refX="{}" refY="{}" markerWidth="{}" markerHeight="{}" orient="auto""#,
                     ctx.diagram_id,
-                    escape_xml_display(ctx.diagram_marker_class),
-                    escape_xml_display(spec.name),
-                    escape_xml_display(spec.kind),
-                    escape_xml_display(ctx.diagram_marker_class),
+                    escape_attr_display(ctx.diagram_marker_class),
+                    escape_attr_display(spec.name),
+                    escape_attr_display(spec.kind),
+                    escape_attr_display(ctx.diagram_marker_class),
                     spec.ref_x,
                     spec.ref_y,
                     spec.marker_w,
@@ -400,7 +399,7 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
                 ctx.out
                     .push_str(r#"><circle fill="transparent" cx="7" cy="7" r="6""#);
                 if let Some(stroke) = stroke {
-                    let _ = write!(ctx.out, r#" stroke="{}""#, escape_xml_display(stroke));
+                    let _ = write!(ctx.out, r#" stroke="{}""#, escape_attr_display(stroke));
                 }
                 if let Some(stroke_width) = stroke_width {
                     let _ = write!(ctx.out, r#" stroke-width="{}""#, stroke_width);

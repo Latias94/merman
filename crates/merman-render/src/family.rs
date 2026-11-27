@@ -322,6 +322,7 @@ impl<S: std::ops::Deref, L> FamilyPair<S, L> {
         Self { semantic, layout }
     }
 
+    #[allow(dead_code, reason = "Used by enabled family renderers.")]
     pub(crate) fn semantic(&self) -> &S::Target {
         &self.semantic
     }

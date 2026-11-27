@@ -15,6 +15,7 @@ pub struct BlockOrthogonalRoute {
     pub path: String,
     pub bounds: Bounds,
     pub marker_refs: [LayoutPoint; 2],
+    pub markers: (Marker, Marker),
 }
 
 #[derive(Clone, Copy)]

@@ -189,6 +189,28 @@ pub fn treemap_semantic_source_from_parsed_controlled(
 /// Scans a Treemap source after the caller's operation-entry checkpoint.
 pub fn scan_treemap_controlled(
     code: &str,
+    control: &OperationControl,
+) -> OperationControlResult<TreemapSyntax> {
+    scan_treemap_impl(
+        code,
+        #[cfg(feature = "editor-facts")]
+        None,
+        control,
+    )
+}
+
+/// Scans a Treemap source and reports editor observations during recovery and row parsing.
+#[cfg(feature = "editor-facts")]
+pub fn scan_treemap_with_observer_controlled(
+    code: &str,
+    observer: TreemapSyntaxObserver<'_>,
+    control: &OperationControl,
+) -> OperationControlResult<TreemapSyntax> {
+    scan_treemap_impl(code, Some(observer), control)
+}
+
+fn scan_treemap_impl(
+    code: &str,
     #[cfg(feature = "editor-facts")] mut observer: Option<TreemapSyntaxObserver<'_>>,
     control: &OperationControl,
 ) -> OperationControlResult<TreemapSyntax> {
@@ -987,13 +1009,7 @@ mod tests {
     fn scan(source: &str) -> TreemapSyntax {
         let control = OperationControl::new();
         control.checkpoint().unwrap();
-        scan_treemap_controlled(
-            source,
-            #[cfg(feature = "editor-facts")]
-            None,
-            &control,
-        )
-        .unwrap()
+        scan_treemap_controlled(source, &control).unwrap()
     }
 
     fn item_names(syntax: &TreemapSyntax) -> Vec<&str> {

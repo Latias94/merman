@@ -5,8 +5,14 @@ use crate::scan::{
     is_mermaid_unicode_text,
 };
 use merman_model::SourceSpan;
-use merman_model::text::is_ecmascript_whitespace;
+use merman_model::text::{GenericTypesPlan, is_ecmascript_whitespace};
 use std::collections::VecDeque;
+
+fn class_generic_suffix_len(input: &str) -> Option<usize> {
+    GenericTypesPlan::closed_group_len(input)
+        // Preserve Jison's single-pair token when the source has no closed nested list.
+        .or_else(|| input[1..].find('~').map(|close| close + 2))
+}
 
 /// A Class token in the lexical event stream.
 #[derive(Debug, Clone)]
@@ -647,14 +653,21 @@ impl<'input> Lexer<'input> {
         } else {
             let bytes = self.input.as_bytes();
             let mut end = self.pos;
+            let mut scanned_generic = false;
             while end < self.input.len() {
                 let b = bytes[end];
-                // Jison's exclusive <generic> state accepts any character except its closing '~'.
-                if b == b'~'
-                    && let Some(close) = self.input[end + 1..].find('~')
-                {
-                    end += close + 2;
-                    continue;
+                if b == b'~' {
+                    let suffix = &self.input[end..];
+                    let len = if scanned_generic {
+                        suffix[1..].find('~').map(|close| close + 2)
+                    } else {
+                        scanned_generic = true;
+                        class_generic_suffix_len(suffix)
+                    };
+                    if let Some(len) = len {
+                        end += len;
+                        continue;
+                    }
                 }
                 if b.is_ascii_whitespace()
                     || b == b'\n'
@@ -723,9 +736,9 @@ impl<'input> Lexer<'input> {
         self.skip_ws();
         if (quoted || !s.contains('~'))
             && self.peek() == Some(b'~')
-            && let Some(close) = self.input[self.pos + 1..].find('~')
+            && let Some(len) = class_generic_suffix_len(&self.input[self.pos..])
         {
-            let end = self.pos + close + 2;
+            let end = self.pos + len;
             s.push_str(&self.input[self.pos..end]);
             self.pos = end;
         } else {

@@ -1,12 +1,15 @@
 use merman_render_core::text::TextStyle;
 
-use super::SvgDiagramId;
+use super::super::{
+    ArchitectureCssBinding, ArchitectureNativeStyle, ArchitectureTypographyThemePlan,
+};
+use super::{SvgDiagramId, SvgOutput};
+use merman_render_core::Result;
 
 pub(super) const OPEN_ARROW_STROKE_WIDTH: f64 = 1.5;
 
 #[derive(Clone)]
 pub(super) struct ArchitectureRenderSettings {
-    pub(super) css: String,
     pub(super) icon_size_px: f64,
     pub(super) half_icon: f64,
     pub(super) padding_px: f64,
@@ -18,47 +21,46 @@ pub(super) struct ArchitectureRenderSettings {
 }
 
 impl ArchitectureRenderSettings {
-    pub(super) fn apply_native(
-        &mut self,
+    pub(super) fn write_stylesheet(
+        out: &mut impl SvgOutput,
         diagram_id: SvgDiagramId<'_>,
-        native: &super::super::ArchitectureNativeStyle,
-        binding: &super::super::ArchitectureCssBinding,
-    ) {
-        use std::fmt::Write;
-        self.compound_text_style.clone_from(&native.layout_text);
+        binding: &ArchitectureCssBinding,
+        native: Option<&ArchitectureNativeStyle>,
+    ) -> Result<()> {
+        binding.common.write_prefix(out, diagram_id)?;
         let _ = write!(
-            self.css,
-            "#{diagram_id} .architecture-services text,#{diagram_id} .architecture-groups text,#{diagram_id} .architecture-edges text{{fill:{};}}\
-             #{diagram_id} .node-icon-text>div{{color:{};}}\
-             #{diagram_id} .arrow-open{{fill:none;stroke:{};stroke-width:{OPEN_ARROW_STROKE_WIDTH}px;stroke-linejoin:round;stroke-linecap:round;}}",
-            native.text_ink, native.icon_ink, binding.arrow_color,
+            out,
+            r#"#{} .edge{{stroke-width:{};stroke:{};fill:none;}}#{} .arrow{{fill:{};}}#{} .node-bkg{{fill:none;stroke:{};stroke-width:{};stroke-dasharray:8;}}#{} .node-icon-text{{display:flex;align-items:center;}}#{} .node-icon-text>div{{color:#fff;margin:1px;height:fit-content;text-align:center;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;}}"#,
+            diagram_id,
+            binding.edge_width,
+            binding.edge_color,
+            diagram_id,
+            binding.arrow_color,
+            diagram_id,
+            binding.group_border_color,
+            binding.group_border_width,
+            diagram_id,
+            diagram_id,
         );
+        binding.common.write_root(out, diagram_id, diagram_id)?;
+        if let Some(native) = native {
+            let _ = write!(
+                out,
+                "#{diagram_id} .architecture-services text,#{diagram_id} .architecture-groups text,#{diagram_id} .architecture-edges text{{fill:{};}}\
+                 #{diagram_id} .node-icon-text>div{{color:{};}}\
+                 #{diagram_id} .arrow-open{{fill:none;stroke:{};stroke-width:{OPEN_ARROW_STROKE_WIDTH}px;stroke-linejoin:round;stroke-linecap:round;}}",
+                native.text_ink, native.icon_ink, binding.arrow_color,
+            );
+        }
+        out.checkpoint()
     }
 
     pub(super) fn from_prepared(
-        diagram_id: SvgDiagramId<'_>,
-        typography: &crate::architecture::renderer::ArchitectureTypographyThemePlan,
+        typography: &ArchitectureTypographyThemePlan,
+        native: Option<&ArchitectureNativeStyle>,
     ) -> Self {
         let binding = typography.css_binding();
-        let mut css = String::new();
-        binding
-            .common
-            .write_prefix(&mut css, diagram_id)
-            .expect("String-backed Architecture base CSS emission cannot fail");
-        use std::fmt::Write;
-        write!(css,
-            r#"#{} .edge{{stroke-width:{};stroke:{};fill:none;}}#{} .arrow{{fill:{};}}#{} .node-bkg{{fill:none;stroke:{};stroke-width:{};stroke-dasharray:8;}}#{} .node-icon-text{{display:flex;align-items:center;}}#{} .node-icon-text>div{{color:#fff;margin:1px;height:fit-content;text-align:center;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;}}"#,
-            diagram_id, binding.edge_width, binding.edge_color,
-            diagram_id, binding.arrow_color,
-            diagram_id, binding.group_border_color, binding.group_border_width,
-            diagram_id, diagram_id,
-        ).expect("String-backed Architecture visual CSS emission cannot fail");
-        binding
-            .common
-            .write_root(&mut css, diagram_id, diagram_id)
-            .expect("String-backed Architecture root CSS emission cannot fail");
         Self {
-            css,
             icon_size_px: binding.icon_size_px,
             half_icon: binding.icon_size_px / 2.0,
             padding_px: binding.padding_px,
@@ -66,8 +68,9 @@ impl ArchitectureRenderSettings {
             edge_stroke_outset: binding.edge_stroke_outset(),
             use_max_width: binding.use_max_width,
             text_style: typography.svg_text_style(),
-            compound_text_style: super::super::architecture_cytoscape_text_style(
-                binding.arch_font_size_px,
+            compound_text_style: native.map_or_else(
+                || super::super::architecture_cytoscape_text_style(binding.arch_font_size_px),
+                |native| native.layout_text.clone(),
             ),
         }
     }
@@ -77,12 +80,24 @@ impl ArchitectureRenderSettings {
 mod tests {
     use super::*;
 
-    fn prepared_settings(id: &str, config: &serde_json::Value) -> ArchitectureRenderSettings {
+    fn prepared_settings(
+        id: &str,
+        config: &serde_json::Value,
+    ) -> (ArchitectureRenderSettings, String) {
         let config = crate::architecture::renderer::presentation_config(config.clone());
         let typography =
             crate::architecture::renderer::ArchitectureTypographyThemePlan::resolve(&config, None);
         crate::architecture::renderer::with_test_svg_id(id, |diagram_id, _| {
-            ArchitectureRenderSettings::from_prepared(diagram_id, &typography)
+            let settings = ArchitectureRenderSettings::from_prepared(&typography, None);
+            let mut css = String::new();
+            ArchitectureRenderSettings::write_stylesheet(
+                &mut css,
+                diagram_id,
+                typography.css_binding(),
+                None,
+            )
+            .unwrap();
+            (settings, css)
         })
     }
 
@@ -98,7 +113,7 @@ mod tests {
             }
         });
 
-        let settings = prepared_settings("arch", &cfg);
+        let (settings, css) = prepared_settings("arch", &cfg);
 
         assert_eq!(
             settings.text_style.font_family.as_deref(),
@@ -108,7 +123,7 @@ mod tests {
             settings.compound_text_style.font_family.as_deref(),
             Some("Helvetica Neue,Helvetica,sans-serif")
         );
-        assert!(settings.css.contains(
+        assert!(css.contains(
             r#"#arch{font-family:"IBM Plex Sans",Arial,sans-serif;font-size:16px;fill:#333;}"#
         ));
     }
@@ -129,25 +144,13 @@ mod tests {
             },
             "architecture": {"fontSize": 18, "iconSize": 0, "padding": -1, "useMaxWidth": false}
         });
-        let prepared = prepared_settings("architecture", &cfg);
-        assert!(
-            prepared
-                .css
-                .contains(".edge{stroke-width:2em;stroke:var(--edge);fill:none;}")
-        );
-        assert!(prepared.css.contains(".arrow{fill:none;}"));
-        assert!(
-            prepared
-                .css
-                .contains(".node-bkg{fill:none;stroke:;stroke-width:0;stroke-dasharray:8;}")
-        );
-        assert!(
-            prepared
-                .css
-                .contains(".edge-thickness-normal{stroke-width:2px;}")
-        );
-        assert!(prepared.css.contains("stroke:url(#architecture-gradient)"));
-        assert!(prepared.css.contains("filter:url(#custom)"));
+        let (prepared, css) = prepared_settings("architecture", &cfg);
+        assert!(css.contains(".edge{stroke-width:2em;stroke:var(--edge);fill:none;}"));
+        assert!(css.contains(".arrow{fill:none;}"));
+        assert!(css.contains(".node-bkg{fill:none;stroke:;stroke-width:0;stroke-dasharray:8;}"));
+        assert!(css.contains(".edge-thickness-normal{stroke-width:2px;}"));
+        assert!(css.contains("stroke:url(#architecture-gradient)"));
+        assert!(css.contains("filter:url(#custom)"));
         assert_eq!(prepared.icon_size_px, 1.0);
         assert_eq!(prepared.padding_px, 0.0);
         assert_eq!(prepared.arch_font_size_px, 18.0);
@@ -180,7 +183,7 @@ mod tests {
             }
         });
 
-        let css = prepared_settings("diag", &cfg).css;
+        let (_, css) = prepared_settings("diag", &cfg);
 
         assert!(css.contains(
             r#"#diag{font-family:"courier new",courier,monospace;font-size:18px;fill:#112233;}"#
@@ -204,7 +207,7 @@ mod tests {
             }
         });
 
-        let css = prepared_settings("diag", &cfg).css;
+        let (_, css) = prepared_settings("diag", &cfg);
 
         assert!(css.contains(
             r#"#diag{font-family:"IBM Plex Sans",Arial,sans-serif;font-size:16px;fill:#333;}"#
@@ -229,7 +232,7 @@ mod tests {
             r#"#diag .marker{fill:#333333;stroke:#333333;}#diag .marker.cross{stroke:#333333;}"#,
             r#"#diag svg{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:16px;}#diag p{margin:0;}"#,
         ];
-        let css = prepared_settings("diag", &serde_json::json!({})).css;
+        let (_, css) = prepared_settings("diag", &serde_json::json!({}));
         let fragments = [
             &base_fragments[..],
             &[r#"#diag .edge{stroke-width:3;stroke:#333333;fill:none;}"#],

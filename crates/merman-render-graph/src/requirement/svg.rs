@@ -15,7 +15,9 @@ use merman_render_core::{
         parse_hex_color_to_srgba as roughjs_parse_hex_color_to_srgba, roughjs_paths_for_rect,
     },
     svg_bounds::svg_path_bounds_from_d,
-    svg_css::{SvgDiagramIdValue, SvgId, escape_css_identifier},
+    svg_css::{
+        CssSelectorDiagramId, PreparedLookDefs, SvgDiagramIdValue, SvgId, escape_css_identifier,
+    },
     svg_edge_parity::{
         curve, edge_label_geometry, edge_path, line_hops,
         path_numbers::{fmt_path, json_stringify_points},
@@ -119,16 +121,24 @@ fn requirement_color_css<I: SvgDiagramIdValue>(
     css
 }
 
-fn requirement_color_css_insertion_point<I>(css: &str, diagram_id: I) -> usize
-where
-    I: SvgDiagramIdValue,
-{
-    let escaped_id = escape_css_identifier(diagram_id.semantic_value());
-    let family_rule = format!("#{escaped_id} marker");
-    let root_rule = format!("#{escaped_id} :root");
-    css.find(&family_rule)
-        .or_else(|| css.find(&root_rule))
-        .unwrap_or(css.len())
+fn write_requirement_stylesheet(
+    out: &mut impl SvgOutput,
+    diagram_id: impl SvgDiagramIdValue,
+    binding: &super::RequirementCssBinding,
+    look: &str,
+    canonical: bool,
+) -> Result<()> {
+    binding
+        .common
+        .write_prefix(out, CssSelectorDiagramId(diagram_id))?;
+    write_requirement_color_css(
+        out,
+        diagram_id,
+        look,
+        &binding.border_colors,
+        &binding.background_colors,
+    )?;
+    css::write_requirement_css(out, diagram_id, binding, canonical)
 }
 
 pub fn render_requirement_diagram_svg_model(
@@ -288,7 +298,6 @@ pub fn render_requirement_diagram_svg_model(
     let look = look.as_str();
     let look_attr = format!(r#" data-look="{}""#, escape_attr_display(look));
     let border_colors = &binding.border_colors;
-    let background_colors = &binding.background_colors;
     let color_indices = requirement_color_indices(model);
     let has_diagram_id = !diagram_id.semantic_str().is_empty();
 
@@ -580,21 +589,16 @@ pub fn render_requirement_diagram_svg_model(
 
     out.push_str(&a11y_nodes);
 
-    let css = css::write_requirement_css(diagram_id, binding);
     out.push_str("<style>");
     {
-        let split = requirement_color_css_insertion_point(&css, diagram_id);
         let mut css_out = XmlTextOutput::new(&mut out);
-        css_out.push_str(&css[..split]);
-        css_out.checkpoint()?;
-        write_requirement_color_css(
+        write_requirement_stylesheet(
             &mut css_out,
             diagram_id,
+            binding,
             look,
-            border_colors,
-            background_colors,
+            uses_canonical_routes,
         )?;
-        css_out.push_str(&css[split..]);
         if let Some(native) = native {
             let id = escape_css_identifier(diagram_id.semantic_str());
             let _ = write!(
@@ -606,6 +610,12 @@ pub fn render_requirement_diagram_svg_model(
         css_out.checkpoint()?;
     }
     out.push_str("</style>");
+    let look_defs = PreparedLookDefs::new(effective_config);
+    if look_defs.uses_gradient() {
+        out.push_str("<defs>");
+        look_defs.write_gradient(&mut out, diagram_id)?;
+        out.push_str("</defs>");
+    }
     out.push_str("<g>");
 
     // Mermaid 12 selects the Neo variants in requirementRenderer.ts.
@@ -666,7 +676,7 @@ pub fn render_requirement_diagram_svg_model(
     } else {
         r#"<g class="edgePaths">"#
     });
-    for e in &layout.edges {
+    for (edge_index, e) in layout.edges.iter().enumerate() {
         let identity = RequirementEdgeIdentity::from(e);
         let prepared_label = prepared_edges
             .get(&identity)
@@ -680,10 +690,11 @@ pub fn render_requirement_diagram_svg_model(
         let is_contains = rel_type == "contains";
         let pattern = if is_contains { "solid" } else { "dashed" };
         let class = format!("edge-thickness-normal edge-pattern-{pattern} relationshipLine");
-        let style = if is_contains {
-            "fill:none;;;;fill:none;"
-        } else {
-            "fill:none;stroke-dasharray: 10,7;;;fill:none;stroke-dasharray: 10,7"
+        let style = match (uses_canonical_routes, is_contains) {
+            (true, true) => "fill:none;",
+            (true, false) => "fill:none;stroke-dasharray:10,7;",
+            (false, true) => "fill:none;;;;fill:none;",
+            (false, false) => "fill:none;stroke-dasharray: 10,7;;;fill:none;stroke-dasharray: 10,7",
         };
 
         let painted = painted_edges
@@ -691,7 +702,8 @@ pub fn render_requirement_diagram_svg_model(
             .expect("Requirement edge paths were validated before root rendering");
         let d = painted.d.as_str();
         let mut masked_style = String::new();
-        if look == "neo"
+        if !uses_canonical_routes
+            && look == "neo"
             && let Some(length) = svg_path_length_from_d(d)
         {
             edge_path::write_neo_edge_mask(
@@ -731,7 +743,9 @@ pub fn render_requirement_diagram_svg_model(
             );
         }
 
-        let dom_id = if has_diagram_id {
+        let dom_id = if uses_canonical_routes {
+            format!("{diagram_id}-requirement-edge-{edge_index}")
+        } else if has_diagram_id {
             format!("{diagram_id}-{}", prepared_label.rendered_id)
         } else {
             prepared_label.rendered_id.clone()
@@ -863,7 +877,7 @@ pub fn render_requirement_diagram_svg_model(
     out.push_str("</g>");
 
     out.push_str(r#"<g class="nodes">"#);
-    for n in &layout.nodes {
+    for (node_index, n) in layout.nodes.iter().enumerate() {
         let cx = n.x + n.width / 2.0;
         let cy = n.y + n.height / 2.0;
         let prepared_node = prepared_nodes
@@ -927,7 +941,9 @@ pub fn render_requirement_diagram_svg_model(
         } else {
             format!("node {}", node_classes.join(" "))
         };
-        let id_attr = if has_diagram_id {
+        let id_attr = if uses_canonical_routes {
+            format!(r#" id="{diagram_id}-requirement-node-{node_index}""#)
+        } else if has_diagram_id {
             format!(r#" id="{diagram_id}-{}""#, escape_attr_display(&n.id))
         } else {
             format!(r#" id="{}""#, escape_attr_display(&n.id))
@@ -1258,9 +1274,17 @@ pub fn render_requirement_diagram_svg_model(
                         rough_rect_stroke_path_d(x, divider_y, n.width, 0.001),
                     )
                 });
+                out.push_str(r#"<g class="divider""#);
+                if let Some(opacity) = &visual.opacity {
+                    let _ = write!(
+                        &mut out,
+                        r#" style="opacity:{} !important""#,
+                        escape_attr_display(opacity)
+                    );
+                }
                 write!(
                     &mut out,
-                    r#"<g class="divider"><path d="{}" stroke="none" stroke-width="0" fill="{}" fill-rule="evenodd"{fill_style_attr}/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{stroke_style_attr}/></g>"#,
+                    r#"><path d="{}" stroke="none" stroke-width="0" fill="{}" fill-rule="evenodd"{fill_style_attr}/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{stroke_style_attr}/></g>"#,
                     escape_attr_display(&fill_d), escape_attr_display(fill_color), escape_attr_display(&stroke_d),
                     escape_attr_display(stroke_color), fmt(stroke_width),
                 )
@@ -1494,15 +1518,15 @@ mod tests {
             Some("color-2")
         );
 
-        let mut merged = super::css::write_requirement_css("requirement-colors", binding);
-        let generated = super::requirement_color_css(
+        let mut merged = String::new();
+        super::write_requirement_stylesheet(
+            &mut merged,
             "requirement-colors",
+            binding,
             "classic",
-            &binding.border_colors,
-            &binding.background_colors,
-        );
-        let point = super::requirement_color_css_insertion_point(&merged, "requirement-colors");
-        merged.insert_str(point, &generated);
+            false,
+        )
+        .unwrap();
         let colors = merged.find("[data-color-id=").unwrap();
         let family = merged.find("#requirement-colors marker").unwrap();
         let root = merged.find("#requirement-colors :root").unwrap();

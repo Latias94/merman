@@ -144,7 +144,8 @@ pub(crate) fn class_member_display_text(
 pub(crate) fn class_member_create_text_input(
     member: &merman_model::families::class::ClassMember,
 ) -> String {
-    class_member_display_text(member)
+    node_binding::class_generic_member_source(member, ["<", ">"])
+        .unwrap_or_else(|| class_member_display_text(member))
         .replace('<', "&lt;")
         .replace('>', "&gt;")
 }
@@ -459,6 +460,25 @@ pub(crate) fn class_svg_empty_markdown_fallback(text: &str) -> Option<String> {
     Some(format!("{first}{}", remaining.trim()))
 }
 
+fn mermaid_class_svg_create_text_width_px(
+    measurer: &dyn TextMeasurer,
+    text: &str,
+    style: &TextStyle,
+    wrap_probe_font_size: f64,
+) -> Option<f64> {
+    let wrap_probe_style = TextStyle {
+        font_family: style
+            .font_family
+            .clone()
+            .or_else(|| Some("Arial".to_string())),
+        font_size: wrap_probe_font_size.max(1.0),
+        font_weight: None,
+        font_style: None,
+    };
+    let width = class_html_create_text_width_px(text, measurer, &wrap_probe_style);
+    (width > 0).then_some(width as f64)
+}
+
 fn class_box_dimensions(
     node: &ClassNode,
     ctx: &ClassBoxMeasureCtx<'_>,
@@ -501,29 +521,6 @@ fn class_box_dimensions(
     let padding = padding.max(0.0);
     let gap = padding;
     let text_padding = if use_html_labels { 0.0 } else { 3.0 };
-
-    fn mermaid_class_svg_create_text_width_px(
-        measurer: &dyn TextMeasurer,
-        text: &str,
-        style: &TextStyle,
-        wrap_probe_font_size: f64,
-    ) -> Option<f64> {
-        let wrap_probe_style = TextStyle {
-            font_family: style
-                .font_family
-                .clone()
-                .or_else(|| Some("Arial".to_string())),
-            font_size: wrap_probe_font_size.max(1.0),
-            font_weight: None,
-            font_style: None,
-        };
-        let w = class_html_create_text_width_px(text, measurer, &wrap_probe_style) as f64;
-        if w.is_finite() && w > 0.0 {
-            Some(w)
-        } else {
-            None
-        }
-    }
 
     fn wrap_class_svg_text_like_mermaid(
         text: &str,
@@ -754,25 +751,40 @@ fn class_box_dimensions(
     } else {
         html_calc_text_style
     };
-    let wrapped_title_text = if matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun)
-        && title_markdown_analysis
-            .as_ref()
-            .is_some_and(MermaidMarkdownAnalysis::all_runs_normal)
-    {
-        wrap_class_svg_text_like_mermaid(
-            &title_text,
-            &title_source,
-            measurer,
-            title_style,
-            title_calc_style,
-            wrap_probe_font_size,
-            false,
-        )
-    } else {
-        title_text.clone()
-    };
-    let svg_title =
-        (!use_html_labels).then(|| ClassSvgTitleLabel::new(&title_source, &wrapped_title_text));
+    let svg_title = (!use_html_labels).then(|| {
+        if node.type_param.contains('<') && title_source.ends_with("&gt;") {
+            let label = ClassSvgLabel::from_type_source(
+                &title_text,
+                measurer,
+                title_style,
+                title_calc_style,
+                wrap_probe_font_size,
+                wrap_mode,
+            );
+            return ClassSvgTitleLabel {
+                label,
+                literal_first_row: false,
+            };
+        }
+        let wrapped = if matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun)
+            && title_markdown_analysis
+                .as_ref()
+                .is_some_and(MermaidMarkdownAnalysis::all_runs_normal)
+        {
+            wrap_class_svg_text_like_mermaid(
+                &title_text,
+                &title_source,
+                measurer,
+                title_style,
+                title_calc_style,
+                wrap_probe_font_size,
+                false,
+            )
+        } else {
+            title_text.clone()
+        };
+        ClassSvgTitleLabel::new(&title_source, &wrapped)
+    });
     let title_max_width_px = use_html_labels.then(|| {
         class_html_create_text_width_px(title_text.as_str(), measurer, title_calc_style).max(1)
     });
@@ -840,13 +852,38 @@ fn class_box_dimensions(
         let mut prepared_out = prepare_html_labels.then(|| Vec::with_capacity(rows.len()));
         let mut y_offset = 0.0;
         for row in rows {
-            let t = if use_html_labels {
-                class_member_create_text_input(row)
+            let (metrics, prepared) = if use_html_labels {
+                measure_label(
+                    &class_member_create_text_input(row),
+                    row.css_style.as_str(),
+                    ctx.code_text_style,
+                )
+            } else if let Some(source) =
+                node_binding::class_generic_member_source(row, ["&lt;", "&gt;"])
+            {
+                let style = class_svg_row_text_style(ctx.code_text_style, &row.css_style, false);
+                let style = class_svg_text_with_family(&style, svg_font_family);
+                let probe_style = if ctx.native_title_style.is_some() {
+                    style.as_ref()
+                } else {
+                    html_calc_text_style
+                };
+                let label = ClassSvgLabel::from_type_source(
+                    &source,
+                    measurer,
+                    &style,
+                    probe_style,
+                    wrap_probe_font_size,
+                    wrap_mode,
+                );
+                (label.type_metrics(measurer, &style), None)
             } else {
-                row.display_text_for_render()
+                measure_label(
+                    &row.display_text_for_render(),
+                    row.css_style.as_str(),
+                    ctx.code_text_style,
+                )
             };
-            let (metrics, prepared) =
-                measure_label(&t, row.css_style.as_str(), ctx.code_text_style);
             if let Some(out) = metrics_out.as_mut() {
                 out.push(metrics);
             }
@@ -1440,6 +1477,63 @@ impl TextMeasurer for ClassTitleMeasurer<'_> {
 }
 
 impl ClassSvgLabel {
+    pub(crate) fn from_type_source(
+        source: &str,
+        measurer: &dyn TextMeasurer,
+        style: &TextStyle,
+        probe_style: &TextStyle,
+        wrap_probe_font_size: f64,
+        wrap_mode: WrapMode,
+    ) -> Self {
+        use merman_render_core::text::inline_html::SvgTextEntityMode;
+
+        let source = source.strip_prefix('\\').unwrap_or(source);
+        let mut label = Self::new(source);
+        // Protect type delimiters while tokenizing Markdown, then wrap the literal words.
+        // Splitting the source spelling could split an entity into different display rows.
+        for (word, _) in label.analysis.lines.iter_mut().flatten() {
+            if let std::borrow::Cow::Owned(decoded) =
+                SvgTextEntityMode::CreateTextSource.visible_word(word)
+            {
+                *word = decoded;
+            }
+        }
+        if label.analysis.all_runs_normal()
+            && matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun)
+        {
+            let width = mermaid_class_svg_create_text_width_px(
+                measurer,
+                source,
+                probe_style,
+                wrap_probe_font_size,
+            );
+            label.analysis.lines = merman_render_core::text::wrap_markdown_word_lines(
+                measurer,
+                label.lines(),
+                style,
+                width,
+                wrap_mode,
+                true,
+                SvgTextEntityMode::DecodedModel,
+            );
+            label.analysis.line_count = label.analysis.lines.len();
+        }
+        label
+    }
+
+    pub(crate) fn type_metrics(
+        &self,
+        measurer: &dyn TextMeasurer,
+        style: &TextStyle,
+    ) -> merman_render_core::text::TextMetrics {
+        merman_render_core::text::measure_svg_markdown_word_lines(
+            measurer,
+            self.lines(),
+            style,
+            merman_render_core::text::inline_html::SvgTextEntityMode::DecodedModel,
+        )
+    }
+
     fn retained_heap_bytes(&self) -> usize {
         self.analysis.lines.iter().fold(
             self.analysis

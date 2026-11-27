@@ -40,6 +40,7 @@ impl ArchitectureCssBinding {
     ) {
         use super::native_theme::authored;
 
+        self.common = self.common.clone().with_text_color(&native.text_ink);
         self.arch_font_size_px = native.layout_text.font_size;
         self.edge_color = authored(
             config,

@@ -6,6 +6,111 @@ use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 #[cfg(feature = "layout-shoal")]
 #[test]
+fn requirement_shoal_dark_edge_labels_and_look_definitions_survive_rebasing() {
+    use merman_render::svg::rebase_svg_ids;
+    use merman_render::theme::{NativeTheme, ThemeCompiler};
+
+    let source = r#"requirementDiagram
+direction LR
+element gradient {
+  type: hardware
+}
+element drop-shadow {
+  type: software
+}
+gradient - satisfies -> drop-shadow
+"#;
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+            "layout":"shoal", "look":"neo", "htmlLabels":true,
+            "themeVariables":{"useGradient":true},
+        })),
+    );
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let theme = ThemeCompiler::new()
+        .compile_json(
+            br##"{"schema_version":2,"extends":"cyberpunk","roles":{"text.primary":"#E1E2E3"}}"##,
+            None,
+        )
+        .unwrap();
+    let environment = RenderEnvironment::deterministic();
+    let render = |session| {
+        family::prepare(
+            parsed.presentation(),
+            &LayoutOptions::headless_svg_defaults(),
+            session,
+        )
+        .unwrap()
+        .render_svg(&Default::default(), &Default::default())
+        .unwrap()
+    };
+    let rendered = render(
+        environment
+            .begin_session_with_native_theme(NativeTheme::new(theme))
+            .unwrap(),
+    );
+    let original = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let css = original
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .unwrap()
+        .text()
+        .unwrap();
+    assert!(css.contains("fill:#E1E2E3;}"));
+    assert!(css.contains(".edgeLabel span{color:#E1E2E3;}"));
+    let rendered = render(environment.begin_session().unwrap());
+    let rebased = rebase_svg_ids(
+        rendered.svg(),
+        "preview",
+        &environment.begin_session().unwrap(),
+    )
+    .unwrap();
+    let document = roxmltree::Document::parse(&rebased).unwrap();
+    let ids = document
+        .descendants()
+        .filter_map(|node| node.attribute("id"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        ids.iter().collect::<std::collections::HashSet<_>>().len(),
+        ids.len()
+    );
+    let gradient_id = document
+        .descendants()
+        .find(|node| node.has_tag_name("linearGradient"))
+        .unwrap()
+        .attribute("id")
+        .unwrap();
+    let css = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .unwrap()
+        .text()
+        .unwrap();
+    assert!(css.contains(&format!("url(#{gradient_id})")));
+    let edge = document
+        .descendants()
+        .find(|node| node.attribute("data-edge") == Some("true"))
+        .unwrap();
+    let marker_id = edge
+        .attribute("marker-end")
+        .unwrap()
+        .strip_prefix("url(#")
+        .unwrap()
+        .strip_suffix(')')
+        .unwrap();
+    assert!(
+        document
+            .descendants()
+            .any(|node| node.has_tag_name("marker") && node.attribute("id") == Some(marker_id))
+    );
+    assert!(!edge.attribute("style").unwrap().contains(";;;"));
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
 fn requirement_shoal_paints_sketch_edges_and_native_arrowheads() {
     use merman_render::theme::{NativeTheme, ThemeCompiler};
 

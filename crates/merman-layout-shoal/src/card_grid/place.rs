@@ -297,7 +297,7 @@ pub(super) fn place(
         )?;
         gutters[id] = tracks;
         let width = content.width.max(scope.caption.width) + padding.left + padding.right;
-        let height = content.height + padding.top + padding.bottom + scope.caption.height;
+        let height = content.height + padding.top + padding.bottom;
         if let Some(spec) = graph.groups.get(id) {
             let mut rect = Rect {
                 width: width.max(spec.min_size.width),

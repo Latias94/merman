@@ -1,7 +1,7 @@
 //! Flowchart process rectangle.
 
+use super::super::helpers;
 use crate::svg::parity::flowchart::{FlowchartRenderCtx, escape_attr};
-use crate::svg::parity::fmt_display;
 
 const HAND_DRAWN_ROUGHNESS: f32 = 0.7;
 const HAND_DRAWN_FILL_WEIGHT: f32 = 1.5;
@@ -18,7 +18,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_process_rectangle(
     let width = rect.width();
     let height = rect.height();
     let rough_paths = if common.look_is_hand_drawn() {
-        super::super::helpers::timed_node_roughjs(common.timing, details, || {
+        helpers::timed_node_roughjs(common.timing, details, || {
             super::super::roughjs::roughjs_hachure_paths_for_rect(
                 -width / 2.0,
                 -height / 2.0,
@@ -40,11 +40,24 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_process_rectangle(
     if let Some((fill_d, stroke_d)) = rough_paths {
         let _ = write!(
             out,
-            r#"<g class="basic label-container" style="{}"><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"#,
-            escape_attr(common.rough_group_style),
-            escape_attr(&fill_d),
-            escape_attr(common.fill_color),
-            fmt_display(HAND_DRAWN_FILL_WEIGHT as f64),
+            r#"<g class="basic label-container" style="{}">"#,
+            escape_attr(helpers::hand_drawn_group_style(common)),
+        );
+        let outline = if common.solid_rough_fill {
+            helpers::rectangle_outline(kurbo::Rect::from_center_size((0.0, 0.0), (width, height)))
+        } else {
+            String::new()
+        };
+        helpers::write_hand_drawn_hachure(
+            out,
+            common,
+            &outline,
+            &fill_d,
+            f64::from(HAND_DRAWN_FILL_WEIGHT),
+        );
+        let _ = write!(
+            out,
+            r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"#,
             escape_attr(&stroke_d),
             escape_attr(common.stroke_color),
             common.stroke_width,

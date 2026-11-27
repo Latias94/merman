@@ -1,7 +1,5 @@
 //! Shared RoughJS formatting and path-geometry helpers used by multiple parity renderers.
 
-pub(in crate::svg::parity) use merman_render_core::rough_svg::ops_to_svg_path_d;
-
 #[cfg(any(
     feature = "diagram-c4",
     feature = "diagram-flowchart",
@@ -11,8 +9,7 @@ pub(in crate::svg::parity) use merman_render_core::rough_svg::ops_to_svg_path_d;
 pub(in crate::svg::parity) use merman_render_core::rough_svg::paths;
 
 pub(in crate::svg::parity) use merman_render_core::rough_svg::{
-    closed_path_d_from_points, mermaid_arc_points, roughjs_circle_operations,
-    roughjs_rect_operations,
+    closed_path_d_from_points, roughjs_circle_operations, roughjs_rect_operations,
 };
 
 #[cfg(test)]
@@ -21,10 +18,10 @@ mod color_tests {
 
     #[test]
     fn malformed_hex_color_never_slices_inside_utf8() {
-        for value in ["#😀ab", "#éa", "#猫", "#ééé", "#abcdefg", "#ggg", "red"] {
+        for value in ["#😀ab", "#éa", "#猫", "#ééé", "#abcdefg", "#ggg"] {
             assert!(parse_hex_color_to_srgba(value).is_none(), "{value}");
         }
-        for value in ["#abc", "#ABCDEF", " #ff0000 "] {
+        for value in ["#abc", "#ABCDEF", " #ff0000 ", "red", "hsl(180 50% 50%)"] {
             assert!(parse_hex_color_to_srgba(value).is_some(), "{value}");
         }
     }

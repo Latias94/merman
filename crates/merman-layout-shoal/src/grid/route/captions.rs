@@ -1,5 +1,10 @@
+mod adjacent;
+mod obstacle;
+
 use super::*;
-use crate::geom::{Bvh, BvhEntry};
+use crate::geom::{BoundsIndex, Bvh, BvhEntry};
+use adjacent::AdjacentLines;
+use obstacle::Shaft;
 use std::ops::ControlFlow::{Break, Continue};
 
 #[derive(Clone, Copy)]
@@ -10,7 +15,7 @@ struct SolidObstacle {
 
 #[derive(Clone, Copy)]
 struct RouteObstacle {
-    bounds: Bounds,
+    shaft: Shaft,
     edge: usize,
 }
 
@@ -39,14 +44,9 @@ impl SeatMode {
 struct Scene {
     solids: Bvh<SolidObstacle>,
     routes: Bvh<RouteObstacle>,
-    labels: Vec<Caption>,
+    labels: BoundsIndex,
     clearance: f64,
     card_grid: bool,
-}
-
-struct Caption {
-    ink: Bounds,
-    prefix_bottom: f64,
 }
 
 #[derive(Clone, Copy)]
@@ -67,15 +67,44 @@ impl Run {
     }
 }
 
+#[derive(Clone, Copy)]
+struct CandidateRun {
+    run: Run,
+    ordinal: usize,
+    start: f64,
+    span: [f64; 2],
+    preferred: f64,
+    lower_cost: f64,
+}
+
+impl CandidateRun {
+    fn arc(self, along: f64) -> f64 {
+        self.start + (along - self.run.from).abs()
+    }
+
+    fn lower_cost(self, span: [f64; 2], target: f64) -> f64 {
+        let [left, right] = span.map(|at| self.arc(at));
+        let nearest = self.arc(self.run.from.clamp(span[0], span[1]));
+        (target - target.clamp(nearest, left.max(right))).abs()
+    }
+}
+
 #[derive(Default)]
 struct SearchScratch {
     runs: Vec<Run>,
+    ordered: Vec<CandidateRun>,
     blocked: Vec<[f64; 2]>,
     seats: Vec<f64>,
 }
 
 impl SearchScratch {
-    fn prepare(&mut self, points: &[RoutePoint], work: &mut Work<'_>) -> LayoutResult<f64> {
+    fn prepare(
+        &mut self,
+        points: &[RoutePoint],
+        markers: [f64; 2],
+        fraction: f64,
+        work: &mut Work<'_>,
+    ) -> LayoutResult<f64> {
         self.runs.clear();
         for leg in points.windows(2) {
             work.visit(1)?;
@@ -118,7 +147,39 @@ impl SearchScratch {
         if !length.is_finite() {
             return Err(PRECISION);
         }
-        Ok(length)
+        let first = markers[0].min(length);
+        let last = (length - markers[1]).max(first);
+        let target = (last - first).mul_add(fraction, first);
+        let mut seen = 0.0;
+        self.ordered.clear();
+        for (ordinal, &run) in self.runs.iter().enumerate() {
+            work.visit(1)?;
+            let start = seen;
+            seen += run.length();
+            let lo = first.max(start);
+            let hi = last.min(seen);
+            if lo <= hi {
+                let [a, b] = [run.at(lo - start), run.at(hi - start)];
+                let span = [a.min(b), a.max(b)];
+                let mut candidate = CandidateRun {
+                    run,
+                    ordinal,
+                    start,
+                    span,
+                    preferred: run.at(target.clamp(lo, hi) - start),
+                    lower_cost: 0.0,
+                };
+                candidate.lower_cost = candidate.lower_cost(span, target);
+                push(&mut self.ordered, candidate)?;
+            }
+        }
+        work.charge_sort(self.ordered.len())?;
+        self.ordered.sort_unstable_by(|a, b| {
+            a.lower_cost
+                .total_cmp(&b.lower_cost)
+                .then_with(|| a.ordinal.cmp(&b.ordinal))
+        });
+        Ok(target)
     }
 }
 
@@ -144,10 +205,13 @@ impl SeatLine {
     fn ink_span(self, rect: Bounds) -> Option<[f64; 2]> {
         let [along, cross] = self.axes(rect);
         let margin = self.half[1 - self.axis];
-        (cross[0] < self.cross + margin && self.cross - margin < cross[1]).then(|| {
-            let half = self.half[self.axis];
-            [(along[0] - half).next_up(), (along[1] + half).next_down()]
-        })
+        (cross[0] < self.cross + margin && self.cross - margin < cross[1])
+            .then(|| self.expand_ink_span(along))
+    }
+
+    fn expand_ink_span(self, along: [f64; 2]) -> [f64; 2] {
+        let half = self.half[self.axis];
+        [(along[0] - half).next_up(), (along[1] + half).next_down()]
     }
 
     fn axes(self, rect: Bounds) -> [[f64; 2]; 2] {
@@ -161,8 +225,8 @@ impl SeatLine {
     fn tether_span(self, rect: Bounds) -> Option<[f64; 2]> {
         let [along, cross] = self.axes(rect);
         (self.cross != self.anchor_cross
-            && cross[1] >= self.cross.min(self.anchor_cross)
-            && cross[0] <= self.cross.max(self.anchor_cross))
+            && cross[1] > self.cross.min(self.anchor_cross)
+            && cross[0] < self.cross.max(self.anchor_cross))
         .then_some(along)
     }
 
@@ -184,27 +248,16 @@ impl SeatLine {
     }
 }
 
+#[derive(Clone, Copy)]
+struct SeatRequest {
+    edge: usize,
+    target: f64,
+    size: Size,
+}
+
 impl Scene {
     fn add_caption(&mut self, ink: Bounds, work: &mut Work<'_>) -> LayoutResult<()> {
-        work.visit(self.labels.len().checked_ilog2().unwrap_or(0) as usize + 1)?;
-        let at = self
-            .labels
-            .partition_point(|label| label.ink.y[0] <= ink.y[0]);
-        let prefix_bottom = self.labels[..at]
-            .last()
-            .map_or(ink.y[1], |label| label.prefix_bottom.max(ink.y[1]));
-        work.charge(self.labels.len() - at + 1)?;
-        self.labels
-            .try_reserve(1)
-            .map_err(|_| LayoutError::AllocationLimit)?;
-        self.labels.insert(at, Caption { ink, prefix_bottom });
-        for label in &mut self.labels[at + 1..] {
-            if label.prefix_bottom >= prefix_bottom {
-                break;
-            }
-            label.prefix_bottom = prefix_bottom;
-        }
-        Ok(())
+        self.labels.insert_with_work(ink, work)
     }
 
     fn closest_seat(
@@ -218,6 +271,8 @@ impl Scene {
     ) -> LayoutResult<Option<f64>> {
         blocked.clear();
         let [lo, hi] = line.span;
+        let desired = preferred.clamp(lo, hi);
+        let mut desired_blocked = false;
         let mut block = |span: Option<[f64; 2]>| -> LayoutResult<bool> {
             if let Some([a, b]) = span
                 && a <= b
@@ -228,6 +283,7 @@ impl Scene {
                 if a <= lo && b >= hi {
                     return Ok(true);
                 }
+                desired_blocked |= a <= desired && desired <= b;
                 push(blocked, [a, b])?;
             }
             Ok(false)
@@ -241,18 +297,11 @@ impl Scene {
         if !ink.finite() {
             return Ok(None);
         }
-        work.visit(self.labels.len().checked_ilog2().unwrap_or(0) as usize + 1)?;
-        let first = self
+        if self
             .labels
-            .partition_point(|label| label.prefix_bottom <= ink.y[0]);
-        for label in &self.labels[first..] {
-            work.visit(1)?;
-            if label.ink.y[0] >= ink.y[1] {
-                break;
-            }
-            if block(line.ink_span(label.ink))? {
-                return Ok(None);
-            }
+            .visit_overlaps_with_work(ink, work, |bounds, _| block(line.ink_span(bounds)))?
+        {
+            return Ok(None);
         }
         let tether = line.bounds(
             [lo, hi],
@@ -283,19 +332,22 @@ impl Scene {
         }
         // Keep enough separation to cover a small within-seat authored paint offset.
         let reach = (line.cross - line.anchor_cross).abs() + self.clearance.min(2.0);
+        if !reach.is_finite() {
+            return Ok(None);
+        }
         let affinity = line.bounds(
             [lo - reach, hi + reach],
             [line.cross - reach, line.cross + reach],
         );
-        let routes = ink.union(affinity).union(tether);
+        let routes = ink.union(affinity);
         let route_blocked = self.routes.visit(|entry| -> LayoutResult<_> {
             work.visit(1)?;
             Ok(match entry {
                 BvhEntry::Node(bounds) => Continue(routes.overlaps(bounds)),
                 BvhEntry::Item(obs) => {
                     let foreign = obs.edge != edge;
-                    if ((foreign || mode == SeatMode::Beside) && block(line.ink_span(obs.bounds))?)
-                        || (foreign && block(line.foreign_span(obs.bounds, reach))?)
+                    if ((foreign || mode == SeatMode::Beside) && block(obs.shaft.ink_span(line))?)
+                        || (foreign && block(obs.shaft.foreign_span(line, reach))?)
                     {
                         return Ok(Break(()));
                     }
@@ -305,6 +357,9 @@ impl Scene {
         })?;
         if route_blocked.is_break() {
             return Ok(None);
+        }
+        if !desired_blocked {
+            return Ok(Some(desired));
         }
         work.charge_sort(blocked.len())?;
         blocked.sort_unstable_by(|a, b| a[0].total_cmp(&b[0]).then_with(|| a[1].total_cmp(&b[1])));
@@ -334,10 +389,19 @@ impl Scene {
         Ok(best.map(|(_, seat)| seat))
     }
 
+    fn adjacent_range(&self, line: SeatLine, room: [f64; 2]) -> [f64; 2] {
+        let half = line.half[1 - line.axis];
+        let reach = 2.0 * half + self.clearance;
+        [
+            (line.cross - reach).max(room[0] + half),
+            (line.cross + reach).min(room[1] - half),
+        ]
+    }
+
     fn adjacent_lines(
         &self,
         line: SeatLine,
-        room: [f64; 2],
+        [low, high]: [f64; 2],
         edge: usize,
         seats: &mut Vec<f64>,
         work: &mut Work<'_>,
@@ -349,22 +413,16 @@ impl Scene {
             line.span[0] - line.half[line.axis],
             line.span[1] + line.half[line.axis],
         ];
-        let reach = 2.0 * half + self.clearance;
-        let low = (line.cross - reach).max(room[0] + half);
-        let high = (line.cross + reach).min(room[1] - half);
         if low > high || !low.is_finite() || !high.is_finite() {
             return Ok(());
         }
         let area = line.bounds(along, [low - half, high + half]);
-        push(seats, low)?;
-        push(seats, high)?;
-        let mut border = |bounds: Bounds| -> LayoutResult<()> {
-            let [_, cross] = line.axes(bounds);
-            for at in [(cross[0] - half).next_down(), (cross[1] + half).next_up()] {
-                if at >= low && at <= high {
-                    push(seats, at)?;
-                }
-            }
+        let mut adjacent = AdjacentLines::new(line.cross, [low, high]);
+        adjacent.insert(low, work)?;
+        adjacent.insert(high, work)?;
+        let mut border = |cross: [f64; 2], work: &mut Work<'_>| -> LayoutResult<()> {
+            adjacent.insert((cross[0] - half).next_down(), work)?;
+            adjacent.insert((cross[1] + half).next_up(), work)?;
             Ok(())
         };
         let _ = self.solids.visit(|entry| -> LayoutResult<_> {
@@ -373,7 +431,7 @@ impl Scene {
                 BvhEntry::Node(bounds) => Continue(area.overlaps(bounds)),
                 BvhEntry::Item(obs) => {
                     if !obs.is_frame && area.overlaps(obs.bounds) {
-                        border(obs.bounds)?;
+                        border(line.axes(obs.bounds)[1], work)?;
                     }
                     Continue(true)
                 }
@@ -385,37 +443,22 @@ impl Scene {
                 Ok(match entry {
                     BvhEntry::Node(bounds) => Continue(area.overlaps(bounds)),
                     BvhEntry::Item(obs) => {
-                        if obs.edge != edge && area.overlaps(obs.bounds) {
-                            border(obs.bounds)?;
+                        if obs.edge != edge
+                            && let Some(cross) = obs.shaft.adjacent_span(line, area)
+                        {
+                            border(cross, work)?;
                         }
                         Continue(true)
                     }
                 })
             })?;
         }
-        work.visit(self.labels.len().checked_ilog2().unwrap_or(0) as usize + 1)?;
-        let first = self
-            .labels
-            .partition_point(|label| label.prefix_bottom <= area.y[0]);
-        for label in &self.labels[first..] {
-            work.visit(1)?;
-            if label.ink.y[0] >= area.y[1] {
-                break;
-            }
-            if area.overlaps(label.ink) {
-                border(label.ink)?;
-            }
-        }
-        work.charge_sort(seats.len())?;
-        seats.sort_unstable_by(|a, b| {
-            (a - line.cross)
-                .abs()
-                .total_cmp(&(b - line.cross).abs())
-                .then_with(|| a.total_cmp(b))
-        });
-        work.visit(seats.len())?;
-        seats.dedup();
-        Ok(())
+        self.labels
+            .visit_overlaps_with_work(area, work, |bounds, work| {
+                border(line.axes(bounds)[1], work)?;
+                Ok(false)
+            })?;
+        adjacent.collect(seats, work)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -430,112 +473,174 @@ impl Scene {
         scratch: &mut SearchScratch,
         work: &mut Work<'_>,
     ) -> LayoutResult<Option<Point>> {
-        let length = scratch.prepare(points, work)?;
-        let first = markers[0].min(length);
-        let last = (length - markers[1]).max(first);
-        let target = (last - first).mul_add(fraction, first);
-        let room = scope.map_or([[0.0, f64::INFINITY]; 2], |bounds| [bounds.x, bounds.y]);
-        for mode in [
+        let clearance = 2.0 * self.clearance;
+        if !(size.width + clearance).is_finite() || !(size.height + clearance).is_finite() {
+            return Ok(None);
+        }
+        let request = SeatRequest {
+            edge,
+            target: scratch.prepare(points, markers, fraction, work)?,
+            size,
+        };
+        let root = if self.card_grid {
+            [f64::NEG_INFINITY, f64::INFINITY]
+        } else {
+            [0.0, f64::INFINITY]
+        };
+        let root = Bounds { x: root, y: root };
+        let room = scope.unwrap_or(root);
+        let local = [
             SeatMode::Beside,
             SeatMode::Inline,
             SeatMode::AcrossFrame,
             SeatMode::TightInline,
             SeatMode::AlongObstacles,
-            SeatMode::Detached,
+        ];
+        let relaxed = if self.card_grid && scope.is_some() {
+            &local[..]
+        } else {
+            &[]
+        };
+        // A local overhang keeps a stronger visual connection than a detached seat inside
+        // the boundary. Only repeat a failed search where relaxing the scope changes it.
+        for (room, previous, modes) in [
+            (room, None, &local[..]),
+            (root, scope, relaxed),
+            (
+                if self.card_grid { root } else { room },
+                None,
+                &[SeatMode::Detached][..],
+            ),
         ] {
-            if mode == SeatMode::TightInline && !self.card_grid {
-                continue;
-            }
-            let pad = mode.pad(self.clearance);
-            let half = [size.width / 2.0 + pad, size.height / 2.0 + pad];
-            if !half.into_iter().all(f64::is_finite) {
-                continue;
-            }
-            let mut seen = 0.0;
-            let mut best = None::<(f64, Point)>;
-            for &run in &scratch.runs {
-                work.visit(1)?;
-                let start = seen;
-                seen += run.length();
-                let lo = first.max(start);
-                let hi = last.min(seen);
-                if lo > hi {
+            for &mode in modes {
+                if mode == SeatMode::TightInline && !self.card_grid {
                     continue;
                 }
-                let axis = run.axis;
-                let cross_axis = 1 - axis;
-                // A root caption can sit outside a perimeter bundle. The drawing extent
-                // includes the ink, and the seat still projects onto the run's length.
-                let cross_room = if self.card_grid && scope.is_none() {
-                    [f64::NEG_INFINITY, f64::INFINITY]
-                } else {
-                    room[cross_axis]
-                };
-                let [a, b] = [run.at(lo - start), run.at(hi - start)];
-                let span = [
-                    a.min(b).max(room[axis][0] + half[axis]),
-                    a.max(b).min(room[axis][1] - half[axis]),
-                ];
-                if span[0] > span[1] {
-                    continue;
+                if let Some(seat) =
+                    self.search_mode(request, mode, room, previous, scratch, work)?
+                {
+                    return Ok(Some(seat));
                 }
-                let preferred = run.at(target.clamp(lo, hi) - start);
-                let across = half[cross_axis];
-                let line = SeatLine {
-                    axis,
-                    span,
-                    cross: run.cross,
-                    anchor_cross: run.cross,
-                    half,
-                };
-                let seats: &[f64] = match mode {
-                    SeatMode::Beside => &[
-                        (run.cross - across).next_down(),
-                        (run.cross + across).next_up(),
-                    ],
-                    SeatMode::AlongObstacles => {
-                        scratch.seats.clear();
-                        self.adjacent_lines(line, cross_room, edge, &mut scratch.seats, work)?;
-                        &scratch.seats
-                    }
-                    SeatMode::Detached => &[
-                        run.cross - 120.0,
-                        run.cross + 120.0,
-                        run.cross - 180.0,
-                        run.cross + 180.0,
-                        run.cross - 240.0,
-                        run.cross + 240.0,
-                    ],
-                    _ => &[run.cross],
-                };
-                for &cross in seats {
-                    work.visit(1)?;
-                    if cross < cross_room[0] + across || cross > cross_room[1] - across {
-                        continue;
-                    }
-                    let offset = (cross - run.cross).abs();
-                    let lower_cost = (target - target.clamp(lo, hi)).abs() + offset;
-                    if best.is_some_and(|(cost, _)| lower_cost >= cost) {
-                        continue;
-                    }
-                    let line = SeatLine { cross, ..line };
-                    if let Some(at) =
-                        self.closest_seat(line, preferred, mode, edge, &mut scratch.blocked, work)?
-                    {
-                        let distance = (start + (at - run.from).abs() - target).abs() + offset;
-                        if best.is_none_or(|(cost, _)| distance < cost) {
-                            let mut coords = [cross; 2];
-                            coords[axis] = at;
-                            best = Some((distance, point(coords)));
-                        }
-                    }
-                }
-            }
-            if let Some((_, seat)) = best {
-                return Ok(Some(seat));
             }
         }
         Ok(None)
+    }
+
+    fn search_mode(
+        &self,
+        request: SeatRequest,
+        mode: SeatMode,
+        room: Bounds,
+        previous: Option<Bounds>,
+        scratch: &mut SearchScratch,
+        work: &mut Work<'_>,
+    ) -> LayoutResult<Option<Point>> {
+        let SeatRequest { edge, target, size } = request;
+        let pad = mode.pad(self.clearance);
+        let half = [size.width / 2.0 + pad, size.height / 2.0 + pad];
+        if !half.into_iter().all(f64::is_finite) {
+            return Ok(None);
+        }
+        let mut best = None::<(f64, usize, Point)>;
+        for &candidate in &scratch.ordered {
+            work.visit(1)?;
+            if best.is_some_and(|(cost, _, _)| candidate.lower_cost > cost) {
+                break;
+            }
+            let run = candidate.run;
+            let axis = run.axis;
+            let across = half[1 - axis];
+            let [along_room, cross_room] = [room.x, room.y];
+            let (along_room, cross_room) = if axis == 0 {
+                (along_room, cross_room)
+            } else {
+                (cross_room, along_room)
+            };
+            let span = [
+                candidate.span[0].max(along_room[0] + half[axis]),
+                candidate.span[1].min(along_room[1] - half[axis]),
+            ];
+            if span[0] > span[1] {
+                continue;
+            }
+            let along_cost = candidate.lower_cost(span, target);
+            let can_win = |cost, best: Option<(f64, usize, Point)>| {
+                best.is_none_or(|(old, ordinal, _)| (cost, candidate.ordinal) < (old, ordinal))
+            };
+            if !can_win(along_cost, best) {
+                continue;
+            }
+            let preferred = candidate.preferred;
+            let line = SeatLine {
+                axis,
+                span,
+                cross: run.cross,
+                anchor_cross: run.cross,
+                half,
+            };
+            let previous_cross = previous.and_then(|room| {
+                let [along, cross] = line.axes(room);
+                (span[0] >= along[0] + half[axis] && span[1] <= along[1] - half[axis])
+                    .then_some(cross)
+            });
+            let seats: &[f64] = match mode {
+                SeatMode::Beside => &[
+                    (run.cross - across).next_down(),
+                    (run.cross + across).next_up(),
+                ],
+                SeatMode::AlongObstacles => {
+                    let range = self.adjacent_range(line, cross_room);
+                    if previous_cross.is_some_and(|room| self.adjacent_range(line, room) == range) {
+                        continue;
+                    }
+                    scratch.seats.clear();
+                    self.adjacent_lines(line, range, edge, &mut scratch.seats, work)?;
+                    &scratch.seats
+                }
+                SeatMode::Detached => &[
+                    run.cross - 120.0,
+                    run.cross + 120.0,
+                    run.cross - 180.0,
+                    run.cross + 180.0,
+                    run.cross - 240.0,
+                    run.cross + 240.0,
+                ],
+                _ => &[run.cross],
+            };
+            for &cross in seats {
+                work.visit(1)?;
+                let offset = (cross - run.cross).abs();
+                if !can_win(along_cost + offset, best) {
+                    // Only obstacle-adjacent lines are sorted by their actual offset. The
+                    // authored order of the two sides can differ by an ULP after rounding.
+                    if mode == SeatMode::AlongObstacles {
+                        break;
+                    }
+                    continue;
+                }
+                if cross < cross_room[0] + across || cross > cross_room[1] - across {
+                    continue;
+                }
+                if mode != SeatMode::AlongObstacles
+                    && previous_cross
+                        .is_some_and(|room| cross >= room[0] + across && cross <= room[1] - across)
+                {
+                    continue;
+                }
+                let line = SeatLine { cross, ..line };
+                if let Some(at) =
+                    self.closest_seat(line, preferred, mode, edge, &mut scratch.blocked, work)?
+                {
+                    let distance = (candidate.arc(at) - target).abs() + offset;
+                    if can_win(distance, best) {
+                        let mut coords = [cross; 2];
+                        coords[axis] = at;
+                        best = Some((distance, candidate.ordinal, point(coords)));
+                    }
+                }
+            }
+        }
+        Ok(best.map(|(_, _, seat)| seat))
     }
 }
 
@@ -596,22 +701,24 @@ pub(super) fn place(
     let mut lengths = filled(routes.len(), 0.0)?;
     for (edge, route) in routes.iter().enumerate() {
         work.visit(1)?;
-        let mut previous: Option<Bounds> = None;
+        let mut previous = None;
         for leg in route.points.windows(2) {
             work.visit(1)?;
-            let bounds = Bounds::between(position(leg[0]), position(leg[1]));
+            let (a, b) = (position(leg[0]), position(leg[1]));
+            let bounds = Bounds::between(a, b);
             lengths[edge] += (bounds.x[1] - bounds.x[0]) + (bounds.y[1] - bounds.y[0]);
-            if let Some(run) = &mut previous
+            let shaft = Shaft::new(a, b, bounds);
+            if let (Some(Shaft::Ortho(run)), Shaft::Ortho(bounds)) = (&mut previous, shaft)
                 && ((run.x == bounds.x && run.x[0] == run.x[1])
                     || (run.y == bounds.y && run.y[0] == run.y[1]))
             {
                 *run = run.union(bounds);
-            } else if let Some(bounds) = previous.replace(bounds) {
-                push(&mut route_obstacles, RouteObstacle { bounds, edge })?;
+            } else if let Some(shaft) = previous.replace(shaft) {
+                push(&mut route_obstacles, RouteObstacle { shaft, edge })?;
             }
         }
-        if let Some(bounds) = previous {
-            push(&mut route_obstacles, RouteObstacle { bounds, edge })?;
+        if let Some(shaft) = previous {
+            push(&mut route_obstacles, RouteObstacle { shaft, edge })?;
         }
     }
     for site in &plan.sites {
@@ -633,8 +740,8 @@ pub(super) fn place(
     }
     let mut scene = Scene {
         solids: Bvh::build_with_work(solids, |obs| obs.bounds, work)?,
-        routes: Bvh::build_with_work(route_obstacles, |obs| obs.bounds, work)?,
-        labels: Vec::new(),
+        routes: Bvh::build_with_work(route_obstacles, |obs| obs.shaft.bounds(), work)?,
+        labels: BoundsIndex::default(),
         clearance: context.metrics.label_clearance,
         card_grid,
     };
@@ -677,26 +784,16 @@ pub(super) fn place(
                 &mut route.end_label_center,
             ]) {
                 let Some(size) = size else { continue };
-                let mut seat = None;
-                let scopes = std::iter::once(constraint)
-                    .chain((card_grid && constraint.is_some()).then_some(None));
-                // Try the enclosing boundary first. If it is too narrow, the root can
-                // accommodate an overhang without moving any shaft or covering foreign ink.
-                for scope in scopes {
-                    seat = scene.near_route(
-                        &route.points,
-                        edge,
-                        fraction,
-                        markers,
-                        size,
-                        scope,
-                        &mut scratch,
-                        work,
-                    )?;
-                    if seat.is_some() {
-                        break;
-                    }
-                }
+                let mut seat = scene.near_route(
+                    &route.points,
+                    edge,
+                    fraction,
+                    markers,
+                    size,
+                    constraint,
+                    &mut scratch,
+                    work,
+                )?;
                 if seat.is_none() && card_grid {
                     // Leave the caption unset so the caller can try against the final shaft.
                     continue;
@@ -752,6 +849,110 @@ mod tests {
     use crate::{KnotKind, NoopWorkControl};
 
     #[test]
+    fn diagonal_does_not_block_a_caption_in_the_empty_corner_of_its_envelope() {
+        let mut noop = NoopWorkControl;
+        let mut work = Work::new(&mut noop);
+        let routes = vec![RouteObstacle {
+            shaft: Shaft::Diagonal([Point { x: 0.0, y: 0.0 }, Point { x: 400.0, y: 400.0 }]),
+            edge: 1,
+        }];
+        let scene = Scene {
+            solids: Bvh::build_with_work(Vec::new(), |obs: &SolidObstacle| obs.bounds, &mut work)
+                .unwrap(),
+            routes: Bvh::build_with_work(routes, |obs| obs.shaft.bounds(), &mut work).unwrap(),
+            labels: Default::default(),
+            clearance: 8.0,
+            card_grid: true,
+        };
+        let route = [
+            knot(Point { x: 100.0, y: 300.0 }, Axis::Horizontal),
+            knot(Point { x: 200.0, y: 300.0 }, Axis::Horizontal),
+        ];
+        let seat = scene
+            .near_route(
+                &route,
+                0,
+                0.5,
+                [0.0, 0.0],
+                Size {
+                    width: 30.0,
+                    height: 20.0,
+                },
+                None,
+                &mut SearchScratch::default(),
+                &mut work,
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            seat,
+            Point {
+                x: 150.0,
+                y: 282.0_f64.next_down()
+            }
+        );
+    }
+
+    #[test]
+    fn card_caption_can_leave_its_scope_before_detaching_from_the_route() {
+        let mut noop = NoopWorkControl;
+        let mut work = Work::new(&mut noop);
+        let scene = Scene {
+            solids: Bvh::build_with_work(
+                vec![SolidObstacle {
+                    bounds: Bounds {
+                        x: [0.0, 600.0],
+                        y: [200.0, 325.0],
+                    },
+                    is_frame: false,
+                }],
+                |obs| obs.bounds,
+                &mut work,
+            )
+            .unwrap(),
+            routes: Bvh::build_with_work(
+                Vec::new(),
+                |obs: &RouteObstacle| obs.shaft.bounds(),
+                &mut work,
+            )
+            .unwrap(),
+            labels: Default::default(),
+            clearance: 8.0,
+            card_grid: true,
+        };
+        let route = [
+            knot(Point { x: 100.0, y: 200.0 }, Axis::Horizontal),
+            knot(Point { x: 400.0, y: 200.0 }, Axis::Horizontal),
+        ];
+        let seat = scene
+            .near_route(
+                &route,
+                0,
+                0.5,
+                [0.0, 0.0],
+                Size {
+                    width: 160.0,
+                    height: 50.0,
+                },
+                Some(Bounds {
+                    x: [0.0, 600.0],
+                    y: [200.0, 500.0],
+                }),
+                &mut SearchScratch::default(),
+                &mut work,
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            seat,
+            Point {
+                x: 250.0,
+                y: 167.0_f64.next_down()
+            }
+        );
+    }
+
+    #[test]
     fn parallel_route_captions_do_not_jump_across_foreign_wires() {
         let mut noop = NoopWorkControl;
         let mut work = Work::new(&mut noop);
@@ -767,24 +968,24 @@ mod tests {
         }];
         let routes = vec![
             RouteObstacle {
-                bounds: Bounds {
+                shaft: Shaft::Ortho(Bounds {
                     x: [200.0, 500.0],
                     y: [160.4, 160.4],
-                },
+                }),
                 edge: 0,
             },
             RouteObstacle {
-                bounds: Bounds {
+                shaft: Shaft::Ortho(Bounds {
                     x: [200.0, 500.0],
                     y: [167.4, 167.4],
-                },
+                }),
                 edge: 1,
             },
         ];
         let mut scene = Scene {
             solids: Bvh::build_with_work(solids, |obs| obs.bounds, &mut work).unwrap(),
-            routes: Bvh::build_with_work(routes, |obs| obs.bounds, &mut work).unwrap(),
-            labels: Vec::new(),
+            routes: Bvh::build_with_work(routes, |obs| obs.shaft.bounds(), &mut work).unwrap(),
+            labels: BoundsIndex::default(),
             clearance: 8.0,
             card_grid: true,
         };
@@ -870,32 +1071,32 @@ mod tests {
         // A caption 24px high cannot fit in the 14px between the two outer shafts.
         let routes = vec![
             RouteObstacle {
-                bounds: Bounds {
+                shaft: Shaft::Ortho(Bounds {
                     x: [100.0, 400.0],
                     y: [160.0, 160.0],
-                },
+                }),
                 edge: 0,
             },
             RouteObstacle {
-                bounds: Bounds {
+                shaft: Shaft::Ortho(Bounds {
                     x: [100.0, 400.0],
                     y: [167.0, 167.0],
-                },
+                }),
                 edge: 1,
             },
             RouteObstacle {
-                bounds: Bounds {
+                shaft: Shaft::Ortho(Bounds {
                     x: [100.0, 400.0],
                     y: [174.0, 174.0],
-                },
+                }),
                 edge: 2,
             },
         ];
         let scene = Scene {
             solids: Bvh::build_with_work(Vec::new(), |obs: &SolidObstacle| obs.bounds, &mut work)
                 .unwrap(),
-            routes: Bvh::build_with_work(routes, |obs| obs.bounds, &mut work).unwrap(),
-            labels: Vec::new(),
+            routes: Bvh::build_with_work(routes, |obs| obs.shaft.bounds(), &mut work).unwrap(),
+            labels: BoundsIndex::default(),
             clearance: 8.0,
             card_grid: true,
         };
@@ -940,9 +1141,13 @@ mod tests {
         let scene = Scene {
             solids: Bvh::build_with_work(Vec::new(), |obs: &SolidObstacle| obs.bounds, &mut work)
                 .unwrap(),
-            routes: Bvh::build_with_work(Vec::new(), |obs: &RouteObstacle| obs.bounds, &mut work)
-                .unwrap(),
-            labels: Vec::new(),
+            routes: Bvh::build_with_work(
+                Vec::new(),
+                |obs: &RouteObstacle| obs.shaft.bounds(),
+                &mut work,
+            )
+            .unwrap(),
+            labels: BoundsIndex::default(),
             clearance: f64::MAX,
             card_grid: true,
         };
@@ -1002,16 +1207,16 @@ mod tests {
             },
         ];
         let routes = vec![RouteObstacle {
-            bounds: Bounds {
+            shaft: Shaft::Ortho(Bounds {
                 x: [100.0, 400.0],
                 y: [200.0, 200.0],
-            },
+            }),
             edge: 0,
         }];
         let scene = Scene {
             solids: Bvh::build_with_work(solids, |obs| obs.bounds, &mut work).unwrap(),
-            routes: Bvh::build_with_work(routes, |obs| obs.bounds, &mut work).unwrap(),
-            labels: Vec::new(),
+            routes: Bvh::build_with_work(routes, |obs| obs.shaft.bounds(), &mut work).unwrap(),
+            labels: BoundsIndex::default(),
             clearance: 8.0,
             card_grid: true,
         };

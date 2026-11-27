@@ -297,7 +297,7 @@ Merman's ZenUML grammar, model, renderer, emoji/icon data, and behavior probes f
 - Source path: `.`
 - Relationship: `behavior-reference`, `copied`, `modified`, `translated`
 - License: `MIT`
-- Local evidence: `crates/merman-core/src/diagrams/zenuml`, `crates/merman-render-sequence/assets/zenuml`, `crates/merman-render-sequence/src/zenuml`
+- Local evidence: `crates/merman-core-sequence/src/zenuml`, `crates/merman-render-sequence/assets/zenuml`, `crates/merman-render-sequence/src/zenuml`
 - Legal file: `THIRD_PARTY_LICENSES/zenuml-core/LICENSE`
 
 ### Eclipse Layout Kernel

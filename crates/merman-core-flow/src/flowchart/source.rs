@@ -11,7 +11,7 @@ use merman_model::families::flowchart::FlowchartRenderContext;
 use merman_model::families::flowchart::{
     FlowDroppedSubgraphMember, FlowEdge, FlowEdgeDefaults, FlowNode, FlowNodeProvenance,
     FlowSubgraph, FlowSubgraphVertexStyle, FlowchartLabelSourceOwner, FlowchartModel,
-    FlowchartRenderLabelSources, FlowchartSubgraphStyles,
+    FlowchartRenderLabelSources, FlowchartSubgraphStyles, flowchart_svg_text_source,
 };
 use merman_model::warnings::{DiagramWarningFact, FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID};
 use merman_model::{OperationControl, OperationControlResult, SourceSpan, config::MermaidConfig};
@@ -288,8 +288,10 @@ impl FlowchartSemanticSource {
 
         let mut render_nodes = Vec::with_capacity(nodes.len());
         let mut label_sources = FlowchartRenderLabelSources::default();
-        let preserve_svg_text =
-            matches!(diagram_type, "flowchart" | "flowchart-v2" | "flowchart-elk");
+        let preserve_svg_text = matches!(
+            diagram_type,
+            "flowchart" | "flowchart-v2" | "flowchart-elk" | "swimlane"
+        );
         for (index, node) in nodes.into_iter().enumerate() {
             if index % 128 == 0 {
                 control.checkpoint()?;
@@ -431,7 +433,7 @@ fn flow_node_to_model(
     }
     if preserve_svg_text
         && n.label_type != TitleKind::Markdown
-        && let Some(source) = alternate_svg_text_label(
+        && let Some(source) = flowchart_svg_text_source(
             strip_label_quotes(label_raw),
             label_sources.node_source(&n.id).unwrap_or(&label),
         )
@@ -482,7 +484,7 @@ fn flow_edge_to_model(
     if preserve_svg_text
         && e.label_type != TitleKind::Markdown
         && let (Some(raw), Some(label)) = (e.label.as_deref(), label.as_deref())
-        && let Some(source) = alternate_svg_text_label(
+        && let Some(source) = flowchart_svg_text_source(
             raw,
             label_sources.edge_source(semantic_index).unwrap_or(label),
         )
@@ -582,45 +584,6 @@ fn render_label_source_needs_provenance(raw: &str) -> bool {
     raw.contains(['&', '#', 'ﬂ', '¶', '<', '>'])
 }
 
-fn alternate_svg_text_label(raw: &str, fallback: &str) -> Option<String> {
-    if !render_label_source_needs_provenance(raw) {
-        return None;
-    }
-    let append_text = |text: &str, out: &mut String| {
-        for ch in decode_mermaid_hash_entities(text).chars() {
-            match ch {
-                '&' => out.push_str("&amp;"),
-                '<' => out.push_str("&lt;"),
-                '>' => out.push_str("&gt;"),
-                _ => out.push(ch),
-            }
-        }
-    };
-    // Recognize only authored break tokens before expanding entities. Encode the other angle
-    // brackets and ampersands for the SVG row tokenizer, which decodes them after tokenization.
-    let mut source = String::with_capacity(raw.len());
-    let mut copied = 0;
-    for (start, _) in raw.match_indices('<') {
-        let tail = &raw[start + 1..];
-        let name = tail.strip_prefix('/').unwrap_or(tail);
-        if !name
-            .get(..2)
-            .is_some_and(|name| name.eq_ignore_ascii_case("br"))
-        {
-            continue;
-        }
-        let tail = name[2..].trim_start_matches(merman_model::text::is_ecmascript_whitespace);
-        let tail = tail.strip_prefix('/').unwrap_or(tail);
-        if let Some(after) = tail.strip_prefix('>') {
-            append_text(&raw[copied..start], &mut source);
-            source.push_str("<br/>");
-            copied = raw.len() - after.len();
-        }
-    }
-    append_text(&raw[copied..], &mut source);
-    (source != fallback).then_some(source)
-}
-
 fn decode_mermaid_hash_entities(input: &str) -> std::borrow::Cow<'_, str> {
     // Mermaid runs `encodeEntities(...)` before parsing and later decodes with browser
     // `entityDecode(...)`. In our headless pipeline we decode into Unicode during parsing so
@@ -645,7 +608,7 @@ fn flow_subgraph_to_model(
     }
     if preserve_svg_text
         && sg.label_type != "markdown"
-        && let Some(source) = alternate_svg_text_label(
+        && let Some(source) = flowchart_svg_text_source(
             &sg.title,
             label_sources
                 .subgraph_source(declaration_ordinal, &sg.id)

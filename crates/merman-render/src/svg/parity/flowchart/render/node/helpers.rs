@@ -1,5 +1,9 @@
 //! Node-level helpers (link sanitization, class building, placeholders).
 
+use std::borrow::Cow;
+
+use merman_render_flow::node_body;
+
 use crate::svg::icon_registry::{
     IconIdScopePrefix, IconRenderRequest, mermaid_unknown_icon_svg, render_icon,
 };
@@ -279,25 +283,6 @@ pub(super) fn prepare_node_path(
     }
 }
 
-pub(super) fn prepare_node_polygon(
-    common: &super::FlowchartNodeGeometry<'_>,
-    points: &[(f64, f64)],
-    path: &str,
-    target: super::roughjs::RoughGeometryTarget,
-) -> Option<super::roughjs::RoughPathPair> {
-    if common.look_is_hand_drawn() {
-        prepare_node_path(common, path, target)
-    } else {
-        super::roughjs::roughjs_prepare_paths_for_polygon(
-            target,
-            points,
-            common.stroke_width,
-            common.work_meter,
-            common.hand_drawn_seed,
-        )
-    }
-}
-
 /// Generate the complete RoughJS hand-drawn pair for a node path.
 ///
 /// Shape renderers still own their DOM wrappers and classic fallback markup, but the admission
@@ -366,6 +351,25 @@ pub(super) fn write_hand_drawn_path_pair(
     );
 }
 
+pub(super) fn hand_drawn_group_style<'a>(common: &super::FlowchartNodeRenderCommon<'a>) -> &'a str {
+    if common.solid_rough_fill {
+        common.style
+    } else {
+        common.rough_group_style
+    }
+}
+
+/// Keep the shape group's opacity off of children that need their own inline paint.
+pub(super) fn grouped_shape_child_style<'a>(
+    common: &super::FlowchartNodeRenderCommon<'a>,
+) -> Cow<'a, str> {
+    if common.solid_rough_fill {
+        node_body::grouped_shape_child_style(common.style)
+    } else {
+        Cow::Borrowed(common.style)
+    }
+}
+
 pub(super) fn write_hand_drawn_hachure(
     out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::FlowchartNodeRenderCommon<'_>,
@@ -373,17 +377,14 @@ pub(super) fn write_hand_drawn_hachure(
     hatch: &str,
     width: f64,
 ) {
-    use crate::svg::parity::{escape_attr, fmt_display};
-
-    if !write_backed_hachure(out, common, outline, hatch, width) {
-        let _ = write!(
-            out,
-            r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"/>"#,
-            escape_attr(hatch),
-            escape_attr(common.fill_color),
-            fmt_display(width),
-        );
-    }
+    node_body::write_hand_drawn_hachure(
+        out,
+        outline,
+        hatch,
+        width,
+        (common.fill_color, common.stroke_color),
+        rough_fill_opacity(common),
+    );
 }
 
 pub(super) fn write_backed_hachure(
@@ -392,34 +393,45 @@ pub(super) fn write_backed_hachure(
     outline: &str,
     hatch: &str,
     width: f64,
+    colors: (&str, &str),
 ) -> bool {
-    use crate::svg::parity::{escape_attr, fmt_display};
-
-    if !common.solid_rough_fill {
+    let Some(fill_opacity) = rough_fill_opacity(common) else {
         return false;
-    }
-    // A filled silhouette masks connectors and container paint behind the hatch gaps.
-    let fill = escape_attr(common.fill_color);
-    let opacity = fmt_display(common.fill_opacity);
-    let _ = write!(
-        out,
-        r#"<path class="merman-rough-backing" d="{}" fill="{fill}" stroke="none" style="fill:{fill} !important;fill-opacity:{opacity} !important;stroke:none !important"/>"#,
-        escape_attr(outline),
-    );
-    if crate::theme::edge_label_bg::literal_fill(common.fill_color)
-        .is_some_and(|fill| fill.channels()[3] > 0)
-        && common.fill_opacity > 0.0
-    {
-        let stroke = escape_attr(common.stroke_color);
-        let _ = write!(
-            out,
-            r#"<path d="{}" fill="none" stroke="{stroke}" stroke-width="{}" stroke-dasharray="0 0" style="fill:none !important;stroke:{stroke} !important;stroke-opacity:{} !important"/>"#,
-            escape_attr(hatch),
-            fmt_display(width),
-            fmt_display(0.15 * common.fill_opacity),
-        );
-    }
+    };
+    node_body::write_backed_hachure(out, outline, hatch, width, colors, fill_opacity);
     true
+}
+
+pub(super) fn rough_fill_opacity(common: &super::FlowchartNodeRenderCommon<'_>) -> Option<f64> {
+    if !common.solid_rough_fill {
+        return None;
+    }
+    // The compiled opacity includes the enclosing group's opacity. Only the fill component
+    // belongs on the silhouette and hatch; the group composites both together with the outline.
+    let mut fill_opacity = 1.0;
+    if common.fill_opacity != 1.0 {
+        crate::mermaid_style::visit_parsed_style_declarations(common.style, |decl| {
+            if decl.property() == "fill-opacity" {
+                fill_opacity =
+                    crate::theme::edge_label_bg::literal_opacity(decl.value()).unwrap_or(1.0);
+            }
+        });
+    }
+    Some(fill_opacity)
+}
+
+pub(super) fn rectangle_outline(rect: kurbo::Rect) -> String {
+    use kurbo::Shape as _;
+
+    rect.to_path(0.05).to_svg()
+}
+
+pub(super) fn circle_outline(radius: f64) -> String {
+    use kurbo::Shape as _;
+
+    kurbo::Circle::new((0.0, 0.0), radius)
+        .to_path(0.05)
+        .to_svg()
 }
 
 pub(super) fn write_raw_filled_stroked_path(

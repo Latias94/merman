@@ -32,7 +32,7 @@ pub(super) fn with_flowchart_paint_context<T>(
         edge_style_plan,
     } = request;
     let mut render_model = crate::flowchart::FlowchartRenderModelRef::new(model, render_context);
-    if swimlane_layout.is_none() && layout.route_contract.is_canonical_axis() {
+    if layout.route_contract.is_canonical_axis() {
         render_model = render_model.with_shoal_svg_text(
             render_config.node_html_labels,
             render_config.edge_html_labels,
@@ -462,15 +462,31 @@ pub(super) fn prepare_edge_routes(
     Ok(cache)
 }
 
+pub(super) fn paints_rough_edges_first(
+    ctx: &FlowchartRenderCtx<'_>,
+    adaptive_edges: bool,
+    cutout_labels: bool,
+) -> bool {
+    adaptive_edges
+        || cutout_labels
+        || uses_theme_sketch(ctx)
+        || !ctx.hand_drawn_seed.seed().may_use_math_random()
+}
+
 pub(super) fn prepare_rough_edge_paths(
     ctx: &FlowchartRenderCtx<'_>,
     edges: &[super::render_input::FlowchartRenderEdgeRef<'_>],
     cache: &mut FxHashMap<crate::flowchart::FlowchartEdgeKey, FlowchartEdgePathCacheEntry>,
 ) -> Result<()> {
-    if !ctx.compatibility.look.is_hand_drawn() {
+    let hand_drawn = ctx.compatibility.look.is_hand_drawn();
+    let theme_sketch = uses_theme_sketch(ctx);
+    if !hand_drawn && !theme_sketch {
         return Ok(());
     }
     for edge in edges {
+        if !hand_drawn && has_authored_curve(ctx, edge.key) {
+            continue;
+        }
         let Some(entry) = cache.get_mut(&edge.key) else {
             continue;
         };
@@ -500,6 +516,35 @@ pub(super) fn prepare_rough_edge_paths(
             );
     }
     Ok(())
+}
+
+pub(super) fn uses_theme_sketch(ctx: &FlowchartRenderCtx<'_>) -> bool {
+    use merman_theme_contract::v2::EdgeStyle;
+
+    ctx.layout.route_contract.is_canonical_axis()
+        && ctx.native.is_some_and(|native| {
+            native.form.edge_style == EdgeStyle::Sketch
+                && crate::flowchart::native_theme::default_curve(
+                    native.form.edge_style,
+                    ctx.model,
+                    ctx.config,
+                )
+                .is_some()
+        })
+}
+
+pub(super) fn has_authored_curve(
+    ctx: &FlowchartRenderCtx<'_>,
+    key: crate::flowchart::FlowchartEdgeKey,
+) -> bool {
+    ctx.model
+        .edges
+        .get(key.semantic_index())
+        .is_some_and(|edge| {
+            edge.interpolate
+                .as_ref()
+                .is_some_and(|curve| !curve.is_empty())
+        })
 }
 
 #[derive(Default)]
@@ -662,8 +707,9 @@ fn prepare_query_rough_paths(
     hierarchy: &FlowchartHierarchyPlan<'_>,
     routes: &mut FxHashMap<crate::flowchart::FlowchartEdgeKey, FlowchartEdgePathCacheEntry>,
     labels: &FlowchartEdgeLabels,
+    options: &SvgExecution<'_>,
 ) -> Result<bool> {
-    if !ctx.compatibility.look.is_hand_drawn() {
+    if !ctx.compatibility.look.is_hand_drawn() && !uses_theme_sketch(ctx) {
         return Ok(false);
     }
     let mut needed: FxHashSet<_> = ctx
@@ -688,6 +734,19 @@ fn prepare_query_rough_paths(
             .filter(|edge| needed.contains(&edge.key))
         {
             prepare_rough_edge_paths(ctx, std::slice::from_ref(edge), routes)?;
+        }
+        return Ok(true);
+    }
+
+    let adaptive_edges = super::edge_fill::FlowchartEdgeFillPlan::applies(ctx);
+    let cutout_labels = super::edge_label_cutout::applies(ctx, options);
+    if paints_rough_edges_first(ctx, adaptive_edges, cutout_labels) {
+        for edge in hierarchy.ordered_edges() {
+            prepare_rough_edge_paths(ctx, std::slice::from_ref(edge), routes)?;
+            needed.remove(&edge.key);
+            if needed.is_empty() {
+                break;
+            }
         }
         return Ok(true);
     }
@@ -748,7 +807,7 @@ pub(super) fn edge_geometry(
     with_flowchart_paint_context(request, options, |ctx, edges, hierarchy| {
         let mut routes = prepare_edge_routes(ctx, edges, hierarchy)?;
         let mut labels = FlowchartEdgeLabels::prepare(ctx, hierarchy, &routes)?;
-        if prepare_query_rough_paths(ctx, hierarchy, &mut routes, &labels)? {
+        if prepare_query_rough_paths(ctx, hierarchy, &mut routes, &labels, options)? {
             labels.update(ctx, hierarchy, &routes, &ctx.edge_order)?;
         }
         let mut result = Vec::with_capacity(edges.len());
@@ -1093,7 +1152,8 @@ mod tests {
                         ctx,
                         hierarchy,
                         &mut routes,
-                        &labels
+                        &labels,
+                        execution,
                     )?);
                     let mut compared = 0;
                     for edge in edges {
@@ -1131,7 +1191,8 @@ mod tests {
                     ctx,
                     hierarchy,
                     &mut routes,
-                    &labels
+                    &labels,
+                    execution,
                 )?);
                 assert_eq!(before, ctx.work_meter.used());
                 assert!(

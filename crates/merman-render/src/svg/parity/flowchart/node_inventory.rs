@@ -9,6 +9,7 @@ use super::*;
 #[derive(Clone, Copy)]
 pub(crate) enum FlowchartNodeLayoutView<'a> {
     Flowchart(&'a FlowchartLayout),
+    #[allow(dead_code, reason = "Only Swimlane preparation constructs this view.")]
     Swimlane(&'a crate::model::SwimlaneLayout),
 }
 
@@ -335,8 +336,11 @@ impl FlowchartPreparedNodes {
         );
         let mut render_model =
             crate::flowchart::FlowchartRenderModelRef::new(model, render_context);
-        if matches!(layout, FlowchartNodeLayoutView::Flowchart(layout) if layout.route_contract.is_canonical_axis())
-        {
+        let canonical = match layout {
+            FlowchartNodeLayoutView::Flowchart(layout) => layout.route_contract.is_canonical_axis(),
+            FlowchartNodeLayoutView::Swimlane(layout) => layout.has_canonical_routes(),
+        };
+        if canonical {
             render_model = render_model.with_shoal_svg_text(
                 render_config.node_html_labels,
                 render_config.edge_html_labels,

@@ -21,6 +21,7 @@ pub(crate) struct Constraints<'a> {
         merman_layout_shoal::PortSideHint,
     )],
     pub(crate) lane_order: &'a [u32],
+    pub(crate) lane_boundaries: &'a [u32],
     pub(crate) capture_ranks: bool,
     pub(crate) allow_turn: bool,
 }
@@ -38,6 +39,7 @@ pub(crate) fn solve<'id>(
         flow_relative_nodes: constraints.flow_relative_nodes,
         edge_ports: constraints.edge_ports,
         lane_order: constraints.lane_order,
+        lane_boundaries: constraints.lane_boundaries,
         capture_ranks: constraints.capture_ranks,
         ..Default::default()
     };

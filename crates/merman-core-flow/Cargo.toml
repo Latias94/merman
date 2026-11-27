@@ -6,7 +6,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Source parsing and semantic model construction for Merman's Flowchart and Swimlane diagrams."
+description = "Source parsing and semantic model construction for Merman's Flowchart, Swimlane, and Agentflow diagrams."
 documentation = "https://docs.rs/merman-core-flow"
 readme = "README.md"
 keywords = ["mermaid", "diagrams", "parser", "flowchart", "swimlane"]
@@ -29,9 +29,15 @@ diagram-swimlane = [
     "dep:merman-markup", "merman-markup/html", "merman-markup/url", "dep:rustc-hash",
     "dep:serde_json", "dep:thiserror",
 ]
-diagram-agentflow = ["merman-model/diagram-agentflow", "dep:merman-core-preprocess", "merman-core-preprocess/mermaid-unicode", "dep:thiserror"]
+diagram-agentflow = [
+    "merman-model/diagram-agentflow", "dep:merman-core-preprocess",
+    "merman-core-preprocess/mermaid-unicode", "merman-core-preprocess/yaml",
+    "dep:merman-markup", "merman-markup/html", "merman-markup/url",
+    "dep:serde_json", "dep:thiserror",
+]
 editor-facts = []
 presentation = ["merman-model/presentation-data"]
+test-support = []
 
 [dependencies]
 indexmap = { workspace = true, optional = true }

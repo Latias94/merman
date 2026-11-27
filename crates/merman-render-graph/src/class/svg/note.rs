@@ -12,6 +12,7 @@ use super::label::{class_math_html_label, class_note_html_div_style};
 use super::node::ClassNodeRenderPosition;
 use super::rough::{
     class_rough_hachure_rect_paths, class_rough_rect_stroke_path_and_bounds, class_rough_seed,
+    write_class_rough_backing, write_class_rough_hatch,
 };
 use super::{SvgOutput, escape_attr_display, fmt};
 use merman_render_core::html::html_label_overflow_attr;
@@ -25,6 +26,7 @@ pub(super) struct ClassNoteRenderContext<'a> {
     pub line_height: f64,
     pub use_html_labels: bool,
     pub uses_canonical_routes: bool,
+    pub rough_backing: bool,
     pub mermaid_config: &'a merman_model::presentation::PresentationConfig,
     pub math_renderer: Option<&'a (dyn merman_render_core::math::MathRenderer + Send + Sync)>,
     pub look: &'a str,
@@ -162,11 +164,20 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
     let note_label_class = "label noteLabel";
     let mut note_shape = String::new();
     if hand_drawn {
+        note_shape.push_str(r#"<g class="basic label-container outer-path">"#);
+        if ctx.rough_backing {
+            write_class_rough_backing(&mut note_shape, left, top, w, h, note_fill, None);
+        }
+        write_class_rough_hatch(
+            &mut note_shape,
+            &note_fill_d,
+            note_fill,
+            ctx.rough_backing.then_some(note_stroke),
+            None,
+        );
         let _ = write!(
             &mut note_shape,
-            r##"<g class="basic label-container outer-path"><path d="{}" stroke="{}" stroke-width="1.5" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/></g>"##,
-            escape_attr_display(&note_fill_d),
-            escape_attr_display(&note_fill),
+            r##"<path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/></g>"##,
             escape_attr_display(&note_stroke_d),
             escape_attr_display(&note_stroke),
         );

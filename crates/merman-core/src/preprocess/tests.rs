@@ -2,7 +2,7 @@ use super::config_scan::{
     MAX_CONFIG_NESTING_DEPTH, config_nesting_exceeds_limit,
     config_nesting_exceeds_limit_controlled, max_yaml_indent_depth_controlled,
 };
-use super::directives::{parse_directive_like_upstream, sanitize_directive};
+use super::directive_config::{parse_directive_like_upstream, sanitize_directive};
 use super::frontmatter_config::FrontmatterCapture;
 #[cfg(feature = "editor-facts")]
 use super::rewrite_order::MAX_REWRITE_DEPTH;
@@ -1120,6 +1120,13 @@ fn encode_entity_placeholders_matches_mermaid_ascii_word_shape() {
             encode_mermaid_entities_like_upstream_controlled,
         ),
         "style a fill: ﬂ°fff¶ß"
+    );
+    assert_eq!(
+        transformed(
+            r#"style a fill:#fff,font-family:"a;b""#,
+            encode_mermaid_entities_like_upstream_controlled,
+        ),
+        r#"style a fill:#fff,font-family:"a;b""#,
     );
     assert_eq!(
         transformed(

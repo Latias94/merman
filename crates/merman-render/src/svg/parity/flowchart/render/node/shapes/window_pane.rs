@@ -2,6 +2,7 @@
 
 use crate::svg::parity::{escape_attr, fmt};
 
+use super::super::helpers;
 use super::super::roughjs::roughjs_paths_for_svg_path;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_window_pane(
@@ -11,36 +12,28 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_window_pane(
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
     let (rect_offset, path_data) = prepare_window_pane_geometry(common, label);
-    if let Some((fill_d, stroke_d)) =
-        super::super::helpers::hand_drawn_path_pair(common, details, &path_data)
-    {
+    if let Some((fill_d, stroke_d)) = helpers::hand_drawn_path_pair(common, details, &path_data) {
         let _ = write!(
             out,
-            r#"<g transform="translate({}, {})" class="basic label-container outer-path" style="{}"><path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"#,
+            r#"<g transform="translate({}, {})" class="basic label-container outer-path" style="{}">"#,
             fmt(rect_offset / 2.0),
             fmt(rect_offset / 2.0),
-            escape_attr(common.rough_group_style),
-            escape_attr(&fill_d),
-            escape_attr(common.fill_color),
-            escape_attr(&stroke_d),
-            escape_attr(common.stroke_color),
-            fmt(common.stroke_width as f64),
-            escape_attr(common.stroke_dasharray),
+            escape_attr(helpers::hand_drawn_group_style(common)),
         );
+        helpers::write_hand_drawn_path_pair(out, common, &path_data, &fill_d, &stroke_d);
+        out.push_str("</g>");
         return;
     }
 
-    if let Some((fill_d, stroke_d)) =
-        super::super::helpers::timed_node_roughjs(common.timing, details, || {
-            roughjs_paths_for_svg_path(
-                &path_data,
-                common.stroke_width,
-                common.stroke_dasharray,
-                common.work_meter,
-                common.hand_drawn_seed,
-            )
-        })
-    {
+    if let Some((fill_d, stroke_d)) = helpers::timed_node_roughjs(common.timing, details, || {
+        roughjs_paths_for_svg_path(
+            &path_data,
+            common.stroke_width,
+            common.stroke_dasharray,
+            common.work_meter,
+            common.hand_drawn_seed,
+        )
+    }) {
         let _ = write!(
             out,
             r#"<g transform="translate({},{})" class="basic label-container outer-path">"#,
@@ -71,7 +64,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_window_pane(
             fmt(rect_offset / 2.0),
             fmt(rect_offset / 2.0),
         );
-        super::super::helpers::write_raw_filled_stroked_path(
+        helpers::write_raw_filled_stroked_path(
             out,
             &path_data,
             common.fill_color,
@@ -133,5 +126,5 @@ pub(super) fn advance_window_pane_rough_geometry(
 ) {
     let (_, path_data) = prepare_window_pane_geometry(common, label);
     let target = super::super::roughjs::RoughGeometryTarget::Query;
-    let _ = super::super::helpers::prepare_node_path(common, &path_data, target);
+    let _ = helpers::prepare_node_path(common, &path_data, target);
 }

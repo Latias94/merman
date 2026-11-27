@@ -240,6 +240,15 @@ impl FlowchartCompiledStyles {
         })
     }
 
+    pub(super) fn source_edge_stroke(&self, hand_drawn: bool) -> Option<&str> {
+        let source = if hand_drawn {
+            self.inline_stroke_source.as_ref()?
+        } else {
+            self.stroke_source.as_ref()?
+        };
+        Some(source.value())
+    }
+
     pub(super) fn projected_edge_source_style_bytes(
         &self,
         default_edge_style: &[String],

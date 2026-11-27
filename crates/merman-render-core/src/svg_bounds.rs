@@ -1,6 +1,10 @@
 //! SVG emitted bounds scanner used for Mermaid parity.
 
 use crate::Bounds;
+use crate::svg_scan::{
+    SvgTagScanner, end_tag_name, extract_exact_quoted_attr as attr_value,
+    is_non_rendering_container, start_tag_name,
+};
 
 mod path;
 
@@ -86,36 +90,6 @@ fn svg_emitted_bounds_from_svg_inner(
 
     fn deg_to_rad(deg: f64) -> f64 {
         deg * std::f64::consts::PI / 180.0
-    }
-
-    fn attr_value<'a>(attrs: &'a str, key: &str) -> Option<&'a str> {
-        // Assumes our generated SVG uses `key="value"` quoting and that attributes are separated
-        // by at least one whitespace character.
-        //
-        // Important: the naive `attrs.find(r#"{key}=""#)` is *not* safe for 1-letter keys like
-        // `d` because it can match inside other attribute names (e.g. `id="..."` contains `d="`).
-        // That would break path bbox parsing and, in turn, root viewBox parity.
-        let bytes = attrs.as_bytes();
-        let mut from = 0usize;
-        while from < attrs.len() {
-            let rel = attrs[from..].find(key)?;
-            let pos = from + rel;
-            let ok_prefix = pos == 0 || bytes[pos.saturating_sub(1)].is_ascii_whitespace();
-            if ok_prefix {
-                let after_key = pos + key.len();
-                if after_key + 1 < attrs.len()
-                    && bytes[after_key] == b'='
-                    && bytes[after_key + 1] == b'"'
-                {
-                    let start = after_key + 2;
-                    let rest = &attrs[start..];
-                    let end = rest.find('"')?;
-                    return Some(&rest[..end]);
-                }
-            }
-            from = pos + 1;
-        }
-        None
     }
 
     fn parse_transform_ops_into(transform: &str, ops: &mut Vec<AffineTransform>) {
@@ -479,101 +453,36 @@ fn svg_emitted_bounds_from_svg_inner(
     let mut seen_root_svg = false;
     let mut nested_svg_depth = 0usize;
 
-    let mut i = 0usize;
-    while i < svg.len() {
-        let Some(rel) = svg[i..].find('<') else {
-            break;
-        };
-        i += rel;
-
-        // Comments.
-        if svg[i..].starts_with("<!--") {
-            if let Some(end_rel) = svg[i + 4..].find("-->") {
-                i = i + 4 + end_rel + 3;
-                continue;
-            }
-            break;
-        }
-
-        // Processing instructions.
-        if svg[i..].starts_with("<?") {
-            if let Some(end_rel) = svg[i + 2..].find("?>") {
-                i = i + 2 + end_rel + 2;
-                continue;
-            }
-            break;
-        }
-
-        let close = svg[i..].starts_with("</");
-        let tag_start = if close { i + 2 } else { i + 1 };
-        let Some(tag_end_rel) =
-            svg[tag_start..].find(|c: char| c == '>' || c.is_whitespace() || c == '/')
-        else {
-            break;
-        };
-        let tag = &svg[tag_start..tag_start + tag_end_rel];
-
-        // Find end of tag.
-        let Some(gt_rel) = svg[tag_start + tag_end_rel..].find('>') else {
-            break;
-        };
-        let gt = tag_start + tag_end_rel + gt_rel;
-        let raw = &svg[i..=gt];
-        let self_closing = raw.ends_with("/>");
-
-        if close {
-            match tag {
-                "defs" | "marker" | "symbol" | "clipPath" | "mask" | "pattern"
-                | "linearGradient" | "radialGradient" => {
-                    defs_depth = defs_depth.saturating_sub(1);
-                }
-                "g" | "a" => {
-                    if let Some(len) = tf_stack.pop() {
-                        cur_ops.truncate(len);
-                    } else {
-                        cur_ops.clear();
+    let mut scanner = SvgTagScanner::new(svg);
+    while let Some(scanned) = scanner.next_tag() {
+        let raw = scanned.raw();
+        if let Some(tag) = end_tag_name(raw) {
+            if is_non_rendering_container(tag) {
+                defs_depth = defs_depth.saturating_sub(1);
+            } else if defs_depth == 0 {
+                match tag {
+                    "g" | "a" => cur_ops.truncate(tf_stack.pop().unwrap_or(0)),
+                    "svg" if nested_svg_depth > 0 => {
+                        nested_svg_depth -= 1;
+                        cur_ops.truncate(tf_stack.pop().unwrap_or(0));
                     }
+                    _ => {}
                 }
-                "svg" if nested_svg_depth > 0 => {
-                    nested_svg_depth -= 1;
-                    if let Some(len) = tf_stack.pop() {
-                        cur_ops.truncate(len);
-                    } else {
-                        cur_ops.clear();
-                    }
-                }
-                _ => {}
             }
-            i = gt + 1;
             continue;
         }
-
-        // Attributes substring (excluding `<tag` and trailing `>`/`/>`).
-        let attrs_start = tag_start + tag_end_rel;
-        let attrs_end = if self_closing {
-            gt.saturating_sub(1)
-        } else {
-            gt
+        let Some(tag) = start_tag_name(raw) else {
+            continue;
         };
-        let attrs = if attrs_start < attrs_end {
-            &svg[attrs_start..attrs_end]
-        } else {
-            ""
-        };
-
-        if matches!(
-            tag,
-            "defs"
-                | "marker"
-                | "symbol"
-                | "clipPath"
-                | "mask"
-                | "pattern"
-                | "linearGradient"
-                | "radialGradient"
-        ) {
-            defs_depth += 1;
+        let self_closing = scanned.is_self_closing();
+        if is_non_rendering_container(tag) {
+            defs_depth += usize::from(!self_closing);
+            continue;
         }
+        if defs_depth != 0 {
+            continue;
+        }
+        let attrs = &raw[1 + tag.len()..raw.len() - if self_closing { 2 } else { 1 }];
 
         el_ops_buf.clear();
         if let Some(transform) = attr_value(attrs, "transform") {
@@ -582,17 +491,10 @@ fn svg_emitted_bounds_from_svg_inner(
         let el_ops: &[AffineTransform] = &el_ops_buf;
 
         if tag == "g" || tag == "a" {
-            tf_stack.push(cur_ops.len());
-            cur_ops.extend_from_slice(el_ops);
-            if self_closing {
-                // Balance a self-closing group.
-                if let Some(len) = tf_stack.pop() {
-                    cur_ops.truncate(len);
-                } else {
-                    cur_ops.clear();
-                }
+            if !self_closing {
+                tf_stack.push(cur_ops.len());
+                cur_ops.extend_from_slice(el_ops);
             }
-            i = gt + 1;
             continue;
         }
 
@@ -601,158 +503,144 @@ fn svg_emitted_bounds_from_svg_inner(
                 // Root <svg> defines the user coordinate system we are already parsing in; do not
                 // apply its viewBox mapping again.
                 seen_root_svg = true;
-            } else {
+            } else if !self_closing {
                 tf_stack.push(cur_ops.len());
                 nested_svg_depth += 1;
-                let vp_tf = svg_viewport_transform(attrs);
                 cur_ops.extend_from_slice(el_ops);
-                cur_ops.push(vp_tf);
-                if self_closing {
-                    nested_svg_depth = nested_svg_depth.saturating_sub(1);
-                    if let Some(len) = tf_stack.pop() {
-                        cur_ops.truncate(len);
-                    } else {
-                        cur_ops.clear();
-                    }
-                }
+                cur_ops.push(svg_viewport_transform(attrs));
             }
-            i = gt + 1;
             continue;
         }
 
-        if defs_depth == 0 {
-            match tag {
-                "rect" => {
-                    let x = attr_value(attrs, "x").and_then(parse_f64).unwrap_or(0.0);
-                    let y = attr_value(attrs, "y").and_then(parse_f64).unwrap_or(0.0);
-                    let w = attr_value(attrs, "width")
-                        .and_then(parse_f64)
-                        .unwrap_or(0.0);
-                    let h = attr_value(attrs, "height")
-                        .and_then(parse_f64)
-                        .unwrap_or(0.0);
-                    let b = apply_ops_bounds(
-                        &cur_ops,
-                        el_ops,
-                        Bounds {
-                            min_x: x,
-                            min_y: y,
-                            max_x: x + w,
-                            max_y: y + h,
-                        },
-                    );
-                    if w != 0.0 || h != 0.0 {
-                        maybe_record_dbg(&mut dbg, tag, attrs, b.clone());
-                    }
-                    bounds.include(b);
-                }
-                "circle" => {
-                    let cx = attr_value(attrs, "cx").and_then(parse_f64).unwrap_or(0.0);
-                    let cy = attr_value(attrs, "cy").and_then(parse_f64).unwrap_or(0.0);
-                    let r = attr_value(attrs, "r").and_then(parse_f64).unwrap_or(0.0);
-                    let b = apply_ops_bounds(
-                        &cur_ops,
-                        el_ops,
-                        Bounds {
-                            min_x: cx - r,
-                            min_y: cy - r,
-                            max_x: cx + r,
-                            max_y: cy + r,
-                        },
-                    );
-                    if r != 0.0 {
-                        maybe_record_dbg(&mut dbg, tag, attrs, b.clone());
-                    }
-                    bounds.include(b);
-                }
-                "ellipse" => {
-                    let cx = attr_value(attrs, "cx").and_then(parse_f64).unwrap_or(0.0);
-                    let cy = attr_value(attrs, "cy").and_then(parse_f64).unwrap_or(0.0);
-                    let rx = attr_value(attrs, "rx").and_then(parse_f64).unwrap_or(0.0);
-                    let ry = attr_value(attrs, "ry").and_then(parse_f64).unwrap_or(0.0);
-                    let b = apply_ops_bounds(
-                        &cur_ops,
-                        el_ops,
-                        Bounds {
-                            min_x: cx - rx,
-                            min_y: cy - ry,
-                            max_x: cx + rx,
-                            max_y: cy + ry,
-                        },
-                    );
-                    if rx != 0.0 || ry != 0.0 {
-                        maybe_record_dbg(&mut dbg, tag, attrs, b.clone());
-                    }
-                    bounds.include(b);
-                }
-                "line" => {
-                    let x1 = attr_value(attrs, "x1").and_then(parse_f64).unwrap_or(0.0);
-                    let y1 = attr_value(attrs, "y1").and_then(parse_f64).unwrap_or(0.0);
-                    let x2 = attr_value(attrs, "x2").and_then(parse_f64).unwrap_or(0.0);
-                    let y2 = attr_value(attrs, "y2").and_then(parse_f64).unwrap_or(0.0);
-                    let (tx1, ty1) = apply_ops_point(&cur_ops, el_ops, x1, y1);
-                    let (tx2, ty2) = apply_ops_point(&cur_ops, el_ops, x2, y2);
-                    let b = Bounds {
-                        min_x: tx1.min(tx2),
-                        min_y: ty1.min(ty2),
-                        max_x: tx1.max(tx2),
-                        max_y: ty1.max(ty2),
-                    };
+        match tag {
+            "rect" => {
+                let x = attr_value(attrs, "x").and_then(parse_f64).unwrap_or(0.0);
+                let y = attr_value(attrs, "y").and_then(parse_f64).unwrap_or(0.0);
+                let w = attr_value(attrs, "width")
+                    .and_then(parse_f64)
+                    .unwrap_or(0.0);
+                let h = attr_value(attrs, "height")
+                    .and_then(parse_f64)
+                    .unwrap_or(0.0);
+                let b = apply_ops_bounds(
+                    &cur_ops,
+                    el_ops,
+                    Bounds {
+                        min_x: x,
+                        min_y: y,
+                        max_x: x + w,
+                        max_y: y + h,
+                    },
+                );
+                if w != 0.0 || h != 0.0 {
                     maybe_record_dbg(&mut dbg, tag, attrs, b.clone());
-                    bounds.include(b);
                 }
-                "path" => {
-                    if let Some(d) = attr_value(attrs, "d")
-                        && let Some(pb) = svg_path_bounds_from_d(d)
-                    {
-                        let b0 = apply_ops_bounds(
-                            &cur_ops,
-                            el_ops,
-                            Bounds {
-                                min_x: pb.min_x,
-                                min_y: pb.min_y,
-                                max_x: pb.max_x,
-                                max_y: pb.max_y,
-                            },
-                        );
-                        maybe_record_dbg(&mut dbg, tag, attrs, b0.clone());
-                        bounds.include(b0);
-                    }
+                bounds.include(b);
+            }
+            "circle" => {
+                let cx = attr_value(attrs, "cx").and_then(parse_f64).unwrap_or(0.0);
+                let cy = attr_value(attrs, "cy").and_then(parse_f64).unwrap_or(0.0);
+                let r = attr_value(attrs, "r").and_then(parse_f64).unwrap_or(0.0);
+                let b = apply_ops_bounds(
+                    &cur_ops,
+                    el_ops,
+                    Bounds {
+                        min_x: cx - r,
+                        min_y: cy - r,
+                        max_x: cx + r,
+                        max_y: cy + r,
+                    },
+                );
+                if r != 0.0 {
+                    maybe_record_dbg(&mut dbg, tag, attrs, b.clone());
                 }
-                "polygon" | "polyline" => {
-                    if let Some(pts) = attr_value(attrs, "points") {
-                        include_points(&mut bounds, pts, &cur_ops, el_ops);
-                    }
+                bounds.include(b);
+            }
+            "ellipse" => {
+                let cx = attr_value(attrs, "cx").and_then(parse_f64).unwrap_or(0.0);
+                let cy = attr_value(attrs, "cy").and_then(parse_f64).unwrap_or(0.0);
+                let rx = attr_value(attrs, "rx").and_then(parse_f64).unwrap_or(0.0);
+                let ry = attr_value(attrs, "ry").and_then(parse_f64).unwrap_or(0.0);
+                let b = apply_ops_bounds(
+                    &cur_ops,
+                    el_ops,
+                    Bounds {
+                        min_x: cx - rx,
+                        min_y: cy - ry,
+                        max_x: cx + rx,
+                        max_y: cy + ry,
+                    },
+                );
+                if rx != 0.0 || ry != 0.0 {
+                    maybe_record_dbg(&mut dbg, tag, attrs, b.clone());
                 }
-                "foreignObject" => {
-                    let x = attr_value(attrs, "x").and_then(parse_f64).unwrap_or(0.0);
-                    let y = attr_value(attrs, "y").and_then(parse_f64).unwrap_or(0.0);
-                    let w = attr_value(attrs, "width")
-                        .and_then(parse_f64)
-                        .unwrap_or(0.0);
-                    let h = attr_value(attrs, "height")
-                        .and_then(parse_f64)
-                        .unwrap_or(0.0);
-                    let b = apply_ops_bounds(
+                bounds.include(b);
+            }
+            "line" => {
+                let x1 = attr_value(attrs, "x1").and_then(parse_f64).unwrap_or(0.0);
+                let y1 = attr_value(attrs, "y1").and_then(parse_f64).unwrap_or(0.0);
+                let x2 = attr_value(attrs, "x2").and_then(parse_f64).unwrap_or(0.0);
+                let y2 = attr_value(attrs, "y2").and_then(parse_f64).unwrap_or(0.0);
+                let (tx1, ty1) = apply_ops_point(&cur_ops, el_ops, x1, y1);
+                let (tx2, ty2) = apply_ops_point(&cur_ops, el_ops, x2, y2);
+                let b = Bounds {
+                    min_x: tx1.min(tx2),
+                    min_y: ty1.min(ty2),
+                    max_x: tx1.max(tx2),
+                    max_y: ty1.max(ty2),
+                };
+                maybe_record_dbg(&mut dbg, tag, attrs, b.clone());
+                bounds.include(b);
+            }
+            "path" => {
+                if let Some(d) = attr_value(attrs, "d")
+                    && let Some(pb) = svg_path_bounds_from_d(d)
+                {
+                    let b0 = apply_ops_bounds(
                         &cur_ops,
                         el_ops,
                         Bounds {
-                            min_x: x,
-                            min_y: y,
-                            max_x: x + w,
-                            max_y: y + h,
+                            min_x: pb.min_x,
+                            min_y: pb.min_y,
+                            max_x: pb.max_x,
+                            max_y: pb.max_y,
                         },
                     );
-                    if w != 0.0 || h != 0.0 {
-                        maybe_record_dbg(&mut dbg, tag, attrs, b.clone());
-                    }
-                    bounds.include(b);
+                    maybe_record_dbg(&mut dbg, tag, attrs, b0.clone());
+                    bounds.include(b0);
                 }
-                _ => {}
             }
+            "polygon" | "polyline" => {
+                if let Some(pts) = attr_value(attrs, "points") {
+                    include_points(&mut bounds, pts, &cur_ops, el_ops);
+                }
+            }
+            "foreignObject" => {
+                let x = attr_value(attrs, "x").and_then(parse_f64).unwrap_or(0.0);
+                let y = attr_value(attrs, "y").and_then(parse_f64).unwrap_or(0.0);
+                let w = attr_value(attrs, "width")
+                    .and_then(parse_f64)
+                    .unwrap_or(0.0);
+                let h = attr_value(attrs, "height")
+                    .and_then(parse_f64)
+                    .unwrap_or(0.0);
+                let b = apply_ops_bounds(
+                    &cur_ops,
+                    el_ops,
+                    Bounds {
+                        min_x: x,
+                        min_y: y,
+                        max_x: x + w,
+                        max_y: y + h,
+                    },
+                );
+                if w != 0.0 || h != 0.0 {
+                    maybe_record_dbg(&mut dbg, tag, attrs, b.clone());
+                }
+                bounds.include(b);
+            }
+            _ => {}
         }
-
-        i = gt + 1;
     }
 
     bounds.finish()
@@ -829,6 +717,33 @@ mod svg_bbox_tests {
         assert!((dbg.bounds.min_y - 0.0).abs() < 1e-9);
         assert!((dbg.bounds.max_x - 80.0).abs() < 1e-9);
         assert!((dbg.bounds.max_y - 80.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn svg_emitted_bounds_ignores_empty_definition_containers() {
+        let svg = concat!(
+            "<svg><defs/><clipPath /><mask/><pattern/>",
+            r#"<g transform="translate(5, 7)"><rect width="10" height="20"/></g>"#,
+            "</svg>",
+        );
+        let bounds = svg_emitted_bounds_from_svg(svg).unwrap();
+        assert_eq!((bounds.min_x, bounds.min_y), (5.0, 7.0));
+        assert_eq!((bounds.max_x, bounds.max_y), (15.0, 27.0));
+    }
+
+    #[test]
+    fn svg_emitted_bounds_recognizes_only_real_tags_and_attributes() {
+        let svg = concat!(
+            r#"<?note <rect width="90" height="90"/>?><svg>"#,
+            r#"<!-- <rect width="90" height="90"/> -->"#,
+            r#"<![CDATA[<rect width="90" height="90"/>]]>"#,
+            r#"<g title='record > width="99"' transform = 'translate(5, 7)'>"#,
+            r#"<rect title='width="99"' WIDTH="90" width = '10' height="20"/></g >"#,
+            r#"<symbol><rect width="90" height="90"/></symbol ></svg>"#,
+        );
+        let bounds = svg_emitted_bounds_from_svg(svg).unwrap();
+        assert_eq!((bounds.min_x, bounds.min_y), (5.0, 7.0));
+        assert_eq!((bounds.max_x, bounds.max_y), (15.0, 27.0));
     }
 
     #[test]

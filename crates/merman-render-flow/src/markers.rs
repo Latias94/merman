@@ -374,7 +374,6 @@ pub fn flowchart_marker_shape_spec(
 pub enum FlowchartMarkerVariantMode {
     Source,
     AdaptiveInk,
-    Casing,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -386,19 +385,12 @@ pub struct FlowchartMarkerVariantKey {
 }
 
 impl FlowchartMarkerVariantKey {
-    pub fn color_scan_count(&self, marker_style: MarkerStyle) -> usize {
-        self.paint(marker_style).color_scan_count()
+    pub fn color_scan_count(&self) -> usize {
+        self.paint().color_scan_count()
     }
 
-    fn paint(&self, marker_style: MarkerStyle) -> FlowchartMarkerPaint {
+    fn paint(&self) -> FlowchartMarkerPaint {
         match self.mode {
-            FlowchartMarkerVariantMode::Casing => {
-                if casing_marker_filled(self.base, marker_style) {
-                    FlowchartMarkerPaint::StrokeAndFill
-                } else {
-                    FlowchartMarkerPaint::Stroke
-                }
-            }
             FlowchartMarkerVariantMode::AdaptiveInk
                 if matches!(
                     self.base,
@@ -511,21 +503,6 @@ pub fn write_flowchart_marker_id_xml(
     let _ = out.write_str(color_id);
 }
 
-pub fn casing_marker_filled(base: FlowchartMarkerBase, marker_style: MarkerStyle) -> bool {
-    match base {
-        FlowchartMarkerBase::PointStart | FlowchartMarkerBase::PointEnd => {
-            marker_style != MarkerStyle::Open
-        }
-        FlowchartMarkerBase::CircleStart | FlowchartMarkerBase::CircleEnd => true,
-        FlowchartMarkerBase::CrossStart
-        | FlowchartMarkerBase::CrossEnd
-        | FlowchartMarkerBase::OpenArrowStart
-        | FlowchartMarkerBase::OpenArrowEnd
-        | FlowchartMarkerBase::HollowCircleStart
-        | FlowchartMarkerBase::HollowCircleEnd => false,
-    }
-}
-
 /// Writes one complete source or adaptive-ink marker using the caller's admitted paint.
 pub fn push_colored_marker(
     out: &mut impl fmt::Write,
@@ -554,7 +531,7 @@ pub fn push_colored_marker(
     );
     write_marker_shape(out, spec, marker_style);
     if let Some(color) = color {
-        key.paint(marker_style).push(out, color);
+        key.paint().push(out, color);
     }
     let _ = out.write_str("/></marker>");
 }

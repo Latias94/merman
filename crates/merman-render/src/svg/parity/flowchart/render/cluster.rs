@@ -6,9 +6,10 @@ use crate::svg::parity::flowchart::{
     cluster_geometry::painted_cluster_frame, util::HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
 };
 
-const FLOWCHART_CLUSTER_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
-const FLOWCHART_CLUSTER_HAND_DRAWN_FILL_WEIGHT: f32 = 3.0;
-const FLOWCHART_CLUSTER_HAND_DRAWN_HACHURE_GAP: f32 = 1.5;
+use merman_render_flow::cluster_shell::{
+    ClusterHandDrawn, ClusterShellForm, ClusterShellPaint, write_cluster_shell,
+};
+
 const TITLE_HALO_WIDTH: u8 = 5;
 
 pub(in crate::svg::parity::flowchart) fn advance_rough_geometry(
@@ -21,6 +22,7 @@ pub(in crate::svg::parity::flowchart) fn advance_rough_geometry(
         .checkpoint(merman_model::OperationPhase::Layout)
         .map_err(crate::Error::from)?;
     if ctx.compatibility.look.as_str() != "handDrawn"
+        || ctx.native.is_some()
         || ctx
             .swimlane_lanes_by_id
             .get(cluster.id.as_str())
@@ -32,112 +34,32 @@ pub(in crate::svg::parity::flowchart) fn advance_rough_geometry(
     }
     let terminal = ctx.prepared_nodes.cluster(cluster.id.as_str())?;
     let frame = painted_cluster_frame(ctx, cluster);
-    let width = frame.size.width;
-    let height = frame.size.height;
-    let left = frame.origin.x + ctx.tx - origin_x;
-    let top = frame.origin.y + ctx.ty - origin_y;
-    let agentflow = ctx.diagram_type == "agentflow";
-    if agentflow {
-        let path = rounded_rect_path_d(left, top, width, height, 10.0);
-        let _ = super::node::roughjs::roughjs_prepare_hand_drawn_stroke_path_for_svg_path(
-            super::node::roughjs::RoughGeometryTarget::Query,
-            &path,
-            FLOWCHART_CLUSTER_HAND_DRAWN_ROUGHNESS,
-            ctx.work_meter,
-            &ctx.hand_drawn_seed,
-        );
-    } else {
-        let path = rounded_rect_path_d(left, top, width, height, 0.0);
-        let stroke_width = parse_css_px_f32(terminal.compiled.stroke_width.as_ref(), 1.3);
-        let dash = terminal
-            .compiled
-            .stroke_dasharray
-            .as_deref()
-            .unwrap_or("0 0")
-            .trim();
-        let _ = super::node::roughjs::roughjs_prepare_hachure_paths_for_svg_path(
-            super::node::roughjs::RoughGeometryTarget::Query,
-            &path,
-            stroke_width,
-            dash,
-            FLOWCHART_CLUSTER_HAND_DRAWN_FILL_WEIGHT,
-            FLOWCHART_CLUSTER_HAND_DRAWN_HACHURE_GAP,
-            FLOWCHART_CLUSTER_HAND_DRAWN_ROUGHNESS,
-            ctx.work_meter,
-            &ctx.hand_drawn_seed,
-        );
-    }
+    let origin = kurbo::Point::new(
+        frame.origin.x + ctx.tx - origin_x,
+        frame.origin.y + ctx.ty - origin_y,
+    );
+    cluster_hand_drawn(ctx, &terminal.compiled).advance_cluster(
+        origin,
+        frame.size,
+        ctx.diagram_type == "agentflow",
+    );
     ctx.work_meter
         .checkpoint(merman_model::OperationPhase::Layout)
         .map_err(crate::Error::from)
 }
 
-fn rounded_rect_path_d(x: f64, y: f64, w: f64, h: f64, r: f64) -> String {
-    let mut out = String::new();
-    let _ = write!(
-        &mut out,
-        "M {} {} H {} A {} {} 0 0 1 {} {} V {} A {} {} 0 0 1 {} {} H {} A {} {} 0 0 1 {} {} V {} A {} {} 0 0 1 {} {} Z",
-        fmt_display(x + r),
-        fmt_display(y),
-        fmt_display(x + w - r),
-        fmt_display(r),
-        fmt_display(r),
-        fmt_display(x + w),
-        fmt_display(y + r),
-        fmt_display(y + h - r),
-        fmt_display(r),
-        fmt_display(r),
-        fmt_display(x + w - r),
-        fmt_display(y + h),
-        fmt_display(x + r),
-        fmt_display(r),
-        fmt_display(r),
-        fmt_display(x),
-        fmt_display(y + h - r),
-        fmt_display(y + r),
-        fmt_display(r),
-        fmt_display(r),
-        fmt_display(x + r),
-        fmt_display(y),
-    );
-    out
-}
-
-fn rough_style_from_node_style<'a>(
-    node_style: &'a str,
-    mut property: impl FnMut(&crate::mermaid_style::ParsedStyleDeclaration<'a>) -> Option<&'a str>,
-) -> String {
-    let mut out = String::new();
-    crate::mermaid_style::visit_parsed_style_declarations(node_style, |decl| {
-        if let Some(key) = property(&decl) {
-            if !out.is_empty() {
-                out.push(';');
-            }
-            out.push_str(key);
-            out.push(':');
-            out.push_str(decl.source_value());
-        }
-    });
-    out
-}
-
-fn cluster_rough_background_style(node_style: &str) -> String {
-    rough_style_from_node_style(node_style, |decl| {
-        (decl.property() == "fill").then_some("stroke")
-    })
-}
-
-fn cluster_rough_border_style(node_style: &str) -> String {
-    rough_style_from_node_style(node_style, |decl| {
-        decl.property()
-            .starts_with("stroke")
-            .then(|| decl.property_css())
-    })
-}
-
-fn parse_css_px_f32(v: Option<&String>, fallback: f32) -> f32 {
-    v.and_then(|raw| raw.trim_end_matches("px").trim().parse::<f32>().ok())
-        .unwrap_or(fallback)
+fn cluster_hand_drawn<'a>(
+    ctx: &'a FlowchartRenderCtx<'_>,
+    compiled: &'a FlowchartCompiledStyles,
+) -> ClusterHandDrawn<'a> {
+    ClusterHandDrawn {
+        stroke_width: compiled.stroke_width.as_deref(),
+        stroke_dasharray: compiled.stroke_dasharray.as_deref(),
+        solid_backing: ctx.layout.route_contract.is_canonical_axis()
+            && (ctx.diagram_type == "agentflow" || ctx.swimlane_direction.is_none()),
+        work_meter: ctx.work_meter,
+        randomness: &ctx.hand_drawn_seed,
+    }
 }
 
 fn cluster_svg_text_style(label_style: &str) -> String {
@@ -205,155 +127,47 @@ fn write_flowchart_cluster_shape(
     id: &str,
     frame: super::super::cluster_geometry::PaintedClusterFrame,
 ) {
-    let kurbo::Point { x: left, y: top } = frame.origin;
-    let kurbo::Size {
-        width: rect_w,
-        height: rect_h,
-    } = frame.size;
-    let compiled_styles = &terminal.compiled;
-    let rect_style = terminal.rect_style.as_str();
+    let compiled = &terminal.compiled;
     let fill = cluster_base_fill(ctx, terminal, id);
-    let stroke = terminal.stroke.as_str();
-    let agentflow = ctx.diagram_type == "agentflow";
     let canonical = ctx.layout.route_contract.is_canonical_axis();
-    if let Some(native) = ctx.native {
-        let radius = super::super::cluster_geometry::cluster_container_radius(ctx, rect_w, rect_h);
-        let _ = write!(
-            out,
-            r#"<rect x="{}" y="{}" width="{}" height="{}" rx="{}" style="fill:{};stroke:{};stroke-width:{}px"#,
-            fmt_display(left),
-            fmt_display(top),
-            fmt_display(rect_w),
-            fmt_display(rect_h),
-            fmt_display(radius),
-            escape_attr(fill),
-            escape_attr(stroke),
-            fmt_display(native.form.stroke_width),
-        );
-        if !rect_style.is_empty() {
-            let _ = write!(out, ";{}", escape_attr(rect_style));
+    let form = if let Some(native) = ctx.native {
+        ClusterShellForm::Native {
+            radius: super::super::cluster_geometry::cluster_container_radius(
+                ctx,
+                frame.size.width,
+                frame.size.height,
+            ),
+            stroke_width: native.form.stroke_width,
         }
-        out.push_str(r#""/>"#);
-        return;
-    }
-    if agentflow {
-        let stroke = &ctx.compatibility.agentflow_container_stroke;
-        if ctx.compatibility.look.as_str() == "handDrawn" {
-            let path = rounded_rect_path_d(left, top, rect_w, rect_h, 10.0);
-            if let Some(stroke_d) =
-                super::node::roughjs::roughjs_hand_drawn_stroke_path_for_svg_path(
-                    &path,
-                    FLOWCHART_CLUSTER_HAND_DRAWN_ROUGHNESS,
-                    ctx.work_meter,
-                    &ctx.hand_drawn_seed,
+    } else if ctx.diagram_type == "agentflow" {
+        ClusterShellForm::Agentflow {
+            stroke: &ctx.compatibility.agentflow_container_stroke,
+            canonical_fill: canonical.then(|| {
+                (
+                    compiled.fill.as_deref().unwrap_or(fill),
+                    compiled.fill_opacity,
                 )
-            {
-                let stroke_dasharray = compiled_styles.stroke_dasharray.as_deref().unwrap_or("0 0");
-                let _ = write!(
-                    out,
-                    r#"<g><path d="{}" stroke="{}" stroke-width="0.75" fill="none" stroke-dasharray="{}"/></g>"#,
-                    escape_xml_display(&stroke_d),
-                    escape_attr(stroke),
-                    escape_attr(stroke_dasharray),
-                );
-
-                return;
-            }
+            }),
         }
-        let _ = write!(
-            out,
-            r#"<rect rx="10" ry="10" x="{}" y="{}" width="{}" height="{}" fill="none" stroke="{}" stroke-width="0.75px""#,
-            fmt_display(left),
-            fmt_display(top),
-            fmt_display(rect_w),
-            fmt_display(rect_h),
-            escape_attr(stroke),
-        );
-        if canonical {
-            let fill = compiled_styles.fill.as_deref().unwrap_or(fill);
-            let _ = write!(
-                out,
-                r#" style="fill:{};fill-opacity:{}""#,
-                escape_attr(fill),
-                fmt_display(compiled_styles.fill_opacity),
-            );
+    } else {
+        ClusterShellForm::Flowchart {
+            inline_fill: canonical && ctx.palette.color_count() > 0,
         }
-        out.push_str("/>");
-        return;
-    }
-
-    if ctx.compatibility.look.as_str() == "handDrawn" {
-        let stroke_width = parse_css_px_f32(compiled_styles.stroke_width.as_ref(), 1.3);
-        let stroke_dasharray = compiled_styles
-            .stroke_dasharray
-            .as_deref()
-            .unwrap_or("0 0")
-            .trim();
-        let path = rounded_rect_path_d(left, top, rect_w, rect_h, 0.0);
-
-        if let Some((fill_d, stroke_d)) = super::node::roughjs::roughjs_hachure_paths_for_svg_path(
-            &path,
-            stroke_width,
-            stroke_dasharray,
-            FLOWCHART_CLUSTER_HAND_DRAWN_FILL_WEIGHT,
-            FLOWCHART_CLUSTER_HAND_DRAWN_HACHURE_GAP,
-            FLOWCHART_CLUSTER_HAND_DRAWN_ROUGHNESS,
-            ctx.work_meter,
-            &ctx.hand_drawn_seed,
-        ) {
-            let background_style = cluster_rough_background_style(rect_style);
-            let border_style = cluster_rough_border_style(rect_style);
-            out.push_str("<g>");
-            if canonical && ctx.swimlane_direction.is_none() {
-                // The frame is the actual surface sampled by Shoal's contrast pass.
-                let _ = write!(
-                    out,
-                    r#"<rect x="{}" y="{}" width="{}" height="{}" style="fill:{};{};stroke:none !important"/>"#,
-                    fmt_display(left),
-                    fmt_display(top),
-                    fmt_display(rect_w),
-                    fmt_display(rect_h),
-                    escape_attr(fill),
-                    escape_attr(rect_style),
-                );
-            } else {
-                let _ = write!(
-                    out,
-                    r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{} />"#,
-                    escape_attr(&fill_d),
-                    escape_attr(fill),
-                    fmt_display(FLOWCHART_CLUSTER_HAND_DRAWN_FILL_WEIGHT as f64),
-                    OptionalStyleAttr(&background_style),
-                );
-            }
-            let _ = write!(
-                out,
-                r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"{} /></g>"#,
-                escape_attr(&stroke_d),
-                escape_attr(stroke),
-                fmt_display(stroke_width as f64),
-                escape_attr(stroke_dasharray),
-                OptionalStyleAttr(&border_style),
-            );
-
-            return;
-        }
-    }
-
-    out.push_str(r#"<rect style=""#);
-    if canonical && ctx.palette.color_count() > 0 {
-        // The compatibility surface must agree in browsers and raster exports. The browser's
-        // palette selector can otherwise override the clusterBkg fill used during export.
-        let _ = write!(out, "fill:{};", escape_attr(fill));
-    }
-    let _ = write!(
+    };
+    write_cluster_shell(
         out,
-        r#"{}" x="{}" y="{}" width="{}" height="{}"/>"#,
-        escape_attr(rect_style),
-        fmt_display(left),
-        fmt_display(top),
-        fmt_display(rect_w),
-        fmt_display(rect_h)
+        frame.origin,
+        frame.size,
+        ClusterShellPaint {
+            style: &terminal.rect_style,
+            fill,
+            stroke: &terminal.stroke,
+        },
+        form,
+        ctx.compatibility
+            .look
+            .is_hand_drawn()
+            .then(|| cluster_hand_drawn(ctx, compiled)),
     );
 }
 
@@ -563,7 +377,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
             let _ = write!(
                 out,
                 r#" id="{cluster_dom_id}" data-id="{}" data-et="cluster""#,
-                escape_xml_display(&cluster.id),
+                escape_attr_display(&cluster.id),
             );
         }
         out.push('>');
@@ -577,18 +391,18 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
         .transpose()?
         .flatten();
     let overlay = struck && pass == FlowchartClusterPass::Label;
-    let _ = write!(out, r#"<g class="{}""#, escape_xml_display(&class_attr));
+    let _ = write!(out, r#"<g class="{}""#, escape_attr_display(&class_attr));
     if !overlay {
         let _ = write!(
             out,
             r#" id="{cluster_dom_id}" data-id="{}" data-et="cluster""#,
-            escape_xml_display(&cluster.id),
+            escape_attr_display(&cluster.id),
         );
     }
     let _ = write!(
         out,
         r#" data-look="{}"{color_attr}>"#,
-        escape_xml_display(data_look),
+        escape_attr_display(data_look),
     );
     if pass == FlowchartClusterPass::Complete {
         write_flowchart_cluster_shape(out, ctx, terminal, &cluster.id, frame);

@@ -3,6 +3,7 @@
 use crate::svg::parity::flowchart::escape_attr;
 use crate::svg::parity::fmt_display;
 
+use super::super::helpers;
 use super::super::roughjs::roughjs_hachure_paths_for_svg_path;
 
 const FLOWCHART_NODE_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
@@ -30,37 +31,39 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_rounded_rect(
         return super::render_process_rectangle(out, ctx, common, details);
     }
 
-    let rough_paths = if common.look_is_hand_drawn() {
-        // Preserve the source SVG arcs, including radii larger than half the box.
-        let path_data = rounded_rect_path_data(w, h, &ctx.compatibility.rounded_rect_radius);
-        super::super::helpers::timed_node_roughjs(common.timing, details, || {
-            roughjs_hachure_paths_for_svg_path(
-                &path_data,
-                common.stroke_width,
-                common.stroke_dasharray,
-                FLOWCHART_NODE_HAND_DRAWN_FILL_WEIGHT,
-                FLOWCHART_NODE_HAND_DRAWN_HACHURE_GAP,
-                FLOWCHART_NODE_HAND_DRAWN_ROUGHNESS,
-                common.work_meter,
-                common.hand_drawn_seed,
-            )
+    let rough = common
+        .look_is_hand_drawn()
+        .then(|| {
+            // Preserve the source SVG arcs, including radii larger than half the box.
+            let path_data = rounded_rect_path_data(w, h, &ctx.compatibility.rounded_rect_radius);
+            let paths = helpers::timed_node_roughjs(common.timing, details, || {
+                roughjs_hachure_paths_for_svg_path(
+                    &path_data,
+                    common.stroke_width,
+                    common.stroke_dasharray,
+                    FLOWCHART_NODE_HAND_DRAWN_FILL_WEIGHT,
+                    FLOWCHART_NODE_HAND_DRAWN_HACHURE_GAP,
+                    FLOWCHART_NODE_HAND_DRAWN_ROUGHNESS,
+                    common.work_meter,
+                    common.hand_drawn_seed,
+                )
+            });
+            paths.map(|paths| (path_data, paths))
         })
-    } else {
-        None
-    };
+        .flatten();
 
-    if let Some((fill_d, stroke_d)) = rough_paths {
+    if let Some((path_data, (fill_d, stroke_d))) = rough {
         let _ = write!(
             out,
             r#"<g class="basic label-container" style="{}">"#,
-            escape_attr(common.rough_group_style)
+            escape_attr(helpers::hand_drawn_group_style(common))
         );
-        let _ = write!(
+        helpers::write_hand_drawn_hachure(
             out,
-            r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"/>"#,
-            escape_attr(&fill_d),
-            escape_attr(common.fill_color),
-            fmt_display(FLOWCHART_NODE_HAND_DRAWN_FILL_WEIGHT as f64),
+            common,
+            &path_data,
+            &fill_d,
+            f64::from(FLOWCHART_NODE_HAND_DRAWN_FILL_WEIGHT),
         );
         let _ = write!(
             out,

@@ -1747,8 +1747,8 @@ fn prepare_document_target(
 ) -> Result<(RenderedDocument, OperationExecution), RenderError> {
     #[cfg(feature = "native-fonts")]
     request.environment.check_native_fonts()?;
-    #[cfg(feature = "png")]
-    let png_theme_matte = mermaid_png_matte(semantic.metadata(), &request.environment);
+    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+    let theme_matte = mermaid_theme_matte(semantic.metadata(), &request.environment);
     let (rendered, operation, theme_outcome) =
         prepare_rendered_family_svg(semantic, &request, default_generation, true)?;
     let required_capabilities = rendered.required_capabilities().to_vec();
@@ -1767,8 +1767,8 @@ fn prepare_document_target(
         completion,
         required_capabilities,
         theme_outcome,
-        #[cfg(feature = "png")]
-        png_theme_matte,
+        #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+        theme_matte,
         #[cfg(feature = "native-fonts")]
         request.environment.native_fonts,
         #[cfg(all(
@@ -1780,30 +1780,29 @@ fn prepare_document_target(
     Ok((document, operation))
 }
 
-#[cfg(feature = "png")]
-fn mermaid_png_matte(
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+fn mermaid_theme_matte(
     metadata: &merman_model::presentation::PresentationMetadata,
     environment: &SvgEnvironment,
-) -> Option<String> {
+) -> Option<crate::theme::Color> {
+    use crate::MermaidThemeId;
+    use merman_markup::theme_color::{ThemeColor, is_dark};
+
     let config = &metadata.effective_config;
-    if environment.background.is_some()
-        || !config
-            .get_str("theme")
-            .and_then(|name| crate::MermaidThemeId::parse(name).ok())
-            .is_some_and(crate::MermaidThemeId::is_dark)
+    if environment.background.is_some() {
+        return None;
+    }
+    let theme = MermaidThemeId::parse(config.get_str("theme")?).ok()?;
+    let paint = config.get_str("themeVariables.background")?;
+    if !theme.is_dark()
+        && !(theme == MermaidThemeId::Base
+            && config.get_bool("themeVariables.darkMode") == Some(true)
+            && is_dark(paint).unwrap_or(false))
     {
         return None;
     }
-    let paint = config.get_str("themeVariables.background")?;
-    let color = merman_markup::theme_color::ThemeColor::parse(paint).ok()?;
-    let rgba = color.rgba_channels();
-    Some(format!(
-        "#{:02x}{:02x}{:02x}{:02x}",
-        rgba.red.round() as u8,
-        rgba.green.round() as u8,
-        rgba.blue.round() as u8,
-        (rgba.alpha * 255.0).round() as u8,
-    ))
+    let [r, g, b, a] = ThemeColor::parse(paint).ok()?.rgba_channels().to_rgba8();
+    Some(crate::theme::Color::rgba(r, g, b, a))
 }
 
 #[cfg(feature = "svg")]

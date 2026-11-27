@@ -48,11 +48,11 @@ pub(super) fn architecture_a11y_nodes(
     }
 }
 
-pub(super) fn begin_architecture_document(
-    out: &mut impl SvgOutput,
+pub(super) fn begin_architecture_document<O: SvgOutput>(
+    out: &mut O,
     root_viewport: &root_svg::RootViewportContext<'_>,
     diagram_id: SvgDiagramId<'_>,
-    css: &str,
+    write_stylesheet: impl FnOnce(&mut XmlTextOutput<'_, O>) -> merman_render_core::Result<()>,
     a11y: &ArchitectureA11y,
     use_max_width: bool,
 ) -> merman_render_core::Result<root_svg::RootDocument> {
@@ -68,7 +68,7 @@ pub(super) fn begin_architecture_document(
 
     out.push_str(a11y.nodes.as_str());
     out.push_str("<style>");
-    XmlTextOutput::new(out).push_str(css);
+    write_stylesheet(&mut XmlTextOutput::new(out))?;
     out.push_str("</style>");
     out.push_str("<g/>");
     out.checkpoint()?;

@@ -6,7 +6,12 @@ pub mod compat;
 pub mod shapes;
 
 mod labels;
-pub use labels::{FlowchartLabelSourceOwner, FlowchartRenderLabelSources};
+#[doc(hidden)]
+pub use labels::FlowchartLabelSourceOwner;
+pub use labels::FlowchartRenderLabelSources;
+#[cfg(feature = "html-entities")]
+#[doc(hidden)]
+pub use labels::flowchart_svg_text_source;
 
 use crate::warnings::DiagramWarningFact;
 use indexmap::IndexMap;

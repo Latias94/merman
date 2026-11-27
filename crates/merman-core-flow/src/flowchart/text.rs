@@ -323,6 +323,7 @@ pub(super) fn strip_wrapping_backticks(s: &str) -> (String, bool) {
 mod tests {
     use super::{LabelScanner, parse_edge_label_text, parse_label_text};
     use crate::flowchart::TitleKind;
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     use merman_model::OperationControl;
 
     #[test]

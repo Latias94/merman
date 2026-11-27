@@ -4,7 +4,7 @@ use crate::Result;
 use crate::config::{config_string, json_bool, value_at};
 use crate::svg_css::SvgDiagramIdValue;
 use crate::svg_output::SvgOutput;
-use crate::xml::escape_xml;
+use crate::xml::escape_attr_display;
 
 #[derive(Debug, Clone)]
 pub struct PreparedLookDefs {
@@ -73,12 +73,12 @@ impl PreparedLookDefs {
         let Some((start, stop)) = &self.gradient else {
             return out.checkpoint();
         };
-        let start = escape_xml(start);
-        let stop = escape_xml(stop);
         let _ = write!(
             out,
             r#"<linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient>"#,
-            diagram_id, start, stop
+            diagram_id,
+            escape_attr_display(start),
+            escape_attr_display(stop)
         );
         out.checkpoint()
     }

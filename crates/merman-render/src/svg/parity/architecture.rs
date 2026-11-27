@@ -34,6 +34,10 @@ pub(super) fn render_architecture_diagram_svg_typed_with_config(
         icon_registry: options.icon_registry(),
         timing: options.timing(),
         #[cfg(feature = "layout-shoal")]
+        operation: options.family.session().operation_context(),
+        #[cfg(feature = "layout-shoal")]
+        canvas_background: options.family.session().canvas_background(),
+        #[cfg(feature = "layout-shoal")]
         canonical: shoal_geometry
             .map(|geometry| geometry as &dyn architecture::ArchitectureCanonicalSvg),
     };

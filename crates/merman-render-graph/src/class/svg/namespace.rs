@@ -1,6 +1,6 @@
 use crate::class::model::{Bounds, LayoutCluster};
 use merman_render_core::text::MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use super::SvgDiagramId;
 use super::bounds::include_xywh;
@@ -14,6 +14,7 @@ use merman_render_core::svg_output::timing::RenderTiming;
 #[derive(Clone, Copy)]
 pub(super) struct ClassNamespaceClusterGroupContext<'a> {
     pub diagram_id: SvgDiagramId<'a>,
+    pub namespace_ids: &'a HashMap<&'a str, String>,
     pub content_tx: f64,
     pub content_ty: f64,
     pub bounds_dx: f64,
@@ -25,6 +26,35 @@ pub(super) struct ClassNamespaceClusterGroupContext<'a> {
     pub math_renderer: Option<&'a (dyn merman_render_core::math::MathRenderer + Send + Sync)>,
     pub timing: RenderTiming,
     pub emit: ClassEmitCheckpoint<'a>,
+}
+
+pub(super) fn class_namespace_ids<'a>(
+    clusters: &'a [LayoutCluster],
+    reserved: impl Iterator<Item = &'a str>,
+) -> HashMap<&'a str, String> {
+    if clusters.is_empty() {
+        return HashMap::new();
+    }
+    let reserved = reserved
+        .chain(["drop-shadow", "drop-shadow-small", "gradient"])
+        .collect::<HashSet<_>>();
+    let occupied: HashSet<_> = clusters.iter().map(|cluster| cluster.id.as_str()).collect();
+    let mut ids = HashMap::new();
+    let mut ordinal = 0;
+    for cluster in clusters {
+        if reserved.contains(cluster.id.as_str()) {
+            let id = loop {
+                let candidate = format!("class-namespace-{ordinal}");
+                ordinal += 1;
+                if !occupied.contains(candidate.as_str()) && !reserved.contains(candidate.as_str())
+                {
+                    break candidate;
+                }
+            };
+            ids.insert(cluster.id.as_str(), id);
+        }
+    }
+    ids
 }
 
 pub(super) fn render_class_namespace_cluster_group(
@@ -102,11 +132,19 @@ fn render_class_namespace_cluster_at(
     out.push_str(r#"<g class="cluster undefined" id=""#);
     let _ = write!(out, "{}", ctx.diagram_id);
     ctx.emit.checkpoint()?;
+    let dom_id = ctx.namespace_ids.get(cluster.id.as_str());
     let _ = write!(
         out,
-        r#"-{}" data-look="{}"><rect x="{}" y="{}" width="{}" height="{}" style=""/><g class="cluster-label" transform="translate({}, {})">"#,
-        escape_attr_display(&cluster.id),
+        r#"-{}" data-look="{}""#,
+        escape_attr_display(dom_id.unwrap_or(&cluster.id)),
         escape_attr_display(ctx.look),
+    );
+    if dom_id.is_some() {
+        let _ = write!(out, r#" data-id="{}""#, escape_attr_display(&cluster.id));
+    }
+    let _ = write!(
+        out,
+        r#"><rect x="{}" y="{}" width="{}" height="{}" style=""/><g class="cluster-label" transform="translate({}, {})">"#,
         fmt(left),
         fmt(top),
         fmt(w),

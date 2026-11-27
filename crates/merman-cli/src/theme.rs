@@ -63,23 +63,11 @@ impl ThemeInput {
 
 #[cfg(feature = "svg")]
 pub(crate) fn parse_background(value: &str) -> Result<Color, String> {
-    let value = value.trim();
-    if value.eq_ignore_ascii_case("transparent") {
-        return Ok(Color::TRANSPARENT);
-    }
-    if let Ok(color) = Color::parse(value) {
-        return Ok(color);
-    }
-    let svgtypes::Color {
-        red,
-        green,
-        blue,
-        alpha,
-    } = value
-        .parse()
-        .map_err(|_| "expected a CSS color or 'transparent'".to_owned())?;
-    Color::parse(&format!("#{red:02X}{green:02X}{blue:02X}{alpha:02X}"))
-        .map_err(|error| error.to_string())
+    let [r, g, b, a] = merman_markup::theme_color::ThemeColor::parse(value.trim())
+        .map_err(|_| "expected a CSS color or 'transparent'".to_owned())?
+        .rgba_channels()
+        .to_rgba8();
+    Ok(Color::rgba(r, g, b, a))
 }
 
 pub(crate) fn prepare(

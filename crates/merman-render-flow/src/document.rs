@@ -9,7 +9,8 @@ use merman_render_core::{
     root_svg::{self, RootDocument, RootViewportContext, RootViewportSpec, RootedSvg},
     svg_css::{CssSelectorDiagramId, PreparedLookDefs, SvgId},
     svg_output::{BoundedSvgOutput, SvgOutput},
-    xml::{escape_xml, escape_xml_into},
+    theme_svg::NEO_SHADOW_OFFSET_PX,
+    xml::{escape_attr_display, escape_xml, escape_xml_into},
 };
 
 use crate::stylesheet::{FlowchartStylesheetRequest, title_css_class, write_flowchart_stylesheet};
@@ -20,6 +21,7 @@ pub use ids::{FlowchartDocumentId, FlowchartDocumentScope};
 pub struct FlowchartSvgDocumentRequest<'a> {
     pub root_viewport: RootViewportContext<'a>,
     pub document_scope: &'a FlowchartDocumentScope,
+    pub uses_elk_adapter_dom: bool,
     pub use_max_width: bool,
     pub diagram_padding: f64,
     pub source_paint_bounds: Option<Bounds>,
@@ -39,6 +41,7 @@ pub struct FlowchartSvgDocument<'a> {
     root_viewport: RootViewportContext<'a>,
     root_spec: RootViewportSpec,
     document_scope: &'a FlowchartDocumentScope,
+    uses_elk_adapter_dom: bool,
     acc_title: Option<&'a str>,
     acc_descr: Option<&'a str>,
     diagram_title: Option<&'a str>,
@@ -72,6 +75,7 @@ pub fn prepare_flowchart_svg_document(
         root_viewport: request.root_viewport,
         root_spec,
         document_scope: request.document_scope,
+        uses_elk_adapter_dom: request.uses_elk_adapter_dom,
         acc_title: request.acc_title.filter(|s| !s.is_empty()),
         acc_descr: request.acc_descr.filter(|s| !s.is_empty()),
         diagram_title: request.diagram_title,
@@ -105,14 +109,15 @@ impl WrittenFlowchartSvg<'_> {
 impl FlowchartSvgDocument<'_> {
     /// Writes the root and its document-level children on a single operation-owned sink.
     ///
-    /// `emit_graph` appends complete graph siblings to that sink and reports whether Step
-    /// animation marks were emitted. It runs after the stylesheet and before the document tail.
+    /// `emit_graph_children` appends complete children of the graph group and reports whether
+    /// Step animation marks were emitted. The document owns the group and orders the look filters
+    /// around it according to the selected DOM.
     pub fn write<'work>(
         self,
         work_meter: &'work OperationWorkMeter,
         stylesheet: FlowchartStylesheetRequest<'_, FlowchartDocumentId<'_>>,
         look_defs: &PreparedLookDefs,
-        emit_graph: impl FnOnce(&mut BoundedSvgOutput<'work>) -> Result<bool>,
+        emit_graph_children: impl FnOnce(&mut BoundedSvgOutput<'work>) -> Result<bool>,
     ) -> Result<WrittenFlowchartSvg<'work>> {
         let mut out = BoundedSvgOutput::new(work_meter);
         let diagram_id = stylesheet.diagram_id;
@@ -122,7 +127,19 @@ impl FlowchartSvgDocument<'_> {
         self.push_accessibility_metadata(&mut out);
         let deferred_palette = write_flowchart_stylesheet(&mut out, work_meter, stylesheet)?;
 
-        let has_step_animation = emit_graph(&mut out)?;
+        if !self.uses_elk_adapter_dom {
+            self.push_shadow_defs(&mut out, look_defs);
+            out.checkpoint()?;
+        }
+        out.push_str("<g>");
+        let has_step_animation = emit_graph_children(&mut out)?;
+        out.push_str("</g>");
+        if self.uses_elk_adapter_dom {
+            // ELK writes the look filters as a sibling after the marker/root wrapper.
+            self.push_shadow_defs(&mut out, look_defs);
+        }
+        out.checkpoint()?;
+
         push_flowchart_gradient(&mut out, gradient_id, look_defs);
         out.checkpoint()?;
         if let Some(title) = self.diagram_title {
@@ -150,6 +167,19 @@ impl FlowchartSvgDocument<'_> {
             output: out,
             root_document,
         })
+    }
+
+    fn push_shadow_defs(&self, out: &mut impl SvgOutput, prepared: &PreparedLookDefs) {
+        let flood_color = prepared.flood_color();
+        let offset = NEO_SHADOW_OFFSET_PX;
+        let _ = write!(
+            out,
+            r#"<defs><filter id="{}" height="130%" width="130%"><feDropShadow dx="{offset}" dy="{offset}" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs><defs><filter id="{}" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
+            self.document_scope.drop_shadow(),
+            flood_color,
+            self.document_scope.drop_shadow_small(),
+            flood_color
+        );
     }
 
     fn push_root_open(
@@ -218,14 +248,12 @@ fn push_flowchart_gradient(
         return;
     };
 
-    let gradient_start = escape_xml(gradient_start);
-    let gradient_stop = escape_xml(gradient_stop);
     let _ = write!(
         out,
         r#"<linearGradient id="{}" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient>"#,
         gradient_id,
-        gradient_start.as_str(),
-        gradient_stop.as_str()
+        escape_attr_display(gradient_start),
+        escape_attr_display(gradient_stop)
     );
 }
 

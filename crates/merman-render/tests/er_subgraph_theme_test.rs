@@ -43,6 +43,68 @@ fn render_classic_cluster(config: Value, source_style: &str) -> merman_render::R
 }
 
 #[test]
+fn er_html_cluster_titles_use_er_ink_and_colliding_ids_keep_their_references() {
+    for &layout in LAYOUTS {
+        let source = format!(
+            r##"---
+config:
+  layout: {layout}
+  htmlLabels: true
+  theme: dark
+  themeVariables:
+    titleColor: '#e5f0ff'
+    clusterBkg: '#123456'
+  state:
+    htmlLabels: false
+---
+erDiagram
+subgraph drop-shadow ["Accounts"]
+  A }}o--o{{ B : owns
+end
+"##
+        );
+        let parsed = MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let svg = family::prepare(&parsed, &LayoutOptions::default(), session)
+            .unwrap()
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let rebase_session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let rebased =
+            merman_render::svg::rebase_svg_ids(svg.svg(), "rebased", &rebase_session).unwrap();
+        let doc = roxmltree::Document::parse(&rebased).unwrap();
+        let mut ids = std::collections::HashSet::new();
+        for id in doc.descendants().filter_map(|node| node.attribute("id")) {
+            assert!(ids.insert(id), "{layout}: duplicate {id}");
+        }
+        assert!(rebased.contains(" .cluster-label .nodeLabel{color:#e5f0ff;}"));
+        assert!(doc.descendants().any(|node| {
+            node.has_tag_name("foreignObject")
+                && node
+                    .descendants()
+                    .any(|child| child.text() == Some("Accounts"))
+        }));
+        for edge in doc
+            .descendants()
+            .filter(|node| node.attribute("data-et") == Some("edge"))
+        {
+            let mask = edge
+                .attribute("mask")
+                .expect("zero marker reveals the cluster surface");
+            let target = mask.strip_prefix("url(#").unwrap().trim_end_matches(')');
+            assert!(
+                doc.descendants()
+                    .any(|node| node.has_tag_name("mask") && node.attribute("id") == Some(target))
+            );
+        }
+    }
+}
+
+#[test]
 fn dagre_duplicate_subgraphs_keep_first_box_style_and_class_without_svg_source_text_color() {
     let source = r##"---
 config:

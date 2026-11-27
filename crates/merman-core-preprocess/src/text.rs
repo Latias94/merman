@@ -2,6 +2,7 @@
 
 use merman_model::text::is_ecmascript_whitespace;
 use merman_model::{OperationControl, OperationControlResult};
+use std::ops::Range;
 
 use super::scan::controlled::{
     CONTROLLED_SCAN_CHECKPOINT_BYTES, ControlledScanCheckpoints, find_ascii_pattern_controlled,
@@ -95,6 +96,61 @@ pub fn trim_source_start_controlled(
         source.apply_edits(vec![SourceEdit::delete(0..leading_whitespace)], control)?;
     }
     control.checkpoint()
+}
+
+/// Finds comment deletions in Mermaid source and observes comment lines in source order.
+///
+/// The observer receives the comment range before source mapping, including a terminating LF
+/// when present. The deletion can also consume whitespace from preceding lines.
+pub fn mermaid_comment_edits_controlled(
+    text: &str,
+    mut observe: Option<&mut dyn FnMut(Range<usize>)>,
+    control: &OperationControl,
+) -> OperationControlResult<Vec<SourceEdit>> {
+    let mut checkpoints = ControlledScanCheckpoints::new(control)?;
+    let mut edits = Vec::new();
+    let mut line_start = 0usize;
+    let mut whitespace_start = 0usize;
+    let mut cursor = 0usize;
+    let mut at_line_start = true;
+    while cursor < text.len() {
+        let ch = text[cursor..]
+            .chars()
+            .next()
+            .expect("comment scan position must contain a character");
+        checkpoints.scanned(ch.len_utf8())?;
+        if at_line_start && is_ecmascript_whitespace(ch) {
+            cursor += ch.len_utf8();
+            if matches!(ch, '\n' | '\r' | '\u{2028}' | '\u{2029}') {
+                line_start = cursor;
+            }
+            continue;
+        }
+        if at_line_start && let Some(after_marker) = text[cursor..].strip_prefix("%%") {
+            let has_comment_body = after_marker.chars().next().is_some_and(|ch| ch != '\n');
+            if !after_marker.starts_with('{') && has_comment_body {
+                let newline = find_newline_controlled(text, cursor + 2, &mut checkpoints)?;
+                let line_end = newline.map_or(text.len(), |newline| newline + 1);
+                if let Some(observe) = observe.as_deref_mut() {
+                    observe(line_start..line_end);
+                }
+                edits.push(SourceEdit::delete(whitespace_start..line_end));
+                cursor = line_end;
+                line_start = cursor;
+                whitespace_start = cursor;
+                continue;
+            }
+        }
+        at_line_start = false;
+        cursor += ch.len_utf8();
+        if matches!(ch, '\n' | '\r' | '\u{2028}' | '\u{2029}') {
+            line_start = cursor;
+            whitespace_start = cursor;
+            at_line_start = true;
+        }
+    }
+    checkpoints.finish()?;
+    Ok(edits)
 }
 
 /// Normalizes CR and CRLF source line endings.
@@ -376,13 +432,7 @@ fn find_hex_style_match_end_controlled(
         }
 
         if let Some(hash) = hash {
-            return rfind_ascii_byte_in_range_controlled(
-                text,
-                hash + 1,
-                line_end,
-                b';',
-                checkpoints,
-            );
+            return last_unquoted_style_semicolon(text, hash + 1, line_end, checkpoints);
         }
 
         // Skip the complete value token. Re-probing at every byte after a colon makes a
@@ -392,18 +442,30 @@ fn find_hex_style_match_end_controlled(
     Ok(None)
 }
 
-fn rfind_ascii_byte_in_range_controlled(
+fn last_unquoted_style_semicolon(
     text: &str,
     start: usize,
     end: usize,
-    needle: u8,
     checkpoints: &mut ControlledScanCheckpoints<'_>,
 ) -> OperationControlResult<Option<usize>> {
-    for offset in (start..end.min(text.len())).rev() {
+    let mut quote = None;
+    let mut escaped = false;
+    let mut last = None;
+    for (index, &byte) in text.as_bytes()[start..end].iter().enumerate() {
         checkpoints.scanned(1)?;
-        if text.as_bytes()[offset] == needle {
-            return Ok(Some(offset));
+        if escaped {
+            escaped = false;
+        } else if byte == b'\\' {
+            escaped = true;
+        } else if let Some(open) = quote {
+            if byte == open {
+                quote = None;
+            }
+        } else if matches!(byte, b'\'' | b'"') {
+            quote = Some(byte);
+        } else if byte == b';' {
+            last = Some(start + index);
         }
     }
-    Ok(None)
+    Ok(last)
 }

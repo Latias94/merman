@@ -36,6 +36,7 @@ pub(super) fn render_block_diagram_svg_model_with_theme(
             work_meter: options.work_meter(),
             text_measurer: options.text_measurer(),
             operation: options.family.session().operation_context(),
+            shoal: edge_routes.is_shoal(),
         },
     )
 }

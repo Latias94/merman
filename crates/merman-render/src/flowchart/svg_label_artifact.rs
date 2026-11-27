@@ -771,6 +771,7 @@ impl FlowchartSvgLabelSidecarBuilder {
         self
     }
 
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     pub(crate) const fn native_density(&self) -> Option<merman_theme_contract::v2::Density> {
         self.native_density
     }

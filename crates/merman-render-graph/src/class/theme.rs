@@ -1,6 +1,6 @@
 use merman_model::presentation::PresentationConfig;
 
-use merman_theme_contract::v2::{Color, FamilyTheme};
+use merman_theme_contract::v2::{Color, EdgeStyle, FamilyTheme};
 
 mod css_binding;
 mod relation_width;
@@ -22,6 +22,8 @@ pub struct ClassRelationThemePlan {
     diagram_title: String,
     edge_label_background: String,
     native_edge_curve: Option<&'static str>,
+    pub(crate) sketch_edges: bool,
+    pub(crate) rough_backing: bool,
 }
 
 impl ClassRelationThemePlan {
@@ -45,12 +47,28 @@ impl ClassRelationThemePlan {
                 diagram_title: title,
                 edge_label_background: super::native_theme::edge_background(theme, canvas),
                 native_edge_curve: Some(super::native_theme::edge_curve(theme.form.edge_style)),
+                sketch_edges: theme.form.edge_style == EdgeStyle::Sketch,
+                rough_backing: true,
             };
         }
         let paint = |key, fallback: &str| {
             merman_render_core::config::config_string(config, &["themeVariables", key])
                 .unwrap_or_else(|| fallback.to_owned())
         };
+        let translucent_canvas = canvas.map_or_else(
+            || {
+                use merman_markup::theme_color::{ColorChannel, ThemeColor};
+
+                config.explicit_config_owns_path("themeVariables.background")
+                    && config
+                        .get_str("themeVariables.background")
+                        .is_some_and(|value| {
+                            ThemeColor::parse(value)
+                                .is_ok_and(|color| color.channel(ColorChannel::Alpha) < 1.0)
+                        })
+            },
+            |color| color.channels()[3] < u8::MAX,
+        );
         Self {
             stroke: paint("lineColor", "#333333"),
             width: ClassRelationWidthBinding::from_config(config),
@@ -62,6 +80,9 @@ impl ClassRelationThemePlan {
             diagram_title: paint("textColor", "#333"),
             edge_label_background: paint("edgeLabelBackground", "rgba(232,232,232, 0.8)"),
             native_edge_curve: None,
+            sketch_edges: false,
+            // Keep Mermaid's hachure-only shapes in the compatibility presentation.
+            rough_backing: translucent_canvas,
         }
     }
 

@@ -362,22 +362,44 @@ fn write_c4_relation_defs(
 fn available_local_id(
     base: String,
     shapes: &std::collections::HashMap<&str, &C4SvgModelShape>,
+    reserved: impl Fn(&str) -> bool,
     work: &OperationWorkMeter,
 ) -> Result<String> {
     work.charge(base.len())?;
-    if !shapes.contains_key(base.as_str()) {
+    if !shapes.contains_key(base.as_str()) && !reserved(&base) {
         return Ok(base);
     }
-    for suffix in 0..shapes.len() {
+    // At most the authored aliases and two accessibility IDs can occupy this node prefix.
+    for suffix in 0..=shapes.len().saturating_add(2) {
         let candidate = format!("{base}-{suffix}");
         work.charge(candidate.len())?;
-        if !shapes.contains_key(candidate.as_str()) {
+        if !shapes.contains_key(candidate.as_str()) && !reserved(&candidate) {
             return Ok(candidate);
         }
     }
     Err(Error::InvalidModel {
         message: "c4: exhausted local SVG IDs".into(),
     })
+}
+
+fn reserved_definition_id(id: &str) -> bool {
+    matches!(
+        id,
+        "computer"
+            | "database"
+            | "clock"
+            | "arrowhead"
+            | "arrowend"
+            | "crosshead"
+            | "filled-head"
+            | "gradient"
+            | "drop-shadow"
+            | "drop-shadow-small"
+    ) || id
+        .strip_prefix("arrowhead-")
+        .or_else(|| id.strip_prefix("arrowend-"))
+        .or_else(|| id.strip_prefix("c4-rel-")?.strip_suffix("-label-cutout"))
+        .is_some_and(|index| !index.is_empty() && index.bytes().all(|b| b.is_ascii_digit()))
 }
 
 fn c4_shape_classes(type_c4_shape: &str) -> String {
@@ -1013,6 +1035,18 @@ pub fn render_c4_diagram_svg_typed(
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
         .map(|_| format!("chart-title-{diagram_id}"));
+    let a11y_suffixes = [&aria_labelledby, &aria_describedby].map(|id| {
+        id.as_deref()?
+            .strip_prefix(diagram_id.semantic_str())?
+            .strip_prefix('-')
+    });
+    let reserved = |alias: &str| {
+        if is_shoal || native.is_some() {
+            reserved_definition_id(alias) || a11y_suffixes.contains(&Some(alias))
+        } else {
+            has_gradient && alias == "gradient"
+        }
+    };
 
     let mut out = BoundedSvgOutput::new(context.work_meter);
     let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, use_max_width)
@@ -1060,6 +1094,9 @@ pub fn render_c4_diagram_svg_typed(
     out.checkpoint()?;
     out.push_str("<g/>");
     out.checkpoint()?;
+    if is_shoal && look == C4Look::Neo {
+        look_defs.write_shadow_defs(&mut out, diagram_id)?;
+    }
     if has_gradient {
         out.push_str("<defs>");
         look_defs.write_gradient(&mut out, diagram_id)?;
@@ -1073,9 +1110,6 @@ pub fn render_c4_diagram_svg_typed(
     for s in &model.shapes {
         shape_meta.insert(s.alias.as_str(), s);
     }
-    let gradient_alias_id = (has_gradient && shape_meta.contains_key("gradient"))
-        .then(|| available_local_id("c4-node-gradient".into(), &shape_meta, context.work_meter))
-        .transpose()?;
     let mut boundary_meta: std::collections::HashMap<&str, &C4SvgModelBoundary> =
         std::collections::HashMap::new();
     for b in &model.boundaries {
@@ -1132,11 +1166,17 @@ pub fn render_c4_diagram_svg_typed(
                 };
                 let node_shape = c4_node_shape(meta);
                 let classes = c4_shape_classes(s.type_c4_shape.as_str());
-                let node_id = if s.alias == "gradient" {
-                    gradient_alias_id.as_deref().unwrap_or(&s.alias)
-                } else {
-                    &s.alias
-                };
+                let disambiguated = reserved(&s.alias)
+                    .then(|| {
+                        available_local_id(
+                            format!("c4-node-{index}"),
+                            &shape_meta,
+                            reserved,
+                            context.work_meter,
+                        )
+                    })
+                    .transpose()?;
+                let node_id = disambiguated.as_deref().unwrap_or(&s.alias);
                 let _ = write!(
                     &mut out,
                     r#"<g transform="translate({}, {})"><g id="{}" class="node {}""#,
@@ -1506,14 +1546,7 @@ pub fn render_c4_diagram_svg_typed(
         if let Some(route) = canonical {
             let clip_id = route
                 .shaft_cutout
-                .map(|_| {
-                    available_local_id(
-                        format!("{}-label-cutout", route.id),
-                        &shape_meta,
-                        context.work_meter,
-                    )
-                })
-                .transpose()?;
+                .map(|_| format!("c4-rel-{idx}-label-cutout"));
             routed::open_shaft(
                 &mut out,
                 route,
@@ -1629,6 +1662,24 @@ pub fn render_c4_diagram_svg_typed(
         let message_family = message_style.css_font_family.as_str();
         let message_weight = message_font.font_weight.as_deref().unwrap_or("normal");
         let message_size = message_style.css_font_size_px.expect("legacy message size");
+        #[cfg(feature = "layout-shoal")]
+        if let Some(reference) = canonical.and_then(|route| route.label_reference.as_deref()) {
+            c4_write_text_by_tspan(
+                &mut out,
+                C4TspanText {
+                    content: &reference.text,
+                    line_count: reference.line_count,
+                    x: -reference.width / 2.0,
+                    y: reference.y,
+                    width: reference.width,
+                    font_family: message_family,
+                    font_size: message_size,
+                    font_weight: message_weight,
+                    attrs: &[("fill", text_color)],
+                    shoal: true,
+                },
+            )?;
+        }
         c4_write_text_by_tspan(
             &mut out,
             C4TspanText {

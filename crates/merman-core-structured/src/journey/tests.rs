@@ -7,10 +7,10 @@ fn journey_recovery_retains_first_issue_and_observes_the_unclosed_block() {
     let opening = source.find('{').unwrap();
     for capture_facts in [false, true] {
         let mut observations = Vec::new();
-        let result = parse_journey_source_controlled(
+        let result = parse_journey_source_with_observer_controlled(
             source,
             capture_facts,
-            Some(&mut |observation| observations.push(observation)),
+            &mut |observation| observations.push(observation),
             &OperationControl::new(),
         )
         .unwrap();

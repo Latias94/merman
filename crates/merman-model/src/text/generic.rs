@@ -1,5 +1,9 @@
 //! Mermaid generic-type canonicalization shared by source and output consumers.
 
+use std::ops::Range;
+
+use super::is_ecmascript_whitespace;
+
 pub fn count_occurrence(haystack: &str, needle: char) -> usize {
     haystack.chars().filter(|c| *c == needle).count()
 }
@@ -15,13 +19,17 @@ enum GenericTypeSet<'a> {
 }
 
 impl<'a> GenericTypeSet<'a> {
-    fn visit<E>(self, visit: &mut impl FnMut(&'a str) -> Result<(), E>) -> Result<(), E> {
+    fn visit<E>(
+        self,
+        angles: [&'a str; 2],
+        visit: &mut impl FnMut(&'a str) -> Result<(), E>,
+    ) -> Result<(), E> {
         match self {
             Self::Single { value, tilde_count } => {
-                visit_processed_generic_set(&[value], tilde_count, visit)
+                visit_processed_generic_set(&[value], tilde_count, angles, visit)
             }
             Self::Combined { left, right } => {
-                visit_processed_generic_set(&[left, ",", right], 2, visit)
+                visit_processed_generic_set(&[left, ",", right], 2, angles, visit)
             }
         }
     }
@@ -30,6 +38,7 @@ impl<'a> GenericTypeSet<'a> {
 fn visit_processed_generic_set<'a, E>(
     parts: &[&'a str],
     tilde_count: usize,
+    [open, close]: [&'a str; 2],
     visit: &mut impl FnMut(&'a str) -> Result<(), E>,
 ) -> Result<(), E> {
     if tilde_count <= 1 {
@@ -57,14 +66,14 @@ fn visit_processed_generic_set<'a, E>(
             } else {
                 let paired_index = tilde_index - usize::from(preserve_leading_tilde);
                 if paired_index < paired_count {
-                    "<"
+                    open
                 } else if !preserve_leading_tilde
                     && !tilde_count.is_multiple_of(2)
                     && paired_index == paired_count
                 {
                     "~"
                 } else {
-                    ">"
+                    close
                 }
             };
             visit(replacement)?;
@@ -78,8 +87,9 @@ fn visit_processed_generic_set<'a, E>(
     Ok(())
 }
 
-fn visit_generic_types<'a, E>(
+fn visit_legacy_generic_types<'a, E>(
     input: &'a str,
+    angles: [&'a str; 2],
     visit: &mut impl FnMut(&'a str) -> Result<(), E>,
 ) -> Result<(), E> {
     let mut sets = input.split(',');
@@ -101,7 +111,7 @@ fn visit_generic_types<'a, E>(
                 right: next,
             };
         } else {
-            pending.visit(visit)?;
+            pending.visit(angles, visit)?;
             visit(",")?;
             pending = GenericTypeSet::Single {
                 value: next,
@@ -112,7 +122,92 @@ fn visit_generic_types<'a, E>(
         previous_tilde_count = next_tilde_count;
     }
 
-    pending.visit(visit)
+    pending.visit(angles, visit)
+}
+
+fn type_name_end(ch: char) -> bool {
+    ch.is_alphanumeric() || ch == '_'
+}
+
+fn nested_opening(input: &str, at: usize) -> bool {
+    let following = &input[at + 1..];
+    // An array suffix attaches to the preceding closed type.
+    if following.starts_with("[]") {
+        return false;
+    }
+    input[..at].chars().next_back().is_some_and(type_name_end)
+        && following.chars().next().is_some_and(|ch| {
+            ch.is_alphanumeric() || matches!(ch, '_' | '?' | '\'' | '(' | '[' | '&')
+        })
+}
+
+fn closed_group_len(input: &str) -> Option<usize> {
+    let body = input.strip_prefix('~')?;
+    let mut depth = 1usize;
+    for (at, ch) in body.char_indices() {
+        match ch {
+            '~' if nested_opening(input, at + 1) => depth += 1,
+            '~' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(at + 2);
+                }
+            }
+            '\r' | '\n' | '\u{2028}' | '\u{2029}' | '{' | '}' => return None,
+            _ => {}
+        }
+    }
+    None
+}
+
+fn next_closed_group(input: &str, from: usize) -> Result<Option<Range<usize>>, ()> {
+    // A leading tilde can be package visibility in a member signature.
+    let search = from.max(usize::from(input.starts_with('~')));
+    let Some(at) = input[search..].find('~').map(|offset| search + offset) else {
+        return Ok(None);
+    };
+    if !input[from..at]
+        .trim_end_matches(is_ecmascript_whitespace)
+        .chars()
+        .next_back()
+        .is_some_and(type_name_end)
+    {
+        return Err(());
+    }
+    let len = closed_group_len(&input[at..]).ok_or(())?;
+    Ok(Some(at..at + len))
+}
+
+fn visit_closed_generic_types<'a, E>(
+    input: &'a str,
+    [open, close]: [&'a str; 2],
+    visit: &mut impl FnMut(&'a str) -> Result<(), E>,
+) -> Result<(), E> {
+    let mut start = 0;
+    while let Some(group) = next_closed_group(input, start).expect("validated generic groups") {
+        let mut retained = start;
+        for (at, _) in input[group.clone()].match_indices('~') {
+            let at = group.start + at;
+            if retained < at {
+                visit(&input[retained..at])?;
+            }
+            if at == group.start || nested_opening(input, at) {
+                visit(open)?;
+            } else {
+                visit(close)?;
+            }
+            retained = at + 1;
+        }
+        start = group.end;
+    }
+    visit(&input[start..])
+}
+
+#[derive(Debug, Clone, Copy)]
+enum GenericSyntax {
+    Plain,
+    Closed,
+    Legacy,
 }
 
 /// An allocation-free plan for Mermaid's generic-type canonicalization.
@@ -120,33 +215,78 @@ fn visit_generic_types<'a, E>(
 pub struct GenericTypesPlan<'a> {
     input: &'a str,
     output_len: usize,
-    has_generic_syntax: bool,
+    syntax: GenericSyntax,
 }
 
 impl<'a> GenericTypesPlan<'a> {
     pub fn new(input: &'a str) -> Self {
-        if !input.contains('~') {
-            return Self {
-                input,
-                output_len: input.len(),
-                has_generic_syntax: false,
-            };
+        let mut start = 0;
+        loop {
+            match next_closed_group(input, start) {
+                Ok(Some(group)) => start = group.end,
+                Ok(None) => {
+                    return Self {
+                        input,
+                        output_len: input.len(),
+                        syntax: if start == 0 {
+                            GenericSyntax::Plain
+                        } else {
+                            GenericSyntax::Closed
+                        },
+                    };
+                }
+                Err(()) => {
+                    // Older Mermaid inputs can rely on recovery for ambiguous or unclosed
+                    // tildes. Use the selected upstream projection in that case.
+                    let mut output_len = 0;
+                    Self::visit_legacy(input, |fragment| output_len += fragment.len());
+                    return Self {
+                        input,
+                        output_len,
+                        syntax: GenericSyntax::Legacy,
+                    };
+                }
+            }
         }
+    }
 
-        let mut output_len = 0usize;
-        let counted = visit_generic_types(input, &mut |fragment| {
-            output_len += fragment.len();
+    /// Finds the end of a closed type argument list beginning at the opening tilde.
+    #[doc(hidden)]
+    pub fn closed_group_len(input: &str) -> Option<usize> {
+        closed_group_len(input)
+    }
+
+    #[doc(hidden)]
+    pub fn has_closed_groups(self) -> bool {
+        matches!(self.syntax, GenericSyntax::Closed)
+    }
+
+    /// Returns the parts of the source outside recognized generic arguments.
+    #[doc(hidden)]
+    pub fn outside_closed_groups(self) -> impl Iterator<Item = Range<usize>> {
+        let mut start = Some(0);
+        std::iter::from_fn(move || {
+            let from = start.take()?;
+            if self.has_closed_groups()
+                && let Some(group) = next_closed_group(self.input, from).expect("validated groups")
+            {
+                start = Some(group.end);
+                return Some(from..group.start);
+            }
+            Some(from..self.input.len())
+        })
+    }
+
+    /// Visits the selected upstream projection, including its recovery for ambiguous tildes.
+    #[doc(hidden)]
+    pub fn visit_legacy(input: &'a str, mut visit: impl FnMut(&'a str)) {
+        let visited = visit_legacy_generic_types(input, ["<", ">"], &mut |fragment| {
+            visit(fragment);
             Ok::<(), std::convert::Infallible>(())
         });
-        match counted {
+        match visited {
             Ok(()) => {}
             Err(never) => match never {},
-        }
-        debug_assert!(output_len <= input.len());
-        Self {
-            input,
-            output_len,
-            has_generic_syntax: true,
         }
     }
 
@@ -156,26 +296,39 @@ impl<'a> GenericTypesPlan<'a> {
 
     /// Returns a conservative work bound for revisiting the source during materialization.
     pub fn materialization_scan_work(self) -> Option<usize> {
-        if self.has_generic_syntax {
-            self.input.len().max(1).checked_mul(2)
-        } else {
-            Some(0)
+        match self.syntax {
+            GenericSyntax::Plain => Some(0),
+            GenericSyntax::Closed | GenericSyntax::Legacy => self.input.len().max(1).checked_mul(2),
         }
     }
 
     /// Visits the canonical text without allocating an intermediate string.
     /// Visits canonical fragments and stops at the first callback error.
     pub fn try_visit<E>(self, mut visit: impl FnMut(&'a str) -> Result<(), E>) -> Result<(), E> {
-        if !self.has_generic_syntax {
-            visit(self.input)
-        } else {
-            visit_generic_types(self.input, &mut visit)
+        self.try_visit_with_angles(["<", ">"], &mut visit)
+    }
+
+    fn try_visit_with_angles<E>(
+        self,
+        angles: [&'a str; 2],
+        visit: &mut impl FnMut(&'a str) -> Result<(), E>,
+    ) -> Result<(), E> {
+        match self.syntax {
+            GenericSyntax::Plain => visit(self.input),
+            GenericSyntax::Closed => visit_closed_generic_types(self.input, angles, visit),
+            GenericSyntax::Legacy => visit_legacy_generic_types(self.input, angles, visit),
         }
     }
 
     /// Visits canonical fragments without allocating the resulting string.
-    pub fn visit(self, mut visit: impl FnMut(&'a str)) {
-        let visited = self.try_visit(|fragment| {
+    pub fn visit(self, visit: impl FnMut(&'a str)) {
+        self.visit_with_angles(["<", ">"], visit);
+    }
+
+    /// Visits canonical text with alternate spelling for the generated angle delimiters.
+    #[doc(hidden)]
+    pub fn visit_with_angles(self, angles: [&'a str; 2], mut visit: impl FnMut(&'a str)) {
+        let visited = self.try_visit_with_angles(angles, &mut |fragment| {
             visit(fragment);
             Ok::<(), std::convert::Infallible>(())
         });
@@ -187,7 +340,6 @@ impl<'a> GenericTypesPlan<'a> {
 }
 
 pub fn parse_generic_types(input: &str) -> String {
-    // Mirrors Mermaid's `parseGenericTypes` logic (packages/mermaid/src/diagrams/common/common.ts).
     let plan = GenericTypesPlan::new(input);
     let mut output = String::with_capacity(plan.output_len());
     plan.visit(|fragment| output.push_str(fragment));
@@ -226,6 +378,25 @@ mod tests {
             let mut visited = String::new();
             plan.visit(|fragment| visited.push_str(fragment));
             assert_eq!(visited, expected);
+            assert_eq!(plan.output_len(), expected.len());
+        }
+    }
+
+    #[test]
+    fn closed_generics_keep_all_arguments_and_adjacent_type_groups() {
+        for (input, expected) in [
+            (
+                "Map~String, List~Int~, Set~Entry~K, V~~~",
+                "Map<String, List<Int>, Set<Entry<K, V>>>",
+            ),
+            (
+                "Tuple~(int, string)~ pair, Map~K, V~ table",
+                "Tuple<(int, string)> pair, Map<K, V> table",
+            ),
+            ("Box~List~String~[]~ boxes", "Box<List<String>[]> boxes"),
+        ] {
+            let plan = GenericTypesPlan::new(input);
+            assert_eq!(parse_generic_types(input), expected);
             assert_eq!(plan.output_len(), expected.len());
         }
     }

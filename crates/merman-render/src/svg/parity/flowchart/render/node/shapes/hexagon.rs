@@ -39,7 +39,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_hexagon(
             r#"<g transform="translate({},{})" style="{}">"#,
             fmt_display(-w / 2.0),
             fmt_display(h / 2.0),
-            escape_attr(common.rough_group_style)
+            escape_attr(super::super::helpers::hand_drawn_group_style(common))
         );
         super::super::helpers::write_hand_drawn_hachure(
             out,
@@ -55,7 +55,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_hexagon(
             escape_attr(common.stroke_color),
             fmt_display(common.stroke_width as f64),
             escape_attr(common.stroke_dasharray),
-            escape_attr(common.style)
+            escape_attr(&super::super::helpers::grouped_shape_child_style(common))
         );
         out.push_str("</g>");
     } else {

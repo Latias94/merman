@@ -1,9 +1,10 @@
 use super::RoutePaintError;
-use crate::route_types::Endpoint;
+use crate::route_types::{Endpoint, RoutePoint};
 use kurbo::{CubicBez, Line, ParamCurve, PathSeg, Point, Rect, Vec2};
 #[cfg(feature = "layout-shoal")]
 use merman_layout_shoal::geom::{Bounds, Bvh, BvhEntry};
 use std::collections::VecDeque;
+use std::hash::{Hash, Hasher};
 use std::ops::ControlFlow::{Break, Continue};
 use std::sync::Arc;
 
@@ -32,6 +33,34 @@ pub enum ObstacleOwner {
     Node(u32),
     GroupTitle(u32),
     EdgeLabel(usize),
+    Marker(usize, TerminalContact),
+}
+
+/// The exact layout-space point where a route meets its node or group contour.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TerminalContact {
+    endpoint: Endpoint,
+    coordinates: [u64; 2],
+}
+
+impl TerminalContact {
+    pub fn new(endpoint: Endpoint, point: RoutePoint) -> Self {
+        let coordinate_key = |value: f64| if value == 0.0 { 0 } else { value.to_bits() };
+        Self {
+            endpoint,
+            coordinates: [point.x, point.y].map(coordinate_key),
+        }
+    }
+}
+
+impl Hash for TerminalContact {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        std::mem::discriminant(&self.endpoint).hash(state);
+        match self.endpoint {
+            Endpoint::Node(id) | Endpoint::Group(id) => id.hash(state),
+        }
+        self.coordinates.hash(state);
+    }
 }
 
 #[cfg(feature = "layout-shoal")]
@@ -72,6 +101,7 @@ impl Clearance {
             obstacles: self.obstacles.as_deref(),
             edge,
             endpoints,
+            terminal_contacts: None,
             paint_to_layout,
             stroke_outset,
         }
@@ -83,11 +113,21 @@ pub struct EdgeClearance<'a> {
     obstacles: Option<&'a Obstacles>,
     edge: usize,
     endpoints: (Endpoint, Endpoint),
+    terminal_contacts: Option<[TerminalContact; 2]>,
     paint_to_layout: Vec2,
     stroke_outset: f64,
 }
 
 impl EdgeClearance<'_> {
+    /// Records the route's contour contacts in the same space as the obstacle inventory.
+    pub fn with_terminal_contacts(mut self, contacts: (RoutePoint, RoutePoint)) -> Self {
+        self.terminal_contacts = Some([
+            TerminalContact::new(self.endpoints.0, contacts.0),
+            TerminalContact::new(self.endpoints.1, contacts.1),
+        ]);
+        self
+    }
+
     fn blocked(self, bounds: Rect, enters: impl FnMut(Rect) -> bool) -> bool {
         self.query(bounds, None, |_| true, enters)
             .expect("no detour budget is used for a clearance check")
@@ -114,6 +154,13 @@ impl EdgeClearance<'_> {
                     self.endpoints.0 == Endpoint::Node(id) || self.endpoints.1 == Endpoint::Node(id)
                 }
                 ObstacleOwner::EdgeLabel(edge) => edge == self.edge,
+                ObstacleOwner::Marker(edge, contact) => {
+                    // Shafts joining at one fixed contour point share its marker footprint.
+                    edge == self.edge
+                        || self
+                            .terminal_contacts
+                            .is_some_and(|ends| ends.contains(&contact))
+                }
                 ObstacleOwner::GroupTitle(_) => false,
             });
             if own || !overlaps(rect, query) || !near_curve(rect) {

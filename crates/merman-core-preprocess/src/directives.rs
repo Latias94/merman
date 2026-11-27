@@ -2,7 +2,7 @@
 
 use crate::scan::controlled::{
     ControlledScanCheckpoints, find_ascii_pattern_controlled, find_line_break_controlled,
-    push_str_controlled, trim_whitespace_bounds_controlled,
+    push_str_controlled, trim_start_whitespace_controlled, trim_whitespace_bounds_controlled,
 };
 use merman_model::{OperationControl, OperationControlResult};
 use std::borrow::Cow;
@@ -124,6 +124,107 @@ pub fn normalize_directive_quotes_controlled<'a>(
     push_str_controlled(&mut normalized, &raw[cursor..], &mut checkpoints)?;
     checkpoints.finish()?;
     Ok(Cow::Owned(normalized))
+}
+
+/// A directive argument after whitespace trimming and quote normalization.
+pub enum DirectiveArgument<'a> {
+    Literal(String),
+    Structured { source: &'a str, offset: usize },
+}
+
+/// The keyword and argument in a normalized directive body.
+pub struct ScannedDirective<'a> {
+    pub keyword: String,
+    pub keyword_span: Range<usize>,
+    pub argument: Option<DirectiveArgument<'a>>,
+}
+
+/// Reads a normalized directive body on the caller's scan checkpoints.
+///
+/// In recovery mode only the keyword is observed. When an argument begins with a
+/// collection delimiter, the caller applies its config limits before decoding it.
+pub fn scan_directive_body<'a>(
+    raw: &'a str,
+    read_argument: bool,
+    checkpoints: &mut ControlledScanCheckpoints<'_>,
+) -> OperationControlResult<Option<ScannedDirective<'a>>> {
+    let (raw_start, raw_end) = trim_whitespace_bounds_controlled(raw, checkpoints)?;
+    let raw = &raw[raw_start..raw_end];
+    if raw.is_empty() {
+        return Ok(None);
+    }
+
+    let mut type_end = 0usize;
+    for (index, ch) in raw.char_indices() {
+        checkpoints.scanned(ch.len_utf8())?;
+        if !ch.is_ascii_alphanumeric() && ch != '_' {
+            break;
+        }
+        type_end = index + ch.len_utf8();
+    }
+    if type_end == 0 {
+        return Ok(None);
+    }
+    let mut keyword = String::with_capacity(type_end);
+    push_str_controlled(&mut keyword, &raw[..type_end], checkpoints)?;
+    let keyword_span = raw_start..raw_start + type_end;
+    let argument = if read_argument {
+        scan_directive_argument(raw, raw_start, type_end, checkpoints)?
+    } else {
+        None
+    };
+    Ok(Some(ScannedDirective {
+        keyword,
+        keyword_span,
+        argument,
+    }))
+}
+
+fn scan_directive_argument<'a>(
+    raw: &'a str,
+    raw_start: usize,
+    type_end: usize,
+    checkpoints: &mut ControlledScanCheckpoints<'_>,
+) -> OperationControlResult<Option<DirectiveArgument<'a>>> {
+    let whitespace = trim_start_whitespace_controlled(&raw[type_end..], checkpoints)?;
+    let mut position = type_end + whitespace;
+    if raw.as_bytes().get(position) != Some(&b':') {
+        return Ok(None);
+    }
+    checkpoints.scanned(1)?;
+    position += 1;
+    let whitespace = trim_start_whitespace_controlled(&raw[position..], checkpoints)?;
+    position += whitespace;
+    let rest = &raw[position..];
+    let (rest_start, rest_end) = trim_whitespace_bounds_controlled(rest, checkpoints)?;
+    let rest = &rest[rest_start..rest_end];
+    if rest.is_empty() {
+        return Ok(None);
+    }
+    if rest.starts_with('{') || rest.starts_with('[') {
+        return Ok(Some(DirectiveArgument::Structured {
+            source: rest,
+            offset: raw_start
+                .saturating_add(position)
+                .saturating_add(rest_start),
+        }));
+    }
+    let mut value = String::with_capacity(rest.len());
+    push_str_controlled(&mut value, rest, checkpoints)?;
+    Ok(Some(DirectiveArgument::Literal(value)))
+}
+
+/// Finds the exact ranges to remove from ordinary Mermaid input.
+pub fn directive_removal_ranges_controlled(
+    text: &str,
+    control: &OperationControl,
+) -> OperationControlResult<Vec<Range<usize>>> {
+    Ok(
+        directive_blocks_controlled(text, DirectiveRecoveryMode::Strict, control)?
+            .into_iter()
+            .map(|block| block.range)
+            .collect(),
+    )
 }
 
 #[cfg(test)]

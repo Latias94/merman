@@ -4,6 +4,21 @@ use super::*;
 use crate::flowchart::FlowchartEdgeKey;
 use kurbo::{Rect, Vec2};
 
+// A clip affects the shaft and its marker paint. The viewport may exclude off-canvas ink.
+const CUTOUT_FRAME_OUTSET: f64 = 32.0;
+
+pub(super) fn applies(ctx: &FlowchartRenderCtx<'_>, options: &SvgExecution<'_>) -> bool {
+    ctx.layout.route_contract.is_canonical_axis()
+        && ctx.swimlane_layout.is_none()
+        && ctx.diagram_type != "agentflow"
+        && options
+            .family
+            .session()
+            .canvas_background()
+            .or_else(|| ctx.native.map(|native| native.canvas))
+            .is_some_and(|canvas| canvas.channels()[3] == 0)
+}
+
 pub(super) fn write_definitions(
     out: &mut impl SvgOutput,
     ctx: &FlowchartRenderCtx<'_>,
@@ -37,9 +52,27 @@ pub(super) fn write_definitions(
         };
         ctx.checkpoint_emit()?;
         let gap = Rect::from_center_size((position.x, position.y), (label.width, label.height));
-        let outer = (viewport - Vec2::new(cached.origin_x, cached.abs_top_transform))
-            .union(gap)
-            .inflate(1.0, 1.0);
+        let path = &cached.geom;
+        let ink = if let Some(d) = &path.emitted_d_for_label {
+            ctx.work_meter.charge_emit_work(d.len().div_ceil(16))?;
+            path_bounds::svg_path_bounds_from_d(d)
+        } else {
+            path.pb
+        };
+        let mut outer =
+            (viewport - Vec2::new(cached.origin_x, cached.abs_top_transform)).union(gap);
+        if let Some(ink) = ink {
+            outer = outer.union(Rect::new(ink.min_x, ink.min_y, ink.max_x, ink.max_y));
+        }
+        #[cfg(any(feature = "layout-shoal", test))]
+        let outset = CUTOUT_FRAME_OUTSET
+            + ctx
+                .edge_style_plan
+                .stroke_outset_for(key)?
+                .unwrap_or_default();
+        #[cfg(not(any(feature = "layout-shoal", test)))]
+        let outset = CUTOUT_FRAME_OUTSET;
+        let outer = outer.inflate(outset, outset);
         if cutouts.is_empty() {
             out.push_str("<defs>");
         }

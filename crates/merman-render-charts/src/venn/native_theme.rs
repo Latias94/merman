@@ -54,12 +54,8 @@ impl VennNativeTypography {
 }
 
 fn css_color(css: &str) -> Option<Color> {
-    let rgba = css.parse::<svgtypes::Color>().ok()?;
-    Color::parse(&format!(
-        "#{:02X}{:02X}{:02X}{:02X}",
-        rgba.red, rgba.green, rgba.blue, rgba.alpha
-    ))
-    .ok()
+    let [r, g, b, a] = merman_model::css_color::parse(css.trim())?.rgba.to_rgba8();
+    Some(Color::rgba(r, g, b, a))
 }
 
 fn contrast_ink(ink: Color, background: Color) -> String {

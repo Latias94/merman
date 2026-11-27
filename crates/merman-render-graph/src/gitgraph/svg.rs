@@ -113,8 +113,8 @@ where
             &mut out,
             r#"<defs><linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient></defs>"#,
             diagram_id,
-            escape_xml(gradient_start),
-            escape_xml(gradient_stop)
+            escape_attr_display(gradient_start),
+            escape_attr_display(gradient_stop)
         );
     }
 
@@ -124,7 +124,7 @@ where
             &mut out,
             r#"<defs><filter id="{}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
             diagram_id,
-            escape_xml(filter_color)
+            escape_attr_display(filter_color)
         );
     }
 
@@ -2156,6 +2156,38 @@ mod tests {
         assert!(svg.contains(
             r#"<circle cx="10" cy="7" r="5" class="commit commit-merge merge commit0"/>"#
         ));
+    }
+
+    #[test]
+    fn gitgraph_defs_preserve_authored_whitespace_in_paint() {
+        let start = "rgb(17\n34 51)";
+        let stop = "var(--gradient-stop,\trgb(68 85 102))";
+        let shadow = "rgb(18\t52 86)";
+        let svg = render_geometry_fixture(
+            &lr_merge_layout(7.0),
+            &json!({
+                "look": "neo",
+                "theme": "redux",
+                "themeVariables": {
+                    "useGradient": true,
+                    "gradientStart": start,
+                    "gradientStop": stop,
+                    "filterColor": shadow
+                }
+            }),
+        );
+        let doc = roxmltree::Document::parse(&svg).unwrap();
+        let stops: Vec<_> = doc
+            .descendants()
+            .filter(|node| node.has_tag_name("stop"))
+            .filter_map(|node| node.attribute("stop-color"))
+            .collect();
+        assert_eq!(stops, [start, stop]);
+        let filter = doc
+            .descendants()
+            .find(|node| node.has_tag_name("feDropShadow"))
+            .unwrap();
+        assert_eq!(filter.attribute("flood-color"), Some(shadow));
     }
 
     #[test]

@@ -123,7 +123,10 @@ fn render_icon_rect_frame(
             escape_attr(frame_class),
             fmt(icon_dy),
             if hand_drawn {
-                format!(r#" style="{}""#, escape_attr(common.rough_group_style))
+                format!(
+                    r#" style="{}""#,
+                    escape_attr(helpers::hand_drawn_group_style(common))
+                )
             } else {
                 String::new()
             }
@@ -134,7 +137,10 @@ fn render_icon_rect_frame(
             r#"<g transform="translate(0,{})"{}>"#,
             fmt(icon_dy),
             if hand_drawn {
-                format!(r#" style="{}""#, escape_attr(common.rough_group_style))
+                format!(
+                    r#" style="{}""#,
+                    escape_attr(helpers::hand_drawn_group_style(common))
+                )
             } else {
                 String::new()
             }
@@ -147,14 +153,13 @@ fn render_icon_rect_frame(
             escape_attr(&rounded_rect),
             escape_attr(common.fill_color),
             escape_attr(common.fill_color),
-            escape_attr(common.style),
+            escape_attr(&helpers::grouped_shape_child_style(common)),
         );
     } else if hand_drawn {
+        helpers::write_hand_drawn_hachure(out, common, &rounded_rect, &fill_d, 4.0);
         let _ = write!(
             out,
-            r#"<path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/>"#,
-            escape_attr(&fill_d),
-            escape_attr(common.fill_color),
+            r#"<path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/>"#,
             escape_attr(&stroke_d),
             escape_attr(common.fill_color),
         );

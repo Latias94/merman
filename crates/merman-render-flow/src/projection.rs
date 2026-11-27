@@ -134,10 +134,8 @@ impl<'a> FlowchartRenderModelRef<'a> {
     }
 
     pub fn with_shoal_svg_text(mut self, node_html_labels: bool, edge_html_labels: bool) -> Self {
-        if self.semantic.keyword != "agentflow-beta" {
-            self.svg_text_nodes = !node_html_labels;
-            self.svg_text_edges_and_titles = !edge_html_labels;
-        }
+        self.svg_text_nodes = !node_html_labels;
+        self.svg_text_edges_and_titles = !edge_html_labels;
         self
     }
 

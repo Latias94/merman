@@ -102,35 +102,33 @@ pub(super) fn write_cutout(
     if terminals.iter().all(Option::is_none) {
         return Ok(false);
     }
-    // The clip applies to the shaft and its attached markers. Leave the whole glyph (up to the
-    // 57-unit cardinality viewport) within the outer contour, then remove only the circle ink gap.
+    // The mask applies to the shaft and its attached markers. Keep the entire glyph viewport
+    // inside the mask region, then subtract the union of both circle interiors.
     let outer_margin = 57.0 * scale + stroke_width;
     let outer = path.bounding_box().inflate(outer_margin, outer_margin);
     let _ = write!(
         out,
-        r#"<defs><clipPath id="{}"><path clip-rule="evenodd" d="M{} {}H{}V{}H{}Z"#,
+        r##"<defs><mask id="{}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" mask-type="luminance" x="{}" y="{}" width="{}" height="{}"><rect x="{}" y="{}" width="{}" height="{}" fill="#fff"/>"##,
         escape_attr(id),
         fmt(outer.x0),
         fmt(outer.y0),
-        fmt(outer.x1),
-        fmt(outer.y1),
+        fmt(outer.width()),
+        fmt(outer.height()),
         fmt(outer.x0),
+        fmt(outer.y0),
+        fmt(outer.width()),
+        fmt(outer.height()),
     );
     for circle in terminals.into_iter().flatten() {
-        let (x, y, r) = (circle.center.x, circle.center.y, circle.radius);
         let _ = write!(
             out,
-            "M{} {}A{r} {r} 0 1 1 {} {}A{r} {r} 0 1 1 {} {}Z",
-            fmt(x - r),
-            fmt(y),
-            fmt(x + r),
-            fmt(y),
-            fmt(x - r),
-            fmt(y),
-            r = fmt(r),
+            r##"<circle cx="{}" cy="{}" r="{}" fill="#000"/>"##,
+            fmt(circle.center.x),
+            fmt(circle.center.y),
+            fmt(circle.radius),
         );
     }
-    out.push_str(r#""/></clipPath></defs>"#);
+    out.push_str("</mask></defs>");
     out.checkpoint()?;
     Ok(true)
 }
@@ -155,4 +153,62 @@ fn circle_on_segment(
         segment.p0 + tangent.normalize() * (offset * scale),
         radius,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use merman_render_core::resources::RenderResourcePolicy;
+
+    #[test]
+    fn overlapping_zero_marker_interiors_stay_subtracted() {
+        let config = PresentationConfig::default();
+        let binding = ErCssBinding::resolve(config.as_value());
+        let edge = LayoutEdge {
+            id: "edge".into(),
+            from: "A".into(),
+            to: "B".into(),
+            from_cluster: None,
+            to_cluster: None,
+            points: Vec::new(),
+            label: None,
+            start_label_left: None,
+            start_label_right: None,
+            end_label_left: None,
+            end_label_right: None,
+            start_marker: Some("ZERO_OR_ONE_START".into()),
+            end_marker: Some("ZERO_OR_ONE_END".into()),
+            stroke_dasharray: None,
+        };
+        let work = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let mut out = String::new();
+        assert!(
+            write_cutout(
+                &mut out,
+                "overlap",
+                "M0 20L40 20",
+                &edge,
+                &binding,
+                true,
+                &work
+            )
+            .unwrap()
+        );
+        let document = roxmltree::Document::parse(&out).unwrap();
+        let mask = document.root_element().first_element_child().unwrap();
+        assert!(mask.has_tag_name("mask"));
+        assert_eq!(mask.attribute("mask-type"), Some("luminance"));
+        let mut shapes = mask.children().filter(|child| child.is_element());
+        assert_eq!(shapes.next().unwrap().attribute("fill"), Some("#fff"));
+        let [a, b] = [shapes.next().unwrap(), shapes.next().unwrap()];
+        let geometry = |node: roxmltree::Node<'_, '_>, field| {
+            node.attribute(field).unwrap().parse::<f64>().unwrap()
+        };
+        assert!(a.has_tag_name("circle") && b.has_tag_name("circle"));
+        assert!(
+            (geometry(a, "cx") - geometry(b, "cx")).abs() < geometry(a, "r") + geometry(b, "r")
+        );
+        assert_eq!(a.attribute("fill"), Some("#000"));
+        assert_eq!(b.attribute("fill"), Some("#000"));
+    }
 }

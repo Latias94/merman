@@ -26,6 +26,22 @@ pub(crate) mod canonical;
 pub(crate) mod contour;
 pub(crate) mod ir;
 #[cfg(feature = "layout-shoal")]
+#[cfg_attr(
+    not(any(
+        feature = "diagram-agentflow",
+        feature = "diagram-class",
+        feature = "diagram-er",
+        feature = "diagram-flowchart",
+        feature = "diagram-requirement",
+        feature = "diagram-state",
+        feature = "diagram-swimlane",
+        feature = "diagram-usecase"
+    )),
+    allow(
+        dead_code,
+        reason = "Architecture and C4 use specialized Shoal solvers and share the placement frame helpers."
+    )
+)]
 pub(crate) mod placement;
 #[cfg(feature = "layout-shoal")]
 pub(crate) mod shoal_bridge;
@@ -154,6 +170,10 @@ pub(crate) enum RouteContract {
         feature = "diagram-agentflow",
         feature = "diagram-er"
     ))]
+    #[allow(
+        dead_code,
+        reason = "Agentflow shares the route contract with Swimlane renderers."
+    )]
     Swimlane,
     /// Axes indexed by semantic occurrence, including holes for hidden edges.
     #[cfg(all(
@@ -214,6 +234,15 @@ impl RouteContract {
         false
     }
 
+    #[cfg(any(
+        feature = "diagram-agentflow",
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-class",
+        feature = "diagram-er",
+        feature = "diagram-state",
+        feature = "diagram-usecase"
+    ))]
     pub(crate) fn is_elk_parity(&self) -> bool {
         #[cfg(feature = "layout-elk")]
         return matches!(self, Self::ElkParity);

@@ -48,20 +48,40 @@ pub(super) fn layout(
         work,
     )?;
     let group_order = parent_first_groups(&input, work)?;
+    let radius = native.map_or(0.0, |theme| theme.form.radius);
+    let directions = node_directions(&input.graph, &group_order, work)?;
+    work.charge_adapter(input.graph.nodes.len())?;
+    let mut face_demands = vec![[MarkerDemand::default(); 4]; input.graph.nodes.len()];
     reserve_marker_faces(
         &mut input,
-        &group_order,
-        native.map_or(0.0, |theme| theme.form.radius),
+        &directions,
+        None,
+        &mut face_demands,
+        radius,
         work,
     )?;
-    let (solved, placement) = placement::solve(
-        &input.graph,
-        input.entity_ids.iter().copied(),
-        input.groups.iter().map(|group| group.id.as_str()),
-        execution,
-        Default::default(),
-        work,
-    )?;
+    let (solved, placement) = loop {
+        let (solved, placement) = placement::solve(
+            &input.graph,
+            input.entity_ids.iter().copied(),
+            input.groups.iter().map(|group| group.id.as_str()),
+            execution,
+            Default::default(),
+            work,
+        )?;
+        // Ranking can reverse an edge, and compound routing can dock on another face.
+        // Only a growing reservation can trigger another solve on the same work budget.
+        if !reserve_marker_faces(
+            &mut input,
+            &directions,
+            Some(&solved),
+            &mut face_demands,
+            radius,
+            work,
+        )? {
+            break (solved, placement);
+        }
+    };
     let mut canonical_routes = CanonicalRoutes::from_solved(
         &input.graph,
         &solved,
@@ -261,15 +281,55 @@ fn measure<'a>(
 struct MarkerDemand {
     count: usize,
     max_width: f64,
+    loop_ends: usize,
 }
 
-fn reserve_marker_faces(
-    input: &mut MeasuredEr<'_>,
+#[derive(Clone, Copy, Default)]
+struct FaceReservation {
+    span: f64,
+    inset: f64,
+    length: f64,
+}
+
+impl FaceReservation {
+    fn shared_span(self, other: Self, length: f64, fallback: f64) -> f64 {
+        let span = self.span.max(other.span);
+        if span > 0.0 {
+            (length - 2.0 * self.inset.max(other.inset)).max(span)
+        } else {
+            fallback
+        }
+    }
+}
+
+impl MarkerDemand {
+    fn reservation(self, radius: f64, spacing: &merman_layout_shoal::Spacing) -> FaceReservation {
+        if self.count < 2 || self.max_width <= 0.0 {
+            return FaceReservation::default();
+        }
+        let pitch = spacing.port_pitch.max(self.max_width + 4.0);
+        let span = (self.count - 1) as f64 * pitch;
+        let inset = radius.max(spacing.corner_clearance) + self.max_width / 2.0;
+        // Shoal's single self-loop places the two contacts at +/- one-quarter of the face.
+        let loop_length = if self.loop_ends == 2 {
+            2.0 * pitch
+        } else {
+            0.0
+        };
+        FaceReservation {
+            span,
+            inset,
+            length: (span + 2.0 * inset).max(loop_length),
+        }
+    }
+}
+
+fn node_directions(
+    graph: &MeasuredGraph,
     group_order: &[usize],
-    radius: f64,
     work: &mut OperationLayoutWorkControl,
-) -> Result<()> {
-    let graph = &mut input.graph;
+) -> Result<Vec<Direction>> {
+    work.charge_adapter(work.checked_add(graph.nodes.len(), graph.groups.len())?)?;
     let mut group_directions = vec![graph.direction; graph.groups.len()];
     for &index in group_order {
         work.charge_adapter(0)?;
@@ -280,69 +340,110 @@ fn reserve_marker_faces(
                 .map_or(graph.direction, |parent| group_directions[parent as usize])
         });
     }
+    Ok(graph
+        .nodes
+        .iter()
+        .map(|node| {
+            node.parent
+                .map_or(graph.direction, |parent| group_directions[parent as usize])
+        })
+        .collect())
+}
+
+fn flow_faces(direction: Direction) -> (Side, Side) {
+    match direction {
+        Direction::Down => (Side::Bottom, Side::Top),
+        Direction::Up => (Side::Top, Side::Bottom),
+        Direction::Right => (Side::Right, Side::Left),
+        Direction::Left => (Side::Left, Side::Right),
+    }
+}
+
+fn reserve_marker_faces(
+    input: &mut MeasuredEr<'_>,
+    directions: &[Direction],
+    solved: Option<&SolvedGraph>,
+    reservations: &mut [[MarkerDemand; 4]],
+    radius: f64,
+    work: &mut OperationLayoutWorkControl,
+) -> Result<bool> {
+    let graph = &mut input.graph;
     let spacing = merman_layout_shoal::Spacing::default();
-    let mut demands = vec![MarkerDemand::default(); graph.nodes.len()];
-    for edge in &graph.edges {
+    work.charge_adapter(graph.nodes.len())?;
+    let mut demands = vec![[MarkerDemand::default(); 4]; graph.nodes.len()];
+    for (index, edge) in graph.edges.iter().enumerate() {
         work.charge_adapter(0)?;
-        if edge.source == edge.target {
-            // Shoal allocates self-loops on its separate boundary routes.
+        let self_loop = edge.source == edge.target;
+        if self_loop && solved.is_none() {
+            // Faces for loop contacts are chosen by the solver.
             continue;
         }
-        for (endpoint, marker) in [
-            (edge.source, edge.start_marker),
-            (edge.target, edge.end_marker),
+        let assigned = solved.map(|solved| &solved.edges[index]);
+        for (endpoint, marker, start) in [
+            (
+                assigned.map_or(edge.source, |edge| edge.source),
+                edge.start_marker,
+                true,
+            ),
+            (
+                assigned.map_or(edge.target, |edge| edge.target),
+                edge.end_marker,
+                false,
+            ),
         ] {
             if let Endpoint::Node(index) = endpoint {
-                let demand = &mut demands[index as usize];
+                let index = index as usize;
+                let sides =
+                    assigned.map_or_else(|| flow_faces(directions[index]), |edge| edge.ports);
+                let side = if start { sides.0 } else { sides.1 };
+                let face = match side {
+                    Side::Top => 0,
+                    Side::Bottom => 1,
+                    Side::Left => 2,
+                    Side::Right => 3,
+                };
+                let demand = &mut demands[index][face];
                 demand.count = work.checked_add(demand.count, 1)?;
                 demand.max_width = demand.max_width.max(marker.width);
+                if self_loop {
+                    demand.loop_ends = work.checked_add(demand.loop_ends, 1)?;
+                }
             }
         }
     }
-    for ((node, profile), demand) in graph.nodes.iter_mut().zip(&mut input.profiles).zip(demands) {
+    let mut geometry_changed = false;
+    for (index, (node, profile)) in graph.nodes.iter_mut().zip(&mut input.profiles).enumerate() {
         work.charge_adapter(0)?;
-        if demand.count < 2 || demand.max_width <= 0.0 {
-            continue;
+        let retained = &mut reservations[index];
+        for (face, demand) in retained.iter_mut().zip(demands[index]) {
+            face.count = face.count.max(demand.count);
+            face.loop_ends = face.loop_ends.max(demand.loop_ends);
+            face.max_width = face.max_width.max(demand.max_width);
         }
-        // Backedges can be placed on the same side as outgoing edges, so reserve for incident
-        // ends together. Shoal's main port fan uses a 4 px gap between marker footprints.
-        let pitch = spacing.port_pitch.max(demand.max_width + 4.0);
-        let span = (demand.count - 1) as f64 * pitch;
-        let inset = radius.max(spacing.corner_clearance) + demand.max_width / 2.0;
-        let minimum = span + 2.0 * inset;
-        let direction = node
-            .parent
-            .map_or(graph.direction, |parent| group_directions[parent as usize]);
-        let face = match direction {
-            Direction::Down | Direction::Up => {
-                node.size.width = node.size.width.max(minimum);
-                Side::Top
-            }
-            Direction::Right | Direction::Left => {
-                node.size.height = node.size.height.max(minimum);
-                Side::Left
-            }
-        };
-        *profile = ShapePortProfile::rectangle(node.size.width, node.size.height);
-        node.contour = profile.shoal_contour(node.size);
-        let horizontal_face = if face == Side::Top {
-            (node.size.width - 2.0 * inset).max(span)
-        } else {
-            profile.port_span(Side::Top)
-        };
-        let vertical_face = if face == Side::Left {
-            (node.size.height - 2.0 * inset).max(span)
-        } else {
-            profile.port_span(Side::Left)
-        };
+        let [top, bottom, left, right] =
+            retained.map(|demand| demand.reservation(radius, &spacing));
+        let size = node.size;
+        node.size.width = size.width.max(top.length.max(bottom.length));
+        node.size.height = size.height.max(left.length.max(right.length));
+        if node.size != size {
+            geometry_changed = true;
+            *profile = ShapePortProfile::rectangle(node.size.width, node.size.height);
+            node.contour = profile.shoal_contour(node.size);
+        }
+        let horizontal_face =
+            top.shared_span(bottom, node.size.width, profile.port_span(Side::Top));
+        let vertical_face =
+            left.shared_span(right, node.size.height, profile.port_span(Side::Left));
         let (main, perpendicular) = match graph.direction {
             Direction::Down | Direction::Up => (horizontal_face, vertical_face),
             Direction::Right | Direction::Left => (vertical_face, horizontal_face),
         };
+        geometry_changed |=
+            node.port_span != Some(main) || node.perpendicular_port_span != Some(perpendicular);
         node.port_span = Some(main);
         node.perpendicular_port_span = Some(perpendicular);
     }
-    Ok(())
+    Ok(geometry_changed)
 }
 
 fn parent_first_groups(

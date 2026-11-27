@@ -6,6 +6,10 @@ pub(super) struct LaneModel {
     lanes: HashSet<String>,
     pools: HashSet<String>,
     lane_by_id: HashMap<String, Option<String>>,
+    #[allow(
+        dead_code,
+        reason = "Flowchart and Swimlane use this index for lane ordering."
+    )]
     pub lanes_by_pool: HashMap<String, Vec<String>>,
 }
 

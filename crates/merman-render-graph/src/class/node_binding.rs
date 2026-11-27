@@ -1,102 +1,63 @@
 use merman_model::families::class::{ClassDiagram, ClassMember, ClassNode};
-use merman_model::text::parse_generic_types;
+use merman_model::text::{GenericTypesPlan, is_ecmascript_whitespace};
 use rustc_hash::FxHashMap;
-use std::borrow::Cow;
 
-/// Retains the member's authored type boundaries until SVG Markdown has been tokenized.
-pub(crate) fn class_svg_generic_member_source(member: &ClassMember) -> Option<String> {
-    fn signature(member: &ClassMember, mut project: impl FnMut(&str) -> String) -> String {
+/// Keeps generated type delimiters distinct from authored Markdown and HTML.
+pub(super) fn class_generic_member_source(
+    member: &ClassMember,
+    angles: [&str; 2],
+) -> Option<String> {
+    fn signature(member: &ClassMember, mut append: impl FnMut(&mut String, &str)) -> String {
         let mut text = member.visibility.clone();
-        text.push_str(&project(&member.id));
+        append(&mut text, &member.id);
         if member.member_type == "method" {
             text.push('(');
-            text.push_str(&project(member.parameters.trim()));
+            append(
+                &mut text,
+                member.parameters.trim_matches(is_ecmascript_whitespace),
+            );
             text.push(')');
             if !member.return_type.is_empty() {
                 text.push_str(" : ");
-                text.push_str(&project(&member.return_type));
+                append(&mut text, &member.return_type);
             }
         }
         text
     }
+
     if ![&member.id, &member.parameters, &member.return_type]
-        .iter()
+        .into_iter()
         .any(|part| part.contains('~'))
     {
         return None;
     }
-    let mut changed = false;
-    let rendered = signature(member, |part| {
-        if let Some(encoded) = encode_generic_angles(part) {
-            changed = true;
-            encoded
-        } else {
-            part.to_owned()
-        }
+    let mut closed = false;
+    let canonical = signature(member, |text, part| {
+        let plan = GenericTypesPlan::new(part);
+        closed |= plan.has_closed_groups();
+        plan.visit(|fragment| text.push_str(fragment));
     });
-    // A typed model may supply its own display text instead of the parser's signature.
-    if !changed || signature(member, parse_generic_types).trim() != member.display_text.trim() {
+    if !closed {
         return None;
     }
-    Some(rendered.trim().to_owned())
-}
-
-fn encode_generic_angles(part: &str) -> Option<String> {
-    if !part.contains('~') {
+    let trim = |text: String| text.trim_matches(is_ecmascript_whitespace).to_owned();
+    let canonical = trim(canonical);
+    // Typed callers may supply independent display text. Also recognize signatures saved
+    // before the parser began retaining closed nested types.
+    let display = member.display_text.trim_matches(is_ecmascript_whitespace);
+    if canonical != display
+        && trim(signature(member, |text, part| {
+            GenericTypesPlan::visit_legacy(part, |fragment| text.push_str(fragment));
+        })) != display
+    {
         return None;
     }
-    let mut rendered = String::with_capacity(part.len());
-    let mut depth = 0usize;
-    let mut opened = false;
-    let mut start = 0;
-    // Keep the nesting depth across commas inside the type argument list.
-    for (at, _) in part.match_indices('~') {
-        let previous = part[..at].chars().next_back();
-        let next = part[at + 1..].chars().next();
-        let after_type_name = previous.is_some_and(|ch| ch.is_alphanumeric() || ch == '_');
-        let before_argument = next.is_some_and(|ch| {
-            ch.is_alphanumeric()
-                || matches!(ch, '_' | '?' | '\'')
-                || (depth == 0 && ch.is_whitespace())
-        });
-        let delimiter = if after_type_name && before_argument {
-            depth += 1;
-            opened = true;
-            "&lt;"
-        } else if depth > 0 {
-            depth -= 1;
-            "&gt;"
-        } else {
-            continue;
-        };
-        rendered.push_str(&part[start..at]);
-        rendered.push_str(delimiter);
-        start = at + 1;
+    if angles == ["<", ">"] {
+        return Some(canonical);
     }
-    if !opened || depth != 0 {
-        return None;
-    }
-    rendered.push_str(&part[start..]);
-    Some(rendered)
-}
-
-pub(super) fn class_node_for_svg_measurement(node: &ClassNode) -> Cow<'_, ClassNode> {
-    let mut projected = Cow::Borrowed(node);
-    for (rows, is_method) in [(&node.members, false), (&node.methods, true)] {
-        for (index, member) in rows.iter().enumerate() {
-            if let Some(source) = class_svg_generic_member_source(member) {
-                let projected = projected.to_mut();
-                let rows = if is_method {
-                    &mut projected.methods
-                } else {
-                    &mut projected.members
-                };
-                // The measured box decodes display_text once before parsing Markdown.
-                rows[index].display_text = source.replace('&', "&amp;");
-            }
-        }
-    }
-    projected
+    Some(trim(signature(member, |text, part| {
+        GenericTypesPlan::new(part).visit_with_angles(angles, |fragment| text.push_str(fragment));
+    })))
 }
 
 /// Source styles prepared once for each class. The renderer borrows shared defaults as needed.
@@ -133,6 +94,9 @@ pub(crate) struct ClassNodeVisualBinding {
     stroke_width_override: Option<String>,
     stroke_dasharray_override: Option<String>,
     pub(crate) style: String,
+    pub(crate) opacity_style: String,
+    pub(crate) fill_opacity: Option<String>,
+    pub(crate) rough_outline_style: String,
     pub(crate) svg_label_style: String,
 }
 
@@ -167,6 +131,20 @@ impl ClassNodeVisualBinding {
 
     fn lower(node: &ClassNode) -> Self {
         let source = class_apply_inline_styles(node);
+        let mut rough_outline_style = String::new();
+        merman_render_core::mermaid_style::visit_parsed_style_declarations(
+            &source.style_attr,
+            |declaration| {
+                if declaration.property().starts_with("stroke") {
+                    if !rough_outline_style.is_empty() {
+                        rough_outline_style.push(';');
+                    }
+                    rough_outline_style.push_str(declaration.property_css());
+                    rough_outline_style.push(':');
+                    rough_outline_style.push_str(declaration.source_value());
+                }
+            },
+        );
         Self {
             fill_override: source.fill.map(str::to_owned),
             stroke_override: source.stroke.map(str::to_owned),
@@ -175,6 +153,9 @@ impl ClassNodeVisualBinding {
                 .map(|value| value.trim_end_matches("px").trim().to_owned()),
             stroke_dasharray_override: source.stroke_dasharray.map(str::to_owned),
             style: source.style_attr.trim().trim_end_matches(';').to_owned(),
+            opacity_style: source.opacity_style,
+            fill_opacity: source.fill_opacity.map(str::to_owned),
+            rough_outline_style,
             svg_label_style: source
                 .svg_color
                 .map_or_else(String::new, |color| format!("color:{color};fill:{color}")),
@@ -189,6 +170,8 @@ pub(super) struct ClassInlineStyles<'a> {
     pub stroke: Option<&'a str>,
     pub stroke_width: Option<&'a str>,
     pub stroke_dasharray: Option<&'a str>,
+    pub opacity_style: String,
+    pub fill_opacity: Option<&'a str>,
 }
 
 pub(super) fn class_apply_inline_styles<'a>(node: &'a ClassNode) -> ClassInlineStyles<'a> {
@@ -198,11 +181,21 @@ pub(super) fn class_apply_inline_styles<'a>(node: &'a ClassNode) -> ClassInlineS
     let mut stroke: Option<&str> = None;
     let mut stroke_width: Option<&str> = None;
     let mut stroke_dasharray: Option<&str> = None;
+    let mut opacity_style = String::new();
+    let mut fill_opacity = None;
 
     for raw in &node.styles {
         let Some(parsed) = merman_render_core::mermaid_style::parse_style_declaration(raw) else {
             continue;
         };
+        if parsed.property() == "opacity" {
+            if !opacity_style.is_empty() {
+                opacity_style.push(';');
+            }
+            opacity_style.push_str("opacity:");
+            opacity_style.push_str(parsed.source_value());
+            continue;
+        }
         if !style_attr.is_empty() {
             style_attr.push(';');
         }
@@ -216,6 +209,7 @@ pub(super) fn class_apply_inline_styles<'a>(node: &'a ClassNode) -> ClassInlineS
             "stroke" => stroke = Some(parsed.value()),
             "stroke-width" => stroke_width = Some(parsed.value()),
             "stroke-dasharray" => stroke_dasharray = Some(parsed.value()),
+            "fill-opacity" => fill_opacity = Some(parsed.value()),
             _ => {}
         }
     }
@@ -227,6 +221,8 @@ pub(super) fn class_apply_inline_styles<'a>(node: &'a ClassNode) -> ClassInlineS
         stroke,
         stroke_width,
         stroke_dasharray,
+        opacity_style,
+        fill_opacity,
     }
 }
 

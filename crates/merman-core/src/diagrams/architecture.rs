@@ -1,678 +1,181 @@
+//! Architecture diagnostics, editor facts, and public parse projections.
+
+#[cfg(feature = "presentation")]
+use crate::Result;
 #[cfg(feature = "presentation")]
 use crate::SourcePresentationMetadata;
-use crate::diagrams::scan::strip_line_ending;
+#[cfg(test)]
+use crate::SourceSpan;
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
-#[cfg(feature = "compat-json")]
-#[cfg(feature = "editor-facts")]
+use crate::family::SemanticConstruction;
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 use crate::family::{CombinedSemanticFailure, CombinedSemanticParse};
 #[cfg(feature = "editor-facts")]
 use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorRenamePolicy, EditorSemanticFacts,
+    EditorSemanticKind, EditorSemanticSymbol,
 };
-use crate::{Error, OperationControl, OperationControlResult, Result, SourceSpan};
-pub(crate) use merman_model::families::architecture::{
-    ArchitectureDiagramModel, ArchitectureEdgeModel, ArchitectureGroupModel,
-    ArchitectureLayoutDirection, ArchitectureLayoutHintModel, ArchitectureNodeKind,
-    ArchitectureNodeModel,
+use crate::{Error, OperationControl, OperationControlResult};
+#[cfg(feature = "editor-facts")]
+pub(crate) use merman_core_graph::architecture::is_valid_editor_identifier;
+use merman_core_graph::architecture::{
+    ArchitectureIssue, ArchitectureIssueLocation, ArchitectureSource,
+    parse_architecture_source_controlled,
 };
+#[cfg(feature = "editor-facts")]
+use merman_core_graph::architecture::{
+    ArchitectureObservation, ArchitectureOccurrenceKind, ArchitectureOccurrenceRole,
+    parse_architecture_source_observed_controlled,
+};
+#[cfg(test)]
+use merman_core_graph::architecture::{
+    architecture_syntax_construction_count, reset_architecture_syntax_construction_count,
+};
+pub(crate) use merman_model::families::architecture::ArchitectureDiagramModel;
+#[cfg(test)]
+use merman_model::families::architecture::ArchitectureLayoutDirection;
 #[cfg(feature = "compat-json")]
 use serde_json::Value;
 #[cfg(all(test, feature = "compat-json"))]
 use serde_json::json;
-use std::collections::HashMap;
 
-#[derive(Debug, Clone)]
-struct ArchitectureIdentifier {
-    text: String,
-    span: SourceSpan,
-}
-
-#[derive(Debug, Clone)]
-struct ArchitectureGroup {
-    id: String,
-    icon: Option<String>,
-    title: Option<String>,
-    in_group: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-struct ArchitectureEdge {
-    lhs_id: String,
-    lhs_span: SourceSpan,
-    lhs_dir: char,
-    lhs_into: Option<bool>,
-    lhs_group: Option<bool>,
-    rhs_id: String,
-    rhs_span: SourceSpan,
-    rhs_dir: char,
-    rhs_into: Option<bool>,
-    rhs_group: Option<bool>,
-    title: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-struct ArchitectureLayoutHint {
-    direction: ArchitectureLayoutDirection,
-    members: Vec<String>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ArchitectureNodeType {
-    Service,
-    Junction,
-}
-
-#[derive(Debug, Clone)]
-struct ArchitectureNode {
-    id: String,
-    ty: ArchitectureNodeType,
-    edges: Vec<usize>,
-    icon: Option<String>,
-    icon_text: Option<String>,
-    title: Option<String>,
-    in_group: Option<String>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum RegisteredIdType {
-    Node,
-    Group,
-}
-
-impl std::fmt::Display for RegisteredIdType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RegisteredIdType::Node => write!(f, "node"),
-            RegisteredIdType::Group => write!(f, "group"),
+fn architecture_error(diagram_type: &str, issue: ArchitectureIssue) -> Error {
+    let diagram_type = issue.diagram_type(diagram_type);
+    match issue.location {
+        ArchitectureIssueLocation::Exact(span) => {
+            Error::diagram_parse_exact(diagram_type, issue.message, span)
+        }
+        ArchitectureIssueLocation::InsertionPoint(offset) => {
+            Error::diagram_parse_insertion_point(diagram_type, issue.message, offset)
+        }
+        ArchitectureIssueLocation::Fallback => {
+            Error::diagram_parse_fallback(diagram_type, issue.message)
         }
     }
 }
 
-#[derive(Debug, Default)]
-struct ArchitectureDb {
-    title: String,
-    acc_title: String,
-    acc_descr: String,
-
-    nodes: HashMap<String, ArchitectureNode>,
-    node_order: Vec<String>,
-    groups: HashMap<String, ArchitectureGroup>,
-    group_order: Vec<String>,
-    edges: Vec<ArchitectureEdge>,
-    layout_hints: Vec<ArchitectureLayoutHint>,
-    registered_ids: HashMap<String, RegisteredIdType>,
-}
-
-mod parse;
-
-#[cfg(test)]
-pub(crate) fn reset_architecture_syntax_construction_count() {
-    parse::ARCHITECTURE_SYNTAX_CONSTRUCTION_COUNT.set(0);
-}
-
-#[cfg(test)]
-pub(crate) fn architecture_syntax_construction_count() -> usize {
-    parse::ARCHITECTURE_SYNTAX_CONSTRUCTION_COUNT.get()
-}
-
-impl ArchitectureDb {
+fn construct_architecture_source_controlled(
+    code: &str,
+    diagram_type: &str,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
+    control: &OperationControl,
+) -> OperationControlResult<SemanticConstruction<ArchitectureSource>> {
     #[cfg(feature = "editor-facts")]
-    fn editor_kind_for_id(&self, id: &str) -> Option<EditorSemanticKind> {
-        if self.groups.contains_key(id) {
-            return Some(EditorSemanticKind::Namespace);
-        }
-        self.nodes.get(id).map(|node| match node.ty {
-            ArchitectureNodeType::Service => EditorSemanticKind::Variable,
-            ArchitectureNodeType::Junction => EditorSemanticKind::Object,
-        })
-    }
-
-    fn set_title(&mut self, title: String) {
-        self.title = title;
-    }
-
-    fn set_acc_title(&mut self, title: String) {
-        self.acc_title = title;
-    }
-
-    fn set_acc_descr(&mut self, descr: String) {
-        self.acc_descr = descr;
-    }
-
-    #[cfg(feature = "compat-json")]
-    #[cfg(test)]
-    fn semantic_model(&self) -> ArchitectureDiagramModel {
-        let control = OperationControl::new();
-        self.semantic_model_controlled(&control)
-            .expect("a private parse control cannot be cancelled")
-    }
-
-    fn semantic_model_controlled(
-        &self,
-        control: &OperationControl,
-    ) -> OperationControlResult<ArchitectureDiagramModel> {
-        control.checkpoint()?;
-        let title = (!self.title.is_empty()).then(|| self.title.clone());
-        let acc_title = (!self.acc_title.is_empty()).then(|| self.acc_title.clone());
-        let acc_descr = (!self.acc_descr.is_empty()).then(|| self.acc_descr.clone());
-
-        let mut nodes = Vec::with_capacity(self.node_order.len());
-        for (index, id) in self.node_order.iter().enumerate() {
-            if index % 128 == 0 {
-                control.checkpoint()?;
-            }
-            let Some(n) = self.nodes.get(id) else {
-                continue;
-            };
-            nodes.push(ArchitectureNodeModel {
-                id: n.id.clone(),
-                node_type: match n.ty {
-                    ArchitectureNodeType::Service => ArchitectureNodeKind::Service,
-                    ArchitectureNodeType::Junction => ArchitectureNodeKind::Junction,
-                },
-                edge_indices: n.edges.clone(),
-                icon: n.icon.clone(),
-                icon_text: n.icon_text.clone(),
-                title: n.title.clone(),
-                in_group: n.in_group.clone(),
-            });
-        }
-
-        let mut groups = Vec::with_capacity(self.group_order.len());
-        for (index, id) in self.group_order.iter().enumerate() {
-            if index % 128 == 0 {
-                control.checkpoint()?;
-            }
-            let Some(g) = self.groups.get(id) else {
-                continue;
-            };
-            groups.push(ArchitectureGroupModel {
-                id: g.id.clone(),
-                icon: g.icon.clone(),
-                title: g.title.clone(),
-                in_group: g.in_group.clone(),
-            });
-        }
-
-        let mut edges = Vec::with_capacity(self.edges.len());
-        for (index, e) in self.edges.iter().enumerate() {
-            if index % 128 == 0 {
-                control.checkpoint()?;
-            }
-            edges.push(ArchitectureEdgeModel {
-                lhs_id: e.lhs_id.clone(),
-                lhs_dir: e.lhs_dir,
-                lhs_into: e.lhs_into,
-                lhs_group: e.lhs_group,
-                rhs_id: e.rhs_id.clone(),
-                rhs_dir: e.rhs_dir,
-                rhs_into: e.rhs_into,
-                rhs_group: e.rhs_group,
-                title: e.title.clone(),
-            });
-        }
-
-        let mut layout_hints = Vec::with_capacity(self.layout_hints.len());
-        for (index, hint) in self.layout_hints.iter().enumerate() {
-            if index % 128 == 0 {
-                control.checkpoint()?;
-            }
-            layout_hints.push(ArchitectureLayoutHintModel {
-                direction: hint.direction,
-                members: hint.members.clone(),
-            });
-        }
-
-        control.checkpoint()?;
-        Ok(ArchitectureDiagramModel {
-            title,
-            acc_title,
-            acc_descr,
-            nodes,
-            groups,
-            edges,
-            layout_hints,
-        })
-    }
-
-    fn add_service(
-        &mut self,
-        id: ArchitectureIdentifier,
-        icon: Option<String>,
-        icon_text: Option<String>,
-        title: Option<String>,
-        in_group: Option<ArchitectureIdentifier>,
-    ) -> Result<()> {
-        let id_text = id.text;
-        let id_span = id.span;
-        if let Some(existing) = self.registered_ids.get(&id_text) {
-            return Err(Error::diagram_parse_exact(
-                "architecture",
-                format!("The service id [{id_text}] is already in use by another {existing}"),
-                id_span,
-            ));
-        }
-
-        if let Some(parent) = &in_group {
-            if id_text == parent.text {
-                return Err(Error::diagram_parse_exact(
-                    "architecture",
-                    format!("The service [{id_text}] cannot be placed within itself"),
-                    parent.span,
-                ));
-            }
-            let Some(parent_type) = self.registered_ids.get(&parent.text).copied() else {
-                return Err(Error::diagram_parse_exact(
-                    "architecture",
-                    format!(
-                        "The service [{id_text}]'s parent does not exist. Please make sure the parent is created before this service"
-                    ),
-                    parent.span,
-                ));
-            };
-            if parent_type == RegisteredIdType::Node {
-                return Err(Error::diagram_parse_exact(
-                    "architecture",
-                    format!("The service [{id_text}]'s parent is not a group"),
-                    parent.span,
-                ));
-            }
-        }
-
-        let in_group = in_group.map(|parent| parent.text);
-        self.registered_ids
-            .insert(id_text.clone(), RegisteredIdType::Node);
-        if !self.nodes.contains_key(&id_text) {
-            self.node_order.push(id_text.clone());
-        }
-        self.nodes.insert(
-            id_text.clone(),
-            ArchitectureNode {
-                id: id_text,
-                ty: ArchitectureNodeType::Service,
-                edges: Vec::new(),
-                icon,
-                icon_text,
-                title,
-                in_group,
-            },
-        );
-        Ok(())
-    }
-
-    fn add_junction(
-        &mut self,
-        id: ArchitectureIdentifier,
-        in_group: Option<ArchitectureIdentifier>,
-    ) -> Result<()> {
-        let id_text = id.text;
-        if let Some(existing) = self.registered_ids.get(&id_text) {
-            return Err(Error::diagram_parse_exact(
-                "architecture",
-                format!("The junction id [{id_text}] is already in use by another {existing}"),
-                id.span,
-            ));
-        }
-
-        if let Some(parent) = &in_group {
-            if id_text == parent.text {
-                return Err(Error::diagram_parse_exact(
-                    "architecture",
-                    format!("The junction [{id_text}] cannot be placed within itself"),
-                    parent.span,
-                ));
-            }
-            let Some(parent_type) = self.registered_ids.get(&parent.text).copied() else {
-                return Err(Error::diagram_parse_exact(
-                    "architecture",
-                    format!(
-                        "The junction [{id_text}]'s parent does not exist. Please make sure the parent is created before this junction"
-                    ),
-                    parent.span,
-                ));
-            };
-            if parent_type == RegisteredIdType::Node {
-                return Err(Error::diagram_parse_exact(
-                    "architecture",
-                    format!("The junction [{id_text}]'s parent is not a group"),
-                    parent.span,
-                ));
-            }
-        }
-
-        let in_group = in_group.map(|parent| parent.text);
-        self.registered_ids
-            .insert(id_text.clone(), RegisteredIdType::Node);
-        if !self.nodes.contains_key(&id_text) {
-            self.node_order.push(id_text.clone());
-        }
-        self.nodes.insert(
-            id_text.clone(),
-            ArchitectureNode {
-                id: id_text,
-                ty: ArchitectureNodeType::Junction,
-                edges: Vec::new(),
-                icon: None,
-                icon_text: None,
-                title: None,
-                in_group,
-            },
-        );
-        Ok(())
-    }
-
-    fn add_group(
-        &mut self,
-        id: ArchitectureIdentifier,
-        icon: Option<String>,
-        title: Option<String>,
-        in_group: Option<ArchitectureIdentifier>,
-    ) -> Result<()> {
-        let id_text = id.text;
-        let id_span = id.span;
-        if let Some(existing) = self.registered_ids.get(&id_text) {
-            return Err(Error::diagram_parse_exact(
-                "architecture",
-                format!("The group id [{id_text}] is already in use by another {existing}"),
-                id_span,
-            ));
-        }
-
-        if let Some(parent) = &in_group {
-            if id_text == parent.text {
-                return Err(Error::diagram_parse_exact(
-                    "architecture",
-                    format!("The group [{id_text}] cannot be placed within itself"),
-                    parent.span,
-                ));
-            }
-            let Some(parent_type) = self.registered_ids.get(&parent.text).copied() else {
-                return Err(Error::diagram_parse_exact(
-                    "architecture",
-                    format!(
-                        "The group [{id_text}]'s parent does not exist. Please make sure the parent is created before this group"
-                    ),
-                    parent.span,
-                ));
-            };
-            if parent_type == RegisteredIdType::Node {
-                return Err(Error::diagram_parse_exact(
-                    "architecture",
-                    format!("The group [{id_text}]'s parent is not a group"),
-                    parent.span,
-                ));
-            }
-        }
-
-        let in_group = in_group.map(|parent| parent.text);
-        self.registered_ids
-            .insert(id_text.clone(), RegisteredIdType::Group);
-        if !self.groups.contains_key(&id_text) {
-            self.group_order.push(id_text.clone());
-        }
-        self.groups.insert(
-            id_text.clone(),
-            ArchitectureGroup {
-                id: id_text,
-                icon,
-                title,
-                in_group,
-            },
-        );
-        Ok(())
-    }
-
-    fn add_edge(&mut self, edge: ArchitectureEdge) -> Result<()> {
-        if !is_dir(edge.lhs_dir) {
-            return Err(Error::diagram_parse_fallback(
-                "architecture".to_string(),
-                format!(
-                    "Invalid direction given for left hand side of edge {}--{}. Expected (L,R,T,B) got {}",
-                    edge.lhs_id, edge.rhs_id, edge.lhs_dir
-                ),
-            ));
-        }
-        if !is_dir(edge.rhs_dir) {
-            return Err(Error::diagram_parse_fallback(
-                "architecture".to_string(),
-                format!(
-                    "Invalid direction given for right hand side of edge {}--{}. Expected (L,R,T,B) got {}",
-                    edge.lhs_id, edge.rhs_id, edge.rhs_dir
-                ),
-            ));
-        }
-
-        if !self.nodes.contains_key(&edge.lhs_id) && !self.groups.contains_key(&edge.lhs_id) {
-            return Err(Error::diagram_parse_exact(
-                "architecture",
-                format!(
-                    "The left-hand id [{}] does not yet exist. Please create the service/group before declaring an edge to it.",
-                    edge.lhs_id
-                ),
-                edge.lhs_span,
-            ));
-        }
-        if !self.nodes.contains_key(&edge.rhs_id) && !self.groups.contains_key(&edge.rhs_id) {
-            return Err(Error::diagram_parse_exact(
-                "architecture",
-                format!(
-                    "The right-hand id [{}] does not yet exist. Please create the service/group before declaring an edge to it.",
-                    edge.rhs_id
-                ),
-                edge.rhs_span,
-            ));
-        }
-        if self.groups.contains_key(&edge.lhs_id) {
-            return Err(Error::diagram_parse_exact(
-                "architecture",
-                format!(
-                    "The left-hand id [{}] is a group; architecture edges require a service or junction endpoint.",
-                    edge.lhs_id
-                ),
-                edge.lhs_span,
-            ));
-        }
-        if self.groups.contains_key(&edge.rhs_id) {
-            return Err(Error::diagram_parse_exact(
-                "architecture",
-                format!(
-                    "The right-hand id [{}] is a group; architecture edges require a service or junction endpoint.",
-                    edge.rhs_id
-                ),
-                edge.rhs_span,
-            ));
-        }
-
-        if edge.lhs_group == Some(true)
-            && let (Some(lhs), Some(rhs)) =
-                (self.nodes.get(&edge.lhs_id), self.nodes.get(&edge.rhs_id))
-            && let (Some(lhs_parent), Some(rhs_parent)) = (&lhs.in_group, &rhs.in_group)
-            && lhs_parent == rhs_parent
-        {
-            return Err(Error::diagram_parse_exact(
-                "architecture",
-                format!(
-                    "The left-hand id [{}] is modified to traverse the group boundary, but the edge does not pass through two groups.",
-                    edge.lhs_id
-                ),
-                edge.lhs_span,
-            ));
-        }
-        if edge.rhs_group == Some(true)
-            && let (Some(lhs), Some(rhs)) =
-                (self.nodes.get(&edge.lhs_id), self.nodes.get(&edge.rhs_id))
-            && let (Some(lhs_parent), Some(rhs_parent)) = (&lhs.in_group, &rhs.in_group)
-            && lhs_parent == rhs_parent
-        {
-            return Err(Error::diagram_parse_exact(
-                "architecture",
-                format!(
-                    "The right-hand id [{}] is modified to traverse the group boundary, but the edge does not pass through two groups.",
-                    edge.rhs_id
-                ),
-                edge.rhs_span,
-            ));
-        }
-
-        let edge_idx = self.edges.len();
-        self.edges.push(edge);
-        let lhs_id = self.edges[edge_idx].lhs_id.clone();
-        let rhs_id = self.edges[edge_idx].rhs_id.clone();
-        if self.nodes.contains_key(&lhs_id) && self.nodes.contains_key(&rhs_id) {
-            if let Some(lhs) = self.nodes.get_mut(&lhs_id) {
-                lhs.edges.push(edge_idx);
-            }
-            if let Some(rhs) = self.nodes.get_mut(&rhs_id) {
-                rhs.edges.push(edge_idx);
-            }
-        }
-        Ok(())
-    }
-
-    fn add_layout_hint_controlled(
-        &mut self,
-        direction: ArchitectureLayoutDirection,
-        members: Vec<ArchitectureIdentifier>,
-        control: &OperationControl,
-    ) -> OperationControlResult<Result<()>> {
-        control.checkpoint()?;
-        if members.len() < 2 {
-            return Ok(Err(Error::diagram_parse_fallback(
-                "architecture".to_string(),
-                format!(
-                    "An align directive requires at least two members; got {}",
-                    members.len()
-                ),
-            )));
-        }
-
-        let mut seen = std::collections::HashSet::new();
-        let mut member_texts = Vec::with_capacity(members.len());
-        for (index, member) in members.into_iter().enumerate() {
-            if index % 128 == 0 {
-                control.checkpoint()?;
-            }
-            if self.registered_ids.get(&member.text).copied() != Some(RegisteredIdType::Node) {
-                return Ok(Err(Error::diagram_parse_exact(
-                    "architecture",
-                    format!(
-                        "align {} references [{}], which is not a service or junction",
-                        direction.as_str(),
-                        member.text
-                    ),
-                    member.span,
-                )));
-            }
-            if !seen.insert(member.text.clone()) {
-                return Ok(Err(Error::diagram_parse_exact(
-                    "architecture",
-                    format!(
-                        "align {} lists [{}] more than once",
-                        direction.as_str(),
-                        member.text
-                    ),
-                    member.span,
-                )));
-            }
-            member_texts.push(member.text);
-        }
-
-        self.layout_hints.push(ArchitectureLayoutHint {
-            direction,
-            members: member_texts,
+    if editor_demand.needs_recovery() {
+        let mut facts = EditorSemanticFacts::new();
+        let source = parse_architecture_source_observed_controlled(
+            code,
+            editor_demand.captures_rich(),
+            &mut |observation| project_architecture_observation(&mut facts, observation),
+            control,
+        )?;
+        return Ok(SemanticConstruction {
+            model: source.map_err(|issue| architecture_error(diagram_type, issue)),
+            editor_facts: Some(facts),
         });
-        control.checkpoint()?;
-        Ok(Ok(()))
-    }
-}
-
-fn is_dir(c: char) -> bool {
-    matches!(c, 'L' | 'R' | 'T' | 'B')
-}
-
-fn strip_inline_comment(line: &str) -> &str {
-    &line[..parse::statement_end(line)]
-}
-
-struct ArchitectureSourceLine<'a> {
-    text: &'a str,
-    start: usize,
-}
-
-#[derive(Debug)]
-struct ArchitectureLineCursor<'a> {
-    source: &'a str,
-    offset: usize,
-    lookahead: parse::ArchitectureTerminalLookahead,
-}
-
-impl<'a> ArchitectureLineCursor<'a> {
-    fn new(source: &'a str) -> Self {
-        Self {
-            source,
-            offset: 0,
-            lookahead: parse::ArchitectureTerminalLookahead::default(),
-        }
     }
 
-    fn next(&mut self) -> Option<ArchitectureSourceLine<'a>> {
-        if self.offset >= self.source.len() {
-            return None;
-        }
-
-        let start = self.offset;
-        let rest = &self.source[start..];
-        let end = if let Some(newline) = rest.find('\n') {
-            start + newline + 1
-        } else {
-            self.source.len()
-        };
-        self.offset = end;
-
-        Some(ArchitectureSourceLine {
-            text: strip_line_ending(&self.source[start..end]),
-            start,
-        })
-    }
-}
-
-fn trimmed_statement_with_offset(raw: &str, raw_start: usize) -> (&str, usize) {
-    let line = strip_inline_comment(raw);
-    let leading = line.len() - line.trim_start().len();
-    (line.trim(), raw_start + leading)
-}
-
-fn is_architecture_reserved_id(id: &str) -> bool {
-    matches!(
-        id,
-        "architecture-beta" | "group" | "service" | "junction" | "in" | "align" | "row" | "column"
-    ) || id.starts_with("title")
-        || id
-            .as_bytes()
-            .first()
-            .is_some_and(|first| matches!(first, b'L' | b'R' | b'T' | b'B'))
+    let source = parse_architecture_source_controlled(code, control)?;
+    Ok(SemanticConstruction {
+        model: source.map_err(|issue| architecture_error(diagram_type, issue)),
+        #[cfg(feature = "editor-facts")]
+        editor_facts: None,
+    })
 }
 
 #[cfg(feature = "editor-facts")]
-pub(crate) fn is_valid_editor_identifier(candidate: &str) -> bool {
-    let mut last_was_word = false;
-    for (index, ch) in candidate.chars().enumerate() {
-        let is_word = ch.is_ascii_alphanumeric() || ch == '_';
-        if index == 0 && !is_word {
-            return false;
+fn project_architecture_observation(
+    facts: &mut EditorSemanticFacts,
+    observation: ArchitectureObservation<'_>,
+) {
+    match observation {
+        ArchitectureObservation::CaptureStarted => {
+            #[cfg(test)]
+            crate::editor::test_work::record_collection();
         }
-        if !is_word && ch != '-' {
-            return false;
+        ArchitectureObservation::DirectivePrefix(prefix) => facts.push_directive_prefix(prefix),
+        ArchitectureObservation::Issue(issue) => {
+            facts.mark_recovered_from_parse_error(issue.message.as_str(), issue.span());
         }
-        last_was_word = is_word;
+        ArchitectureObservation::Occurrence {
+            text,
+            detail,
+            kind,
+            role,
+            span,
+            selection,
+        } => {
+            let expected = match role {
+                ArchitectureOccurrenceRole::Entity | ArchitectureOccurrenceRole::Reference => {
+                    EditorExpectedSyntaxKind::NodeIdentifier
+                }
+                ArchitectureOccurrenceRole::Payload => EditorExpectedSyntaxKind::Payload,
+            };
+            facts.push_expected_syntax(EditorExpectedSyntax::new(expected, selection));
+            let kind = match kind {
+                ArchitectureOccurrenceKind::Group => EditorSemanticKind::Namespace,
+                ArchitectureOccurrenceKind::Service => EditorSemanticKind::Variable,
+                ArchitectureOccurrenceKind::Junction => EditorSemanticKind::Object,
+                ArchitectureOccurrenceKind::Text => EditorSemanticKind::String,
+            };
+            let detail = Some(detail.to_string());
+            let symbol = match role {
+                ArchitectureOccurrenceRole::Entity => {
+                    EditorSemanticSymbol::new(text, detail, kind, span, selection)
+                        .with_rename_policy(EditorRenamePolicy::ArchitectureIdentifier)
+                }
+                ArchitectureOccurrenceRole::Reference => {
+                    EditorSemanticSymbol::reference(text, detail, kind, span, selection)
+                        .with_rename_policy(EditorRenamePolicy::ArchitectureIdentifier)
+                }
+                ArchitectureOccurrenceRole::Payload => {
+                    EditorSemanticSymbol::payload(text, detail, kind, span, selection)
+                }
+            };
+            facts.push_symbol(symbol);
+        }
     }
-    !candidate.is_empty() && last_was_word && !is_architecture_reserved_id(candidate)
 }
 
-fn architecture_reserved_id_message(id: &str) -> String {
-    format!("reserved architecture keyword [{id}] cannot be used as an id")
+#[cfg(feature = "presentation")]
+fn parse_model_controlled(
+    code: &str,
+    diagram_type: &str,
+    control: &OperationControl,
+) -> OperationControlResult<Result<ArchitectureDiagramModel>> {
+    Ok(parse_semantic_model_controlled(
+        code,
+        diagram_type,
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Omit,
+        control,
+    )?
+    .model)
+}
+
+fn parse_semantic_model_controlled(
+    code: &str,
+    diagram_type: &str,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
+    control: &OperationControl,
+) -> OperationControlResult<crate::family::SemanticConstruction<ArchitectureDiagramModel>> {
+    let construction = construct_architecture_source_controlled(
+        code,
+        diagram_type,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        control,
+    )?;
+    let model = match construction.model {
+        Ok(source) => Ok(source.to_model_controlled(control)?),
+        Err(error) => Err(error),
+    };
+    Ok(crate::family::SemanticConstruction {
+        model,
+        #[cfg(feature = "editor-facts")]
+        editor_facts: construction.editor_facts,
+    })
 }
 
 pub(crate) fn parse_architecture_semantic_model_controlled(
@@ -681,7 +184,7 @@ pub(crate) fn parse_architecture_semantic_model_controlled(
     #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::SemanticConstruction<ArchitectureDiagramModel>> {
-    Ok(parse::parse_semantic_model_controlled(
+    Ok(parse_semantic_model_controlled(
         code,
         &metadata.diagram_type,
         #[cfg(feature = "editor-facts")]
@@ -696,7 +199,7 @@ pub(crate) fn parse_architecture_semantic_model_controlled(
 
 #[cfg(feature = "compat-json")]
 pub(crate) fn parse_architecture(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
-    let model = parse::parse_model_controlled(code, &meta.diagram_type, &OperationControl::new())
+    let model = parse_model_controlled(code, &meta.diagram_type, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")?;
     render_model_to_compat_json(&model, meta)
 }
@@ -709,10 +212,24 @@ pub(crate) fn parse_architecture_json_and_editor_facts(
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<CombinedSemanticParse> {
     control.checkpoint()?;
-    let construction = match parse::parse_combined_semantic_source_controlled(code, meta, control)?
-    {
-        Ok(source) => Ok(source.into_combined_parts_controlled(meta, control)?),
-        Err(error) => Err(error),
+    let source = construct_architecture_source_controlled(
+        code,
+        &meta.diagram_type,
+        EditorFactsDemand::Capture,
+        control,
+    )?;
+    let editor_facts = source
+        .editor_facts
+        .expect("Architecture capture requests its construction journal");
+    let construction = match source.model {
+        Ok(source) => {
+            control.checkpoint()?;
+            let model = source.to_model_controlled(control)?;
+            let json = render_model_to_compat_json_controlled(&model, meta, control)?;
+            control.checkpoint()?;
+            Ok((json, editor_facts))
+        }
+        Err(error) => Err(CombinedSemanticFailure::new(error, Some(editor_facts))),
     };
     let parsed = CombinedSemanticParse::from_construction(
         construction,
@@ -762,7 +279,7 @@ pub(crate) fn parse_architecture_model_for_render(
     code: &str,
     meta: &SourcePresentationMetadata,
 ) -> Result<ArchitectureDiagramModel> {
-    parse::parse_model_controlled(code, &meta.diagram_type, &OperationControl::new())
+    parse_model_controlled(code, &meta.diagram_type, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
 
@@ -772,7 +289,7 @@ pub(crate) fn parse_architecture_model_for_render_controlled(
     meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<ArchitectureDiagramModel>> {
-    parse::parse_model_controlled(code, &meta.diagram_type, control)
+    parse_model_controlled(code, &meta.diagram_type, control)
 }
 
 #[cfg(all(test, feature = "compat-json"))]
@@ -806,6 +323,48 @@ mod tests {
             effective_config: crate::presentation::SourcePresentationConfig::default(),
             title: None,
         }
+    }
+
+    struct TestSource {
+        source: ArchitectureSource,
+        #[cfg(feature = "editor-facts")]
+        editor_facts: EditorSemanticFacts,
+    }
+
+    impl TestSource {
+        fn compat_json(&self, meta: &SourcePresentationMetadata) -> Value {
+            render_model_to_compat_json(&self.render_model(), meta)
+                .expect("Architecture typed model must remain JSON-serializable")
+        }
+
+        fn render_model(&self) -> ArchitectureDiagramModel {
+            self.source
+                .to_model_controlled(&OperationControl::new())
+                .expect("a private parse control cannot be cancelled")
+        }
+
+        #[cfg(feature = "editor-facts")]
+        fn editor_facts(&self) -> EditorSemanticFacts {
+            self.editor_facts.clone()
+        }
+    }
+
+    fn parse_semantic_source(code: &str, meta: &SourcePresentationMetadata) -> Result<TestSource> {
+        let construction = construct_architecture_source_controlled(
+            code,
+            &meta.diagram_type,
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Capture,
+            &OperationControl::new(),
+        )
+        .expect("a private parse control cannot be cancelled");
+        Ok(TestSource {
+            source: construction.model?,
+            #[cfg(feature = "editor-facts")]
+            editor_facts: construction
+                .editor_facts
+                .expect("Architecture capture requests its construction journal"),
+        })
     }
 
     #[cfg(feature = "editor-facts")]
@@ -1145,7 +704,7 @@ service api(server)["Double \"quote\" and \'single\'"]
                 "architecture-beta\ntitle {value}\naccTitle: {value}\naccDescr {{{value}}}\nservice api(server)[API]\n"
             );
             let meta = test_meta();
-            let source = parse::parse_semantic_source(&text, &meta).unwrap();
+            let source = parse_semantic_source(&text, &meta).unwrap();
             let json = source.compat_json(&meta);
             let model = source.render_model();
             assert_eq!(model.title.as_deref(), expected);
@@ -1164,7 +723,7 @@ service api "\b\f\n\r\t\v\0\"quote\"\\tail"
 "#;
         let expected = "\u{0008}\u{000c}\n\r\t\u{000b}\0\"quote\"\\tail";
         let meta = test_meta();
-        let source = parse::parse_semantic_source(text, &meta).unwrap();
+        let source = parse_semantic_source(text, &meta).unwrap();
 
         let json = source.compat_json(&meta);
         let render = source.render_model();
@@ -1192,7 +751,7 @@ service api "\b\f\n\r\t\v\0\"quote\"\\tail"
 service icon \"first\nsecond\"\n\
 service captioned(server)[\"third\nfourth\"]\n";
         let meta = test_meta();
-        let source = parse::parse_semantic_source(text, &meta).unwrap();
+        let source = parse_semantic_source(text, &meta).unwrap();
 
         let json = source.compat_json(&meta);
         let render = source.render_model();
@@ -1758,7 +1317,7 @@ service db(database)[DB] in child\n\
 group root(cloud)[Root]\n\
 group child(cloud)[Child] in root\n";
         let meta = test_meta();
-        let source = parse::parse_semantic_source(text, &meta).unwrap();
+        let source = parse_semantic_source(text, &meta).unwrap();
 
         let json = source.compat_json(&meta);
         let render = source.render_model();
@@ -2021,7 +1580,7 @@ junction join in root\n\
 service api(server)[API] in root\n\
 group root(cloud)[Root]\n";
         let meta = test_meta();
-        let source = parse::parse_semantic_source(text, &meta).unwrap();
+        let source = parse_semantic_source(text, &meta).unwrap();
         let json = source.compat_json(&meta);
         let facts = source.editor_facts();
 
@@ -2655,5 +2214,48 @@ service later [Later's \"title]";
         assert!(!model.nodes.is_empty());
         #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read(), Default::default());
+    }
+
+    #[test]
+    #[cfg(all(feature = "presentation", feature = "editor-facts"))]
+    fn architecture_public_multiline_unicode_crlf_ranges_keep_authored_bytes() {
+        let code = concat!(
+            "architecture-beta\r\n",
+            "service first [\"第一行\r\nUser's 雪%%\"]\r\n",
+            "service later [後続]\r\n",
+        );
+        let engine = crate::MermaidEngine::new();
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(code, crate::ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let crate::RenderSemanticModel::Architecture(model) = parsed.model() else {
+            panic!("expected Architecture render model");
+        };
+        assert_eq!(model.nodes[0].title.as_deref(), Some("第一行\nUser's 雪%%"));
+        assert_eq!(model.nodes[1].id, "later");
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("architecture", code)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            facts.completeness,
+            crate::EditorSemanticCompleteness::Complete
+        );
+        let title = facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "第一行\nUser's 雪%%")
+            .unwrap();
+        assert_eq!(
+            &code[title.selection.start..title.selection.end],
+            "\"第一行\r\nUser's 雪%%\""
+        );
+        let later = facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "later")
+            .unwrap();
+        assert_eq!(&code[later.selection.start..later.selection.end], "later");
     }
 }

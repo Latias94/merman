@@ -274,9 +274,34 @@ fn strip_comment_prefix(line: &str) -> &str {
 }
 
 /// Parses Journey statements once, retaining the first issue while continuing recovery.
+pub fn parse_journey_source_controlled(
+    code: &str,
+    control: &OperationControl,
+) -> OperationControlResult<Result<JourneyParsedSource, JourneySourceIssue>> {
+    parse_journey_source_impl(
+        code,
+        #[cfg(feature = "editor-facts")]
+        false,
+        #[cfg(feature = "editor-facts")]
+        None,
+        control,
+    )
+}
+
+/// Parses Journey statements and delivers editor observations in source order.
 ///
 /// Rich observations are optional. The unterminated accessibility block observation is
 /// still delivered to a recovery-only observer. Every span is relative to `code`.
+#[cfg(feature = "editor-facts")]
+pub fn parse_journey_source_with_observer_controlled<'source>(
+    code: &'source str,
+    capture_facts: bool,
+    observe: &mut dyn FnMut(JourneyObservation<'source>),
+    control: &OperationControl,
+) -> OperationControlResult<Result<JourneyParsedSource, JourneySourceIssue>> {
+    parse_journey_source_impl(code, capture_facts, Some(observe), control)
+}
+
 #[cfg_attr(
     not(feature = "editor-facts"),
     allow(
@@ -284,7 +309,7 @@ fn strip_comment_prefix(line: &str) -> &str {
         reason = "The editor observer borrows from the same source lifetime."
     )
 )]
-pub fn parse_journey_source_controlled<'source>(
+fn parse_journey_source_impl<'source>(
     code: &'source str,
     #[cfg(feature = "editor-facts")] capture_facts: bool,
     #[cfg(feature = "editor-facts")] mut observe: Option<

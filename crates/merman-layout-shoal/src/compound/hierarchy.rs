@@ -8,6 +8,7 @@ use crate::{
 pub(super) struct Hierarchy {
     pub(super) levels: Vec<Level>,
     pub(super) order: Vec<usize>,
+    pub(super) depth: usize,
     pub(super) borders: Vec<Border>,
     pub(super) paths: Vec<Vec<(usize, usize)>>,
     pub(super) truncated: usize,
@@ -409,6 +410,7 @@ impl Hierarchy {
         Ok(Self {
             levels,
             order,
+            depth: 0,
             borders: Vec::new(),
             paths: reserved(graph.edges.len())?,
             truncated: 0,
@@ -574,6 +576,7 @@ pub(super) fn build(
     };
     let mut hierarchy = Hierarchy::new(graph, &parents, lanes, work)?;
     let tree = Tree::index(parents, &hierarchy.order, work)?;
+    hierarchy.depth = tree.depth[*hierarchy.order.last().expect("root level")];
     work.charge(tree.parent.len())?;
     let mut crossed = filled(tree.parent.len(), 0_i64)?;
     let mut remaining = options.caps.max_border_ports;

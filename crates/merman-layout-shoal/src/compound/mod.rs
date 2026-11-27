@@ -163,46 +163,66 @@ pub(super) fn run(
     let measure_crossings = detail == LayoutDetail::Full
         || order_ports
         || (options.routing == RoutingStyle::Orthogonal && options.global_orthogonal);
-    let mut output = 'selected: {
-        let first_output = frames.draw(
-            &first,
-            None,
-            expanded,
-            measure_crossings.then_some(u64::MAX),
-            work,
-        )?;
-        let crossings = first_output.stats.routed_crossings;
-        if !order_ports || crossings == 0 {
-            break 'selected first_output;
-        }
-        let suggestions = refine::port_hints(&first, &first_output, work)?;
-        let mut previous = &first;
-        if ordered.as_ref().is_some_and(|h| {
+    let mut output = frames.draw(
+        &first,
+        None,
+        expanded,
+        measure_crossings.then_some(u64::MAX),
+        work,
+    )?;
+    let mut baseline = &first;
+    let mut drawn_independently = false;
+    let crossings = output.stats.routed_crossings;
+    if order_ports
+        && ordered.as_ref().is_some_and(|h| {
             crossings
                 > h.flat_crossings
                     .saturating_add(h.flat_crossings / 2)
                     .saturating_add(4)
-        }) {
-            let alternative =
-                frames.draw(&independent, Some(&first), expanded, Some(crossings), work)?;
-            if alternative.stats.routed_crossings < crossings {
-                break 'selected alternative;
-            }
-            previous = &independent;
+        })
+    {
+        let alternative =
+            frames.draw(&independent, Some(&first), expanded, Some(crossings), work)?;
+        drawn_independently = true;
+        if alternative.stats.routed_crossings < crossings {
+            output = alternative;
+            baseline = &independent;
         }
-        if let Some(ports) = suggestions {
+    }
+    if order_ports {
+        let mut port_keys: Option<Vec<Option<f64>>> = None;
+        for _ in 0..hierarchy.depth.min(4) {
+            let crossings = output.stats.routed_crossings;
+            if crossings == 0 {
+                break;
+            }
+            let current = Pass {
+                ports: port_keys.as_deref().unwrap_or(baseline.ports),
+                ..*baseline
+            };
+            let Some(ports) = refine::port_hints(&current, &output, work)? else {
+                break;
+            };
             let adjusted = Pass {
                 ports: &ports,
-                ..first
+                ..current
+            };
+            // The cache follows the last trial even when its drawing was rejected.
+            let previous = if drawn_independently {
+                &independent
+            } else {
+                &current
             };
             let alternative =
                 frames.draw(&adjusted, Some(previous), expanded, Some(crossings), work)?;
-            if alternative.stats.routed_crossings < crossings {
-                break 'selected alternative;
+            if alternative.stats.routed_crossings >= crossings {
+                break;
             }
+            output = alternative;
+            port_keys = Some(ports);
+            drawn_independently = false;
         }
-        first_output
-    };
+    }
     if options.width_policy == WidthPolicy::Natural {
         relax_seams(graph, options, &mut output, work)?;
     }

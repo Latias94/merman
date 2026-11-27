@@ -548,12 +548,13 @@ fn proper_intersections_preserve_tiny_and_large_scales_and_reject_nonfinite_rout
     }
 }
 
-fn suggested(
+fn suggested_on_face(
     direction: Direction,
     origin: (f64, f64),
     far_ports: &[(f64, Option<f64>)],
     own_endpoint: bool,
     hints: &[Option<f64>],
+    first_face: bool,
 ) -> Option<Vec<Option<f64>>> {
     let mut graph = Graph {
         direction,
@@ -581,7 +582,8 @@ fn suggested(
     let mut work = Work::new(&mut control);
     let hierarchy = hierarchy::build(&graph, &options, &mut work).unwrap();
     let (near, far) = flow_sides(direction);
-    let mut sides = vec![far; hierarchy.borders.len()];
+    let (face, other) = if first_face { (near, far) } else { (far, near) };
+    let mut sides = vec![face; hierarchy.borders.len()];
     let rect = Rect {
         x: origin.0,
         y: origin.1,
@@ -606,7 +608,7 @@ fn suggested(
         let (cross, turn) = match border.edge {
             0 => (10., None),
             1 => {
-                sides[id] = near;
+                sides[id] = other;
                 (30., Some(-100.))
             }
             edge => far_ports.get(edge - 2).copied().unwrap_or((90., None)),
@@ -662,8 +664,18 @@ fn suggested(
     port_hints(&ctx, &output, &mut work).unwrap()
 }
 
+fn suggested(
+    direction: Direction,
+    origin: (f64, f64),
+    ports: &[(f64, Option<f64>)],
+    own_endpoint: bool,
+    hints: &[Option<f64>],
+) -> Option<Vec<Option<f64>>> {
+    suggested_on_face(direction, origin, ports, own_endpoint, hints, false)
+}
+
 #[test]
-fn inverted_far_ports_read_the_first_outer_turn_in_either_semantic_direction() {
+fn inverted_flow_faces_read_the_first_outer_turn_in_either_semantic_direction() {
     let previous = [Some(91.), Some(92.), None, None];
     let adjusted = [Some(91.), Some(92.), Some(80.), Some(10.)];
     let ports = [(20., Some(80.)), (60., Some(10.))];
@@ -673,11 +685,17 @@ fn inverted_far_ports_read_the_first_outer_turn_in_either_semantic_direction() {
         Direction::Left,
         Direction::Right,
     ] {
-        assert_eq!(
-            suggested(dir, (0., 0.), &ports, false, &previous),
-            Some(adjusted.to_vec())
-        );
-        assert_eq!(suggested(dir, (0., 0.), &ports, false, &adjusted), None);
+        for first_face in [false, true] {
+            assert_eq!(
+                suggested_on_face(dir, (0., 0.), &ports, false, &previous, first_face),
+                Some(adjusted.to_vec()),
+                "{dir:?}, first face = {first_face}"
+            );
+            assert_eq!(
+                suggested_on_face(dir, (0., 0.), &ports, false, &adjusted, first_face),
+                None
+            );
+        }
     }
 }
 

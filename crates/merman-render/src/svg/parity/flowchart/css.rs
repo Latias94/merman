@@ -54,6 +54,7 @@ pub(super) fn write_flowchart_edge_class_attr(
     out: &mut impl SvgOutput,
     edge: &crate::flowchart::FlowEdge,
     animation: FlowchartEdgeAnimationResolution,
+    canonical: bool,
 ) {
     // Mermaid includes a 2-part class tuple (thickness/pattern) for flowchart edge paths. The
     // second tuple is `edge-thickness-normal edge-pattern-solid` in Mermaid@11.12.2 baselines,
@@ -77,7 +78,10 @@ pub(super) fn write_flowchart_edge_class_attr(
     out.push_str(thickness_1);
     out.push(' ');
     out.push_str(pattern_1);
-    out.push_str(" edge-thickness-normal edge-pattern-solid flowchart-link");
+    if !canonical {
+        out.push_str(" edge-thickness-normal edge-pattern-solid");
+    }
+    out.push_str(" flowchart-link");
 
     if let Some(cls) = animation.class() {
         out.push(' ');

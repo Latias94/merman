@@ -588,6 +588,71 @@ fn straightening_keeps_symmetric_lenses_and_omits_only_clear_label_corridors() {
 }
 
 #[test]
+fn separated_twin_chords_keep_their_natural_width_and_need_no_waypoints() {
+    let mut case = Case::new(
+        2,
+        &[&[0], &[2, 3], &[4, 5], &[1]],
+        &[&[0, 2, 4, 1], &[0, 3, 5, 1]],
+    );
+    case.g.width[..2].fill(160.);
+    case.g.source_offset = vec![-40., 0., 0., 40., 0., 0.];
+    case.g.target_offset = vec![0., 0., -30., 0., 0., 30.];
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    let mut scratch = GeometryScratch::default();
+    let mut geometry = case.geom(&[100., 100., 64., 136., 67., 133.], &mut scratch, &mut work);
+    straighten(
+        &mut geometry,
+        &case.options,
+        &mut PassScratch::default(),
+        &mut work,
+    )
+    .unwrap();
+    for (actual, expected) in
+        geometry.data.x[2..]
+            .iter()
+            .zip([190. / 3., 410. / 3., 200. / 3., 400. / 3.])
+    {
+        assert!(
+            (actual - expected).abs() < 1e-8,
+            "{actual}, expected {expected}"
+        );
+    }
+    assert!(geometry.data.keep[2..].iter().all(|&keep| !keep));
+}
+
+#[test]
+fn competing_boundary_ports_do_not_block_an_uncontested_alignment() {
+    let mut case = Case::new(6, &[&[0, 1, 2], &[3, 4, 5]], &[&[0, 4], &[1, 3], &[2, 5]]);
+    case.g.kind[..3].fill(Kind::StartPort);
+    case.g.width[..3].fill(0.);
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    let mut scratch = GeometryScratch::default();
+    let mut geometry = case.geom(&[10., 20., 30., 20., 50., 90.], &mut scratch, &mut work);
+    align_ports(&mut geometry, &mut RowScratch::default(), &mut work).unwrap();
+    assert_eq!(&geometry.data.x[..3], &[33., 37., 90.]);
+}
+
+#[test]
+fn orthogonal_bare_ranks_do_not_spread_a_short_shift_into_multiple_jogs() {
+    let mut case = Case::new(2, &[&[0], &[2], &[3], &[4], &[1]], &[&[0, 2, 3, 4, 1]]);
+    case.options.routing = RoutingStyle::Orthogonal;
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    let mut scratch = GeometryScratch::default();
+    let mut geometry = case.geom(&[100., 109., 100., 100., 100.], &mut scratch, &mut work);
+    straighten(
+        &mut geometry,
+        &case.options,
+        &mut PassScratch::default(),
+        &mut work,
+    )
+    .unwrap();
+    assert_eq!(geometry.data.x[2..], [100., 100., 100.]);
+}
+
+#[test]
 fn independent_lenses_keep_their_own_axes_when_edge_spacing_is_zero() {
     let mut case = Case::new(
         4,

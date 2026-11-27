@@ -1,9 +1,10 @@
 //! Flowchart v2 browser shape.
 
 use crate::svg::parity::flowchart::escape_attr;
-use crate::svg::parity::{fmt, fmt_display};
+use crate::svg::parity::fmt;
 
 use super::super::geom::{path_from_points, rounded_rect_points};
+use super::super::helpers;
 use super::super::roughjs::roughjs_paths_for_hand_drawn_svg_path;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_browser(
@@ -19,14 +20,14 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_browser(
         let _ = write!(
             out,
             r#"<g class="basic label-container" style="{}">"#,
-            escape_attr(common.rough_group_style)
+            escape_attr(helpers::hand_drawn_group_style(common))
         );
     } else {
         out.push_str(r#"<g class="basic label-container">"#);
     }
     if common.look_is_hand_drawn() {
         if let Some((fill_d, stroke_d)) =
-            super::super::helpers::timed_node_roughjs(common.timing, details, || {
+            helpers::timed_node_roughjs(common.timing, details, || {
                 roughjs_paths_for_hand_drawn_svg_path(
                     &body_path,
                     common.stroke_width,
@@ -36,22 +37,13 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_browser(
                 )
             })
         {
-            let _ = write!(
-                out,
-                r#"<path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/>"#,
-                escape_attr(&fill_d),
-                escape_attr(common.fill_color),
-                escape_attr(&stroke_d),
-                escape_attr(common.stroke_color),
-                fmt_display(common.stroke_width as f64),
-                escape_attr(common.stroke_dasharray),
-            );
+            helpers::write_hand_drawn_path_pair(out, common, &body_path, &fill_d, &stroke_d);
         } else {
             let _ = write!(
                 out,
                 r#"<path d="{}" style="{}"/>"#,
                 escape_attr(&body_path),
-                escape_attr(common.style),
+                escape_attr(&helpers::grouped_shape_child_style(common)),
             );
         }
     } else {
@@ -105,7 +97,7 @@ fn prepare_browser_geometry(
     common: &super::super::FlowchartNodeGeometry<'_>,
     label: &super::super::FlowchartNodeLabelState<'_>,
 ) -> (f64, f64, f64, f64, f64, String) {
-    let metrics = super::super::helpers::compute_node_label_metrics(
+    let metrics = helpers::compute_node_label_metrics(
         ctx,
         common.node_id,
         Some(common.layout_node),
@@ -137,5 +129,5 @@ pub(super) fn advance_browser_rough_geometry(
     }
     let (_, _, _, _, _, body_path) = prepare_browser_geometry(ctx, common, label);
     let target = super::super::roughjs::RoughGeometryTarget::Query;
-    let _ = super::super::helpers::prepare_node_path(common, &body_path, target);
+    let _ = helpers::prepare_node_path(common, &body_path, target);
 }

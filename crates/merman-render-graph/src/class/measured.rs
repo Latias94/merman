@@ -194,15 +194,7 @@ pub fn measure_into<'a>(
         if let Some(work_control) = work_control {
             work_control.checked_add(0, 0)?;
         }
-        let measured_node = if matches!(wrap_mode_node, WrapMode::HtmlLike)
-            || super::class_node_requires_math(c.node)
-        {
-            Cow::Borrowed(c.node)
-        } else {
-            super::node_binding::class_node_for_svg_measurement(c.node)
-        };
-        let (w, h, label_plan, svg_title) =
-            class_box_dimensions(&measured_node, &class_box_measure_ctx);
+        let (w, h, label_plan, svg_title) = class_box_dimensions(c.node, &class_box_measure_ctx);
         if let Some(mut label_plan) = label_plan {
             let id = c.id.clone();
             if let Some(work_control) = work_control {

@@ -15,17 +15,8 @@ pub fn write_neo_edge_mask(
 ) {
     use std::fmt::Write as _;
 
-    fn mask_offset(arrow_type: Option<&str>) -> f64 {
-        match arrow_type {
-            Some("arrow_point" | "arrow_open_head") => 4.0,
-            Some("arrow_hollow_circle") => 8.0,
-            Some("arrow_cross" | "arrow_circle") => 12.5,
-            _ => 0.0,
-        }
-    }
-
-    let start_offset = mask_offset(arrow_type_start);
-    let end_offset = mask_offset(arrow_type_end);
+    let start_offset = neo_marker_mask_offset(arrow_type_start);
+    let end_offset = neo_marker_mask_offset(arrow_type_end);
     let middle_length = if line_hop_applied {
         (path_length - start_offset - end_offset).max(0.0)
     } else {
@@ -59,6 +50,15 @@ pub fn write_neo_edge_mask(
         "{}; stroke-dashoffset: 0;",
         crate::number_format::canonical_number(end_offset)
     );
+}
+
+pub fn neo_marker_mask_offset(arrow_type: Option<&str>) -> f64 {
+    match arrow_type {
+        Some("arrow_point" | "arrow_open_head") => 4.0,
+        Some("arrow_hollow_circle") => 8.0,
+        Some("arrow_cross" | "arrow_circle") => 12.5,
+        _ => 0.0,
+    }
 }
 
 pub fn marker_offset_for(arrow_type: Option<&str>) -> Option<f64> {

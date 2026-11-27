@@ -92,6 +92,7 @@ impl Fit {
         let mut counts = [0usize; 4];
         let mut movable_at_title = 0usize;
         let title_margin = TITLE_CLEAR.max(protected_title_margin);
+        let has_title = title.width > 0.0 && title.height > 0.0;
         let mut title_clear = title_margin;
         let fit_width = matches!(options.width_policy, WidthPolicy::FitWidth { .. });
         let mut marker_insets = [0.0_f64; 4];
@@ -132,18 +133,14 @@ impl Fit {
                     }
                 }
             }
-            if index == title_side && title.width > 0.0 && title.height > 0.0 {
+            if index == title_side && has_title {
                 let movable = !matches!(hint, PortSideHint::FixedOffset { .. });
                 let protect = movable && protected_title_margin > 0.0;
                 if movable && (!adaptive_top_title || protect) {
                     movable_at_title += 1;
                     title_clear = title_clear.max(wire.title_clearance(end, title_margin));
                 }
-                let gap = if protect {
-                    spacing.edge.max(protected_title_margin)
-                } else {
-                    spacing.edge
-                };
+                let gap = spacing.edge.max(title_margin);
                 if !adaptive_top_title || protect || markers[end].length > 0.0 {
                     before_title = before_title.max(markers[end].length + gap);
                 }
@@ -212,6 +209,11 @@ impl Fit {
                 }
                 if blocked {
                     let lane = spacing.edge.max(spacing.min_port_pitch / 2.0);
+                    let lane = if has_title {
+                        lane.max(title_margin)
+                    } else {
+                        lane
+                    };
                     corridor[index] = lane;
                     inset[index] = inset[index].max(2.0 * lane + markers[end].length);
                     let adjacent = if side.axis() == Axis::Vertical {
@@ -449,12 +451,36 @@ impl Fit {
                     (right, TitlePosition::TopRight),
                     (center, TitlePosition::TopCenter),
                 ];
-                let mut scores = [(0usize, 0usize, 0.0_f64); 3];
+                let mut scores = [(0usize, 0usize, 0usize, 0.0_f64); 3];
                 for wire in wires {
                     work.visit(1)?;
-                    let Some((end, slot, Side::Top)) = wire.border() else {
+                    let Some((end, slot, port_side)) = wire.border() else {
                         continue;
                     };
+                    if port_side.axis() == Axis::Horizontal {
+                        let outer = ports[slot];
+                        let inner = wire.contacts[1 - end].expect("inner contact");
+                        let runway = Point {
+                            x: inner.at.x + self.offset.x,
+                            ..outer
+                        };
+                        let margin = wire.title_clearance(end, self.title_margin());
+                        let padded = Size {
+                            width: finite(title.width + 2.0 * margin)?,
+                            height: finite(title.height + 2.0 * margin)?,
+                        };
+                        for ((x, _), (_, lateral_hits, _, _)) in
+                            candidates.into_iter().zip(&mut scores)
+                        {
+                            if blocks(centered(Point { x, y }, padded), outer, runway) {
+                                *lateral_hits += 1;
+                            }
+                        }
+                        continue;
+                    }
+                    if port_side != Side::Top {
+                        continue;
+                    }
                     let fixed = matches!(
                         wire.ends[end],
                         End::Border {
@@ -464,7 +490,7 @@ impl Fit {
                     );
                     let clearance =
                         title.width / 2.0 + wire.title_clearance(end, self.title_margin());
-                    for ((candidate, _), (fixed_hits, movable_hits, shift)) in
+                    for ((candidate, _), (fixed_hits, _, movable_hits, shift)) in
                         candidates.into_iter().zip(&mut scores)
                     {
                         let shortfall = clearance - (ports[slot].x - candidate).abs();
@@ -478,13 +504,14 @@ impl Fit {
                         }
                     }
                 }
-                let ((x, position), (_, movable_hits, _)) = candidates
+                let ((x, position), (_, _, movable_hits, _)) = candidates
                     .into_iter()
                     .zip(scores)
                     .min_by(|(_, a), (_, b)| {
                         a.0.cmp(&b.0)
                             .then_with(|| a.1.cmp(&b.1))
-                            .then_with(|| a.2.total_cmp(&b.2))
+                            .then_with(|| a.2.cmp(&b.2))
+                            .then_with(|| a.3.total_cmp(&b.3))
                     })
                     .expect("three title anchors");
                 // Nested lanes already reserve room to move their automatic title ports.

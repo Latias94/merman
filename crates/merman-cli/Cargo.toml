@@ -309,7 +309,7 @@ svg = [
     "dep:atomic-write-file",
     "dep:ctrlc",
     "dep:same-file",
-    "dep:svgtypes",
+    "dep:merman-markup",
     "merman/svg",
 ]
 native-fonts = ["svg", "merman/native-fonts"]
@@ -375,7 +375,7 @@ rayon = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
-svgtypes = { workspace = true, optional = true }
+merman-markup = { workspace = true, optional = true, features = ["color"] }
 same-file = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
 similar = { workspace = true, optional = true }

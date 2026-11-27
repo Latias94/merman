@@ -5,6 +5,7 @@ use crate::mermaid_style::{
     is_supported_css_font_weight_value, parse_style_declaration, resolve_mermaid_font_size_px,
     visit_style_declaration_boundaries_with_checkpoints,
 };
+use crate::svg::foreign_objects::MAX_SELECTOR_ANCESTRY_DEPTH;
 use crate::svg::pipeline::{
     SvgTagScanner, checkpoint_loop, decode_xml_style_text_with_checkpoints, end_tag_name,
     find_tag_end_with_checkpoints, find_with_checkpoints, start_tag_name, trim_with_checkpoints,
@@ -38,7 +39,6 @@ pub(super) const MAX_UNIVERSAL_POSTINGS: usize = 4096;
 // Matching work is byte-weighted so repeated class/attribute string scans cannot hide behind a
 // small selector-component count. Keep enough headroom for normal multi-label Mermaid diagrams.
 pub(super) const MAX_SELECTOR_MATCH_WORK: usize = 16 * 1024 * 1024;
-pub(super) const MAX_SELECTOR_ANCESTRY_DEPTH: usize = crate::resources::MAX_RESVG_TREE_DEPTH;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub(super) enum Namespace {
@@ -106,6 +106,10 @@ pub(super) struct ResolvedForeignObject {
     pub(super) typography: ResolvedFallbackTypography,
     pub(super) fragments: Vec<HtmlTextFragment>,
     pub(super) paint: Arc<[(String, Arc<str>)]>,
+    #[allow(
+        dead_code,
+        reason = "Graph label measurement checks whether styled geometry is present."
+    )]
     pub(super) has_text_geometry: bool,
 }
 
@@ -1228,6 +1232,14 @@ impl CascadeIndex {
         )
     }
 
+    #[cfg(any(
+        feature = "diagram-agentflow",
+        feature = "diagram-class",
+        feature = "diagram-er",
+        feature = "diagram-flowchart",
+        feature = "diagram-mindmap",
+        feature = "diagram-swimlane"
+    ))]
     pub(super) fn resolve_label_for_layout<E>(
         html: &str,
         style: &TextStyle,

@@ -3,9 +3,19 @@ use crate::text::{HtmlWhiteSpace, TextMeasurer, TextStyle, resolve_css_font_weig
 use std::borrow::Cow;
 use std::ops::Range;
 
-use super::cascade::{CascadeIndex, ResolvedFallbackTypography};
-use crate::mermaid_style::HtmlTextGeometryDeclarations;
-use crate::text::TextMetrics;
+use super::cascade::ResolvedFallbackTypography;
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-class",
+    feature = "diagram-er",
+    feature = "diagram-flowchart",
+    feature = "diagram-mindmap",
+    feature = "diagram-swimlane"
+))]
+use {
+    super::cascade::CascadeIndex, crate::mermaid_style::HtmlTextGeometryDeclarations,
+    crate::text::TextMetrics,
+};
 
 use super::css::{extract_style_property_with_checkpoints, parse_css_px_value};
 use crate::svg::pipeline::{
@@ -377,6 +387,14 @@ pub(super) fn normalized_foreign_object_text<E>(
     Ok(normalized)
 }
 
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-class",
+    feature = "diagram-er",
+    feature = "diagram-flowchart",
+    feature = "diagram-mindmap",
+    feature = "diagram-swimlane"
+))]
 pub(crate) fn measure_styled_html_label(
     measurer: &dyn TextMeasurer,
     xhtml: &str,

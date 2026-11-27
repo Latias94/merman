@@ -46,7 +46,8 @@ current corpus. The [input sources](../../fixtures/architecture/) and
 [baseline manifest](../../fixtures/upstream-svgs/architecture/_baseline-manifest.json) own current
 input bytes, inclusion, and provenance; do not recreate an exclusion from the suffix.
 
-Owners: [Architecture layout and SVG](../../crates/merman-render-graph/src/architecture/mod.rs),
+Owners: [parser](../../crates/merman-core-graph/src/architecture.rs),
+[Architecture layout and SVG](../../crates/merman-render-graph/src/architecture/mod.rs),
 [Shoal layout adapter](../../crates/merman-render/src/architecture/shoal.rs),
 [layout tests](../../crates/merman-render/tests/architecture_layout_test.rs),
 [SVG tests](../../crates/merman-render/tests/architecture_svg_test.rs), and
@@ -71,7 +72,8 @@ named offsets supplied in color slots remain strings. The SVG renderer applies
 `parseInt(String(offset))` to both forms before positioning labels; a numeric `1e21` therefore
 becomes an offset of `1`, while an unconverted decimal string retains its full integer prefix.
 
-Owners: [C4 layout](../../crates/merman-render-graph/src/c4/layout.rs),
+Owners: [C4 parser](../../crates/merman-core-graph/src/c4/parse.rs),
+[C4 layout](../../crates/merman-render-graph/src/c4/layout.rs),
 [relation geometry tests](../../crates/merman-render/tests/c4_relation_geometry_test.rs), and
 [public typed-render tests](../../crates/merman/tests/c4_typed_render.rs).
 
@@ -250,7 +252,8 @@ independent entity and frame facts available during recovery. Failed block looka
 known unclosed suffix instead of rescanning it for each recovered line. Scalar separators follow
 ECMAScript whitespace, including BOM while retaining NEL as a non-separator.
 
-Owners: [semantic/editor contract tests](../../crates/merman-core/tests/eventmodeling_contract.rs),
+Owners: [parser](../../crates/merman-core-structured/src/eventmodeling.rs),
+[semantic/editor contract tests](../../crates/merman-core/tests/eventmodeling_contract.rs),
 [SVG emitter](../../crates/merman-render-structured/src/eventmodeling/svg.rs), and
 [SVG tests](../../crates/merman-render/tests/eventmodeling_svg_test.rs).
 
@@ -727,7 +730,7 @@ Ticket truthiness is evaluated before conversion, so numeric zero is absent and 
 is retained. Raw metadata keeps its authored JSON values; prepared ticket text and links consume
 the converted ticket string.
 
-Owners: [parser](../../crates/merman-core/src/diagrams/kanban.rs) and
+Owners: [parser](../../crates/merman-core-structured/src/kanban.rs) and
 [parser/render regressions](../../crates/merman-render/tests/kanban_parser_parity_test.rs).
 
 ## Mindmap
@@ -817,7 +820,7 @@ an explicit zero still overrides the class radius. Owners:
 Markdown delimiters select the upstream text token; they do not add rich Markdown rendering to this
 family's direct SVG text terminals. Font measurement remains subject to the shared headless boundary.
 
-Owners: [parser](../../crates/merman-core/src/diagrams/quadrant_chart.rs),
+Owners: [parser](../../crates/merman-core-structured/src/quadrant_chart.rs),
 [SVG emitter](../../crates/merman-render-charts/src/quadrantchart/svg.rs), and
 [SVG tests](../../crates/merman-render/tests/quadrantchart_svg_test.rs).
 
@@ -1021,7 +1024,8 @@ bounds. The render environment exposes `RawBBoxWidth` and `RawBBoxHeight` as sep
 operations. A uniform lattice correction or emoji-specific geometry would not represent those
 inputs. Parser diagnostics are Rust-native rather than exact Langium messages and offsets.
 
-Owners: [Tree View layout and SVG](../../crates/merman-render-structured/src/tree_view/mod.rs) and
+Owners: [Tree View parser](../../crates/merman-core-structured/src/tree_view.rs),
+[Tree View layout and SVG](../../crates/merman-render-structured/src/tree_view/mod.rs) and
 [SVG/root tests](../../crates/merman-render/tests/tree_view_svg_test.rs).
 
 ## Wardley
@@ -1041,7 +1045,8 @@ become allocation counts, and SVG emits their resulting coordinates with JavaScr
 text instead of replacing nonfinite coordinates with zero. Absent offsets retain strategy and
 anchor defaults; explicit zero remains an authored override.
 
-Owners: [Wardley layout](../../crates/merman-render-charts/src/wardley/layout.rs) and
+Owners: [parser](../../crates/merman-core-structured/src/wardley.rs),
+[Wardley layout](../../crates/merman-render-charts/src/wardley/layout.rs), and
 [SVG tests](../../crates/merman-render/tests/wardley_svg_test.rs).
 
 ## XYChart
@@ -1070,7 +1075,8 @@ exponent thresholds, shortest rounded representation, unsigned zero, and nonfini
 [numeric whitespace tests](../../crates/merman-core/tests/xychart_numeric_whitespace_parity_test.rs)
 and [cross-family numeric tests](../../crates/merman-core/tests/popular_numeric_grammar_parity_test.rs).
 
-Owners: [XYChart layout](../../crates/merman-render-charts/src/xychart/layout.rs),
+Owners: [parser](../../crates/merman-core-structured/src/xychart.rs),
+[XYChart layout](../../crates/merman-render-charts/src/xychart/layout.rs),
 [SVG tests](../../crates/merman-render/tests/xychart_svg_test.rs), and
 [literal-text tests](../../crates/merman-render/tests/xychart_literal_text_test.rs).
 

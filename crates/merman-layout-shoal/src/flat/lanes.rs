@@ -12,13 +12,62 @@ pub(crate) struct Column {
     pub(crate) padding: [f64; 2],
 }
 
+/// Column slots with a physical span, excluding shells that only carry boundary ports.
+pub(crate) struct ColumnOrder {
+    active: Vec<usize>,
+    ordinal: Vec<usize>,
+}
+
+impl ColumnOrder {
+    pub(crate) fn new(
+        columns: &[Column],
+        owners: &[usize],
+        work: &mut Work<'_>,
+    ) -> LayoutResult<Self> {
+        work.charge(columns.len())?;
+        for &owner in owners {
+            work.visit(1)?;
+            if columns[owner].min_width == 0.0 {
+                return Err(LayoutError::InvalidInput(
+                    "a boundary-only swimlane cannot have items",
+                ));
+            }
+        }
+        let mut active = reserved(columns.len())?;
+        let mut ordinal = reserved(columns.len())?;
+        for (index, column) in columns.iter().enumerate() {
+            work.visit(1)?;
+            ordinal.push(active.len());
+            if column.min_width > 0.0 {
+                active.push(index);
+            }
+        }
+        Ok(Self { active, ordinal })
+    }
+
+    pub(crate) fn neighbor(&self, column: usize, after: bool) -> Option<usize> {
+        let index = self.ordinal[column];
+        let neighbor = if after {
+            index + usize::from(self.active.get(index) == Some(&column))
+        } else {
+            index.checked_sub(1)?
+        };
+        self.active.get(neighbor).copied()
+    }
+}
+
 #[derive(Clone, Copy)]
 pub(super) struct Columns<'a> {
     pub(super) owners: &'a [usize],
     pub(super) content: &'a [[f64; 2]],
 }
 
-fn expanded_owners(g: &Expanded, items: &[usize], work: &mut Work<'_>) -> LayoutResult<Vec<usize>> {
+fn expanded_owners(
+    g: &Expanded,
+    items: &[usize],
+    order: &ColumnOrder,
+    work: &mut Work<'_>,
+) -> LayoutResult<Vec<usize>> {
     work.charge(g.rank.len())?;
     let mut owners = reserved(g.rank.len())?;
     owners.extend_from_slice(items);
@@ -28,7 +77,10 @@ fn expanded_owners(g: &Expanded, items: &[usize], work: &mut Work<'_>) -> Layout
         let [first, inside @ .., last] = chain.as_slice() else {
             continue;
         };
-        let (a, b) = (owners[*first as usize], owners[*last as usize]);
+        let (a, b) = (
+            order.ordinal[owners[*first as usize]],
+            order.ordinal[owners[*last as usize]],
+        );
         let steps = (inside.len() + 1) as u64;
         for (i, &v) in inside.iter().enumerate() {
             // Ordinals and expanded vertex indices are bounded by u32. Interpolate by
@@ -41,7 +93,8 @@ fn expanded_owners(g: &Expanded, items: &[usize], work: &mut Work<'_>) -> Layout
             } else {
                 (i + 1) as f64 / steps as f64
             };
-            owners[v as usize] = (a as f64 + (b as f64 - a as f64) * portion).round() as usize;
+            let column = (a as f64 + (b as f64 - a as f64) * portion).round() as usize;
+            owners[v as usize] = order.active[column];
         }
     }
     Ok(owners)
@@ -91,6 +144,7 @@ pub(crate) fn run(
     g: &mut Expanded,
     items: &[usize],
     columns: &[Column],
+    order: &ColumnOrder,
     work: &mut Work<'_>,
 ) -> LayoutResult<(LayoutOutput, Vec<[f64; 2]>)> {
     debug_assert_eq!(items.len(), graph.nodes.len());
@@ -123,7 +177,7 @@ pub(crate) fn run(
     let options = &options;
     let orientation = expand_component(&c, graph, options, work, g)?;
     g.exterior_lanes.clear();
-    let owners = expanded_owners(g, items, work)?;
+    let owners = expanded_owners(g, items, order, work)?;
     let topological_crossings = order::constrained_lanes(g, &c, &owners, options, work)?;
     let mut x = position::assign(g, &c, Some(&orientation), graph, options, work)?;
     for (v, (&x, &lane)) in x.iter().zip(&owners).enumerate() {
@@ -144,6 +198,10 @@ pub(crate) fn run(
     for (x, &lane) in x.iter_mut().zip(&owners) {
         *x += placement.shifts[lane];
     }
+    let columns = Columns {
+        owners: &owners,
+        content: &placement.content,
+    };
     refine::refine_in_columns(
         g,
         &c,
@@ -151,14 +209,19 @@ pub(crate) fn run(
         graph,
         options,
         &mut x,
-        Some(Columns {
-            owners: &owners,
-            content: &placement.content,
-        }),
+        Some(columns),
         work,
     )?;
-    let (mut drawing, inline) =
-        routing::route_with_label_gaps(g, &c, &orientation, graph, options, &x, work)?;
+    let (mut drawing, inline) = routing::route_with_label_gaps(
+        g,
+        &c,
+        &orientation,
+        graph,
+        options,
+        &mut x,
+        Some(columns),
+        work,
+    )?;
     debug_assert!(inline.is_empty());
     extras::finish(&mut drawing, g, &c, graph, options, work)?;
     hub::spread_with_scratch(&mut drawing, &c, graph, options, &mut g.hub_scratch, work)?;

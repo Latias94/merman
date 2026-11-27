@@ -4,8 +4,8 @@ use crate::flat::{self, Expanded};
 use crate::validate;
 use crate::work::{LayoutResult, Work, reserved};
 use crate::{
-    Direction, Graph, GroupSpec, LayoutDetail, LayoutError, LayoutOutput, Options, PackingPolicy,
-    TitlePosition, WidthPolicy,
+    Axis, Direction, Graph, GroupSpec, LayoutDetail, LayoutError, LayoutOutput, Options,
+    PackingPolicy, PortSideHint, Side, TitlePosition, WidthPolicy,
 };
 
 #[derive(Clone, Copy)]
@@ -249,6 +249,7 @@ pub(super) fn copy_graph(graph: &Graph, work: &mut Work<'_>) -> LayoutResult<Gra
 }
 
 fn turn_down(graph: &mut Graph, options: &Options, work: &mut Work<'_>) -> LayoutResult<()> {
+    let original = graph.direction;
     graph.direction = Direction::Down;
     let flat = graph.groups.is_empty();
     for node in &mut graph.nodes {
@@ -261,6 +262,32 @@ fn turn_down(graph: &mut Graph, options: &Options, work: &mut Work<'_>) -> Layou
         });
         if flat {
             node.align_flow(graph.direction);
+        }
+    }
+    // Flow faces turn with the ranks. Upright boxes keep their physical transverse pins.
+    let turn_port = |hint| match hint {
+        PortSideHint::Side(Side::Left | Side::Right)
+        | PortSideHint::FixedOffset {
+            side: Side::Left | Side::Right,
+            ..
+        } => flat::to_canonical_port(original, hint),
+        _ => hint,
+    };
+    for edge in &mut graph.edges {
+        work.visit(1)?;
+        edge.source_port = turn_port(edge.source_port);
+        edge.target_port = turn_port(edge.target_port);
+    }
+    for group in &mut graph.groups {
+        work.visit(1)?;
+        if let Some(direction) = group.direction
+            && direction.axis() == Axis::Horizontal
+        {
+            group.direction = Some(if direction == original {
+                Direction::Down
+            } else {
+                Direction::Up
+            });
         }
     }
     Ok(())
@@ -287,4 +314,78 @@ fn tighten_groups(groups: &mut [GroupSpec], work: &mut Work<'_>) -> LayoutResult
         group.padding.right *= 0.6;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{EdgeSpec, GroupId, NodeId, NodeSpec, Size};
+
+    #[test]
+    fn a_horizontal_width_trial_remaps_flow_ports_and_matching_subgroups() {
+        for (direction, source, target) in [
+            (Direction::Right, Side::Right, Side::Left),
+            (Direction::Left, Side::Left, Side::Right),
+        ] {
+            for grouped in [false, true] {
+                let mut graph = Graph {
+                    direction,
+                    nodes: (0..4)
+                        .map(|id| {
+                            NodeSpec::new(
+                                Size {
+                                    width: 120.,
+                                    height: 56.,
+                                },
+                                id,
+                            )
+                        })
+                        .collect(),
+                    edges: (0..3)
+                        .map(|id| EdgeSpec::new(NodeId(id).into(), NodeId(id + 1).into()))
+                        .collect(),
+                    ..Default::default()
+                };
+                if grouped {
+                    let mut group = GroupSpec::new(0);
+                    group.direction = Some(direction);
+                    graph.groups.push(group);
+                    for node in &mut graph.nodes[..2] {
+                        node.parent = Some(GroupId(0));
+                    }
+                }
+                graph.edges[0].source_port = PortSideHint::FixedOffset {
+                    side: source,
+                    offset: 12.,
+                };
+                graph.edges[0].target_port = PortSideHint::FixedOffset {
+                    side: target,
+                    offset: -9.,
+                };
+                let options = Options {
+                    width_policy: WidthPolicy::FitWidth {
+                        max_width: 220.,
+                        allow_turn: true,
+                        turn_breakpoint: 300.,
+                        fold_wide_ranks: false,
+                    },
+                    ..Default::default()
+                };
+                let drawing = crate::layout(&graph, &options).unwrap();
+                assert_eq!(drawing.direction, Direction::Down);
+                assert!(drawing.bounds.width <= 220.);
+                if grouped {
+                    assert_eq!(drawing.groups[0].effective_direction, Direction::Down);
+                    assert!(!drawing.border_stitches.is_empty());
+                }
+                let route = &drawing.edges[0];
+                assert_eq!(route.ports, (Side::Bottom, Side::Top));
+                assert_eq!(route.points[0].x, drawing.nodes[0].center().x + 12.);
+                assert_eq!(
+                    route.points.last().unwrap().x,
+                    drawing.nodes[1].center().x - 9.
+                );
+            }
+        }
+    }
 }

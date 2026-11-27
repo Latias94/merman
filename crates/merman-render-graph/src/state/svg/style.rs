@@ -77,8 +77,8 @@ fn state_gradient_defs<I>(
         return;
     }
 
-    let gradient_start = escape_xml(&compatibility.gradient_start);
-    let gradient_stop = escape_xml(&compatibility.gradient_stop);
+    let gradient_start = escape_attr(&compatibility.gradient_start);
+    let gradient_stop = escape_attr(&compatibility.gradient_stop);
     let _ = write!(
         out,
         r#"<defs><linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient></defs>"#,
@@ -149,7 +149,9 @@ pub fn state_canonical_marker(
             (f64::from(barb.rear_x), 2.0 * f64::from(barb.half_width))
         } else {
             // The shared arrow occupies a 10 × 10 viewport, translated by (9, 2).
-            (8.5, 11.0)
+            let width = compatibility
+                .terminal_stroke_width_value(crate::state::StateTerminalSurface::Transition);
+            (9.0 - width / 2.0, 10.0 + width)
         };
     merman_render_core::route_types::Marker {
         trim: f64::from(STATE_BARB_TIP_X - barb.ref_x),
@@ -168,15 +170,22 @@ where
     let barb = StateBarb::for_look(compatibility.is_neo());
     let (glyph_path, glyph_attributes) = if let Some(path) = arrow_path(compatibility.native_marker)
     {
-        let attributes =
-            if compatibility.native_marker == merman_theme_contract::v2::MarkerStyle::Open {
-                r#" transform="translate(9 2)" style="fill:none !important;stroke-linecap:round""#
-            } else {
-                r#" transform="translate(9 2)""#
-            };
+        let attributes = if compatibility.native_marker
+            == merman_theme_contract::v2::MarkerStyle::Open
+        {
+            std::borrow::Cow::Owned(format!(
+                r#" transform="translate(9 2)" style="fill:none !important;stroke-linecap:round;stroke-width:{}""#,
+                escape_attr_display(compatibility.transition_width())
+            ))
+        } else {
+            std::borrow::Cow::Borrowed(r#" transform="translate(9 2)""#)
+        };
         (std::borrow::Cow::Borrowed(path), attributes)
     } else {
-        (std::borrow::Cow::Owned(barb.glyph_path()), "")
+        (
+            std::borrow::Cow::Owned(barb.glyph_path()),
+            std::borrow::Cow::Borrowed(""),
+        )
     };
     let ref_x = barb.ref_x;
     let viewport = if compatibility.native_marker == merman_theme_contract::v2::MarkerStyle::Classic
@@ -197,7 +206,7 @@ where
             r#"<defs><marker id="{}_stateDiagram-barbEnd" refX="{STATE_BARB_TIP_X}" refY="{STATE_BARB_CENTER_Y}" markerWidth="{STATE_BARB_VIEWPORT_WIDTH}" markerHeight="{STATE_BARB_VIEWPORT_HEIGHT}" markerUnits="{svg_units}" orient="auto"{viewport}><path d="{glyph_path}"{glyph_attributes}/></marker></defs><defs><marker id="{}_stateDiagram-barbEnd-margin" refX="{ref_x}" refY="{STATE_BARB_CENTER_Y}" markerWidth="{STATE_BARB_VIEWPORT_WIDTH}" markerHeight="{STATE_BARB_VIEWPORT_HEIGHT}" markerUnits="userSpaceOnUse" orient="auto"{viewport}><path d="{glyph_path}" fill="{}"{glyph_attributes}/></marker></defs>"#,
             escape_attr_display(diagram_id),
             escape_attr_display(diagram_id),
-            escape_xml(transition_color)
+            escape_attr(transition_color)
         );
     } else {
         let _ = write!(
@@ -479,8 +488,13 @@ where
     );
     let _ = write!(
         &mut css,
-        r#"#{} .stateGroup .alt-composit{{fill:#e0e0e0;border-bottom:1px;}}"#,
-        id
+        r#"#{} .stateGroup .alt-composit{{fill:{};border-bottom:1px;}}"#,
+        id,
+        if theme.composite_title_foreground.is_some() {
+            alt_background
+        } else {
+            "#e0e0e0"
+        }
     );
     let _ = write!(
         &mut css,
@@ -584,6 +598,12 @@ where
         r#"#{} .cluster-label,#{} .nodeLabel{{color:{};}}"#,
         id, id, state_label_color
     );
+    if let Some(ink) = &theme.composite_title_foreground {
+        let _ = write!(
+            &mut css,
+            "#{id} .cluster-label,#{id} .cluster-label .nodeLabel{{color:{ink};}}#{id} .cluster-label text{{fill:{ink};}}"
+        );
+    }
     let _ = write!(
         &mut css,
         r#"#{} .statediagram-cluster rect.outer{{rx:{radius}px;ry:{radius}px;}}"#,
@@ -755,8 +775,13 @@ where
     );
     let _ = write!(
         &mut css,
-        r#"#{} [data-look="neo"].node circle .state-start{{fill:#000000;}}"#,
-        id
+        r#"#{} [data-look="neo"].node circle .state-start{{fill:{};}}"#,
+        id,
+        if theme.composite_title_foreground.is_some() {
+            line_color
+        } else {
+            "#000000"
+        }
     );
     let _ = write!(
         &mut css,

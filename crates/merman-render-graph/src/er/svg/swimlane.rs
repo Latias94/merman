@@ -8,6 +8,7 @@ use std::collections::HashMap;
 pub(super) fn render_cluster(
     out: &mut impl SvgOutput,
     cluster: &LayoutCluster,
+    dom_id: &str,
     lane: &SwimlaneLaneLayout,
     paint: &ErSwimlanePaintLayout,
     subgraph: Option<&ErSubgraph>,
@@ -34,15 +35,11 @@ pub(super) fn render_cluster(
             classes.push_str(class);
         }
     }
-    let dom_id = subgraph.map_or_else(
-        || lane.id.clone(),
-        |_| format!("{}-{}", context.diagram_id, lane.id),
-    );
     let _ = write!(
         out,
         r#"<g class="{}" id="{}" data-id="{}" data-et="cluster" data-look="{}""#,
         escape_attr(&classes),
-        escape_attr(&dom_id),
+        escape_attr(dom_id),
         escape_attr(&lane.id),
         escape_attr(context.data_look),
     );
@@ -178,10 +175,30 @@ fn write_lane_rect(
     source: Option<&super::super::ErEntitySourceStyle>,
     context: ErSubgraphRenderContext<'_>,
 ) -> Result<()> {
+    use merman_markup::theme_color::{ColorChannel, ThemeColor};
+
     let stroke = source
         .and_then(|source| source.rect_value("stroke"))
         .unwrap_or(&context.theme.css_binding().cluster_border);
     if context.data_look == "handDrawn" {
+        let fill = fill.unwrap_or(&context.theme.css_binding().cluster_bkg);
+        let opacity = |property| source.and_then(|source| source.rect_value(property));
+        let fill_opacity = opacity("fill-opacity").unwrap_or("1");
+        let alpha = ThemeColor::parse(fill).map_or(1.0, |color| color.channel(ColorChannel::Alpha));
+        let opacity_value = |value: &str| {
+            let (number, scale) = value.strip_suffix('%').map_or((value, 1.0), |v| (v, 0.01));
+            number
+                .trim()
+                .parse::<f64>()
+                .ok()
+                .filter(|value| value.is_finite())
+                .map_or(1.0, |value| (value * scale).clamp(0.0, 1.0))
+        };
+        let hatch_opacity = if fill.eq_ignore_ascii_case("none") {
+            0.0
+        } else {
+            0.15 * alpha * opacity_value(fill_opacity)
+        };
         let stroke_width = source
             .and_then(|source| source.rect_value("stroke-width"))
             .and_then(|value| {
@@ -211,7 +228,7 @@ fn write_lane_rect(
             .fill_style(roughr::core::FillStyle::Hachure)
             .fill_weight(3.0)
             .hachure_gap(1.5);
-        if fill.is_some() {
+        if hatch_opacity > 0.0 {
             builder.fill(roughr::Srgba::new(0.0, 0.0, 0.0, 1.0));
         }
         let options = builder.build().map_err(|error| Error::InvalidModel {
@@ -231,24 +248,39 @@ fn write_lane_rect(
                 )
             },
         )?;
-        let _ = write!(out, r#"<g class="{}" {}>"#, escape_attr(class), style_attr);
+        let _ = write!(out, r#"<g class="{}""#, escape_attr(class));
+        if let Some(group_opacity) = opacity("opacity") {
+            let _ = write!(out, r#" style="opacity:{}""#, escape_attr(group_opacity));
+        }
+        let _ = write!(
+            out,
+            r#"><rect class="merman-rough-backing" x="{}" y="{}" width="{}" height="{}" fill="{}" stroke="none" style="fill:{} !important;fill-opacity:{};stroke:none !important"/>"#,
+            fmt(rect.x0),
+            fmt(rect.y0),
+            fmt(rect.width()),
+            fmt(rect.height()),
+            escape_attr(fill),
+            escape_attr(fill),
+            escape_attr(fill_opacity),
+        );
         for set in drawable.sets {
             let outline = set.op_set_type == roughr::core::OpSetType::Path;
-            let color = if outline {
-                stroke
-            } else {
-                fill.unwrap_or("none")
-            };
             let path = merman_render_core::rough_svg::ops_to_svg_path_d(&set);
+            let stroke_opacity = fmt(hatch_opacity).to_string();
             let _ = write!(
                 out,
-                r#"<path d="{}" stroke="{}" stroke-width="{}" stroke-dasharray="{}" fill="none"/>"#,
+                r#"<path d="{}" stroke="{}" stroke-width="{}" stroke-opacity="{}" stroke-dasharray="{}" fill="none"/>"#,
                 escape_attr(&path),
-                escape_attr(color),
+                escape_attr(stroke),
                 fmt(if outline {
                     f64::from(stroke_width)
                 } else {
                     3.0
+                }),
+                escape_attr(if outline {
+                    opacity("stroke-opacity").unwrap_or("1")
+                } else {
+                    &stroke_opacity
                 }),
                 escape_attr(if outline { dash } else { "0 0" })
             );
@@ -298,7 +330,7 @@ pub(super) fn render_relationship_label(
             message: format!("missing prepared Swimlane relationship terminal {index}"),
         })?;
     let dom_id = er_edge_dom_id(&edge.id, &model.relationships);
-    let label_id = format!("edge-label-{}-{}-{dom_id}", edge.from, edge.to);
+    let label_id = relationship_label_dom_id(edge, &dom_id);
     let _ = write!(
         out,
         r#"<g class="label edgeLabel" id="{}" transform="translate({}, {})"><rect width="0.1" height="0.1"/><g class="label" style="" transform="translate({}, {})"><rect/>"#,
@@ -328,6 +360,10 @@ pub(super) fn render_relationship_label(
     out.push_str("</g></g>");
     out.checkpoint()?;
     Ok(())
+}
+
+pub(super) fn relationship_label_dom_id(edge: &LayoutEdge, dom_id: &str) -> String {
+    format!("edge-label-{}-{}-{dom_id}", edge.from, edge.to)
 }
 
 pub(super) fn line_hop_paths<'a>(

@@ -68,7 +68,7 @@ mod elk_edge_geometry;
     )
 )]
 mod elk_feedback_edges;
-#[cfg(feature = "diagram-class")]
+#[cfg(all(feature = "diagram-class", feature = "layout-elk"))]
 use merman_render_core::graph_layout::elk_geometry;
 #[cfg(feature = "layout-elk")]
 #[cfg_attr(
@@ -146,11 +146,7 @@ mod graph_label;
     feature = "diagram-state",
     feature = "diagram-usecase",
     all(
-        any(
-            feature = "diagram-architecture",
-            feature = "diagram-block",
-            feature = "diagram-c4"
-        ),
+        any(feature = "diagram-architecture", feature = "diagram-c4"),
         feature = "layout-shoal"
     )
 ))]
@@ -422,6 +418,7 @@ impl Eq for LayoutAdaptationObservation {}
 
 impl LayoutAdaptationObservation {
     #[cfg(any(feature = "diagram-kanban", feature = "layout-shoal"))]
+    #[allow(dead_code, reason = "Only width-adapting families build this.")]
     pub(crate) fn fit_width(requested_width: f64, actual_width: f64) -> Self {
         debug_assert!(requested_width.is_finite() && requested_width > 0.0);
         debug_assert!(actual_width.is_finite() && actual_width >= 0.0);

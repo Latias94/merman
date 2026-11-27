@@ -363,6 +363,65 @@ impl AgentflowDiagramRenderModel {
             warning_facts: Vec::new(),
         };
         self.model.authored.apply_to_flowchart(&mut model);
+        model.edges = self
+            .edges
+            .iter()
+            .zip(model.edges)
+            .filter_map(|(source, mut edge)| {
+                let (from, to) = containment.rendered_edge_endpoints(source)?;
+                if edge.from != from {
+                    from.clone_into(&mut edge.from);
+                }
+                if edge.to != to {
+                    to.clone_into(&mut edge.to);
+                }
+                Some(edge)
+            })
+            .collect();
+        #[cfg(feature = "html-entities")]
+        {
+            use crate::families::flowchart::{
+                FlowchartLabelSourceOwner, flowchart_svg_text_source,
+            };
+            let record = |sources: &mut crate::families::flowchart::FlowchartRenderLabelSources,
+                          owner,
+                          text: &str,
+                          kind: Option<&str>| {
+                if kind != Some("markdown")
+                    && let Some(source) = flowchart_svg_text_source(text, text)
+                {
+                    sources.insert_svg_text(owner, source);
+                }
+            };
+            for node in &model.nodes {
+                if let Some(label) = &node.label {
+                    record(
+                        &mut model.label_sources,
+                        FlowchartLabelSourceOwner::Node(&node.id),
+                        label,
+                        node.label_type.as_deref(),
+                    );
+                }
+            }
+            for (index, edge) in model.edges.iter().enumerate() {
+                if let Some(label) = &edge.label {
+                    record(
+                        &mut model.label_sources,
+                        FlowchartLabelSourceOwner::Edge(index),
+                        label,
+                        edge.label_type.as_deref(),
+                    );
+                }
+            }
+            for (index, group) in model.subgraphs.iter().enumerate() {
+                record(
+                    &mut model.label_sources,
+                    FlowchartLabelSourceOwner::Subgraph(index, &group.id),
+                    &group.title,
+                    group.label_type.as_deref(),
+                );
+            }
+        }
         let collapsed = self
             .sub_graphs
             .iter()
@@ -370,7 +429,7 @@ impl AgentflowDiagramRenderModel {
             .map(|graph| graph.id.clone())
             .collect();
         let mut context = FlowchartRenderContext::new(
-            Default::default(),
+            model.label_sources.clone(),
             Default::default(),
             collapsed,
             &model.subgraphs,
@@ -388,21 +447,6 @@ impl AgentflowDiagramRenderModel {
                 .map(|(id, ancestor)| ((*id).to_string(), (*ancestor).to_string())),
         );
         context.set_subgraph_color_ordinals(containment.color_ordinals(&self.sub_graphs));
-        model.edges = self
-            .edges
-            .iter()
-            .zip(model.edges)
-            .filter_map(|(source, mut edge)| {
-                let (from, to) = containment.rendered_edge_endpoints(source)?;
-                if edge.from != from {
-                    from.clone_into(&mut edge.from);
-                }
-                if edge.to != to {
-                    to.clone_into(&mut edge.to);
-                }
-                Some(edge)
-            })
-            .collect();
         (model, context)
     }
 

@@ -74,6 +74,64 @@ fn marker_shape<'a, 'input>(
         .unwrap()
 }
 
+const SURFACE_INK: &str = "merman-edge-surface-ink";
+
+fn paint<'a, 'input>(node: Node<'a, 'input>, property: &str) -> Option<&'a str> {
+    node.attribute("style")
+        .into_iter()
+        .flat_map(|style| style.split(';'))
+        .filter_map(|declaration| declaration.split_once(':'))
+        .filter(|(name, _)| name.trim() == property)
+        .map(|(_, value)| value.trim().trim_end_matches("!important").trim())
+        .next_back()
+        .or_else(|| node.attribute(property))
+}
+
+fn surface_layer<'a, 'input>(
+    doc: &'a Document<'input>,
+    base: Node<'a, 'input>,
+) -> (Node<'a, 'input>, Node<'a, 'input>) {
+    let layer = base
+        .next_sibling_element()
+        .filter(|node| node.attribute("class") == Some(SURFACE_INK))
+        .unwrap_or_else(|| {
+            panic!(
+                "missing surface repaint for {:?}",
+                base.attribute("data-id")
+            )
+        });
+    let path = layer.first_element_child().unwrap();
+    assert_eq!(path.attribute("d"), base.attribute("d"));
+    assert_eq!(path.attribute("class"), base.attribute("class"));
+    assert_eq!(path.attribute("data-edge"), None);
+    for property in ["stroke-width", "stroke-dasharray", "stroke-dashoffset"] {
+        assert_eq!(paint(path, property), paint(base, property), "{property}");
+    }
+    let clip_id = layer
+        .attribute("clip-path")
+        .and_then(|value| value.strip_prefix("url(#"))
+        .and_then(|value| value.strip_suffix(')'))
+        .unwrap();
+    let frame = doc
+        .descendants()
+        .find(|node| node.has_tag_name("clipPath") && node.attribute("id") == Some(clip_id))
+        .and_then(|clip| clip.first_element_child())
+        .unwrap();
+    assert!(frame.has_tag_name("rect"));
+    for side in ["width", "height"] {
+        assert!(frame.attribute(side).unwrap().parse::<f64>().unwrap() > 0.0);
+    }
+    (path, frame)
+}
+
+fn assert_ink(ink: &str, surface: &str) {
+    use merman_theme_contract::v2::Color;
+
+    let ink = Color::parse(ink).unwrap();
+    let surface = Color::parse(surface).unwrap();
+    assert!(ink.contrast(surface) >= 3.0, "{ink} over {surface}");
+}
+
 fn assert_compound_paint(svg: &str, bidirectional: bool) {
     let doc = Document::parse(svg).unwrap();
     let inside = edge(&doc, "inside");
@@ -106,27 +164,14 @@ fn assert_compound_paint(svg: &str, bidirectional: bool) {
         marker_shape(&doc, authored, "marker-end").attribute("stroke"),
         Some("#D97706")
     );
-    let casings = doc
-        .descendants()
-        .find(|node| node.attribute("class") == Some("merman-edge-casings"))
-        .unwrap();
-    let paths: Vec<_> = casings.children().filter(Node::is_element).collect();
-    let [path] = paths.as_slice() else {
-        panic!("expected a casing only for the visible solid crossing");
-    };
-    assert_eq!(path.attribute("d"), cross.attribute("d"));
-    assert_eq!(path.attribute("stroke"), Some("#FAF7EC"));
-    assert_eq!(path.attribute("stroke-width"), Some("5"));
-    assert_eq!(path.attribute("stroke-linecap"), Some("round"));
-    assert_eq!(path.attribute("stroke-linejoin"), Some("round"));
+    let (path, _) = surface_layer(&doc, cross);
+    let ink = paint(path, "stroke").unwrap();
+    assert_ink(ink, "#161D2E");
+    assert_eq!(paint(path, "stroke-width"), Some("2px"));
     assert_ne!(path.attribute("marker-end"), cross.attribute("marker-end"));
-    let casing_marker = marker_shape(&doc, *path, "marker-end");
-    assert_eq!(casing_marker.attribute("fill"), Some("#FAF7EC"));
-    assert_eq!(casing_marker.attribute("stroke"), Some("#FAF7EC"));
-    assert_eq!(casing_marker.attribute("stroke-linecap"), Some("round"));
-    assert_eq!(casing_marker.attribute("stroke-linejoin"), Some("round"));
-    assert_eq!(path.attribute("data-edge"), None);
-    assert!(casings.range().end < inside.range().start);
+    let marker = marker_shape(&doc, path, "marker-end");
+    assert_eq!(marker.attribute("fill"), Some(ink));
+    assert_eq!(marker.attribute("stroke"), Some(ink));
 }
 
 #[cfg(feature = "diagram-flowchart")]
@@ -152,29 +197,17 @@ fn shoal_hand_drawn_edges_adapt_over_dark_cluster_and_hatches_have_a_backing() {
     );
     let doc = Document::parse(&svg).unwrap();
     let internal = edge(&doc, "inside");
-    assert!(
-        internal
-            .attribute("style")
-            .unwrap()
-            .contains("stroke:#FFFFFF;")
-    );
+    let internal_ink = paint(internal, "stroke").unwrap();
+    assert_ink(internal_ink, "#0B1120");
     for marker in ["marker-start", "marker-end"] {
         assert_eq!(
             marker_shape(&doc, internal, marker).attribute("stroke"),
-            Some("#FFFFFF")
+            Some(internal_ink)
         );
     }
     let crossing = edge(&doc, "crossing");
-    let casing = doc
-        .descendants()
-        .find(|node| {
-            node.has_tag_name("path")
-                && node.attribute("d") == crossing.attribute("d")
-                && node.parent().and_then(|parent| parent.attribute("class"))
-                    == Some("merman-edge-casings")
-        })
-        .expect("solid colored cluster has a casing on the actual rough crossing path");
-    assert_eq!(casing.attribute("stroke-dasharray"), Some("2"));
+    let (path, _) = surface_layer(&doc, crossing);
+    assert_ink(paint(path, "stroke").unwrap(), "#0B1120");
     for id in ["A", "DB"] {
         let node = doc
             .descendants()
@@ -213,13 +246,8 @@ fn shoal_flowchart_uses_the_parent_paint_at_a_nested_boundary() {
         false,
     );
     let doc = Document::parse(&svg).unwrap();
-    let casings = doc
-        .descendants()
-        .find(|node| node.attribute("class") == Some("merman-edge-casings"))
-        .unwrap();
-    let casing = casings.first_element_child().unwrap();
-    assert_eq!(casing.attribute("d"), edge(&doc, "cross").attribute("d"));
-    assert_eq!(casing.attribute("stroke"), Some("#DAE9F7"));
+    let (path, _) = surface_layer(&doc, edge(&doc, "cross"));
+    assert_ink(paint(path, "stroke").unwrap(), "#3C4559");
     assert!(
         edge(&doc, "inside")
             .attribute("style")
@@ -242,7 +270,7 @@ fn shoal_flowchart_skips_transparent_fills_and_authored_invisible_strokes() {
         ),
         false,
     );
-    assert!(!svg.contains("merman-edge-casings"));
+    assert!(!svg.contains(SURFACE_INK));
     let doc = Document::parse(&svg).unwrap();
     assert!(
         !edge(&doc, "inside")
@@ -284,7 +312,7 @@ fn flowchart_parity_backends_keep_the_original_edge_paint_with_the_same_theme() 
         "elk",
     ] {
         let svg = render("flowchart", backend, "classic", COMPOUND, false);
-        assert!(!svg.contains("merman-edge-casings"));
+        assert!(!svg.contains(SURFACE_INK));
         let doc = Document::parse(&svg).unwrap();
         assert!(
             !edge(&doc, "inside")
@@ -315,17 +343,8 @@ fn shoal_flowchart_default_theme_cases_solid_crossing_into_dark_cluster_without_
             .render_svg(&Default::default(), &Default::default())
             .unwrap();
         let doc = Document::parse(svg.svg()).unwrap();
-        let casings = doc
-            .descendants()
-            .find(|node| node.attribute("class") == Some("merman-edge-casings"))
-            .unwrap_or_else(|| {
-                panic!(
-                    "expected cross-boundary casing under default theme ({theme_line:?}) without explicit canvas flag"
-                )
-            });
-        let casing = casings.first_element_child().unwrap();
-        assert_eq!(casing.attribute("stroke"), Some("#FFFFFF"));
-        assert_eq!(casing.attribute("d"), edge(&doc, "cross").attribute("d"));
+        let (path, _) = surface_layer(&doc, edge(&doc, "cross"));
+        assert_ink(paint(path, "stroke").unwrap(), "#0B1120");
         assert!(
             edge(&doc, "inside")
                 .attribute("style")
@@ -435,9 +454,7 @@ fn shoal_node_to_nested_subgraph_edges_get_adaptive_ink_in_dark_and_light_cluste
 
 #[cfg(feature = "diagram-flowchart")]
 #[test]
-fn shoal_casing_color_avoids_same_color_casing_and_similarly_dark_crossings_adapt_ink() {
-    // Dark outer (#0B1120) -> light inner (#F8FAFC) under light theme (#333333 ink):
-    // casing must pick high-contrast #F8FAFC, NOT dark #0B1120!
+fn shoal_nested_crossings_repaint_in_surface_order() {
     let svg = render(
         "flowchart",
         "shoal",
@@ -447,15 +464,12 @@ fn shoal_casing_color_avoids_same_color_casing_and_similarly_dark_crossings_adap
         false,
     );
     let doc = Document::parse(&svg).unwrap();
-    let casings = doc
-        .descendants()
-        .find(|node| node.attribute("class") == Some("merman-edge-casings"))
-        .expect("expected casing for dark-to-light nested crossing");
-    let casing = casings.first_element_child().unwrap();
-    assert_eq!(casing.attribute("stroke"), Some("#F8FAFC"));
+    let base = edge(&doc, "cross");
+    assert_ink(paint(base, "stroke").unwrap_or("#202938"), "#0B1120");
+    let (path, _) = surface_layer(&doc, base);
+    assert_ink(paint(path, "stroke").unwrap(), "#F8FAFC");
 
-    // Authored white stroke crossing from light canvas (#FAF7EC) into dark cluster (#0B1120):
-    // casing must pick dark #0B1120, NOT low-contrast #FAF7EC!
+    // The authored white is legible on the destination but needs adapting on the canvas.
     let svg = render(
         "flowchart",
         "shoal",
@@ -464,15 +478,11 @@ fn shoal_casing_color_avoids_same_color_casing_and_similarly_dark_crossings_adap
         false,
     );
     let doc = Document::parse(&svg).unwrap();
-    let casings = doc
-        .descendants()
-        .find(|node| node.attribute("class") == Some("merman-edge-casings"))
-        .expect("expected casing for authored white crossing into dark cluster");
-    let casing = casings.first_element_child().unwrap();
-    assert_eq!(casing.attribute("stroke"), Some("#0B1120"));
+    let base = edge(&doc, "cross");
+    assert_ink(paint(base, "stroke").unwrap(), "#FAF7EC");
+    let (path, _) = surface_layer(&doc, base);
+    assert_ink(paint(path, "stroke").unwrap(), "#0B1120");
 
-    // Crossing between similarly dark nested clusters (#0B1120 -> #0F172A) has no significant
-    // boundary contrast for casing, so it must fall back to adaptive #FFFFFF ink!
     let svg = render(
         "flowchart",
         "shoal",

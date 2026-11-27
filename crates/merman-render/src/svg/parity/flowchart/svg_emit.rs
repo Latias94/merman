@@ -1,6 +1,4 @@
-use merman_render_flow::document::{
-    FlowchartDocumentScope, FlowchartSvgDocumentRequest, prepare_flowchart_svg_document,
-};
+use merman_render_flow::document::{FlowchartSvgDocumentRequest, prepare_flowchart_svg_document};
 use merman_render_flow::stylesheet::{FlowchartStylesheetRequest, SwimlaneStylesheet};
 
 use super::defs::{FlowchartMarkerEmissionPlan, prepare_flowchart_defs};
@@ -99,7 +97,8 @@ pub(super) fn render_flowchart_svg_model(
             let use_max_width = render_config.use_max_width;
             let title_top_margin = render_config.title_top_margin;
             let mut edge_fills = FlowchartEdgeFillPlan::default();
-            let marker_plan = if FlowchartEdgeFillPlan::applies(ctx) {
+            let adaptive_edges = FlowchartEdgeFillPlan::applies(ctx);
+            let marker_plan = if adaptive_edges {
                 // Route painting consumes stroke widths before fill-aware marker colors are known.
                 for edge in hierarchy_plan.ordered_edges() {
                     FlowchartMarkerEmissionPlan::bind_path_sources_for(
@@ -157,20 +156,9 @@ pub(super) fn render_flowchart_svg_model(
                 hierarchy_plan,
             )?;
 
-            let cutout_labels = layout.route_contract.is_canonical_axis()
-                && swimlane_layout.is_none()
-                && diagram_type != "agentflow"
-                && options
-                    .family
-                    .session()
-                    .canvas_background()
-                    .or_else(|| ctx.native.map(|native| native.canvas))
-                    .is_some_and(|canvas| canvas.channels()[3] == 0);
+            let cutout_labels = super::edge_label_cutout::applies(ctx, options);
             // These plans follow the visible shaft, including RoughJS displacement.
-            if marker_plan.is_none()
-                || cutout_labels
-                || !ctx.hand_drawn_seed.seed().may_use_math_random()
-            {
+            if super::paint::paints_rough_edges_first(ctx, adaptive_edges, cutout_labels) {
                 super::paint::prepare_rough_edge_paths(
                     ctx,
                     hierarchy_plan.ordered_edges(),
@@ -187,12 +175,6 @@ pub(super) fn render_flowchart_svg_model(
                         &edge_path_cache,
                         options,
                     )?;
-                    if let Some(bounds) = edge_fills.casing_bounds() {
-                        bbox_min_x = bbox_min_x.min(bounds.x0);
-                        bbox_min_y = bbox_min_y.min(bounds.y0);
-                        bbox_max_x = bbox_max_x.max(bounds.x1);
-                        bbox_max_y = bbox_max_y.max(bounds.y1);
-                    }
                     FlowchartMarkerEmissionPlan::prepare(ctx, hierarchy_plan, &edge_fills)?
                 }
             };
@@ -214,6 +196,7 @@ pub(super) fn render_flowchart_svg_model(
             let document = prepare_flowchart_svg_document(FlowchartSvgDocumentRequest {
                 root_viewport: options.root_viewport(options.family_id(), diagram_id),
                 document_scope,
+                uses_elk_adapter_dom: ctx.uses_elk_adapter_dom,
                 use_max_width,
                 diagram_padding,
                 source_paint_bounds,
@@ -260,6 +243,7 @@ pub(super) fn render_flowchart_svg_model(
                 },
                 &prepared_theme.compatibility.look_defs,
                 |out| {
+                    edge_fills.write_clips(out, ctx)?;
                     let defs = prepare_flowchart_defs(
                         document_ids.marker_scope(),
                         diagram_type,
@@ -292,36 +276,16 @@ pub(super) fn render_flowchart_svg_model(
                         edge_labels: &mut edge_labels,
                         step_badges: &step_badges,
                     };
-                    if layout.route_contract.is_elk_parity() {
-                        out.push_str("<g>");
+                    if ctx.uses_elk_adapter_dom {
                         defs.push_base_markers(out)?;
                         out.checkpoint()?;
                         defs.push_extra_markers(out)?;
                         out.checkpoint()?;
                         render_flowchart_elk_root_groups(out, ctx, &mut root_session)?;
-                        out.push_str("</g>");
-                        // The shadow filters are siblings of Mermaid's marker/root wrapper,
-                        // rather than children of the wrapper that owns the painted graph.
-                        push_flowchart_shadow_defs(
-                            out,
-                            document_scope,
-                            &prepared_theme.compatibility.look_defs,
-                        );
-                        out.checkpoint()?;
                     } else {
-                        push_flowchart_shadow_defs(
-                            out,
-                            document_scope,
-                            &prepared_theme.compatibility.look_defs,
-                        );
-                        out.checkpoint()?;
-                        out.push_str("<g>");
                         defs.push_base_markers(out)?;
                         render_flowchart_root(out, ctx, None, 0.0, 0.0, &mut root_session)?;
-
                         defs.push_extra_markers(out)?;
-                        out.push_str("</g>");
-                        out.checkpoint()?;
                     }
                     Ok(ctx.steps.emitted())
                 },
@@ -472,23 +436,6 @@ mod tests {
         assert!(!elk.contains_key("group"));
         assert!(!elk.contains_key("empty"));
     }
-}
-
-fn push_flowchart_shadow_defs(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    document_scope: &FlowchartDocumentScope,
-    prepared: &crate::svg::PreparedLookDefs,
-) {
-    let flood_color = prepared.flood_color();
-    let offset = merman_render_core::theme_svg::NEO_SHADOW_OFFSET_PX;
-    let _ = write!(
-        out,
-        r#"<defs><filter id="{}" height="130%" width="130%"><feDropShadow dx="{offset}" dy="{offset}" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs><defs><filter id="{}" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
-        document_scope.drop_shadow(),
-        flood_color,
-        document_scope.drop_shadow_small(),
-        flood_color
-    );
 }
 
 #[cfg(all(test, feature = "diagram-flowchart"))]

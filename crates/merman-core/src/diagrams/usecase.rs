@@ -1,57 +1,37 @@
-//! Native Mermaid 12 Usecase grammar and transactional semantic construction.
-//!
-//! Grammar, declaration merging, and deferred resolution follow the pinned upstream
-//! `usecase.parser.ts`, `usecase.visitor.ts`, and `usecaseModelBuilder.ts`.
+//! Usecase source diagnostics and semantic projections.
 
-#[cfg(feature = "editor-facts")]
-use crate::EditorSemanticFacts;
+#[cfg(test)]
+use crate::SourceSpan;
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
-use crate::{Error, OperationControl, OperationControlResult, SourceSpan, family};
+#[cfg(feature = "editor-facts")]
+use crate::{
+    EditorRenamePolicy, EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole,
+    EditorSemanticSymbol,
+};
+use crate::{Error, OperationControl, OperationControlResult, family};
 #[cfg(feature = "presentation")]
 use crate::{Result, SourcePresentationMetadata};
-pub(crate) use merman_model::families::usecase::{
-    UsecaseActorType, UsecaseAnimation, UsecaseArrowType, UsecaseBoundary, UsecaseClassDef,
-    UsecaseDiagramModel, UsecaseJsonInfinity, UsecaseJsonNode, UsecaseJsonStringEncoding,
-    UsecaseLabelType, UsecaseNode, UsecaseNodeKind, UsecaseNote, UsecaseRelationship,
-    UsecaseRelationshipType,
-};
-use serde_json::Value;
-
-mod json_string;
-mod lexer;
-mod ordered_json;
-mod parse;
-mod resolve;
-
-/// Whether an unquoted spelling is one complete identifier in the pinned grammar.
+use merman_core_graph::usecase::ParseIssue;
 #[cfg(feature = "editor-facts")]
-pub(crate) fn is_valid_editor_identifier(candidate: &str) -> bool {
-    if candidate.is_empty()
-        || is_forbidden_statement_identifier(candidate)
-        || !candidate
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
-    {
-        return false;
-    }
-    let Ok(Ok(tokens)) = lexer::lex(candidate, &OperationControl::new()) else {
-        return false;
-    };
-    tokens.len() == 2 && tokens[0].kind == lexer::TokenKind::Identifier
-}
-
-fn is_forbidden_statement_identifier(candidate: &str) -> bool {
-    [
-        "allowmixing",
-        "newpage",
-        "package",
-        "rectangle",
-        "skinparam",
-    ]
-    .iter()
-    .any(|keyword| candidate.eq_ignore_ascii_case(keyword))
-}
+pub(crate) use merman_core_graph::usecase::is_valid_editor_identifier;
+#[cfg(not(feature = "editor-facts"))]
+use merman_core_graph::usecase::parse_usecase_source_controlled;
+#[cfg(feature = "editor-facts")]
+use merman_core_graph::usecase::{
+    UsecaseBinding, UsecaseBindings, UsecaseEditorObserver, UsecaseOccurrence,
+    UsecaseOccurrenceKind, UsecaseOccurrenceRole,
+    parse_usecase_source_observed_controlled as parse_usecase_source_controlled,
+};
+use merman_model::families::usecase::UsecaseDiagramModel;
+#[cfg(test)]
+use merman_model::families::usecase::UsecaseNodeKind;
+#[cfg(all(test, feature = "compat-json"))]
+use merman_model::families::usecase::{
+    UsecaseActorType, UsecaseAnimation, UsecaseJsonNode, UsecaseLabelType, UsecaseRelationshipType,
+};
+#[cfg(feature = "compat-json")]
+use serde_json::Value;
 
 pub(crate) fn sanitize_common_db_fields(
     model: &mut UsecaseDiagramModel,
@@ -60,21 +40,6 @@ pub(crate) fn sanitize_common_db_fields(
     crate::common_db::sanitize_optional_title(&mut model.title, config);
     crate::common_db::sanitize_optional_acc_title(&mut model.acc_title, config);
     crate::common_db::sanitize_optional_acc_descr(&mut model.acc_description, config);
-}
-
-#[derive(Debug)]
-struct ParseIssue {
-    message: String,
-    span: SourceSpan,
-}
-
-impl ParseIssue {
-    fn new(message: impl Into<String>, span: SourceSpan) -> Self {
-        Self {
-            message: message.into(),
-            span,
-        }
-    }
 }
 
 pub(crate) fn parse_usecase_semantic_model_controlled(
@@ -227,54 +192,127 @@ fn construct_usecase_semantic_source_controlled(
     control.checkpoint()?;
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("usecase");
-    let tokens = match lexer::lex(code, control)? {
-        Ok(tokens) => tokens,
-        Err(issue) => {
-            return Ok(Err(failure(
-                diagram_type,
-                issue,
-                #[cfg(feature = "editor-facts")]
-                EditorSemanticFacts::new(),
-                #[cfg(feature = "editor-facts")]
-                editor_demand,
-            )));
-        }
-    };
-    let mut parser = parse::Parser::new(
-        code,
-        tokens,
-        #[cfg(feature = "editor-facts")]
-        editor_demand,
-        control,
-    );
-    let parsed = parser.parse()?;
     #[cfg(feature = "editor-facts")]
-    parser.finalize_editor_facts()?;
-    if let Err(issue) = parsed {
-        return Ok(Err(failure(
-            diagram_type,
-            issue,
-            #[cfg(feature = "editor-facts")]
-            parser.facts,
-            #[cfg(feature = "editor-facts")]
-            editor_demand,
-        )));
-    }
-    let model = resolve::resolve(&parser.draft, title, control)?;
+    let mut editor_facts = EditorSemanticFacts::new();
+    #[cfg(feature = "editor-facts")]
+    let mut observer = UsecaseEditorProjection(&mut editor_facts);
+    let model = parse_usecase_source_controlled(
+        code,
+        title,
+        #[cfg(feature = "editor-facts")]
+        editor_demand
+            .captures_rich()
+            .then_some(&mut observer as &mut dyn UsecaseEditorObserver),
+        control,
+    )?;
     match model {
         Ok(model) => Ok(Ok(Construction {
             model,
             #[cfg(feature = "editor-facts")]
-            editor_facts: parser.facts,
+            editor_facts,
         })),
         Err(issue) => Ok(Err(failure(
             diagram_type,
             issue,
             #[cfg(feature = "editor-facts")]
-            parser.facts,
+            editor_facts,
             #[cfg(feature = "editor-facts")]
             editor_demand,
         ))),
+    }
+}
+
+#[cfg(feature = "editor-facts")]
+struct UsecaseEditorProjection<'a>(&'a mut EditorSemanticFacts);
+
+#[cfg(feature = "editor-facts")]
+impl UsecaseEditorObserver for UsecaseEditorProjection<'_> {
+    fn begin(&mut self, directives: &[&str]) {
+        #[cfg(test)]
+        crate::editor::test_work::record_collection();
+        for &directive in directives {
+            self.0.push_directive_prefix(directive);
+        }
+    }
+
+    fn record(&mut self, occurrence: UsecaseOccurrence<'_>) {
+        use UsecaseOccurrenceRole::{ClassDefinition, Declaration, Payload, Reference};
+
+        let (role, generated) = match occurrence.role {
+            Declaration { generated } => (EditorSemanticRole::Entity, generated),
+            Reference { generated } => (EditorSemanticRole::Reference, generated),
+            ClassDefinition => (EditorSemanticRole::ClassDefinition, false),
+            Payload => (EditorSemanticRole::Payload, false),
+        };
+        let mut symbol = EditorSemanticSymbol::with_role(
+            occurrence.name,
+            occurrence.detail.map(str::to_owned),
+            usecase_editor_kind(occurrence.kind),
+            role,
+            occurrence.span,
+            occurrence.selection,
+        );
+        if matches!(
+            role,
+            EditorSemanticRole::Entity | EditorSemanticRole::Reference
+        ) {
+            symbol.rename_policy = if generated {
+                EditorRenamePolicy::None
+            } else {
+                EditorRenamePolicy::UsecaseIdentifier
+            };
+        }
+        self.0.push_symbol(symbol);
+    }
+
+    fn bind(
+        &mut self,
+        bindings: &UsecaseBindings<'_>,
+        control: &OperationControl,
+    ) -> OperationControlResult<()> {
+        let mut defined = std::collections::HashSet::new();
+        for symbol in &self.0.symbols {
+            control.checkpoint()?;
+            if symbol.role == EditorSemanticRole::Entity {
+                defined.insert(symbol.name.clone());
+            }
+        }
+        for symbol in &mut self.0.symbols {
+            control.checkpoint()?;
+            if !matches!(
+                symbol.role,
+                EditorSemanticRole::Entity | EditorSemanticRole::Reference
+            ) {
+                continue;
+            }
+            match bindings.get(&symbol.name) {
+                UsecaseBinding::Resolved(kind) => {
+                    symbol.kind = usecase_editor_kind(kind);
+                    if symbol.role == EditorSemanticRole::Reference
+                        && defined.insert(symbol.name.clone())
+                    {
+                        symbol.role = EditorSemanticRole::Entity;
+                    }
+                }
+                UsecaseBinding::Ambiguous => symbol.rename_policy = EditorRenamePolicy::None,
+                UsecaseBinding::Unbound => {}
+            }
+        }
+        Ok(())
+    }
+}
+
+#[cfg(feature = "editor-facts")]
+fn usecase_editor_kind(kind: UsecaseOccurrenceKind) -> EditorSemanticKind {
+    match kind {
+        UsecaseOccurrenceKind::Actor => EditorSemanticKind::Variable,
+        UsecaseOccurrenceKind::Usecase => EditorSemanticKind::Function,
+        UsecaseOccurrenceKind::Boundary => EditorSemanticKind::Namespace,
+        UsecaseOccurrenceKind::Object => EditorSemanticKind::Object,
+        UsecaseOccurrenceKind::Relationship => EditorSemanticKind::Event,
+        UsecaseOccurrenceKind::Class => EditorSemanticKind::Class,
+        UsecaseOccurrenceKind::Property => EditorSemanticKind::Property,
+        UsecaseOccurrenceKind::Label => EditorSemanticKind::String,
     }
 }
 

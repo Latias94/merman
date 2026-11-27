@@ -19,7 +19,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_odd(
             out,
             r#"<g class="basic label-container outer-path" transform="translate({},0)" style="{}">"#,
             fmt(dx),
-            escape_attr(common.rough_group_style),
+            escape_attr(helpers::hand_drawn_group_style(common)),
         );
         helpers::write_hand_drawn_path_pair(out, common, &path_data, &fill_d, &stroke_d);
         out.push_str("</g>");

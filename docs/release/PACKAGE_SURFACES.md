@@ -82,10 +82,13 @@ compatible version requirements and intentional upgrade exceptions.
 | VS Code integration | `merman-vscode` | GitHub Actions VSIX artifact |
 
 `merman-core-preprocess` provides source editing, byte-span mapping, and controlled token scanning
-behind `merman-core`. `merman-core-flow` provides Flowchart and Swimlane parsing and Agentflow's
-shared presentation lexer. `merman-core-graph` owns syntax and semantic replay for Class, ER,
-GitGraph, and State. `merman-core-sequence` owns Sequence syntax and semantic replay.
-`merman-core-structured` provides Packet syntax parsing and the four Railroad dialects.
+behind `merman-core`. `merman-core-flow` provides parsing and model construction for Agentflow,
+Flowchart, and Swimlane. `merman-core-graph` owns syntax and semantic replay for Architecture, C4,
+Class, ER, GitGraph, Mindmap, Requirement, State, and Usecase. `merman-core-sequence` owns Sequence and
+ZenUML syntax and semantic replay.
+`merman-core-structured` owns source parsing and model construction for Block, Cynefin, Event
+Modeling, Gantt, Info, Ishikawa, Journey, Kanban, Packet, Pie, Quadrant Chart, Radar, Railroad, Sankey,
+Timeline, Tree View, Treemap, Venn, Wardley, and XY Chart.
 `merman-render-core` provides layout geometry, bounded SVG writing, and shared CSS and text
 contracts. `merman-render-structured` provides complete layout and SVG for Block, Cynefin, Event
 Modeling, Gantt, Info, Ishikawa, Journey, Kanban, Packet, Railroad, Timeline, and Tree View.
@@ -95,8 +98,9 @@ Modeling, Gantt, Info, Ishikawa, Journey, Kanban, Packet, Railroad, Timeline, an
 Quadrant Chart, Radar, Sankey, Treemap, and Venn layout through `diagram-quadrant-chart`,
 `diagram-radar`, `diagram-sankey`, `diagram-treemap`, and `diagram-venn`.
 `diagram-xychart` selects XY Chart layout and plot geometry.
-`merman-render-flow` provides shape geometry, authored styling and the parity SVG document through
-`diagram-flowchart`, `diagram-swimlane`, and `diagram-agentflow`.
+`merman-render-flow` provides shape geometry, authored styling, hierarchy indexes, and the
+parity SVG document, markers, and edge paths through `diagram-flowchart`, `diagram-swimlane`,
+and `diagram-agentflow`.
 `merman-render-graph` provides complete SVG writers for Architecture, C4, Class, ER, GitGraph,
 Mindmap, Requirement, State, and Usecase.
 `merman-render-sequence` provides complete layout and SVG for Sequence and ZenUML through

@@ -5,7 +5,7 @@ use merman_model::{
     presentation::PresentationConfig,
 };
 use merman_render_core::{
-    Bounds, LayoutEdge, LayoutNode, LayoutPoint, Result,
+    Bounds, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, Result,
     layout_work::OperationLayoutWorkControl,
     math::MathRenderer,
     text::{TextMeasurer, TextMetrics, TextStyle},
@@ -78,6 +78,23 @@ pub fn package_tab_size(label: &UsecaseLabelPlan) -> (f64, f64) {
         MIN_WIDTH.max(label.metrics.width + 2.0 * PADDING_X),
         label.metrics.height + 2.0 * PADDING_Y,
     )
+}
+
+/// Left edge, width and height of the drawn tab measured from the boundary's top.
+pub fn package_tab_geometry(
+    left: f64,
+    top: f64,
+    width: f64,
+    label: &UsecaseLabelPlan,
+    placed_title: Option<&LayoutLabel>,
+) -> (f64, f64, f64) {
+    let (tab_width, tab_height) = package_tab_size(label);
+    let tab_width = width.min(placed_title.map_or(tab_width, |title| title.width));
+    let x = placed_title.map_or(left, |title| {
+        (title.x - tab_width / 2.0).clamp(left, (left + width - tab_width).max(left))
+    });
+    let height = placed_title.map_or(tab_height, |title| title.y - top + title.height / 2.0);
+    (x, tab_width, height)
 }
 
 #[derive(Debug, Clone)]
@@ -269,6 +286,23 @@ pub(crate) fn create_text_source(text: &str, kind: UsecaseLabelType) -> std::bor
                 .replace('>', "&gt;"),
         ),
     }
+}
+
+fn sanitize_source_label(
+    text: &str,
+    kind: UsecaseLabelType,
+    config: &PresentationConfig,
+) -> String {
+    let text = merman_markup::sanitize::sanitize_text(text, config.as_config());
+    if cfg!(feature = "layout-shoal")
+        && config.get_str("layout") == Some("shoal")
+        && kind == UsecaseLabelType::Text
+        && let std::borrow::Cow::Owned(decoded) =
+            merman_render_core::entities::decode_svg_text_content_entities(&text)
+    {
+        return decoded;
+    }
+    text
 }
 
 pub fn requires_math(

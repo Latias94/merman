@@ -11,7 +11,7 @@ mod css;
 mod html;
 mod transform;
 
-use crate::svg::foreign_objects::ForeignObjectSwitches;
+use crate::svg::foreign_objects::{ForeignObjectSwitches, MAX_SELECTOR_ANCESTRY_DEPTH};
 use crate::svg::pipeline::{
     SvgPostprocessExecution, SvgStructureMetrics, SvgTagScanner, checkpoint_loop, end_tag_name,
     escape_xml_attr_with_checkpoints, escape_xml_text_with_checkpoints,
@@ -25,6 +25,14 @@ use std::fmt::{self, Write};
 use attr::is_self_closing;
 use cascade::{CascadeIndex, Namespace, SourceElement};
 use context::{SourceFrame, attribute, source_class_attr_tokens};
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-class",
+    feature = "diagram-er",
+    feature = "diagram-flowchart",
+    feature = "diagram-mindmap",
+    feature = "diagram-swimlane"
+))]
 pub(crate) use html::measure_styled_html_label;
 use html::{
     foreign_object_html_wrapping, normalized_foreign_object_text, standalone_node_label_box,
@@ -134,12 +142,9 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
     let mut source_stack: Vec<SourceElement> = Vec::new();
     let mut source_stack_overflow_depth = 0usize;
     let mut cascade_index = None;
-    let ancestry_limit = cascade::MAX_SELECTOR_ANCESTRY_DEPTH;
+    let ancestry_limit = MAX_SELECTOR_ANCESTRY_DEPTH;
     let switches = ForeignObjectSwitches::scan(svg, checkpoint, |depth| {
-        if depth > ancestry_limit {
-            selector_limit(depth, ancestry_limit)?;
-        }
-        Ok(())
+        selector_limit(depth, ancestry_limit)
     })?;
     let mut scanner = SvgTagScanner::new(svg);
     let mut root_name = None;

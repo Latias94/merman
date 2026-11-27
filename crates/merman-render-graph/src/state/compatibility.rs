@@ -392,6 +392,7 @@ pub struct StateCompatibilityPlan {
     pub(crate) state_border: String,
     end_inner_fill: String,
     pub(crate) composite_title_background: String,
+    pub(crate) composite_title_foreground: Option<String>,
     pub(crate) state_label_color: String,
     pub(crate) drop_shadow: String,
     pub(crate) use_gradient: bool,
@@ -579,6 +580,7 @@ impl StateCompatibilityPlan {
             state_border: border_css,
             end_inner_fill: connector,
             composite_title_background,
+            composite_title_foreground: Some(roles.text_on_emphasis.to_string()),
             state_label_color: primary,
             drop_shadow: "none".to_owned(),
             use_gradient: false,
@@ -847,6 +849,7 @@ impl StateCompatibilityPlan {
             state_border: state_border.value,
             end_inner_fill: end_inner_fill.value,
             composite_title_background: composite_title_background.value,
+            composite_title_foreground: None,
             state_label_color: state_label_color.value,
             drop_shadow: drop_shadow.value,
             use_gradient: use_gradient.value,
@@ -1007,7 +1010,13 @@ impl StateCompatibilityPlan {
                 | SpecialStartNeo,
                 StrokeWidth,
             ) => StateTerminalPaintRef::Css("1"),
-            (CompositeDividerHandDrawn, Fill) => StateTerminalPaintRef::Css("lightgrey"),
+            (CompositeDividerHandDrawn, Fill) => {
+                StateTerminalPaintRef::Css(if self.native_edge_style.is_some() || self.dark_mode {
+                    &self.alt_background
+                } else {
+                    "lightgrey"
+                })
+            }
             (
                 CompositeBodyNeo | CompositeBodyNeoAlt | CompositeDividerNeo | CompositeHeaderNeo,
                 Stroke,

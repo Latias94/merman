@@ -38,7 +38,10 @@ fn admit_paint_clearance(
     }
     let shapes = work.checked_add(nodes, clusters)?;
     work.charge_adapter(work.checked_add(shapes, edges)?)?;
-    let boxes = work.checked_add(shapes, labels)?;
+    let boxes = work.checked_add(
+        work.checked_add(shapes, labels)?,
+        work.checked_mul(edges, 2)?,
+    )?;
     let levels = boxes.checked_ilog2().unwrap_or(0) as usize + 1;
     work.charge_adapter(work.checked_mul(boxes, levels)?)
 }

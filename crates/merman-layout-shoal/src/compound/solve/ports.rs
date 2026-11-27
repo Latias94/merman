@@ -575,7 +575,7 @@ pub(super) fn beside_title(
     if title.width == 0.0 || title.height == 0.0 {
         return Ok(());
     }
-    let mut slots = Vec::new();
+    let (mut slots, mut fixed) = (Vec::new(), Vec::new());
     let mut obstructed = false;
     let margin = fit.title_margin();
     let mut clearance = margin;
@@ -590,20 +590,20 @@ pub(super) fn beside_title(
         let End::Border { hint, .. } = wire.ends[end] else {
             unreachable!()
         };
-        let fixed = matches!(hint, PortSideHint::FixedOffset { .. });
+        let pinned = matches!(hint, PortSideHint::FixedOffset { .. });
         let at = ports[slot].x;
-        if !fixed {
+        if !pinned {
             let half = wire.title_clearance(end, margin);
             clearance = clearance.max(half);
             obstructed |= at > title.x - half && at < title.x + title.width + half;
         }
         push(
-            &mut slots,
+            if pinned { &mut fixed } else { &mut slots },
             Slot {
                 wire: slot,
                 end,
                 at,
-                fixed,
+                fixed: pinned,
             },
         )?;
     }
@@ -615,42 +615,66 @@ pub(super) fn beside_title(
     let left = (title.x - clearance).min(width - inset);
     let right = (title.x + title.width + clearance).max(inset);
     let pitch = options.spacing.min_port_pitch;
-    let capacity = |available: f64| {
-        if available < 0.0 {
-            0
-        } else if pitch > 0.0 {
-            ((available / pitch).floor() as usize)
-                .saturating_add(1)
-                .min(slots.len())
-        } else {
-            slots.len()
+    for face in [&mut slots, &mut fixed] {
+        work.charge_sort(face.len())?;
+        face.sort_unstable_by(|a, b| a.at.total_cmp(&b.at).then(a.wire.cmp(&b.wire)));
+        work.check()?;
+    }
+    let mut anchors = reserved(fixed.len())?;
+    work.visit(fixed.len())?;
+    anchors.extend(fixed.iter().map(|slot| slot.at));
+    let capacity = |lo: f64, hi: f64, work: &mut Work<'_>| -> LayoutResult<usize> {
+        if hi < lo {
+            return Ok(0);
         }
+        if pitch == 0.0 {
+            return Ok(slots.len());
+        }
+        if anchors.is_empty() {
+            return Ok((((hi - lo) / pitch).floor() as usize)
+                .saturating_add(1)
+                .min(slots.len()));
+        }
+        let mut at = lo;
+        for n in 0..slots.len() {
+            at = clear_across(at, &anchors, pitch, work)?;
+            if at > hi {
+                return Ok(n);
+            }
+            at += pitch;
+        }
+        Ok(slots.len())
     };
-    let left_count = capacity(left - inset);
-    let right_count = capacity(width - inset - right);
-    let mut order = reserved(slots.len())?;
-    order.extend(0..slots.len());
-    work.sort(&mut order, |&first, &second| {
-        slots[first]
-            .at
-            .total_cmp(&slots[second].at)
-            .then(first.cmp(&second))
-    })?;
-    let mut sorted = reserved(slots.len())?;
-    sorted.extend(order.into_iter().map(|index| slots[index]));
+    let left_count = capacity(inset, left, work)?;
+    let right_count = capacity(right, width - inset, work)?;
     let middle = title.center().x;
-    let lower = sorted.partition_point(|slot| slot.at < middle);
-    let upper = sorted.partition_point(|slot| slot.at <= middle);
+    let lower = slots.partition_point(|slot| slot.at < middle);
+    let upper = slots.partition_point(|slot| slot.at <= middle);
     let split = (lower + (upper - lower).div_ceil(2))
-        .max(sorted.len().saturating_sub(right_count))
+        .max(slots.len().saturating_sub(right_count))
         .min(left_count);
-    let (before, after) = sorted.split_at_mut(split);
-    for (batch, lo, hi) in [(before, inset, left), (after, right, width - inset)] {
-        if lo > hi {
+    let (before, after) = slots.split_at(split);
+    let count = slots
+        .len()
+        .checked_add(fixed.len())
+        .ok_or(WorkError::ArithmeticOverflow)?;
+    work.charge(count)?;
+    let mut batch = reserved(count)?;
+    for (movable, lo, hi) in [(before, inset, left), (after, right, width - inset)] {
+        if lo > hi || movable.is_empty() {
             continue;
         }
-        spread(batch, lo, hi, pitch, work)?;
-        for slot in batch.iter().filter(|slot| !slot.fixed) {
+        batch.clear();
+        work.visit(movable.len() + fixed.len())?;
+        batch.extend_from_slice(movable);
+        batch.extend(
+            fixed
+                .iter()
+                .copied()
+                .filter(|slot| lo - pitch < slot.at && slot.at < hi + pitch),
+        );
+        spread(&mut batch, lo, hi, pitch, work)?;
+        for slot in &batch[..movable.len()] {
             ports[slot.wire].x = slot.at;
         }
     }

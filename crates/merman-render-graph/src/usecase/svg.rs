@@ -1,7 +1,8 @@
 //! Mermaid 12 Usecase paint over its prepared graph and measured labels.
 
 use super::{
-    UsecaseLabelPlan, UsecaseNodePlan, UsecasePrepared, create_text_source, package_tab_size,
+    UsecaseLabelPlan, UsecaseNodePlan, UsecasePrepared, create_text_source, package_tab_geometry,
+    sanitize_source_label,
 };
 use base64::Engine as _;
 use kurbo::{Ellipse, Rect, Shape};
@@ -702,18 +703,11 @@ pub fn render_usecase_diagram_svg_model(
         let placed_title: Option<&LayoutLabel> = None;
         let left = node.x - node.width / 2.0;
         let top = node.y - node.height / 2.0;
-        let (tab_width, tab_height) = package_tab_size(&plan.label);
-        let tab_height = if plan.package {
-            placed_title.map_or(tab_height, |title| title.y - top + title.height / 2.0)
+        let (tab_left, tab_width, tab_height) = if plan.package {
+            package_tab_geometry(left, top, node.width, &plan.label, placed_title)
         } else {
-            0.0
+            (left, 0.0, 0.0)
         };
-        let tab_width = node
-            .width
-            .min(placed_title.map_or(tab_width, |title| title.width));
-        let tab_left = placed_title.map_or(left, |title| {
-            (title.x - tab_width / 2.0).clamp(left, (left + node.width - tab_width).max(left))
-        });
         let write_tab = |out: &mut BoundedSvgOutput<'_>| {
             if plan.package {
                 shapes::rect(
@@ -1074,7 +1068,7 @@ pub fn render_usecase_diagram_svg_model(
                 .map(|value| {
                     format!(
                         ", stereotype {}",
-                        merman_markup::sanitize::sanitize_text(value, config.as_config())
+                        sanitize_source_label(value, UsecaseLabelType::Text, config)
                     )
                 })
                 .unwrap_or_default();

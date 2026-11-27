@@ -4,15 +4,22 @@ use merman_model::{
     families::xy_chart::{
         XyChartAxisModel, XyChartDiagramRenderModel, XyChartPlotModel, XyChartPlotType,
     },
+    family::DiagramFamilyId,
     presentation::PresentationConfig,
     resources::{InputResourcePolicy, ResourceProfile},
 };
-use merman_render_core::text::{TextMeasurer, TextMetrics, TextStyle};
+use merman_render_core::{
+    resources::{OperationWorkMeter, RenderResourcePolicy},
+    root_svg::RootViewportContext,
+    svg_css::SvgId,
+    text::{TextMeasurer, TextMetrics, TextStyle},
+};
 use serde_json::{Value, json};
 
 use super::{
-    XyChartDiagramLayout, XyChartDrawableElem, XyChartTextData, palette::mermaid_plot_palette,
-    prepare_xychart_diagram, theme::XyChartTypographyThemePlan,
+    XyChartDiagramLayout, XyChartDrawableElem, XyChartSvgContext, XyChartTextData,
+    palette::mermaid_plot_palette, prepare_xychart_diagram, render_xychart_svg,
+    theme::XyChartTypographyThemePlan,
 };
 
 fn presentation_config(value: Value) -> PresentationConfig {
@@ -43,6 +50,43 @@ fn missing_and_empty_palette_keep_named_theme_fallback() {
         }
     }));
     assert_eq!(nested, ["#001122", "#334455"]);
+}
+
+#[test]
+fn xychart_background_preserves_the_authored_paint_attribute() {
+    let fill = "url(\"#swatch-#333;\")\nred";
+    let config = presentation_config(json!({"themeVariables": {"xyChart": {
+        "backgroundColor": fill
+    }}}));
+    let model: XyChartDiagramRenderModel = serde_json::from_value(json!({
+        "orientation": "vertical",
+        "xAxis": {"type": "band"},
+        "yAxis": {"type": "linear"},
+        "plots": []
+    }))
+    .unwrap();
+    let (layout, style) =
+        prepare_xychart_diagram(&model, None, &config, None, false, &UserUnitMeasurer).unwrap();
+    let work_meter = OperationWorkMeter::new(RenderResourcePolicy::interactive());
+    let diagram_id = SvgId::new("xychart").unwrap();
+    let svg = render_xychart_svg(
+        &layout,
+        &model,
+        &style,
+        &XyChartSvgContext {
+            diagram_id,
+            viewport: RootViewportContext::new(DiagramFamilyId::XY_CHART, diagram_id),
+            work_meter: &work_meter,
+            native_theme: None,
+        },
+    )
+    .unwrap();
+    let doc = roxmltree::Document::parse(&svg).unwrap();
+    let background = doc
+        .descendants()
+        .find(|node| node.attribute("class") == Some("background"))
+        .unwrap();
+    assert_eq!(background.attribute("fill"), Some(fill));
 }
 
 struct UserUnitMeasurer;

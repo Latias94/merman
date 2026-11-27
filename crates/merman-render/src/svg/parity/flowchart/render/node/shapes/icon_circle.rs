@@ -3,6 +3,8 @@
 use crate::svg::parity::flowchart::escape_attr;
 use crate::svg::parity::{fmt, fmt_display};
 
+use super::super::helpers;
+
 const FRAME_PADDING: f64 = 20.0;
 const HAND_DRAWN_FILL_WEIGHT: f64 = 1.5;
 
@@ -16,28 +18,44 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon_circle(
     let (top_label, icon_size, label_bbox_w, label_bbox_h, diameter, outer_w, outer_h, icon_dy) =
         prepare_icon_circle_geometry(ctx, common, label);
     let icon_name = common.node_icon.filter(|icon| !icon.trim().is_empty());
-    let (fill_d, stroke_d) =
-        match super::super::helpers::timed_node_roughjs(common.timing, details, || {
-            super::super::roughjs::roughjs_paths_for_circle(
-                diameter,
-                common.stroke_width,
-                common.stroke_dasharray,
-                common.look_is_hand_drawn(),
-                common.work_meter,
-                common.hand_drawn_seed,
-            )
-        }) {
-            Some(paths) => paths,
-            None => {
-                ctx.checkpoint_emit()?;
-                return Err(crate::Error::InvalidModel {
-                    message: "Flowchart iconCircle frame generation failed".to_string(),
-                });
-            }
-        };
+    let (fill_d, stroke_d) = match helpers::timed_node_roughjs(common.timing, details, || {
+        super::super::roughjs::roughjs_paths_for_circle(
+            diameter,
+            common.stroke_width,
+            common.stroke_dasharray,
+            common.look_is_hand_drawn(),
+            common.work_meter,
+            common.hand_drawn_seed,
+        )
+    }) {
+        Some(paths) => paths,
+        None => {
+            ctx.checkpoint_emit()?;
+            return Err(crate::Error::InvalidModel {
+                message: "Flowchart iconCircle frame generation failed".to_string(),
+            });
+        }
+    };
 
-    let _ = write!(out, r#"<g transform="translate(0,{})">"#, fmt(icon_dy));
-    if common.look_is_hand_drawn() {
+    let backed = common.look_is_hand_drawn() && common.solid_rough_fill;
+    if backed {
+        let _ = write!(
+            out,
+            r#"<g transform="translate(0,{})" style="{}">"#,
+            fmt(icon_dy),
+            escape_attr(helpers::hand_drawn_group_style(common)),
+        );
+        helpers::write_hand_drawn_hachure(
+            out,
+            common,
+            &helpers::circle_outline(diameter / 2.0),
+            &fill_d,
+            HAND_DRAWN_FILL_WEIGHT,
+        );
+    } else {
+        let _ = write!(out, r#"<g transform="translate(0,{})">"#, fmt(icon_dy));
+    }
+    if common.look_is_hand_drawn() && !backed {
         let _ = write!(
             out,
             r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none"/>"#,
@@ -45,7 +63,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon_circle(
             escape_attr(common.fill_color),
             fmt_display(HAND_DRAWN_FILL_WEIGHT),
         );
-    } else {
+    } else if !common.look_is_hand_drawn() {
         let _ = write!(
             out,
             r#"<path d="{}" stroke="none" stroke-width="0" fill="{}"/>"#,

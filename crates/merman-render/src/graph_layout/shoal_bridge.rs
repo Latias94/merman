@@ -25,6 +25,10 @@ use super::ir::{Endpoint, Marker, Size};
 #[path = "kernel_bench.rs"]
 mod kernel_bench;
 
+#[allow(
+    dead_code,
+    reason = "The shared layered placement solver calls this bridge."
+)]
 pub(crate) fn solve(
     measured: &MeasuredGraph,
     placement: Placement<'_>,

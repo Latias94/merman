@@ -18,7 +18,35 @@ pub mod class_style;
     feature = "diagram-swimlane"
 ))]
 #[doc(hidden)]
+pub mod cluster_shell;
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
+#[doc(hidden)]
 pub mod document;
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
+#[doc(hidden)]
+pub mod edge_labels;
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
+#[doc(hidden)]
+pub mod edge_svg;
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
+#[doc(hidden)]
+pub mod hierarchy;
 #[cfg(any(
     feature = "diagram-agentflow",
     feature = "diagram-flowchart",
@@ -50,6 +78,13 @@ pub mod dagre;
     feature = "diagram-swimlane"
 ))]
 #[doc(hidden)]
+pub mod lane_title;
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
+#[doc(hidden)]
 pub mod layout_config;
 #[cfg(any(
     feature = "diagram-agentflow",
@@ -68,3 +103,11 @@ pub mod shapes;
 ))]
 #[doc(hidden)]
 pub mod markers;
+
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
+#[doc(hidden)]
+pub mod node_body;

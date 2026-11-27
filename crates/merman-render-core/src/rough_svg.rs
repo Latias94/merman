@@ -4,6 +4,8 @@ mod constrained;
 pub mod controlled;
 
 pub use constrained::constrained_rough_edge_path;
+#[cfg(feature = "layout-shoal")]
+pub use constrained::constrained_rough_edge_with_geometry;
 #[cfg(feature = "svg-edge-parity")]
 #[doc(hidden)]
 pub mod paths;
@@ -34,27 +36,17 @@ pub use geometry::{
 };
 
 pub fn parse_hex_color_to_srgba(s: &str) -> Option<roughr::Srgba> {
-    let hex = s.trim().strip_prefix('#')?;
-    // Validate ASCII hex digits before indexing bytes. Theme values are arbitrary CSS strings;
-    // malformed or non-ASCII values must be rejected without slicing at a non-character boundary.
-    if !matches!(hex.len(), 3 | 6) || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return None;
-    }
-    let byte = |pair: &str| u8::from_str_radix(pair, 16).ok();
-    let (r, g, b) = if hex.len() == 6 {
-        (byte(&hex[0..2])?, byte(&hex[2..4])?, byte(&hex[4..6])?)
+    let paint = s.trim();
+    let rgba = if paint.eq_ignore_ascii_case("none") {
+        return Some(roughr::Srgba::new(0.0, 0.0, 0.0, 0.0));
     } else {
-        (
-            byte(&hex[0..1].repeat(2))?,
-            byte(&hex[1..2].repeat(2))?,
-            byte(&hex[2..3].repeat(2))?,
-        )
+        merman_model::css_color::parse(paint)?.rgba
     };
     Some(roughr::Srgba::new(
-        r as f32 / 255.0,
-        g as f32 / 255.0,
-        b as f32 / 255.0,
-        1.0,
+        (rgba.red / 255.0) as f32,
+        (rgba.green / 255.0) as f32,
+        (rgba.blue / 255.0) as f32,
+        rgba.alpha as f32,
     ))
 }
 

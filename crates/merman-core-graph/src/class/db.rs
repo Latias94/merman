@@ -6,7 +6,7 @@ use merman_model::families::class::{
     self as class_typed, LINE_DOTTED, LINE_SOLID, MERMAID_DOM_ID_PREFIX, REL_AGGREGATION,
     REL_COMPOSITION, REL_DEPENDENCY, REL_EXTENSION, REL_LOLLIPOP, REL_NONE,
 };
-use merman_model::text::{is_ecmascript_whitespace, parse_generic_types};
+use merman_model::text::{GenericTypesPlan, is_ecmascript_whitespace, parse_generic_types};
 use merman_model::warnings::{CLASS_IGNORED_STATEMENT_WARNING_RULE_ID, DiagramWarningFact};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -48,10 +48,7 @@ impl ClassMember {
             let line = chunk.trim_end_matches(is_js_regex_line_terminator);
             let start = offset;
             offset += chunk.len();
-            let Some(close) = line.rfind(')') else {
-                continue;
-            };
-            let Some(open) = line[..close].rfind('(') else {
+            let Some((open, close)) = method_parentheses(line) else {
                 continue;
             };
             if open == 0 {
@@ -155,8 +152,36 @@ impl ClassMember {
     }
 }
 
+fn method_parentheses(line: &str) -> Option<(usize, usize)> {
+    let types = GenericTypesPlan::new(line);
+    if !types.has_closed_groups() {
+        let close = line.rfind(')')?;
+        return Some((line[..close].rfind('(')?, close));
+    }
+
+    // Tuple arguments belong to their enclosing type. Preserve the existing greedy
+    // signature match for every parenthesis outside a closed generic group.
+    let mut opener = None;
+    let mut pair = None;
+    for range in types.outside_closed_groups() {
+        for (offset, ch) in line[range.clone()].match_indices(['(', ')']) {
+            let index = range.start + offset;
+            if ch == "(" {
+                opener = Some(index);
+            } else {
+                pair = opener.map(|open| (open, index));
+            }
+        }
+    }
+    pair
+}
+
 fn is_js_regex_line_terminator(ch: char) -> bool {
     matches!(ch, '\n' | '\r' | '\u{2028}' | '\u{2029}')
+}
+
+fn escape_type_angles(value: &str) -> String {
+    value.replace('<', "&lt;").replace('>', "&gt;")
 }
 
 #[derive(Debug, Clone)]
@@ -353,24 +378,19 @@ impl<'a> ClassDb<'a> {
 impl<'a> ClassDb<'a> {
     fn split_class_name_and_type(&self, id: &str) -> (String, String) {
         let id = sanitize_text(id, self.config);
-        let (left, right) =
-            if let Some((left, right)) = id.split_once('~').filter(|(left, _)| !left.is_empty()) {
-                (
-                    left.to_string(),
-                    right.split('~').next().unwrap_or("").to_string(),
-                )
-            } else {
-                (id, String::new())
-            };
-
-        let class_name = sanitize_text(&left, self.config);
-        let type_param = if right.is_empty() {
-            right
-        } else {
-            sanitize_text(&right, self.config)
+        let Some((name, legacy_tail)) = id.split_once('~').filter(|(name, _)| !name.is_empty())
+        else {
+            return (sanitize_text(&id, self.config), String::new());
         };
-
-        (class_name, type_param)
+        let suffix = &id[name.len()..];
+        let arguments = GenericTypesPlan::closed_group_len(suffix).map_or_else(
+            || legacy_tail.split('~').next().unwrap_or_default(),
+            |end| &suffix[1..end - 1],
+        );
+        (
+            sanitize_text(name, self.config),
+            parse_generic_types(&sanitize_text(arguments, self.config)),
+        )
     }
 
     fn add_class_with_origin(&mut self, id: &str, relation_endpoint_facade_candidate: bool) {
@@ -384,7 +404,7 @@ impl<'a> ClassDb<'a> {
         let text = if type_param.is_empty() {
             class_name.clone()
         } else {
-            format!("{class_name}&lt;{type_param}&gt;")
+            format!("{class_name}&lt;{}&gt;", escape_type_angles(&type_param))
         };
         self.classes.insert(
             class_name.clone(),
@@ -424,6 +444,8 @@ impl<'a> ClassDb<'a> {
         c.label = label.clone();
         c.text = if c.type_param.is_empty() {
             label
+        } else if c.type_param.contains('<') {
+            format!("{label}&lt;{}&gt;", escape_type_angles(&c.type_param))
         } else {
             format!("{label}<{}>", c.type_param)
         };
@@ -458,7 +480,13 @@ impl<'a> ClassDb<'a> {
             ));
             return Ok(());
         }
-        if member_string.find(')').is_some_and(|index| index > 0) {
+        let types = GenericTypesPlan::new(member_string);
+        let closing_paren = types.outside_closed_groups().find_map(|range| {
+            member_string[range.clone()]
+                .find(')')
+                .map(|offset| range.start + offset)
+        });
+        if closing_paren.is_some_and(|index| index > 0) {
             c.methods
                 .push(ClassMember::new(member_string, "method", self.config)?);
             return Ok(());

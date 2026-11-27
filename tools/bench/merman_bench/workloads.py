@@ -1177,6 +1177,10 @@ def main(argv=None):
 
             comparisons = (load(path) for path in args.comparison)
             result = summarize_coverage(args.plan.read_bytes(), comparisons)
+            if args.out and args.out.exists() and any(
+                args.out.samefile(path) for path in (args.plan, *args.comparison)
+            ):
+                raise ValueError("choose a coverage report output distinct from its inputs")
         else:
             inputs = [args.base, args.head]
             if any(path and args.out.resolve() == path.resolve() for path in (*inputs, args.drawing_plan)):

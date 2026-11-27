@@ -32,7 +32,15 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stadium(
                 )
             })
         {
-            out.push_str(r#"<g class="basic label-container outer-path">"#);
+            if common.solid_rough_fill {
+                let _ = write!(
+                    out,
+                    r#"<g class="basic label-container outer-path" style="{}">"#,
+                    escape_attr(common.style),
+                );
+            } else {
+                out.push_str(r#"<g class="basic label-container outer-path">"#);
+            }
             super::super::helpers::write_hand_drawn_hachure(
                 out,
                 common,

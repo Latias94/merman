@@ -49,6 +49,7 @@ png = [
     "resource-metadata",
     "dep:cssparser",
     "dep:data-url",
+    "dep:merman-markup",
     "dep:merman-render",
     "dep:quick-xml",
     "dep:resvg",
@@ -64,6 +65,7 @@ jpeg = [
     "dep:cssparser",
     "dep:data-url",
     "dep:image",
+    "dep:merman-markup",
     "dep:merman-render",
     "dep:quick-xml",
     "dep:resvg",
@@ -79,6 +81,7 @@ pdf = [
     "dep:data-url",
     "dep:krilla",
     "dep:krilla-svg",
+    "dep:merman-markup",
     "dep:merman-render",
     "dep:quick-xml",
     "dep:svgtypes",
@@ -95,6 +98,7 @@ harfrust = { version = "0.15.0", optional = true }
 image = { workspace = true, optional = true }
 krilla = { workspace = true, optional = true }
 krilla-svg = { workspace = true, optional = true }
+merman-markup = { workspace = true, optional = true, features = ["color"] }
 merman-model = { workspace = true, optional = true }
 merman-render = { workspace = true, optional = true }
 quick-xml = { workspace = true, optional = true }

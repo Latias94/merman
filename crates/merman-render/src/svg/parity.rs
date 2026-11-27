@@ -13,14 +13,6 @@ use crate::model::*;
 )]
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        unused_imports,
-        reason = "Common SVG imports are consumed by the selected family emitters."
-    )
-)]
-use base64::Engine as _;
 use merman_model::OperationPhase;
 use merman_render_core::root_svg;
 use merman_render_core::svg_css::{SvgDiagramIdProjection, SvgId};
@@ -57,14 +49,7 @@ mod css;
     feature = "diagram-swimlane",
     feature = "diagram-agentflow"
 ))]
-pub(crate) use css::PreparedCommonNeoCss;
-#[cfg(any(
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-agentflow"
-))]
 pub(crate) use flowchart::{FlowchartRenderConfig, prepare_flowchart_render_config};
-pub(crate) use look_defs::PreparedLookDefs;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -74,6 +59,12 @@ pub(crate) use look_defs::PreparedLookDefs;
     )
 )]
 use merman_render_core::svg_edge_parity::curve;
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
+pub(crate) use {css::PreparedCommonNeoCss, look_defs::PreparedLookDefs};
 #[cfg(feature = "diagram-cynefin")]
 mod cynefin;
 #[cfg_attr(
@@ -145,14 +136,11 @@ use merman_render_core::svg_edge_parity::line_hops;
     )
 )]
 use merman_render_core::text::svg_label as label;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
-    )
-)]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 mod look_defs;
 #[cfg(feature = "diagram-mindmap")]
 mod mindmap;
@@ -238,7 +226,23 @@ mod util;
 #[cfg(feature = "diagram-zenuml")]
 mod zenuml;
 use output::{BoundedSvgOutput, SvgOutput};
-use path_bounds::{svg_path_bounds_from_d, svg_path_length_from_d};
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    all(
+        feature = "layout-shoal",
+        any(feature = "diagram-er", feature = "diagram-usecase")
+    )
+))]
+use path_bounds::svg_path_bounds_from_d;
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    all(test, feature = "diagram-state", feature = "layout-elk")
+))]
+use path_bounds::svg_path_length_from_d;
 
 pub use merman_render_core::svg_bounds::{
     SvgEmittedBoundsContributor, SvgEmittedBoundsDebug, debug_svg_emitted_bounds,
@@ -267,10 +271,7 @@ pub(crate) use util::escape_xml;
         reason = "Common SVG imports are consumed by the selected family emitters."
     )
 )]
-use util::{
-    escape_attr_display, escape_xml_display, escape_xml_into, fmt, fmt_display,
-    json_stringify_points_into,
-};
+use util::{escape_attr_display, escape_xml_display, escape_xml_into, fmt, fmt_display};
 
 /// Converts arbitrary host input into the conservative SVG/CSS identifier grammar used by every
 /// family renderer.
@@ -916,6 +917,17 @@ pub(crate) fn with_test_svg_execution<T>(
     run(&execution)
 }
 
+#[cfg_attr(
+    not(any(
+        feature = "diagram-agentflow",
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane"
+    )),
+    allow(
+        unused_variables,
+        reason = "Only Flowchart-derived families supply edge paint geometry."
+    )
+)]
 pub(crate) fn edge_geometry_family_artifact(
     family: &crate::family::BuiltinFamilyArtifact,
     metadata: &merman_model::presentation::PresentationMetadata,
@@ -1041,10 +1053,15 @@ fn finish_family_svg(
         let roles = &resolved.family(rooted_svg.family().as_str()).roles;
         let background = background.map(Paint::Solid);
         let paint = background.as_ref().unwrap_or(&roles.canvas);
+        let textures = if matches!(paint, Paint::Solid(color) if color.channels()[3] == 0) {
+            &[][..]
+        } else {
+            &resolved.canvas().textures
+        };
         apply_root_canvas(
             rooted_svg,
             paint,
-            &resolved.canvas().textures,
+            textures,
             &roles.stroke_guide,
             diagram_id,
             meter,

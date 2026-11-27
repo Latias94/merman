@@ -57,11 +57,8 @@ fn step_color<'a>(
     let source = ctx
         .edge_style_plan
         .edge_for(key)?
-        .edge_marker_color(ctx.compatibility.look.is_hand_drawn());
-    Ok(source
-        .unwrap_or(&ctx.compatibility.line_color)
-        .trim_start_matches("stroke:")
-        .trim())
+        .source_edge_stroke(ctx.compatibility.look.is_hand_drawn());
+    Ok(source.unwrap_or(&ctx.compatibility.line_color))
 }
 
 pub(super) fn write_edge_marks(

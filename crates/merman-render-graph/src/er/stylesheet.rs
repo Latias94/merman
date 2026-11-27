@@ -93,8 +93,7 @@ where
     );
     let _ = write!(
         &mut out,
-        r#"#{} .cluster rect{{fill:{};stroke:{};stroke-width:1px;}}#{} .cluster text{{fill:{};}}#{} .cluster-label text{{fill:{};}}"#,
-        id, cluster_bkg, cluster_border, id, title_color, id, title_color
+        r#"#{id} .cluster rect{{fill:{cluster_bkg};stroke:{cluster_border};stroke-width:1px;}}#{id} .cluster text{{fill:{title_color};}}#{id} .cluster-label text{{fill:{title_color};}}"#,
     );
     values.common.write_root(&mut out, id, fragment_id)?;
     Ok(out)
@@ -174,6 +173,16 @@ pub fn write_er_stylesheet(
     data_look: &str,
     binding: &ErCssBinding,
 ) -> Result<()> {
+    write_er_stylesheet_with_cluster_titles(out, diagram_id, data_look, binding, false)
+}
+
+pub(super) fn write_er_stylesheet_with_cluster_titles(
+    out: &mut impl SvgOutput,
+    diagram_id: &str,
+    data_look: &str,
+    binding: &ErCssBinding,
+    html_cluster_titles: bool,
+) -> Result<()> {
     let css = er_css_with_resolved_typography(diagram_id, binding)?;
     let insertion_point = er_redux_color_css_insertion_point(&css, diagram_id);
 
@@ -190,6 +199,14 @@ pub fn write_er_stylesheet(
             &binding.redux_background_colors,
         )?;
         css_out.push_str(&css[insertion_point..]);
+        if html_cluster_titles {
+            let id = escape_css_identifier(diagram_id);
+            let title = &binding.title_color;
+            let _ = write!(
+                &mut css_out,
+                "#{id} .cluster-label .nodeLabel{{color:{title};}}"
+            );
+        }
         if let Some(native) = &binding.native {
             let id = escape_css_identifier(diagram_id);
             let code_family = &native.code_family;

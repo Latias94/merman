@@ -3,8 +3,12 @@ use std::borrow::Cow;
 use std::collections::{HashMap, VecDeque};
 
 use crate::DiagramFamilyId;
-use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
-use merman_render_core::svg_scan::{extract_quoted_attr, find_tag_end, set_or_insert_quoted_attr};
+use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessExecution, SvgPostprocessor};
+use merman_render_core::svg_output::{BoundedSvgOutput, SvgOutput};
+use merman_render_core::svg_scan::{
+    SvgTag, SvgTagScanner, extract_quoted_attr_with_checkpoints, find_with_checkpoints,
+    next_svg_quoted_attr_with_checkpoints, start_tag_name,
+};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct GitGraphBranchLabelBaselinePostprocessor;
@@ -19,119 +23,136 @@ impl SvgPostprocessor for GitGraphBranchLabelBaselinePostprocessor {
         svg: Cow<'a, str>,
         ctx: &SvgPostprocessContext<'_>,
     ) -> Result<Cow<'a, str>> {
-        if ctx.family_id() != Some(DiagramFamilyId::GIT_GRAPH) || !svg.contains("branch-label") {
+        if ctx.family_id() != Some(DiagramFamilyId::GIT_GRAPH) {
             return Ok(svg);
         }
-
-        let adjusted = center_gitgraph_branch_label_text(svg.as_ref());
-        if adjusted == svg.as_ref() {
-            Ok(svg)
-        } else {
-            Ok(Cow::Owned(adjusted))
-        }
+        center_gitgraph_branch_label_text(svg, ctx.execution())
     }
 }
 
-fn center_gitgraph_branch_label_text(svg: &str) -> String {
-    let mut centers = collect_branch_label_centers(svg);
+fn center_gitgraph_branch_label_text<'a>(
+    svg: Cow<'a, str>,
+    execution: SvgPostprocessExecution<'_>,
+) -> Result<Cow<'a, str>> {
+    let mut checkpoint = || execution.checkpoint();
+    if find_with_checkpoints(&svg, "branch-label", &mut checkpoint)?.is_none() {
+        return Ok(svg);
+    }
+    let mut centers = collect_branch_label_centers(&svg, &mut checkpoint)?;
     if centers.is_empty() {
-        return svg.to_string();
+        return Ok(svg);
     }
 
-    let mut out = String::with_capacity(svg.len());
-    let mut scan_cursor = 0usize;
-    let mut copied_until = 0usize;
-    let mut changed = false;
-
-    while let Some(rel_start) = svg[scan_cursor..].find("<g") {
-        let start = scan_cursor + rel_start;
-        let Some(open_end) = find_tag_end(svg, start) else {
-            break;
-        };
-        let tag = &svg[start..=open_end];
-        let Some(label_index) = branch_label_index_from_group_tag(tag) else {
-            scan_cursor = open_end + 1;
-            continue;
-        };
-        let Some(center_y) = centers.get_mut(&label_index).and_then(VecDeque::pop_front) else {
-            scan_cursor = open_end + 1;
-            continue;
-        };
-
-        let group_y = extract_attr(tag, "transform")
-            .and_then(parse_translate_y)
-            .unwrap_or(0.0);
-        let text_y = center_y - group_y;
-        let Some(group_close) = svg[open_end + 1..]
-            .find("</g>")
-            .map(|rel| open_end + 1 + rel)
-        else {
-            scan_cursor = open_end + 1;
-            continue;
-        };
-        let Some((text_start, text_end)) = find_first_text_span(svg, open_end + 1) else {
-            scan_cursor = open_end + 1;
-            continue;
-        };
-        if text_start > group_close {
-            scan_cursor = open_end + 1;
-            continue;
-        };
-
-        let rewritten =
-            rewrite_text_block_for_centered_baseline(&svg[text_start..text_end], text_y);
-        if rewritten == svg[text_start..text_end] {
-            scan_cursor = text_end;
+    let mut out = BoundedSvgOutput::new(execution.work_meter());
+    let mut scanner = SvgTagScanner::new(&svg);
+    let mut copied_until = 0;
+    while let Some(group) = scanner.next_with_checkpoints(&mut checkpoint)? {
+        if start_tag_name(group.raw()) != Some("g") {
             continue;
         }
-
-        out.push_str(&svg[copied_until..text_start]);
-        out.push_str(&rewritten);
-        copied_until = text_end;
-        scan_cursor = text_end;
-        changed = true;
-    }
-
-    if !changed {
-        return svg.to_string();
-    }
-
-    out.push_str(&svg[copied_until..]);
-    out
-}
-
-fn collect_branch_label_centers(svg: &str) -> HashMap<usize, VecDeque<f64>> {
-    let mut centers = HashMap::new();
-    let mut cursor = 0usize;
-
-    while let Some(rel_start) = svg[cursor..].find("<rect") {
-        let start = cursor + rel_start;
-        let Some(end) = find_tag_end(svg, start) else {
+        let Some(index) =
+            extract_quoted_attr_with_checkpoints(group.raw(), "class", &mut checkpoint)?
+                .and_then(branch_group_index)
+        else {
+            continue;
+        };
+        let Some(center_y) = centers.get_mut(&index).and_then(VecDeque::pop_front) else {
+            continue;
+        };
+        let Some(group_end) = scanner.matching_end_with_checkpoints(group, &mut checkpoint)? else {
             break;
         };
-        let tag = &svg[start..=end];
-        if let Some(index) = branch_label_index_from_rect_tag(tag)
-            && let (Some(y), Some(height)) = (
-                extract_attr(tag, "y").and_then(parse_f64),
-                extract_attr(tag, "height").and_then(parse_f64),
-            )
-        {
-            let translate_y = extract_attr(tag, "transform")
+        if group.is_self_closing() {
+            continue;
+        }
+        let mut content = SvgTagScanner::new(&svg[..group_end.start()]);
+        content.skip_to(group.end());
+        let Some(text) = first_text_tag(&mut content, &mut checkpoint)? else {
+            continue;
+        };
+        let Some(text_end) = content.matching_end_with_checkpoints(text, &mut checkpoint)? else {
+            continue;
+        };
+        let group_y =
+            extract_quoted_attr_with_checkpoints(group.raw(), "transform", &mut checkpoint)?
                 .and_then(parse_translate_y)
                 .unwrap_or(0.0);
+        let text_y = fmt_number(center_y - group_y);
+        out.push_str(&svg[copied_until..text.start()]);
+        write_updated_tag(
+            &mut out,
+            text,
+            [
+                ("y", &text_y),
+                ("dominant-baseline", "central"),
+                ("alignment-baseline", "central"),
+            ],
+            &mut checkpoint,
+        )?;
+        let tspans = &svg[text.end()..text_end.start()];
+        let (first_row, rows) = visible_tspan_rows(tspans, &mut checkpoint)?;
+        if let Some(first_row) = first_row {
+            let row_span = rows.saturating_sub(1);
+            let dy = if row_span == 0 {
+                "0".to_owned()
+            } else {
+                format!("{}em", fmt_number(-(row_span as f64) / 2.0))
+            };
+            out.push_str(&tspans[..first_row.start()]);
+            write_updated_tag(&mut out, first_row, [("dy", &dy)], &mut checkpoint)?;
+            out.push_str(&tspans[first_row.end()..]);
+        } else {
+            out.push_str(tspans);
+        }
+        out.checkpoint()?;
+        copied_until = text_end.start();
+    }
+    if copied_until == 0 {
+        return Ok(svg);
+    }
+    out.push_str(&svg[copied_until..]);
+    let adjusted = out.finish()?;
+    if adjusted == svg {
+        Ok(svg)
+    } else {
+        Ok(Cow::Owned(adjusted))
+    }
+}
+
+fn collect_branch_label_centers(
+    svg: &str,
+    checkpoint: &mut impl FnMut() -> Result<()>,
+) -> Result<HashMap<usize, VecDeque<f64>>> {
+    let mut centers = HashMap::new();
+    let mut scanner = SvgTagScanner::new(svg);
+    while let Some(tag) = scanner.next_with_checkpoints(checkpoint)? {
+        if start_tag_name(tag.raw()) != Some("rect") {
+            continue;
+        }
+        let Some(index) = extract_quoted_attr_with_checkpoints(tag.raw(), "class", checkpoint)?
+            .and_then(branch_rect_index)
+        else {
+            continue;
+        };
+        let y =
+            extract_quoted_attr_with_checkpoints(tag.raw(), "y", checkpoint)?.and_then(parse_f64);
+        let height = extract_quoted_attr_with_checkpoints(tag.raw(), "height", checkpoint)?
+            .and_then(parse_f64);
+        if let (Some(y), Some(height)) = (y, height) {
+            let translate_y =
+                extract_quoted_attr_with_checkpoints(tag.raw(), "transform", checkpoint)?
+                    .and_then(parse_translate_y)
+                    .unwrap_or(0.0);
             centers
                 .entry(index)
                 .or_insert_with(VecDeque::new)
                 .push_back(translate_y + y + height / 2.0);
         }
-        cursor = end + 1;
     }
-
-    centers
+    Ok(centers)
 }
 
-fn branch_label_index_from_rect_tag(tag: &str) -> Option<usize> {
-    let classes = extract_attr(tag, "class")?;
+fn branch_rect_index(classes: &str) -> Option<usize> {
     if !classes
         .split_whitespace()
         .any(|class| class == "branchLabelBkg")
@@ -141,8 +162,7 @@ fn branch_label_index_from_rect_tag(tag: &str) -> Option<usize> {
     label_class_index(classes)
 }
 
-fn branch_label_index_from_group_tag(tag: &str) -> Option<usize> {
-    let classes = extract_attr(tag, "class")?;
+fn branch_group_index(classes: &str) -> Option<usize> {
     if !classes.split_whitespace().any(|class| class == "label") {
         return None;
     }
@@ -159,78 +179,95 @@ fn label_class_index(classes: &str) -> Option<usize> {
         .and_then(|value| value.parse::<usize>().ok())
 }
 
-fn find_first_text_span(svg: &str, start: usize) -> Option<(usize, usize)> {
-    let rel_text = svg[start..].find("<text")?;
-    let text_start = start + rel_text;
-    let text_open_end = find_tag_end(svg, text_start)?;
-    let content_start = text_open_end + 1;
-    let rel_close = svg[content_start..].find("</text>")?;
-    let close_end = content_start + rel_close + "</text>".len();
-    Some((text_start, close_end))
-}
-
-fn rewrite_text_block_for_centered_baseline(text_block: &str, text_y: f64) -> String {
-    let Some(open_end) = find_tag_end(text_block, 0) else {
-        return text_block.to_string();
-    };
-    let open_tag = &text_block[..=open_end];
-    let close_start = text_block.rfind("</text>").unwrap_or(text_block.len());
-    let content = &text_block[open_end + 1..close_start];
-    let close = &text_block[close_start..];
-
-    let open_tag = set_or_insert_quoted_attr(open_tag, "y", &fmt_number(text_y));
-    let open_tag = set_or_insert_quoted_attr(&open_tag, "dominant-baseline", "central");
-    let open_tag = set_or_insert_quoted_attr(&open_tag, "alignment-baseline", "central");
-    let content = rewrite_tspans_for_centered_baseline(content);
-
-    format!("{open_tag}{content}{close}")
-}
-
-fn rewrite_tspans_for_centered_baseline(content: &str) -> String {
-    let mut first_visible = None;
-    let mut visible_rows = 0usize;
-    let mut cursor = 0;
-    while let Some(rel_tspan) = content[cursor..].find("<tspan") {
-        let start = cursor + rel_tspan;
-        let Some(end) = find_tag_end(content, start) else {
-            break;
-        };
-        let Some(close) = content[end + 1..].find("</tspan>") else {
-            break;
-        };
-        // Empty tspans remain in the DOM but do not advance the rendered SVG text position.
-        if close > 0 {
-            visible_rows += 1;
-            first_visible.get_or_insert((start, end));
+fn first_text_tag<'a>(
+    scanner: &mut SvgTagScanner<'a>,
+    checkpoint: &mut impl FnMut() -> Result<()>,
+) -> Result<Option<SvgTag<'a>>> {
+    while let Some(tag) = scanner.next_with_checkpoints(checkpoint)? {
+        if start_tag_name(tag.raw()) == Some("text") && !tag.is_self_closing() {
+            return Ok(Some(tag));
         }
-        cursor = end + 1 + close + "</tspan>".len();
     }
-    let Some((start, end)) = first_visible else {
-        return content.to_string();
-    };
-    // Painted rows advance by one em. Center their baseline span as a block while retaining
-    // the existing zero-dy geometry for a single painted row.
-    let row_span = visible_rows.saturating_sub(1);
-    let dy = if row_span == 0 {
-        "0".to_string()
-    } else {
-        format!("{}em", fmt_number(-(row_span as f64) / 2.0))
-    };
-    let tag = &content[start..=end];
-    let rewritten_tag = set_or_insert_quoted_attr(tag, "dy", &dy);
-    if rewritten_tag == tag {
-        return content.to_string();
-    }
-
-    let mut out = String::with_capacity(content.len() + rewritten_tag.len() - tag.len());
-    out.push_str(&content[..start]);
-    out.push_str(&rewritten_tag);
-    out.push_str(&content[end + 1..]);
-    out
+    Ok(None)
 }
 
-fn extract_attr<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
-    extract_quoted_attr(tag, name)
+fn visible_tspan_rows<'a>(
+    content: &'a str,
+    checkpoint: &mut impl FnMut() -> Result<()>,
+) -> Result<(Option<SvgTag<'a>>, usize)> {
+    let mut scanner = SvgTagScanner::new(content);
+    let mut first = None;
+    let mut rows = 0;
+    while let Some(tag) = scanner.next_with_checkpoints(checkpoint)? {
+        if start_tag_name(tag.raw()) != Some("tspan") || tag.is_self_closing() {
+            continue;
+        }
+        let Some(close) = scanner.matching_end_with_checkpoints(tag, checkpoint)? else {
+            break;
+        };
+        // Preserve authored spaces, including rows with xml:space="preserve".
+        if has_text_content(&content[tag.end()..close.start()], checkpoint)? {
+            first.get_or_insert(tag);
+            rows += 1;
+        }
+    }
+    Ok((first, rows))
+}
+
+fn has_text_content(content: &str, checkpoint: &mut impl FnMut() -> Result<()>) -> Result<bool> {
+    let mut scanner = SvgTagScanner::new(content);
+    let mut cursor = 0;
+    while let Some(tag) = scanner.next_with_checkpoints(checkpoint)? {
+        if tag.start() > cursor
+            || tag
+                .raw()
+                .strip_prefix("<![CDATA[")
+                .and_then(|body| body.strip_suffix("]]>"))
+                .is_some_and(|body| !body.is_empty())
+        {
+            return Ok(true);
+        }
+        cursor = tag.end();
+    }
+    Ok(cursor < content.len())
+}
+
+fn write_updated_tag<const N: usize>(
+    out: &mut BoundedSvgOutput<'_>,
+    tag: SvgTag<'_>,
+    attributes: [(&str, &str); N],
+    checkpoint: &mut impl FnMut() -> Result<()>,
+) -> Result<()> {
+    let raw = tag.raw();
+    let mut written = [false; N];
+    let mut cursor = 0;
+    let mut copied = 0;
+    while let Some(attr) = next_svg_quoted_attr_with_checkpoints(raw, cursor, checkpoint)? {
+        cursor = attr.full_end;
+        let name = &raw[attr.name_start..attr.name_end];
+        if let Some(index) = attributes
+            .iter()
+            .position(|(key, _)| name.eq_ignore_ascii_case(key))
+        {
+            out.push_str(&raw[copied..attr.value_start]);
+            out.push_str(attributes[index].1);
+            copied = attr.value_end;
+            written[index] = true;
+        }
+    }
+    let end = raw.len() - 1;
+    out.push_str(&raw[copied..end]);
+    for ((name, value), written) in attributes.into_iter().zip(written) {
+        if !written {
+            out.push(' ');
+            out.push_str(name);
+            out.push_str("=\"");
+            out.push_str(value);
+            out.push('"');
+        }
+    }
+    out.push('>');
+    out.checkpoint()
 }
 
 fn parse_translate_y(transform: &str) -> Option<f64> {
@@ -318,6 +355,37 @@ mod tests {
                 .unwrap(),
             centered,
         );
+    }
+
+    #[test]
+    fn gitgraph_branch_label_uses_real_nested_group_and_tspan_boundaries() {
+        let svg = concat!(
+            r#"<svg><!-- <rect class='branchLabelBkg label0' y='0' height='100'/> -->"#,
+            r#"<rect class='branchLabelBkg label0' y='0' height='40'/>"#,
+            r#"<g class='label branch-label0' data-note='a > b'><g/>"#,
+            r#"<g><!-- </g><text>fake</text> --></g >"#,
+            r#"<text><tspan dy='1em'/><!-- <tspan>fake</tspan> -->"#,
+            r#"<tspan dy='1em'>first</tspan ><tspan dy='1em'>last</tspan></text ></g ></svg>"#,
+        );
+        let metadata =
+            SvgPostprocessMetadata::from_svg(svg).with_family_id(DiagramFamilyId::GIT_GRAPH);
+        let out = SvgPipeline::parity()
+            .with_postprocessor(GitGraphBranchLabelBaselinePostprocessor)
+            .process_to_string_with_metadata(svg, &metadata, &render_session())
+            .unwrap();
+        let doc = crate::xml_dom::Document::parse(&out).unwrap();
+        let text = doc
+            .descendants()
+            .find(|node| node.has_tag_name("text"))
+            .unwrap();
+        assert_eq!(text.attribute("y"), Some("20"));
+        let rows: Vec<_> = text
+            .children()
+            .filter(|node| node.has_tag_name("tspan"))
+            .map(|node| node.attribute("dy"))
+            .collect();
+        assert_eq!(rows, [Some("1em"), Some("-0.5em"), Some("1em")]);
+        assert!(out.contains("<!-- </g><text>fake</text> -->"));
     }
 
     #[test]

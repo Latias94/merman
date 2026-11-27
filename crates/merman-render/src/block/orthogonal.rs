@@ -7,11 +7,6 @@ use super::{
     resolve_block_node_sources,
 };
 use crate::Result;
-use crate::graph_layout::Marker;
-use crate::graph_layout::ir::Endpoint;
-use crate::graph_layout::route_paint::{
-    self, Clearance, CurveTerminals, EdgeClearance, ObstacleOwner, RouteStyle,
-};
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{BlockDiagramLayout, LayoutLabel, LayoutPoint};
 use crate::resources::OperationWorkMeter;
@@ -19,6 +14,10 @@ use crate::svg::BaseEdgeMarkerKind;
 use kurbo::{Point, Rect, Vec2};
 use merman_layout_shoal::{OrthogonalSpan, Rect as Obstacle, RoutePoint, Side, route_fixed_spans};
 use merman_model::families::block::{BlockDiagramRenderModel, BlockEdge};
+use merman_render_core::graph_layout::{Endpoint, Marker};
+use merman_render_core::route_paint::{
+    self, Clearance, CurveTerminals, EdgeClearance, ObstacleOwner, RoutePaintError, RouteStyle,
+};
 use merman_render_structured::block::BlockEdgeMarkerGeometry;
 use merman_theme_contract::v2::EdgeStyle;
 use std::{collections::HashMap, sync::Arc};
@@ -225,7 +224,7 @@ impl Request {
         inner: impl Iterator<Item = RoutePoint>,
         style: RouteStyle,
         clearance: Option<EdgeClearance<'_>>,
-    ) -> Option<(Vec<LayoutPoint>, BlockOrthogonalRoute)> {
+    ) -> Result<(Vec<LayoutPoint>, BlockOrthogonalRoute)> {
         let [a, b] = &self.ends;
         let mut points: Vec<_> = std::iter::once(a.contact)
             .chain(inner)
@@ -235,25 +234,34 @@ impl Request {
         let marker = |end: &Terminal| -> Marker {
             end.marker.map(|marker| marker.routing).unwrap_or_default()
         };
+        let markers = (marker(a), marker(b));
         let paint = |style, clearance| {
             route_paint::build_svg_path(
                 &points,
                 (a.side, b.side),
                 style,
-                (marker(a), marker(b)),
+                markers,
                 CurveTerminals::Fixed,
                 &[],
                 clearance,
             )
-            .ok()
         };
-        let path = paint(style, clearance).or_else(|| paint(RouteStyle::Linear, None))?;
+        let path = paint(style, clearance)
+            .or_else(|error| match error {
+                // The router already admitted the orthogonal spans before curve paint.
+                RoutePaintError::NoClearDetour => paint(RouteStyle::Linear, None),
+                _ => Err(error),
+            })
+            .map_err(|error| crate::Error::InvalidModel {
+                message: format!("Block route {}: {error}", self.occurrence),
+            })?;
         let route = BlockOrthogonalRoute {
             path: path.d,
             bounds: path.bounds,
             marker_refs: [a.reference, b.reference].map(layout_point),
+            markers,
         };
-        Some((
+        Ok((
             points
                 .into_iter()
                 .map(|k| layout_point(knot_point(k)))
@@ -648,12 +656,10 @@ pub(super) fn prepare(
                     stroke_width / 2.0,
                 )
             });
-            if let Some((points, route)) =
-                request.paint(first.into_iter().chain(second), route_style, guard)
-            {
-                updates.push((request.index, points));
-                routes[request.occurrence] = Some(route);
-            }
+            let (points, route) =
+                request.paint(first.into_iter().chain(second), route_style, guard)?;
+            updates.push((request.index, points));
+            routes[request.occurrence] = Some(route);
         }
     }
     work.charge_adapter(updates.len())?;

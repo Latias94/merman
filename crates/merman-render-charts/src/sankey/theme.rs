@@ -71,7 +71,7 @@ impl SankeyStyle {
         canvas: Option<Color>,
         work: &Arc<OperationWorkMeter>,
     ) -> Result<Self> {
-        let config_view = SankeyConfigView::new(config.as_value());
+        let config_view = SankeyConfigView::new(config);
         let render_settings = config_view.render_settings();
         let mut palette = SankeyNodePalette::prepare(&render_settings, layout, native, work)?;
         let link_color = config_view.link_color();
@@ -79,7 +79,7 @@ impl SankeyStyle {
             let typography = &theme.typography;
             let font = font_family_css(typography.stack(typography.body_family));
             (
-                PreparedCommonCss::new(config.as_value(), Some(&font))
+                PreparedCommonCss::new(config, Some(&font))
                     .with_text_color(&theme.roles.text_primary.to_string()),
                 canvas
                     .unwrap_or_else(|| theme.roles.canvas.first_color())
@@ -93,7 +93,7 @@ impl SankeyStyle {
                 .or_else(|| config::config_string(config, &["themeVariables", "background"]))
                 .unwrap_or_else(|| "#fff".to_owned());
             (
-                PreparedCommonCss::new(config.as_value(), Some(&font_family)),
+                PreparedCommonCss::new(config, Some(&font_family)),
                 label_background,
                 14.0,
                 None,

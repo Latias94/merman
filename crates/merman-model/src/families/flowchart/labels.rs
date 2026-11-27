@@ -22,6 +22,48 @@ struct LabelSources {
     subgraphs: Vec<Option<SubgraphLabelSource>>,
 }
 
+/// Prepares literal SVG text while preserving the source's authored line breaks.
+#[doc(hidden)]
+#[cfg(feature = "html-entities")]
+pub fn flowchart_svg_text_source(raw: &str, fallback: &str) -> Option<String> {
+    if !raw.contains(['&', '#', 'ﬂ', '¶', '<', '>']) {
+        return None;
+    }
+    let append_text = |text: &str, out: &mut String| {
+        for ch in crate::text::decode_mermaid_entities_to_unicode(text).chars() {
+            match ch {
+                '&' => out.push_str("&amp;"),
+                '<' => out.push_str("&lt;"),
+                '>' => out.push_str("&gt;"),
+                _ => out.push(ch),
+            }
+        }
+    };
+    // Recognize only authored break tokens before expanding entities. Encode the other angle
+    // brackets and ampersands for the SVG row tokenizer, which decodes them after tokenization.
+    let mut source = String::with_capacity(raw.len());
+    let mut copied = 0;
+    for (start, _) in raw.match_indices('<') {
+        let tail = &raw[start + 1..];
+        let name = tail.strip_prefix('/').unwrap_or(tail);
+        if !name
+            .get(..2)
+            .is_some_and(|name| name.eq_ignore_ascii_case("br"))
+        {
+            continue;
+        }
+        let tail = name[2..].trim_start_matches(crate::text::is_ecmascript_whitespace);
+        let tail = tail.strip_prefix('/').unwrap_or(tail);
+        if let Some(after) = tail.strip_prefix('>') {
+            append_text(&raw[copied..start], &mut source);
+            source.push_str("<br/>");
+            copied = raw.len() - after.len();
+        }
+    }
+    append_text(&raw[copied..], &mut source);
+    (source != fallback).then_some(source)
+}
+
 /// Identifies the owner of an alternate Flowchart label spelling.
 #[doc(hidden)]
 #[derive(Clone, Copy)]

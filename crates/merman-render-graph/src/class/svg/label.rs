@@ -28,14 +28,14 @@ pub(super) struct ClassHtmlLabelSpec<'a> {
 
 pub(super) fn render_class_html_label(out: &mut impl SvgOutput, spec: &ClassHtmlLabelSpec<'_>) {
     out.push_str(r#"<span class=""#);
-    escape_xml_into(out, spec.span_class);
+    merman_render_core::xml::escape_attr_into(out, spec.span_class);
     if let Some(extra) = spec
         .extra_span_class
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
         out.push(' ');
-        escape_xml_into(out, extra);
+        merman_render_core::xml::escape_attr_into(out, extra);
     }
     let span_style = spec.span_style.map(str::trim).unwrap_or("");
     out.push('"');

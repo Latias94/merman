@@ -46,7 +46,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_diamond(
                 r#"<g transform="translate({},{})" style="{}">"#,
                 fmt(tx),
                 fmt(ty),
-                escape_attr(common.rough_group_style),
+                escape_attr(super::super::helpers::hand_drawn_group_style(common)),
             );
             super::super::helpers::write_hand_drawn_hachure(
                 out,
@@ -114,7 +114,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_circle(
             let _ = write!(
                 out,
                 r#"<g class="basic label-container" style="{}">"#,
-                escape_attr(&hand_drawn_circle_style(common.node_styles)),
+                escape_attr(&circle_group_style(common)),
             );
             write_rough_circle_paths(out, common, &paths, common.stroke_width, r);
             out.push_str("</g>");
@@ -179,7 +179,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_double_circle(
                 out,
                 r#"<g class="{}" style="{}"><g>"#,
                 escape_attr(&classes),
-                escape_attr(&hand_drawn_circle_style(common.node_styles)),
+                escape_attr(&circle_group_style(common)),
             );
             write_rough_circle_paths(out, common, &outer, 2.5, geometry.outer_radius);
             out.push_str("</g><g>");
@@ -189,20 +189,21 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_double_circle(
             return Ok(());
         }
     }
+    let child_style = super::super::helpers::grouped_shape_child_style(common);
     let _ = write!(
         out,
         r#"<g class="basic label-container" style="{}{}"><circle class="outer-circle" cx="0" cy="0" r="{}" style="{}"#,
         escape_attr(common.style),
         common.effect_filter_style,
         fmt(geometry.outer_radius),
-        escape_attr(common.style),
+        escape_attr(&child_style),
     );
     common.write_child_filter_style(out);
     let _ = write!(
         out,
         r#""/><circle class="inner-circle" cx="0" cy="0" r="{}" style="{}"#,
         fmt(geometry.inner_radius),
-        escape_attr(common.style)
+        escape_attr(&child_style)
     );
     common.write_child_filter_style(out);
     out.push_str(r#""/></g>"#);
@@ -225,6 +226,16 @@ fn hand_drawn_circle_style(styles: &[String]) -> String {
         .join(",")
 }
 
+fn circle_group_style<'a>(
+    common: &super::super::FlowchartNodeRenderCommon<'a>,
+) -> std::borrow::Cow<'a, str> {
+    if common.solid_rough_fill {
+        std::borrow::Cow::Borrowed(common.style)
+    } else {
+        std::borrow::Cow::Owned(hand_drawn_circle_style(common.node_styles))
+    }
+}
+
 fn write_rough_circle_paths(
     out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
@@ -233,10 +244,7 @@ fn write_rough_circle_paths(
     radius: f64,
 ) {
     let outline = if common.solid_rough_fill {
-        use kurbo::Shape;
-        kurbo::Circle::new((0.0, 0.0), radius)
-            .to_path(0.05)
-            .to_svg()
+        super::super::helpers::circle_outline(radius)
     } else {
         String::new()
     };

@@ -16,7 +16,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_triangle_extract(
 ) {
     let (metrics, p, h, path_data) = prepare_triangle_extract_geometry(ctx, common, label);
     if common.look_is_hand_drawn() {
-        let rough_paths = super::super::helpers::timed_node_roughjs(common.timing, details, || {
+        let rough_paths = helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_hand_drawn_svg_path(
                 &path_data,
                 common.stroke_width,
@@ -30,17 +30,13 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_triangle_extract(
         {
             let _ = write!(
                 out,
-                r#"<g transform="translate({},{})" class="outer-path" style="{}"><path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"#,
+                r#"<g transform="translate({},{})" class="outer-path" style="{}">"#,
                 util::fmt(-h / 2.0),
                 util::fmt(h / 2.0),
-                escape_attr(common.rough_group_style),
-                escape_attr(&fill_d),
-                escape_attr(common.fill_color),
-                escape_attr(&stroke_d),
-                escape_attr(common.stroke_color),
-                util::fmt(common.stroke_width as f64),
-                escape_attr(common.stroke_dasharray),
+                escape_attr(helpers::hand_drawn_group_style(common)),
             );
+            helpers::write_hand_drawn_path_pair(out, common, &path_data, &fill_d, &stroke_d);
+            out.push_str("</g>");
         } else {
             // Keep the complete classic geometry when RoughJS admission fails, without
             // emitting a partial hand-drawn shape with empty paths.
@@ -54,7 +50,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_triangle_extract(
             );
         }
     } else if let Some((fill_d, stroke_d)) =
-        super::super::helpers::timed_node_roughjs(common.timing, details, || {
+        helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_svg_path(
                 &path_data,
                 common.stroke_width,
@@ -90,7 +86,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_triangle_extract(
         );
     }
 
-    let node_text_style = super::super::helpers::node_source_text_style(
+    let node_text_style = helpers::node_source_text_style(
         ctx,
         Some(common.node_id),
         common.node_classes,
@@ -137,5 +133,5 @@ pub(super) fn advance_triangle_extract_rough_geometry(
 ) {
     let (_, _, _, path_data) = prepare_triangle_extract_geometry(ctx, common, label);
     let target = super::super::roughjs::RoughGeometryTarget::Query;
-    let _ = super::super::helpers::prepare_node_path(common, &path_data, target);
+    let _ = helpers::prepare_node_path(common, &path_data, target);
 }

@@ -1,5 +1,7 @@
 //! Flowchart root renderer.
 
+use merman_render_flow::edge_labels::{write_edge_labels, write_elk_edge_labels};
+
 use super::super::defs::FlowchartMarkerEmissionPlan;
 use super::super::edge_fill::FlowchartEdgeFillPlan;
 use super::super::*;
@@ -422,7 +424,7 @@ fn render_flowchart_elk_edge_paths(
             out,
             ctx,
             session.marker_plan,
-            session.edge_fills.ink(e.key),
+            session.edge_fills,
             false,
             e,
             0.0,
@@ -445,31 +447,23 @@ fn render_flowchart_elk_edge_labels(
 ) -> crate::Result<()> {
     ctx.checkpoint_emit()?;
     let _g_edge_labels = detail_guard(session.timing, &mut session.details.edge_labels);
-    if edges.is_empty() {
-        out.push_str(r#"<g class="edgeLabels"/>"#);
-        return out.checkpoint();
-    }
-
-    out.push_str(r#"<g class="edgeLabels">"#);
-    for &e in edges {
-        ctx.checkpoint_emit()?;
-        if edge_label_is_empty(ctx, e) {
-            continue;
-        }
-        render_flowchart_edge_label(
-            out,
-            ctx,
-            e,
-            0.0,
-            0.0,
-            session.hierarchy_plan,
-            session.edge_labels,
-        )?;
-
-        out.checkpoint()?;
-    }
-    out.push_str("</g>");
-    out.checkpoint()
+    write_elk_edge_labels(
+        out,
+        edges,
+        || ctx.checkpoint_emit(),
+        |edge| edge_label_is_empty(ctx, edge),
+        |out, edge| {
+            render_flowchart_edge_label(
+                out,
+                ctx,
+                edge,
+                0.0,
+                0.0,
+                session.hierarchy_plan,
+                session.edge_labels,
+            )
+        },
+    )
 }
 
 fn initialize_flowchart_root_frame<'data, 'plan>(
@@ -567,14 +561,6 @@ fn initialize_flowchart_root_frame<'data, 'plan>(
             .update(ctx, session.hierarchy_plan, session.edge_cache, edges)?;
     }
     let _g_edge_paths = detail_guard(session.timing, &mut session.details.edge_paths);
-    session.edge_fills.write_casings(
-        out,
-        ctx,
-        session.marker_plan,
-        edges,
-        session.edge_cache,
-        session.label_cutouts,
-    )?;
     let edge_group_class = if ctx.swimlane_direction.is_some() {
         "edges edgePaths"
     } else {
@@ -591,7 +577,7 @@ fn initialize_flowchart_root_frame<'data, 'plan>(
                 out,
                 ctx,
                 session.marker_plan,
-                session.edge_fills.ink(e.key),
+                session.edge_fills,
                 session.label_cutouts.contains(&e.key),
                 e,
                 origin_x,
@@ -624,79 +610,33 @@ fn initialize_flowchart_root_frame<'data, 'plan>(
     }
 
     let _g_edge_labels = detail_guard(session.timing, &mut session.details.edge_labels);
-    if ctx.swimlane_direction.is_some() || edges.is_empty() {
-        out.push_str(r#"<g class="edgeLabels"/>"#);
+    let label_edges = if ctx.swimlane_direction.is_some() {
+        &[]
     } else {
-        out.push_str(r#"<g class="edgeLabels">"#);
-        if !ctx.edge_html_labels
-            && !crate::flowchart::flowchart_dagre_merges_self_loop_segments(&ctx.model.keyword)
-        {
-            // Unmerged Agentflow helper edges use insertEdgeLabel for every Graphlib edge.
-            // Its SVG empty-label background remains immediately after that edge's wrapper.
-            for &e in edges {
-                ctx.checkpoint_emit()?;
-                render_flowchart_edge_label(
-                    out,
-                    ctx,
-                    e,
-                    origin_x,
-                    frame.content_origin_y,
-                    session.hierarchy_plan,
-                    session.edge_labels,
-                )?;
-                if edge_label_is_empty(ctx, e) {
-                    out.push_str(r#"<g><rect class="background" style="stroke: none"/></g>"#);
-                    out.checkpoint()?;
-                }
-
-                out.checkpoint()?;
-            }
-        } else if !ctx.edge_html_labels {
-            // Mermaid's `createText(..., useHtmlLabels=false)` always creates a background `<rect>`,
-            // but for empty labels it returns the `<text>` element instead of the wrapper `<g>`.
-            // The unused wrapper `<g>` (with the `background` rect) remains as a direct child
-            // under `.edgeLabels`. Mirror this by emitting one rect-group per empty label.
-            for &e in edges {
-                ctx.checkpoint_emit()?;
-                if edge_label_is_empty(ctx, e) {
-                    out.push_str(r#"<g><rect class="background" style="stroke: none"/></g>"#);
-                    out.checkpoint()?;
-                }
-            }
-            for &e in edges {
-                ctx.checkpoint_emit()?;
-                render_flowchart_edge_label(
-                    out,
-                    ctx,
-                    e,
-                    origin_x,
-                    frame.content_origin_y,
-                    session.hierarchy_plan,
-                    session.edge_labels,
-                )?;
-
-                out.checkpoint()?;
-            }
-        } else {
-            // Mermaid emits HTML edge-label wrappers in graph edge order. Empty labels stay in
-            // place as zero-sized foreignObjects instead of being partitioned ahead of labels.
-            for &e in edges {
-                ctx.checkpoint_emit()?;
-                render_flowchart_edge_label(
-                    out,
-                    ctx,
-                    e,
-                    origin_x,
-                    frame.content_origin_y,
-                    session.hierarchy_plan,
-                    session.edge_labels,
-                )?;
-
-                out.checkpoint()?;
-            }
-        }
-        out.push_str("</g>");
-    }
+        edges
+    };
+    let merge_self_loop_segments = ctx.edge_html_labels
+        || label_edges.is_empty()
+        || crate::flowchart::flowchart_dagre_merges_self_loop_segments(&ctx.model.keyword);
+    write_edge_labels(
+        out,
+        label_edges,
+        ctx.edge_html_labels,
+        merge_self_loop_segments,
+        || ctx.checkpoint_emit(),
+        |edge| edge_label_is_empty(ctx, edge),
+        |out, edge| {
+            render_flowchart_edge_label(
+                out,
+                ctx,
+                edge,
+                origin_x,
+                frame.content_origin_y,
+                session.hierarchy_plan,
+                session.edge_labels,
+            )
+        },
+    )?;
     drop(_g_edge_labels);
 
     out.push_str(r#"<g class="nodes">"#);

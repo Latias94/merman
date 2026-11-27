@@ -16,12 +16,13 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_note(
 
     let note_fill = &ctx.compatibility.note_fill;
     let note_stroke = &ctx.compatibility.note_stroke;
+    let outline = format!("M{} {} H{} V{} H{} Z", x, y, x + w, y + h, x);
 
     if let Some((fill_d, stroke_d)) = helpers::hand_drawn_path_pair_with_stroke(
         common.look_is_hand_drawn(),
         common.timing,
         details,
-        &format!("M{} {} H{} V{} H{} Z", x, y, x + w, y + h, x),
+        &outline,
         common.stroke_width,
         common.stroke_dasharray,
         common.work_meter,
@@ -30,15 +31,31 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_note(
         let _ = write!(
             out,
             r#"<g class="basic label-container outer-path" style="{}">"#,
-            escape_attr(common.rough_group_style)
+            escape_attr(helpers::hand_drawn_group_style(common))
         );
+        let (mut fill, mut stroke) = (note_fill.as_str(), note_stroke.as_str());
+        if common.solid_rough_fill {
+            crate::mermaid_style::visit_parsed_style_declarations(common.style, |decl| match decl
+                .property()
+            {
+                "fill" => fill = common.fill_color,
+                "stroke" => stroke = common.stroke_color,
+                _ => {}
+            });
+        }
+        if !helpers::write_backed_hachure(out, common, &outline, &fill_d, 4.0, (fill, stroke)) {
+            let _ = write!(
+                out,
+                r#"<path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/>"#,
+                escape_attr(&fill_d),
+                escape_attr(note_fill),
+            );
+        }
         let _ = write!(
             out,
-            r#"<path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"#,
-            escape_attr(&fill_d),
-            escape_attr(note_fill),
+            r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"#,
             escape_attr(&stroke_d),
-            escape_attr(note_stroke),
+            escape_attr(stroke),
             fmt_display(common.stroke_width as f64),
             escape_attr(common.stroke_dasharray),
         );

@@ -658,6 +658,7 @@ fn er_swimlane_title_html_labels_follow_flowchart_and_hand_drawn_lanes_keep_both
                 "  htmlLabels: false\n  flowchart:\n    htmlLabels: {title_html}\n",
                 "  swimlane:\n    lineHops: false\n---\nerDiagram\n",
                 "subgraph Group[**Customer Domain**]\nA\nB\nend\nA ||--|| B : connects\n",
+                "style Group fill:#334455,fill-opacity:0,opacity:1\n",
             ),
             look = look,
             title_html = title_html
@@ -688,6 +689,16 @@ fn er_swimlane_title_html_labels_follow_flowchart_and_hand_drawn_lanes_keep_both
                 .unwrap();
             if look == "handDrawn" {
                 assert!(shell.has_tag_name("g"));
+                assert_eq!(shell.attribute("style"), Some("opacity:1"));
+                let backing = shell.first_element_child().unwrap();
+                assert!(has_class(backing, "merman-rough-backing"));
+                assert_eq!(backing.attribute("fill"), Some("#334455"));
+                assert!(
+                    backing
+                        .attribute("style")
+                        .unwrap()
+                        .contains("fill-opacity:0")
+                );
                 assert!(
                     shell
                         .descendants()

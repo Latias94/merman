@@ -17,18 +17,25 @@ third-party-bundle = true
 
 [features]
 default = []
+diagram-architecture = ["merman-model/diagram-architecture", "dep:merman-core-preprocess"]
+diagram-c4 = ["merman-model/diagram-c4", "dep:merman-core-preprocess", "dep:merman-markup", "merman-markup/html", "dep:serde_json"]
 diagram-class = ["merman-model/diagram-class", "dep:indexmap", "dep:merman-core-preprocess", "merman-core-preprocess/mermaid-unicode", "dep:merman-markup", "merman-markup/html", "merman-markup/url", "dep:serde_json"]
 diagram-er = ["merman-model/diagram-er", "dep:indexmap", "dep:merman-core-preprocess"]
 diagram-git-graph = ["merman-model/diagram-git-graph", "dep:merman-core-preprocess", "dep:merman-markup", "merman-markup/html"]
+diagram-mindmap = ["merman-model/diagram-mindmap", "dep:merman-core-preprocess", "dep:merman-markup", "merman-markup/html"]
+diagram-requirement = ["merman-model/diagram-requirement", "dep:merman-core-preprocess"]
 diagram-state = ["merman-model/diagram-state", "dep:indexmap", "dep:merman-core-preprocess", "dep:merman-markup", "merman-markup/html", "dep:serde_json"]
+diagram-usecase = ["merman-model/diagram-usecase", "dep:serde", "dep:serde_json"]
 editor-facts = []
 presentation = ["merman-model/presentation-data"]
+test-support = []
 
 [dependencies]
 indexmap = { workspace = true, optional = true }
 merman-core-preprocess = { workspace = true, optional = true }
 merman-markup = { workspace = true, optional = true }
 merman-model.workspace = true
+serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 
 [dev-dependencies]

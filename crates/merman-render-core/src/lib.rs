@@ -31,7 +31,7 @@ pub mod math;
 #[cfg(feature = "css-style")]
 #[doc(hidden)]
 pub mod mermaid_style;
-#[cfg(feature = "svg-output")]
+#[cfg(any(feature = "svg-output", feature = "route-paint"))]
 #[doc(hidden)]
 pub mod number_format;
 #[cfg(feature = "paint-scene")]
@@ -47,9 +47,11 @@ pub mod root_svg;
 #[cfg(feature = "rough-svg")]
 #[doc(hidden)]
 pub mod rough_svg;
+#[doc(hidden)]
 pub mod route_types;
 
 #[cfg(feature = "route-paint")]
+#[doc(hidden)]
 pub mod route_paint;
 
 #[cfg(feature = "svg-animation")]
@@ -70,7 +72,7 @@ pub mod svg_output;
 #[cfg(feature = "svg-safety")]
 #[doc(hidden)]
 pub mod svg_safety;
-#[cfg(feature = "svg-parse")]
+#[cfg(any(feature = "svg-parse", feature = "svg-bounds"))]
 #[doc(hidden)]
 pub mod svg_scan;
 #[cfg(feature = "html")]

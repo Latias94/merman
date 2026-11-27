@@ -111,7 +111,12 @@ impl Shaft {
                 &intervals,
                 config.jump_style,
             );
-            let _ = write!(output, "L{},{}", command.end.x, command.end.y);
+            let _ = write!(
+                output,
+                "L{},{}",
+                fmt_display(command.end.x),
+                fmt_display(command.end.y),
+            );
             copied = self
                 .commands
                 .get(index + 2)
@@ -143,9 +148,11 @@ pub(in crate::svg::parity::flowchart) fn apply_canonical_line_hops(
             .iter()
             .map(|edge| (edge.key, edge.edge.as_ref())),
     );
+    let theme_sketch = super::super::paint::uses_theme_sketch(ctx);
     let mut shafts = Vec::new();
     for edge in render_edges {
         if edge.edge.visibility == merman_model::families::flowchart::FlowEdgeVisibility::Invisible
+            || (theme_sketch && !super::super::paint::has_authored_curve(ctx, edge.key))
         {
             continue;
         }

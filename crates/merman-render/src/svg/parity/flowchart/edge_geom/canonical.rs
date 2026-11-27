@@ -8,11 +8,13 @@ use crate::graph_layout::{
     ir::{BorderStitch, Endpoint, RoutePoint},
     route_paint,
 };
+use rustc_hash::FxHashSet;
 use std::borrow::Cow;
 
-fn obstacles(layout: &FlowchartLayout) -> Vec<(kurbo::Rect, route_paint::ObstacleOwner)> {
+fn obstacles(ctx: &FlowchartRenderCtx<'_>) -> Vec<(kurbo::Rect, route_paint::ObstacleOwner)> {
     use route_paint::ObstacleOwner;
 
+    let layout = ctx.layout;
     let mut boxes = Vec::with_capacity(layout.nodes.len() + layout.clusters.len());
     let label_box = |label: &crate::model::LayoutLabel| {
         kurbo::Rect::from_center_size((label.x, label.y), (label.width, label.height))
@@ -41,6 +43,60 @@ fn obstacles(layout: &FlowchartLayout) -> Vec<(kurbo::Rect, route_paint::Obstacl
             },
         ),
     );
+    if let crate::graph_layout::RouteContract::CanonicalAxis(axis) = &layout.route_contract {
+        let mut marker_boxes = FxHashSet::default();
+        for (key, edge) in super::super::types::FlowchartLayoutEdgeRef::in_layout_order(layout) {
+            let index = key.semantic_index();
+            let (Some(Some(route)), Some(source), [first, .., last]) = (
+                axis.routes.get(index),
+                ctx.model.edges.get(index),
+                edge.points(),
+            ) else {
+                continue;
+            };
+            let marks = super::super::flowchart_marker_metrics(source);
+            let Some((&(start_axis, start_kind), &(end_axis, end_kind))) =
+                route.knots.first().zip(route.knots.last())
+            else {
+                continue;
+            };
+            for (endpoint, point, side, marker) in [
+                (
+                    route.endpoints.0,
+                    RoutePoint {
+                        x: first.x,
+                        y: first.y,
+                        axis: start_axis,
+                        kind: start_kind,
+                    },
+                    route.ports.0,
+                    marks.0,
+                ),
+                (
+                    route.endpoints.1,
+                    RoutePoint {
+                        x: last.x,
+                        y: last.y,
+                        axis: end_axis,
+                        kind: end_kind,
+                    },
+                    route.ports.1,
+                    marks.1,
+                ),
+            ] {
+                if let Some((rect, owner @ ObstacleOwner::Marker(_, contact))) =
+                    route_paint::marker_obstacle(index, endpoint, point, side, marker)
+                {
+                    // Every owning edge queries with this exact contact, so one copy of an
+                    // identical footprint preserves both shared and foreign marker avoidance.
+                    let bounds = [rect.x0, rect.y0, rect.x1, rect.y1].map(f64::to_bits);
+                    if marker_boxes.insert((contact, bounds)) {
+                        boxes.push((rect, owner));
+                    }
+                }
+            }
+        }
+    }
     boxes
 }
 
@@ -151,15 +207,21 @@ pub(super) fn paint(
     {
         None
     } else {
+        let layout_contact = |index: usize| RoutePoint {
+            x: solved_points[index].x,
+            y: solved_points[index].y,
+            ..points[index]
+        };
         Some(
             clearance
-                .resolve_with(ctx.work_meter, || obstacles(ctx.layout))?
+                .resolve_with(ctx.work_meter, || obstacles(ctx))?
                 .for_edge(
                     key.semantic_index(),
                     route.endpoints,
                     kurbo::Vec2::new(origin_x - ctx.tx, origin_y - ctx.ty),
                     stroke_outset.unwrap_or_default(),
-                ),
+                )
+                .with_terminal_contacts((layout_contact(0), layout_contact(last))),
         )
     };
     if ctx.compatibility.look.is_neo() && !ctx.edge_style_plan.animation_for(key)?.is_active() {

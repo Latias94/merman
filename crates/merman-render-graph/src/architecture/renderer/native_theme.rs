@@ -1,4 +1,6 @@
 use merman_model::presentation::PresentationConfig;
+#[cfg(feature = "layout-shoal")]
+use merman_theme_contract::v2::{Color, EdgeLabelBackground};
 use merman_theme_contract::v2::{EdgeStyle, Elevation, MarkerStyle};
 
 use merman_render_core::mermaid_style::font_family_css;
@@ -19,6 +21,10 @@ pub struct ArchitectureNativeStyle {
     pub(crate) elevation: Elevation,
     pub(crate) edge_style: EdgeStyle,
     pub marker_style: MarkerStyle,
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) edge_label_bg: EdgeLabelBackground,
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) edge_label_fill: Color,
 }
 
 impl ArchitectureNativeStyle {
@@ -80,6 +86,16 @@ impl ArchitectureNativeStyle {
             elevation: theme.elevation.clone(),
             edge_style: theme.form.edge_style,
             marker_style: theme.form.marker_style,
+            #[cfg(feature = "layout-shoal")]
+            edge_label_bg: theme.form.edge_label_bg,
+            #[cfg(feature = "layout-shoal")]
+            edge_label_fill: match theme.form.edge_label_bg {
+                EdgeLabelBackground::Auto | EdgeLabelBackground::Canvas => {
+                    roles.canvas.first_color()
+                }
+                EdgeLabelBackground::Pill => roles.surface_node.first_color(),
+                EdgeLabelBackground::Transparent => Color::TRANSPARENT,
+            },
         }
     }
 }

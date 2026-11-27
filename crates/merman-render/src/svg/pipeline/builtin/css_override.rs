@@ -1,8 +1,19 @@
-use crate::Result;
+use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessExecution, SvgPostprocessor};
+use crate::{Error, Result};
+use cssparser::{
+    AtRuleParser, CowRcStr, DeclarationParser, ParseError, ParseErrorKind, Parser, ParserState,
+    QualifiedRuleParser, RuleBodyItemParser, RuleBodyParser, StyleSheetParser, Token,
+    parse_important,
+};
+use merman_render_core::svg_output::{BoundedSvgOutput, SvgOutput};
+use merman_render_core::svg_scan::{
+    CssXmlLocation, SvgTagScanner, XmlCssSource, checkpoint_loop,
+    next_svg_quoted_attr_with_checkpoints, start_tag_name,
+};
 use std::borrow::Cow;
+use std::ops::Range;
 
-use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
-use merman_render_core::svg_scan::{find_tag_end, next_svg_quoted_attr};
+const CSS_NESTING_HARD_LIMIT: u8 = 64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CssOverridePolicy {
@@ -38,195 +49,320 @@ impl SvgPostprocessor for CssOverridePostprocessor {
     fn process<'a>(
         &self,
         svg: Cow<'a, str>,
-        _ctx: &SvgPostprocessContext<'_>,
+        ctx: &SvgPostprocessContext<'_>,
     ) -> Result<Cow<'a, str>> {
         match self.policy {
             CssOverridePolicy::Preserve => Ok(svg),
-            CssOverridePolicy::StripExistingImportant => {
-                Ok(Cow::Owned(strip_css_important(svg.as_ref())))
+            CssOverridePolicy::StripExistingImportant => strip_css_important(svg, ctx.execution()),
+        }
+    }
+}
+
+pub(super) fn strip_css_important<'a>(
+    svg: Cow<'a, str>,
+    execution: SvgPostprocessExecution<'_>,
+) -> Result<Cow<'a, str>> {
+    let mut checkpoint = || execution.checkpoint();
+    if !has_css_priority_syntax(&svg, &mut checkpoint)? {
+        return Ok(svg);
+    }
+    let mut scanner = SvgTagScanner::new(&svg);
+    let mut out = BoundedSvgOutput::new(execution.work_meter());
+    let mut cursor = 0;
+    while let Some(tag) = scanner.next_with_checkpoints(&mut checkpoint)? {
+        let Some(name) = start_tag_name(tag.raw()) else {
+            continue;
+        };
+        let mut attr_cursor = 0;
+        while let Some(attr) =
+            next_svg_quoted_attr_with_checkpoints(tag.raw(), attr_cursor, &mut checkpoint)?
+        {
+            attr_cursor = attr.full_end;
+            if tag.raw()[attr.name_start..attr.name_end].eq_ignore_ascii_case("style") {
+                write_css_priority_edits(
+                    &svg,
+                    tag.start() + attr.value_start..tag.start() + attr.value_end,
+                    CssXmlLocation::Attribute,
+                    &mut out,
+                    &mut cursor,
+                    execution,
+                )?;
             }
         }
+        if name == "style" && !tag.is_self_closing() {
+            let Some(close) = scanner.matching_end_with_checkpoints(tag, &mut checkpoint)? else {
+                break;
+            };
+            write_css_priority_edits(
+                &svg,
+                tag.end()..close.start(),
+                CssXmlLocation::Stylesheet,
+                &mut out,
+                &mut cursor,
+                execution,
+            )?;
+        }
     }
-}
-
-pub(crate) fn strip_css_important(svg: &str) -> String {
-    if !svg.contains('!') {
-        return svg.to_string();
+    if cursor == 0 {
+        return Ok(svg);
     }
-
-    let svg = strip_css_important_in_style_elements(svg);
-    strip_css_important_in_style_attrs(&svg)
-}
-
-fn strip_css_important_in_style_elements(svg: &str) -> String {
-    let mut out = String::with_capacity(svg.len());
-    let mut cursor = 0;
-    let mut saw_style = false;
-
-    while let Some(rel_start) = svg[cursor..].find("<style") {
-        saw_style = true;
-        let start = cursor + rel_start;
-        out.push_str(&svg[cursor..start]);
-
-        let Some(open_end) = find_tag_end(svg, start) else {
-            out.push_str(&svg[start..]);
-            return out;
-        };
-
-        let content_start = open_end + 1;
-        let Some(rel_close_start) = svg[content_start..].find("</style") else {
-            out.push_str(&svg[start..]);
-            return out;
-        };
-        let close_start = content_start + rel_close_start;
-        let Some(close_end) = find_tag_end(svg, close_start) else {
-            out.push_str(&svg[start..]);
-            return out;
-        };
-
-        out.push_str(&svg[start..=open_end]);
-        out.push_str(&strip_css_important_from_css(
-            &svg[content_start..close_start],
-        ));
-        out.push_str(&svg[close_start..=close_end]);
-        cursor = close_end + 1;
-    }
-
-    if !saw_style {
-        return svg.to_string();
-    }
-
     out.push_str(&svg[cursor..]);
-    out
+    Ok(Cow::Owned(out.finish()?))
 }
 
-fn strip_css_important_in_style_attrs(svg: &str) -> String {
-    let mut out = String::with_capacity(svg.len());
-    let mut cursor = 0;
-    let mut saw_tag = false;
-
-    while let Some(rel_start) = svg[cursor..].find('<') {
-        saw_tag = true;
-        let start = cursor + rel_start;
-        out.push_str(&svg[cursor..start]);
-
-        let Some(end) = find_tag_end(svg, start) else {
-            out.push_str(&svg[start..]);
-            return out;
-        };
-
-        out.push_str(&strip_css_important_in_tag_style_attrs(&svg[start..=end]));
-        cursor = end + 1;
+fn has_css_priority_syntax(
+    source: &str,
+    checkpoint: &mut impl FnMut() -> Result<()>,
+) -> Result<bool> {
+    // A numeric XML reference can supply the exclamation mark.
+    for (index, byte) in source.bytes().enumerate() {
+        checkpoint_loop(index, checkpoint)?;
+        if byte == b'!' || (byte == b'&' && source.as_bytes().get(index + 1) == Some(&b'#')) {
+            return Ok(true);
+        }
     }
-
-    if !saw_tag {
-        return svg.to_string();
-    }
-
-    out.push_str(&svg[cursor..]);
-    out
+    Ok(false)
 }
 
-fn strip_css_important_in_tag_style_attrs(tag: &str) -> Cow<'_, str> {
-    if tag.starts_with("</")
-        || tag.starts_with("<!--")
-        || tag.starts_with("<!")
-        || tag.starts_with("<?")
-    {
-        return Cow::Borrowed(tag);
+fn write_css_priority_edits(
+    svg: &str,
+    range: Range<usize>,
+    location: CssXmlLocation,
+    out: &mut BoundedSvgOutput<'_>,
+    cursor: &mut usize,
+    execution: SvgPostprocessExecution<'_>,
+) -> Result<()> {
+    let serialized = &svg[range.clone()];
+    let mut checkpoint = || execution.checkpoint();
+    if !has_css_priority_syntax(serialized, &mut checkpoint)? {
+        return Ok(());
     }
+    let Some(css) = XmlCssSource::new(serialized, location, &mut checkpoint)? else {
+        return Ok(());
+    };
+    let edits = priority_edits(css.logical(), location, execution)?;
+    css.visit_source_spans(&edits, &mut checkpoint, |_, edit| {
+        out.push_str(&svg[*cursor..range.start + edit.start]);
+        *cursor = range.start + edit.end;
+    })?;
+    out.checkpoint()
+}
 
-    let mut out = String::new();
-    let mut copied_until = 0usize;
-    let mut cursor = 0usize;
-    let mut changed = false;
+type CssParseError = ParseError<Box<Error>>;
 
-    while let Some(attr) = next_svg_quoted_attr(tag, cursor) {
-        let name = &tag[attr.name_start..attr.name_end];
-        if !name.eq_ignore_ascii_case("style") {
-            cursor = attr.full_end;
-            continue;
-        }
-
-        let value = &tag[attr.value_start..attr.value_end];
-        let stripped = strip_css_important_from_css(value);
-        if stripped == value {
-            cursor = attr.full_end;
-            continue;
-        }
-
-        if !changed {
-            out = String::with_capacity(tag.len());
-            changed = true;
-        }
-        out.push_str(&tag[copied_until..attr.value_start]);
-        out.push_str(&stripped);
-        copied_until = attr.value_end;
-        cursor = attr.full_end;
-    }
-
-    if changed {
-        out.push_str(&tag[copied_until..]);
-        Cow::Owned(out)
+fn priority_edits(
+    css: &str,
+    location: CssXmlLocation,
+    execution: SvgPostprocessExecution<'_>,
+) -> Result<Vec<Range<usize>>> {
+    let mut edits = Vec::new();
+    let mut css = Parser::new(css);
+    let mut parser = PriorityParser {
+        execution,
+        edits: &mut edits,
+        depth: 0,
+        location,
+    };
+    let parsed = if location == CssXmlLocation::Stylesheet {
+        visit_css_items(StyleSheetParser::new(&mut css, &mut parser), execution)
     } else {
-        Cow::Borrowed(tag)
+        visit_css_items(RuleBodyParser::new(&mut css, &mut parser), execution)
+    };
+    if let Err(ParseError {
+        kind: ParseErrorKind::Custom(error),
+        ..
+    }) = parsed
+    {
+        return Err(*error);
     }
+    Ok(edits)
 }
 
-fn strip_css_important_from_css(css: &str) -> String {
-    let mut out = String::with_capacity(css.len());
-    let mut copied_until = 0usize;
-    let mut search_from = 0usize;
-    let mut stripped = false;
+struct PriorityParser<'a, 'op> {
+    execution: SvgPostprocessExecution<'op>,
+    edits: &'a mut Vec<Range<usize>>,
+    depth: u8,
+    location: CssXmlLocation,
+}
 
-    while let Some(rel) = css[search_from..].find('!') {
-        let bang = search_from + rel;
-        if let Some((start, end)) = css_important_match_bounds_at_bang(css, bang) {
-            out.push_str(&css[copied_until..start]);
-            copied_until = end;
-            search_from = end;
-            stripped = true;
-            continue;
+impl PriorityParser<'_, '_> {
+    fn parse_rule_body(
+        &mut self,
+        input: &mut Parser<'_>,
+    ) -> std::result::Result<(), CssParseError> {
+        if self.location == CssXmlLocation::Attribute {
+            return Err(ParseError::unexpected_token());
         }
-
-        search_from = bang + 1;
+        if self.depth == CSS_NESTING_HARD_LIMIT {
+            return Err(ParseError::custom(Box::new(Error::svg_postprocess(
+                "css-override",
+                format!("CSS override nesting exceeds the hard limit of {CSS_NESTING_HARD_LIMIT}"),
+            ))));
+        }
+        self.depth += 1;
+        let execution = self.execution;
+        let result = visit_css_items(RuleBodyParser::new(input, self), execution);
+        self.depth -= 1;
+        result
     }
 
-    if !stripped {
-        return css.to_string();
+    fn consume_tokens(&self, input: &mut Parser<'_>) -> std::result::Result<(), CssParseError> {
+        let mut checkpoint = || {
+            self.execution
+                .checkpoint()
+                .map_err(|error| ParseError::custom(Box::new(error)))
+        };
+        for index in 0.. {
+            checkpoint_loop(index, &mut checkpoint)?;
+            if input.next().is_err() {
+                break;
+            }
+        }
+        Ok(())
     }
-
-    out.push_str(&css[copied_until..]);
-    out
 }
 
-fn css_important_match_bounds_at_bang(svg: &str, bang: usize) -> Option<(usize, usize)> {
-    let marker_end = bang + "!important".len();
-    if !svg
-        .get(bang..marker_end)?
-        .eq_ignore_ascii_case("!important")
-    {
-        return None;
+fn visit_css_items<'i>(
+    items: impl Iterator<
+        Item = std::result::Result<(), (CssParseError, &'i str, cssparser::SourceLocation)>,
+    >,
+    execution: SvgPostprocessExecution<'_>,
+) -> std::result::Result<(), CssParseError> {
+    for item in items {
+        if let Err((error, _, _)) = item
+            && matches!(error.kind, ParseErrorKind::Custom(_))
+        {
+            return Err(error);
+        }
+        execution
+            .checkpoint()
+            .map_err(|error| ParseError::custom(Box::new(error)))?;
     }
-
-    if let Some(next) = svg.get(marker_end..).and_then(|tail| tail.chars().next())
-        && is_css_regex_word_char(next)
-    {
-        return None;
-    }
-
-    let start = svg[..bang]
-        .char_indices()
-        .rev()
-        .find(|(_, ch)| !ch.is_whitespace())
-        .map(|(idx, ch)| idx + ch.len_utf8())
-        .unwrap_or(0);
-
-    Some((start, marker_end))
+    Ok(())
 }
 
-fn is_css_regex_word_char(ch: char) -> bool {
-    ch == '_' || ch.is_alphanumeric()
+impl<'i> DeclarationParser<'i> for PriorityParser<'_, '_> {
+    type Declaration = ();
+    type Error = Box<Error>;
+
+    fn parse_value(
+        &mut self,
+        name: CowRcStr<'i>,
+        input: &mut Parser<'i>,
+        _declaration_start: &ParserState,
+    ) -> std::result::Result<(), CssParseError> {
+        let mut last_content = input.position().byte_index();
+        loop {
+            self.execution
+                .checkpoint()
+                .map_err(|error| ParseError::custom(Box::new(error)))?;
+            let state = input.state();
+            let Ok(token) = input.next_including_whitespace_and_comments() else {
+                return Ok(());
+            };
+            match token {
+                Token::WhiteSpace(_) => continue,
+                Token::Delim('!') => {
+                    input.reset(&state);
+                    if input.try_parse(parse_important).is_ok() {
+                        let end = input.position();
+                        if input.is_exhausted() {
+                            // Comments embedded in the priority are independent of its tokens.
+                            let marker_start = state.position().byte_index();
+                            let mut marker = Parser::new(input.slice(state.position()..end));
+                            loop {
+                                let comment_start = marker_start + marker.position().byte_index();
+                                match marker.next_including_whitespace_and_comments() {
+                                    Ok(Token::Comment(_)) => {
+                                        self.edits.push(last_content..comment_start);
+                                        last_content =
+                                            marker_start + marker.position().byte_index();
+                                    }
+                                    Ok(_) => {}
+                                    Err(_) => break,
+                                }
+                            }
+                            self.edits.push(last_content..end.byte_index());
+                            return Ok(());
+                        }
+                    }
+                    input.reset(&state);
+                    input.next_including_whitespace_and_comments()?;
+                }
+                Token::CurlyBracketBlock if !name.starts_with("--") => {
+                    // A nested type selector with a pseudo-class can start like a declaration.
+                    return Err(ParseError::unexpected_token());
+                }
+                Token::Function(_)
+                | Token::ParenthesisBlock
+                | Token::SquareBracketBlock
+                | Token::CurlyBracketBlock => {
+                    input.parse_nested_block(|nested| self.consume_tokens(nested))?;
+                }
+                Token::BadString(_)
+                | Token::BadUrl(_)
+                | Token::CloseParenthesis
+                | Token::CloseSquareBracket
+                | Token::CloseCurlyBracket => {
+                    return Err(ParseError::unexpected_token());
+                }
+                _ => {}
+            }
+            last_content = input.position().byte_index();
+        }
+    }
+}
+
+impl<'i> AtRuleParser<'i> for PriorityParser<'_, '_> {
+    type Prelude = ();
+    type AtRule = ();
+    type Error = Box<Error>;
+
+    fn parse_prelude(
+        &mut self,
+        _name: CowRcStr<'i>,
+        input: &mut Parser<'i>,
+    ) -> std::result::Result<(), CssParseError> {
+        self.consume_tokens(input)
+    }
+
+    fn parse_block(
+        &mut self,
+        (): (),
+        _start: &ParserState,
+        input: &mut Parser<'i>,
+    ) -> std::result::Result<(), CssParseError> {
+        self.parse_rule_body(input)
+    }
+}
+
+impl<'i> QualifiedRuleParser<'i> for PriorityParser<'_, '_> {
+    type Prelude = ();
+    type QualifiedRule = ();
+    type Error = Box<Error>;
+
+    fn parse_prelude(&mut self, input: &mut Parser<'i>) -> std::result::Result<(), CssParseError> {
+        self.consume_tokens(input)
+    }
+
+    fn parse_block(
+        &mut self,
+        (): (),
+        _start: &ParserState,
+        input: &mut Parser<'i>,
+    ) -> std::result::Result<(), CssParseError> {
+        self.parse_rule_body(input)
+    }
+}
+
+impl<'i> RuleBodyItemParser<'i, (), Box<Error>> for PriorityParser<'_, '_> {
+    fn parse_declarations(&self) -> bool {
+        true
+    }
+
+    fn parse_qualified(&self) -> bool {
+        self.location == CssXmlLocation::Stylesheet
+    }
 }
 
 #[cfg(test)]
@@ -238,6 +374,15 @@ mod tests {
         crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap()
+    }
+
+    fn strip(svg: &str) -> String {
+        strip_css_important(
+            Cow::Borrowed(svg),
+            SvgPostprocessExecution::new(&render_session()),
+        )
+        .unwrap()
+        .into_owned()
     }
 
     #[test]
@@ -259,23 +404,72 @@ mod tests {
     }
 
     #[test]
-    fn css_override_important_scanner_preserves_regex_boundaries() {
+    fn css_override_only_removes_a_trailing_declaration_priority() {
+        let svg = "<svg><style>.a{fill:red\t!important;stroke:blue ! IMPORTANT;color:green !importantfoo;}
+            .b{fill:red!important-border;color:blue !importanté;}</style></svg>";
         assert_eq!(
-            strip_css_important_from_css(
-                ".a{fill:red\t!important;stroke:blue !IMPORTANT;color:green !importantfoo;}"
-            ),
-            ".a{fill:red;stroke:blue;color:green !importantfoo;}"
+            strip(svg),
+            "<svg><style>.a{fill:red;stroke:blue;color:green !importantfoo;}
+            .b{fill:red!important-border;color:blue !importanté;}</style></svg>"
         );
+    }
+
+    #[test]
+    fn css_override_preserves_literal_priority_text_and_xml_markup() {
+        let svg = concat!(
+            r#"<svg><?note <style>.p{color:red !important;}</style>?>"#,
+            r#"<!-- <style>.c{color:red !important;}</style><g style='fill:red !important'/> -->"#,
+            r#"<![CDATA[<style>.t{color:red !important;}</style>]]><style/>"#,
+            r#"<style data-note='a > b'><![CDATA[@media all{.x{content:"A; !important < B";"#,
+            r#"/* keep !important */ fill: red !important;}}]]></style >"#,
+            r#"<g style='--label: &quot;A; !important&quot;; stroke: blue !important;'/></svg>"#,
+        );
+        let expected = svg
+            .replace("fill: red !important;", "fill: red;")
+            .replace("stroke: blue !important;", "stroke: blue;");
+        let out = strip(svg);
+        assert_eq!(out, expected);
+    }
+
+    #[test]
+    fn css_override_preserves_comments_between_priority_tokens_and_entity_spelling() {
+        let svg = concat!(
+            r#"<svg><style>.x{fill:red <![CDATA[!]]><!-- note -->/* priority */ important;"#,
+            r#"stroke:var(--paint, blue) !important;}</style>"#,
+            r#"<g style='stroke: blue &#33;impor&#116;ant; --label: "A; !important";'/></svg>"#,
+        );
+        let out = strip(svg);
         assert_eq!(
-            strip_css_important_from_css(".a{fill:red!important-border;color:blue !importanté;}"),
-            ".a{fill:red-border;color:blue !importanté;}"
+            out,
+            concat!(
+                r#"<svg><style>.x{fill:red<![CDATA[]]><!-- note -->/* priority */;"#,
+                r#"stroke:var(--paint, blue);}</style>"#,
+                r#"<g style='stroke: blue; --label: "A; !important";'/></svg>"#,
+            )
+        );
+    }
+
+    #[test]
+    fn css_override_stops_at_the_css_nesting_limit() {
+        let svg = format!(
+            "<svg><style>{}.x{{fill:red !important;}}{}</style></svg>",
+            "@media all{".repeat(CSS_NESTING_HARD_LIMIT.into()),
+            "}".repeat(CSS_NESTING_HARD_LIMIT.into()),
+        );
+        let error = SvgPipeline::parity()
+            .with_postprocessor(CssOverridePostprocessor::strip_existing_important())
+            .process_to_string(&svg, &render_session())
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("CSS override nesting"),
+            "{error}"
         );
     }
 
     #[test]
     fn css_override_strips_important_only_from_css_contexts() {
         let svg = r#"<svg><style>.node{fill:red !important;}</style><text>keep !important</text><path data-note="keep !important" style="stroke: blue !important; fill: green"/></svg>"#;
-        let out = strip_css_important(svg);
+        let out = strip(svg);
 
         assert!(out.contains(".node{fill:red;}"), "got: {out}");
         assert!(
@@ -289,7 +483,7 @@ mod tests {
     #[test]
     fn css_override_handles_single_quoted_style_attributes() {
         let svg = r#"<svg><path style='stroke: blue !important; fill: green'/></svg>"#;
-        let out = strip_css_important(svg);
+        let out = strip(svg);
 
         assert!(
             out.contains("style='stroke: blue; fill: green'"),

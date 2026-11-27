@@ -12,7 +12,8 @@ use crate::{Error, LayoutExecution, Result};
 use kurbo::Insets;
 use merman_model::families::usecase::{UsecaseDiagramModel, UsecaseNodeKind};
 use merman_render_graph::usecase::{
-    UsecaseLabelPlan, UsecaseMeasured, configured_usecase_spacing, package_tab_size,
+    UsecaseLabelPlan, UsecaseMeasured, configured_usecase_spacing, package_tab_geometry,
+    package_tab_size,
 };
 use rustc_hash::FxHashMap;
 use serde_json::Value;
@@ -277,16 +278,6 @@ pub(super) fn layout(
         Default::default(),
         work,
     )?;
-    let mut routes = CanonicalRoutes::from_solved(
-        &graph,
-        &solved,
-        &profiles,
-        |_| 0.0,
-        edge_plans.iter().map(|plan| plan.id.as_str()),
-        CaptionClearance::Avoid,
-        work,
-    )?;
-    routes.placement = placement;
     let boundary_order = boundary_paint_order(&solved.groups, &boundary_plans, work)?;
     work.charge_adapter(work.checked_add(plans.len(), edge_plans.len())?)?;
     let mut nodes = Vec::with_capacity(plans.len());
@@ -297,8 +288,24 @@ pub(super) fn layout(
             Endpoint::Node(node) => solved.nodes[node as usize],
             Endpoint::Group(group) => {
                 let group = &mut solved.groups[group as usize];
-                if let Some(title) = group.title.take() {
-                    titles.insert(plan.id.clone(), title);
+                if let Some(title) = &mut group.title {
+                    titles.insert(plan.id.clone(), title.clone());
+                    if plan.package {
+                        // The drawn tab reaches the outer border above the placed title.
+                        let (left, width, height) = package_tab_geometry(
+                            group.rect.x,
+                            group.rect.y,
+                            group.rect.width,
+                            &plan.label,
+                            Some(title),
+                        );
+                        *title = LayoutLabel {
+                            x: left + width / 2.0,
+                            y: group.rect.y + height / 2.0,
+                            width,
+                            height,
+                        };
+                    }
                 }
                 group.rect
             }
@@ -312,6 +319,16 @@ pub(super) fn layout(
             rect.height,
         ));
     }
+    let mut routes = CanonicalRoutes::from_solved(
+        &graph,
+        &solved,
+        &profiles,
+        |_| 0.0,
+        edge_plans.iter().map(|plan| plan.id.as_str()),
+        CaptionClearance::Avoid,
+        work,
+    )?;
+    routes.placement = placement;
     let mut edges = Vec::with_capacity(edge_plans.len());
     for (plan, edge) in edge_plans.iter().zip(solved.edges) {
         let strings = work.checked_add(

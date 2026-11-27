@@ -64,7 +64,24 @@ fn er_classic_zero_markers_respect_the_canvas() {
                 .descendants()
                 .find(|node| node.attribute("data-edge") == Some("true"))
                 .unwrap();
-            assert!(edge.attribute("clip-path").is_some());
+            let mask_id = edge
+                .attribute("mask")
+                .unwrap()
+                .strip_prefix("url(#")
+                .unwrap()
+                .trim_end_matches(')');
+            let mask = doc
+                .descendants()
+                .find(|node| node.attribute("id") == Some(mask_id))
+                .unwrap();
+            assert!(mask.has_tag_name("mask"));
+            assert_eq!(mask.attribute("maskUnits"), Some("userSpaceOnUse"));
+            assert_eq!(
+                mask.children()
+                    .filter(|child| child.has_tag_name("circle"))
+                    .count(),
+                2
+            );
         }
     }
 }

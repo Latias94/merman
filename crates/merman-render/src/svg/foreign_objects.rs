@@ -1,11 +1,12 @@
 use merman_render_core::svg_scan::{
-    SvgTagScanner, end_tag_name, find_with_checkpoints, next_svg_quoted_attr_with_checkpoints,
-    start_tag_name,
+    SvgTagScanner, end_tag_name, find_with_checkpoints, is_non_rendering_container,
+    next_svg_quoted_attr_with_checkpoints, start_tag_name,
 };
 use rustc_hash::FxHashSet;
 
 pub(super) const FALLBACK_SOURCE_ATTRIBUTE: &str = "data-merman-foreignobject-source";
 pub(super) const SWITCH_NATIVE_FALLBACK: &str = "switch-native-fallback";
+pub(super) const MAX_SELECTOR_ANCESTRY_DEPTH: usize = crate::resources::MAX_RESVG_TREE_DEPTH;
 
 #[derive(Default)]
 pub(super) struct ForeignObjectSwitches {
@@ -25,25 +26,30 @@ enum Branch {
 #[derive(Default)]
 struct SwitchChildren {
     html: Vec<usize>,
-    first_retained: Option<Branch>,
+    first_retained: Option<(Branch, usize)>,
+    conditional: bool,
 }
 
 impl SwitchChildren {
     fn child(&mut self, child: &Element<'_>) {
-        if self.first_retained.is_some() {
-            return;
-        }
         match child.branch {
             Branch::Html => self.html.push(child.start),
             Branch::Generated if !self.html.is_empty() => {}
-            _ => {
-                self.first_retained = Some(if child.has_text {
+            _ if self.first_retained.is_none() => {
+                let branch = if child.has_text {
                     child.branch
                 } else {
                     Branch::Other
-                });
+                };
+                self.first_retained = Some((branch, child.start));
             }
+            _ => {}
         }
+    }
+
+    fn native_branch(&self) -> Option<(Branch, usize)> {
+        self.first_retained
+            .filter(|(branch, _)| matches!(branch, Branch::Candidate | Branch::Link))
     }
 }
 
@@ -60,17 +66,19 @@ impl Element<'_> {
         if let Some(switch) = &mut self.switch {
             switch.child(child);
         }
-        self.has_text |= child.branch != Branch::Generated && child.has_text;
+        self.has_text |= child.has_text
+            && child.branch != Branch::Generated
+            && !is_non_rendering_container(self.name);
     }
 }
 
 impl ForeignObjectSwitches {
-    /// Recognizes direct HTML branches followed by a real native text branch. Comments,
+    /// Recognizes switches whose first retained branch supplies real native text. Comments,
     /// CDATA and the contents of a foreign element cannot supply a native branch.
     pub(super) fn scan<E>(
         svg: &str,
         checkpoint: &mut impl FnMut() -> Result<(), E>,
-        mut admit_depth: impl FnMut(usize) -> Result<(), E>,
+        mut depth_limit: impl FnMut(usize) -> Result<(), E>,
     ) -> Result<Self, E> {
         let mut result = Self::default();
         if find_with_checkpoints(svg, "<switch", checkpoint)?.is_none() {
@@ -111,14 +119,25 @@ impl ForeignObjectSwitches {
                     start: tag.start(),
                     branch,
                     has_text: name == "text",
-                    switch: (name == "switch").then(SwitchChildren::default),
+                    switch: if name == "switch" {
+                        Some(SwitchChildren {
+                            conditional: switch_has_conditions(tag.raw(), checkpoint)?,
+                            ..SwitchChildren::default()
+                        })
+                    } else {
+                        None
+                    },
                 };
                 if html || tag.is_self_closing() {
                     if let Some(parent) = elements.last_mut() {
                         parent.child(&element);
                     }
                 } else {
-                    admit_depth(elements.len() + 1)?;
+                    if elements.len() == MAX_SELECTOR_ANCESTRY_DEPTH {
+                        depth_limit(elements.len() + 1)?;
+                        // The infallible fallback helper leaves over-deep switches unresolved.
+                        break;
+                    }
                     elements.push(element);
                 }
             } else if let Some(name) = end_tag_name(tag.raw())
@@ -129,22 +148,19 @@ impl ForeignObjectSwitches {
                     break;
                 };
                 if let Some(switch) = &element.switch {
-                    element.has_text = matches!(
-                        switch.first_retained,
-                        Some(Branch::Candidate | Branch::Link)
-                    );
+                    element.has_text = switch.native_branch().is_some();
                 }
                 if let Some(parent) = elements.last_mut() {
                     parent.child(&element);
                 }
                 if let Some(switch) = element.switch
-                    && !switch.html.is_empty()
-                    && matches!(
-                        switch.first_retained,
-                        Some(Branch::Candidate | Branch::Link)
-                    )
+                    && let Some(&first_html) = switch.html.first()
+                    && let Some((branch, native_start)) = switch.native_branch()
                 {
-                    if switch.first_retained == Some(Branch::Candidate) {
+                    if !switch.conditional
+                        && branch == Branch::Candidate
+                        && first_html < native_start
+                    {
                         result.wrappers.extend([element.start, tag.start()]);
                     }
                     result.native_objects.extend(switch.html);
@@ -153,6 +169,26 @@ impl ForeignObjectSwitches {
         }
         Ok(result)
     }
+}
+
+fn switch_has_conditions<E>(
+    tag: &str,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<bool, E> {
+    let mut cursor = 0;
+    while let Some(attr) = next_svg_quoted_attr_with_checkpoints(tag, cursor, checkpoint)? {
+        if matches!(
+            &tag[attr.name_start..attr.name_end],
+            "requiredFeatures"
+                | "requiredExtensions"
+                | "systemLanguage"
+                | "externalResourcesRequired"
+        ) {
+            return Ok(true);
+        }
+        cursor = attr.full_end;
+    }
+    Ok(false)
 }
 
 pub(super) fn attribute_is<E>(
@@ -175,6 +211,49 @@ pub(super) fn attribute_is<E>(
 mod tests {
     use super::*;
     use std::convert::Infallible;
+
+    #[test]
+    fn text_inside_non_rendering_containers_does_not_replace_html() {
+        for container in ["defs", "symbol", "clipPath", "mask", "marker", "pattern"] {
+            let svg = format!(
+                "<svg><switch><foreignObject/><g><{container}><text>Definition</text></{container}></g></switch></svg>"
+            );
+            let switches =
+                ForeignObjectSwitches::scan(&svg, &mut || Ok::<(), Infallible>(()), |_| Ok(()))
+                    .unwrap();
+            assert!(switches.native_objects.is_empty(), "{svg}");
+            assert!(switches.wrappers.is_empty(), "{svg}");
+        }
+    }
+
+    #[test]
+    fn only_complete_case_sensitive_switch_elements_supply_a_native_branch() {
+        let svg = concat!(
+            "<svg><switch/><foreignObject/><SWITCH><foreignObject/><text>Uppercase</text></SWITCH>",
+            "<?note <switch>?> <!-- <switch> --> <![CDATA[<switch>]]>",
+            "<foreignObject/><text>Outside</text>",
+            "<switch><foreignObject/><text>Unclosed</text></svg>",
+        );
+        let switches =
+            ForeignObjectSwitches::scan(svg, &mut || Ok::<(), Infallible>(()), |_| Ok(())).unwrap();
+        assert!(switches.native_objects.is_empty());
+        assert!(switches.wrappers.is_empty());
+    }
+
+    #[test]
+    fn malformed_switch_tags_do_not_supply_native_fallback_evidence() {
+        for (open, close) in [
+            ("<switch / >", "</switch>"),
+            ("<switch>", "</switch extra>"),
+        ] {
+            let svg = format!("<svg>{open}<foreignObject/><text>Native</text>{close}</svg>");
+            let switches =
+                ForeignObjectSwitches::scan(&svg, &mut || Ok::<(), Infallible>(()), |_| Ok(()))
+                    .unwrap();
+            assert!(switches.native_objects.is_empty(), "{svg}");
+            assert!(switches.wrappers.is_empty(), "{svg}");
+        }
+    }
 
     #[test]
     fn nested_switch_scan_does_linear_work_across_sibling_foreign_objects() {

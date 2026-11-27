@@ -94,12 +94,21 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
     let source_nodes = model.nodes.len().saturating_add(model.subgraphs.len());
     let source_work = source_layout_work_units(source_nodes, model.edges.len());
     work_meter.preflight(source_work)?;
-    let render_model = FlowchartRenderModelRef::new(model, render_label_sources);
-    let visible_edges = render_model.projected_edges().collect::<Vec<_>>();
     #[cfg(feature = "layout-shoal")]
     let canonical = execution.layout_backend() == crate::layout_backend::GraphLayoutBackend::Shoal;
     #[cfg(not(feature = "layout-shoal"))]
     let canonical = false;
+    let config_view = FlowchartConfigView::new(effective_config.as_value());
+    let render_model = FlowchartRenderModelRef::new(model, render_label_sources);
+    let render_model = if canonical {
+        render_model.with_shoal_svg_text(
+            config_view.node_html_labels(),
+            config_view.effective_html_labels(),
+        )
+    } else {
+        render_model
+    };
+    let visible_edges = render_model.projected_edges().collect::<Vec<_>>();
     if canonical {
         work_meter.charge(source_work)?;
     } else {
@@ -116,7 +125,7 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
         config.node_gap *= spacing;
         config.layer_gap *= spacing;
     }
-    let config_curve = FlowchartConfigView::new(effective_config.as_value()).render_curve();
+    let config_curve = config_view.render_curve();
     let source_curve = model
         .edge_defaults
         .as_ref()

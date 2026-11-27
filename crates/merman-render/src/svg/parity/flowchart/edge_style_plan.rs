@@ -553,6 +553,7 @@ impl FlowchartEdgeStylePlan {
         Ok(resolved)
     }
 
+    #[cfg(any(test, feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     pub(crate) fn swimlane_edge_label_text_style_for<'a>(
         &'a self,
         key: crate::flowchart::FlowchartEdgeKey,

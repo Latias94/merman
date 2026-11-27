@@ -13,7 +13,7 @@ use crate::graph_layout::ir::{
     Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, RoutingStyle,
     Side, Size, SolvedGraph, TitlePosition,
 };
-use crate::graph_layout::route_paint::ObstacleOwner;
+use crate::graph_layout::route_paint::{ObstacleOwner, marker_obstacle};
 use crate::graph_layout::{AxisRoutes, RouteContract, RouteTopology, placement};
 use crate::layout_frame::GraphPlacement;
 use crate::layout_work::OperationLayoutWorkControl;
@@ -100,6 +100,7 @@ pub(super) fn solve(
         Some(execution),
         placement::Constraints {
             lane_order: &columns.order,
+            lane_boundaries: &columns.boundaries,
             edge_ports: &edge_ports,
             capture_ranks: true,
             ..Default::default()
@@ -437,14 +438,31 @@ impl Bindings {
         }
         work.charge_adapter(semantic_edge_count)?;
         let mut routes = vec![None; semantic_edge_count];
-        for ((binding, route), (owner, _)) in working
+        for ((binding, route), (owner, source)) in working
             .original_edges
             .iter_mut()
             .zip(solved.edges)
             .zip(visible_edges)
         {
-            work.charge_adapter(route.points.len())?;
+            work.charge_adapter(work.checked_add(route.points.len(), 2)?)?;
             let edge = owner.semantic_index();
+            if let [first, .., last] = route.points.as_slice() {
+                let (start, end) = crate::svg::flowchart_marker_metrics(source.semantic);
+                obstacles.extend(marker_obstacle(
+                    edge,
+                    route.source,
+                    *first,
+                    route.ports.0,
+                    start,
+                ));
+                obstacles.extend(marker_obstacle(
+                    edge,
+                    route.target,
+                    *last,
+                    route.ports.1,
+                    end,
+                ));
+            }
             let (points, knots) = route
                 .points
                 .into_iter()
