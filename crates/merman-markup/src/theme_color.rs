@@ -589,7 +589,7 @@ mod tests {
         );
         assert_eq!(
             channel("hsl(-300DeG 50% 50%)", ColorChannel::Hue).unwrap(),
-            60.0
+            -300.0
         );
 
         let keyword = ThemeColor::parse("ReD").unwrap();

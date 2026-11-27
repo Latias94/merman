@@ -393,7 +393,12 @@ pub fn hsl_to_rgb(hsla: HslaChannels) -> RgbaChannels {
             alpha: hsla.alpha,
         };
     }
-    let hue = clamp_hue(hsla.hue_degrees) / 360.0;
+    // Keep the signed remainder for Khroma-compatible hue evidence, but wrap before conversion.
+    let hue = (if (0.0..360.0).contains(&hsla.hue_degrees) {
+        hsla.hue_degrees
+    } else {
+        hsla.hue_degrees.rem_euclid(360.0)
+    }) / 360.0;
     let saturation = hsla.saturation_percent / 100.0;
     let lightness = hsla.lightness_percent / 100.0;
     let q = if lightness < 0.5 {
@@ -433,11 +438,7 @@ pub fn clamp_rgb(value: f64) -> f64 {
 }
 
 pub fn clamp_hue(value: f64) -> f64 {
-    if (0.0..360.0).contains(&value) {
-        value
-    } else {
-        value.rem_euclid(360.0)
-    }
+    value % 360.0
 }
 
 pub fn clamp_percent(value: f64) -> f64 {
