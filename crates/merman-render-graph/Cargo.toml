@@ -17,10 +17,32 @@ third-party-bundle = true
 
 [features]
 default = []
+diagram-architecture = [
+    "dep:base64", "dep:kurbo", "dep:merman-markup", "dep:merman-model", "dep:merman-render-core",
+    "dep:merman-theme-contract", "dep:pulldown-cmark", "dep:rustc-hash", "dep:serde", "dep:serde_json",
+    "merman-model/diagram-architecture", "merman-render-core/icon-svg", "merman-render-core/root-svg",
+    "merman-render-core/svg-bounds", "merman-render-core/text-layout", "merman-render-core/theme-elevation",
+]
+diagram-c4 = [
+    "dep:base64", "dep:cssparser", "dep:euclid", "dep:merman-model",
+    "dep:merman-render-core", "dep:merman-theme-contract", "dep:roughr", "dep:ryu-js",
+    "dep:serde", "dep:serde_json", "dep:unicode-segmentation", "merman-model/diagram-c4",
+    "merman-render-core/root-svg", "merman-render-core/rough-svg", "merman-render-core/svg-edge-parity",
+    "merman-render-core/text-layout",
+]
+diagram-class = [
+    "dep:base64", "dep:indexmap", "dep:merman-markup", "dep:merman-model", "dep:merman-render-core",
+    "dep:merman-theme-contract", "dep:roughr", "dep:rustc-hash", "dep:ryu-js", "dep:serde", "dep:serde_json",
+    "merman-markup/html", "merman-model/diagram-class", "merman-render-core/euclid-geometry",
+    "merman-render-core/graph-layout", "merman-render-core/markdown-labels", "merman-render-core/math-labels",
+    "merman-render-core/root-svg", "merman-render-core/rough-svg", "merman-render-core/svg-edge-parity",
+]
 diagram-er = [
-    "dep:indexmap", "dep:merman-markup", "dep:merman-model", "dep:merman-render-core",
-    "dep:merman-theme-contract", "dep:rustc-hash", "dep:serde_json", "merman-model/diagram-er",
-    "merman-render-core/css-style", "merman-render-core/graph-layout",
+    "dep:base64", "dep:indexmap", "dep:kurbo", "dep:merman-markup", "dep:merman-model",
+    "dep:merman-render-core", "dep:merman-theme-contract", "dep:roxmltree", "dep:roughr",
+    "dep:rustc-hash", "dep:ryu-js", "dep:serde_json", "merman-markup/html", "merman-model/diagram-er",
+    "merman-render-core/css-style", "merman-render-core/graph-layout", "merman-render-core/markdown-labels",
+    "merman-render-core/root-svg", "merman-render-core/rough-svg", "merman-render-core/svg-edge-parity",
     "merman-render-core/theme-svg",
 ]
 diagram-git-graph = [
@@ -28,21 +50,67 @@ diagram-git-graph = [
     "dep:merman-theme-contract", "dep:serde", "dep:serde_json", "merman-model/diagram-git-graph",
     "merman-render-core/root-svg", "merman-render-core/svg-bounds", "merman-render-core/text-layout",
 ]
-layout-shoal = ["dep:kurbo"]
+diagram-mindmap = [
+    "dep:base64", "dep:merman-markup", "dep:merman-model", "dep:merman-render-core",
+    "dep:merman-theme-contract", "dep:rustc-hash", "dep:serde", "dep:serde_json", "merman-markup/html",
+    "merman-model/diagram-mindmap", "merman-render-core/markdown-labels", "merman-render-core/math-labels",
+    "merman-render-core/root-svg", "merman-render-core/svg-edge-parity",
+]
+diagram-requirement = [
+    "dep:base64", "dep:indexmap", "dep:merman-markup", "dep:merman-model", "dep:merman-render-core",
+    "dep:merman-theme-contract", "dep:roughr", "dep:serde", "dep:serde_json", "merman-markup/html",
+    "merman-model/diagram-requirement", "merman-render-core/graph-layout",
+    "merman-render-core/markdown-labels", "merman-render-core/root-svg",
+    "merman-render-core/rough-svg", "merman-render-core/svg-edge-parity",
+    "merman-render-core/theme-svg",
+]
+diagram-state = [
+    "dep:base64", "dep:cssparser", "dep:indexmap", "dep:kurbo", "dep:merman-markup",
+    "dep:merman-model", "dep:merman-render-core",
+    "dep:merman-theme-contract", "dep:roughr", "dep:rustc-hash", "dep:ryu-js", "dep:serde", "dep:serde_json",
+    "merman-model/diagram-state", "merman-render-core/graph-layout", "merman-render-core/markdown-labels",
+    "merman-render-core/root-svg", "merman-render-core/rough-svg", "merman-render-core/svg-edge-parity",
+    "merman-render-core/theme-elevation", "merman-render-core/theme-label-background",
+]
+diagram-usecase = [
+    "dep:base64", "dep:indexmap", "dep:kurbo", "dep:merman-markup", "dep:merman-model",
+    "dep:merman-render-core", "dep:merman-theme-contract", "dep:roxmltree", "dep:ryu-js", "dep:serde",
+    "dep:serde_json", "merman-model/diagram-usecase", "merman-render-core/graph-layout",
+    "merman-render-core/icon-svg", "merman-render-core/markdown-labels",
+    "merman-render-core/math-labels", "merman-render-core/root-svg", "merman-render-core/rough-svg",
+    "merman-render-core/svg-edge-parity", "merman-render-core/theme-elevation",
+]
+layout-shoal = ["dep:kurbo", "merman-render-core?/route-paint"]
+layout-cytoscape = ["dep:indexmap", "dep:manatee", "merman-render-core?/layout-cytoscape"]
+layout-dagre = ["dep:dugong", "merman-render-core?/layout-dagre"]
+layout-elk = ["dep:merman-layout-elk"]
+benchmark-stages = ["merman-model?/benchmark-stages"]
 
 [dependencies]
+base64 = { workspace = true, optional = true }
 cssparser = { workspace = true, optional = true }
+dugong = { workspace = true, optional = true }
 euclid = { workspace = true, optional = true }
 indexmap = { workspace = true, optional = true }
 kurbo = { workspace = true, optional = true }
+manatee = { workspace = true, optional = true }
+merman-layout-elk = { workspace = true, optional = true }
 merman-markup = { workspace = true, features = ["color"], optional = true }
 merman-model = { workspace = true, features = ["presentation-data"], optional = true }
 merman-render-core = { workspace = true, optional = true }
 merman-theme-contract = { workspace = true, optional = true }
+pulldown-cmark = { workspace = true, optional = true }
+roxmltree = { workspace = true, optional = true }
+roughr = { workspace = true, optional = true }
 rustc-hash = { workspace = true, optional = true }
+ryu-js = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
+unicode-segmentation = { workspace = true, optional = true }
 
 [dev-dependencies]
+merman-core = { workspace = true, features = ["diagram-architecture", "diagram-class", "diagram-mindmap", "presentation"] }
 merman-model = { workspace = true, features = ["test-support"] }
+merman-render-core = { workspace = true, features = ["test-support"] }
 merman-theme-contract = { workspace = true, features = ["presets"] }
+roxmltree.workspace = true

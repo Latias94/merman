@@ -1,9 +1,9 @@
 mod labels;
 
-use super::layout::{
-    C4Measurement, measure_c4_relation, measure_c4_shape, prepare_c4_boundary_layout,
+use super::{
+    C4_ROUNDED_RADIUS, C4ClusterThemePlan, C4ConfigView, C4Measurement, C4TypographyThemePlan,
+    measure_c4_relation, measure_c4_shape, prepare_c4_boundary_layout, title_ink,
 };
-use super::{C4_ROUNDED_RADIUS, C4ClusterThemePlan, C4ConfigView, C4TypographyThemePlan};
 use crate::graph_layout::Marker;
 use crate::graph_layout::canonical::{
     CanonicalPaintScratch, CanonicalPaintedEdge, CanonicalRoutes, CaptionClearance,
@@ -17,12 +17,13 @@ use crate::graph_layout::placement;
 use crate::graph_layout::route_paint::RouteStyle;
 use crate::layout_frame::GraphPlacement;
 use crate::layout_work::OperationLayoutWorkControl;
-use crate::model::{Bounds, C4DiagramLayout, LayoutPoint};
+use crate::model::{Bounds, C4DiagramLayout};
 use crate::{Error, LayoutAdaptation, LayoutAdaptationObservation, LayoutExecution, Result};
 use kurbo::{Insets, Vec2};
 use merman_layout_shoal::{WidthPolicy, card_grid};
 use merman_model::families::c4::C4DiagramModel;
 use merman_render_core::graph_layout::shoal::{Placement, project_input, project_output};
+use merman_render_graph::c4::{C4RoutedGeometry, C4RoutedRelation};
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde_json::Value;
 
@@ -39,17 +40,7 @@ const MARKER: Marker = Marker {
 #[derive(Debug)]
 pub(crate) struct C4ShoalGeometry {
     placement: GraphPlacement,
-    pub(crate) boundary_title_x: Vec<Option<f64>>,
-    pub(crate) relations: Vec<C4ShoalRelation>,
-}
-
-#[derive(Debug)]
-pub(crate) struct C4ShoalRelation {
-    pub(crate) id: String,
-    pub(crate) path: String,
-    pub(crate) points: Vec<LayoutPoint>,
-    pub(crate) label: Option<labels::PlacedRelationLabel>,
-    pub(crate) shaft_cutout: Option<kurbo::Rect>,
+    routed: C4RoutedGeometry,
 }
 
 struct PaintedRelation {
@@ -62,6 +53,10 @@ struct PaintedRelation {
 impl C4ShoalGeometry {
     pub(crate) const fn placement(&self) -> &GraphPlacement {
         &self.placement
+    }
+
+    pub(crate) const fn routed(&self) -> &C4RoutedGeometry {
+        &self.routed
     }
 }
 
@@ -277,7 +272,7 @@ pub(crate) fn layout_c4_shoal(
         let title = if boundary.alias == ROOT {
             None
         } else {
-            labels::title_ink(&layout, &measure)?
+            title_ink(&layout, &measure)?
         };
         if group_indices.contains_key(boundary.alias.as_str()) {
             let height = title.map_or(0.0, |ink| ink.height());
@@ -631,11 +626,11 @@ pub(crate) fn layout_c4_shoal(
             bounds.max_x = bounds.max_x.max(ink.x1);
             bounds.max_y = bounds.max_y.max(ink.y1);
         }
-        geometry.push(C4ShoalRelation {
+        geometry.push(C4RoutedRelation {
             id,
             path: route.shaft.path.d,
             points: route.shaft.data_points,
-            label: route.label,
+            label_origin: route.label.map(|label| label.origin),
             shaft_cutout: route.shaft_cutout,
         });
     }
@@ -647,26 +642,25 @@ pub(crate) fn layout_c4_shoal(
             ink_width,
         ));
     }
-    let layout = C4DiagramLayout {
-        bounds: Some(bounds),
-        width: ink_width + 2.0 * conf.diagram_margin_x,
-        height: ink_height + 2.0 * conf.diagram_margin_y,
-        container_width: execution.container_width,
-        container_height: execution.container_height,
-        screen_available_width: execution.screen_available_width,
-        c4_type: model.c4_type.clone(),
-        title: model.title.clone(),
-        use_max_width: conf.use_max_width,
+    let layout = C4DiagramLayout::from_routed(
+        model,
+        &conf,
+        bounds,
+        crate::geom::Size::new(ink_width, ink_height),
+        crate::geom::Size::new(execution.container_width, execution.container_height),
+        execution.screen_available_width,
         boundaries,
         shapes,
-        rels: relations,
-    };
+        relations,
+    );
     Ok((
         layout,
         C4ShoalGeometry {
             placement,
-            boundary_title_x,
-            relations: geometry,
+            routed: C4RoutedGeometry {
+                boundary_title_x,
+                relations: geometry,
+            },
         },
     ))
 }
@@ -678,9 +672,11 @@ mod tests {
     use crate::environment::RenderEnvironment;
     use crate::family::FamilyExecutionView;
     use crate::layout_backend::GraphLayoutBackend;
+    use crate::model::LayoutPoint;
     use kurbo::{BezPath, ParamCurveNearest};
     use merman_core::{MermaidEngine, ParseOptions};
     use merman_model::presentation::RenderSemanticModel;
+    use merman_render_graph::c4::measure_c4_relation_label;
 
     #[test]
     fn exterior_c4_marker_wings_expand_the_layout_beyond_the_shaft() {
@@ -762,7 +758,7 @@ mod tests {
             let execution = LayoutExecution::new(&options, family, Some(config));
             let typography = C4TypographyThemePlan::resolve(None, config, model);
             let cluster_theme = C4ClusterThemePlan::resolve(None, &model.boundaries, config, true);
-            let (_, geometry) = layout_c4_shoal(
+            let (mut layout, geometry) = layout_c4_shoal(
                 model,
                 config.as_value(),
                 &typography,
@@ -770,18 +766,28 @@ mod tests {
                 &execution,
             )
             .unwrap();
+            let routes = &geometry.routed().relations;
             assert_eq!(
-                geometry.relations.len(),
+                routes.len(),
                 2 + boundaries * (cards - 1) + (boundaries - 1) * (cards / 2)
             );
-            let paths: Vec<_> = geometry
-                .relations
+            let paths: Vec<_> = routes
                 .iter()
-                .map(|relation| BezPath::from_svg(&relation.path).unwrap())
+                .map(|route| BezPath::from_svg(&route.path).unwrap())
                 .collect();
-            for (idx, relation) in geometry.relations.iter().enumerate() {
-                let ink = relation.label.as_ref().unwrap().ink;
-                let center = ink.center();
+            let settings = C4ConfigView::new(config.as_value()).layout_settings();
+            let measure = C4Measurement {
+                typography: &typography,
+                conf: &settings,
+                measurer: execution.text_measurer(),
+                work: execution.work_meter_ref(),
+            };
+            for (idx, (route, relation)) in routes.iter().zip(&mut layout.rels).enumerate() {
+                let origin = route.label_origin.as_ref().unwrap();
+                let (ink, _) = measure_c4_relation_label(relation, &measure)
+                    .unwrap()
+                    .unwrap();
+                let center = ink.center() + Vec2::new(origin.x, origin.y);
                 let distance = |path: &BezPath| {
                     path.segments()
                         .map(|segment| segment.nearest(center, 1e-3).distance_sq)
@@ -794,7 +800,7 @@ mod tests {
                     assert!(
                         own < foreign,
                         "{boundaries}×{cards} caption {} is {:.2}px from its shaft and {:.2}px from shaft {other}",
-                        relation.id,
+                        route.id,
                         own.sqrt(),
                         foreign.sqrt(),
                     );

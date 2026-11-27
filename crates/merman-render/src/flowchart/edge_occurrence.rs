@@ -1,110 +1,5 @@
-use super::FlowEdge;
-use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
-
-/// Operation-local identity for one rendered Flowchart edge occurrence.
-///
-/// Mermaid permits distinct semantic edges to share the same public `edge.id`. Internal layout
-/// and SVG caches must therefore use the semantic owner plus any generated self-loop segment.
-/// Source styles and labels continue to use the stable semantic model index instead of raw DOM ids.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub(crate) struct FlowchartEdgeKey {
-    semantic_index: usize,
-    self_loop_segment: Option<u8>,
-}
-
-impl FlowchartEdgeKey {
-    pub(crate) const fn new(semantic_index: usize) -> Self {
-        Self {
-            semantic_index,
-            self_loop_segment: None,
-        }
-    }
-
-    pub(crate) const fn self_loop_segment(semantic_index: usize, order: u8) -> Self {
-        Self {
-            semantic_index,
-            self_loop_segment: Some(order),
-        }
-    }
-
-    pub(crate) const fn semantic_index(self) -> usize {
-        self.semantic_index
-    }
-
-    pub(crate) const fn self_loop_segment_order(self) -> Option<u8> {
-        self.self_loop_segment
-    }
-
-    fn adapter_id(self) -> String {
-        match self.self_loop_segment {
-            None => format!("__merman_flowchart_edge_{:020}", self.semantic_index),
-            Some(order) => {
-                format!(
-                    "__merman_flowchart_edge_{:020}_segment_{order}",
-                    self.semantic_index
-                )
-            }
-        }
-    }
-}
-
-/// Collision-safe adapter identities for one prepared set of semantic edge occurrences.
-///
-/// Unique Mermaid ids stay byte-identical so source-backed adapter ordering remains unchanged.
-/// Only repeated ids enter the private occurrence namespace, and generated ids avoid every raw id
-/// already present in the same model.
-#[derive(Debug, Clone)]
-pub(crate) struct FlowchartEdgeTransportPlan<'a> {
-    ids: HashMap<FlowchartEdgeKey, Cow<'a, str>>,
-}
-
-impl<'a> FlowchartEdgeTransportPlan<'a> {
-    #[cfg(test)]
-    pub(crate) fn for_semantic_edges(edges: &'a [FlowEdge]) -> Self {
-        Self::for_keyed_edges(
-            edges
-                .iter()
-                .enumerate()
-                .map(|(index, edge)| (FlowchartEdgeKey::new(index), edge)),
-        )
-    }
-
-    pub(crate) fn for_keyed_edges(
-        edges: impl Iterator<Item = (FlowchartEdgeKey, &'a FlowEdge)> + Clone,
-    ) -> Self {
-        let edge_count = edges.size_hint().0;
-        let mut counts = HashMap::<&str, usize>::with_capacity(edge_count);
-        for (_, edge) in edges.clone() {
-            *counts.entry(edge.id.as_str()).or_default() += 1;
-        }
-
-        let mut ids = HashMap::with_capacity(edge_count);
-        let mut generated = HashSet::new();
-        for (key, edge) in edges {
-            let id = if counts.get(edge.id.as_str()) == Some(&1) {
-                Cow::Borrowed(edge.id.as_str())
-            } else {
-                let base = key.adapter_id();
-                let mut candidate = base.clone();
-                let mut suffix = 0usize;
-                while counts.contains_key(candidate.as_str()) || generated.contains(&candidate) {
-                    candidate = format!("{base}_{suffix:020}");
-                    suffix = suffix.saturating_add(1);
-                }
-                generated.insert(candidate.clone());
-                Cow::Owned(candidate)
-            };
-            ids.insert(key, id);
-        }
-
-        Self { ids }
-    }
-
-    pub(crate) fn id(&self, key: FlowchartEdgeKey) -> Option<&str> {
-        self.ids.get(&key).map(Cow::as_ref)
-    }
-}
+use super::{FlowEdge, FlowchartEdgeKey};
+use std::collections::HashMap;
 
 /// Atomic ownership ledger aligned with a prepared layout's renderable edges.
 ///
@@ -263,6 +158,7 @@ impl FlowchartEdgeOwners {
 mod tests {
     use super::*;
     use crate::model::LayoutEdge;
+    use std::collections::HashSet;
 
     fn semantic_edge(id: &str) -> FlowEdge {
         FlowEdge {
@@ -461,29 +357,5 @@ mod tests {
                 .validate(&layout, &[semantic])
                 .is_err()
         );
-    }
-
-    #[test]
-    fn transport_plan_preserves_unique_ids_and_avoids_raw_id_collisions() {
-        let edges = vec![
-            semantic_edge("duplicate"),
-            semantic_edge("duplicate"),
-            semantic_edge("__merman_flowchart_edge_00000000000000000000"),
-            semantic_edge("__merman_flowchart_edge_00000000000000000000_00000000000000000000"),
-        ];
-        let plan = FlowchartEdgeTransportPlan::for_semantic_edges(&edges);
-        let ids = (0..edges.len())
-            .map(|index| plan.id(FlowchartEdgeKey::new(index)).expect("transport id"))
-            .collect::<Vec<_>>();
-
-        assert_eq!(
-            ids[0],
-            "__merman_flowchart_edge_00000000000000000000_00000000000000000001"
-        );
-        assert_eq!(ids[1], "__merman_flowchart_edge_00000000000000000001");
-        assert!(std::ptr::eq(ids[2], edges[2].id.as_str()));
-        assert!(std::ptr::eq(ids[3], edges[3].id.as_str()));
-        assert_eq!(ids.iter().copied().collect::<HashSet<_>>().len(), ids.len());
-        assert!(plan.id(FlowchartEdgeKey::new(edges.len())).is_none());
     }
 }

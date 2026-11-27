@@ -951,15 +951,11 @@ fn comma_click_tooltips_keep_missing_targets_and_overwrite_each_target_independe
         let source = format!(
             "flowchart TD\nA\nclick A,Later {action} \"first\"\nLater\nclick Later,Missing {action} \"second\"\n"
         );
-        let parsed = parse_flowchart_semantic_source(&source, &metadata()).unwrap();
-        assert_eq!(
-            parsed.tooltips,
-            HashMap::from([
-                ("A".to_string(), "first".to_string()),
-                ("Later".to_string(), "second".to_string()),
-                ("Missing".to_string(), "second".to_string()),
-            ]),
-        );
+        let parsed = parse(&source);
+        assert_eq!(parsed.tooltips.len(), 3);
+        for (id, text) in [("A", "first"), ("Later", "second"), ("Missing", "second")] {
+            assert_eq!(parsed.tooltips[id], text, "{id}");
+        }
         assert!(!parsed.nodes.iter().any(|node| node.id == "Missing"));
     }
 }

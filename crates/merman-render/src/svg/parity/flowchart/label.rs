@@ -333,7 +333,7 @@ mod tests {
                     .unwrap_or_else(|| panic!("expected effective HTML: {input}: {output}"));
                 assert_eq!(span.attribute("style"), Some("font-size:64px"));
                 assert_eq!(
-                    crate::text::mermaid_xhtml_label_text_content(&output).as_deref(),
+                    merman_render_core::text::mermaid_xhtml_label_text_content(&output).as_deref(),
                     Some(text)
                 );
             }
@@ -374,7 +374,7 @@ mod tests {
         assert_eq!(span.attribute("style"), Some("font-size:64px"));
         assert_eq!(span.text(), Some("AVAVAV"));
         assert_eq!(
-            crate::text::mermaid_xhtml_label_text_content(&output).as_deref(),
+            merman_render_core::text::mermaid_xhtml_label_text_content(&output).as_deref(),
             Some("Before AVAVAV after")
         );
     }

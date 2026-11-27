@@ -1,7 +1,3 @@
-use super::{
-    MeasuredLabels, MeasurementTarget, RelationTerminals, measure_into, positive_label_size,
-};
-use crate::class::config::ClassLayoutSettings;
 use crate::class::{ClassDiagramModel, ClassRenderConfig, normalize_dir};
 use crate::graph_layout::canonical::theme_routing_style;
 use crate::graph_layout::contour::ShapePortProfile;
@@ -16,6 +12,12 @@ use crate::{Error, Result};
 use indexmap::IndexSet;
 use kurbo::Insets;
 use merman_model::presentation::PresentationConfig;
+use merman_render_graph::class::{
+    ClassLayoutSettings,
+    measured::{
+        MeasuredLabels, MeasurementTarget, RelationTerminals, measure_into, positive_label_size,
+    },
+};
 use merman_theme_contract::v2::EdgeStyle;
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 use std::borrow::Cow;
@@ -75,7 +77,7 @@ pub(in crate::class) fn measure_for_shoal<'a>(
         invalid_parents: FxHashMap::default(),
         edges: IndexSet::default(),
         settings,
-        neo: render.look == "neo",
+        neo: render.uses_neo_look(),
         work,
     };
     let labels = measure_into(
@@ -85,6 +87,7 @@ pub(in crate::class) fn measure_for_shoal<'a>(
         math_renderer,
         render,
         false,
+        crate::graph_label::flowchart_label_metrics_for_layout,
         Some(work),
         &mut target,
     )?;
@@ -408,7 +411,7 @@ A -- B : other
         assert!(relation.start_label.is_some() && relation.end_label.is_some());
         assert_eq!(
             relation.start_marker.width,
-            crate::svg::class_canonical_marker(2, true, render.look == "neo").width
+            crate::svg::class_canonical_marker(2, true, render.uses_neo_look()).width
         );
     }
 }

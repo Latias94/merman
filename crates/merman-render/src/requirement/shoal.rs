@@ -1,8 +1,4 @@
-use super::{
-    RequirementCssBinding, RequirementEdgeLabels, RequirementMeasurements, RequirementNativeStyle,
-    RequirementNodeRenderPlan, RequirementPreparedArtifact, measure_requirement,
-    measure_requirement_relationship, missing_relationship_node, requirement_layout_node,
-};
+use super::RequirementPreparedArtifact;
 use crate::Result;
 use crate::graph_layout::canonical::{CanonicalRoutes, CaptionClearance, theme_routing_style};
 use crate::graph_layout::contour::ShapePortProfile;
@@ -16,6 +12,11 @@ use crate::resources::OperationWorkMeter;
 use crate::text::TextMeasurer;
 use merman_model::MermaidConfig;
 use merman_model::families::requirement::RequirementDiagramModel;
+use merman_render_graph::requirement::{
+    RequirementConfigView, RequirementCssBinding, RequirementEdgeLabels, RequirementMeasurements,
+    RequirementNodeRenderPlan, RequirementPreparedArtifact as GraphPrepared, measure_requirement,
+    measure_requirement_relationship, missing_relationship_node, requirement_layout_node,
+};
 use std::{collections::HashMap, sync::Arc};
 
 pub(super) fn layout(
@@ -42,10 +43,9 @@ pub(super) fn layout(
         Direction::Down | Direction::Up => (Side::Top, Side::Left),
         Direction::Right | Direction::Left => (Side::Left, Side::Top),
     };
-    let native = css_binding.native.as_ref();
     let mut graph = MeasuredGraph {
         direction,
-        routing: theme_routing_style(native.map(|style| style.edge_style)),
+        routing: theme_routing_style(css_binding.edge_style()),
         node_spacing: settings.nodesep,
         rank_spacing: settings.ranksep,
         component_spacing: settings.nodesep.max(settings.ranksep),
@@ -74,13 +74,8 @@ pub(super) fn layout(
         profiles.push(profile);
     }
 
-    let effective_config = config.as_value();
-    let neo = crate::config::config_diagram_look(effective_config).is_neo();
-    let stroke_width = native.map_or_else(
-        || super::RequirementConfigView::new(effective_config).canonical_stroke_width(),
-        |style| style.connector_width,
-    );
-    let (contains_marker, arrow_marker) = relation_markers(neo, stroke_width, native);
+    let (contains_marker, arrow_marker) =
+        css_binding.relation_markers(&RequirementConfigView::new(config.as_value()));
     let endpoint = |id: &str, terminal: &str| {
         nodes
             .get_index_of(id)
@@ -171,55 +166,16 @@ pub(super) fn layout(
         max_y: solved.bounds.height,
     });
     Ok(RequirementPreparedArtifact {
-        layout: RequirementDiagramLayout {
-            nodes: layout_nodes,
-            edges: layout_edges,
-            bounds,
-        },
-        render_layout: None,
+        prepared: GraphPrepared::from_shoal(
+            RequirementDiagramLayout {
+                nodes: layout_nodes,
+                edges: layout_edges,
+                bounds,
+            },
+            prepared_nodes,
+            prepared_edges,
+            measurement_binding,
+        ),
         route_contract: crate::graph_layout::RouteContract::canonical_graph(canonical_routes),
-        nodes: prepared_nodes,
-        edges: prepared_edges,
-        measurement_binding,
     })
-}
-
-fn relation_markers(
-    neo: bool,
-    stroke_width: f64,
-    native: Option<&RequirementNativeStyle>,
-) -> (Marker, Marker) {
-    let half_stroke = stroke_width / 2.0;
-    let contains_radius = (9.0 + half_stroke).min(10.0);
-    let contains = Marker {
-        trim: 0.0,
-        depth: 10.0 + contains_radius,
-        width: 2.0 * contains_radius,
-    };
-    let arrow_trim = half_stroke / 5.0_f64.sqrt();
-    let arrow_half_width = 10.0 + 2.0 * arrow_trim;
-    let arrow = if native
-        .and_then(RequirementNativeStyle::arrow_path)
-        .is_some()
-    {
-        Marker {
-            trim: 0.0,
-            depth: RequirementNativeStyle::ARROW_SIZE,
-            width: RequirementNativeStyle::ARROW_SIZE,
-        }
-    } else if neo {
-        let scale = 20.0 / 25.0;
-        Marker {
-            trim: arrow_trim.min(5.0) * scale,
-            depth: 20.0 * scale,
-            width: 2.0 * arrow_half_width.min(12.5) * scale,
-        }
-    } else {
-        Marker {
-            trim: 0.0,
-            depth: 20.0,
-            width: 20.0,
-        }
-    };
-    (contains, arrow)
 }

@@ -1,6 +1,7 @@
 use merman_render_core::{
     config::{
-        config_css_number_or_string, config_diagram_look, config_f64, config_string, json_bool,
+        ConfigLookup, config_css_number_or_string, config_diagram_look, config_f64, config_string,
+        json_bool, value_at,
     },
     svg_css::PreparedCommonCss,
 };
@@ -13,7 +14,7 @@ pub(super) struct GitGraphColorIndices {
 }
 
 impl GitGraphColorIndices {
-    pub(super) fn resolve(config: &serde_json::Value) -> Self {
+    pub(super) fn resolve(config: &dyn ConfigLookup) -> Self {
         let theme = config_string(config, &["theme"]).unwrap_or_default();
         Self {
             branch_limit: if super::layout::gitgraph_theme_is_redux_geometry(&theme) {
@@ -84,7 +85,7 @@ pub(super) struct GitGraphCssBinding {
 }
 
 impl GitGraphCssBinding {
-    pub(super) fn resolve(config: &serde_json::Value, font_family: &str, font_size: &str) -> Self {
+    pub(super) fn resolve(config: &dyn ConfigLookup, font_family: &str, font_size: &str) -> Self {
         let optional = |key: &str| config_string(config, &["themeVariables", key]);
         let color =
             |key: &str, fallback: &str| optional(key).unwrap_or_else(|| fallback.to_owned());
@@ -104,16 +105,16 @@ impl GitGraphCssBinding {
             theme_color_limit.floor()
         }
         .max(0.0) as usize;
-        let border_color_array: Vec<String> = config
-            .pointer("/themeVariables/borderColorArray")
-            .and_then(serde_json::Value::as_array)
-            .map(|values| {
-                values
-                    .iter()
-                    .filter_map(|value| value.as_str().map(str::to_owned))
-                    .collect()
-            })
-            .unwrap_or_default();
+        let border_color_array: Vec<String> =
+            value_at(config, &["themeVariables", "borderColorArray"])
+                .and_then(serde_json::Value::as_array)
+                .map(|values| {
+                    values
+                        .iter()
+                        .filter_map(|value| value.as_str().map(str::to_owned))
+                        .collect()
+                })
+                .unwrap_or_default();
         Self {
             common: PreparedCommonCss::with_resolved_typography(
                 config,
@@ -131,8 +132,7 @@ impl GitGraphCssBinding {
                     "dark" | "redux-dark" | "redux-dark-color" | "neo-dark"
                 ),
                 use_color_gen,
-                use_gradient: config
-                    .pointer("/themeVariables/useGradient")
+                use_gradient: value_at(config, &["themeVariables", "useGradient"])
                     .and_then(json_bool)
                     .unwrap_or(false),
             },

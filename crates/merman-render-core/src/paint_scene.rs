@@ -211,7 +211,7 @@ pub fn write_svg(
     let mut writer = SceneSvgWriter {
         out: BoundedSvgOutput::new(meter),
         meter,
-        scope: diagram_id.semantic_str(),
+        scope: diagram_id,
         marker_count: scene.markers.len(),
         elements: 0,
     };
@@ -223,7 +223,7 @@ pub fn write_svg(
 struct SceneSvgWriter<'a, 'id> {
     out: BoundedSvgOutput<'a>,
     meter: &'a OperationWorkMeter,
-    scope: &'id str,
+    scope: SvgId<'id>,
     marker_count: usize,
     elements: usize,
 }
@@ -323,7 +323,6 @@ impl SceneSvgWriter<'_, '_> {
         let role = group.role.as_str();
         self.emit(format_args!(r#"<g data-scene-role="{role}""#))?;
         if let Some(id) = group.id {
-            let id = id.semantic_str();
             self.emit(format_args!(r#" id="{scope}-scene-group-{index}-{id}""#))?;
         }
         self.emit(format_args!(">"))?;

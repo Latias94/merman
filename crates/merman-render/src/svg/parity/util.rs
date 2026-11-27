@@ -2,69 +2,18 @@
 //
 // Keep behavior identical; these helpers are used across multiple diagram renderers.
 
-use merman_markup::theme_color::{ColorChannel, ThemeColor, rgba};
-use merman_render_core::svg_css::CssSelectorDiagramId;
+#[cfg(test)]
+use merman_render_core::svg_edge_parity::path_numbers::fmt_path_into;
 
 use super::SvgOutput;
 
-/// Let measured HTML labels paint glyph overhangs in browsers and static exports.
-pub(super) const HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR: &str = r#" style="overflow: visible;""#;
-
-pub(super) fn html_label_overflow_attr(uses_shoal: bool, width: f64, height: f64) -> &'static str {
-    if uses_shoal && width > 0.0 && height > 0.0 {
-        HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR
-    } else {
-        ""
-    }
-}
-
-#[cfg(feature = "diagram-state")]
-pub(super) use crate::entities::decode_mermaid_entities_for_render_text;
+pub(super) use merman_render_core::html::HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR;
 pub(crate) use merman_render_core::theme_svg::cssom_color_value;
 pub(super) use merman_render_core::xml::{
-    EscapeAttrDisplay, escape_attr_display, escape_attr_into, escape_xml_display, escape_xml_into,
+    EscapeAttrDisplay, escape_attr_display, escape_xml_display, escape_xml_into,
     escape_xml_serialized_text_into, escaped_attr_len, escaped_xml_len,
 };
 pub(crate) use merman_render_core::xml::{escape_attr, escape_xml};
-
-pub(super) use merman_render_core::svg_css::{scoped_drop_shadow, scoped_svg_id, scoped_svg_url};
-
-pub(super) const fn css_selector_diagram_id<I>(diagram_id: I) -> CssSelectorDiagramId<I> {
-    CssSelectorDiagramId(diagram_id)
-}
-
-#[cfg(feature = "diagram-class")]
-pub(super) use merman_render_core::text::svg_label::write_style_attribute;
-
-pub(super) use crate::config::config_f64;
-
-pub(super) use crate::config::config_string;
-
-pub(super) use crate::config::json_bool;
-
-pub(super) fn config_bool(
-    cfg: &(impl crate::config::ConfigLookup + ?Sized),
-    path: &[&str],
-) -> Option<bool> {
-    crate::config::value_at(cfg, path).and_then(json_bool)
-}
-
-pub(super) fn css_rgba_fade(color: &str, opacity: f64) -> crate::Result<String> {
-    let color = ThemeColor::parse(color.trim())?;
-    let faded = rgba(
-        color.channel(ColorChannel::Red),
-        color.channel(ColorChannel::Green),
-        color.channel(ColorChannel::Blue),
-        opacity,
-    )?;
-    Ok(faded)
-}
-
-pub(super) fn fmt_string(v: f64) -> String {
-    let mut out = String::new();
-    fmt_into(&mut out, v);
-    out
-}
 
 pub(super) fn fmt_display(v: f64) -> crate::number_format::CanonicalNumber {
     fmt(v)
@@ -81,148 +30,28 @@ pub(super) fn fmt_into(out: &mut impl SvgOutput, v: f64) {
     let _ = write!(out, "{}", crate::number_format::canonical_number(v));
 }
 
-pub(super) fn fmt_path(v: f64) -> String {
-    let mut out = String::new();
-    fmt_path_into(&mut out, v);
-    out
-}
-
-pub(super) fn fmt_path_into(out: &mut impl SvgOutput, v: f64) {
-    append_fixed_3dp_trimmed(out, path_coordinate_thousandths(v));
-}
-
-/// Write a path coordinate and return the value represented by those same bytes.
-pub(super) fn fmt_path_coordinate_into(out: &mut String, v: f64) -> f64 {
-    let thousandths = path_coordinate_thousandths(v);
-    let start = out.len();
-    append_fixed_3dp_trimmed(out, thousandths);
-    let numerator = thousandths as f64;
-    if thousandths.unsigned_abs() <= (1 << 53) {
-        numerator / 1000.0
-    } else {
-        // Converting the numerator to f64 can round before the division at this magnitude.
-        out[start..].parse().unwrap_or(numerator / 1000.0)
-    }
-}
-
-pub(super) fn path_coordinate_thousandths(v: f64) -> i64 {
-    // D3's `d3-path` defaults to 3 fractional digits when stringifying path commands.
-    // Upstream Mermaid fixtures match a `toFixed(3)`-like rounding behavior: round to nearest with
-    // ties away from zero (not `Math.round`, which rounds negative halves toward +∞).
-    if !v.is_finite() || v.abs() < 0.0005 {
-        return 0;
-    }
-
-    let scaled = v * 1000.0;
-    if scaled < 0.0 {
-        (scaled - 0.5).ceil() as i64
-    } else {
-        (scaled + 0.5).floor() as i64
-    }
-}
-
-fn append_fixed_3dp_trimmed(out: &mut impl SvgOutput, k: i64) {
-    if k == 0 {
-        out.push('0');
-        return;
-    }
-
-    let neg = k.is_negative();
-    let abs = k.unsigned_abs();
-    let int_part = abs / 1000;
-    let frac = abs % 1000;
-
-    if neg {
-        out.push('-');
-    }
-
-    let _ = write!(out, "{int_part}");
-
-    if frac == 0 {
-        return;
-    }
-
-    let mut frac_str = [b'0'; 3];
-    frac_str[0] = b'0' + ((frac / 100) as u8);
-    frac_str[1] = b'0' + (((frac / 10) % 10) as u8);
-    frac_str[2] = b'0' + ((frac % 10) as u8);
-
-    let mut end = 3usize;
-    while end > 0 && frac_str[end - 1] == b'0' {
-        end -= 1;
-    }
-    if end == 0 {
-        return;
-    }
-
-    out.push('.');
-    for &b in &frac_str[..end] {
-        out.push(b as char);
-    }
-}
-
-pub(super) fn json_stringify_points(points: &[crate::model::LayoutPoint]) -> String {
-    // Mermaid encodes `data-points` as Base64(JSON.stringify(points)).
-    // JS `JSON.stringify` prints whole numbers without a `.0` suffix.
-    //
-    // For strict SVG XML parity we must also match V8's number-to-string behavior, including
-    // tie-breaking cases where Rust's default float formatting can pick a different shortest
-    // round-trippable decimal (e.g. `...0312` vs `...0313`).
-    let mut out = String::new();
-    let mut buf = ryu_js::Buffer::new();
-    json_stringify_points_into(&mut out, points, &mut buf);
-    out
-}
-
-pub(super) fn json_stringify_points_into(
-    out: &mut String,
-    points: &[crate::model::LayoutPoint],
-    buf: &mut ryu_js::Buffer,
-) {
-    out.push('[');
-    for (i, p) in points.iter().enumerate() {
-        if i > 0 {
-            out.push(',');
-        }
-        out.push_str(r#"{"x":"#);
-        out.push_str(js_number_to_string(p.x, buf));
-        out.push_str(r#","y":"#);
-        out.push_str(js_number_to_string(p.y, buf));
-        out.push('}');
-    }
-    out.push(']');
-}
-
-fn js_number_to_string(mut v: f64, buf: &mut ryu_js::Buffer) -> &str {
-    if !v.is_finite() {
-        return "0";
-    }
-    if v == -0.0 {
-        v = 0.0;
-    }
-    buf.format_finite(v)
-}
+pub(super) use merman_render_core::svg_edge_parity::path_numbers::json_stringify_points_into;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_render_core::xml::escape_xml_raw_into;
+    use merman_render_core::xml::{escape_attr_into, escape_xml_raw_into};
+
+    fn fmt_string(v: f64) -> String {
+        let mut out = String::new();
+        fmt_into(&mut out, v);
+        out
+    }
 
     #[test]
     fn fmt_into_matches_expected() {
-        fn fmt_into_string(v: f64) -> String {
-            let mut s = String::new();
-            fmt_into(&mut s, v);
-            s
-        }
-
-        assert_eq!(fmt_into_string(f64::NAN), "0");
-        assert_eq!(fmt_into_string(f64::INFINITY), "0");
-        assert_eq!(fmt_into_string(-0.0), "0");
-        assert_eq!(fmt_into_string(0.0), "0");
-        assert_eq!(fmt_into_string(1.0), "1");
-        assert_eq!(fmt_into_string(1.0000004), "1");
-        assert_eq!(fmt_into_string(-1.0000004), "-1");
+        assert_eq!(fmt_string(f64::NAN), "0");
+        assert_eq!(fmt_string(f64::INFINITY), "0");
+        assert_eq!(fmt_string(-0.0), "0");
+        assert_eq!(fmt_string(0.0), "0");
+        assert_eq!(fmt_string(1.0), "1");
+        assert_eq!(fmt_string(1.0000004), "1");
+        assert_eq!(fmt_string(-1.0000004), "-1");
     }
 
     #[test]
@@ -365,38 +194,6 @@ mod tests {
         let mut escaped_attr = String::new();
         escape_attr_into(&mut escaped_attr, attr);
         assert_eq!(escaped_attr, expected_attr);
-    }
-
-    #[test]
-    fn css_rgba_fade_matches_khroma_color_semantics() {
-        assert_eq!(
-            css_rgba_fade("#8090a0", 0.5).expect("valid hex color"),
-            "rgba(128, 144, 160, 0.5)"
-        );
-        assert_eq!(
-            css_rgba_fade("rebeccapurple", 0.5).expect("valid named color"),
-            "rgba(102, 51, 153, 0.5)"
-        );
-        assert_eq!(
-            css_rgba_fade("rgb(20% 40% 60% / 25%)", 0.2).expect("valid modern RGB color"),
-            "rgba(51, 102, 153, 0.2)"
-        );
-        assert_eq!(
-            css_rgba_fade("hsl(80, 100%, 96%)", 0.5).expect("valid HSL color"),
-            "rgba(248.2, 255, 234.6, 0.5)"
-        );
-        assert_eq!(
-            css_rgba_fade("#8090a080", 0.5).expect("valid alpha hex color"),
-            "rgba(128, 144, 160, 0.5)"
-        );
-    }
-
-    #[test]
-    fn css_rgba_fade_rejects_unsupported_css_color() {
-        let error = css_rgba_fade("var(--not-runtime-resolved)", 0.5)
-            .expect_err("unresolved CSS variables are not khroma colors");
-
-        assert!(error.to_string().contains("var(--not-runtime-resolved)"));
     }
 
     #[test]

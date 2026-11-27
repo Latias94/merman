@@ -1,126 +1,24 @@
-//! Mermaid 12 Usecase measurements and shared graph-layout projection.
+//! Selects a Usecase backend and pairs prepared graph data with its terminal routes.
 
-use crate::Result;
-use crate::elk_edge_geometry;
-use crate::model::{Bounds, LayoutEdge, LayoutNode};
-use crate::text::{TextMetrics, TextStyle};
-use merman_model::families::usecase::{UsecaseDiagramModel, UsecaseLabelType};
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use std::sync::Arc;
+use crate::{LayoutExecution, Result, elk_edge_geometry};
+use merman_model::{families::usecase::UsecaseDiagramModel, presentation::PresentationConfig};
+use merman_render_graph::usecase::{UsecasePrepared, prepare_usecase_measurements};
 
-pub(crate) mod actor;
-#[cfg(feature = "layout-dagre")]
-mod dagre;
+pub use merman_render_graph::usecase::UsecaseDiagramLayout;
+#[cfg(feature = "layout-shoal")]
+pub(crate) use merman_render_graph::usecase::actor;
+#[cfg(feature = "layout-shoal")]
+use merman_render_graph::usecase::{UsecaseCanonicalSvg, UsecaseEdgePainter};
+pub(crate) use merman_render_graph::usecase::{UsecaseEdgePlan, UsecaseNodePlan, requires_math};
+
 mod layout;
-mod measure;
 #[cfg(feature = "layout-shoal")]
 mod shoal;
-mod theme;
-
-#[cfg(feature = "layout-shoal")]
-pub(crate) use shoal::{UsecaseMarker, canonical_route_style};
-
-const PACKAGE_TAB_MIN_WIDTH: f64 = 80.0;
-const PACKAGE_TAB_PADDING_X: f64 = 10.0;
-pub(crate) const PACKAGE_TAB_PADDING_Y: f64 = 5.0;
-
-pub(crate) fn package_tab_width(label_width: f64) -> f64 {
-    PACKAGE_TAB_MIN_WIDTH.max(label_width + 2.0 * PACKAGE_TAB_PADDING_X)
-}
-pub(crate) use theme::UsecaseCssBinding;
-
-/// Mermaid's nonMarkdownToHTML/nonMarkdownToLines treat a literal \n as a line break.
-/// Keep the source label intact for accessibility while sharing its rendered text with measurement.
-pub(crate) fn normalize_plain_label_line_breaks(text: &str) -> std::borrow::Cow<'_, str> {
-    if text.contains("\\n") {
-        std::borrow::Cow::Owned(text.replace("\\n", "\n"))
-    } else {
-        std::borrow::Cow::Borrowed(text)
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UsecaseDiagramLayout {
-    pub nodes: Vec<LayoutNode>,
-    pub edges: Vec<LayoutEdge>,
-    pub bounds: Option<Bounds>,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct UsecaseLabelPlan {
-    pub text: String,
-    pub label_type: UsecaseLabelType,
-    /// Text bbox before the SVG edge background or node minimum-width box is applied.
-    pub text_metrics: TextMetrics,
-    pub metrics: TextMetrics,
-    pub style: TextStyle,
-    pub max_width: Option<f64>,
-    pub styles: indexmap::IndexMap<String, String>,
-    /// Final HTML terminal shared by measurement and emission, including effective Markdown config.
-    pub html: Option<Arc<measure::UsecasePreparedHtmlLabel>>,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct UsecaseJsonRowPlan {
-    pub key: UsecaseLabelPlan,
-    pub value: UsecaseLabelPlan,
-    pub accessible_key: String,
-    pub height: f64,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct UsecaseJsonTablePlan {
-    pub rows: Vec<UsecaseJsonRowPlan>,
-    pub key_width: f64,
-    pub value_width: f64,
-    pub title_height: f64,
-    pub border_width: f64,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct UsecaseNodePlan {
-    pub id: String,
-    pub source_style: String,
-    pub parent: Option<String>,
-    pub source_label: String,
-    pub label: UsecaseLabelPlan,
-    pub stereotype: Option<UsecaseLabelPlan>,
-    pub folded_stereotype: bool,
-    pub width: f64,
-    pub height: f64,
-    pub is_boundary: bool,
-    pub package: bool,
-    pub ellipse: bool,
-    pub table: Option<UsecaseJsonTablePlan>,
-    pub dagre_helper: bool,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct UsecaseEdgePlan {
-    pub id: String,
-    pub source_style: String,
-    pub animated: bool,
-    pub original_id: Option<String>,
-    pub self_loop_node: Option<String>,
-    pub dagre_recursive: bool,
-    pub source: String,
-    pub target: String,
-    pub label: Option<UsecaseLabelPlan>,
-    pub minlen: usize,
-    pub start_marker: Option<String>,
-    pub end_marker: Option<String>,
-    pub dotted: bool,
-    pub internal: bool,
-}
 
 #[derive(Debug)]
 pub(crate) struct UsecasePreparedArtifact {
-    pub(crate) css_binding: UsecaseCssBinding,
-    pub(crate) layout: UsecaseDiagramLayout,
-    pub(crate) nodes: Vec<UsecaseNodePlan>,
-    pub(crate) edges: Vec<UsecaseEdgePlan>,
-    edge_paths: std::collections::HashMap<String, Vec<crate::model::LayoutPoint>>,
+    pub(crate) prepared: UsecasePrepared,
+    #[cfg(feature = "layout-shoal")]
     route_contract: crate::graph_layout::RouteContract,
     #[cfg(feature = "layout-shoal")]
     canonical: Option<shoal::UsecaseCanonicalLayout>,
@@ -128,14 +26,7 @@ pub(crate) struct UsecasePreparedArtifact {
 
 impl UsecasePreparedArtifact {
     pub(crate) fn layout(&self) -> &UsecaseDiagramLayout {
-        &self.layout
-    }
-
-    pub(crate) fn edge_points(&self, edge: &LayoutEdge) -> Vec<crate::model::LayoutPoint> {
-        self.edge_paths
-            .get(&edge.id)
-            .cloned()
-            .unwrap_or_else(|| edge.points.clone())
+        self.prepared.layout()
     }
 
     #[cfg(feature = "layout-shoal")]
@@ -145,161 +36,43 @@ impl UsecasePreparedArtifact {
         self.route_contract.canonical_routes()
     }
 
-    pub(crate) const fn route_contract(&self) -> &crate::graph_layout::RouteContract {
-        &self.route_contract
-    }
-
     #[cfg(feature = "layout-shoal")]
-    pub(crate) fn canonical_boundary_title(&self, id: &str) -> Option<&crate::model::LayoutLabel> {
-        self.canonical.as_ref()?.titles.get(id)
+    pub(crate) fn canonical_svg<'a>(
+        &'a self,
+        paint_edges: &'a UsecaseEdgePainter<'a>,
+    ) -> Option<UsecaseCanonicalSvg<'a>> {
+        self.canonical
+            .as_ref()
+            .map(|canonical| UsecaseCanonicalSvg {
+                titles: &canonical.titles,
+                boundary_order: &canonical.boundary_order,
+                paint_edges,
+            })
     }
-
-    #[cfg(feature = "layout-shoal")]
-    pub(crate) fn canonical_boundary_order(&self) -> Option<&[(usize, usize)]> {
-        Some(&self.canonical.as_ref()?.boundary_order)
-    }
-}
-
-/// The literal source Mermaid passes to createText, before selecting its math branch.
-pub(crate) fn create_text_source(text: &str, kind: UsecaseLabelType) -> std::borrow::Cow<'_, str> {
-    match kind {
-        UsecaseLabelType::Markdown => std::borrow::Cow::Borrowed(text),
-        UsecaseLabelType::Text => std::borrow::Cow::Owned(
-            normalize_plain_label_line_breaks(text)
-                .replace('&', "&amp;")
-                .replace('<', "&lt;")
-                .replace('>', "&gt;"),
-        ),
-    }
-}
-
-pub(crate) fn requires_math(
-    model: &UsecaseDiagramModel,
-    config: &merman_model::presentation::PresentationConfig,
-) -> bool {
-    if config.as_value().get("htmlLabels").and_then(Value::as_bool) == Some(false) {
-        return false;
-    }
-    let has_math = |(text, kind): (&str, UsecaseLabelType)| {
-        let sanitized = merman_markup::sanitize::sanitize_text(text, config.as_config());
-        crate::math::contains_delimited_math(&create_text_source(&sanitized, kind))
-    };
-    let mut labels = model
-        .nodes
-        .iter()
-        .flat_map(|node| {
-            std::iter::once((node.label.as_str(), node.label_type)).chain(
-                node.stereotype
-                    .as_deref()
-                    .map(|text| (text, UsecaseLabelType::Text)),
-            )
-        })
-        .chain(
-            model
-                .boundaries
-                .iter()
-                .map(|boundary| (boundary.label.as_str(), boundary.label_type)),
-        )
-        .chain(
-            model
-                .notes
-                .iter()
-                .map(|note| (note.label.as_str(), note.label_type)),
-        )
-        .chain(model.relationships.iter().filter_map(|edge| {
-            edge.label
-                .as_deref()
-                .map(|text| (text, edge.label_type.unwrap_or_default()))
-        }));
-    if labels.any(has_math) {
-        return true;
-    }
-    // JSON cells show the complete leaf path, not each object key in isolation.
-    let mut pending: Vec<_> = model
-        .json_nodes
-        .iter()
-        .map(|node| (node, &node.value, String::new()))
-        .collect();
-    while let Some((node, value, path)) = pending.pop() {
-        let display_has_math = |text: &str| {
-            node.display_string(text)
-                .is_ok_and(|text| has_math((&text, UsecaseLabelType::Text)))
-        };
-        match value {
-            Value::Array(values)
-                if !values.is_empty()
-                    && values
-                        .iter()
-                        .all(|value| !value.is_array() && !value.is_object()) =>
-            {
-                if has_math((&path, UsecaseLabelType::Text))
-                    || values
-                        .iter()
-                        .filter_map(Value::as_str)
-                        .any(display_has_math)
-                {
-                    return true;
-                }
-            }
-            Value::Array(values) if !values.is_empty() => {
-                pending.extend(
-                    values
-                        .iter()
-                        .enumerate()
-                        .map(|(index, value)| (node, value, format!("{path}[{index}]"))),
-                );
-            }
-            Value::Object(values) if !values.is_empty() => {
-                pending.extend(values.iter().filter_map(|(key, value)| {
-                    let key = node.display_string(key).ok()?;
-                    let path = if path.is_empty() {
-                        key.into_owned()
-                    } else {
-                        format!("{path}.{key}")
-                    };
-                    Some((node, value, path))
-                }));
-            }
-            _ => {
-                if has_math((&path, UsecaseLabelType::Text))
-                    || value.as_str().is_some_and(display_has_math)
-                {
-                    return true;
-                }
-            }
-        }
-    }
-    false
 }
 
 pub(crate) fn prepare_usecase_diagram(
     model: &UsecaseDiagramModel,
-    effective_config: &merman_model::presentation::PresentationConfig,
-    execution: &crate::LayoutExecution<'_>,
+    effective_config: &PresentationConfig,
+    execution: &LayoutExecution<'_>,
 ) -> Result<UsecasePreparedArtifact> {
     #[cfg(any(
         feature = "layout-dagre",
         feature = "layout-elk",
         feature = "layout-shoal"
     ))]
-    use crate::{graph_layout::RouteContract, layout_backend::GraphLayoutBackend};
+    use crate::graph_layout::RouteContract;
+    use crate::layout_backend::GraphLayoutBackend;
 
     let work_meter = execution.work_meter();
     work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
     let config_value = effective_config.as_value();
-    let mut css_binding = UsecaseCssBinding::new(config_value);
-    if let Some(theme) = execution.native_family_theme() {
-        css_binding.apply_native(
-            effective_config,
-            theme,
-            execution.family.session().canvas_background(),
-        );
-    }
     let mut work = crate::layout_work::OperationLayoutWorkControl::new(work_meter);
-    let (nodes, edges) = measure::measure(
+    let measured = prepare_usecase_measurements(
         model,
         effective_config,
-        &css_binding,
+        execution.native_family_theme(),
+        execution.family.session().canvas_background(),
         execution.text_measurer(),
         execution.math_renderer(),
         &mut work,
@@ -308,43 +81,34 @@ pub(crate) fn prepare_usecase_diagram(
     backend.validate_rootless_graph()?;
     #[cfg(feature = "layout-shoal")]
     if backend == GraphLayoutBackend::Shoal {
-        let (layout, canonical, routes) = shoal::layout(
-            model,
-            config_value,
-            &css_binding,
-            &nodes,
-            &edges,
-            Some(execution),
-            &mut work,
-        )?;
+        let (layout, canonical, routes) =
+            shoal::layout(model, config_value, &measured, Some(execution), &mut work)?;
         return Ok(UsecasePreparedArtifact {
-            css_binding,
-            layout,
-            nodes,
-            edges,
-            edge_paths: Default::default(),
+            prepared: UsecasePrepared::new(measured, layout, Default::default(), false),
             route_contract: RouteContract::canonical_graph(routes),
             canonical: Some(canonical),
         });
     }
     #[cfg(feature = "layout-dagre")]
-    let (mut nodes, mut edges) = (nodes, edges);
+    let mut measured = measured;
     let (mut layout, route_contract) = match backend {
         #[cfg(feature = "layout-dagre")]
-        GraphLayoutBackend::Dagre => {
-            dagre::expand_self_loops(&mut nodes, &mut edges, &css_binding.generic_font, &mut work)?;
-            Ok((
-                dagre::layout(model, config_value, &nodes, &mut edges, &mut work)?,
-                RouteContract::DagreParity,
-            ))
-        }
+        GraphLayoutBackend::Dagre => Ok((
+            merman_render_graph::usecase::layout_dagre(
+                model,
+                config_value,
+                &mut measured,
+                &mut work,
+            )?,
+            RouteContract::DagreParity,
+        )),
         #[cfg(feature = "layout-elk")]
         GraphLayoutBackend::Elk(algorithm) => Ok((
             layout::elk_layout(
                 model,
                 config_value,
-                &nodes,
-                &edges,
+                &measured.nodes,
+                &measured.edges,
                 &mut work,
                 algorithm,
                 execution.elk_operation_seed(),
@@ -355,18 +119,16 @@ pub(crate) fn prepare_usecase_diagram(
     }?;
     let edge_paths = layout::prepare_edge_paths(
         &mut layout,
-        &nodes,
-        &edges,
+        &measured.nodes,
+        &measured.edges,
         config_value,
         &route_contract,
         &mut work,
     )?;
+    let elk = route_contract.is_elk_parity();
     Ok(UsecasePreparedArtifact {
-        css_binding,
-        layout,
-        nodes,
-        edges,
-        edge_paths,
+        prepared: UsecasePrepared::new(measured, layout, edge_paths, elk),
+        #[cfg(feature = "layout-shoal")]
         route_contract,
         #[cfg(feature = "layout-shoal")]
         canonical: None,

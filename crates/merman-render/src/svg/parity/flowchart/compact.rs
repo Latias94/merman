@@ -289,12 +289,12 @@ fn plain_node_items<'a>(
     let label = ctx.model.node_label_for_render(node).unwrap_or(&node.id);
     admit_token(label, meter)?;
     if label.is_empty()
-        || label
-            .chars()
-            .any(|ch| ch.is_whitespace() || ch.is_control() || matches!(ch, '&' | '<' | '>'))
+        || label.chars().any(|ch| {
+            (ch.is_whitespace() && ch != ' ') || ch.is_control() || matches!(ch, '&' | '<' | '>')
+        })
         || crate::math::contains_delimited_math(label)
     {
-        return Err(unsupported(meter, "flowchart-literal-single-word-label"));
+        return Err(unsupported(meter, "flowchart-literal-label"));
     }
     let layout = ctx
         .layout_nodes_by_id
@@ -332,11 +332,10 @@ fn plain_node_items<'a>(
     let [line] = wrapped.as_ref() else {
         return Err(unsupported(meter, "flowchart-single-row-label"));
     };
-    let [word] = line.as_slice() else {
-        return Err(unsupported(meter, "flowchart-single-row-label"));
-    };
-    if word.as_str() != label {
-        return Err(unsupported(meter, "flowchart-literal-single-word-label"));
+    // The parity writer emits one space between the measured words. Borrow the
+    // authored label if its sole row has exactly that representation.
+    if !line.iter().map(String::as_str).eq(label.split(' ')) {
+        return Err(unsupported(meter, "flowchart-literal-label"));
     }
     let coordinates = [
         layout.x,

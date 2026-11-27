@@ -1,4 +1,4 @@
-//! Syntax shared by Mermaid Flowchart, Swimlane, and Agentflow presentation statements.
+//! Source parsing for Mermaid Flowchart and Swimlane, with shared Agentflow directive lexing.
 
 #![forbid(unsafe_code)]
 

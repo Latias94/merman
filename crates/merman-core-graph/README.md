@@ -1,8 +1,10 @@
 # merman-core-graph
 
-Parsing for Mermaid graph diagrams. `diagram-class` produces source-ordered grammar actions.
-`diagram-er` parses entity–relationship diagrams into canonical `merman-model` values. `diagram-state`
-owns syntax and semantic model construction, including a typed render model with `presentation`.
+Parsing for Mermaid graph diagrams. `diagram-class` owns Class syntax and replays the
+source-ordered grammar actions into the canonical model.
+`diagram-er` parses entity–relationship diagrams into canonical `merman-model` values.
+`diagram-git-graph` owns GitGraph syntax and semantic model construction. `diagram-state` owns
+State syntax and semantic model construction, including a typed render model with `presentation`.
 `editor-facts` exposes lexical events for editor consumers.
 
 This crate exposes a workspace-internal service provider interface (SPI). It is published in

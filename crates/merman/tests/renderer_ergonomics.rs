@@ -37,6 +37,23 @@ fn renderer_builder_site_layout_is_a_default_not_a_source_override() {
     }
 }
 
+#[cfg(any(feature = "svg", feature = "ascii"))]
+#[test]
+fn renderer_builder_rejects_usize_max_as_an_input_ceiling() {
+    use merman::RendererBuilderError;
+    use merman::model::resources::{InputResourceLimitId, InputResourcePolicy};
+
+    let policy = InputResourcePolicy::default()
+        .with_limit(InputResourceLimitId::MaxSourceBytes, usize::MAX)
+        .unwrap();
+    assert!(matches!(
+        Renderer::builder()
+            .with_input_resource_policy(policy)
+            .build(),
+        Err(RendererBuilderError::UnboundedInputPolicy)
+    ));
+}
+
 #[cfg(all(
     feature = "svg",
     any(feature = "layout-dagre", feature = "layout-shoal")
@@ -44,7 +61,7 @@ fn renderer_builder_site_layout_is_a_default_not_a_source_override() {
 mod graphical {
     use super::*;
     use merman::model::resources::{InputResourceLimitId, InputResourcePolicy, ResourceProfile};
-    use merman::svg::{RenderCapability, RenderResourcePolicy};
+    use merman::svg::{RenderCapability, RenderResourcePolicy, ResourceLimitId};
     use merman::theme::{Appearance, BuiltinPreset, ThemeCompiler, ThemeMode, ThemeSelection};
     use merman::{
         MermaidEngine, OperationPhase, ParseOptions, RenderError, RenderOutput, RenderRequest,
@@ -190,6 +207,36 @@ mod graphical {
         assert_eq!(
             std::panic::catch_unwind(|| *renderer.resource_policy()).unwrap(),
             InputResourcePolicy::default()
+        );
+    }
+
+    #[test]
+    fn renderer_builder_validates_effective_graphical_limits_after_policy_overrides() {
+        let no_input_ceiling = RenderResourcePolicy::default()
+            .with_limit(ResourceLimitId::MaxSourceBytes, usize::MAX)
+            .unwrap();
+        let no_svg_ceiling = no_input_ceiling
+            .with_limit(ResourceLimitId::MaxSvgBytes, usize::MAX)
+            .unwrap();
+        let environment = SvgEnvironment::deterministic().with_resource_policy(no_svg_ceiling);
+        assert!(matches!(
+            builder().with_svg_environment(environment.clone()).build(),
+            Err(RendererBuilderError::UnboundedRenderPolicy)
+        ));
+        assert!(matches!(
+            builder()
+                .with_svg_environment(environment.clone())
+                .with_render_resource_policy(no_input_ceiling)
+                .build(),
+            Err(RendererBuilderError::UnboundedInputPolicy)
+        ));
+        assert!(
+            builder()
+                .with_render_resource_policy(no_input_ceiling)
+                .with_input_resource_policy(InputResourcePolicy::default())
+                .with_svg_environment(environment)
+                .build()
+                .is_ok()
         );
     }
 
@@ -397,5 +444,50 @@ fn renderer_builder_ascii_uses_the_same_request_and_keeps_terminal_color_opt_in(
             .with_parse_options(ParseOptions::lenient())
             .render_ascii(""),
         Err(RenderError::NoDiagram)
+    ));
+}
+
+#[cfg(feature = "ascii")]
+#[test]
+fn renderer_builder_ascii_with_keeps_input_limits_and_honors_operation_control() {
+    use merman::model::resources::{InputResourceLimitId, InputResourcePolicy, ResourceProfile};
+    use merman::{
+        OperationPhase, OperationResourceDomain, RenderError, RenderOutput, RenderRequest,
+    };
+
+    let maximum = FLOWCHART.len() - 1;
+    let input = InputResourcePolicy::default()
+        .with_limit(InputResourceLimitId::MaxSourceBytes, maximum)
+        .unwrap();
+    let renderer = Renderer::builder()
+        .with_input_resource_policy(input)
+        .build()
+        .unwrap();
+    let request = renderer.default_ascii_request();
+    for result in [
+        renderer.render_ascii(FLOWCHART),
+        renderer.render_ascii_with(FLOWCHART, request.clone(), OperationControl::new()),
+    ] {
+        assert!(matches!(
+            result,
+            Err(RenderError::ResourceLimitExceeded(error))
+                if error.id == "max_source_bytes" && error.maximum == maximum as u64
+                    && error.provenance.as_ref().is_some_and(|receipt| receipt.domain == OperationResourceDomain::Input)
+        ));
+    }
+
+    let control = OperationControl::new();
+    control.cancel();
+    assert!(matches!(
+        renderer.render_ascii_with(FLOWCHART, request.clone(), control),
+        Err(RenderError::Cancelled(error)) if error.phase == OperationPhase::Admission
+    ));
+
+    let trusted = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+    let expert = RenderRequest::ascii(FLOWCHART, OperationControl::new(), request)
+        .with_resource_policy(trusted);
+    assert!(matches!(
+        renderer.render(expert),
+        Ok(RenderOutput::Ascii(Some(_)))
     ));
 }

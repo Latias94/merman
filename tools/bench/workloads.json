@@ -189,6 +189,10 @@
       "required_capability_ids": []
     },
     {
+      "diagram_types": ["flowchart-elk"],
+      "required_capability_ids": ["layout-elk"]
+    },
+    {
       "diagram_types": ["block", "c4"],
       "site_layouts": ["dagre", "elk"],
       "required_capability_ids": []

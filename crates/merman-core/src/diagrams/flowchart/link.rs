@@ -1,38 +1,7 @@
-use super::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, LinkToken};
-
-pub(super) fn compatibility_edge_type(link: &LinkToken) -> &'static str {
-    // An open START_LINK inherits the final LINK's aggregate type, including a pair
-    // such as `o--o` captured at the end of `--No--o`. Keep the authored marker for ASCII.
-    let start_marker = match link.start_marker {
-        FlowEdgeMarker::None => link.final_operator_start_marker(),
-        marker => marker,
-    };
-    match (start_marker, link.end_marker) {
-        (FlowEdgeMarker::Point, FlowEdgeMarker::Point) => "double_arrow_point",
-        (FlowEdgeMarker::Circle, FlowEdgeMarker::Circle) => "double_arrow_circle",
-        (FlowEdgeMarker::Cross, FlowEdgeMarker::Cross) => "double_arrow_cross",
-        (_, FlowEdgeMarker::Point) => "arrow_point",
-        (_, FlowEdgeMarker::Circle) => "arrow_circle",
-        (_, FlowEdgeMarker::Cross) => "arrow_cross",
-        (_, FlowEdgeMarker::None) => "arrow_open",
-    }
-}
-
-pub(super) const fn compatibility_stroke(link: &LinkToken) -> &'static str {
-    if matches!(link.visibility, FlowEdgeVisibility::Invisible) {
-        return "invisible";
-    }
-    match link.stroke_kind {
-        FlowEdgeStroke::Normal => "normal",
-        FlowEdgeStroke::Dotted => "dotted",
-        FlowEdgeStroke::Thick => "thick",
-    }
-}
-
 #[cfg(all(test, feature = "diagram-flowchart"))]
 mod tests {
-    use super::FlowEdgeMarker::{Circle, Cross, None as Open, Point};
     use crate::{SemanticDiagramModel, SemanticParser};
+    use merman_model::families::flowchart::FlowEdgeMarker::{Circle, Cross, None as Open, Point};
 
     #[test]
     fn link_markers_preserve_mermaid_stroke_and_length() {

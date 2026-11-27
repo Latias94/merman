@@ -208,7 +208,7 @@ impl<'a> FlowchartRenderCtx<'a> {
         self.document_ids.get_or_init(|| {
             super::document_ids::FlowchartDocumentIds::prepare(
                 super::document_ids::FlowchartDocumentIdRequest {
-                    diagram_id: self.diagram_id.semantic_str(),
+                    diagram_id: self.diagram_id,
                     edge_order: &self.edge_order,
                     node_dom_index: &self.node_dom_index,
                     subgraph_index_by_id: &self.subgraph_indices_by_id,

@@ -90,6 +90,25 @@ impl RenderCapabilityPlan {
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+fn visible_flowchart_requires_math(model: crate::flowchart::FlowchartRenderModelRef<'_>) -> bool {
+    model.nodes.iter().any(|node| {
+        model
+            .node_label_for_render(node)
+            .is_some_and(crate::math::contains_delimited_math)
+            && model.collapsed_replacement(&node.id).is_none()
+            && !model.is_subgraph_collapsed(&node.id)
+    }) || model.edges.iter().enumerate().any(|(index, edge)| {
+        model
+            .edge_label_for_render(index, edge)
+            .is_some_and(crate::math::contains_delimited_math)
+            && crate::flowchart::project_flowchart_edge(edge, model.render_context).is_some()
+    }) || model.subgraphs.iter().enumerate().any(|(index, subgraph)| {
+        crate::math::contains_delimited_math(model.subgraph_title_for_render(index, subgraph))
+            && model.collapsed_replacement(&subgraph.id).is_none()
+    })
+}
+
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 fn semantic_flowchart_requires_math(model: &diagrams::flowchart::FlowchartModel) -> bool {
     model
         .nodes
@@ -159,8 +178,10 @@ fn parsed_render_requires_math(parsed: &PresentationDiagram) -> bool {
             .map_or_else(
                 || semantic_flowchart_requires_math(model),
                 |render_context| {
-                    crate::flowchart::FlowchartRenderModelRef::new(model, render_context)
-                        .requires_math()
+                    visible_flowchart_requires_math(crate::flowchart::FlowchartRenderModelRef::new(
+                        model,
+                        render_context,
+                    ))
                 },
             ),
         #[cfg(feature = "diagram-mindmap")]

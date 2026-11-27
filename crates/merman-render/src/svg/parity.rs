@@ -23,7 +23,7 @@ use crate::{Error, Result};
 use base64::Engine as _;
 use merman_model::OperationPhase;
 use merman_render_core::root_svg;
-use merman_render_core::svg_css::{SvgDiagramIdProjection, SvgDiagramIdValue, SvgId};
+use merman_render_core::svg_css::{SvgDiagramIdProjection, SvgId};
 use merman_render_core::svg_output as output;
 use std::fmt::Write as _;
 
@@ -55,8 +55,7 @@ mod css;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
-    feature = "diagram-agentflow",
-    feature = "diagram-usecase"
+    feature = "diagram-agentflow"
 ))]
 pub(crate) use css::PreparedCommonNeoCss;
 #[cfg(any(
@@ -66,7 +65,6 @@ pub(crate) use css::PreparedCommonNeoCss;
 ))]
 pub(crate) use flowchart::{FlowchartRenderConfig, prepare_flowchart_render_config};
 pub(crate) use look_defs::PreparedLookDefs;
-pub(crate) use util::cssom_color_value;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -75,7 +73,7 @@ pub(crate) use util::cssom_color_value;
         reason = "Shared rendering utilities have different callers in each diagram selection."
     )
 )]
-mod curve;
+use merman_render_core::svg_edge_parity::curve;
 #[cfg(feature = "diagram-cynefin")]
 mod cynefin;
 #[cfg_attr(
@@ -86,7 +84,7 @@ mod cynefin;
         reason = "Shared rendering utilities have different callers in each diagram selection."
     )
 )]
-mod edge_label_geometry;
+use merman_render_core::svg_edge_parity::edge_label_geometry;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -95,14 +93,12 @@ mod edge_label_geometry;
         reason = "Shared rendering utilities have different callers in each diagram selection."
     )
 )]
-mod edge_path;
+use merman_render_core::svg_edge_parity::edge_path;
 #[cfg(feature = "diagram-er")]
 mod er;
 #[cfg(all(feature = "diagram-er", feature = "layout-shoal"))]
 pub(crate) use er::er_canonical_marker;
 mod error;
-#[cfg(feature = "diagram-event-modeling")]
-mod eventmodeling;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
@@ -132,8 +128,15 @@ mod gantt;
 mod info;
 #[cfg(feature = "diagram-journey")]
 mod journey;
-#[cfg(feature = "diagram-kanban")]
-mod kanban;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
+use merman_render_core::svg_edge_parity::line_hops;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -150,44 +153,7 @@ use merman_render_core::text::svg_label as label;
         reason = "Shared rendering utilities have different callers in each diagram selection."
     )
 )]
-mod line_hops;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
-    )
-)]
 mod look_defs;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
-    )
-)]
-mod markers;
-pub(crate) use markers::BaseEdgeMarkerKind;
-#[cfg(any(
-    feature = "diagram-block",
-    feature = "diagram-state",
-    feature = "diagram-usecase",
-    all(
-        feature = "layout-shoal",
-        any(feature = "diagram-class", feature = "diagram-er")
-    ),
-    all(
-        any(feature = "layout-shoal", test),
-        any(
-            feature = "diagram-flowchart",
-            feature = "diagram-swimlane",
-            feature = "diagram-agentflow"
-        )
-    )
-))]
-mod canonical_rough;
 #[cfg(feature = "diagram-mindmap")]
 mod mindmap;
 #[cfg_attr(
@@ -207,12 +173,9 @@ mod quadrantchart;
 mod requirement;
 #[cfg(any(
     feature = "diagram-agentflow",
-    feature = "diagram-block",
-    feature = "diagram-c4",
     feature = "diagram-class",
     feature = "diagram-er",
     feature = "diagram-flowchart",
-    feature = "diagram-requirement",
     feature = "diagram-state",
     feature = "diagram-swimlane",
     feature = "diagram-usecase"
@@ -260,9 +223,7 @@ mod timeline;
         reason = "Shared rendering utilities have different callers in each diagram selection."
     )
 )]
-mod timing;
-#[cfg(feature = "diagram-tree-view")]
-mod tree_view;
+use merman_render_core::svg_output::timing;
 #[cfg(feature = "diagram-usecase")]
 mod usecase;
 #[cfg_attr(
@@ -278,24 +239,10 @@ mod util;
 mod zenuml;
 use output::{BoundedSvgOutput, SvgOutput};
 use path_bounds::{svg_path_bounds_from_d, svg_path_length_from_d};
-#[cfg(feature = "diagram-mindmap")]
-pub(crate) fn mindmap_cloud_rendered_bbox_size_px(w: f64, h: f64) -> Option<(f64, f64)> {
-    mindmap::mindmap_cloud_rendered_bbox_size_px(w, h)
-}
 
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        unused_imports,
-        reason = "Common SVG imports are consumed by the selected family emitters."
-    )
-)]
-use merman_render_core::svg_bounds::svg_emitted_bounds_from_svg;
 pub use merman_render_core::svg_bounds::{
     SvgEmittedBoundsContributor, SvgEmittedBoundsDebug, debug_svg_emitted_bounds,
 };
-#[cfg(feature = "diagram-requirement")]
-use roughjs_common::{ops_to_svg_path_d as roughjs_ops_to_svg_path_d, roughjs_paths_for_rect};
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -312,11 +259,6 @@ use style::is_text_style_key;
     )
 )]
 pub(crate) use util::escape_attr;
-#[cfg(all(
-    feature = "diagram-architecture",
-    any(feature = "layout-cytoscape", feature = "layout-shoal")
-))]
-use util::escape_attr_into;
 pub(crate) use util::escape_xml;
 #[cfg_attr(
     not(feature = "all-diagrams"),
@@ -326,10 +268,8 @@ pub(crate) use util::escape_xml;
     )
 )]
 use util::{
-    config_bool, config_f64, config_string, css_rgba_fade, escape_attr_display, escape_xml_display,
-    escape_xml_into, fmt, fmt_display, fmt_into, fmt_path, fmt_path_into, fmt_string,
-    json_stringify_points, json_stringify_points_into, scoped_drop_shadow, scoped_svg_id,
-    scoped_svg_url,
+    escape_attr_display, escape_xml_display, escape_xml_into, fmt, fmt_display,
+    json_stringify_points_into,
 };
 
 /// Converts arbitrary host input into the conservative SVG/CSS identifier grammar used by every
@@ -873,11 +813,6 @@ impl<'a> SvgExecution<'a> {
         self.family.family_id()
     }
 
-    #[cfg(feature = "diagram-mindmap")]
-    pub(crate) const fn layout_backend(&self) -> crate::layout_backend::GraphLayoutBackend {
-        self.family.layout_backend()
-    }
-
     #[allow(dead_code, reason = "Used by enabled diagram families.")]
     pub(crate) fn native_family_theme(&self) -> Option<&crate::theme::FamilyTheme> {
         self.family.native_theme()
@@ -905,14 +840,20 @@ impl<'a> SvgExecution<'a> {
         self.family.session().local_time_zone()
     }
 
+    #[cfg(any(
+        test,
+        feature = "diagram-agentflow",
+        feature = "diagram-class",
+        feature = "diagram-flowchart",
+        feature = "diagram-state",
+        feature = "diagram-swimlane"
+    ))]
     pub(crate) fn seed(&self) -> u64 {
         self.family.session().render_seed().get()
     }
 
     #[cfg(any(
         feature = "diagram-agentflow",
-        feature = "diagram-block",
-        feature = "diagram-c4",
         feature = "diagram-class",
         feature = "diagram-er",
         feature = "diagram-flowchart",
@@ -926,15 +867,10 @@ impl<'a> SvgExecution<'a> {
         configured_seed: f64,
         owner_domain: &str,
     ) -> roughr::core::RoughRandomness {
-        let resolved_seed = if configured_seed == 0.0 {
-            self.seed() as f64
-        } else {
-            configured_seed
-        };
-        let operation = self.family.session().operation_context();
-        roughr::core::RoughRandomness::new(
-            roughr::core::RoughJsSeed::new(resolved_seed),
-            roughr::core::RoughMathRandom::new(operation.derive_u64(owner_domain, 0)),
+        merman_render_core::rough_svg::operation_randomness(
+            self.family.session().operation_context(),
+            configured_seed,
+            owner_domain,
         )
     }
 
@@ -1236,14 +1172,7 @@ fn render_builtin_family_artifact_raw(
         }
         #[cfg(feature = "diagram-mindmap")]
         BuiltinFamilyArtifact::Mindmap(artifact) => {
-            mindmap::render_mindmap_diagram_svg_model_with_config(
-                artifact.pair().layout(),
-                artifact.pair().semantic(),
-                effective_config,
-                artifact.appearance(),
-                artifact.prepared_labels(),
-                options,
-            )
+            mindmap::render_mindmap(artifact, effective_config, options)
         }
         #[cfg(feature = "diagram-state")]
         BuiltinFamilyArtifact::State(artifact) => state::render_state_diagram_svg_model(
@@ -1295,7 +1224,18 @@ fn render_builtin_family_artifact_raw(
         ),
         #[cfg(feature = "diagram-kanban")]
         BuiltinFamilyArtifact::Kanban(pair) => {
-            kanban::render_kanban_diagram_svg(pair.layout(), effective_config, options)
+            use crate::kanban::{KanbanSvgContext, render_kanban_diagram_svg};
+
+            let diagram_id = options.diagram_id_or("merman");
+            render_kanban_diagram_svg(
+                pair.layout(),
+                effective_config,
+                &KanbanSvgContext {
+                    diagram_id,
+                    viewport: options.root_viewport(crate::DiagramFamilyId::KANBAN, diagram_id),
+                    work_meter: options.work_meter(),
+                },
+            )
         }
         #[cfg(feature = "diagram-gantt")]
         BuiltinFamilyArtifact::Gantt(artifact) => gantt::render_gantt_diagram_svg_model(
@@ -1497,20 +1437,32 @@ fn render_builtin_family_artifact_raw(
                 artifact.pair().layout(),
                 artifact.pair().semantic(),
                 artifact.typography_theme(),
-                effective_config.as_value(),
+                effective_config,
                 title,
                 measurer,
                 &context,
             )
         }
         #[cfg(feature = "diagram-tree-view")]
-        BuiltinFamilyArtifact::TreeView(artifact) => tree_view::render_tree_view_diagram_svg_model(
-            artifact.pair().layout(),
-            artifact.pair().semantic(),
-            artifact.theme(),
-            effective_config,
-            options,
-        ),
+        BuiltinFamilyArtifact::TreeView(artifact) => {
+            use crate::tree_view::{TreeViewSvgContext, render_tree_view_diagram_svg_model};
+
+            let diagram_id = options.diagram_id_or("treeView");
+            render_tree_view_diagram_svg_model(
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
+                artifact.theme(),
+                effective_config,
+                &TreeViewSvgContext {
+                    diagram_id,
+                    viewport: options.root_viewport(crate::DiagramFamilyId::TREE_VIEW, diagram_id),
+                    icon_registry: options.icon_registry(),
+                    work_meter: options.work_meter(),
+                    require_portable: options.family.session().portability_requirement()
+                        == crate::theme::ThemePortabilityRequirement::RequirePortable,
+                },
+            )
+        }
         #[cfg(feature = "diagram-ishikawa")]
         BuiltinFamilyArtifact::Ishikawa(artifact) => {
             let diagram_id = options.diagram_id_or("ishikawa");
@@ -1525,12 +1477,19 @@ fn render_builtin_family_artifact_raw(
         }
         #[cfg(feature = "diagram-event-modeling")]
         BuiltinFamilyArtifact::EventModeling(artifact) => {
-            eventmodeling::render_eventmodeling_diagram_svg(
+            use crate::eventmodeling::{EventModelingSvgContext, render_eventmodeling_diagram_svg};
+
+            let diagram_id = options.diagram_id_or("eventmodeling");
+            render_eventmodeling_diagram_svg(
                 artifact.pair().layout(),
                 artifact.pair().semantic(),
-                artifact.style(),
-                artifact.prepared_labels(),
-                options,
+                artifact.prepared(),
+                &EventModelingSvgContext {
+                    diagram_id,
+                    viewport: options
+                        .root_viewport(crate::DiagramFamilyId::EVENT_MODELING, diagram_id),
+                    work_meter: options.work_meter(),
+                },
             )
         }
         #[cfg(feature = "diagram-c4")]
@@ -1539,7 +1498,6 @@ fn render_builtin_family_artifact_raw(
             artifact.pair().semantic(),
             effective_config.as_value(),
             title,
-            measurer,
             artifact.typography_theme(),
             artifact.cluster_theme(),
             artifact.text_paint(),
@@ -1580,17 +1538,6 @@ fn apply_theme_css(
         .map(|svg| (svg, true))
 }
 
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        reason = "Shared SVG execution support is used by the selected family emitters."
-    )
-)]
-fn curve_basis_path_d(points: &[crate::model::LayoutPoint]) -> String {
-    curve::curve_basis_path_d(points)
-}
-
 #[cfg(test)]
 mod operation_time_tests {
     use super::*;
@@ -1621,8 +1568,6 @@ mod operation_time_tests {
     test,
     any(
         feature = "diagram-agentflow",
-        feature = "diagram-block",
-        feature = "diagram-c4",
         feature = "diagram-class",
         feature = "diagram-er",
         feature = "diagram-flowchart",
@@ -1712,6 +1657,7 @@ mod operation_rough_seed_tests {
 mod diagram_id_projection_tests {
     use super::*;
     use crate::resources::{RenderResourcePolicy, ResourceLimitId};
+    use merman_render_core::svg_css::{scoped_drop_shadow, scoped_svg_url};
 
     fn bounded_execution(maximum: usize) -> (RenderSession, SvgDebugOptions) {
         let policy = RenderResourcePolicy::unbounded_for_trusted_input()

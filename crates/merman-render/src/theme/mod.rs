@@ -11,32 +11,19 @@ pub(crate) use merman_render_core::theme_svg::canvas as canvas_svg;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-agentflow",
-    feature = "diagram-state",
     feature = "diagram-swimlane"
 ))]
 pub(crate) use merman_render_core::theme_svg::edge_label_background as edge_label_bg;
 #[cfg(any(
-    all(
-        feature = "diagram-architecture",
-        any(feature = "layout-cytoscape", feature = "layout-shoal")
-    ),
     feature = "diagram-flowchart",
     feature = "diagram-agentflow",
     feature = "diagram-swimlane",
-    feature = "diagram-zenuml",
-    feature = "diagram-kanban",
-    feature = "diagram-block",
-    feature = "diagram-usecase",
-    feature = "diagram-state",
 ))]
 pub(crate) use merman_render_core::theme_svg::elevation as elevation_svg;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-agentflow",
     feature = "diagram-swimlane",
-    feature = "diagram-block",
-    feature = "diagram-state",
-    feature = "diagram-usecase",
 ))]
 pub(crate) use merman_render_core::theme_svg::marker as marker_svg;
 

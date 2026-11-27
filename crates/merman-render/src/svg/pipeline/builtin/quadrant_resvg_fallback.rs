@@ -1,3 +1,4 @@
+use merman_render_core::svg_safety::is_mermaid_missing_amount_hsl;
 use std::borrow::Cow;
 
 use crate::DiagramFamilyId;
@@ -123,38 +124,6 @@ fn resolve_invalid_circle_presentation_with_checkpoints<E>(
     } else {
         Ok(None)
     }
-}
-
-pub(crate) fn is_mermaid_missing_amount_hsl(value: &str) -> bool {
-    let Some(body) = value
-        .trim()
-        .strip_prefix("hsl(")
-        .and_then(|value| value.strip_suffix(')'))
-    else {
-        return false;
-    };
-    let mut channels = body.split(',');
-    let (Some(hue), Some(saturation), Some(lightness), None) = (
-        channels.next(),
-        channels.next(),
-        channels.next(),
-        channels.next(),
-    ) else {
-        return false;
-    };
-
-    is_finite_css_number(hue) && is_finite_css_percentage(saturation) && lightness.trim() == "NaN%"
-}
-
-fn is_finite_css_number(value: &str) -> bool {
-    value.trim().parse::<f64>().is_ok_and(f64::is_finite)
-}
-
-fn is_finite_css_percentage(value: &str) -> bool {
-    value
-        .trim()
-        .strip_suffix('%')
-        .is_some_and(is_finite_css_number)
 }
 
 #[cfg(test)]

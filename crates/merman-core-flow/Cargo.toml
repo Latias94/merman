@@ -6,7 +6,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Syntax parsing for Merman's Mermaid Flowchart and Swimlane diagrams."
+description = "Source parsing and semantic model construction for Merman's Flowchart and Swimlane diagrams."
 documentation = "https://docs.rs/merman-core-flow"
 readme = "README.md"
 keywords = ["mermaid", "diagrams", "parser", "flowchart", "swimlane"]
@@ -17,14 +17,29 @@ third-party-bundle = true
 
 [features]
 default = []
-diagram-flowchart = ["merman-model/diagram-flowchart", "dep:merman-core-preprocess", "merman-core-preprocess/mermaid-unicode", "dep:thiserror"]
-diagram-swimlane = ["merman-model/diagram-swimlane", "dep:merman-core-preprocess", "merman-core-preprocess/mermaid-unicode", "dep:thiserror"]
+diagram-flowchart = [
+    "merman-model/diagram-flowchart", "merman-model/html-entities", "dep:indexmap",
+    "dep:merman-core-preprocess", "merman-core-preprocess/mermaid-unicode", "merman-core-preprocess/yaml",
+    "dep:merman-markup", "merman-markup/html", "merman-markup/url", "dep:rustc-hash",
+    "dep:serde_json", "dep:thiserror",
+]
+diagram-swimlane = [
+    "merman-model/diagram-swimlane", "merman-model/html-entities", "dep:indexmap",
+    "dep:merman-core-preprocess", "merman-core-preprocess/mermaid-unicode", "merman-core-preprocess/yaml",
+    "dep:merman-markup", "merman-markup/html", "merman-markup/url", "dep:rustc-hash",
+    "dep:serde_json", "dep:thiserror",
+]
 diagram-agentflow = ["merman-model/diagram-agentflow", "dep:merman-core-preprocess", "merman-core-preprocess/mermaid-unicode", "dep:thiserror"]
 editor-facts = []
+presentation = ["merman-model/presentation-data"]
 
 [dependencies]
+indexmap = { workspace = true, optional = true }
 merman-core-preprocess = { workspace = true, optional = true }
+merman-markup = { workspace = true, optional = true }
 merman-model.workspace = true
+rustc-hash = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 
 [dev-dependencies]

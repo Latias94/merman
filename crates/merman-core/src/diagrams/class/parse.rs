@@ -21,7 +21,7 @@ use crate::{
 use crate::{Result, SourcePresentationMetadata};
 #[cfg(feature = "editor-facts")]
 use merman_core_graph::class::{ClassLexicalEvent, ClassLexicalExpectation, ClassToken as Tok};
-use merman_core_graph::class::{ClassSyntax, ClassSyntaxDiagnostic};
+use merman_core_graph::class::{ClassModelError, ClassSyntax, ClassSyntaxDiagnostic};
 use merman_model::families::class as class_typed;
 #[cfg(feature = "editor-facts")]
 use merman_model::text::is_ecmascript_whitespace;
@@ -33,8 +33,6 @@ use std::borrow::Cow;
 use std::cell::Cell;
 #[cfg(feature = "editor-facts")]
 use std::collections::HashSet;
-
-use super::db::ClassDb;
 
 #[cfg(test)]
 thread_local! {
@@ -81,8 +79,8 @@ fn class_parse_diagnostic(diagnostic: ClassSyntaxDiagnostic) -> ParseDiagnostic 
     }
 }
 
-struct ClassSemanticSource<'a> {
-    db: ClassDb<'a>,
+struct ClassSemanticSource {
+    model: class_typed::ClassDiagramModel,
     #[cfg(feature = "editor-facts")]
     editor_facts: Option<EditorSemanticFacts>,
 }
@@ -164,13 +162,13 @@ impl ClassSemanticFailure {
     }
 }
 
-fn construct_class_semantic_source<'a>(
+fn construct_class_semantic_source(
     code: &str,
-    config: &'a MermaidConfig,
+    config: &MermaidConfig,
+    diagram_type: &str,
     #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &OperationControl,
-) -> OperationControlResult<std::result::Result<ClassSemanticSource<'a>, Box<ClassSemanticFailure>>>
-{
+) -> OperationControlResult<std::result::Result<ClassSemanticSource, Box<ClassSemanticFailure>>> {
     let syntax = lex_class_syntax(code, control)?;
     #[cfg(feature = "editor-facts")]
     let mut editor_facts = match editor_demand {
@@ -183,41 +181,29 @@ fn construct_class_semantic_source<'a>(
         )?),
     };
     #[cfg(feature = "editor-facts")]
-    let capture_ignored_statements = editor_facts.is_some();
+    let warning_facts = editor_facts.as_mut().map(|facts| &mut facts.warning_facts);
     #[cfg(not(feature = "editor-facts"))]
-    let capture_ignored_statements = false;
-    let actions = match syntax.into_actions(capture_ignored_statements, control)? {
-        Ok(actions) => actions,
-        Err(diagnostic) => {
+    let warning_facts = None;
+    let model = match syntax.into_model(config, diagram_type, warning_facts, control)? {
+        Ok(model) => model,
+        Err(ClassModelError::Grammar(diagnostic)) => {
             return Ok(Err(Box::new(ClassSemanticFailure::Grammar {
                 diagnostic: class_parse_diagnostic(diagnostic),
                 #[cfg(feature = "editor-facts")]
                 editor_facts,
             })));
         }
-    };
-
-    #[cfg(feature = "editor-facts")]
-    let mut warning_facts = editor_facts.as_mut().map(|facts| &mut facts.warning_facts);
-    #[cfg(not(feature = "editor-facts"))]
-    let mut warning_facts: Option<&mut Vec<_>> = None;
-    let mut db = ClassDb::new(config);
-    for (index, action) in actions.into_iter().enumerate() {
-        if index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        if let Err(message) = db.apply(action, warning_facts.as_deref_mut()) {
+        Err(ClassModelError::Db(message)) => {
             return Ok(Err(Box::new(ClassSemanticFailure::Db {
                 message,
                 #[cfg(feature = "editor-facts")]
                 editor_facts,
             })));
         }
-    }
+    };
 
-    control.checkpoint()?;
     Ok(Ok(ClassSemanticSource {
-        db,
+        model,
         #[cfg(feature = "editor-facts")]
         editor_facts,
     }))
@@ -232,17 +218,17 @@ pub(crate) fn parse_class_semantic_model_controlled(
     let construction = construct_class_semantic_source(
         code,
         &metadata.semantic_config,
+        &metadata.diagram_type,
         #[cfg(feature = "editor-facts")]
         editor_demand,
         control,
     )?;
     Ok(match construction {
         Ok(ClassSemanticSource {
-            db,
+            mut model,
             #[cfg(feature = "editor-facts")]
             editor_facts,
         }) => {
-            let mut model = db.into_semantic_model(&metadata.diagram_type);
             crate::diagrams::class::source_data::sanitize_common_db_fields(
                 &mut model,
                 &metadata.semantic_config,
@@ -272,13 +258,14 @@ pub(crate) fn parse_class_semantic_model_controlled(
 }
 
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
-fn parse_class_semantic_source<'a>(
+fn parse_class_semantic_source(
     code: &str,
-    meta: &'a SourcePresentationMetadata,
-) -> Result<ClassSemanticSource<'a>> {
+    meta: &SourcePresentationMetadata,
+) -> Result<ClassSemanticSource> {
     construct_class_semantic_source(
         code,
         meta.effective_config.as_config(),
+        &meta.diagram_type,
         #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         &OperationControl::new(),
@@ -289,7 +276,18 @@ fn parse_class_semantic_source<'a>(
 
 #[cfg(feature = "compat-json")]
 pub(crate) fn parse_class(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
-    Ok(parse_class_semantic_source(code, meta)?.db.into_model(meta))
+    let source = parse_class_semantic_source(code, meta)?;
+    Ok(project_class_compat_model(source.model, meta))
+}
+
+#[cfg(feature = "compat-json")]
+fn project_class_compat_model(
+    model: class_typed::ClassDiagramModel,
+    meta: &SourcePresentationMetadata,
+) -> Value {
+    let model = class_typed::ClassDiagram::new(model, meta.effective_config.as_config());
+    super::render_model_to_compat_json(&model, meta)
+        .expect("Class typed model must remain JSON-serializable")
 }
 
 #[cfg(all(test, feature = "presentation"))]
@@ -300,9 +298,7 @@ pub(crate) fn parse_class_typed_with_render_context(
     class_typed::ClassDiagram,
     class_typed::ClassStylePrecedenceFacts,
 )> {
-    let model = parse_class_semantic_source(code, meta)?
-        .db
-        .into_semantic_model(&meta.diagram_type);
+    let model = parse_class_semantic_source(code, meta)?.model;
     let style_facts = model.style_precedence_facts.clone();
     Ok((
         class_typed::ClassDiagram::new(model, meta.effective_config.as_config()),
@@ -324,13 +320,14 @@ pub(crate) fn parse_class_typed_with_render_context_controlled(
     let construction = construct_class_semantic_source(
         code,
         meta.effective_config.as_config(),
+        &meta.diagram_type,
         #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         control,
     )?;
     match construction {
         Ok(source) => {
-            let model = source.db.into_semantic_model(&meta.diagram_type);
+            let model = source.model;
             let style_facts = model.style_precedence_facts.clone();
             Ok(Ok((
                 class_typed::ClassDiagram::new_controlled(
@@ -355,18 +352,19 @@ pub(crate) fn parse_class_json_and_editor_facts(
     let construction = construct_class_semantic_source(
         code,
         meta.effective_config.as_config(),
+        &meta.diagram_type,
         EditorFactsDemand::Capture,
         control,
     )?;
     let parsed = crate::family::CombinedSemanticParse::from_construction(
         construction,
         |ClassSemanticSource {
-             db,
+             model,
              #[cfg(feature = "editor-facts")]
              editor_facts,
          }| {
             (
-                Ok(db.into_model(meta)),
+                Ok(project_class_compat_model(model, meta)),
                 editor_facts.expect("Class combined parse requests editor facts"),
             )
         },

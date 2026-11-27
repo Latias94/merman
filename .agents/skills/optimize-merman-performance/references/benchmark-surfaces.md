@@ -153,8 +153,9 @@ same-capability build are separate lanes.
 Use focused `cargo nextest` during iteration. For shared behavior, use:
 
 ```console
-cargo run -p xtask -- verify --strict
-python3 tools/bench/test_perf_contracts.py
+cargo run --locked -p xtask -- verify --strict
+python3 -m unittest discover -s tools/bench
+node --test tools/bench/collectors/node_runner.test.mjs
 ```
 
 Run strict once at the settled source for final integration; the

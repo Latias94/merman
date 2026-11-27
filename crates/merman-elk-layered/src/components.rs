@@ -5,7 +5,9 @@
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/components/SimpleRowGraphPlacer.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/components/AbstractGraphPlacer.java
 
-use crate::graph::{LGraph, LLabel, LPoint, LSize, PortRef};
+use std::mem;
+
+use crate::graph::{LGraph, LLabel, LNode, LPoint, LSize, PortRef};
 use crate::options::{HierarchyHandling, PortConstraints};
 use crate::pipeline::PipelineResult;
 use crate::work::{WorkControl, checked_add, checked_mul, checked_n_log_n, checked_sum};
@@ -29,6 +31,35 @@ pub(crate) struct Component {
     original_nodes: Vec<usize>,
     original_edges: Vec<usize>,
     priority: i32,
+}
+
+impl Drop for Component {
+    fn drop(&mut self) {
+        LNode::drop_nested_graphs(&mut self.graph.layerless_nodes);
+    }
+}
+
+/// Owns nodes already taken from components while later components are still being remapped.
+struct CombinedNodes(Vec<Option<LNode>>);
+
+impl CombinedNodes {
+    fn into_nodes(mut self) -> Result<Vec<LNode>, ComponentError> {
+        if let Some(index) = self.0.iter().position(Option::is_none) {
+            return Err(ComponentError::InvalidReference {
+                kind: "combined node",
+                index,
+            });
+        }
+        Ok(mem::take(&mut self.0).into_iter().flatten().collect())
+    }
+}
+
+impl Drop for CombinedNodes {
+    fn drop(&mut self) {
+        for node in self.0.iter_mut().flatten() {
+            LNode::drop_nested_graphs(std::slice::from_mut(node));
+        }
+    }
 }
 
 /// The supplied graph has already passed GraphConfigurator. Component construction copies
@@ -433,9 +464,7 @@ pub(crate) fn combine(
             }
         }
     };
-    let mut nodes = std::iter::repeat_with(|| None)
-        .take(node_count)
-        .collect::<Vec<_>>();
+    let mut nodes = CombinedNodes(std::iter::repeat_with(|| None).take(node_count).collect());
     let mut edges = std::iter::repeat_with(|| None)
         .take(edge_count)
         .collect::<Vec<_>>();
@@ -446,37 +475,34 @@ pub(crate) fn combine(
     let mut self_loops = Vec::new();
     let mut cyclic = false;
     for mut component in components {
-        let mut node_map = component.original_nodes;
-        let added_nodes = component.graph.layerless_nodes.len() - node_map.len();
+        let graph = &mut component.graph;
+        let mut node_map = mem::take(&mut component.original_nodes);
+        let added_nodes = graph.layerless_nodes.len() - node_map.len();
         node_map.extend(next_node..checked_add(next_node, added_nodes)?);
         next_node += added_nodes;
-        let mut edge_map = component.original_edges;
-        let added_edges = component.graph.edges.len() - edge_map.len();
+        let mut edge_map = mem::take(&mut component.original_edges);
+        let added_edges = graph.edges.len() - edge_map.len();
         edge_map.extend(next_edge..checked_add(next_edge, added_edges)?);
         next_edge += added_edges;
-        component.graph.clear_layers();
-        remap_references(&mut component.graph, &node_map, &edge_map)?;
-        for (index, node) in node_map.into_iter().zip(component.graph.layerless_nodes) {
-            nodes[index] = Some(node);
+        graph.clear_layers();
+        remap_references(graph, &node_map, &edge_map)?;
+        for (index, node) in node_map
+            .into_iter()
+            .zip(mem::take(&mut graph.layerless_nodes))
+        {
+            nodes.0[index] = Some(node);
         }
-        for (index, edge) in edge_map.into_iter().zip(component.graph.edges) {
+        for (index, edge) in edge_map.into_iter().zip(mem::take(&mut graph.edges)) {
             edges[index] = Some(edge);
         }
-        hidden.extend(component.graph.hidden_nodes);
-        replaced.extend(component.graph.replaced_external_port_dummies);
-        self_loops.extend(component.graph.self_loop_holders);
-        cyclic |= component.graph.cyclic;
+        hidden.append(&mut graph.hidden_nodes);
+        replaced.append(&mut graph.replaced_external_port_dummies);
+        self_loops.append(&mut graph.self_loop_holders);
+        cyclic |= graph.cyclic;
     }
-    target.layerless_nodes = nodes
-        .into_iter()
-        .enumerate()
-        .map(|(index, node)| {
-            node.ok_or(ComponentError::InvalidReference {
-                kind: "combined node",
-                index,
-            })
-        })
-        .collect::<Result<_, _>>()?;
+    let mut retired_nodes = mem::replace(&mut target.layerless_nodes, nodes.into_nodes()?);
+    LNode::drop_nested_graphs(&mut retired_nodes);
+    drop(retired_nodes);
     target.edges = edges
         .into_iter()
         .enumerate()
@@ -496,4 +522,127 @@ pub(crate) fn combine(
     // Keep the target's minimum constraint. Source copyProperties merges its property map;
     // the missing minimum on a component does not remove the target's original property.
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{LPort, LayeredOptions, NoopWorkControl, PipelineError, PortType, WorkError};
+
+    #[test]
+    fn separate_children_components_finalize_deep_trees_on_a_small_stack() {
+        const DEPTH: usize = 1_024;
+        const OWNER: usize = 1;
+
+        #[derive(Default)]
+        struct RejectPacking {
+            attempted: Option<usize>,
+        }
+
+        impl WorkControl for RejectPacking {
+            fn check(&mut self, _units: usize) -> Result<(), WorkError> {
+                panic!("packing must not add a work check");
+            }
+
+            fn charge(&mut self, units: usize) -> Result<(), WorkError> {
+                assert_eq!(self.attempted.replace(units), None);
+                Err(WorkError::Interrupted)
+            }
+        }
+
+        let options = LayeredOptions {
+            hierarchy_handling: HierarchyHandling::SeparateChildren,
+            separate_connected_components: true,
+            ..LayeredOptions::default()
+        };
+        let mut root = LGraph::new("same", options);
+        root.layerless_nodes
+            .push(LNode::new("peer", 1.0, 1.0, None));
+        let expected_port = PortRef {
+            node: OWNER,
+            port: 0,
+        };
+        let origin = root.scoped_port(expected_port);
+        let mut graph = &mut root;
+        for level in 0..DEPTH {
+            let index = graph.layerless_nodes.len();
+            let child = LGraph::new("same", LayeredOptions::default());
+            let mut node = LNode::new("owner", 1.0, 1.0, Some(level));
+            let mut port = LPort::new("out", index, PortType::Output);
+            port.port_dummy = Some(child.scoped_node(0));
+            node.ports.push(port);
+            node.nested_graph = Some(Box::new(child));
+            graph.layerless_nodes.push(node);
+            graph = graph.layerless_nodes[index]
+                .nested_graph
+                .as_deref_mut()
+                .unwrap();
+        }
+        let mut dummy = LNode::new("dummy", 1.0, 1.0, None);
+        dummy.origin_port = Some(origin);
+        graph.layerless_nodes.push(dummy);
+        root.layerless_nodes[OWNER].component_priority = 1;
+
+        let result = std::thread::scope(|scope| {
+            std::thread::Builder::new()
+                .stack_size(128 * 1024)
+                .spawn_scoped(scope, || {
+                    crate::configure_graph_properties(&mut root).unwrap();
+                    let original_child = std::ptr::from_ref(
+                        root.layerless_nodes[OWNER].nested_graph.as_deref().unwrap(),
+                    );
+                    let mut work = NoopWorkControl;
+
+                    let components = split(&root, &mut work).unwrap().unwrap();
+                    let mut cancelled = RejectPacking::default();
+                    assert_eq!(
+                        combine(&mut root, components, &mut cancelled),
+                        Err(PipelineError::Work(WorkError::Interrupted)),
+                    );
+                    assert_eq!(cancelled.attempted, Some(12));
+
+                    let mut components = split(&root, &mut work).unwrap().unwrap();
+                    // The deep component packs first. Fail the later remap after its nodes moved.
+                    components[0].graph.layerless_nodes[0].long_edge_source =
+                        Some(PortRef { node: 1, port: 0 });
+                    assert_eq!(
+                        combine(&mut root, components, &mut work),
+                        Err(ComponentError::InvalidReference {
+                            kind: "port node",
+                            index: 1
+                        }
+                        .into()),
+                    );
+                    assert!(std::ptr::eq(
+                        original_child,
+                        root.layerless_nodes[OWNER].nested_graph.as_deref().unwrap(),
+                    ));
+
+                    let components = split(&root, &mut work).unwrap().unwrap();
+                    combine(&mut root, components, &mut work).unwrap();
+                    let owner = &root.layerless_nodes[OWNER];
+                    let mut child = owner.nested_graph.as_deref().unwrap();
+                    assert!(!std::ptr::eq(original_child, child));
+                    assert!(
+                        owner.ports[0]
+                            .port_dummy
+                            .as_ref()
+                            .unwrap()
+                            .belongs_to(child)
+                    );
+                    for level in 1..DEPTH {
+                        let node = &child.layerless_nodes[0];
+                        assert_eq!(node.model_order, Some(level));
+                        child = node.nested_graph.as_deref().unwrap();
+                    }
+                    let origin = child.layerless_nodes[0].origin_port.as_ref().unwrap();
+                    assert!(origin.belongs_to(&root));
+                    assert_eq!(origin.port, expected_port);
+                })
+                .unwrap()
+                .join()
+        });
+        LNode::drop_nested_graphs(&mut root.layerless_nodes);
+        result.unwrap();
+    }
 }

@@ -1,8 +1,8 @@
 pub(crate) use merman_render_flow::bpmn;
 use merman_render_flow::layout_config as config;
+use merman_render_flow::{class_style, source_style, style};
 #[cfg(test)]
 mod bpmn_layout_tests;
-mod class_style;
 mod compatibility;
 #[cfg(feature = "layout-dagre")]
 pub(crate) mod dagre;
@@ -20,240 +20,23 @@ mod self_loop;
 mod shape_validation;
 #[cfg(feature = "layout-shoal")]
 pub(crate) mod shoal;
-mod source_style;
-mod style;
 pub(crate) use source_style::{FlowchartSourceFacetStatus, FlowchartStyleDeclaration};
 mod svg_label_artifact;
 
-use merman_model::families::flowchart::FlowchartLabelSourceOwner;
 pub(crate) use merman_model::families::flowchart::{
     FlowEdge, FlowNode, FlowSubgraph, FlowchartModel, FlowchartRenderContext,
 };
-use std::borrow::Cow;
-use std::ops::Deref;
 
 pub(crate) use class_style::{
-    FlowchartClassDefStyles, FlowchartClassDefinitions, FlowchartLabelDom,
-    FlowchartStructuralLabelTypography,
+    FlowchartClassDefinitions, FlowchartLabelDom, FlowchartStructuralLabelTypography,
 };
 pub(crate) use compatibility::{FlowchartCompatibilityBinding, FlowchartPreparedTheme};
-pub(crate) use edge_occurrence::{
-    FlowchartEdgeKey, FlowchartEdgeOwners, FlowchartEdgeTransportPlan,
-};
+pub(crate) use edge_occurrence::FlowchartEdgeOwners;
 pub(crate) use lane_title::zero_width_lane_title_rows;
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct FlowchartRenderModelRef<'a> {
-    semantic: &'a FlowchartModel,
-    render_context: &'a FlowchartRenderContext,
-    svg_text_nodes: bool,
-    svg_text_edges_and_titles: bool,
-}
-
-impl<'a> FlowchartRenderModelRef<'a> {
-    pub(crate) const fn new(
-        semantic: &'a FlowchartModel,
-        render_context: &'a FlowchartRenderContext,
-    ) -> Self {
-        Self {
-            semantic,
-            render_context,
-            svg_text_nodes: false,
-            svg_text_edges_and_titles: false,
-        }
-    }
-
-    pub(crate) fn with_shoal_svg_text(
-        mut self,
-        node_html_labels: bool,
-        edge_html_labels: bool,
-    ) -> Self {
-        if self.semantic.keyword != "agentflow-beta" {
-            self.svg_text_nodes = !node_html_labels;
-            self.svg_text_edges_and_titles = !edge_html_labels;
-        }
-        self
-    }
-
-    pub(crate) fn node_label_for_render<'b>(&'b self, node: &'b FlowNode) -> Option<&'b str> {
-        if self.svg_text_nodes
-            && let Some(source) = self
-                .render_context
-                .svg_text_source(FlowchartLabelSourceOwner::Node(&node.id))
-        {
-            return Some(source);
-        }
-        self.render_context.node_label_for_render(node)
-    }
-
-    pub(crate) fn edge_label_for_render<'b>(
-        &'b self,
-        semantic_index: usize,
-        edge: &'b FlowEdge,
-    ) -> Option<&'b str> {
-        if self.svg_text_edges_and_titles
-            && let Some(source) = self
-                .render_context
-                .svg_text_source(FlowchartLabelSourceOwner::Edge(semantic_index))
-        {
-            return Some(source);
-        }
-        self.render_context
-            .edge_label_for_render(semantic_index, edge)
-    }
-
-    pub(crate) fn edge_label_for_occurrence<'b>(
-        &'b self,
-        key: FlowchartEdgeKey,
-        edge: &'b FlowEdge,
-    ) -> Option<&'b str> {
-        match key.self_loop_segment_order() {
-            None | Some(1) => self.edge_label_for_render(key.semantic_index(), edge),
-            Some(_) => None,
-        }
-    }
-
-    pub(crate) fn subgraph_title_for_render<'b>(
-        &'b self,
-        declaration_ordinal: usize,
-        subgraph: &'b FlowSubgraph,
-    ) -> &'b str {
-        let use_svg_text = if self.is_subgraph_collapsed(&subgraph.id) {
-            self.svg_text_nodes
-        } else {
-            self.svg_text_edges_and_titles
-        };
-        if use_svg_text
-            && let Some(source) =
-                self.render_context
-                    .svg_text_source(FlowchartLabelSourceOwner::Subgraph(
-                        declaration_ordinal,
-                        &subgraph.id,
-                    ))
-        {
-            return source;
-        }
-        self.render_context
-            .subgraph_title_for_render(declaration_ordinal, subgraph)
-    }
-
-    pub(crate) fn effective_subgraph_css<'b>(
-        &'b self,
-        declaration_ordinal: usize,
-        subgraph: &'b FlowSubgraph,
-    ) -> (&'b [String], &'b [String]) {
-        self.render_context
-            .effective_subgraph_css(declaration_ordinal, subgraph)
-    }
-
-    pub(crate) fn is_subgraph_collapsed(&self, id: &str) -> bool {
-        self.render_context.is_subgraph_collapsed(id)
-    }
-
-    pub(crate) fn collapsed_replacement(&self, id: &str) -> Option<&str> {
-        self.render_context.collapsed_replacement(id)
-    }
-
-    pub(crate) fn subgraph_color_ordinal(&self, id: &str) -> Option<usize> {
-        self.render_context.subgraph_color_ordinal(id)
-    }
-
-    /// Parent relations in the graph sent to layout, in FlowDB insertion order.
-    pub(crate) fn visible_memberships(self) -> impl Iterator<Item = (&'a str, &'a str)> {
-        self.semantic
-            .subgraphs
-            .iter()
-            .rev()
-            .filter(move |group| {
-                self.collapsed_replacement(&group.id).is_none()
-                    && !self.is_subgraph_collapsed(&group.id)
-            })
-            .flat_map(|group| {
-                group
-                    .nodes
-                    .iter()
-                    .map(move |child| (child.as_str(), group.id.as_str()))
-            })
-    }
-
-    pub(crate) fn projected_edges(
-        self,
-    ) -> impl Iterator<Item = (FlowchartEdgeKey, ProjectedFlowchartEdge<'a>)> + Clone {
-        self.semantic
-            .edges
-            .iter()
-            .enumerate()
-            .filter_map(move |(index, edge)| {
-                project_flowchart_edge(edge, self.render_context)
-                    .map(|edge| (FlowchartEdgeKey::new(index), edge))
-            })
-    }
-
-    pub(crate) fn requires_math(&self) -> bool {
-        self.nodes.iter().any(|node| {
-            self.node_label_for_render(node)
-                .is_some_and(crate::math::contains_delimited_math)
-                && self.collapsed_replacement(&node.id).is_none()
-                && !self.is_subgraph_collapsed(&node.id)
-        }) || self.edges.iter().enumerate().any(|(index, edge)| {
-            self.edge_label_for_render(index, edge)
-                .is_some_and(crate::math::contains_delimited_math)
-                && project_flowchart_edge(edge, self.render_context).is_some()
-        }) || self.subgraphs.iter().enumerate().any(|(index, subgraph)| {
-            crate::math::contains_delimited_math(self.subgraph_title_for_render(index, subgraph))
-                && self.collapsed_replacement(&subgraph.id).is_none()
-        })
-    }
-}
-
-pub(crate) struct ProjectedFlowchartEdge<'a> {
-    pub(crate) semantic: &'a FlowEdge,
-    pub(crate) from: &'a str,
-    pub(crate) to: &'a str,
-}
-
-impl<'a> ProjectedFlowchartEdge<'a> {
-    pub(crate) fn into_render_edge(self) -> Cow<'a, FlowEdge> {
-        if self.from == self.semantic.from && self.to == self.semantic.to {
-            return Cow::Borrowed(self.semantic);
-        }
-
-        let mut edge = self.semantic.clone();
-        self.from.clone_into(&mut edge.from);
-        self.to.clone_into(&mut edge.to);
-        Cow::Owned(edge)
-    }
-}
-
-/// Keeps the semantic edge intact while redirecting boundary edges to visible collapsed nodes.
-/// Edges that collapse onto one endpoint are hidden, while unchanged self-loops survive.
-pub(crate) fn project_flowchart_edge<'a>(
-    edge: &'a FlowEdge,
-    render_context: &'a FlowchartRenderContext,
-) -> Option<ProjectedFlowchartEdge<'a>> {
-    let from = render_context
-        .collapsed_replacement(edge.from.as_str())
-        .unwrap_or(edge.from.as_str());
-    let to = render_context
-        .collapsed_replacement(edge.to.as_str())
-        .unwrap_or(edge.to.as_str());
-    if from == to && (from != edge.from || to != edge.to) {
-        return None;
-    }
-    Some(ProjectedFlowchartEdge {
-        semantic: edge,
-        from,
-        to,
-    })
-}
-
-impl Deref for FlowchartRenderModelRef<'_> {
-    type Target = FlowchartModel;
-
-    fn deref(&self) -> &Self::Target {
-        self.semantic
-    }
-}
+pub(crate) use merman_render_flow::projection::{
+    FlowchartEdgeKey, FlowchartEdgeTransportPlan, FlowchartRenderModelRef, ProjectedFlowchartEdge,
+    project_flowchart_edge,
+};
 
 #[cfg(any(
     feature = "diagram-flowchart",
@@ -313,7 +96,7 @@ pub(crate) use shape_validation::{
 pub(crate) use style::flowchart_apply_html_node_class_box_metrics;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) use style::flowchart_node_layout_style;
-#[cfg(test)]
+#[cfg(all(test, feature = "all-diagrams"))]
 pub(crate) use style::flowchart_swimlane_label_rect_text_style;
 pub(crate) use style::{
     FlowchartRectangleCssSize, FlowchartTerminalForeground, FlowchartTerminalForegroundProvenance,

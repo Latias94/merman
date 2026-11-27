@@ -2,9 +2,17 @@
 
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "diagram-block")]
+#[doc(hidden)]
+pub mod block;
+
 #[cfg(feature = "diagram-cynefin")]
 #[doc(hidden)]
 pub mod cynefin;
+
+#[cfg(feature = "diagram-event-modeling")]
+#[doc(hidden)]
+pub mod eventmodeling;
 
 #[cfg(feature = "diagram-gantt")]
 #[doc(hidden)]
@@ -19,6 +27,9 @@ pub mod ishikawa;
 #[cfg(feature = "diagram-journey")]
 #[doc(hidden)]
 pub mod journey;
+#[cfg(feature = "diagram-kanban")]
+#[doc(hidden)]
+pub mod kanban;
 #[cfg(feature = "diagram-packet")]
 #[doc(hidden)]
 pub mod packet;
@@ -29,3 +40,7 @@ pub mod railroad;
 #[cfg(feature = "diagram-timeline")]
 #[doc(hidden)]
 pub mod timeline;
+
+#[cfg(feature = "diagram-tree-view")]
+#[doc(hidden)]
+pub mod tree_view;

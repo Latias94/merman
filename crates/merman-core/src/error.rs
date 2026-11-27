@@ -199,11 +199,7 @@ pub enum Error {
 }
 
 impl Error {
-    #[cfg(any(
-        feature = "diagram-git-graph",
-        feature = "diagram-radar",
-        feature = "diagram-mindmap"
-    ))]
+    #[cfg(any(feature = "diagram-radar", feature = "diagram-mindmap"))]
     pub(crate) fn with_exact_span_if_missing(self, span: SourceSpan) -> Self {
         match self {
             Self::DiagramParse {

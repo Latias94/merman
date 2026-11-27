@@ -224,7 +224,7 @@ pub(crate) fn layout_architecture_shoal(
     let arrow = icon / 6.0;
     let marker_style = native.map_or(MarkerStyle::Classic, |style| style.marker_style);
     let route_style = native.map_or(RouteStyle::Step, |style| {
-        RouteStyle::from_theme(style.edge_style)
+        RouteStyle::from_theme(style.edge_style())
     });
     let edge_stroke_outset = binding.edge_stroke_outset();
     // The deterministic measurer can supply a neutral middle baseline. Leave half an em for

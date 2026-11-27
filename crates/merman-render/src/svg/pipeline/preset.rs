@@ -1,5 +1,4 @@
 use super::builtin::{
-    attr_sanitize::sanitize_element_attributes_cow_with_checkpoints,
     css_sanitize::apply_sanitize_style_elements,
     foreign_object::{
         apply_drop_switch_native_fallbacks, apply_foreign_object_fallback_with_outcome,
@@ -15,6 +14,7 @@ use super::final_validation::SvgStructureMetrics;
 use crate::Result;
 use crate::environment::TextMeasurementPhase;
 use crate::math::PreparedMathEvidenceLease;
+use merman_render_core::svg_safety::sanitize_element_attributes_cow_with_checkpoints;
 use std::borrow::Cow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

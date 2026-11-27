@@ -3,6 +3,43 @@ pub fn strip_line_ending(segment: &str) -> &str {
     segment.strip_suffix('\r').unwrap_or(segment)
 }
 
+pub fn physical_line_at(source: &str, offset: usize) -> (&str, usize) {
+    let rest = &source[offset..];
+    let (segment, next_offset) = match rest.find('\n') {
+        Some(relative_newline) => (&rest[..=relative_newline], offset + relative_newline + 1),
+        None => (rest, source.len()),
+    };
+    (strip_line_ending(segment), next_offset)
+}
+
+pub fn starts_with_case_insensitive(haystack: &str, needle: &str) -> bool {
+    if haystack.len() < needle.len() {
+        return false;
+    }
+    haystack
+        .as_bytes()
+        .iter()
+        .take(needle.len())
+        .copied()
+        .map(|b| b.to_ascii_lowercase())
+        .eq(needle
+            .as_bytes()
+            .iter()
+            .copied()
+            .map(|b| b.to_ascii_lowercase()))
+}
+
+pub fn split_statement_suffix_hash_or_semi(s: &str) -> &str {
+    let mut end = s.len();
+    for (i, c) in s.char_indices() {
+        if c == '#' || c == ';' {
+            end = i;
+            break;
+        }
+    }
+    &s[..end]
+}
+
 pub struct LineCursor<'a> {
     source: &'a str,
     segments: std::str::SplitInclusive<'a, char>,

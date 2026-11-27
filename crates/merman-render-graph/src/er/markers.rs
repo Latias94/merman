@@ -256,7 +256,7 @@ pub fn er_unified_marker_id(diagram_id: SvgId<'_>, upstream_marker: &str) -> Str
 }
 
 /// Center offset and radius of a cardinality marker's circle in its viewport units.
-pub fn er_zero_marker_circle(
+pub(super) fn er_zero_marker_circle(
     upstream_marker: &str,
     canonical: bool,
     neo: bool,
@@ -406,11 +406,10 @@ fn write_marker_start(
     out.push('>');
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "layout-shoal"))]
 mod tests {
     use super::*;
 
-    #[cfg(feature = "layout-shoal")]
     #[test]
     fn canonical_crow_foot_markers_require_zero_trim_and_emit_open_forks() {
         for card in ["ONE_OR_MORE", "ZERO_OR_MORE"] {

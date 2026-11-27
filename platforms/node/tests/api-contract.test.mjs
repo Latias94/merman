@@ -1486,6 +1486,33 @@ test("SVG diagramId reuses validated options on the generic transport", async (c
   }
 });
 
+test("SVG diagramId fallback preserves raw field and UTF-16 error priority", async (context) => {
+  const factory = transportFactory();
+  const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+  context.after(() => engine.dispose());
+
+  const source = "flowchart LR\nA --> B";
+  const fieldLimit = NODE_TRANSPORT_FIELD_LIMITS.options_json_utf8_bytes;
+  const wireLimit = NODE_TRANSPORT_LIMITS.binding_options.max_utf8_bytes;
+  const exactPrefix = "x".repeat(fieldLimit - 3);
+  const escapedOverflow = "\0".repeat(Math.ceil(wireLimit / 6));
+  const fieldError = new RegExp(`diagram_id exceeds the ${fieldLimit}-byte field limit`);
+  const utf16Error = /isolated UTF-16 surrogate/;
+  const cases = [
+    [`\ud800${exactPrefix}x`, fieldError],
+    [`${exactPrefix}x\udc00`, fieldError],
+    [`${exactPrefix}\udc00`, utf16Error],
+    [`${escapedOverflow}\ud800`, utf16Error],
+    [escapedOverflow, new RegExp(`diagramId exceeds the ${wireLimit}-byte wire limit`)],
+  ];
+  for (const [diagramId, message] of cases) {
+    const error = { code: "MERMAN_INVALID_TRANSPORT", message };
+    assert.throws(() => engine.renderSvgSync(source, { diagramId }), error);
+    await assert.rejects(engine.renderSvg(source, { diagramId }), error);
+  }
+  assert.deepEqual(factory.calls, []);
+});
+
 test("generic operations reject superseded request fields", async () => {
   const factory = transportFactory();
   const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });

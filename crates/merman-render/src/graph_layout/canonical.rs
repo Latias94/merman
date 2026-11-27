@@ -10,6 +10,7 @@ use crate::resources::OperationWorkMeter;
 use crate::{Error, Result};
 use kurbo::Vec2;
 use merman_render_core::graph_layout::axis_clearance::AxisClearance;
+pub(crate) use merman_render_core::route_paint::CanonicalPaintScratch;
 use rustc_hash::FxHashMap;
 use std::ops::Range;
 
@@ -72,18 +73,6 @@ impl CanonicalPaintedEdge<()> {
             markers: self.markers,
         }
     }
-}
-
-#[derive(Default)]
-pub(crate) struct CanonicalPaintScratch {
-    points: Vec<RoutePoint>,
-    pub(crate) route: route_paint::RoutePaintScratch,
-    #[cfg(any(
-        feature = "diagram-architecture",
-        feature = "diagram-er",
-        feature = "diagram-state"
-    ))]
-    data_points: Vec<LayoutPoint>,
 }
 
 fn layout_points(points: &[RoutePoint]) -> impl ExactSizeIterator<Item = LayoutPoint> + '_ {

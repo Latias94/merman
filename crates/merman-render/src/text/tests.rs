@@ -1,7 +1,7 @@
 use super::*;
 use crate::graph_label::flowchart_label_metrics_for_layout;
 use crate::text::metrics::style_requests_bold_font_weight;
-use merman_render_core::text::trim_ecmascript_whitespace;
+use merman_render_core::text::{trim_ecmascript_whitespace, wrap_markdown_word_lines};
 
 fn assert_finite_positive_metrics(metrics: TextMetrics) {
     assert!(
@@ -182,7 +182,7 @@ fn html_break_spaces_uses_decoded_entity_whitespace() {
 #[test]
 fn ecmascript_and_html_whitespace_helpers_preserve_next_line_control() {
     let nel = '\u{0085}';
-    assert!(!is_ecmascript_whitespace(nel));
+    assert!(!merman_render_core::text::is_ecmascript_whitespace(nel));
     assert!(!is_html_collapsible_ascii_whitespace(nel));
     assert_eq!(
         trim_ecmascript_whitespace("\u{0085}A\u{0085}"),
@@ -1609,6 +1609,7 @@ fn markdown_svg_wrap_cancellation_skips_copy_without_a_width_limit() {
 #[test]
 fn markdown_svg_wrapping_keeps_raw_html_tags_literal_but_wraps_like_mermaid() {
     use MermaidMarkdownWordType::*;
+    use merman_render_core::text::mermaid_markdown_to_wrapped_word_lines;
 
     let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {

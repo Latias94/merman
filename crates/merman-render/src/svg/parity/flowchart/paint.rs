@@ -6,7 +6,7 @@ use super::svg_emit::FlowchartSvgModelRequest;
 use super::*;
 
 #[cfg(any(feature = "layout-shoal", test))]
-use super::super::canonical_rough::constrained_rough_edge_path;
+use merman_render_core::rough_svg::constrained_rough_edge_path;
 
 pub(super) fn with_flowchart_paint_context<T>(
     request: FlowchartSvgModelRequest<'_>,

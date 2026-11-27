@@ -19,9 +19,11 @@ third-party-bundle = true
 default = []
 benchmark-stages = ["merman-model?/benchmark-stages"]
 css-style = ["dep:cssparser", "dep:merman-markup", "dep:merman-model", "dep:serde_json", "dep:unicode-segmentation"]
+euclid-geometry = ["dep:euclid"]
 graph-layout = ["dep:kurbo"]
 html = ["svg-output", "merman-markup/html"]
 icon-registry = ["resources", "dep:quick-xml", "dep:roxmltree", "dep:serde_json"]
+icon-svg = ["icon-registry", "html", "svg-parse"]
 route-paint = ["dep:kurbo"]
 layout-cytoscape = ["svg-output", "dep:manatee"]
 layout-dagre = ["svg-output", "dep:dugong"]
@@ -44,13 +46,15 @@ resources-sequence = ["resources", "merman-model/diagram-sequence"]
 resources-swimlane = ["resources", "merman-model/diagram-swimlane"]
 resources-zenuml = ["resources", "merman-model/diagram-zenuml"]
 root-svg = ["svg-output", "css-style"]
-rough-svg = ["svg-output", "dep:roughr"]
+rough-svg = ["svg-output", "dep:kurbo", "dep:roughr", "dep:svgtypes"]
 shoal-bridge = ["graph-layout", "layout-shoal", "svg-output"]
 svg-animation = ["svg-output", "dep:roxmltree", "dep:svgtypes"]
 svg-bounds = []
+svg-edge-parity = ["css-style", "svg-bounds", "svg-output", "dep:kurbo"]
 svg-output = ["resources", "dep:memchr", "dep:merman-markup", "dep:ryu-js", "dep:serde_json", "merman-model/compat-json", "merman-model/html-entities"]
 svg-parse = ["svg-output", "dep:quick-xml"]
 svg-identity = ["svg-parse", "dep:cssparser"]
+svg-safety = ["css-style", "html", "svg-parse", "dep:data-url"]
 test-support = []
 text-layout = ["css-style", "dep:thiserror", "dep:unicode-linebreak", "dep:unicode-width"]
 theme-elevation = ["theme-svg", "dep:kurbo"]
@@ -60,7 +64,9 @@ xhtml-labels = ["svg-parse", "text-layout", "dep:roxmltree"]
 
 [dependencies]
 cssparser = { workspace = true, optional = true }
+data-url = { workspace = true, optional = true }
 dugong = { workspace = true, optional = true }
+euclid = { workspace = true, optional = true }
 kurbo = { workspace = true, optional = true }
 memchr = { workspace = true, optional = true }
 manatee = { workspace = true, optional = true }

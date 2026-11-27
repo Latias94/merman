@@ -7,7 +7,7 @@ use euclid::{
 use merman_model::{OperationPhase, families::git_graph::GitGraphDiagramModel};
 use merman_render_core::{
     Bounds, Error, Result,
-    config::{config_bool, config_f64},
+    config::{ConfigLookup, config_f64, json_bool, value_at},
     number_format::canonical_number as fmt,
     resources::OperationWorkMeter,
     root_svg,
@@ -592,7 +592,7 @@ pub fn render_gitgraph_diagram_svg_model(
     layout: &GitGraphDiagramLayout,
     model: &GitGraphDiagramModel,
     typography_theme: &GitGraphTypographyThemePlan,
-    effective_config: &serde_json::Value,
+    effective_config: &dyn ConfigLookup,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     context: &GitGraphSvgContext<'_>,
@@ -622,7 +622,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     acc_title: Option<&str>,
     acc_descr: Option<&str>,
     typography_theme: &GitGraphTypographyThemePlan,
-    effective_config: &serde_json::Value,
+    effective_config: &dyn ConfigLookup,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     context: &GitGraphSvgContext<'_>,
@@ -681,7 +681,9 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     let aria_title_id = acc_title.map(|_| format!("chart-title-{diagram_id}"));
     let aria_desc_id = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
 
-    let use_max_width = config_bool(effective_config, &["gitGraph", "useMaxWidth"]).unwrap_or(true);
+    let use_max_width = value_at(effective_config, &["gitGraph", "useMaxWidth"])
+        .and_then(json_bool)
+        .unwrap_or(true);
     let diagram_padding =
         config_f64(effective_config, &["gitGraph", "diagramPadding"]).unwrap_or(8.0);
     let mut out = BoundedSvgOutput::new(context.work_meter);

@@ -108,7 +108,7 @@ fn measure<'a>(
     let settings = StateConfigView::new(config).layout_settings(&model.direction, compatibility);
     let mut graph = MeasuredGraph {
         direction: settings.direction,
-        routing: theme_routing_style(compatibility.native_edge_style),
+        routing: theme_routing_style(compatibility.native_edge_style()),
         node_spacing: settings.node_spacing,
         rank_spacing: settings.rank_spacing,
         component_spacing: settings.node_spacing.max(settings.rank_spacing),

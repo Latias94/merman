@@ -964,8 +964,12 @@ dependencies = [
 name = "merman-core-flow"
 version = "0.11.0"
 dependencies = [
+ "indexmap",
  "merman-core-preprocess",
+ "merman-markup",
  "merman-model",
+ "rustc-hash",
+ "serde_json",
  "thiserror 2.0.21",
 ]
 
@@ -1007,6 +1011,7 @@ name = "merman-core-structured"
 version = "0.11.0"
 dependencies = [
  "merman-core-preprocess",
+ "merman-markup",
  "merman-model",
  "serde_json",
 ]
@@ -1153,7 +1158,6 @@ version = "0.11.0"
 dependencies = [
  "base64 0.23.1",
  "cssparser",
- "data-url",
  "dugong",
  "euclid",
  "imagesize 0.14.0",
@@ -1211,7 +1215,9 @@ name = "merman-render-core"
 version = "0.11.0"
 dependencies = [
  "cssparser",
+ "data-url",
  "dugong",
+ "euclid",
  "kurbo",
  "manatee",
  "memchr",
@@ -1244,10 +1250,15 @@ name = "merman-render-flow"
 version = "0.11.0"
 dependencies = [
  "dugong",
+ "indexmap",
  "kurbo",
+ "memchr",
+ "merman-markup",
  "merman-model",
  "merman-render-core",
  "merman-theme-contract",
+ "quick-xml",
+ "rustc-hash",
  "serde_json",
 ]
 
@@ -1255,16 +1266,26 @@ dependencies = [
 name = "merman-render-graph"
 version = "0.11.0"
 dependencies = [
+ "base64 0.23.1",
  "cssparser",
+ "dugong",
  "euclid",
  "indexmap",
+ "kurbo",
+ "manatee",
+ "merman-layout-elk",
  "merman-markup",
  "merman-model",
  "merman-render-core",
  "merman-theme-contract",
+ "pulldown-cmark",
+ "roughr-merman",
+ "roxmltree 0.21.2",
  "rustc-hash",
+ "ryu-js",
  "serde",
  "serde_json",
+ "unicode-segmentation",
 ]
 
 [[package]]
@@ -1277,6 +1298,7 @@ dependencies = [
  "merman-model",
  "merman-render-core",
  "merman-theme-contract",
+ "pulldown-cmark",
  "rustc-hash",
  "ryu-js",
  "serde",
@@ -1287,12 +1309,16 @@ dependencies = [
 name = "merman-render-structured"
 version = "0.11.0"
 dependencies = [
+ "base64 0.23.1",
  "cssparser",
+ "indexmap",
+ "kurbo",
  "merman-markup",
  "merman-model",
  "merman-render-core",
  "merman-theme-contract",
  "roughr-merman",
+ "roxmltree 0.21.2",
  "ryu-js",
  "serde",
  "serde_json",

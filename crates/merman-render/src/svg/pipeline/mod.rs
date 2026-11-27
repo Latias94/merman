@@ -803,7 +803,7 @@ impl SvgPipeline {
                 // resource-aware attribute sanitizer once before retrying structural validation.
                 // Text/entity errors remain rejected because this pass never rewrites text nodes.
                 let sanitized =
-                    builtin::attr_sanitize::sanitize_element_attributes_cow_with_checkpoints(
+                    merman_render_core::svg_safety::sanitize_element_attributes_cow_with_checkpoints(
                         current.clone(),
                         &mut || execution.checkpoint(),
                     )?;

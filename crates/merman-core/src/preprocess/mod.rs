@@ -1,7 +1,7 @@
 mod comments;
 mod config_scan;
 mod directives;
-mod frontmatter;
+mod frontmatter_config;
 
 #[cfg(feature = "presentation")]
 mod full;
@@ -22,9 +22,8 @@ mod source_config;
 mod source_edit_map;
 
 pub(crate) use directives::directive_removal_ranges_controlled;
-pub use frontmatter::{
-    parse_frontmatter_yaml_fields, parse_frontmatter_yaml_fields_bounded_controlled,
-    parse_frontmatter_yaml_fields_controlled,
+pub use frontmatter_config::{
+    parse_frontmatter_yaml_fields, parse_frontmatter_yaml_fields_controlled,
 };
 #[cfg(feature = "editor-facts")]
 pub(crate) use merman_core_preprocess::SourceConfigPath;
@@ -48,8 +47,8 @@ use directives::{DiagramTypeDetector, process_directives_controlled};
 #[cfg(feature = "editor-facts")]
 use editor::editor_evidence_line_end;
 #[cfg(feature = "editor-facts")]
-use frontmatter::append_frontmatter_evidence;
-use frontmatter::process_frontmatter_controlled;
+use frontmatter_config::append_frontmatter_evidence;
+use frontmatter_config::process_frontmatter_controlled;
 
 #[cfg(feature = "editor-facts")]
 use crate::EditorExpectedSyntaxKind;
@@ -63,8 +62,8 @@ pub(crate) use merman_core_preprocess::directives::DirectiveRecoveryMode;
 use merman_core_preprocess::directives::directive_blocks_controlled;
 pub use merman_core_preprocess::frontmatter::{
     FrontmatterBlock, FrontmatterBlockLocation, FrontmatterByteSpan,
-    locate_frontmatter_block_controlled, split_frontmatter_block,
-    split_frontmatter_block_controlled,
+    locate_frontmatter_block_controlled, parse_frontmatter_yaml_fields_bounded_controlled,
+    split_frontmatter_block, split_frontmatter_block_controlled,
 };
 use merman_core_preprocess::text::{
     PreprocessMarkers, cleanup_text_controlled, encode_mermaid_entities_like_upstream_controlled,

@@ -1,6 +1,4 @@
-use super::{
-    UsecaseCssBinding, UsecaseDiagramLayout, UsecaseEdgePlan, UsecaseLabelPlan, UsecaseNodePlan,
-};
+use super::UsecaseDiagramLayout;
 use crate::graph_layout::canonical::{CanonicalRoutes, CaptionClearance};
 use crate::graph_layout::contour::ShapePortProfile;
 use crate::graph_layout::ir::{
@@ -8,18 +6,17 @@ use crate::graph_layout::ir::{
     SolvedGroup, TitlePosition,
 };
 use crate::graph_layout::placement;
-use crate::graph_layout::route_paint::RouteStyle;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{Bounds, LayoutLabel, LayoutPoint};
 use crate::{Error, LayoutExecution, Result};
 use kurbo::Insets;
 use merman_model::families::usecase::{UsecaseDiagramModel, UsecaseNodeKind};
+use merman_render_graph::usecase::{
+    UsecaseLabelPlan, UsecaseMeasured, configured_usecase_spacing, package_tab_size,
+};
 use rustc_hash::FxHashMap;
 use serde_json::Value;
 use std::collections::HashMap;
-
-mod marker;
-pub(crate) use marker::UsecaseMarker;
 
 const BOUNDARY_PADDING: f64 = 20.0;
 
@@ -27,21 +24,6 @@ const BOUNDARY_PADDING: f64 = 20.0;
 pub(super) struct UsecaseCanonicalLayout {
     pub(super) titles: HashMap<String, LayoutLabel>,
     pub(super) boundary_order: Vec<(usize, usize)>,
-}
-
-pub(crate) fn canonical_route_style(config: &Value, binding: &UsecaseCssBinding) -> RouteStyle {
-    let curve = binding.native_curve().unwrap_or_else(|| {
-        config
-            .pointer("/flowchart/curve")
-            .and_then(Value::as_str)
-            .unwrap_or("basis")
-    });
-    let radius = config
-        .pointer("/flowchart/roundedCornerRadius")
-        .and_then(Value::as_f64)
-        .filter(|radius| radius.is_finite() && *radius >= 0.0)
-        .unwrap_or(8.0);
-    RouteStyle::from_interpolate(curve, radius)
 }
 
 fn dimensions(label: &UsecaseLabelPlan) -> (f64, f64) {
@@ -98,9 +80,7 @@ fn boundary_paint_order(
 pub(super) fn layout(
     model: &UsecaseDiagramModel,
     config: &Value,
-    binding: &UsecaseCssBinding,
-    plans: &[UsecaseNodePlan],
-    edge_plans: &[UsecaseEdgePlan],
+    measured: &UsecaseMeasured,
     execution: Option<&LayoutExecution<'_>>,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<(
@@ -108,6 +88,8 @@ pub(super) fn layout(
     UsecaseCanonicalLayout,
     CanonicalRoutes,
 )> {
+    let plans = &measured.nodes;
+    let edge_plans = &measured.edges;
     work.charge_adapter(work.checked_add(plans.len(), model.nodes.len())?)?;
     let direction = match model.direction.as_str() {
         "LR" => Direction::Right,
@@ -119,9 +101,9 @@ pub(super) fn layout(
         Direction::Up | Direction::Down => (Side::Top, Side::Left),
         Direction::Left | Direction::Right => (Side::Left, Side::Top),
     };
-    let node_spacing = super::measure::spacing(config, "nodeSpacing");
-    let rank_spacing = super::measure::spacing(config, "rankSpacing");
-    let routing = canonical_route_style(config, binding).routing_style();
+    let node_spacing = configured_usecase_spacing(config, "nodeSpacing");
+    let rank_spacing = configured_usecase_spacing(config, "rankSpacing");
+    let routing = measured.canonical_route_style(config).routing_style();
     let mut graph = MeasuredGraph {
         direction,
         routing,
@@ -158,10 +140,8 @@ pub(super) fn layout(
             let group = Endpoint::Group(index(graph.groups.len(), work)?);
             boundary_plans.push(plan_index);
             let title = if plan.package {
-                Some(Size {
-                    width: super::package_tab_width(plan.label.metrics.width),
-                    height: plan.label.metrics.height + 2.0 * super::PACKAGE_TAB_PADDING_Y,
-                })
+                let (width, height) = package_tab_size(&plan.label);
+                Some(Size { width, height })
             } else {
                 label_size(&plan.label)
             };
@@ -270,11 +250,11 @@ pub(super) fn layout(
     }
     work.charge_adapter(edge_plans.len())?;
     graph.edges.reserve(edge_plans.len());
-    let neo = config.get("look").and_then(Value::as_str) == Some("neo");
     for plan in edge_plans {
         work.charge_adapter(0)?;
         let marker = |start| {
-            UsecaseMarker::for_edge(plan, start, neo, binding.marker_style)
+            measured
+                .marker_for_edge(plan, start)
                 .map_or_else(Default::default, |marker| marker.metrics())
         };
         graph.edges.push(MeasuredEdge {

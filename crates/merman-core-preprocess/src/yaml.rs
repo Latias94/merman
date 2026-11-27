@@ -20,6 +20,15 @@ const YAML_MATERIALIZATION_MIN_BYTES: usize = 64 * 1024;
 const YAML_MATERIALIZATION_INPUT_MULTIPLIER: usize = 16;
 const YAML_PARSER_MAX_INPUT_BYTES: usize = 4 * 1024 * 1024;
 
+/// Wraps Mermaid inline metadata for the bounded YAML parser.
+pub fn mermaid_inline_yaml(input: &str) -> String {
+    if input.contains('\n') {
+        format!("{input}\n")
+    } else {
+        format!("{{\n{input}\n}}")
+    }
+}
+
 #[cfg(test)]
 fn parse_yaml_value(input: &str, max_nesting_depth: usize) -> Result<Value, String> {
     let control = OperationControl::new();

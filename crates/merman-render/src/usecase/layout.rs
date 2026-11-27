@@ -1,55 +1,17 @@
 use super::*;
 use crate::Error;
 use crate::layout_work::OperationLayoutWorkControl;
-use crate::model::{LayoutLabel, LayoutPoint};
+#[cfg(feature = "layout-elk")]
+use crate::model::LayoutLabel;
+use crate::model::{Bounds, LayoutEdge, LayoutNode, LayoutPoint};
 use merman_render_core::graph_layout::elk_terminal_jogs;
+#[cfg(feature = "layout-elk")]
+use merman_render_graph::usecase::configured_usecase_spacing;
+use serde_json::Value;
 use std::collections::HashMap;
 
-#[cfg(any(
-    feature = "layout-dagre",
-    feature = "layout-elk",
-    feature = "layout-shoal"
-))]
-pub(super) fn node(plan: &UsecaseNodePlan, x: f64, y: f64, width: f64, height: f64) -> LayoutNode {
-    LayoutNode {
-        id: plan.id.clone(),
-        x,
-        y,
-        width,
-        height,
-        is_cluster: plan.is_boundary,
-        label_width: Some(plan.label.metrics.width),
-        label_height: Some(plan.label.metrics.height),
-    }
-}
-
-#[cfg(any(
-    feature = "layout-dagre",
-    feature = "layout-elk",
-    feature = "layout-shoal"
-))]
-pub(super) fn edge(
-    plan: &UsecaseEdgePlan,
-    points: Vec<LayoutPoint>,
-    label: Option<LayoutLabel>,
-) -> LayoutEdge {
-    LayoutEdge {
-        id: plan.id.clone(),
-        from: plan.source.clone(),
-        to: plan.target.clone(),
-        from_cluster: None,
-        to_cluster: None,
-        points,
-        label,
-        start_label_left: None,
-        start_label_right: None,
-        end_label_left: None,
-        end_label_right: None,
-        start_marker: plan.start_marker.clone(),
-        end_marker: plan.end_marker.clone(),
-        stroke_dasharray: plan.dotted.then(|| "3,3".to_owned()),
-    }
-}
+#[cfg(any(feature = "layout-elk", feature = "layout-shoal"))]
+pub(super) use merman_render_graph::usecase::layout::{edge, node};
 
 #[cfg(feature = "layout-elk")]
 pub(super) fn elk_layout(
@@ -116,8 +78,8 @@ pub(super) fn elk_layout(
             })
             .collect(),
         spacing: elk::Spacing {
-            node_node: measure::spacing(config, "nodeSpacing"),
-            layer_layer: measure::spacing(config, "rankSpacing"),
+            node_node: configured_usecase_spacing(config, "nodeSpacing"),
+            layer_layer: configured_usecase_spacing(config, "rankSpacing"),
             ..Default::default()
         },
         options: crate::elk_options::layout_options(config, algorithm),
@@ -470,21 +432,15 @@ pub(super) fn prepare_edge_paths(
                 geometry::marker_segment(&mut points, start, plan.start_marker.as_deref(), true);
             }
             points
+        } else if let Some(id) = plan.dagre_self_loop_endpoint() {
+            // Top-level normalization retains the original self-edge endpoints. Recursive
+            // Dagre paint instead receives the actual helper-node endpoints.
+            let mut paint_edge = edge.clone();
+            paint_edge.from = id.to_owned();
+            paint_edge.to = id.to_owned();
+            edge_points(&paint_edge, &layout.nodes, plans)
         } else {
-            if let Some(id) = plan
-                .self_loop_node
-                .as_deref()
-                .filter(|_| !plan.dagre_recursive)
-            {
-                // Top-level normalization retains the original self-edge endpoints. Recursive
-                // Dagre paint instead receives the actual helper-node endpoints.
-                let mut paint_edge = edge.clone();
-                paint_edge.from = id.to_owned();
-                paint_edge.to = id.to_owned();
-                edge_points(&paint_edge, &layout.nodes, plans)
-            } else {
-                edge_points(edge, &layout.nodes, plans)
-            }
+            edge_points(edge, &layout.nodes, plans)
         };
         // Empty diagrams can have one coincident endpoint after source deduplication.
         // Do not synthesize a second terminal, which would change the source fallback.

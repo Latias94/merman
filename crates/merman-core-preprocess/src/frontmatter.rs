@@ -1,9 +1,11 @@
-//! Locates Mermaid frontmatter and projects the body without parsing its YAML.
+//! Locates Mermaid frontmatter and decodes its YAML fields.
 
 use crate::scan::controlled::{
     ControlledScanCheckpoints, find_line_break_controlled, push_str_controlled,
 };
 use merman_model::{OperationControl, OperationControlResult};
+#[cfg(feature = "yaml")]
+use serde_json::{Map, Value};
 use std::borrow::Cow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,6 +37,40 @@ pub fn split_frontmatter_block(input: &str) -> Option<FrontmatterBlock<'_>> {
     let control = OperationControl::new();
     split_frontmatter_block_controlled(input, &control)
         .expect("a private parse control cannot be cancelled")
+}
+
+/// Parses frontmatter fields with caller-owned nesting and materialization budgets.
+#[cfg(feature = "yaml")]
+pub fn parse_frontmatter_yaml_fields_bounded_controlled(
+    input: &str,
+    max_input_bytes: usize,
+    max_nesting_depth: usize,
+    max_materialized_bytes: usize,
+    control: &OperationControl,
+) -> OperationControlResult<Result<Map<String, Value>, String>> {
+    let parsed = crate::yaml::parse_yaml_value_with_limits_controlled(
+        input,
+        max_input_bytes,
+        max_nesting_depth,
+        max_materialized_bytes,
+        control,
+    )?;
+    Ok(frontmatter_fields_from_yaml_value(parsed))
+}
+
+/// Applies the frontmatter object rule to a raw or source-captured YAML value.
+#[cfg(feature = "yaml")]
+#[doc(hidden)]
+pub fn frontmatter_fields_from_yaml_value(
+    parsed: Result<Value, String>,
+) -> Result<Map<String, Value>, String> {
+    match parsed? {
+        Value::Object(map) => Ok(map),
+        other => {
+            merman_model::json::drop_value_nonrecursive(other);
+            Ok(Map::new())
+        }
+    }
 }
 
 /// Locates an optional frontmatter block without allocating a dedented body.

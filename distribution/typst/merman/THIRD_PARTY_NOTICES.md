@@ -45,7 +45,7 @@ Architecture layout and styling use source-backed Cytoscape behavior and default
 - Source path: `.`
 - Relationship: `behavior-reference`, `translated`
 - License: `MIT`
-- Local evidence: `crates/manatee`, `crates/merman-render/src/architecture.rs`
+- Local evidence: `crates/manatee`, `crates/merman-render-graph/src/architecture/renderer/fcose.rs`, `crates/merman-render-graph/src/architecture/renderer/metrics.rs`, `crates/merman-render-graph/src/architecture/renderer/mod.rs`
 - Legal file: `THIRD_PARTY_LICENSES/cytoscape/LICENSE`
 
 ### cytoscape.js-cose-bilkent
@@ -69,7 +69,7 @@ The headless Architecture layout is a modified Rust implementation of FCoSE beha
 - Source path: `.`
 - Relationship: `modified`, `translated`
 - License: `MIT`
-- Local evidence: `crates/manatee`, `crates/merman-render/src/architecture.rs`
+- Local evidence: `crates/manatee`, `crates/merman-render-graph/src/architecture/renderer/fcose.rs`
 - Legal file: `THIRD_PARTY_LICENSES/cytoscape-fcose/LICENSE`
 
 ### d3-hierarchy
@@ -93,7 +93,7 @@ The Pie SVG renderer translates D3 path rounding and arc serialization, includin
 - Source path: `src/path.js`
 - Relationship: `modified`, `translated`
 - License: `ISC`
-- Local evidence: `crates/merman-render-charts/src/pie/geometry.rs`, `crates/merman-render/src/svg/parity/util.rs`
+- Local evidence: `crates/merman-render-charts/src/pie/geometry.rs`, `crates/merman-render-core/src/svg_edge_parity/path_numbers.rs`, `crates/merman-render/src/svg/parity/util.rs`
 - Legal file: `THIRD_PARTY_LICENSES/d3-path/LICENSE`
 
 ### d3-sankey
@@ -117,7 +117,7 @@ The SVG parity layer translates D3 curve algorithms, including basis, natural, s
 - Source path: `src/curve`
 - Relationship: `modified`, `translated`
 - License: `ISC`
-- Local evidence: `crates/merman-render-charts/src/pie/geometry.rs`, `crates/merman-render/src/svg/parity/curve.rs`
+- Local evidence: `crates/merman-render-charts/src/pie/geometry.rs`, `crates/merman-render-core/src/svg_edge_parity/curve.rs`
 - Legal file: `THIRD_PARTY_LICENSES/d3-shape/LICENSE`
 
 ### Dagre
@@ -201,7 +201,7 @@ Merman independently implements Mermaid-compatible behavior while translating se
 - Source path: `packages/mermaid`
 - Relationship: `behavior-reference`, `copied`, `fixtures`, `generated`, `modified`, `translated`
 - License: `MIT`
-- Local evidence: `crates/merman-core/src`, `crates/merman-core-flow/src`, `crates/merman-core-graph/src/state`, `crates/merman-core-preprocess/src/scan/langium.rs`, `crates/merman-core-preprocess/src/yaml.rs`, `crates/merman-core-sequence/src`, `crates/merman-core-structured/src/info.rs`, `crates/merman-core-structured/src/ishikawa.rs`, `crates/merman-model/src`, `crates/merman-markup/src`, `crates/merman-render/src`, `crates/merman-render/src/svg/parity/architecture/icons.rs`, `crates/merman-render-charts/src/pie`, `crates/merman-render-charts/src/quadrantchart`, `crates/merman-render-charts/src/radar`, `crates/merman-render-charts/src/treemap/layout.rs`, `crates/merman-render-charts/src/venn`, `crates/merman-render-charts/src/wardley`, `crates/merman-render-charts/src/xychart`, `crates/merman-render-core/src/graph_layout/elk_geometry.rs`, `crates/merman-render-core/src/graph_layout/elk_terminal_jogs.rs`, `crates/merman-render-core/src/step_animation.rs`, `crates/merman-render-core/src/svg_bounds.rs`, `crates/merman-render-core/src/svg_bounds/path.rs`, `crates/merman-render-core/src/svg_css/palette.rs`, `crates/merman-render-core/src/text/icons.rs`, `crates/merman-render-core/src/text/label_metrics.rs`, `crates/merman-render-core/src/text/literal_label.rs`, `crates/merman-render-core/src/text/markdown.rs`, `crates/merman-render-core/src/text/markdown_label.rs`, `crates/merman-render-core/src/text/svg_label.rs`, `crates/merman-render-core/src/text/xhtml_label.rs`, `crates/merman-render-flow/src`, `crates/merman-render-graph/src/er`, `crates/merman-render-graph/src/gitgraph`, `crates/merman-render-sequence/src`, `crates/merman-render-structured/src/cynefin`, `crates/merman-render-structured/src/gantt`, `crates/merman-render-structured/src/info`, `crates/merman-render-structured/src/journey`, `crates/merman-render-structured/src/railroad`, `crates/merman-render-structured/src/timeline`, `fixtures`
+- Local evidence: `crates/merman-core/src`, `crates/merman-core-flow/src`, `crates/merman-core-graph/src`, `crates/merman-core-preprocess/src`, `crates/merman-core-sequence/src`, `crates/merman-core-structured/src`, `crates/merman-model/src`, `crates/merman-markup/src`, `crates/merman-render/src`, `crates/merman-render-graph/src/architecture/renderer/svg/icons.rs`, `crates/merman-render-charts/src`, `crates/merman-render-core/src`, `crates/merman-render-flow/src`, `crates/merman-render-graph/src`, `crates/merman-render-sequence/src`, `crates/merman-render-structured/src`, `fixtures`
 - Legal file: `THIRD_PARTY_LICENSES/mermaid/LICENSE`
 
 ### non-layered-tidy-tree-layout
@@ -213,7 +213,7 @@ Merman's Mindmap tidy-tree layout is a modified Rust translation of the non-laye
 - Source path: `src`
 - Relationship: `modified`, `translated`
 - License: `MIT`
-- Local evidence: `crates/merman-render/src/mindmap/tidy_tree.rs`
+- Local evidence: `crates/merman-render-graph/src/mindmap/tidy_tree.rs`
 - Legal file: `THIRD_PARTY_LICENSES/non-layered-tidy-tree-layout/LICENSE`
 
 ### rough-rs roughr
@@ -249,7 +249,7 @@ Both roxmltree releases identify their tree structure as derived from ego-tree u
 - Source path: `src/lib.rs`
 - Relationship: `linked`
 - License: `ISC`
-- Local evidence: `Cargo.lock`, `crates/merman-render/Cargo.toml`, `crates/merman-render-core/Cargo.toml`, `vendor/usvg/Cargo.toml`
+- Local evidence: `Cargo.lock`, `crates/merman-render/Cargo.toml`, `crates/merman-render-core/Cargo.toml`, `crates/merman-render-graph/Cargo.toml`, `vendor/usvg/Cargo.toml`
 - Legal file: `THIRD_PARTY_LICENSES/roxmltree-ego-tree/LICENSE-ISC`
 
 ### sanitize-url
@@ -285,7 +285,7 @@ The Venn family uses a modified Rust translation of the venn.js geometry and lay
 - Source path: `src`
 - Relationship: `modified`, `translated`
 - License: `MIT`
-- Local evidence: `crates/merman-core/src/diagrams/venn.rs`, `crates/merman-render-charts/src/venn/solver.rs`, `crates/merman-render-charts/src/venn/theme/css_binding.rs`
+- Local evidence: `crates/merman-render-charts/src/venn/solver.rs`, `crates/merman-render-charts/src/venn/theme/css_binding.rs`
 - Legal file: `THIRD_PARTY_LICENSES/venn-js/LICENSE`
 
 ### ZenUML Core
@@ -297,7 +297,7 @@ Merman's ZenUML grammar, model, renderer, emoji/icon data, and behavior probes f
 - Source path: `.`
 - Relationship: `behavior-reference`, `copied`, `modified`, `translated`
 - License: `MIT`
-- Local evidence: `crates/merman-core/src/diagrams/zenuml`, `crates/merman-render/assets/zenuml`, `crates/merman-render/src/zenuml.rs`
+- Local evidence: `crates/merman-core/src/diagrams/zenuml`, `crates/merman-render-sequence/assets/zenuml`, `crates/merman-render-sequence/src/zenuml`
 - Legal file: `THIRD_PARTY_LICENSES/zenuml-core/LICENSE`
 
 ### Eclipse Layout Kernel

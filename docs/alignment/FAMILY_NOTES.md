@@ -46,7 +46,8 @@ current corpus. The [input sources](../../fixtures/architecture/) and
 [baseline manifest](../../fixtures/upstream-svgs/architecture/_baseline-manifest.json) own current
 input bytes, inclusion, and provenance; do not recreate an exclusion from the suffix.
 
-Owners: [Architecture layout](../../crates/merman-render/src/architecture.rs),
+Owners: [Architecture layout and SVG](../../crates/merman-render-graph/src/architecture/mod.rs),
+[Shoal layout adapter](../../crates/merman-render/src/architecture/shoal.rs),
 [layout tests](../../crates/merman-render/tests/architecture_layout_test.rs),
 [SVG tests](../../crates/merman-render/tests/architecture_svg_test.rs), and
 [semantic-label admission](SEMANTIC_LABEL_PARITY.md).
@@ -70,7 +71,7 @@ named offsets supplied in color slots remain strings. The SVG renderer applies
 `parseInt(String(offset))` to both forms before positioning labels; a numeric `1e21` therefore
 becomes an offset of `1`, while an unconverted decimal string retains its full integer prefix.
 
-Owners: [C4 layout](../../crates/merman-render/src/c4.rs),
+Owners: [C4 layout](../../crates/merman-render-graph/src/c4/layout.rs),
 [relation geometry tests](../../crates/merman-render/tests/c4_relation_geometry_test.rs), and
 [public typed-render tests](../../crates/merman/tests/c4_typed_render.rs).
 
@@ -250,7 +251,7 @@ known unclosed suffix instead of rescanning it for each recovered line. Scalar s
 ECMAScript whitespace, including BOM while retaining NEL as a non-separator.
 
 Owners: [semantic/editor contract tests](../../crates/merman-core/tests/eventmodeling_contract.rs),
-[SVG emitter](../../crates/merman-render/src/svg/parity/eventmodeling.rs), and
+[SVG emitter](../../crates/merman-render-structured/src/eventmodeling/svg.rs), and
 [SVG tests](../../crates/merman-render/tests/eventmodeling_svg_test.rs).
 
 ## Flowchart
@@ -513,8 +514,8 @@ boundaries. Exclusion shading retains the scan's initial time of day when matchi
 then snaps only the painted range to calendar-day boundaries.
 `gantt.useMaxWidth` selects responsive or intrinsic SVG dimensions from the prepared layout size.
 
-Owners: [date parsing/formatting](../../crates/merman-core/src/diagrams/gantt/date.rs),
-[date tests](../../crates/merman-core/src/diagrams/gantt/tests.rs), and
+Owners: [date parsing/formatting](../../crates/merman-core-structured/src/gantt/date.rs),
+[date tests](../../crates/merman-core-structured/src/gantt/tests.rs), and
 [SVG regressions](../../crates/merman-render/tests/gantt_svg_test.rs). The
 [comparison runtime policy](../../crates/xtask/src/cmd/compare/diagrams/gantt.rs) owns snapshot time inputs.
 
@@ -538,7 +539,7 @@ Repeated scalar options keep only their winning binding occurrence in editor fac
 remain cumulative. Merge validation follows the selected DB's head-ownership order, including its
 distinct self-merge diagnostics.
 
-Owners: [parser](../../crates/merman-core/src/diagrams/git_graph.rs),
+Owners: [parser and semantic model construction](../../crates/merman-core-graph/src/git_graph/mod.rs),
 [color binding](../../crates/merman-render-graph/src/gitgraph/css_binding.rs), and
 [12.3 regressions](../../crates/merman-render/tests/gitgraph_mermaid_12_3_regression_test.rs).
 
@@ -556,7 +557,7 @@ keywords, numbers and style values, and tracks beginning-of-line indentation ind
 statement completion. Semantic construction and editor facts share the same cursor; recovery
 retains completed statements and resumes at a following statement with original source ranges.
 
-Owners: [Venn parser](../../crates/merman-core/src/diagrams/venn.rs),
+Owners: [Venn parser](../../crates/merman-core-structured/src/venn.rs),
 [Venn layout](../../crates/merman-render-charts/src/venn/layout.rs),
 [Venn SVG tests](../../crates/merman-render/tests/venn_svg_test.rs), and
 [Ishikawa SVG tests](../../crates/merman-render/tests/ishikawa_svg_test.rs).
@@ -649,8 +650,8 @@ position errors instead of clamping spans or overflowing integer arithmetic.
 Nonfinite Block layout bounds remain a typed SVG root-admission error; the shared finite-root
 contract is stricter than browser SVG recovery and does not replace invalid dimensions with zero.
 
-Owners: [Requirement config](../../crates/merman-render/src/requirement/config.rs),
-[palette binding](../../crates/merman-render/src/requirement/css_binding.rs),
+Owners: [Requirement config](../../crates/merman-render-graph/src/requirement/config.rs),
+[palette binding](../../crates/merman-render-graph/src/requirement/css_binding.rs),
 [Block model](../../crates/merman-model/src/families/block.rs), and
 [Block SVG tests](../../crates/merman-render/tests/block_svg_test.rs).
 
@@ -1020,7 +1021,7 @@ bounds. The render environment exposes `RawBBoxWidth` and `RawBBoxHeight` as sep
 operations. A uniform lattice correction or emoji-specific geometry would not represent those
 inputs. Parser diagnostics are Rust-native rather than exact Langium messages and offsets.
 
-Owners: [TreeView layout](../../crates/merman-render/src/tree_view.rs) and
+Owners: [Tree View layout and SVG](../../crates/merman-render-structured/src/tree_view/mod.rs) and
 [SVG/root tests](../../crates/merman-render/tests/tree_view_svg_test.rs).
 
 ## Wardley

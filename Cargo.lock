@@ -2437,8 +2437,12 @@ dependencies = [
 name = "merman-core-flow"
 version = "0.11.0"
 dependencies = [
+ "indexmap",
  "merman-core-preprocess",
+ "merman-markup",
  "merman-model",
+ "rustc-hash 2.1.3",
+ "serde_json",
  "thiserror 2.0.21",
 ]
 
@@ -2480,6 +2484,7 @@ name = "merman-core-structured"
 version = "0.11.0"
 dependencies = [
  "merman-core-preprocess",
+ "merman-markup",
  "merman-model",
  "serde_json",
 ]
@@ -2697,7 +2702,6 @@ dependencies = [
  "base64 0.23.1",
  "cssparser",
  "data-encoding",
- "data-url",
  "dugong",
  "euclid",
  "futures",
@@ -2761,7 +2765,9 @@ name = "merman-render-core"
 version = "0.11.0"
 dependencies = [
  "cssparser",
+ "data-url",
  "dugong",
+ "euclid",
  "kurbo 0.13.1",
  "manatee",
  "memchr",
@@ -2796,10 +2802,15 @@ name = "merman-render-flow"
 version = "0.11.0"
 dependencies = [
  "dugong",
+ "indexmap",
  "kurbo 0.13.1",
+ "memchr",
+ "merman-markup",
  "merman-model",
  "merman-render-core",
  "merman-theme-contract",
+ "quick-xml",
+ "rustc-hash 2.1.3",
  "serde_json",
 ]
 
@@ -2807,17 +2818,27 @@ dependencies = [
 name = "merman-render-graph"
 version = "0.11.0"
 dependencies = [
+ "base64 0.23.1",
  "cssparser",
+ "dugong",
  "euclid",
  "indexmap",
  "kurbo 0.13.1",
+ "manatee",
+ "merman-core",
+ "merman-layout-elk",
  "merman-markup",
  "merman-model",
  "merman-render-core",
  "merman-theme-contract",
+ "pulldown-cmark",
+ "roughr-merman",
+ "roxmltree 0.21.2",
  "rustc-hash 2.1.3",
+ "ryu-js",
  "serde",
  "serde_json",
+ "unicode-segmentation",
 ]
 
 [[package]]
@@ -2831,6 +2852,7 @@ dependencies = [
  "merman-model",
  "merman-render-core",
  "merman-theme-contract",
+ "pulldown-cmark",
  "roxmltree 0.21.2",
  "rustc-hash 2.1.3",
  "ryu-js",
@@ -2842,7 +2864,12 @@ dependencies = [
 name = "merman-render-structured"
 version = "0.11.0"
 dependencies = [
+ "base64 0.23.1",
  "cssparser",
+ "data-encoding",
+ "indexmap",
+ "kurbo 0.13.1",
+ "merman-core",
  "merman-markup",
  "merman-model",
  "merman-render-core",
@@ -2852,6 +2879,7 @@ dependencies = [
  "ryu-js",
  "serde",
  "serde_json",
+ "sha2",
  "svgtypes 0.16.2",
 ]
 

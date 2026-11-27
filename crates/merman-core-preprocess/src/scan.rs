@@ -9,7 +9,10 @@ pub mod langium;
 mod lines;
 
 #[doc(hidden)]
-pub use lines::{LineCursor, strip_line_ending};
+pub use lines::{
+    LineCursor, physical_line_at, split_statement_suffix_hash_or_semi,
+    starts_with_case_insensitive, strip_line_ending,
+};
 
 #[cfg(feature = "mermaid-unicode")]
 mod jison_unicode;

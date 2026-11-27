@@ -1,47 +1,17 @@
-#[cfg(feature = "diagram-class")]
-use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
-#[cfg(any(feature = "diagram-class", feature = "diagram-er"))]
+#[cfg(feature = "diagram-er")]
 use std::sync::Arc;
 
 pub use merman_render_core::{
     Bounds, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
 };
 
-#[derive(Debug)]
 #[cfg(feature = "diagram-class")]
-pub struct ClassNodeRowMetrics {
-    pub members: Vec<crate::text::TextMetrics>,
-    pub methods: Vec<crate::text::TextMetrics>,
-    pub(crate) _retained_reservation: Option<crate::resources::PreparedTextRetainedReservation>,
-}
-
-#[derive(Debug)]
-#[cfg(feature = "diagram-class")]
-#[non_exhaustive]
-pub struct ClassPreparedHtmlLabel {
-    pub metrics: crate::text::TextMetrics,
-    pub max_width_px: i64,
-    pub xhtml: String,
-}
-
-#[derive(Debug)]
-#[cfg(feature = "diagram-class")]
-pub struct ClassPreparedHtmlNodeLabels {
-    pub title: ClassPreparedHtmlLabel,
-    pub annotation: Option<ClassPreparedHtmlLabel>,
-    pub members: Vec<ClassPreparedHtmlLabel>,
-    pub methods: Vec<ClassPreparedHtmlLabel>,
-    pub(crate) _retained_reservation: Option<crate::resources::PreparedTextRetainedReservation>,
-}
-
-/// Prepared labels share ownership through `Arc` without copying their admitted allocations.
-#[derive(Debug)]
-#[cfg(feature = "diagram-class")]
-pub enum ClassNodeLabelPlan {
-    RowMetrics(ClassNodeRowMetrics),
-    PreparedHtml(ClassPreparedHtmlNodeLabels),
-}
+pub use merman_render_graph::class::{
+    ClassDiagramLayout, ClassNodeLabelPlan, ClassNodeRowMetrics, ClassPreparedHtmlLabel,
+    ClassPreparedHtmlNodeLabels, ClassRenderItem, ClassRenderRoot, ClassRenderRootId,
+    ClassRenderTree,
+};
 
 /// Edge geometry prepared by the same family-local route and label decisions as SVG.
 ///
@@ -157,86 +127,20 @@ impl<W: std::io::Write> std::io::Write for GeometryJsonWriter<'_, W> {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-block")]
-pub struct BlockDiagramLayout {
-    pub nodes: Vec<LayoutNode>,
-    pub edges: Vec<LayoutEdge>,
-    #[serde(
-        default,
-        rename = "shapeGeometries",
-        skip_serializing_if = "Vec::is_empty"
-    )]
-    pub shape_geometries: Vec<crate::block::BlockShapeGeometry>,
-    pub bounds: Option<Bounds>,
-}
+pub use merman_render_structured::block::BlockDiagramLayout;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-requirement")]
-pub struct RequirementDiagramLayout {
-    pub nodes: Vec<LayoutNode>,
-    pub edges: Vec<LayoutEdge>,
-    pub bounds: Option<Bounds>,
-}
+pub use merman_render_graph::requirement::RequirementDiagramLayout;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-architecture")]
-pub struct ArchitectureDiagramLayout {
-    pub nodes: Vec<LayoutNode>,
-    pub edges: Vec<LayoutEdge>,
-    /// Local Cytoscape child contribution phases for Architecture services.
-    ///
-    /// These bounds are exposed for source-backed group/content audits. SVG renderers should use
-    /// their own phase-specific logic instead of treating this as a generic root-bounds source.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub cytoscape_service_bounds: Vec<ArchitectureCytoscapeServiceBounds>,
-    /// Final FCoSE compound rectangles exposed for source-backed Architecture audits.
-    ///
-    /// Renderers should not treat these as Mermaid SVG group rects without a phase-specific
-    /// source audit; they are layout-engine rects, not browser `node.boundingBox()` values.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub fcose_compound_bounds: Vec<ArchitectureCompoundBounds>,
-    pub bounds: Option<Bounds>,
-}
+pub use merman_render_graph::architecture::{
+    ArchitectureCompoundBounds, ArchitectureCytoscapeServiceBounds,
+    ArchitectureCytoscapeServiceLabelMetrics, ArchitectureDiagramLayout,
+};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-architecture")]
-pub struct ArchitectureCompoundBounds {
-    pub id: String,
-    pub bounds: Bounds,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-architecture")]
-pub struct ArchitectureCytoscapeServiceBounds {
-    pub id: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub in_group: Option<String>,
-    pub body_bounds: Bounds,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub label_bounds: Option<Bounds>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub label_metrics: Option<ArchitectureCytoscapeServiceLabelMetrics>,
-    pub union_bounds: Bounds,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-architecture")]
-pub struct ArchitectureCytoscapeServiceLabelMetrics {
-    pub text_width: f64,
-    pub half_width: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-mindmap")]
-pub struct MindmapDiagramLayout {
-    pub nodes: Vec<LayoutNode>,
-    pub edges: Vec<LayoutEdge>,
-    pub bounds: Option<Bounds>,
-    /// Swimlane decoration owned by the selected renderer, not semantic Mindmap nodes.
-    #[serde(skip)]
-    pub swimlane_lanes: Vec<LayoutCluster>,
-}
+pub use merman_render_graph::mindmap::MindmapDiagramLayout;
 
 #[cfg(feature = "diagram-sankey")]
 pub use merman_render_charts::sankey::{SankeyDiagramLayout, SankeyLinkLayout, SankeyNodeLayout};
@@ -298,7 +202,6 @@ pub struct FlowchartLayout {
     pub(crate) placement: crate::layout_frame::GraphPlacement,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
@@ -306,49 +209,7 @@ pub struct FlowchartLayout {
     feature = "diagram-er",
     feature = "diagram-mindmap"
 ))]
-pub enum SwimlaneDirection {
-    #[serde(rename = "TB")]
-    Tb,
-    #[serde(rename = "LR")]
-    Lr,
-    #[serde(rename = "BT")]
-    Bt,
-    #[serde(rename = "RL")]
-    Rl,
-}
-
-#[cfg(any(
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-agentflow",
-    feature = "diagram-er",
-    feature = "diagram-mindmap"
-))]
-impl SwimlaneDirection {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Tb => "TB",
-            Self::Lr => "LR",
-            Self::Bt => "BT",
-            Self::Rl => "RL",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(any(
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-agentflow",
-    feature = "diagram-er",
-    feature = "diagram-mindmap"
-))]
-pub struct SwimlaneTitleRect {
-    pub left: f64,
-    pub right: f64,
-    pub top: f64,
-    pub bottom: f64,
-}
+pub use merman_render_core::{SwimlaneDirection, SwimlaneLaneLayout, SwimlaneTitleRect};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(any(
@@ -376,36 +237,6 @@ pub struct SwimlaneNodeLayout {
     pub layer: usize,
     pub order: usize,
     pub is_edge_label: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(any(
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-agentflow",
-    feature = "diagram-er",
-    feature = "diagram-mindmap"
-))]
-pub struct SwimlaneLaneLayout {
-    pub id: String,
-    pub title: String,
-    #[serde(default)]
-    pub parent_id: Option<String>,
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-    pub padding: f64,
-    /// Prepared terminal label width shared by Swimlane layout and SVG rendering.
-    pub title_label_width: f64,
-    /// Prepared terminal label height shared by Swimlane layout and SVG rendering.
-    pub title_label_height: f64,
-    #[serde(default)]
-    pub content_top: Option<f64>,
-    #[serde(default)]
-    pub title_rect: Option<SwimlaneTitleRect>,
-    #[serde(default)]
-    pub requested_dir: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -477,76 +308,8 @@ impl SwimlaneLayout {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-state")]
-pub struct StateDiagramLayout {
-    pub nodes: Vec<LayoutNode>,
-    pub edges: Vec<LayoutEdge>,
-    pub clusters: Vec<LayoutCluster>,
-    pub bounds: Option<Bounds>,
-    /// Registered ELK layout uses its own edge painting projection.
-    #[serde(skip)]
-    pub uses_elk_adapter_dom: bool,
-    #[serde(skip)]
-    pub elk_edge_paths: std::collections::HashMap<String, Vec<LayoutPoint>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-class")]
-pub struct ClassDiagramLayout {
-    pub nodes: Vec<LayoutNode>,
-    pub edges: Vec<LayoutEdge>,
-    pub clusters: Vec<LayoutCluster>,
-    pub bounds: Option<Bounds>,
-    /// Whether SVG emission follows Mermaid's registered ELK renderer DOM structure.
-    #[serde(skip)]
-    pub uses_elk_adapter_dom: bool,
-    #[serde(skip)]
-    pub class_label_plans_by_id: FxHashMap<String, Arc<ClassNodeLabelPlan>>,
-    /// DOM ownership produced by the same recursive Dagre preparation that owns layout.
-    ///
-    /// Compatibility layout JSON remains flat, while SVG rendering consumes this typed tree so it
-    /// never has to reconstruct extracted namespace roots from the semantic model.
-    #[serde(skip)]
-    pub render_tree: ClassRenderTree,
-}
-
-#[derive(Debug, Clone, Default)]
-#[cfg(feature = "diagram-class")]
-pub struct ClassRenderRoot {
-    pub namespace_id: Option<String>,
-    pub cluster_ids: Vec<String>,
-    pub edge_ids: Vec<String>,
-    pub items: Vec<ClassRenderItem>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[cfg(feature = "diagram-class")]
-pub struct ClassRenderRootId(pub usize);
-
-#[derive(Debug, Clone)]
-#[cfg(feature = "diagram-class")]
-pub struct ClassRenderTree {
-    pub roots: Vec<ClassRenderRoot>,
-    pub top: ClassRenderRootId,
-}
-
-#[cfg(feature = "diagram-class")]
-impl Default for ClassRenderTree {
-    fn default() -> Self {
-        Self {
-            roots: vec![ClassRenderRoot::default()],
-            top: ClassRenderRootId(0),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-#[cfg(feature = "diagram-class")]
-pub enum ClassRenderItem {
-    Node(String),
-    Subgraph(ClassRenderRootId),
-}
+pub use merman_render_graph::state::StateDiagramLayout;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-er")]
@@ -571,6 +334,24 @@ pub struct ErDiagramLayout {
     /// emission. This is intentionally excluded from compatibility layout JSON.
     #[serde(skip)]
     pub(crate) prepared_labels: Arc<crate::er::ErPreparedLabels>,
+}
+
+#[cfg(feature = "diagram-er")]
+impl ErDiagramLayout {
+    pub(crate) fn svg_layout(&self) -> merman_render_graph::er::ErPreparedSvgLayout<'_> {
+        use merman_render_graph::er::{ErPreparedSvgLayout, ErSvgLayoutView};
+
+        ErPreparedSvgLayout {
+            geometry: ErSvgLayoutView {
+                clusters: &self.clusters,
+                nodes: &self.nodes,
+                edges: &self.edges,
+                render_edges: &self.render_edges,
+            },
+            swimlane: self.swimlane.as_ref(),
+            prepared_labels: &self.prepared_labels,
+        }
+    }
 }
 
 #[cfg(feature = "diagram-sequence")]
@@ -606,122 +387,20 @@ pub use merman_render_structured::journey::{
     JourneyTaskLayout,
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-kanban")]
-pub struct KanbanSectionLayout {
-    pub id: String,
-    pub label: String,
-    pub index: i64,
-    pub center_x: f64,
-    pub center_y: f64,
-    pub width: f64,
-    pub rect_y: f64,
-    pub rect_height: f64,
-    pub rx: f64,
-    pub ry: f64,
-    pub label_width: f64,
-    #[serde(skip)]
-    pub label_height: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-kanban")]
-pub struct KanbanItemLayout {
-    pub id: String,
-    pub label: String,
-    pub parent_id: String,
-    pub center_x: f64,
-    pub center_y: f64,
-    pub width: f64,
-    pub height: f64,
-    pub rx: f64,
-    pub ry: f64,
-    #[serde(default)]
-    pub ticket: Option<String>,
-    #[serde(default)]
-    pub assigned: Option<String>,
-    #[serde(default)]
-    pub priority: Option<String>,
-    #[serde(default)]
-    pub icon: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-kanban")]
-pub struct KanbanDiagramLayout {
-    pub bounds: Option<Bounds>,
-    pub section_width: f64,
-    pub padding: f64,
-    pub max_label_height: f64,
-    pub viewbox_padding: f64,
-    #[serde(default = "crate::kanban::default_use_max_width")]
-    pub use_max_width: bool,
-    pub sections: Vec<KanbanSectionLayout>,
-    pub items: Vec<KanbanItemLayout>,
-}
+pub use merman_render_structured::kanban::{
+    KanbanDiagramLayout, KanbanItemLayout, KanbanSectionLayout,
+};
 
 #[cfg(feature = "diagram-git-graph")]
 pub use merman_render_graph::gitgraph::{
     GitGraphArrowLayout, GitGraphBranchLayout, GitGraphCommitLayout, GitGraphDiagramLayout,
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-tree-view")]
-pub struct TreeViewNodeLayout {
-    pub id: i64,
-    pub level: i64,
-    pub name: String,
-    #[serde(rename = "nodeType")]
-    pub node_type: String,
-    #[serde(default, rename = "cssClass", skip_serializing_if = "Option::is_none")]
-    pub css_class: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub icon: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub resolved_icon: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    pub depth: usize,
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-    pub label_x: f64,
-    pub label_y: f64,
-    pub label_width: f64,
-    pub label_height: f64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub description_x: Option<f64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub description_width: Option<f64>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-tree-view")]
-pub struct TreeViewLineLayout {
-    pub x1: f64,
-    pub y1: f64,
-    pub x2: f64,
-    pub y2: f64,
-    pub stroke_width: f64,
-    pub kind: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-tree-view")]
-pub struct TreeViewDiagramLayout {
-    pub bounds: Option<Bounds>,
-    pub total_width: f64,
-    pub total_height: f64,
-    pub row_indent: f64,
-    pub padding_x: f64,
-    pub padding_y: f64,
-    pub line_thickness: f64,
-    pub use_max_width: bool,
-    pub label_font_size: f64,
-    pub nodes: Vec<TreeViewNodeLayout>,
-    pub lines: Vec<TreeViewLineLayout>,
-}
+pub use merman_render_structured::tree_view::{
+    TreeViewDiagramLayout, TreeViewLineLayout, TreeViewNodeLayout,
+};
 
 #[cfg(feature = "diagram-ishikawa")]
 pub use merman_render_structured::ishikawa::{
@@ -730,62 +409,11 @@ pub use merman_render_structured::ishikawa::{
     IshikawaTextLayout,
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-event-modeling")]
-pub struct EventModelingSwimlaneLayout {
-    pub index: i64,
-    pub label: String,
-    pub namespace: Option<String>,
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-event-modeling")]
-pub struct EventModelingBoxLayout {
-    pub index: usize,
-    pub frame_name: String,
-    pub frame_kind: String,
-    pub model_entity_type: String,
-    pub entity_identifier: String,
-    pub text: String,
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-    pub fill: String,
-    pub stroke: String,
-    pub swimlane_index: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-event-modeling")]
-pub struct EventModelingRelationLayout {
-    pub source_frame: String,
-    pub target_frame: String,
-    pub x1: f64,
-    pub y1: f64,
-    pub x2: f64,
-    pub y2: f64,
-    pub stroke: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-event-modeling")]
-pub struct EventModelingDiagramLayout {
-    pub bounds: Option<Bounds>,
-    pub total_width: f64,
-    pub total_height: f64,
-    pub viewbox_x: f64,
-    pub viewbox_y: f64,
-    pub padding: f64,
-    pub use_max_width: bool,
-    pub swimlanes: Vec<EventModelingSwimlaneLayout>,
-    pub boxes: Vec<EventModelingBoxLayout>,
-    pub relations: Vec<EventModelingRelationLayout>,
-}
+pub use merman_render_structured::eventmodeling::{
+    EventModelingBoxLayout, EventModelingDiagramLayout, EventModelingRelationLayout,
+    EventModelingSwimlaneLayout,
+};
 
 #[cfg(feature = "diagram-cynefin")]
 pub use merman_render_structured::cynefin::{
@@ -803,129 +431,10 @@ pub use merman_render_structured::gantt::{
     GanttSectionTitleLayout, GanttTaskBarLayout, GanttTaskLabelLayout, GanttTaskLayout,
 };
 
-#[derive(Debug, Clone)]
 #[cfg(feature = "diagram-c4")]
-pub(crate) struct C4TextRowLayout {
-    /// Source words emitted into one Mermaid `createText` outer tspan.
-    ///
-    /// Keeping the source words (rather than only a joined string) preserves the same
-    /// whitespace/token boundaries for layout and SVG emission.
-    pub(crate) words: Vec<String>,
-}
-
-#[derive(Debug, Clone)]
-#[cfg(feature = "diagram-c4")]
-pub(crate) struct C4TextRenderPlan {
-    /// Wrapped source-word rows consumed by the C4 SVG emitter.
-    pub(crate) rows: Vec<C4TextRowLayout>,
-    /// The section bbox x offset relative to the centered outer tspan anchor.
-    pub(crate) bbox_x: f64,
-    /// The section bbox y offset produced by Mermaid's createText DOM shape.
-    pub(crate) bbox_y: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-c4")]
-pub struct C4TextBlockLayout {
-    pub text: String,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-    pub line_count: usize,
-    /// Unified C4 labels carry the exact wrapped rows used during measurement. Legacy C4
-    /// boundary and relationship labels leave this unset and continue using their historical
-    /// text path.
-    /// This is an in-memory render artifact; the public layout projection intentionally keeps
-    /// the stable historical C4 layout schema and does not expose tokenization details.
-    #[serde(skip)]
-    pub(crate) render_plan: Option<C4TextRenderPlan>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-c4")]
-pub struct C4ImageLayout {
-    pub width: f64,
-    pub height: f64,
-    pub y: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-c4")]
-pub struct C4ShapeLayout {
-    pub alias: String,
-    pub parent_boundary: String,
-    pub type_c4_shape: String,
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-    pub margin: f64,
-    pub image: C4ImageLayout,
-    pub type_block: C4TextBlockLayout,
-    pub label: C4TextBlockLayout,
-    #[serde(default)]
-    pub ty: Option<C4TextBlockLayout>,
-    #[serde(default)]
-    pub techn: Option<C4TextBlockLayout>,
-    #[serde(default)]
-    pub descr: Option<C4TextBlockLayout>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-c4")]
-pub struct C4BoundaryLayout {
-    pub alias: String,
-    pub parent_boundary: String,
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-    pub image: C4ImageLayout,
-    pub label: C4TextBlockLayout,
-    #[serde(default)]
-    pub ty: Option<C4TextBlockLayout>,
-    #[serde(default)]
-    pub descr: Option<C4TextBlockLayout>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-c4")]
-pub struct C4RelLayout {
-    pub from: String,
-    pub to: String,
-    pub rel_type: String,
-    pub start_point: LayoutPoint,
-    pub end_point: LayoutPoint,
-    #[serde(default)]
-    pub offset_x: Option<merman_model::families::c4::C4RelationOffset>,
-    #[serde(default)]
-    pub offset_y: Option<merman_model::families::c4::C4RelationOffset>,
-    pub label: C4TextBlockLayout,
-    #[serde(default)]
-    pub techn: Option<C4TextBlockLayout>,
-    #[serde(default)]
-    pub descr: Option<C4TextBlockLayout>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[non_exhaustive]
-#[cfg(feature = "diagram-c4")]
-pub struct C4DiagramLayout {
-    pub bounds: Option<Bounds>,
-    pub width: f64,
-    pub height: f64,
-    #[serde(default = "crate::c4::default_use_max_width")]
-    pub use_max_width: bool,
-    pub container_width: f64,
-    pub container_height: f64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub screen_available_width: Option<f64>,
-    pub c4_type: String,
-    pub title: Option<String>,
-    pub boundaries: Vec<C4BoundaryLayout>,
-    pub shapes: Vec<C4ShapeLayout>,
-    pub rels: Vec<C4RelLayout>,
-}
+pub use merman_render_graph::c4::{
+    C4BoundaryLayout, C4DiagramLayout, C4ImageLayout, C4RelLayout, C4ShapeLayout, C4TextBlockLayout,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorDiagramLayout {

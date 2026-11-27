@@ -1,5 +1,6 @@
-//! Physical-line syntax for Ishikawa headers, effects, and causes.
+//! Ishikawa physical-line syntax and flat cause-tree construction.
 
+use merman_model::families::ishikawa::{IshikawaDiagramModel, IshikawaNode};
 use merman_model::{OperationControl, OperationControlResult, SourceSpan};
 
 #[derive(Debug)]
@@ -158,4 +159,86 @@ fn parse_node_line(
         #[cfg(feature = "editor-facts")]
         selection: SourceSpan::new(start, end),
     })
+}
+
+/// Builds the flat cause tree from accepted nodes in source order.
+///
+/// The caller supplies labels after applying its configuration-dependent sanitization.
+pub fn build_ishikawa_model_controlled(
+    nodes: Vec<IshikawaSyntaxNode>,
+    control: &OperationControl,
+) -> OperationControlResult<IshikawaDiagramModel> {
+    let mut iter = nodes.into_iter();
+    let Some(root) = iter.next() else {
+        return Ok(IshikawaDiagramModel::default());
+    };
+    let mut arena = vec![IshikawaNode {
+        text: root.text,
+        children: Vec::new(),
+    }];
+    let mut stack = vec![(0usize, 0usize)];
+    let mut base_level = None;
+    for flat in iter {
+        control.checkpoint()?;
+        let base = *base_level.get_or_insert(flat.raw_level);
+        let level = flat.raw_level.saturating_sub(base) + 1;
+        while stack.len() > 1
+            && stack
+                .last()
+                .is_some_and(|(_, top_level)| *top_level >= level)
+        {
+            control.checkpoint()?;
+            stack.pop();
+        }
+        let parent = stack.last().map(|(id, _)| *id).unwrap_or(0);
+        let id = arena.len();
+        arena.push(IshikawaNode {
+            text: flat.text,
+            children: Vec::new(),
+        });
+        arena[parent].children.push(id);
+        stack.push((id, level));
+    }
+    control.checkpoint()?;
+    Ok(IshikawaDiagramModel {
+        title: Some(arena[0].text.clone()),
+        root: Some(0),
+        nodes: arena,
+        ..Default::default()
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use merman_model::OperationPhase;
+
+    #[test]
+    fn ishikawa_builder_preserves_dedent_checkpoints_and_child_order() {
+        let source = concat!(
+            "ishikawa Problem\n",
+            "  A\n",
+            "    A detail\n",
+            "      A subdetail\n",
+            "  B\n",
+        );
+        let build = |allowed_checkpoints| {
+            let control = OperationControl::new().for_phase(OperationPhase::Semantic);
+            let syntax = scan_ishikawa_lines_controlled(source, &control).unwrap();
+            assert!(syntax.first_error.is_none());
+            control.cancel_after_checkpoints(allowed_checkpoints);
+            build_ishikawa_model_controlled(syntax.nodes, &control)
+        };
+
+        // Four causes, three stack pops, and the final completion checkpoint.
+        assert_eq!(build(7).unwrap_err().phase, OperationPhase::Semantic);
+        let model = build(8).unwrap();
+        assert_eq!(model.root, Some(0));
+        assert_eq!(model.title.as_deref(), Some("Problem"));
+        let labels: Vec<_> = model.nodes.iter().map(|node| node.text.as_str()).collect();
+        assert_eq!(labels, ["Problem", "A", "A detail", "A subdetail", "B"]);
+        assert_eq!(model.nodes[0].children, [1, 4]);
+        assert_eq!(model.nodes[1].children, [2]);
+        assert_eq!(model.nodes[2].children, [3]);
+    }
 }

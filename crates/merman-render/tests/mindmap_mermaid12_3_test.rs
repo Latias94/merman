@@ -449,3 +449,65 @@ fn mindmap_mermaid_12_3_icon_state_controls_real_label_backgrounds() {
         }
     }
 }
+
+#[test]
+fn mindmap_svg_icon_background_uses_the_host_bbox_and_inherited_font() {
+    use merman_render::environment::{
+        HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
+        MeasurementProfileId, TextMeasurementOperation, TextMeasurementPhase,
+        TextMeasurementPolicy, TextMeasurementProfileIdentity,
+    };
+
+    struct IconBBox;
+    impl HostTextMeasurer for IconBBox {
+        fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            Ok(
+                (request.operation == TextMeasurementOperation::CreateTextBBoxYOffset
+                    && request.text == "Host label"
+                    && request.style.font_size == 27.0
+                    && request.style.font_family.as_deref() == Some("Probe Sans,monospace"))
+                .then_some(HostTextMeasurement::Length(-37.25)),
+            )
+        }
+    }
+
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.mindmap-icon-bbox").unwrap(),
+        "1",
+    )
+    .unwrap();
+    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::host_display(
+            identity,
+            std::sync::Arc::new(IconBBox),
+            [TextMeasurementPhase::SvgBBox],
+        ),
+    );
+    let source = concat!(
+        "---\nconfig:\n  layout: tidy-tree\n  look: classic\n  htmlLabels: false\n",
+        "  themeVariables:\n    fontFamily: 'Probe Sans, monospace'\n    fontSize: 27px\n---\n",
+        "mindmap\n  root[Host label]\n  ::icon(star)\n",
+    );
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let artifact = family::prepare(
+        &parsed,
+        &LayoutOptions::headless_svg_defaults(),
+        environment.begin_session().unwrap(),
+    )
+    .unwrap();
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let background = document
+        .descendants()
+        .find(|element| {
+            element.has_tag_name("rect") && element.attribute("class") == Some("background")
+        })
+        .unwrap();
+    assert_eq!(background.attribute("y"), Some("-39.25"));
+}

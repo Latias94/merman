@@ -416,10 +416,9 @@ fn er_elk_direction(direction: &str) -> Option<elk::Direction> {
 #[cfg(test)]
 mod tests {
     use super::{ElkRootAlgorithm, layout_options};
-    use crate::er::{
-        ErEntity, ErRelationship, ErSubgraph, prepare_er_labels, test_layout_settings,
-    };
+    use crate::er::{ErEntity, ErSubgraph, prepare_er_labels, test_layout_settings};
     use crate::text::DeterministicTextMeasurer;
+    use merman_model::families::er::ErRelationship;
 
     #[test]
     fn er_elk_keeps_the_source_default_nonzero_seed() {

@@ -102,7 +102,7 @@ let svg = Renderer::new().render_svg_with(
 - With `diagram-sequence`, the producer uses the prepared layout for classic rectangular
   participants, plain notes, activation bars, and supported straight messages.
 - With `diagram-flowchart` and `layout-dagre`, the producer reuses clipped linear routes for
-  classic, ungrouped diagrams with plain single-word rectangular nodes and unlabeled edges.
+  classic, ungrouped diagrams with plain, single-row rectangular node labels and unlabeled edges.
   Select `layout: dagre`, set `flowchart.curve: linear`, and disable `htmlLabels`.
 
 The compact writer emits native SVG without Mermaid compatibility styles or `<foreignObject>`

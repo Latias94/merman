@@ -636,7 +636,7 @@ mod tests {
         let neo_edge_mask = neo_mask(16.0, &edge, false);
         let key = crate::flowchart::FlowchartEdgeKey::self_loop_segment(12, 2);
         let document_ids = FlowchartDocumentIds::prepare(FlowchartDocumentIdRequest {
-            diagram_id: "diagram",
+            diagram_id: merman_render_core::svg_css::SvgId::new("diagram").unwrap(),
             edge_order: &[FlowchartRenderEdgeRef { key, edge: &edge }],
             node_dom_index: &FxHashMap::default(),
             subgraph_index_by_id: &FxHashMap::default(),

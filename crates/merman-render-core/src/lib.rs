@@ -8,6 +8,9 @@ pub mod config;
 #[cfg(feature = "svg-output")]
 #[doc(hidden)]
 pub mod entities;
+#[cfg(feature = "euclid-geometry")]
+#[doc(hidden)]
+pub mod euclid_box;
 mod geometry;
 #[cfg(feature = "graph-layout")]
 #[doc(hidden)]
@@ -58,9 +61,15 @@ pub mod svg_bounds;
 #[cfg(feature = "svg-output")]
 #[doc(hidden)]
 pub mod svg_css;
+#[cfg(feature = "svg-edge-parity")]
+#[doc(hidden)]
+pub mod svg_edge_parity;
 #[cfg(feature = "svg-output")]
 #[doc(hidden)]
 pub mod svg_output;
+#[cfg(feature = "svg-safety")]
+#[doc(hidden)]
+pub mod svg_safety;
 #[cfg(feature = "svg-parse")]
 #[doc(hidden)]
 pub mod svg_scan;
@@ -84,5 +93,7 @@ mod xml_chars;
 
 pub use geometry::{Bounds, LayoutPoint};
 pub use layout::{LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode};
+#[doc(hidden)]
+pub use layout::{SwimlaneDirection, SwimlaneLaneLayout, SwimlaneTitleRect};
 #[cfg(feature = "svg-output")]
 pub use render_error::{Error, RenderCapability, RenderCapabilityPolicy, Result};

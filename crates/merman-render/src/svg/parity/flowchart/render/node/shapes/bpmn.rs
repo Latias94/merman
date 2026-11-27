@@ -57,7 +57,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_bpmn(
                     width_px: size,
                     height_px: size,
                     fallback_prefix: Some("bpmn"),
-                    extra_class: None,
                     id_scope,
                     effective_config: ctx.config,
                     work_meter: ctx.work_meter,

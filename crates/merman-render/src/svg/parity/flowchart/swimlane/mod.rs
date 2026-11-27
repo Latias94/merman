@@ -561,51 +561,10 @@ fn line_hop_config(
     })
 }
 
-pub(super) fn write_swimlane_css<DiagramId>(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    diagram_id: DiagramId,
-    cluster_border: &str,
-    native: Option<&crate::flowchart::native_theme::FlowchartNativeStyle>,
-) where
-    DiagramId: crate::svg::parity::SvgDiagramIdValue,
-{
-    let id = css_selector_diagram_id(diagram_id);
-    let _ = write!(
-        out,
-        r#"#{id} [data-look="neo"].cluster rect{{filter:none;}}"#,
-    );
-    if let Some(native) = native {
-        let _ = write!(
-            out,
-            "#{id} .swimlane.cluster rect.swimlane-body{{fill:{};stroke:{}}}#{id} .swimlane.cluster rect.swimlane-title{{fill:{};stroke:{}}}#{id} .swimlane-label text{{fill:{}}}#{id} .swimlane-label span{{color:{}}}",
-            native.container,
-            native.guide,
-            native.emphasis,
-            native.guide,
-            native.on_emphasis,
-            native.on_emphasis,
-        );
-    } else {
-        let _ = write!(
-            out,
-            "#{id} .swimlane.cluster:not([data-color-id]) rect{{stroke:{cluster_border}!important;}}"
-        );
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::borrow::Cow;
-
-    #[test]
-    fn swimlane_css_escapes_the_diagram_id_as_a_css_identifier() {
-        let mut css = String::new();
-        write_swimlane_css(&mut css, "seq:prod.v1", "#aaaa33", None);
-
-        assert!(css.contains(r#"#seq\:prod\.v1 [data-look="neo"].cluster"#));
-        assert!(!css.contains(r#"#seq:prod.v1 [data-look="neo"].cluster"#));
-    }
 
     fn point(x: f64, y: f64) -> crate::model::LayoutPoint {
         crate::model::LayoutPoint { x, y }

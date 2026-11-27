@@ -5,9 +5,10 @@ use crate::graph_layout::{
 };
 use crate::model::{LayoutEdge, LayoutPoint};
 use crate::resources::OperationWorkMeter;
-use crate::svg::parity::{canonical_rough::constrained_rough_edge_path, svg_path_bounds_from_d};
+use crate::svg::parity::svg_path_bounds_from_d;
 use crate::{Error, Result};
 use kurbo::{Rect, Vec2};
+use merman_render_core::rough_svg::constrained_rough_edge_path;
 use merman_render_graph::er::er_marker_paint_bounds;
 use roughr::core::RoughRandomness;
 
