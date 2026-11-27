@@ -311,9 +311,7 @@ fn label_box(group: Node<'_, '_>, frame: Affine) -> Option<Rect> {
         .find(|n| n.has_tag_name("foreignObject"))
         .or_else(|| {
             group.descendants().find(|n| {
-                n.has_tag_name("rect")
-                    && n.has_attribute("width")
-                    && n.has_attribute("height")
+                n.has_tag_name("rect") && n.has_attribute("width") && n.has_attribute("height")
             })
         })?;
     let local = rect(element);

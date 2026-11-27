@@ -436,7 +436,10 @@ mod tests {
             },
         )
         .unwrap();
-        assert!(legacy_svg.contains(r#"id="er_er-oneOrMoreStart" class="marker oneOrMore er" refX="18""#));
+        assert!(
+            legacy_svg
+                .contains(r#"id="er_er-oneOrMoreStart" class="marker oneOrMore er" refX="18""#)
+        );
         assert!(legacy_svg.contains(r#"id="er_er-oneOrMoreEnd" class="marker oneOrMore er" refX="27" refY="18" markerWidth="45""#));
     }
 }

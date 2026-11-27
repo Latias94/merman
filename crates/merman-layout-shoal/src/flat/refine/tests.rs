@@ -624,7 +624,14 @@ fn near_vertical_dummies_snap_to_the_attachment_with_clearance_and_keep_held_geo
     let mut geometry = case.geom(&x, &mut geometry_scratch, &mut work);
     let offsets = geometry.data.dx.clone();
     let ports = PortRuns::default();
-    de_jitter(&mut geometry, &case.options, &ports, &mut Vec::new(), &mut work).unwrap();
+    de_jitter(
+        &mut geometry,
+        &case.options,
+        &ports,
+        &mut Vec::new(),
+        &mut work,
+    )
+    .unwrap();
     assert_eq!(&geometry.data.x[..4], &x[..4]);
     assert_eq!(&geometry.data.x[4..], &[50.6, 50.6]);
     assert_eq!(geometry.data.dx, offsets);
@@ -633,14 +640,28 @@ fn near_vertical_dummies_snap_to_the_attachment_with_clearance_and_keep_held_geo
     let mut geometry = case.geom(&x, &mut geometry_scratch, &mut work);
     geometry.data.protected[4] = true;
     geometry.data.twin[5] = 0;
-    de_jitter(&mut geometry, &case.options, &ports, &mut Vec::new(), &mut work).unwrap();
+    de_jitter(
+        &mut geometry,
+        &case.options,
+        &ports,
+        &mut Vec::new(),
+        &mut work,
+    )
+    .unwrap();
     assert_eq!(geometry.data.x, x);
 
     let x = [10., 50.6, 120., 67.4, 50.42, 50.23];
     let mut geometry_scratch = GeometryScratch::default();
     let mut geometry = case.geom(&x, &mut geometry_scratch, &mut work);
     assert!(geometry.movable(5).hi < x[1]);
-    de_jitter(&mut geometry, &case.options, &ports, &mut Vec::new(), &mut work).unwrap();
+    de_jitter(
+        &mut geometry,
+        &case.options,
+        &ports,
+        &mut Vec::new(),
+        &mut work,
+    )
+    .unwrap();
     assert_eq!(&geometry.data.x[4..], &[x[1], x[1]]);
 
     case.options.spacing.node = case.options.spacing.edge;
@@ -648,7 +669,14 @@ fn near_vertical_dummies_snap_to_the_attachment_with_clearance_and_keep_held_geo
     let mut geometry_scratch = GeometryScratch::default();
     let mut geometry = case.geom(&x, &mut geometry_scratch, &mut work);
     let before = geometry.movable(5);
-    de_jitter(&mut geometry, &case.options, &ports, &mut Vec::new(), &mut work).unwrap();
+    de_jitter(
+        &mut geometry,
+        &case.options,
+        &ports,
+        &mut Vec::new(),
+        &mut work,
+    )
+    .unwrap();
     assert!(before.hi < x[1]);
     assert_eq!(&geometry.data.x[4..], &[before.hi, before.hi]);
 }

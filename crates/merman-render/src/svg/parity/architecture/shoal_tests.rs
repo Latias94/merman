@@ -515,7 +515,10 @@ fn architecture_shoal_studio_keeps_bounded_rounded_corners() {
             }
         }
     }
-    assert!(corner_count > 0, "expected rounded corners on studio architecture routes");
+    assert!(
+        corner_count > 0,
+        "expected rounded corners on studio architecture routes"
+    );
     assert!(
         max_arm <= 16.0,
         "studio architecture corners must stay bounded, got max arm {max_arm:.2}px"

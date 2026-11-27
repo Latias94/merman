@@ -390,7 +390,10 @@ fn body_overlaps_rect(body: &Body, rect: Rect) -> bool {
         if inset.contains(seg.start()) || inset.contains(seg.end()) {
             return true;
         }
-        if edges.iter().any(|&edge| !seg.intersect_line(edge).is_empty()) {
+        if edges
+            .iter()
+            .any(|&edge| !seg.intersect_line(edge).is_empty())
+        {
             return true;
         }
     }
@@ -507,8 +510,7 @@ fn check_labels(scene: &Scene<'_>, ancestry: &[Vec<usize>], report: &mut Report)
             }
         }
         for (body_id, body) in scene.bodies.iter().enumerate() {
-            if label.owner == LabelOwner::Body(body_id) || !body_overlaps_rect(body, label.bounds)
-            {
+            if label.owner == LabelOwner::Body(body_id) || !body_overlaps_rect(body, label.bounds) {
                 continue;
             }
             if body.is_group {

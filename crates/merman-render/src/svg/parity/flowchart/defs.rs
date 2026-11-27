@@ -1329,10 +1329,9 @@ fn push_casing_marker(
             }
             (FlowchartMarkerBase::OpenArrowEnd, _) => r#"<path d="M 1 1 L 11 6 L 1 11""#,
             (FlowchartMarkerBase::OpenArrowStart, _) => r#"<path d="M 11 1 L 1 6 L 11 11""#,
-            (
-                FlowchartMarkerBase::HollowCircleStart | FlowchartMarkerBase::HollowCircleEnd,
-                _,
-            ) => r#"<circle cx="5" cy="5" r="3.6""#,
+            (FlowchartMarkerBase::HollowCircleStart | FlowchartMarkerBase::HollowCircleEnd, _) => {
+                r#"<circle cx="5" cy="5" r="3.6""#
+            }
         };
         let _ = write!(
             out,

@@ -363,8 +363,8 @@ mod shoal {
                             {
                                 let tip = Point::new(point.x, point.y) + doc_offset;
                                 let outset = marker.depth + marker.trim + CASING_WIDTH_ADD / 2.0;
-                                bounds =
-                                    bounds.union(Rect::from_points(tip, tip).inflate(outset, outset));
+                                bounds = bounds
+                                    .union(Rect::from_points(tip, tip).inflate(outset, outset));
                             }
                         }
                         plan.casing_bounds =
