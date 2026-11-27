@@ -16,7 +16,11 @@ use merman_render_core::{
 };
 use roughr::core::RoughRandomness;
 
+mod flowchart;
 mod geometry;
+#[doc(hidden)]
+pub mod swimlane;
+pub use flowchart::{FlowchartClusterShape, FlowchartClusterSvg, FlowchartClusterTitle};
 pub use geometry::{
     PaintedClusterFrame, SwimlaneTerminalGeometry, cluster_container_radius,
     swimlane_terminal_geometry,
@@ -101,7 +105,7 @@ impl ClusterHandDrawn<'_> {
 
 /// Write the complete painted child of a Flowchart or Agentflow cluster.
 /// The caller owns the outer group, title, and end-of-layer checkpoint.
-pub fn write_cluster_shell(
+fn write_cluster_shell(
     out: &mut impl SvgOutput,
     frame: PaintedClusterFrame,
     paint: ClusterShellPaint<'_>,
@@ -246,7 +250,7 @@ fn write_flowchart_shell(
 }
 
 /// Paint the body and title strip in that order inside the caller's Swimlane group.
-pub fn write_swimlane_shell(
+fn write_swimlane_shell(
     out: &mut impl SvgOutput,
     [body, title]: [Rect; 2],
     translation: Vec2,

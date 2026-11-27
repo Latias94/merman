@@ -2,17 +2,14 @@
 
 use super::super::*;
 use crate::flowchart::FLOWCHART_FIXED_LABEL_WRAP_WIDTH;
-use crate::svg::parity::flowchart::{
-    cluster_geometry::painted_cluster_frame, util::HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
-};
+use crate::svg::parity::flowchart::cluster_geometry::painted_cluster_frame;
 
 use merman_render_flow::cluster_shell::{
-    ClusterHandDrawn, ClusterShellForm, ClusterShellPaint, write_cluster_shell,
+    ClusterHandDrawn, ClusterShellForm, ClusterShellPaint, FlowchartClusterShape,
+    FlowchartClusterSvg, FlowchartClusterTitle,
 };
 
 use merman_render_flow::graph::FlowchartClusterPass;
-
-const TITLE_HALO_WIDTH: u8 = 5;
 
 pub(in crate::svg::parity::flowchart) fn advance_rough_geometry(
     ctx: &FlowchartRenderCtx<'_>,
@@ -57,39 +54,6 @@ fn cluster_hand_drawn<'a>(
     }
 }
 
-fn cluster_svg_text_style(label_style: &str) -> String {
-    if label_style.is_empty() {
-        return String::new();
-    }
-    let mut out = String::with_capacity(label_style.len());
-    let mut color_value: Option<&str> = None;
-    let mut has_fill = false;
-    crate::mermaid_style::visit_parsed_style_declarations(label_style, |decl| {
-        if decl.property() == "fill" {
-            has_fill = true;
-        } else if decl.property() == "color" {
-            let val = decl.source_value().trim();
-            if !val.is_empty() {
-                color_value = Some(val);
-            }
-        }
-        if !out.is_empty() {
-            out.push(';');
-        }
-        out.push_str(decl.property_css());
-        out.push(':');
-        out.push_str(decl.source_value());
-    });
-    if !has_fill && let Some(val) = color_value {
-        if !out.is_empty() {
-            out.push(';');
-        }
-        out.push_str("fill:");
-        out.push_str(val);
-    }
-    out
-}
-
 pub(in crate::svg::parity::flowchart) fn cluster_base_fill<'a>(
     ctx: &'a FlowchartRenderCtx<'_>,
     terminal: &'a super::super::node_inventory::FlowchartPreparedCluster,
@@ -115,13 +79,12 @@ pub(in crate::svg::parity::flowchart) fn compat_theme_canvas_fallback(
     }
 }
 
-fn write_flowchart_cluster_shape(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    ctx: &FlowchartRenderCtx<'_>,
-    terminal: &super::super::node_inventory::FlowchartPreparedCluster,
+fn prepare_flowchart_cluster_shape<'a>(
+    ctx: &'a FlowchartRenderCtx<'_>,
+    terminal: &'a super::super::node_inventory::FlowchartPreparedCluster,
     id: &str,
     frame: super::super::cluster_geometry::PaintedClusterFrame,
-) {
+) -> FlowchartClusterShape<'a> {
     let compiled = &terminal.compiled;
     let fill = cluster_base_fill(ctx, terminal, id);
     let canonical = ctx.layout.route_contract.is_canonical_axis();
@@ -149,20 +112,20 @@ fn write_flowchart_cluster_shape(
             inline_fill: canonical && ctx.palette.color_count() > 0,
         }
     };
-    write_cluster_shell(
-        out,
+    FlowchartClusterShape {
         frame,
-        ClusterShellPaint {
+        paint: ClusterShellPaint {
             style: &terminal.rect_style,
             fill,
             stroke: &terminal.stroke,
         },
         form,
-        ctx.compatibility
+        rough: ctx
+            .compatibility
             .look
             .is_hand_drawn()
             .then(|| cluster_hand_drawn(ctx, compiled)),
-    );
+    }
 }
 
 fn title_halo_color(
@@ -331,52 +294,25 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
         )
     };
 
-    let mut class_attr = String::new();
-    for c in classes {
-        let c = c.trim();
-        if c.is_empty() {
-            continue;
-        }
-        if !class_attr.is_empty() {
-            class_attr.push(' ');
-        }
-        class_attr.push_str(c);
-    }
-    if !class_attr.is_empty() {
-        class_attr.push(' ');
-    }
-    class_attr.push_str("cluster");
-    if ctx.diagram_type == "agentflow" {
-        class_attr.push_str(" flow-cluster");
-    }
-    let color_attr = super::super::agentflow::container_color_slot(ctx, &cluster.id)
-        .map(|slot| format!(r#" data-color-id="color-{slot}""#))
-        .unwrap_or_default();
-    let data_look = ctx.compatibility.look.as_str();
     let struck = ctx
         .layout
         .route_contract
         .struck_group_titles()
         .is_some_and(|titles| titles.contains(cluster.id.as_str()));
-
+    let svg = FlowchartClusterSvg {
+        semantic_id: &cluster.id,
+        document_id: cluster_dom_id,
+        classes,
+        agentflow: ctx.diagram_type == "agentflow",
+        look: ctx.compatibility.look.as_str(),
+        color_slot: super::super::agentflow::container_color_slot(ctx, &cluster.id),
+        struck,
+    };
     if pass == FlowchartClusterPass::Background {
-        let _ = write!(
+        return svg.write_background(
             out,
-            r#"<g class="{}" data-merman-theme-depth="container" data-look="{}"{color_attr}"#,
-            escape_attr(&class_attr),
-            escape_attr(data_look),
+            prepare_flowchart_cluster_shape(ctx, terminal, &cluster.id, frame),
         );
-        if struck {
-            let _ = write!(
-                out,
-                r#" id="{cluster_dom_id}" data-id="{}" data-et="cluster""#,
-                escape_xml_display(&cluster.id),
-            );
-        }
-        out.push('>');
-        write_flowchart_cluster_shape(out, ctx, terminal, &cluster.id, frame);
-        out.push_str("</g>");
-        return out.checkpoint();
     }
 
     let halo = struck
@@ -384,181 +320,29 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
         .transpose()?
         .flatten();
     let overlay = struck && pass == FlowchartClusterPass::Label;
-    let _ = write!(out, r#"<g class="{}""#, escape_xml_display(&class_attr));
-    if !overlay {
-        let _ = write!(
-            out,
-            r#" id="{cluster_dom_id}" data-id="{}" data-et="cluster""#,
-            escape_xml_display(&cluster.id),
-        );
-    }
-    let _ = write!(
-        out,
-        r#" data-look="{}"{color_attr}>"#,
-        escape_xml_display(data_look),
-    );
-    if pass == FlowchartClusterPass::Complete {
-        write_flowchart_cluster_shape(out, ctx, terminal, &cluster.id, frame);
-    }
-    let _ = write!(
-        out,
-        r#"<g class="cluster-label" transform="translate({},{})""#,
-        fmt_display(label_left),
-        fmt_display(label_top),
-    );
-    if overlay {
-        let _ = write!(out, r#" data-merman-cluster-title-for="{cluster_dom_id}""#);
-    }
-    if let Some(color) = halo {
-        let _ = write!(
-            out,
-            r#" data-merman-title-struck="true" stroke="{color}" stroke-width="{TITLE_HALO_WIDTH}" stroke-linejoin="round" paint-order="stroke""#,
-        );
-    }
-    out.push('>');
-    // A native text branch keeps the title and its outline when raster export strips HTML.
-    let mut svg_fallback = false;
-    if ctx.edge_html_labels {
-        let prepared_label = ctx
-            .svg_label_sidecar
-            .zip(title_owner)
-            .map_or(Default::default(), |(sidecar, owner)| {
-                sidecar.prepared_label_for_terminal(owner, render_title)
-            });
-        let title_html = flowchart_label_html_with_prepared_label(
-            render_title,
-            label_type,
-            ctx.config,
-            ctx.math_renderer,
-            prepared_label,
-        );
-        svg_fallback = halo.is_some()
-            && !matches!(
-                prepared_label,
-                crate::flowchart::FlowchartPreparedLabelResolution::PreparedMath(_)
-            );
-        if svg_fallback {
-            out.push_str("<switch>");
-        }
-        let halo_style = halo.map(|color| {
-            if label_style.is_empty() {
-                format!("-webkit-text-stroke:{TITLE_HALO_WIDTH}px {color};paint-order:stroke fill")
-            } else {
-                format!(
-                    "{label_style};-webkit-text-stroke:{TITLE_HALO_WIDTH}px {color};paint-order:stroke fill"
-                )
-            }
-        });
-        // CSS color hex tokens like `#1F2335;` must not run through Mermaid `#entity;` text
-        // decoding (which turns `#1F2335;` into `&amp;1F2335;` and drops the browser halo).
-        let span_style_attr = OptionalStyleAttr(halo_style.as_deref().unwrap_or(label_style));
-        // Min-content expansion does not undo the wrap selected by the first measurement.
-        let markdown_uses_wrapped_box = label_w >= markdown_wrap_width - 1e-3;
-        let div_style = if label_type != "markdown" {
-            "display: table-cell; white-space: nowrap; line-height: 1.5;".to_string()
-        } else if markdown_uses_wrapped_box {
-            format!(
-                "display: table; white-space: break-spaces; line-height: 1.5; max-width: {mw}px; text-align: center; width: {mw}px;",
-                mw = fmt_display(markdown_wrap_width)
-            )
-        } else {
-            format!(
-                "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {mw}px; text-align: center;",
-                mw = fmt_display(markdown_wrap_width)
-            )
-        };
-        let _ = write!(
-            out,
-            r#"<foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"{}>{}</span></div></foreignObject>"#,
-            fmt_display(label_w),
-            fmt_display(label_h),
-            HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
-            escape_xml_display(&div_style),
-            span_style_attr,
-            title_html
-        );
-    }
-    if !ctx.edge_html_labels || svg_fallback {
-        let svg_text_style = cluster_svg_text_style(label_style);
-        out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
-        if label_type == "markdown" {
-            if ctx.uses_elk_adapter_dom || svg_fallback {
-                if !svg_text_style.is_empty() {
-                    write_flowchart_svg_text_markdown_wrapped_with_style(
-                        out,
-                        render_title,
-                        &svg_text_style,
-                        ctx.measurer,
-                        title_text_style,
-                        Some(markdown_wrap_width),
-                    );
-                } else {
-                    write_flowchart_svg_text_markdown_wrapped(
-                        out,
-                        render_title,
-                        true,
-                        ctx.measurer,
-                        title_text_style,
-                        Some(markdown_wrap_width),
-                    );
-                }
-            } else {
-                write_flowchart_svg_text_markdown(out, render_title, true);
-            }
-        } else {
-            let prepared = crate::flowchart::FlowchartSvgLabelRenderPlan::new(
-                ctx.svg_label_sidecar,
-                title_owner,
-                render_title,
-                ctx.measurer,
-                title_text_style,
-                None,
-                true,
-                crate::flowchart::FlowchartSvgWidthMode::Bbox,
-            );
-            if ctx.layout.route_contract.group_parents().is_some()
-                && matches!(label_type, "text" | "string")
-            {
-                crate::svg::parity::label::write_measured_svg_title(
-                    out,
-                    &prepared.wrapped_lines(),
-                    &svg_text_style,
-                    None,
-                    cluster.title_label.width,
-                );
-            } else {
-                write_flowchart_svg_label_plan_with_style(
-                    out,
-                    &prepared,
-                    true,
-                    (!svg_text_style.is_empty()).then_some(svg_text_style.as_str()),
-                );
-            }
-        }
-        out.push_str("</g>");
-        if svg_fallback {
-            out.push_str("</switch>");
-        }
-    }
-    out.push_str("</g></g>");
+    let shape = (pass == FlowchartClusterPass::Complete)
+        .then(|| prepare_flowchart_cluster_shape(ctx, terminal, &cluster.id, frame));
+    let title = FlowchartClusterTitle {
+        position: kurbo::Point::new(label_left, label_top),
+        size: kurbo::Size::new(label_w, label_h),
+        markdown_wrap_width,
+        measured_title_width: ctx
+            .layout
+            .route_contract
+            .group_parents()
+            .map(|_| cluster.title_label.width),
+        label_type,
+        source: render_title,
+        label_style,
+        text_style: title_text_style,
+        html_labels: ctx.edge_html_labels,
+        uses_elk_adapter_dom: ctx.uses_elk_adapter_dom,
+        owner: title_owner,
+        sidecar: ctx.svg_label_sidecar,
+        measurer: ctx.measurer,
+        config: ctx.config,
+        math_renderer: ctx.math_renderer,
+    };
+    svg.write_foreground(out, shape, title, halo, overlay);
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::cluster_svg_text_style;
-
-    #[test]
-    fn cluster_svg_text_style_preserves_quoted_semicolons_and_mirrors_color() {
-        assert_eq!(
-            cluster_svg_text_style(
-                r#"font-family:"Foo;color:red" !important;COLOR:#fff !important"#
-            ),
-            r#"font-family:"Foo;color:red" !important;COLOR:#fff !important;fill:#fff !important"#
-        );
-        assert_eq!(
-            cluster_svg_text_style(r#"font-family:"Foo;color:red" !important"#),
-            r#"font-family:"Foo;color:red" !important"#
-        );
-    }
 }

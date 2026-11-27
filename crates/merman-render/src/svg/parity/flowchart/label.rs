@@ -4,8 +4,8 @@
 use merman_render_flow::svg_label::write_flowchart_svg_source_word_lines;
 pub(crate) use merman_render_flow::svg_label::{
     append_native_label_color, flowchart_label_html_with_prepared_label,
-    write_flowchart_svg_label_plan, write_flowchart_svg_label_plan_with_style,
-    write_flowchart_svg_text_markdown, write_flowchart_svg_text_markdown_wrapped_with_style,
+    write_flowchart_svg_label_plan_with_style,
+    write_flowchart_svg_text_markdown_wrapped_with_style,
 };
 
 #[cfg(test)]
