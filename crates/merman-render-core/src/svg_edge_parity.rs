@@ -8,6 +8,8 @@ pub mod curve;
 pub mod edge_label_geometry;
 #[cfg(feature = "svg-edge-parity")]
 pub mod edge_path;
+#[cfg(all(feature = "svg-edge-parity", feature = "layout-layered"))]
+pub mod layered_route;
 #[cfg(feature = "svg-edge-parity")]
 pub mod line_hops;
 #[cfg(feature = "svg-edge-parity")]
