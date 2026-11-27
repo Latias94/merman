@@ -2061,7 +2061,7 @@ mod tests {
         };
         assert_eq!(
             background(" #1238 "),
-            crate::theme::Color::parse("#1238").ok()
+            Some(crate::theme::Color::rgba(0x11, 0x22, 0x33, 0x88))
         );
         assert_eq!(background(" #1230 "), None);
     }
