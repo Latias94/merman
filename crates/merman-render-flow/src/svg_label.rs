@@ -1,5 +1,10 @@
 //! Prepared SVG label rows for the Flow families.
 
+use std::{borrow::Cow, sync::Arc};
+
+use merman_render_core::resources::{
+    OperationWorkMeter, PreparedTextRetainedReservation, ResourceLimitExceeded,
+};
 use merman_render_core::text::{
     TextMeasurer, TextMetrics, TextStyle,
     inline_html::{MermaidMarkdownWordType, SvgTextEntityMode},
@@ -7,6 +12,42 @@ use merman_render_core::text::{
     measure_svg_markdown_word_lines,
     measurement::{MeasurementReuseKey, TextMeasurementOperation, measurement_reuse_key},
 };
+
+pub const FLOWCHART_PREPARED_OWNER_SLOT_BYTES: usize = 192;
+
+#[derive(Debug)]
+pub struct FlowchartNodeSourceTypography {
+    style: TextStyle,
+    _retained_reservation: Option<PreparedTextRetainedReservation>,
+}
+
+impl FlowchartNodeSourceTypography {
+    pub fn prepare(
+        style: Cow<'_, TextStyle>,
+        work: Option<&Arc<OperationWorkMeter>>,
+    ) -> Result<Self, ResourceLimitExceeded> {
+        let retained_bytes = std::mem::size_of::<Self>()
+            .saturating_add(style.font_family.as_ref().map_or(0, String::len))
+            .saturating_add(style.font_weight.as_ref().map_or(0, String::len))
+            .saturating_add(style.font_style.as_ref().map_or(0, String::len))
+            .saturating_add(FLOWCHART_PREPARED_OWNER_SLOT_BYTES);
+        let reservation = work
+            .map(|work| work.reserve_prepared_text_retained_bytes(retained_bytes))
+            .transpose()?;
+        Ok(Self {
+            style: style.into_owned(),
+            _retained_reservation: reservation,
+        })
+    }
+}
+
+impl std::ops::Deref for FlowchartNodeSourceTypography {
+    type Target = TextStyle;
+
+    fn deref(&self) -> &Self::Target {
+        &self.style
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct FlowchartSvgTextStyleKey {

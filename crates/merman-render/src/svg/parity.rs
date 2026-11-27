@@ -196,15 +196,6 @@ pub(crate) use state::state_canonical_marker;
         reason = "Shared rendering utilities have different callers in each diagram selection."
     )
 )]
-mod style;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
-    )
-)]
 pub(crate) mod theme;
 #[cfg(feature = "diagram-timeline")]
 mod timeline;
@@ -236,14 +227,6 @@ use path_bounds::{svg_path_bounds_from_d, svg_path_length_from_d};
 pub use merman_render_core::svg_bounds::{
     SvgEmittedBoundsContributor, SvgEmittedBoundsDebug, debug_svg_emitted_bounds,
 };
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        unused_imports,
-        reason = "Common SVG imports are consumed by the selected family emitters."
-    )
-)]
-use style::is_text_style_key;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(

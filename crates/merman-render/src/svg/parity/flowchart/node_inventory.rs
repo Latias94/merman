@@ -425,9 +425,9 @@ impl FlowchartPreparedNodes {
                     );
                     structural.apply_to_content(&mut style);
                     std::borrow::Cow::Owned(std::sync::Arc::new(
-                        crate::flowchart::FlowchartNodeSourceTypography::from_style(
-                            style.into_owned(),
-                            work,
+                        crate::flowchart::FlowchartNodeSourceTypography::prepare(
+                            std::borrow::Cow::Owned(style.into_owned()),
+                            Some(work),
                         )?,
                     ))
                 }
@@ -571,9 +571,10 @@ impl FlowchartPreparedNodes {
                         source.1,
                     )
                     .into_owned();
-                    std::sync::Arc::new(
-                        crate::flowchart::FlowchartNodeSourceTypography::from_style(style, work)?,
-                    )
+                    std::sync::Arc::new(crate::flowchart::FlowchartNodeSourceTypography::prepare(
+                        std::borrow::Cow::Owned(style),
+                        Some(work),
+                    )?)
                 }
             };
             cluster_retained_bytes = cluster_retained_bytes

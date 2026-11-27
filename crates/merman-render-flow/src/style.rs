@@ -1,5 +1,6 @@
 pub mod compiled;
 mod edge_plan;
+pub mod node;
 
 pub use edge_plan::{FlowchartEdgeAnimationResolution, FlowchartEdgeStylePlan};
 

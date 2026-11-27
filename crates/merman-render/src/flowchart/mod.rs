@@ -68,6 +68,7 @@ pub(crate) use merman_render_flow::shapes::{
     FlowchartShape, OrganicShapeGeometry, RelativeArc, bang_geometry, cloud_geometry,
     is_flowchart_process_shape,
 };
+pub(crate) use merman_render_flow::svg_label::FlowchartNodeSourceTypography;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) use node::NodeLayoutDimensionsRequest;
 pub(crate) use node::{
@@ -109,7 +110,7 @@ pub(crate) use style::{
 ))]
 pub(crate) use svg_label_artifact::measure_flowchart_svg_label_for_layout_with_metrics_and_source_style;
 pub(crate) use svg_label_artifact::{
-    FlowchartNodeSourceTypography, FlowchartPreparedLabelResolution, FlowchartSvgLabelOwner,
-    FlowchartSvgLabelRenderPlan, FlowchartSvgLabelSidecar, FlowchartSvgLabelSidecarBuilder,
+    FlowchartPreparedLabelResolution, FlowchartSvgLabelOwner, FlowchartSvgLabelRenderPlan,
+    FlowchartSvgLabelSidecar, FlowchartSvgLabelSidecarBuilder,
     measure_flowchart_svg_label_for_layout_with_source_style,
 };

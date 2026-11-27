@@ -1,28 +1,42 @@
 //! Source CSS and native defaults for node SVG.
 
-use super::*;
-use crate::flowchart::{FlowchartCompatibilityBinding, FlowchartShape};
+use std::sync::Arc;
+
+use merman_render_core::{Result, mermaid_style, resources::OperationWorkMeter};
+
+use super::{
+    compiled::{FlowchartCompiledStyles, FlowchartNodeClassStyles},
+    flowchart_split_mermaid_style_decls,
+};
+use crate::{
+    bpmn::BpmnShape,
+    class_style::{FlowchartClassDefinitions, FlowchartStructuralLabelTypography},
+    layout_config::FlowchartRenderConfig,
+    shapes::FlowchartShape,
+    svg_label::FlowchartNodeSourceTypography,
+    theme::{FlowchartCompatibilityBinding, FlowchartNativeStyle},
+};
 
 #[derive(Debug)]
-pub(super) struct PreparedNodeTerminal {
-    pub(super) source_text_style: std::sync::Arc<crate::flowchart::FlowchartNodeSourceTypography>,
-    pub(super) source: FlowchartCompiledStyles,
-    pub(super) rough_group_style: String,
-    pub(super) selection: PreparedNodeSelection,
+pub struct PreparedNodeTerminal {
+    pub source_text_style: Arc<FlowchartNodeSourceTypography>,
+    pub source: FlowchartCompiledStyles,
+    pub rough_group_style: String,
+    pub selection: PreparedNodeSelection,
 }
 
 #[derive(Debug)]
-pub(super) struct PreparedNodeSelection {
-    pub(super) inline_style: Option<String>,
-    pub(super) junction_style: Option<String>,
-    pub(super) theme_style: String,
+pub struct PreparedNodeSelection {
+    pub inline_style: Option<String>,
+    pub junction_style: Option<String>,
+    pub theme_style: String,
     native_fill: Option<String>,
     collapsed_agentflow: bool,
-    pub(super) stroke_width: f32,
-    pub(super) native_radius: Option<f32>,
-    pub(super) source_radii: [Option<f64>; 2],
-    pub(super) configured_radius: Option<f64>,
-    pub(super) native_label_color: Option<String>,
+    pub stroke_width: f32,
+    pub native_radius: Option<f32>,
+    pub source_radii: [Option<f64>; 2],
+    pub configured_radius: Option<f64>,
+    pub native_label_color: Option<String>,
 }
 
 /// Structural selectors can own a native terminal without joining its source transport.
@@ -36,11 +50,11 @@ struct NodeSourcePaint {
 impl NodeSourcePaint {
     fn prepare_shape(
         shape: Option<&str>,
-        class_defs: &crate::flowchart::FlowchartClassDefinitions<'_>,
+        class_defs: &FlowchartClassDefinitions<'_>,
         html_labels: bool,
         hand_drawn: bool,
-        work: &crate::resources::OperationWorkMeter,
-    ) -> crate::Result<Self> {
+        work: &OperationWorkMeter,
+    ) -> Result<Self> {
         let mut owners = Self::default();
         let Some(shape) = shape else {
             return Ok(owners);
@@ -59,8 +73,7 @@ impl NodeSourcePaint {
             | FlowchartShape::InvertedTrapezoid
             | FlowchartShape::Subroutine => (None, false),
             FlowchartShape::Bpmn(shape)
-                if shape.event_rings().is_some()
-                    || shape == crate::flowchart::bpmn::BpmnShape::Annotation =>
+                if shape.event_rings().is_some() || shape == BpmnShape::Annotation =>
             {
                 (Some(shape), false)
             }
@@ -158,18 +171,18 @@ impl PreparedNodeSelection {
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct NodeSelectionInputs<'a> {
+pub struct NodeSelectionInputs<'a> {
     compatibility: &'a FlowchartCompatibilityBinding,
     node_stroke_width_config_override: bool,
     node_corner_radius_config_override: bool,
     collapsed_agentflow: bool,
-    native: Option<&'a crate::flowchart::native_theme::FlowchartNativeStyle>,
+    native: Option<&'a FlowchartNativeStyle>,
 }
 impl<'a> NodeSelectionInputs<'a> {
-    pub(super) fn new(
+    pub fn new(
         compatibility: &'a FlowchartCompatibilityBinding,
-        render_config: &super::render_config::FlowchartRenderConfig,
-        native: Option<&'a crate::flowchart::native_theme::FlowchartNativeStyle>,
+        render_config: &FlowchartRenderConfig,
+        native: Option<&'a FlowchartNativeStyle>,
     ) -> Self {
         Self {
             compatibility,
@@ -180,7 +193,7 @@ impl<'a> NodeSelectionInputs<'a> {
         }
     }
 
-    pub(super) fn for_collapsed_agentflow(mut self) -> Self {
+    pub fn for_collapsed_agentflow(mut self) -> Self {
         self.collapsed_agentflow = true;
         self
     }
@@ -191,17 +204,17 @@ impl PreparedNodeTerminal {
         clippy::too_many_arguments,
         reason = "The prepared source typography joins existing independent node facet inputs"
     )]
-    pub(super) fn prepare(
-        class_defs: &crate::flowchart::FlowchartClassDefinitions<'_>,
-        node_classes: &mut super::style::FlowchartNodeClassStyles<'_>,
+    pub fn prepare(
+        class_defs: &FlowchartClassDefinitions<'_>,
+        node_classes: &mut FlowchartNodeClassStyles<'_>,
         (classes, inline_styles, include_default_class): (&[String], &[String], bool),
         terminal_shape: Option<&str>,
-        structural: &crate::flowchart::FlowchartStructuralLabelTypography,
-        source_text_style: Option<std::sync::Arc<crate::flowchart::FlowchartNodeSourceTypography>>,
+        structural: &FlowchartStructuralLabelTypography,
+        source_text_style: Option<Arc<FlowchartNodeSourceTypography>>,
         ordinal: Option<usize>,
         inputs: &NodeSelectionInputs<'_>,
-        work: &crate::resources::OperationWorkMeter,
-    ) -> crate::Result<Option<Self>> {
+        work: &OperationWorkMeter,
+    ) -> Result<Option<Self>> {
         let terminal_sources = NodeSourcePaint::prepare_shape(
             terminal_shape.filter(|_| inputs.native.is_some()),
             class_defs,
@@ -271,10 +284,7 @@ impl PreparedNodeTerminal {
     }
 
     // The terminal owns the compiled declarations and shares the operation's compatibility paint.
-    pub(super) fn fill_color<'a>(
-        &'a self,
-        compatibility: &'a FlowchartCompatibilityBinding,
-    ) -> &'a str {
+    pub fn fill_color<'a>(&'a self, compatibility: &'a FlowchartCompatibilityBinding) -> &'a str {
         self.selection
             .native_fill
             .as_deref()
@@ -282,17 +292,14 @@ impl PreparedNodeTerminal {
             .unwrap_or(&compatibility.main_bkg)
     }
 
-    pub(super) fn stroke_color<'a>(
-        &'a self,
-        compatibility: &'a FlowchartCompatibilityBinding,
-    ) -> &'a str {
+    pub fn stroke_color<'a>(&'a self, compatibility: &'a FlowchartCompatibilityBinding) -> &'a str {
         self.source
             .stroke
             .as_deref()
             .unwrap_or_else(|| self.selection.default_stroke(compatibility))
     }
 
-    pub(super) fn stroke_dasharray(&self) -> &str {
+    pub fn stroke_dasharray(&self) -> &str {
         self.source
             .stroke_dasharray
             .as_deref()
@@ -305,11 +312,11 @@ fn prepare_hand_drawn_shape_group_style(inline_styles: &[String]) -> String {
     let mut text_decls: Vec<String> = Vec::new();
 
     for raw in inline_styles {
-        for decl in crate::flowchart::flowchart_split_mermaid_style_decls(raw) {
-            let Some((key, value)) = crate::mermaid_style::parse_safe_style_decl(decl) else {
+        for decl in flowchart_split_mermaid_style_decls(raw) {
+            let Some((key, value)) = mermaid_style::parse_safe_style_decl(decl) else {
                 continue;
             };
-            if is_text_style_key(key) {
+            if mermaid_style::is_label_style_key(key) {
                 text_decls.push(format!("{key}:{value}"));
             } else {
                 node_decls.push(format!("{key}:{value} !important"));

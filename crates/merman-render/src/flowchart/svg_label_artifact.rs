@@ -20,6 +20,7 @@ use crate::resources::{
 };
 use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
 use merman_render_flow::svg_label::{
+    FLOWCHART_PREPARED_OWNER_SLOT_BYTES, FlowchartNodeSourceTypography,
     FlowchartSvgLabelMeasurementRequest, FlowchartSvgLabelSourceEntry,
     FlowchartSvgLabelWrapBindingRequest, PreparedFlowchartSvgLabel, normalized_label_width_bits,
 };
@@ -30,7 +31,6 @@ use super::label::{
 };
 
 const FLOWCHART_RENDER_ID_RECORD_BYTES: usize = 32;
-const FLOWCHART_PREPARED_OWNER_SLOT_BYTES: usize = 192;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum FlowchartSvgLabelOwner {
@@ -337,42 +337,6 @@ struct PreparedFlowchartHtmlLabel {
 impl PreparedFlowchartHtmlLabel {
     fn matches(&self, source: &str, label_type: &str) -> bool {
         self.source.as_ref() == source && self.label_type.as_ref() == label_type
-    }
-}
-
-#[derive(Debug)]
-pub(crate) struct FlowchartNodeSourceTypography {
-    style: TextStyle,
-    _retained_reservation: Option<PreparedTextRetainedReservation>,
-}
-
-impl FlowchartNodeSourceTypography {
-    pub(crate) fn from_style(
-        style: TextStyle,
-        work: &Arc<OperationWorkMeter>,
-    ) -> Result<Self, ResourceLimitExceeded> {
-        let retained_bytes = Self::retained_bytes(&style);
-        let reservation = work.reserve_prepared_text_retained_bytes(retained_bytes)?;
-        Ok(Self {
-            style,
-            _retained_reservation: Some(reservation),
-        })
-    }
-
-    fn retained_bytes(style: &TextStyle) -> usize {
-        std::mem::size_of::<Self>()
-            .saturating_add(style.font_family.as_ref().map_or(0, String::len))
-            .saturating_add(style.font_weight.as_ref().map_or(0, String::len))
-            .saturating_add(style.font_style.as_ref().map_or(0, String::len))
-            .saturating_add(FLOWCHART_PREPARED_OWNER_SLOT_BYTES)
-    }
-}
-
-impl std::ops::Deref for FlowchartNodeSourceTypography {
-    type Target = TextStyle;
-
-    fn deref(&self) -> &Self::Target {
-        &self.style
     }
 }
 
@@ -794,27 +758,20 @@ impl FlowchartSvgLabelSidecarBuilder {
             if !self.record_render_id(owner, render_id) {
                 return failed_prepared_metrics();
             }
-            let retained_bytes = FlowchartNodeSourceTypography::retained_bytes(request.style);
-            let reservation = match self
-                .work_meter
-                .as_ref()
-                .map(|work| work.reserve_prepared_text_retained_bytes(retained_bytes))
-                .transpose()
-            {
-                Ok(reservation) => reservation,
+            let typography = match FlowchartNodeSourceTypography::prepare(
+                Cow::Borrowed(request.style),
+                self.work_meter.as_ref(),
+            ) {
+                Ok(typography) => typography,
                 Err(error) => {
                     self.record_prepared_resource_error(error);
                     return failed_prepared_metrics();
                 }
             };
-            let mut pending = self.pending.borrow_mut();
-            pending.node_source_typography.insert(
-                owner,
-                Arc::new(FlowchartNodeSourceTypography {
-                    style: request.style.clone(),
-                    _retained_reservation: reservation,
-                }),
-            );
+            self.pending
+                .borrow_mut()
+                .node_source_typography
+                .insert(owner, Arc::new(typography));
         }
         let html_geometry = source_style.map_or(Default::default(), |style| style.html_geometry);
         match self.measure_prepared_math(
@@ -2017,13 +1974,17 @@ mod tests {
             font_family: Some("Caller Font".into()),
             ..TextStyle::default()
         };
-        let error = FlowchartNodeSourceTypography::from_style(style.clone(), &limited).unwrap_err();
+        let error =
+            FlowchartNodeSourceTypography::prepare(Cow::Owned(style.clone()), Some(&limited))
+                .unwrap_err();
         assert_eq!(error.limit, "max_prepared_text_retained_bytes");
         assert_eq!(limited.prepared_text_retained_bytes(), 0);
         let work = Arc::new(OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input(),
         ));
-        let projection = Arc::new(FlowchartNodeSourceTypography::from_style(style, &work).unwrap());
+        let projection = Arc::new(
+            FlowchartNodeSourceTypography::prepare(Cow::Owned(style), Some(&work)).unwrap(),
+        );
         assert!(work.prepared_text_retained_bytes() > 0);
         let terminal = Arc::clone(&projection);
         drop(projection);
