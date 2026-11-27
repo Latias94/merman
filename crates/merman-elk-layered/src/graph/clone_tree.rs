@@ -1,4 +1,8 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    ops::{Deref, DerefMut},
+    sync::Arc,
+};
 
 use super::{GraphReferenceDomain, GraphSeedScope, LGraph, LNode};
 
@@ -17,6 +21,40 @@ impl Clone for LNode {
             copied.nested_graph = Some(Box::new(nested));
         }
         copied
+    }
+}
+
+/// An internal validation snapshot may own a deep hierarchy even on the flat pipeline entry.
+pub(crate) struct ValidationGraphCopy(LGraph);
+
+impl Deref for ValidationGraphCopy {
+    type Target = LGraph;
+
+    fn deref(&self) -> &LGraph {
+        &self.0
+    }
+}
+
+impl DerefMut for ValidationGraphCopy {
+    fn deref_mut(&mut self) -> &mut LGraph {
+        &mut self.0
+    }
+}
+
+impl Drop for ValidationGraphCopy {
+    fn drop(&mut self) {
+        fn take_children(graph: &mut LGraph) -> impl Iterator<Item = Box<LGraph>> {
+            graph
+                .layerless_nodes
+                .iter_mut()
+                .rev()
+                .filter_map(|node| node.nested_graph.take())
+        }
+
+        let mut pending = take_children(&mut self.0).collect::<Vec<_>>();
+        while let Some(mut child) = pending.pop() {
+            pending.extend(take_children(&mut child));
+        }
     }
 }
 
@@ -61,13 +99,7 @@ impl CopiedDomains {
 impl LGraph {
     fn copy_with_rebound_domains(&self) -> (Self, CopiedDomains) {
         let mut domains = CopiedDomains::default();
-        let mut copied = self.copy_without_nodes(domains.copy_domain(self.reference_domain()));
-        let mut pending = Vec::new();
-        self.copy_nodes(&mut copied, &mut pending, &mut domains);
-        while let Some((source, tree_copy)) = pending.pop() {
-            source.copy_nodes(tree_copy, &mut pending, &mut domains);
-        }
-        drop(pending);
+        let mut copied = self.copy_tree(|domain| domains.copy_domain(domain));
 
         let mut pending = Vec::new();
         domains.rebind_graph(&mut copied, &mut pending);
@@ -78,11 +110,25 @@ impl LGraph {
         (copied, domains)
     }
 
+    fn copy_tree(
+        &self,
+        mut copy_domain: impl FnMut(&GraphReferenceDomain) -> GraphReferenceDomain,
+    ) -> Self {
+        let mut copied = self.copy_without_nodes(copy_domain(self.reference_domain()));
+        let mut pending = Vec::new();
+        self.copy_nodes(&mut copied, &mut pending, &mut copy_domain);
+        while let Some((source, tree_copy)) = pending.pop() {
+            source.copy_nodes(tree_copy, &mut pending, &mut copy_domain);
+        }
+        drop(pending);
+        copied
+    }
+
     fn copy_nodes<'source, 'target>(
         &'source self,
         copied: &'target mut Self,
         pending: &mut Vec<(&'source Self, &'target mut Self)>,
-        domains: &mut CopiedDomains,
+        copy_domain: &mut impl FnMut(&GraphReferenceDomain) -> GraphReferenceDomain,
     ) {
         copied.layerless_nodes = self
             .layerless_nodes
@@ -91,7 +137,7 @@ impl LGraph {
             .collect();
         for (source, node_copy) in self.layerless_nodes.iter().zip(&mut copied.layerless_nodes) {
             if let Some(nested) = source.nested_graph.as_deref() {
-                let domain = domains.copy_domain(nested.reference_domain());
+                let domain = copy_domain(nested.reference_domain());
                 let nested_copy = node_copy
                     .nested_graph
                     .insert(Box::new(nested.copy_without_nodes(domain)));
@@ -100,16 +146,9 @@ impl LGraph {
         }
     }
 
-    /// Copies a temporary view of this graph without allocating replacement domains.
-    /// The copy must not be attached alongside its source as a separate graph.
-    pub(crate) fn copy_preserving_reference_domains(&self) -> Self {
-        let mut copied = self.copy_without_nodes(self.reference_domain().clone());
-        copied.layerless_nodes = self
-            .layerless_nodes
-            .iter()
-            .map(LNode::copy_preserving_reference_domains)
-            .collect();
-        copied
+    /// Copies a detached validation snapshot whose scoped references still target the source domains.
+    pub(crate) fn copy_preserving_reference_domains(&self) -> ValidationGraphCopy {
+        ValidationGraphCopy(self.copy_tree(GraphReferenceDomain::clone))
     }
 
     fn copy_without_nodes(&self, domain: GraphReferenceDomain) -> Self {
@@ -150,7 +189,7 @@ impl LNode {
         copied.nested_graph = self
             .nested_graph
             .as_deref()
-            .map(|graph| Box::new(graph.copy_preserving_reference_domains()));
+            .map(|graph| Box::new(graph.copy_tree(GraphReferenceDomain::clone)));
         copied
     }
 
@@ -196,5 +235,102 @@ impl LNode {
             hidden: self.hidden,
             compound: self.compound,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::graph::{LNodeKind, LPort, PortRef, PortType};
+    use crate::{LayeredOptions, PipelineError, RandomSeedError, execute_ported_processors};
+
+    #[test]
+    fn deep_internal_copies_preserve_domains_on_a_small_stack() {
+        const DEPTH: usize = 1_024;
+
+        fn assert_chain(mut source: &LGraph, mut copy: &LGraph, root: &LGraph, first: usize) {
+            for level in first..DEPTH {
+                assert!(
+                    source
+                        .reference_domain()
+                        .same_arena(copy.reference_domain())
+                );
+                let owner = &copy.layerless_nodes[0];
+                assert_eq!(owner.model_order, Some(level));
+                copy = owner.nested_graph.as_deref().unwrap();
+                let backlink = owner.ports[0].port_dummy.as_ref().unwrap();
+                assert!(backlink.belongs_to(copy));
+                assert_eq!(backlink.node, 0);
+                source = source.layerless_nodes[0].nested_graph.as_deref().unwrap();
+            }
+            assert!(
+                source
+                    .reference_domain()
+                    .same_arena(copy.reference_domain())
+            );
+            let origin = copy.layerless_nodes[0].origin_port.as_ref().unwrap();
+            assert!(origin.belongs_to(root));
+            assert_eq!(origin.port, PortRef { node: 0, port: 0 });
+        }
+
+        std::thread::Builder::new()
+            .stack_size(128 * 1024)
+            .spawn(|| {
+                let mut root = ValidationGraphCopy(LGraph::new("same", LayeredOptions::default()));
+                let origin = root.scoped_port(PortRef { node: 0, port: 0 });
+                let mut graph: &mut LGraph = &mut root;
+                for level in 0..DEPTH {
+                    let child = LGraph::new("same", LayeredOptions::default());
+                    let mut owner = LNode::new("owner", 1.0, 1.0, Some(level));
+                    let mut port = LPort::new("out", 0, PortType::Output);
+                    port.port_dummy = Some(child.scoped_node(0));
+                    owner.ports.push(port);
+                    owner.nested_graph = Some(Box::new(child));
+                    graph.layerless_nodes.push(owner);
+                    graph = graph.layerless_nodes[0]
+                        .nested_graph
+                        .as_deref_mut()
+                        .unwrap();
+                }
+                graph.options.random_seed = 0;
+                let mut dummy = LNode::new("deep-dummy", 1.0, 1.0, None);
+                dummy.kind = LNodeKind::ExternalPort;
+                dummy.origin_port = Some(origin);
+                graph.layerless_nodes.push(dummy);
+
+                let source_refs = Arc::strong_count(&root.reference_domain().0);
+                let copy = root.copy_preserving_reference_domains();
+                assert_chain(&root, &copy, &root, 0);
+                drop(copy);
+
+                let owner = &root.layerless_nodes[0];
+                let mut node_copy = owner.copy_preserving_reference_domains();
+                let nested_copy = ValidationGraphCopy(*node_copy.nested_graph.take().unwrap());
+                assert!(
+                    node_copy.ports[0]
+                        .port_dummy
+                        .as_ref()
+                        .unwrap()
+                        .belongs_to(&nested_copy)
+                );
+                assert_chain(
+                    owner.nested_graph.as_deref().unwrap(),
+                    &nested_copy,
+                    &root,
+                    1,
+                );
+                drop(nested_copy);
+
+                // The full runner drops its validation snapshot on this early return.
+                assert!(matches!(
+                    execute_ported_processors(&mut root),
+                    Err(PipelineError::RandomSeed(RandomSeedError::Unresolved { graph_path }))
+                        if graph_path == "same"
+                ));
+                assert_eq!(Arc::strong_count(&root.reference_domain().0), source_refs);
+            })
+            .unwrap()
+            .join()
+            .unwrap();
     }
 }
