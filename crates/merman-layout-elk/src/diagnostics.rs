@@ -2,7 +2,7 @@
 
 use super::{
     Algorithm, ElkOperationSeed, Error, Graph, GraphExecution, HierarchySweepDebugTrace,
-    LayeredPhase, ProcessorKind, Result, graph_to_source_input, source_port,
+    LayeredPhase, ProcessorKind, Result, input::graph_to_source_input, source_port,
 };
 use source_port::{LGraph, LNodeKind};
 use std::fmt::Write as _;

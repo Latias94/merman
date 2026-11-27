@@ -4,6 +4,8 @@
 //! only visits children. SPOrE's margin calculation consumes that existing title rectangle.
 //! Source: https://github.com/eclipse-elk/elk/blob/323312916048544e4e594eab3303cdb0d01e2929/plugins/org.eclipse.elk.alg.spore/src/org/eclipse/elk/alg/spore/ElkGraphImporter.java
 
+use std::collections::HashSet;
+
 use super::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
