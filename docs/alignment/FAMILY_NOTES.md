@@ -1070,7 +1070,8 @@ exponent thresholds, shortest rounded representation, unsigned zero, and nonfini
 [numeric whitespace tests](../../crates/merman-core/tests/xychart_numeric_whitespace_parity_test.rs)
 and [cross-family numeric tests](../../crates/merman-core/tests/popular_numeric_grammar_parity_test.rs).
 
-Owners: [XYChart layout](../../crates/merman-render-charts/src/xychart/layout.rs),
+Owners: [parser](../../crates/merman-core-structured/src/xychart.rs),
+[XYChart layout](../../crates/merman-render-charts/src/xychart/layout.rs),
 [SVG tests](../../crates/merman-render/tests/xychart_svg_test.rs), and
 [literal-text tests](../../crates/merman-render/tests/xychart_literal_text_test.rs).
 

@@ -89,7 +89,7 @@ diagram-tree-view = ["merman-model/diagram-tree-view"]
 diagram-treemap = ["merman-model/diagram-treemap", "dep:merman-core-structured", "merman-core-structured/diagram-treemap"]
 diagram-venn = ["merman-model/diagram-venn", "dep:merman-core-structured", "merman-core-structured/diagram-venn"]
 diagram-wardley = ["merman-model/diagram-wardley", "dep:indexmap", "dep:ryu-js"]
-diagram-xychart = ["merman-model/diagram-xychart", "dep:ryu-js"]
+diagram-xychart = ["merman-model/diagram-xychart", "dep:merman-core-structured", "merman-core-structured/diagram-xychart"]
 diagram-zenuml = ["merman-model/diagram-zenuml", "dep:merman-core-sequence", "merman-core-sequence/diagram-zenuml"]
 # Configuration, sanitization, detection, and family identity remain unconditional.
 # Parsers and typed models are selected independently from explicit system adapters.

@@ -55,3 +55,7 @@ pub mod treemap;
 #[cfg(feature = "diagram-venn")]
 #[doc(hidden)]
 pub mod venn;
+
+#[cfg(feature = "diagram-xychart")]
+#[doc(hidden)]
+pub mod xychart;

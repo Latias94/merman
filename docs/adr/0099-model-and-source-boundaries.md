@@ -92,7 +92,7 @@ SVG policy.
 
 `merman-core-structured` owns parsing and model construction for Cynefin, Gantt, Info,
 Ishikawa, Journey, Packet, Pie, Quadrant Chart, Radar, Railroad, Sankey, Timeline, Treemap,
-and Venn. It uses shared scanners in `merman-core-preprocess`. `merman-core` prepares the
+Venn, and XY Chart. It uses shared scanners in `merman-core-preprocess`. `merman-core` prepares the
 source, supplies config-dependent sanitization, and maps models and syntax diagnostics into
 public parse results with optional editor facts.
 
