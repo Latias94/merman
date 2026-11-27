@@ -6,6 +6,8 @@ mod direction;
 mod flat;
 mod geometry;
 pub mod lanes;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+mod prepare;
 mod projection;
 mod routing;
 mod sugiyama;
@@ -15,6 +17,11 @@ mod work_budget;
 pub mod working;
 
 pub use flat::{MeasuredNode, layout_compound, layout_flat};
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+pub use prepare::{
+    DefaultLaneIdPolicy, FlowSwimlanePreparation, measure_zero_width_lane_titles,
+    normalize_direction, prepare_working_layout, synthetic_node,
+};
 pub use projection::{SwimlaneLayoutParts, project_layout};
 
 use merman_render_core::{Result, resources::OperationWorkMeter};

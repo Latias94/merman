@@ -1,5 +1,5 @@
-use super::bpmn::BpmnShape;
 use crate::model::LayoutPoint;
+use merman_render_flow::bpmn::BpmnShape;
 
 #[test]
 fn bpmn_elk_caption_projection_matches_the_pinned_twenty_step_oracle() {

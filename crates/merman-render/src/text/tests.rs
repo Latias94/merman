@@ -1,6 +1,7 @@
 use super::*;
 use crate::graph_label::flowchart_label_metrics_for_layout;
 use crate::text::metrics::style_requests_bold_font_weight;
+use merman_render_core::text::inline_html::SvgTextEntityMode;
 use merman_render_core::text::{
     svg_title_bbox_vertical_extents_px, trim_ecmascript_whitespace,
     trim_html_collapsible_ascii_whitespace, wrap_markdown_word_lines,

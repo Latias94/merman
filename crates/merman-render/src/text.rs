@@ -5,23 +5,10 @@ pub use merman_render_core::text::flowchart_html_line_height_px;
 pub use merman_render_core::text::html_label_layout::flowchart_html_has_inline_style_tags;
 #[cfg(test)]
 use merman_render_core::text::inline_html::MermaidMarkdownWordType;
-#[cfg(any(
-    feature = "diagram-agentflow",
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    all(test, feature = "diagram-mindmap")
-))]
-pub(crate) use merman_render_core::text::inline_html::SvgTextEntityMode;
 pub use merman_render_core::text::inline_html::measure_html_with_inline_styles;
 use merman_render_core::text::line_break;
 #[cfg(feature = "markdown-labels")]
 pub use merman_render_core::text::measure_markdown_with_inline_styles;
-#[cfg(any(
-    feature = "diagram-agentflow",
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane"
-))]
-pub(crate) use merman_render_core::text::measure_svg_markdown_word_lines;
 #[cfg(all(test, feature = "markdown-labels"))]
 pub(crate) use merman_render_core::text::measure_wrapped_markdown_with_inline_styles;
 #[cfg(any(feature = "diagram-er", feature = "diagram-requirement"))]

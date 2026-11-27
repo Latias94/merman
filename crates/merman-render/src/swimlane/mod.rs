@@ -1,4 +1,7 @@
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(all(
+    feature = "layout-shoal",
+    any(feature = "diagram-flowchart", feature = "diagram-swimlane")
+))]
 mod prepare;
 #[cfg(all(
     feature = "layout-shoal",
@@ -36,9 +39,16 @@ use merman_model::presentation::PresentationConfig;
 #[cfg(feature = "diagram-er")]
 pub(crate) use merman_render_flow::swimlane::MeasuredNode;
 use merman_render_flow::swimlane::SwimlaneLayoutParts;
+#[cfg(all(
+    feature = "layout-shoal",
+    any(feature = "diagram-flowchart", feature = "diagram-swimlane")
+))]
+use merman_render_flow::swimlane::working;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use merman_render_flow::swimlane::{
-    admit_layout_work, config, lanes, project_layout, solve, source_layout_work_units, working,
+    DefaultLaneIdPolicy, FlowSwimlanePreparation, admit_layout_work, config,
+    measure_zero_width_lane_titles, prepare_working_layout, project_layout, solve,
+    source_layout_work_units,
 };
 #[cfg(any(feature = "diagram-er", feature = "diagram-mindmap"))]
 use std::sync::Arc;
@@ -123,15 +133,22 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
         config.node_gap *= spacing;
         config.layer_gap *= spacing;
     }
-    let mut working = prepare::prepare(
+    let mut working = prepare_working_layout(
         &render_model,
         (&visible_edges, &transport_plan),
-        effective_config,
-        #[cfg(feature = "layout-shoal")]
-        canonical,
-        execution,
-        svg_label_sidecar,
-        edge_style_plan,
+        FlowSwimlanePreparation {
+            effective_config,
+            work_meter: execution.work_meter_ref(),
+            measurer: execution.text_measurer(),
+            math_renderer: execution.math_renderer(),
+            svg_label_sidecar,
+            edge_style_plan,
+            default_lane_id_policy: if canonical {
+                DefaultLaneIdPolicy::ReserveCollision
+            } else {
+                DefaultLaneIdPolicy::Legacy
+            },
+        },
     )?;
     #[cfg(feature = "layout-shoal")]
     let shoal = if canonical {
@@ -149,7 +166,7 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
     };
     if !canonical {
         solve(&mut working, config, USE_BPMN_DRAWN_SIZE, work_meter)?;
-        prepare::measure_zero_width_lane_titles(
+        measure_zero_width_lane_titles(
             &mut working,
             model,
             render_label_sources,
