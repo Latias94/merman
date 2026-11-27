@@ -2,7 +2,6 @@
 
 #[cfg(any(
     feature = "diagram-agentflow",
-    feature = "diagram-class",
     feature = "diagram-flowchart",
     feature = "diagram-swimlane"
 ))]

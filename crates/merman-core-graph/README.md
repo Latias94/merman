@@ -1,6 +1,7 @@
 # merman-core-graph
 
-Parsing for Mermaid graph diagrams. `diagram-class` produces source-ordered grammar actions.
+Parsing for Mermaid graph diagrams. `diagram-class` owns Class syntax and replays the
+source-ordered grammar actions into the canonical model.
 `diagram-er` parses entity–relationship diagrams into canonical `merman-model` values.
 `diagram-git-graph` owns GitGraph syntax and semantic model construction. `diagram-state` owns
 State syntax and semantic model construction, including a typed render model with `presentation`.

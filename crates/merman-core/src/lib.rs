@@ -42,12 +42,8 @@ use merman_core::preprocess::SourceConfigEvidence;
 //! Recognition and custom source registries remain available without a diagram family.
 
 use merman_markup::sanitize;
-#[cfg(feature = "diagram-class")]
-use merman_markup::style;
 #[cfg(feature = "presentation")]
 use merman_markup::theme_color;
-#[cfg(feature = "diagram-class")]
-use merman_model::text as common;
 #[cfg(any(test, feature = "presentation"))]
 use merman_model::time;
 use merman_model::{baseline, json as json_value, operation, text as entities};

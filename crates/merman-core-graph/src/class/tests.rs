@@ -31,6 +31,40 @@ fn ignored_statement_actions_are_collected_only_on_demand() {
 }
 
 #[test]
+fn class_model_replay_keeps_warning_prefix_and_grammar_priority() {
+    let source = "classDiagram\r\nFirst\r\nclass C {\r\nmethod)\r\n}\r\nSecond\r\n";
+    let config = MermaidConfig::empty_object();
+    let control = OperationControl::new();
+    let mut warnings = Vec::new();
+
+    let result = ClassSyntax::lex(source, &control)
+        .unwrap()
+        .into_model(&config, "classDiagram", Some(&mut warnings), &control)
+        .unwrap();
+    assert!(matches!(
+        result,
+        Err(ClassModelError::Db(message)) if message == "Invalid class method signature"
+    ));
+    assert_eq!(warnings.len(), 1);
+    let span = warnings[0].span.unwrap();
+    assert_eq!(&source[span.start..span.end], "First");
+
+    let source = format!("{source}class ");
+    warnings.clear();
+    let result = ClassSyntax::lex(&source, &control)
+        .unwrap()
+        .into_model(&config, "classDiagram", Some(&mut warnings), &control)
+        .unwrap();
+    assert!(matches!(
+        result,
+        Err(ClassModelError::Grammar(
+            ClassSyntaxDiagnostic::UnexpectedEof { .. }
+        ))
+    ));
+    assert!(warnings.is_empty());
+}
+
+#[test]
 #[cfg(feature = "editor-facts")]
 fn normalized_names_preserve_their_authored_byte_spans() {
     let source = concat!(

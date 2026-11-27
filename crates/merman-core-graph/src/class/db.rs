@@ -1,21 +1,15 @@
-use crate::MermaidConfig;
-#[cfg(feature = "compat-json")]
-use crate::SourcePresentationMetadata;
-use crate::common::parse_generic_types;
-use crate::sanitize::sanitize_text;
-use crate::utils::format_url;
+use super::ast::{Action, RelationData};
 use indexmap::IndexMap;
-use merman_core_graph::class::{ClassAction as Action, ClassRelationData as RelationData};
-use merman_model::families::class as class_typed;
-use merman_model::text::is_ecmascript_whitespace;
+use merman_markup::{sanitize::sanitize_text, style, url::format_url};
+use merman_model::MermaidConfig;
+use merman_model::families::class::{
+    self as class_typed, LINE_DOTTED, LINE_SOLID, MERMAID_DOM_ID_PREFIX, REL_AGGREGATION,
+    REL_COMPOSITION, REL_DEPENDENCY, REL_EXTENSION, REL_LOLLIPOP, REL_NONE,
+};
+use merman_model::text::{is_ecmascript_whitespace, parse_generic_types};
 use merman_model::warnings::{CLASS_IGNORED_STATEMENT_WARNING_RULE_ID, DiagramWarningFact};
 use serde_json::Value;
 use std::collections::BTreeMap;
-
-use super::{
-    LINE_DOTTED, LINE_SOLID, MERMAID_DOM_ID_PREFIX, REL_AGGREGATION, REL_COMPOSITION,
-    REL_DEPENDENCY, REL_EXTENSION, REL_LOLLIPOP, REL_NONE,
-};
 
 #[derive(Debug, Clone)]
 struct ClassMember {
@@ -416,11 +410,11 @@ impl<'a> ClassDb<'a> {
         );
     }
 
-    pub(super) fn add_class(&mut self, id: &str) {
+    fn add_class(&mut self, id: &str) {
         self.add_class_with_origin(id, false);
     }
 
-    pub(super) fn set_class_label(&mut self, id: &str, label: &str) {
+    fn set_class_label(&mut self, id: &str, label: &str) {
         let (class_name, _) = self.split_class_name_and_type(id);
         self.add_class(&class_name);
         let Some(c) = self.classes.get_mut(&class_name) else {
@@ -435,7 +429,7 @@ impl<'a> ClassDb<'a> {
         };
     }
 
-    pub(super) fn set_direction(&mut self, dir: &str) {
+    fn set_direction(&mut self, dir: &str) {
         self.direction = dir.to_string();
     }
 
@@ -444,7 +438,7 @@ impl<'a> ClassDb<'a> {
         sanitize_text(t.trim_matches(is_ecmascript_whitespace), self.config)
     }
 
-    pub(super) fn add_member(&mut self, class_name: &str, member: &str) -> Result<(), String> {
+    fn add_member(&mut self, class_name: &str, member: &str) -> Result<(), String> {
         self.add_class(class_name);
         let (class_name, _) = self.split_class_name_and_type(class_name);
         let Some(c) = self.classes.get_mut(&class_name) else {
@@ -490,12 +484,7 @@ impl<'a> ClassDb<'a> {
         }
     }
 
-    pub(super) fn set_css_class(
-        &mut self,
-        ids: &str,
-        css_class: &str,
-        style_event_ordinal: Option<usize>,
-    ) {
+    fn set_css_class(&mut self, ids: &str, css_class: &str, style_event_ordinal: Option<usize>) {
         let prior_definition = style_event_ordinal
             .and_then(|_| self.paint_class_definitions.get(css_class))
             .cloned();
@@ -617,7 +606,7 @@ impl<'a> ClassDb<'a> {
     fn set_css_style(&mut self, id: &str, styles: Vec<String>, style_event_ordinal: usize) {
         let paint_styles = styles
             .iter()
-            .filter(|style| crate::style::is_safe_paint_declaration(style))
+            .filter(|style| style::is_safe_paint_declaration(style))
             .cloned()
             .collect::<Vec<_>>();
         if !paint_styles.is_empty()
@@ -648,12 +637,12 @@ impl<'a> ClassDb<'a> {
     fn define_class(&mut self, id: &str, styles: Vec<String>, style_event_ordinal: usize) {
         let paint_styles = styles
             .iter()
-            .filter(|style| crate::style::is_safe_paint_declaration(style))
+            .filter(|style| style::is_safe_paint_declaration(style))
             .cloned()
             .collect::<Vec<_>>();
         let typography_styles = styles
             .iter()
-            .filter(|style| crate::style::is_safe_typography_declaration(style))
+            .filter(|style| style::is_safe_typography_declaration(style))
             .cloned()
             .collect::<Vec<_>>();
         if !typography_styles.is_empty()
@@ -1084,16 +1073,6 @@ impl<'a> ClassDb<'a> {
                 ns.note_ids.push(note.id.clone());
             }
         }
-    }
-
-    #[cfg(feature = "compat-json")]
-    pub(super) fn into_model(self, meta: &SourcePresentationMetadata) -> Value {
-        let model = class_typed::ClassDiagram::new(
-            self.into_semantic_model(&meta.diagram_type),
-            meta.effective_config.as_config(),
-        );
-        super::render_model_to_compat_json(&model, meta)
-            .expect("Class typed model must remain JSON-serializable")
     }
 
     pub(super) fn into_semantic_model(
