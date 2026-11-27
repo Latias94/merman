@@ -263,7 +263,13 @@ impl SourcePresentationConfig {
     }
 
     pub(crate) fn finish_detection(&mut self) {
-        self.authored_paths = self.retained_authored_paths();
+        if self
+            .detection
+            .as_ref()
+            .is_some_and(|baseline| !baseline.authored_paths.is_empty())
+        {
+            self.authored_paths = self.retained_authored_paths();
+        }
         self.detection = None;
     }
 
