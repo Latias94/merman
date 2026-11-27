@@ -65,8 +65,7 @@ pub(crate) use label::{
     flowchart_non_markdown_svg_source_word_lines, flowchart_wrap_svg_source_word_lines,
 };
 pub(crate) use merman_render_flow::shapes::{
-    FlowchartShape, OrganicShapeGeometry, RelativeArc, bang_geometry, cloud_geometry,
-    is_flowchart_process_shape,
+    FlowchartShape, OrganicShapeGeometry, bang_geometry, cloud_geometry, is_flowchart_process_shape,
 };
 pub(crate) use merman_render_flow::svg_label::FlowchartNodeSourceTypography;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]

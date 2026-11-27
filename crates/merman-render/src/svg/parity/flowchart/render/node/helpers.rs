@@ -367,25 +367,6 @@ pub(super) fn write_hand_drawn_path_pair_with_colors(
     );
 }
 
-pub(super) fn write_raw_filled_stroked_path(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    path_data: &str,
-    fill_color: &str,
-    stroke_color: &str,
-    stroke_width: f32,
-    style: &str,
-) {
-    let _ = write!(
-        out,
-        r#"<path d="{}" fill="{}" stroke="{}" stroke-width="{}" style="{}"/>"#,
-        crate::svg::parity::flowchart::escape_attr(path_data),
-        crate::svg::parity::flowchart::escape_attr(fill_color),
-        crate::svg::parity::flowchart::escape_attr(stroke_color),
-        crate::svg::parity::util::fmt_display(stroke_width as f64),
-        crate::svg::parity::flowchart::escape_attr(style),
-    );
-}
-
 pub(super) fn timed_node_label_html<T>(
     timing: crate::svg::parity::timing::RenderTiming,
     details: &mut FlowchartRenderDetails,

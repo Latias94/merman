@@ -1,11 +1,9 @@
 //! Flowchart node shape dispatch.
 
 use crate::flowchart::{FlowchartShape, LeanGeometry, LeanKind, resolve_flowchart_shape};
-use crate::svg::parity::flowchart::escape_attr;
-use crate::svg::parity::fmt;
 use crate::{Error, Result};
 
-use super::{OuterPathShape, body_svg, node_body};
+use super::{OuterPathShape, TerminalNodeBody, body_svg, node_body};
 
 pub(in super::super) fn render_flowchart_shape(
     out: &mut impl crate::svg::parity::SvgOutput,
@@ -32,14 +30,8 @@ pub(in super::super) fn render_flowchart_shape(
                 ),
             });
         }
-        FlowchartShape::Bang => {
-            super::render_bang(out, ctx, common, label, details);
-        }
         FlowchartShape::Bpmn(shape) => {
             super::render_bpmn(out, ctx, common, label, shape)?;
-        }
-        FlowchartShape::Browser => {
-            super::render_browser(out, ctx, common, label, details);
         }
         FlowchartShape::BowTieRectangle => OuterPathShape::BowTieRectangle
             .prepare(ctx, common, label)
@@ -48,22 +40,13 @@ pub(in super::super) fn render_flowchart_shape(
             // The shared renderer uses the original spelling to select left/right/both braces.
             super::render_curly_brace_comment(out, ctx, common, label, details);
         }
-        FlowchartShape::Bucket => {
-            super::render_bucket(out, ctx, common, label, details);
-        }
         FlowchartShape::Circle => {
             super::render_circle(out, ctx, common, details)?;
-        }
-        FlowchartShape::Cloud => {
-            super::render_cloud(out, ctx, common, label, details);
         }
         FlowchartShape::CollapsedGroup => {
             return Err(Error::InvalidModel {
                 message: "collapsedGroup must use the ordered node renderer".to_string(),
             });
-        }
-        FlowchartShape::Console => {
-            super::render_console(out, ctx, common, label, details);
         }
         FlowchartShape::CurvedTrapezoid => OuterPathShape::CurvedTrapezoid
             .prepare(ctx, common, label)
@@ -71,22 +54,11 @@ pub(in super::super) fn render_flowchart_shape(
         FlowchartShape::Cylinder => {
             super::render_cylinder(out, ctx, common, label, details);
         }
-        FlowchartShape::Datastore => {
-            node_body::write_datastore(out, body_svg(common, details));
-        }
         FlowchartShape::Delay => OuterPathShape::Delay
             .prepare(ctx, common, label)
             .write(out, body_svg(common, details)),
         FlowchartShape::Diamond => {
             super::render_diamond(out, common, details);
-        }
-        FlowchartShape::DividedRectangle => node_body::RectangleWithDivider::Divided {
-            authored_padding: ctx.node_padding,
-            neo: common.look_is_neo(),
-        }
-        .write(out, body_svg(common, details), &mut label.dx, &mut label.dy),
-        FlowchartShape::Folder => {
-            super::render_folder(out, ctx, common, label, details);
         }
         FlowchartShape::Document => {
             super::render_wave_document(out, ctx, common, label, details);
@@ -106,11 +78,6 @@ pub(in super::super) fn render_flowchart_shape(
         }
         FlowchartShape::HorizontalCylinder => {
             super::render_horizontal_cylinder(out, ctx, common, label, details);
-        }
-        FlowchartShape::Hourglass => {
-            // Mermaid clears `node.label` but still emits an empty label group.
-            label.text = "";
-            node_body::write_hourglass(out, body_svg(common, details));
         }
         FlowchartShape::Icon => {
             super::render_icon(out, ctx, common, label, details)?;
@@ -158,25 +125,8 @@ pub(in super::super) fn render_flowchart_shape(
         FlowchartShape::NotchedPentagon => OuterPathShape::NotchedPentagon
             .prepare(ctx, common, label)
             .write(out, body_svg(common, details)),
-        FlowchartShape::NotchedRectangle => {
-            node_body::write_notched_rectangle(
-                out,
-                common.layout_node.width,
-                common.layout_node.height,
-                common.style,
-            );
-        }
-        FlowchartShape::Note => {
-            super::render_note(out, ctx, common, details);
-        }
         FlowchartShape::Odd => {
             super::render_odd(out, common, label, details);
-        }
-        FlowchartShape::PaperTape => {
-            super::render_paper_tape(out, ctx, common, label, details);
-        }
-        FlowchartShape::Person => {
-            super::render_person(out, ctx, common, label, details);
         }
         FlowchartShape::Process => {
             super::render_process_rectangle(out, ctx, common, details);
@@ -184,42 +134,14 @@ pub(in super::super) fn render_flowchart_shape(
         FlowchartShape::RoundedRectangle => {
             super::render_rounded_rect(out, ctx, common, details);
         }
-        FlowchartShape::ShadedProcess => node_body::RectangleWithDivider::Shaded.write(
-            out,
-            body_svg(common, details),
-            &mut label.dx,
-            &mut label.dy,
-        ),
         FlowchartShape::StackedDocument => {
             super::render_stacked_document(out, ctx, common, label, details);
-        }
-        FlowchartShape::StackedRectangle => {
-            super::render_stacked_rectangle(out, common, label, details);
         }
         FlowchartShape::Stadium => {
             super::render_stadium(out, ctx, common, label, details);
         }
-        FlowchartShape::Subroutine => {
-            node_body::write_subroutine(out, body_svg(common, details));
-        }
         FlowchartShape::TaggedDocument => {
             super::render_tagged_wave_document(out, ctx, common, label, details);
-        }
-        FlowchartShape::TaggedRectangle => {
-            super::render_tag_rect(out, ctx, common, label, details);
-        }
-        FlowchartShape::Text => {
-            let w = common.layout_node.width.max(0.0);
-            let h = common.layout_node.height.max(0.0);
-            let _ = write!(
-                out,
-                r#"<rect class="text" style="{}" rx="0" ry="0" x="{}" y="{}" width="{}" height="{}"/>"#,
-                escape_attr(common.style),
-                fmt(-w / 2.0),
-                fmt(-h / 2.0),
-                fmt(w),
-                fmt(h)
-            );
         }
         FlowchartShape::Trapezoid => {
             render_lean(out, common, details, LeanKind::Trapezoid);
@@ -227,8 +149,9 @@ pub(in super::super) fn render_flowchart_shape(
         FlowchartShape::Triangle => {
             super::render_triangle_extract(out, ctx, common, label, details);
         }
-        FlowchartShape::WindowPane => {
-            super::render_window_pane(out, common, label, details);
+        shape => {
+            TerminalNodeBody::for_shape(ctx, common, shape)?
+                .write(out, ctx, common, label, details);
         }
     }
 

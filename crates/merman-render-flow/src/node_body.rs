@@ -21,6 +21,7 @@ mod label_container;
 mod lean_trapezoids;
 mod outer_path;
 mod rectangle_with_divider;
+mod shapes;
 mod subroutine;
 
 pub use cylinders::CylinderBody;
@@ -29,6 +30,7 @@ pub use label_container::{advance_hourglass, write_hourglass, write_notched_rect
 pub use lean_trapezoids::{advance_lean_hand_drawn, write_lean};
 pub use outer_path::{OuterPathBody, OuterPathTranslation};
 pub use rectangle_with_divider::RectangleWithDivider;
+pub use shapes::{LayoutNodeBody, MeasuredNodeBody};
 pub use subroutine::{advance_subroutine, write_subroutine};
 
 /// Layout dimensions and the operation's existing RoughJS inputs.

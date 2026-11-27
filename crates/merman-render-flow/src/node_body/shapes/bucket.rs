@@ -1,12 +1,16 @@
 //! Flowchart v2 bucket shape.
 
+use super::super::{NodeBodyGeometry, NodeBodySvg, escape_attr, prepare_node_path};
+use merman_render_core::{
+    number_format::canonical_number as fmt,
+    rough_svg::{
+        closed_path_d_from_points as path_from_points,
+        paths::{RoughGeometryTarget, roughjs_paths_for_hand_drawn_svg_path},
+    },
+    svg_output::SvgOutput,
+    text::TextMetrics,
+};
 use std::fmt::Write as _;
-
-use crate::svg::parity::flowchart::escape_attr;
-use crate::svg::parity::{fmt, fmt_display};
-
-use super::super::geom::path_from_points;
-use super::super::roughjs::roughjs_paths_for_hand_drawn_svg_path;
 
 fn bucket_points(w: f64, top_y: f64, bottom_y: f64, bottom_w: f64, rim_ry: f64) -> Vec<(f64, f64)> {
     const ARC_SEGMENTS: usize = 12;
@@ -29,15 +33,15 @@ fn bucket_points(w: f64, top_y: f64, bottom_y: f64, bottom_w: f64, rim_ry: f64) 
     }
     points
 }
-
-pub(in crate::svg::parity::flowchart::render::node) fn render_bucket(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
-    common: &super::super::FlowchartNodeRenderCommon<'_>,
-    label: &mut super::super::FlowchartNodeLabelState<'_>,
-    details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-) {
-    let (w, rim_ry, top_y, bottom_y, hand_drawn_body) = prepare_bucket_geometry(ctx, common, label);
+pub(super) fn render_bucket(
+    out: &mut impl SvgOutput,
+    mut svg: NodeBodySvg<'_>,
+    metrics: TextMetrics,
+    padding: f64,
+    accent: &str,
+) -> f64 {
+    let (w, rim_ry, top_y, bottom_y, hand_drawn_body) =
+        prepare_bucket_geometry(&svg.geometry, metrics, padding);
     let bottom_w = w * 0.72;
     let mut body = String::new();
     let _ = write!(
@@ -58,43 +62,41 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_bucket(
         fmt(-w / 2.0),
         fmt(top_y),
     );
-    if common.look_is_hand_drawn() {
+    if svg.geometry.hand_drawn {
         let _ = write!(
             out,
             r#"<g class="basic label-container" style="{}">"#,
-            escape_attr(common.rough_group_style)
+            escape_attr(svg.rough_group_style)
         );
     } else {
         out.push_str(r#"<g class="basic label-container">"#);
     }
-    if common.look_is_hand_drawn() {
-        if let Some((fill_d, stroke_d)) =
-            super::super::helpers::timed_node_roughjs(common.timing, details, || {
-                roughjs_paths_for_hand_drawn_svg_path(
-                    &hand_drawn_body,
-                    common.stroke_width,
-                    common.stroke_dasharray,
-                    common.work_meter,
-                    common.hand_drawn_seed,
-                )
-            })
-        {
+    if svg.geometry.hand_drawn {
+        if let Some((fill_d, stroke_d)) = svg.timed_rough(|geometry| {
+            roughjs_paths_for_hand_drawn_svg_path(
+                &hand_drawn_body,
+                geometry.stroke_width,
+                geometry.stroke_dasharray,
+                geometry.work_meter,
+                geometry.randomness,
+            )
+        }) {
             let _ = write!(
                 out,
                 r#"<path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/>"#,
                 escape_attr(&fill_d),
-                escape_attr(common.fill_color),
+                escape_attr(svg.fill_color),
                 escape_attr(&stroke_d),
-                escape_attr(common.stroke_color),
-                fmt_display(common.stroke_width as f64),
-                escape_attr(common.stroke_dasharray),
+                escape_attr(svg.stroke_color),
+                fmt(svg.geometry.stroke_width as f64),
+                escape_attr(svg.geometry.stroke_dasharray),
             );
         } else {
             let _ = write!(
                 out,
                 r#"<path d="{}" style="{}"/>"#,
                 escape_attr(&body),
-                escape_attr(common.style),
+                escape_attr(svg.style),
             );
         }
     } else {
@@ -102,7 +104,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_bucket(
             out,
             r#"<path d="{}" style="{}"/>"#,
             escape_attr(&body),
-            escape_attr(common.style),
+            escape_attr(svg.style),
         );
     }
 
@@ -112,34 +114,24 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_bucket(
         fmt(top_y),
         fmt(w / 2.0),
         fmt(rim_ry),
-        escape_attr(ctx.node_border_color.as_str()),
+        escape_attr(accent),
     );
     out.push_str("</g>");
 
-    let body_center_y = top_y + (bottom_y - top_y) / 2.0;
-    label.dy = body_center_y;
+    top_y + (bottom_y - top_y) / 2.0
 }
 
 fn prepare_bucket_geometry(
-    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
-    common: &super::super::FlowchartNodeGeometry<'_>,
-    label: &super::super::FlowchartNodeLabelState<'_>,
+    geometry: &NodeBodyGeometry<'_>,
+    metrics: TextMetrics,
+    padding: f64,
 ) -> (f64, f64, f64, f64, String) {
-    let metrics = super::super::helpers::compute_node_label_metrics(
-        ctx,
-        common.node_id,
-        Some(common.layout_node),
-        label.text,
-        label.label_type,
-        common.node_classes,
-        common.node_styles,
-    );
-    let p = ctx.node_padding.max(0.0);
+    let p = padding.max(0.0);
     let w = (metrics.width + 2.0 * p)
-        .max(common.layout_node.width.max(0.0))
+        .max(geometry.width.max(0.0))
         .max(80.0);
     let rim_ry = (w * 0.08).clamp(5.0, 12.0);
-    let total_height = (metrics.height + 2.0 * p + rim_ry).max(common.layout_node.height.max(0.0));
+    let total_height = (metrics.height + 2.0 * p + rim_ry).max(geometry.height.max(0.0));
     let top_y = -total_height / 2.0 + rim_ry;
     let bottom_y = total_height / 2.0;
     let bottom_w = w * 0.72;
@@ -149,17 +141,14 @@ fn prepare_bucket_geometry(
     (w, rim_ry, top_y, bottom_y, hand_drawn_body)
 }
 
-pub(super) fn advance_bucket_rough_geometry(
-    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
-    common: &super::super::FlowchartNodeGeometry<'_>,
-    label: &mut super::super::FlowchartNodeLabelState<'_>,
+pub(super) fn advance_rough_geometry(
+    geometry: NodeBodyGeometry<'_>,
+    metrics: TextMetrics,
+    padding: f64,
 ) {
-    if !common.look_is_hand_drawn() {
-        return;
-    }
-    let (_, _, _, _, hand_drawn_body) = prepare_bucket_geometry(ctx, common, label);
-    let target = super::super::roughjs::RoughGeometryTarget::Query;
-    let _ = super::super::helpers::prepare_node_path(common, &hand_drawn_body, target);
+    let (_, _, _, _, hand_drawn_body) = prepare_bucket_geometry(&geometry, metrics, padding);
+    let target = RoughGeometryTarget::Query;
+    let _ = prepare_node_path(&geometry, &hand_drawn_body, target);
 }
 
 #[cfg(test)]
