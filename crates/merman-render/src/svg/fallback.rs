@@ -5,7 +5,6 @@
 // support HTML inside `<foreignObject>` (e.g. many rasterizers).
 
 mod attr;
-mod cascade;
 mod context;
 mod css;
 mod html;
@@ -23,11 +22,11 @@ use std::convert::Infallible;
 use std::fmt::{self, Write};
 
 use attr::is_self_closing;
-use cascade::{CascadeIndex, Namespace, SourceElement};
 use context::{SourceFrame, attribute, source_class_attr_tokens};
-pub(crate) use html::measure_styled_html_label;
-use html::{
-    foreign_object_html_wrapping, normalized_foreign_object_text, standalone_node_label_box,
+use html::{foreign_object_html_wrapping, standalone_node_label_box};
+use merman_render_core::text::styled_html::{
+    cascade::{self, CascadeIndex, Namespace, SourceElement},
+    normalized_foreign_object_text,
 };
 
 /// A writer's glyph-only HTML filter request; the matching paragraph is checked before projection.
@@ -164,7 +163,7 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                 source_stack_overflow_depth -= 1;
             } else if source_stack
                 .last()
-                .is_some_and(|element| element.local_name.eq_ignore_ascii_case(name))
+                .is_some_and(|element| element.local_name().eq_ignore_ascii_case(name))
             {
                 source_stack.pop();
             }
@@ -269,7 +268,7 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                     i = i_next;
                     continue;
                 }
-                let normalized = normalized_foreign_object_text(&resolved.fragments, checkpoint)?;
+                let normalized = normalized_foreign_object_text(&resolved, checkpoint)?;
                 if !normalized.is_empty() {
                     let typography = resolved.typography;
                     let writer_background = if inner.contains("labelBkg") {

@@ -32,6 +32,9 @@ mod markdown;
 #[cfg(feature = "markdown-labels")]
 mod markdown_label;
 mod measure;
+#[cfg(feature = "styled-html-labels")]
+#[doc(hidden)]
+pub mod styled_html;
 #[cfg(all(feature = "text-layout", feature = "svg-parse"))]
 #[doc(hidden)]
 pub mod svg_label;

@@ -111,7 +111,7 @@ math = ["merman-render-core/math", "merman-render-sequence?/math"]
 merman-markup = { workspace = true, features = ["html", "url", "color"] }
 merman-model = { workspace = true, features = ["presentation-data", "compat-json", "html-entities"] }
 merman-render-charts = { workspace = true, optional = true }
-merman-render-core = { workspace = true, features = ["error-diagram", "euclid-geometry", "icon-registry", "math-labels", "root-svg", "svg-animation", "svg-bounds", "svg-edge-parity", "svg-identity", "svg-safety", "theme-svg", "xhtml-labels"] }
+merman-render-core = { workspace = true, features = ["error-diagram", "euclid-geometry", "icon-registry", "math-labels", "root-svg", "styled-html-labels", "svg-animation", "svg-bounds", "svg-edge-parity", "svg-identity", "svg-safety", "theme-svg"] }
 merman-render-flow = { workspace = true, optional = true }
 merman-render-graph = { workspace = true, optional = true }
 merman-render-sequence = { workspace = true, optional = true }

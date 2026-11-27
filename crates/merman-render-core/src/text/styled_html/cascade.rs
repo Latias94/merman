@@ -1,15 +1,16 @@
-use super::html::HtmlTextFragment;
+use super::HtmlTextFragment;
 use crate::mermaid_style::{
     CssFontSizeContext, HtmlTextGeometry, HtmlTextGeometryDeclarations, HtmlTextProperty,
     is_supported_css_color_value, is_supported_css_font_style_value,
     is_supported_css_font_weight_value, parse_style_declaration, resolve_mermaid_font_size_px,
     visit_style_declaration_boundaries_with_checkpoints,
 };
-use crate::svg::pipeline::{
+use crate::svg_scan::{
     SvgTagScanner, checkpoint_loop, decode_xml_style_text_with_checkpoints, end_tag_name,
     find_tag_end_with_checkpoints, find_with_checkpoints, start_tag_name, trim_with_checkpoints,
 };
-use crate::text::{HtmlWhiteSpace, TextStyle, resolve_css_font_weight, xhtml_font_default};
+use crate::text::html_wrap::HtmlWhiteSpace;
+use crate::text::{TextStyle, resolve_css_font_weight, xhtml_font_default};
 use cssparser::{
     AtRuleParser, BasicParseErrorKind, CowRcStr, ParseError, Parser, ParserState,
     QualifiedRuleParser, StyleSheetParser, Token, parse_important,
@@ -24,38 +25,44 @@ const DEFAULT_COLOR: &str = "#000";
 // Fallback text is a bounded adapter, so pathological CSS magnitudes must not enter output or
 // overflow relative-unit and line-height calculations.
 const MAX_CSS_NUMERIC_VALUE: f64 = 1_000_000.0;
-pub(super) const MAX_SELECTOR_STYLESHEET_BYTES: usize = 2 * 1024 * 1024;
+pub const MAX_SELECTOR_STYLESHEET_BYTES: usize = 2 * 1024 * 1024;
 const MAX_SELECTOR_BYTES: usize = 1024 * 1024;
 const MAX_SELECTOR_QUALIFIED_RULES: usize = 8192;
 const MAX_SELECTOR_BRANCHES: usize = 16_384;
 const MAX_SELECTOR_RULES: usize = 16_384;
 const MAX_SELECTOR_COMPONENTS: usize = 65_536;
-pub(super) const MAX_SELECTOR_COMPONENTS_PER_BRANCH: usize = 64;
+pub const MAX_SELECTOR_COMPONENTS_PER_BRANCH: usize = 64;
 const MAX_SELECTOR_DECLARATIONS: usize = 32_768;
-pub(super) const MAX_SELECTOR_DECLARATIONS_PER_RULE: usize = 256;
-pub(super) const MAX_SELECTOR_POSTINGS: usize = 8192;
-pub(super) const MAX_UNIVERSAL_POSTINGS: usize = 4096;
+pub const MAX_SELECTOR_DECLARATIONS_PER_RULE: usize = 256;
+pub const MAX_SELECTOR_POSTINGS: usize = 8192;
+pub const MAX_UNIVERSAL_POSTINGS: usize = 4096;
 // Matching work is byte-weighted so repeated class/attribute string scans cannot hide behind a
 // small selector-component count. Keep enough headroom for normal multi-label Mermaid diagrams.
-pub(super) const MAX_SELECTOR_MATCH_WORK: usize = 16 * 1024 * 1024;
-pub(super) const MAX_SELECTOR_ANCESTRY_DEPTH: usize = crate::resources::MAX_RESVG_TREE_DEPTH;
+pub const MAX_SELECTOR_MATCH_WORK: usize = 16 * 1024 * 1024;
+pub const MAX_SELECTOR_ANCESTRY_DEPTH: usize = crate::resources::MAX_RESVG_TREE_DEPTH;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-pub(super) enum Namespace {
+pub enum Namespace {
     Svg,
     Xhtml,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(super) struct SourceElement {
-    pub(super) namespace: Namespace,
-    pub(super) local_name: String,
-    pub(super) id: Option<String>,
-    pub(super) classes: Arc<HashSet<String>>,
+pub struct SourceElement {
+    namespace: Namespace,
+    local_name: String,
+    id: Option<String>,
+    classes: Arc<HashSet<String>>,
     attributes: Arc<HashMap<String, Option<String>>>,
-    pub(super) inline: Vec<Declaration>,
-    pub(super) presentation: Vec<Declaration>,
+    inline: Vec<Declaration>,
+    presentation: Vec<Declaration>,
     selector_weight: usize,
+}
+
+impl SourceElement {
+    pub fn local_name(&self) -> &str {
+        &self.local_name
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -65,52 +72,52 @@ struct SourceAttribute {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(super) struct Declaration {
-    pub(super) property: String,
-    pub(super) value: Arc<str>,
-    pub(super) important: bool,
-    pub(super) order: usize,
+struct Declaration {
+    property: String,
+    value: Arc<str>,
+    important: bool,
+    order: usize,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct ResolvedStyle {
-    pub(super) font_size: f64,
-    pub(super) font_family: Arc<str>,
-    pub(super) font_weight: Option<Arc<str>>,
-    pub(super) font_style: Option<Arc<str>>,
-    pub(super) white_space: HtmlWhiteSpace,
+struct ResolvedStyle {
+    font_size: f64,
+    font_family: Arc<str>,
+    font_weight: Option<Arc<str>>,
+    font_style: Option<Arc<str>>,
+    white_space: HtmlWhiteSpace,
     text_geometry: HtmlTextGeometry,
     line_box_floor: f64,
-    pub(super) fill: Arc<str>,
+    fill: Arc<str>,
     color: Option<Arc<str>>,
-    pub(super) background_color: Option<Arc<str>>,
+    background_color: Option<Arc<str>>,
     background_color_specified: bool,
     paint: Arc<[(String, Arc<str>)]>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct ResolvedFallbackTypography {
-    pub(super) font_size: f64,
-    pub(super) font_family: Arc<str>,
-    pub(super) font_weight: Option<Arc<str>>,
-    pub(super) font_style: Option<Arc<str>>,
-    pub(super) line_height: f64,
+pub struct ResolvedFallbackTypography {
+    pub font_size: f64,
+    pub font_family: Arc<str>,
+    pub font_weight: Option<Arc<str>>,
+    pub font_style: Option<Arc<str>>,
+    pub line_height: f64,
     pub(super) line_box_floor: f64,
-    pub(super) text_geometry: HtmlTextGeometry,
-    pub(super) fill: Arc<str>,
-    pub(super) label_background: Option<Arc<str>>,
+    pub text_geometry: HtmlTextGeometry,
+    pub fill: Arc<str>,
+    pub label_background: Option<Arc<str>>,
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct ResolvedForeignObject {
-    pub(super) typography: ResolvedFallbackTypography,
+pub struct ResolvedForeignObject {
+    pub typography: ResolvedFallbackTypography,
     pub(super) fragments: Vec<HtmlTextFragment>,
-    pub(super) paint: Arc<[(String, Arc<str>)]>,
+    pub paint: Arc<[(String, Arc<str>)]>,
     pub(super) has_text_geometry: bool,
 }
 
 impl ResolvedFallbackTypography {
-    pub(super) fn text_style(&self) -> TextStyle {
+    pub fn text_style(&self) -> TextStyle {
         TextStyle {
             font_family: Some(self.font_family.to_string()),
             font_size: self.font_size,
@@ -377,7 +384,7 @@ impl SelectorBudget {
 }
 
 #[derive(Debug)]
-pub(super) struct CascadeIndex {
+pub struct CascadeIndex {
     rules: Vec<Rule>,
     id_postings: HashMap<String, Vec<usize>>,
     class_postings: HashMap<String, Vec<usize>>,
@@ -517,7 +524,7 @@ impl CascadeIndex {
         candidates
     }
 
-    pub(super) fn new<E>(
+    pub fn new<E>(
         svg: &str,
         checkpoint: &mut impl FnMut() -> Result<(), E>,
         selector_limit: &mut impl FnMut(usize, usize) -> Result<(), E>,
@@ -564,7 +571,7 @@ impl CascadeIndex {
         Self::with_postings(rules, budget, checkpoint, selector_limit)
     }
 
-    pub(super) fn source_element<E>(
+    pub fn source_element<E>(
         tag: &str,
         namespace: Namespace,
         checkpoint: &mut impl FnMut() -> Result<(), E>,
@@ -711,7 +718,7 @@ impl CascadeIndex {
     /// This reuses the bounded source matcher; it does not interpret additional CSS properties.
     /// The writer's HTML glyph filter cannot stand in for unprojected effects on its
     /// original HTML ancestors, or for a stylesheet overriding the paragraph itself.
-    pub(super) fn permits_html_text_filter<E>(
+    pub fn permits_html_text_filter<E>(
         &mut self,
         ancestors: &[SourceElement],
         foreign_object: &str,
@@ -785,7 +792,7 @@ impl CascadeIndex {
 
     // An unparsed declaration or conservative selector guard may also affect the original HTML
     // through inheritance. Check that source path before projecting any filtered fallback.
-    pub(super) fn permits_source_projection<E>(
+    pub fn permits_source_projection<E>(
         &mut self,
         ancestors: &[SourceElement],
         foreign_object: &str,
@@ -855,7 +862,7 @@ impl CascadeIndex {
         Ok(!self.budget.matching_exhausted)
     }
 
-    pub(super) fn permits_in_place_fallback<E>(
+    pub fn permits_in_place_fallback<E>(
         &mut self,
         ancestors: &[SourceElement],
         fragment: &str,
@@ -939,7 +946,7 @@ impl CascadeIndex {
         Ok(true)
     }
 
-    pub(super) fn inline_text_css_residual<E>(
+    pub fn inline_text_css_residual<E>(
         &mut self,
         ancestors: &[SourceElement],
         fragment: &str,
@@ -992,7 +999,7 @@ impl CascadeIndex {
         Ok(false)
     }
 
-    pub(super) fn resolve_path<E>(
+    fn resolve_path<E>(
         &mut self,
         path: &[SourceElement],
         inherited: Option<&ResolvedStyle>,
@@ -1175,7 +1182,7 @@ impl CascadeIndex {
         })
     }
 
-    pub(super) fn resolve_foreign_object<E>(
+    pub fn resolve_foreign_object<E>(
         &mut self,
         svg_ancestors: &[SourceElement],
         foreign_object_tag: &str,
@@ -1852,7 +1859,7 @@ fn fallback_typography(
     }
 }
 
-pub(super) const PAINT_PROPERTIES: [&str; 9] = [
+const PAINT_PROPERTIES: [&str; 9] = [
     "opacity",
     "display",
     "visibility",

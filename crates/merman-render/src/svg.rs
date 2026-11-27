@@ -8,7 +8,7 @@
 #![forbid(unsafe_code)]
 
 mod fallback;
-pub(crate) use fallback::measure_styled_html_label;
+pub(crate) use merman_render_core::text::styled_html::measure_styled_html_label;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
