@@ -990,22 +990,27 @@ C4Context
                     .unwrap()
                     .unwrap();
                 let center = ink.center() + Vec2::new(origin.x, origin.y);
-                let distance = |path: &BezPath| {
-                    path.segments()
-                        .map(|segment| segment.nearest(center, 1e-3).distance_sq)
-                        .fold(f64::INFINITY, f64::min)
-                };
-                let own = distance(&paths[idx]);
-                assert!(own.is_finite());
-                for (other, shaft) in paths.iter().enumerate().filter(|(other, _)| *other != idx) {
-                    let foreign = distance(shaft);
-                    assert!(
-                        own < foreign,
-                        "{boundaries}×{cards} caption {} is {:.2}px from its shaft and {:.2}px from shaft {other}",
-                        route.id,
-                        own.sqrt(),
-                        foreign.sqrt(),
-                    );
+                let clearance = merman_render_graph::c4::SHAFT_CLEARANCE;
+                for displaced in [center, center + (0.0, clearance), center - (0.0, clearance)] {
+                    let distance = |path: &BezPath| {
+                        path.segments()
+                            .map(|segment| segment.nearest(displaced, 1e-3).distance_sq)
+                            .fold(f64::INFINITY, f64::min)
+                    };
+                    let own = distance(&paths[idx]);
+                    assert!(own.is_finite());
+                    for (other, shaft) in
+                        paths.iter().enumerate().filter(|(other, _)| *other != idx)
+                    {
+                        let foreign = distance(shaft);
+                        assert!(
+                            own < foreign,
+                            "{boundaries}×{cards} caption {} at {displaced:?} is {:.2}px from its shaft and {:.2}px from shaft {other}",
+                            route.id,
+                            own.sqrt(),
+                            foreign.sqrt(),
+                        );
+                    }
                 }
             }
         }

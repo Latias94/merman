@@ -12,6 +12,10 @@ use crate::graph_layout::ir::Size;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{Bounds as DiagramBounds, C4RelLayout, LayoutPoint};
 
+// A substituted font can move the visible center within the reserved ink clearance.
+// That displacement may increase the host distance and decrease the neighbor distance.
+const OWNERSHIP_CLEARANCE: f64 = 2.0 * SHAFT_CLEARANCE;
+
 #[derive(Debug)]
 pub(super) struct PlacedRelationLabel {
     pub(super) origin: LayoutPoint,
@@ -106,7 +110,7 @@ impl CaptionInk {
                 .map(|segment| segment.path.nearest(center, 1e-3).distance_sq)
                 .fold(f64::INFINITY, f64::min)
                 .sqrt()
-                + SHAFT_CLEARANCE;
+                + OWNERSHIP_CLEARANCE;
             if !reach.is_finite() {
                 occluded[edge] = true;
                 continue;
@@ -406,6 +410,45 @@ impl SeatScene<'_> {
         let preferred = ink.center();
         let dx = ink.width() / 2.0 + self.stroke_outset + SHAFT_CLEARANCE;
         let dy = ink.height() / 2.0 + self.stroke_outset + SHAFT_CLEARANCE;
+        // Keep a marginal seat on its local run when there is room closer to the shaft.
+        // Probe the same run before allocating candidates along the entire relationship.
+        work.charge_adapter(shaft.segments.len())?;
+        let nearest = shaft
+            .segments
+            .iter()
+            .map(|segment| (segment.path, segment.path.nearest(preferred, 1e-3)))
+            .min_by(|(_, a), (_, b)| a.distance_sq.total_cmp(&b.distance_sq));
+        if let Some((PathSeg::Line(line), nearest)) = nearest {
+            let anchor = line.eval(nearest.t);
+            let normal = if line.p0.y == line.p1.y {
+                Some(Vec2::new(0.0, dy / 2.0))
+            } else if line.p0.x == line.p1.x {
+                Some(Vec2::new(dx / 2.0, 0.0))
+            } else {
+                None
+            };
+            if let Some(mut normal) = normal {
+                if (preferred - anchor).dot(normal) < 0.0 {
+                    normal = -normal;
+                }
+                for offset in [normal, Vec2::ZERO, -normal] {
+                    work.charge_adapter(1)?;
+                    let shift = anchor + offset - preferred;
+                    let caption = ink + shift;
+                    if self.overlap_area(caption, false, work)? == 0.0
+                        && !self.foreign_shaft_blocks(
+                            edge,
+                            caption,
+                            offset.hypot() + OWNERSHIP_CLEARANCE,
+                            work,
+                        )?
+                    {
+                        return Ok(Some(shift));
+                    }
+                }
+            }
+        }
+
         let limit = work.checked_mul(shaft.segments.len(), 54)?;
         work.charge_adapter(work.checked_add(limit, shaft.segments.len())?)?;
         candidates.clear();
@@ -462,7 +505,7 @@ impl SeatScene<'_> {
                 && !self.foreign_shaft_blocks(
                     edge,
                     caption,
-                    seat.distance + SHAFT_CLEARANCE,
+                    seat.distance + OWNERSHIP_CLEARANCE,
                     work,
                 )?
             {
