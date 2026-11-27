@@ -1,16 +1,26 @@
 //! Flowchart v2 node shapes that do not emit a label group.
 
-use crate::svg::parity::flowchart::escape_attr;
-use crate::svg::parity::util;
-
-use super::super::geom::path_from_points;
-use super::super::roughjs::{
-    RoughRectSpec, roughjs_circle_path_d, roughjs_paths_for_rect, roughjs_paths_for_svg_path,
+use merman_model::OperationPhase;
+use merman_render_core::{
+    rough_svg::{
+        RoughRectSpec, closed_path_d_from_points as path_from_points,
+        paths::{RoughGeometryTarget, roughjs_prepare_paths_for_svg_path},
+        roughjs_circle_operations, roughjs_circle_path_d, roughjs_paths_for_rect,
+        roughjs_rect_operations,
+    },
+    svg_output::SvgOutput,
+    xml::escape_attr_display,
 };
+
+use crate::{
+    document::FlowchartDocumentScope, shapes::FlowchartShape, theme::FlowchartCompatibilityBinding,
+};
+
+use super::{NodeBodyGeometry, NodeBodySvg, escape_attr, fmt};
 
 // stateStart.ts/stateEnd.ts apply the small filter independently of the general node filter.
 fn write_small_state_shadow_attr(
-    out: &mut impl crate::svg::parity::SvgOutput,
+    out: &mut impl SvgOutput,
     shadow_id: impl std::fmt::Display,
     width: f64,
     look: &str,
@@ -21,11 +31,7 @@ fn write_small_state_shadow_attr(
     if small_shadow || !theme_style.is_empty() {
         out.push_str(r#" style=""#);
         if small_shadow {
-            let _ = write!(
-                out,
-                "filter:url(#{})",
-                crate::svg::parity::util::escape_attr_display(shadow_id)
-            );
+            let _ = write!(out, "filter:url(#{})", escape_attr_display(shadow_id));
         }
         if !theme_style.is_empty() {
             if small_shadow {
@@ -37,20 +43,29 @@ fn write_small_state_shadow_attr(
     }
 }
 
-pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_label(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
-    common: &super::super::FlowchartNodeRenderCommon<'_>,
-    details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
+/// Source-resolved declarations for the junction and start shapes.
+pub struct NoLabelStyle<'a> {
+    pub junction_style: &'a str,
+    pub theme_style: &'a str,
+}
+
+/// Writes a balanced shape body for the Mermaid aliases that skip label emission.
+pub fn try_write_no_label(
+    out: &mut impl SvgOutput,
+    shape: &str,
+    mut body: NodeBodySvg<'_>,
+    style: NoLabelStyle<'_>,
+    compatibility: &FlowchartCompatibilityBinding,
+    scope: &FlowchartDocumentScope,
+    crossed_circle_radius: f64,
 ) -> bool {
-    match common.shape {
+    match shape {
         // Flowchart v2 anchor: a tiny dot used as an invisible anchor node. Mermaid ignores
         // `node.label` and does not emit a label group.
         "anchor" => {
-            let d = super::super::helpers::timed_node_roughjs(common.timing, details, || {
-                roughjs_circle_path_d(2.0, common.hand_drawn_seed)
-            })
-            .unwrap_or_else(|| "M0,0".to_string());
+            let d = body
+                .timed_rough(|geometry| roughjs_circle_path_d(2.0, geometry.randomness))
+                .unwrap_or_else(|| "M0,0".to_string());
             let _ = write!(
                 out,
                 r##"<g class="anchor" style=""><path d="{}" stroke="none" stroke-width="0" fill="black"/></g>"##,
@@ -64,35 +79,33 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
             out.push_str(r#"<circle class="state-start" r="7" width="14" height="14""#);
             write_small_state_shadow_attr(
                 out,
-                ctx.document_ids().scope().drop_shadow_small(),
-                common.layout_node.width,
-                common.look,
-                ctx.compatibility.small_state_shadow,
-                common.theme_style,
+                scope.drop_shadow_small(),
+                body.geometry.width,
+                compatibility.look.as_str(),
+                compatibility.small_state_shadow,
+                style.theme_style,
             );
             out.push_str("/>");
             true
         }
         "fr-circ" | "framed-circle" | "stop" => {
-            let line_color = &ctx.compatibility.line_color;
-            let inner_fill = &ctx.compatibility.state_inner_fill;
+            let line_color = &compatibility.line_color;
+            let inner_fill = &compatibility.state_inner_fill;
 
-            let outer_d = super::super::helpers::timed_node_roughjs(common.timing, details, || {
-                roughjs_circle_path_d(14.0, common.hand_drawn_seed)
-            })
-            .unwrap_or_else(|| "M0,0".to_string());
-            let inner_d = super::super::helpers::timed_node_roughjs(common.timing, details, || {
-                roughjs_circle_path_d(5.0, common.hand_drawn_seed)
-            })
-            .unwrap_or_else(|| "M0,0".to_string());
+            let outer_d = body
+                .timed_rough(|geometry| roughjs_circle_path_d(14.0, geometry.randomness))
+                .unwrap_or_else(|| "M0,0".to_string());
+            let inner_d = body
+                .timed_rough(|geometry| roughjs_circle_path_d(5.0, geometry.randomness))
+                .unwrap_or_else(|| "M0,0".to_string());
 
             out.push_str(r#"<g class="outer-path""#);
             write_small_state_shadow_attr(
                 out,
-                ctx.document_ids().scope().drop_shadow_small(),
-                common.layout_node.width,
-                common.look,
-                ctx.compatibility.small_state_shadow,
+                scope.drop_shadow_small(),
+                body.geometry.width,
+                compatibility.look.as_str(),
+                compatibility.small_state_shadow,
                 "",
             );
             out.push('>');
@@ -100,19 +113,19 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
                 out,
                 r##"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="{}" style="{}"/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="{}" style="{}"/></g></g>"##,
                 outer_d,
-                escape_attr(common.fill_color),
-                escape_attr(common.style),
+                escape_attr(body.fill_color),
+                escape_attr(body.style),
                 outer_d,
                 escape_attr(line_color),
-                escape_attr(common.stroke_dasharray),
-                escape_attr(common.style),
+                escape_attr(body.geometry.stroke_dasharray),
+                escape_attr(body.style),
                 inner_d,
                 escape_attr(inner_fill),
-                escape_attr(common.style),
+                escape_attr(body.style),
                 inner_d,
                 escape_attr(inner_fill),
-                escape_attr(common.stroke_dasharray),
-                escape_attr(common.style),
+                escape_attr(body.geometry.stroke_dasharray),
+                escape_attr(body.style),
             );
             true
         }
@@ -120,19 +133,19 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
         "fork" | "join" => {
             // Mermaid inflates Dagre dimensions after `updateNodeBounds(...)` but does not
             // re-render the bar at the inflated size. Render the canonical shape dimensions.
-            let (w, h) = fork_dimensions(common);
-            let line_color = &ctx.compatibility.line_color;
-            let (fill_d, stroke_d) =
-                super::super::helpers::timed_node_roughjs(common.timing, details, || {
+            let (w, h) = fork_dimensions(&body.geometry);
+            let line_color = &compatibility.line_color;
+            let (fill_d, stroke_d) = body
+                .timed_rough(|geometry| {
                     roughjs_paths_for_rect(RoughRectSpec {
                         x: -w / 2.0,
                         y: -h / 2.0,
                         w,
                         h,
-                        stroke_width: common.stroke_width,
-                        work_meter: common.work_meter,
-                        phase: merman_model::OperationPhase::Emit,
-                        randomness: common.hand_drawn_seed,
+                        stroke_width: geometry.stroke_width,
+                        work_meter: geometry.work_meter,
+                        phase: OperationPhase::Emit,
+                        randomness: geometry.randomness,
                     })
                 })
                 .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
@@ -141,12 +154,12 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
                 r##"<g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"##,
                 fill_d,
                 escape_attr(line_color),
-                escape_attr(common.style),
+                escape_attr(body.style),
                 stroke_d,
                 escape_attr(line_color),
-                util::fmt_display(common.stroke_width as f64),
-                escape_attr(common.stroke_dasharray),
-                escape_attr(common.style),
+                fmt(body.geometry.stroke_width as f64),
+                escape_attr(body.geometry.stroke_dasharray),
+                escape_attr(body.style),
             );
             true
         }
@@ -162,13 +175,13 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
                 out,
                 r##"<g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"##,
                 fill_d,
-                escape_attr(common.fill_color),
-                escape_attr(common.style),
+                escape_attr(body.fill_color),
+                escape_attr(body.style),
                 stroke_d,
-                escape_attr(common.stroke_color),
-                util::fmt_display(common.stroke_width as f64),
-                escape_attr(common.stroke_dasharray),
-                escape_attr(common.style),
+                escape_attr(body.stroke_color),
+                fmt(body.geometry.stroke_width as f64),
+                escape_attr(body.geometry.stroke_dasharray),
+                escape_attr(body.style),
             );
             true
         }
@@ -177,31 +190,23 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
         "bolt" | "com-link" | "lightning-bolt" => {
             // Mermaid uses `width = max(35, node.width)` and `height = max(35, node.height)`,
             // then draws a 2*height tall bolt and translates it by `(-width/2, -height)`.
-            let (width, height, path_data) = bolt_geometry(common);
-            let (fill_d, stroke_d) =
-                super::super::helpers::timed_node_roughjs(common.timing, details, || {
-                    roughjs_paths_for_svg_path(
-                        &path_data,
-                        common.stroke_width,
-                        common.stroke_dasharray,
-                        common.work_meter,
-                        common.hand_drawn_seed,
-                    )
-                })
+            let (width, height, path_data) = bolt_geometry(&body.geometry);
+            let (fill_d, stroke_d) = body
+                .solid_path_pair(&path_data)
                 .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
             let _ = write!(
                 out,
                 r#"<g class="outer-path" transform="translate({},{})"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"#,
-                util::fmt(-width / 2.0),
-                util::fmt(-height),
+                fmt(-width / 2.0),
+                fmt(-height),
                 escape_attr(&fill_d),
-                escape_attr(common.fill_color),
-                escape_attr(common.style),
+                escape_attr(body.fill_color),
+                escape_attr(body.style),
                 escape_attr(&stroke_d),
-                escape_attr(common.stroke_color),
-                util::fmt_display(common.stroke_width as f64),
-                escape_attr(common.stroke_dasharray),
-                escape_attr(common.style),
+                escape_attr(body.stroke_color),
+                fmt(body.geometry.stroke_width as f64),
+                escape_attr(body.geometry.stroke_dasharray),
+                escape_attr(body.style),
             );
             true
         }
@@ -209,22 +214,21 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
         // label group. Note that even in non-handDrawn mode Mermaid still uses RoughJS circle
         // paths (roughness=0), which have a slightly asymmetric bbox in Chromium.
         "f-circ" | "junction" | "filled-circle" => {
-            let effective_style = common.junction_style;
+            let effective_style = style.junction_style;
 
-            let d = super::super::helpers::timed_node_roughjs(common.timing, details, || {
-                roughjs_circle_path_d(14.0, common.hand_drawn_seed)
-            })
-            .unwrap_or_else(|| "M0,0".into());
+            let d = body
+                .timed_rough(|geometry| roughjs_circle_path_d(14.0, geometry.randomness))
+                .unwrap_or_else(|| "M0,0".into());
             let _ = write!(
                 out,
                 r##"<g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"##,
                 escape_attr(&d),
-                escape_attr(common.fill_color),
+                escape_attr(body.fill_color),
                 escape_attr(effective_style),
                 escape_attr(&d),
-                escape_attr(common.stroke_color),
-                util::fmt_display(common.stroke_width as f64),
-                escape_attr(common.stroke_dasharray),
+                escape_attr(body.stroke_color),
+                fmt(body.geometry.stroke_width as f64),
+                escape_attr(body.geometry.stroke_dasharray),
                 escape_attr(effective_style),
             );
             true
@@ -232,46 +236,36 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
         // Flowchart v2 crossed circle (summary). Mermaid clears `node.label` and does not emit a
         // label group.
         "cross-circ" | "summary" | "crossed-circle" => {
-            let radius = crate::flowchart::CROSSED_CIRCLE_RADIUS;
-
-            let circle_d =
-                super::super::helpers::timed_node_roughjs(common.timing, details, || {
-                    roughjs_circle_path_d(radius * 2.0, common.hand_drawn_seed)
+            let circle_d = body
+                .timed_rough(|geometry| {
+                    roughjs_circle_path_d(crossed_circle_radius * 2.0, geometry.randomness)
                 })
                 .unwrap_or_else(|| "M0,0".into());
 
-            let line_path = crossed_circle_line_path(radius);
-            let (line_fill_d, line_stroke_d) =
-                super::super::helpers::timed_node_roughjs(common.timing, details, || {
-                    roughjs_paths_for_svg_path(
-                        &line_path,
-                        common.stroke_width,
-                        common.stroke_dasharray,
-                        common.work_meter,
-                        common.hand_drawn_seed,
-                    )
-                })
+            let line_path = crossed_circle_line_path(crossed_circle_radius);
+            let (line_fill_d, line_stroke_d) = body
+                .solid_path_pair(&line_path)
                 .unwrap_or_else(|| ("".to_string(), "M0,0".to_string()));
 
             let _ = write!(
                 out,
                 r##"<g class="outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g></g>"##,
                 escape_attr(&circle_d),
-                escape_attr(common.fill_color),
-                escape_attr(common.style),
+                escape_attr(body.fill_color),
+                escape_attr(body.style),
                 escape_attr(&circle_d),
-                escape_attr(common.stroke_color),
-                util::fmt_display(common.stroke_width as f64),
-                escape_attr(common.stroke_dasharray),
-                escape_attr(common.style),
+                escape_attr(body.stroke_color),
+                fmt(body.geometry.stroke_width as f64),
+                escape_attr(body.geometry.stroke_dasharray),
+                escape_attr(body.style),
                 escape_attr(&line_fill_d),
-                escape_attr(common.fill_color),
-                escape_attr(common.style),
+                escape_attr(body.fill_color),
+                escape_attr(body.style),
                 escape_attr(&line_stroke_d),
-                escape_attr(common.stroke_color),
-                util::fmt_display(common.stroke_width as f64),
-                escape_attr(common.stroke_dasharray),
-                escape_attr(common.style),
+                escape_attr(body.stroke_color),
+                fmt(body.geometry.stroke_width as f64),
+                escape_attr(body.geometry.stroke_dasharray),
+                escape_attr(body.style),
             );
             true
         }
@@ -279,18 +273,17 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
     }
 }
 
-fn fork_dimensions(common: &super::super::FlowchartNodeGeometry<'_>) -> (f64, f64) {
-    let (w, h) = if common.layout_node.width >= common.layout_node.height {
+fn fork_dimensions(geometry: &NodeBodyGeometry<'_>) -> (f64, f64) {
+    if geometry.width >= geometry.height {
         (70.0, 10.0)
     } else {
         (10.0, 70.0)
-    };
-    (w, h)
+    }
 }
 
-fn bolt_geometry(common: &super::super::FlowchartNodeGeometry<'_>) -> (f64, f64, String) {
-    let width = common.layout_node.width.max(35.0);
-    let height = (common.layout_node.height / 2.0).max(35.0);
+fn bolt_geometry(geometry: &NodeBodyGeometry<'_>) -> (f64, f64, String) {
+    let width = geometry.width.max(35.0);
+    let height = (geometry.height / 2.0).max(35.0);
     let gap = 7.0;
 
     let points: Vec<(f64, f64)> = vec![
@@ -313,7 +306,7 @@ fn crossed_circle_line_path(radius: f64) -> String {
     let point_q2 = (-radius * x_axis_45, radius * y_axis_45);
     let point_q3 = (-radius * x_axis_45, -radius * y_axis_45);
     let point_q4 = (radius * x_axis_45, -radius * y_axis_45);
-    let line_path = format!(
+    format!(
         "M {},{} L {},{} M {},{} L {},{}",
         point_q2.0,
         point_q2.1,
@@ -323,59 +316,59 @@ fn crossed_circle_line_path(radius: f64) -> String {
         point_q1.1,
         point_q3.0,
         point_q3.1
-    );
-    line_path
+    )
 }
 
-pub(super) fn advance_rough_geometry(common: &super::super::FlowchartNodeGeometry<'_>) {
-    use super::super::roughjs::roughjs_prepare_paths_for_svg_path;
-    use crate::flowchart::FlowchartShape;
-    use crate::svg::parity::roughjs_common::{roughjs_circle_operations, roughjs_rect_operations};
-    match FlowchartShape::resolve(common.shape) {
-        Some(FlowchartShape::Anchor) => {
-            let _ = roughjs_circle_operations(2.0, common.hand_drawn_seed);
+/// Advances the same RoughJS stream for layout/math queries without an SVG sink or scope.
+pub fn advance_no_label_rough_geometry(
+    shape: FlowchartShape,
+    geometry: NodeBodyGeometry<'_>,
+    crossed_circle_radius: f64,
+) {
+    match shape {
+        FlowchartShape::Anchor => {
+            let _ = roughjs_circle_operations(2.0, geometry.randomness);
         }
-        Some(FlowchartShape::FramedCircle) => {
-            let _ = roughjs_circle_operations(14.0, common.hand_drawn_seed);
-            let _ = roughjs_circle_operations(5.0, common.hand_drawn_seed);
+        FlowchartShape::FramedCircle => {
+            let _ = roughjs_circle_operations(14.0, geometry.randomness);
+            let _ = roughjs_circle_operations(5.0, geometry.randomness);
         }
-        Some(FlowchartShape::ForkJoin) => {
-            let (w, h) = fork_dimensions(common);
+        FlowchartShape::ForkJoin => {
+            let (w, h) = fork_dimensions(&geometry);
             let _ = roughjs_rect_operations(RoughRectSpec {
                 x: -w / 2.0,
                 y: -h / 2.0,
                 w,
                 h,
-                stroke_width: common.stroke_width,
-                work_meter: common.work_meter,
-                phase: merman_model::OperationPhase::Layout,
-                randomness: common.hand_drawn_seed,
+                stroke_width: geometry.stroke_width,
+                work_meter: geometry.work_meter,
+                phase: OperationPhase::Layout,
+                randomness: geometry.randomness,
             });
         }
-        Some(FlowchartShape::LightningBolt) => {
-            let (_, _, path) = bolt_geometry(common);
+        FlowchartShape::LightningBolt => {
+            let (_, _, path) = bolt_geometry(&geometry);
             let _ = roughjs_prepare_paths_for_svg_path(
-                super::super::roughjs::RoughGeometryTarget::Query,
+                RoughGeometryTarget::Query,
                 &path,
-                common.stroke_width,
-                common.stroke_dasharray,
-                common.work_meter,
-                common.hand_drawn_seed,
+                geometry.stroke_width,
+                geometry.stroke_dasharray,
+                geometry.work_meter,
+                geometry.randomness,
             );
         }
-        Some(FlowchartShape::FilledCircle) => {
-            let _ = roughjs_circle_operations(14.0, common.hand_drawn_seed);
+        FlowchartShape::FilledCircle => {
+            let _ = roughjs_circle_operations(14.0, geometry.randomness);
         }
-        Some(FlowchartShape::CrossedCircle) => {
-            let r = crate::flowchart::CROSSED_CIRCLE_RADIUS;
-            let _ = roughjs_circle_operations(r * 2.0, common.hand_drawn_seed);
+        FlowchartShape::CrossedCircle => {
+            let _ = roughjs_circle_operations(crossed_circle_radius * 2.0, geometry.randomness);
             let _ = roughjs_prepare_paths_for_svg_path(
-                super::super::roughjs::RoughGeometryTarget::Query,
-                &crossed_circle_line_path(r),
-                common.stroke_width,
-                common.stroke_dasharray,
-                common.work_meter,
-                common.hand_drawn_seed,
+                RoughGeometryTarget::Query,
+                &crossed_circle_line_path(crossed_circle_radius),
+                geometry.stroke_width,
+                geometry.stroke_dasharray,
+                geometry.work_meter,
+                geometry.randomness,
             );
         }
         _ => {}

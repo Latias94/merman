@@ -1,8 +1,8 @@
 //! Flowchart node shape renderers.
 
 use merman_render_flow::node_body::{
-    self, LayoutNodeBody, MeasuredNodeBody, NodeBodyGeometry, NodeBodySvg, RectangleBody,
-    RectangleWithDivider,
+    self, LayoutNodeBody, MeasuredNodeBody, NoLabelStyle, NodeBodyGeometry, NodeBodySvg,
+    RectangleBody, RectangleWithDivider,
 };
 
 use crate::flowchart::FlowchartShape;
@@ -24,7 +24,6 @@ mod icon_circle;
 mod icon_square;
 mod image_square;
 mod manuals;
-mod no_label;
 mod odd;
 mod outer_path;
 mod stadium;
@@ -49,7 +48,6 @@ pub(super) use icon_circle::render_icon_circle;
 pub(super) use icon_square::{render_icon_rounded, render_icon_square};
 pub(super) use image_square::try_render_image_square;
 pub(super) use manuals::{render_manual_file, render_manual_input};
-pub(super) use no_label::try_render_flowchart_no_label;
 pub(super) use odd::render_odd;
 pub(super) use stadium::render_stadium;
 pub(super) use triangle::render_triangle_extract;
@@ -224,6 +222,26 @@ fn body_svg<'a>(
     }
 }
 
+pub(super) fn try_render_flowchart_no_label(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    ctx: &FlowchartRenderCtx<'_>,
+    common: &FlowchartNodeRenderCommon<'_>,
+    details: &mut FlowchartRenderDetails,
+) -> bool {
+    node_body::try_write_no_label(
+        out,
+        common.shape,
+        body_svg(common, details),
+        NoLabelStyle {
+            junction_style: common.junction_style,
+            theme_style: common.theme_style,
+        },
+        ctx.compatibility,
+        ctx.document_ids().scope(),
+        crate::flowchart::CROSSED_CIRCLE_RADIUS,
+    )
+}
+
 fn advance_lean(common: &FlowchartNodeGeometry<'_>, kind: crate::flowchart::LeanKind) {
     let geometry = body_geometry(common);
     if geometry.hand_drawn {
@@ -239,7 +257,8 @@ pub(super) fn advance_rough_geometry(
     label: &mut super::FlowchartNodeLabelState<'_>,
 ) -> crate::Result<()> {
     use crate::flowchart::{LeanKind, resolve_flowchart_shape};
-    match resolve_flowchart_shape(common.shape)? {
+    let shape = resolve_flowchart_shape(common.shape)?;
+    match shape {
         FlowchartShape::Anchor
         | FlowchartShape::Choice
         | FlowchartShape::CrossedCircle
@@ -247,7 +266,11 @@ pub(super) fn advance_rough_geometry(
         | FlowchartShape::ForkJoin
         | FlowchartShape::FramedCircle
         | FlowchartShape::LightningBolt
-        | FlowchartShape::SmallCircle => no_label::advance_rough_geometry(common),
+        | FlowchartShape::SmallCircle => node_body::advance_no_label_rough_geometry(
+            shape,
+            body_geometry(common),
+            crate::flowchart::CROSSED_CIRCLE_RADIUS,
+        ),
         FlowchartShape::BowTieRectangle => OuterPathShape::BowTieRectangle
             .prepare(ctx, common, label)
             .advance_rough_geometry(body_geometry(common)),
