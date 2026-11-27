@@ -11,7 +11,7 @@ pub mod dagre_geometry;
 #[cfg(feature = "layout-elk")]
 #[doc(hidden)]
 pub mod elk_adapter;
-#[cfg(feature = "svg-output")]
+#[cfg(any(feature = "layout-elk", feature = "svg-output"))]
 #[doc(hidden)]
 pub mod elk_edge_geometry;
 #[cfg(feature = "svg-output")]
@@ -31,7 +31,7 @@ pub mod html;
 #[doc(hidden)]
 pub mod icon_registry;
 mod layout;
-#[cfg(feature = "svg-output")]
+#[cfg(feature = "resources")]
 #[doc(hidden)]
 pub mod layout_work;
 #[cfg(feature = "math-labels")]
@@ -46,7 +46,7 @@ pub mod number_format;
 #[cfg(feature = "paint-scene")]
 #[doc(hidden)]
 pub mod paint_scene;
-#[cfg(feature = "svg-output")]
+#[cfg(feature = "resources")]
 mod render_error;
 #[cfg(feature = "resources")]
 pub mod resources;
@@ -61,7 +61,11 @@ pub mod route_types;
 #[cfg(feature = "route-paint")]
 pub mod route_paint;
 
-#[cfg(feature = "svg-output")]
+#[cfg(any(
+    feature = "layout-dagre",
+    feature = "layout-elk",
+    feature = "svg-output"
+))]
 #[doc(hidden)]
 pub mod shape_intersection;
 #[cfg(feature = "svg-animation")]
@@ -107,5 +111,5 @@ pub use geometry::{Bounds, LayoutPoint};
 pub use layout::{LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode};
 #[doc(hidden)]
 pub use layout::{SwimlaneDirection, SwimlaneLaneLayout, SwimlaneNodeLayout, SwimlaneTitleRect};
-#[cfg(feature = "svg-output")]
+#[cfg(feature = "resources")]
 pub use render_error::{Error, RenderCapability, RenderCapabilityPolicy, Result};

@@ -5,14 +5,17 @@ layout and route types. `route-paint` enables SVG path construction with marker 
 obstacle clearance. `graph-layout` provides geometry for measured and solved graphs.
 `layout-shoal` shares the solver's route types. `shoal-bridge` uses the same types to project
 measured diagrams into the solver and solved geometry back into the renderer. The `resources`
-feature provides render policies and the operation meter that shares limits and cancellation
-across layout and SVG emission. The renderer supplies that meter to the Dagre, ELK, Shoal, and
-Cytoscape adapters selected by its layout features.
-`svg-output` provides bounded SVG writing, XML text serialization, base styles, and shared render
-errors. `root-svg` provides viewport planning and emission for family SVG documents.
-`layout-elk` provides shared Mermaid ELK hierarchy and group frame projection. With `css-style`,
-it also provides ELK option projection and feedback edge handling. ELK endpoint paint geometry
-is available through `svg-output` for families that consume routes without the solver.
+feature provides render policies, shared render errors, and the operation meter that shares
+limits and cancellation across layout and SVG emission. The `layout-dagre`, `layout-elk`, and
+`layout-cytoscape` features each use that meter without requiring an SVG writer. The `shoal-bridge`
+feature provides the metered adapter for Shoal.
+`svg-output` provides bounded SVG writing, XML text serialization, base styles, and the output
+and compatibility error variants. `root-svg` provides viewport planning and emission for family
+SVG documents.
+`layout-elk` provides shared Mermaid ELK hierarchy, group frames, and endpoint geometry. With
+`graph-layout`, it also provides missing-section and terminal-jog projection. With `css-style`,
+it provides ELK option projection and feedback edge handling. The geometry helpers also remain
+available with `svg-output` for families that consume routes without the solver.
 `paint-scene` provides an internal typed scene and bounded SVG writer for resolved geometry and
 paint. The writer does not select an output profile or replace terminal SVG admission.
 `svg-parse` provides lexical scanning, XML stylesheet decoding, and SVG structure

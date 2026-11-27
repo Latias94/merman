@@ -4,9 +4,9 @@ use crate::LayoutLabel;
 
 #[cfg(all(feature = "route-paint", feature = "svg-output"))]
 pub mod axis_clearance;
-#[cfg(feature = "svg-output")]
+#[cfg(any(feature = "layout-elk", feature = "svg-output"))]
 pub mod elk_geometry;
-#[cfg(feature = "svg-output")]
+#[cfg(any(feature = "layout-elk", feature = "svg-output"))]
 pub mod elk_terminal_jogs;
 #[cfg(feature = "shoal-bridge")]
 pub mod shoal;
