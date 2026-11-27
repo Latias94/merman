@@ -11,7 +11,7 @@ compile_error!("the Node candidates require the static layout-dagre capability r
 compile_error!("the Node candidates require the static layout-elk capability recipe");
 
 use std::borrow::Cow;
-use std::sync::LazyLock;
+use std::sync::{LazyLock, OnceLock};
 use std::time::Duration;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -465,7 +465,7 @@ pub(crate) fn transport_identity_wire(kind: NodeTransportKind) -> Result<String,
 fn transport_identity_wire_inner(kind: NodeTransportKind) -> Result<String, BindingError> {
     // Identity is an admission claim, so refuse to emit it if the compiled Rust artifact has
     // drifted from the descriptor embedded below.
-    runtime_catalog_wire_inner()?;
+    cached_runtime_catalog()?;
     let contract = node_wire_contract();
     ensure_field(
         env!("CARGO_PKG_VERSION"),
@@ -511,7 +511,16 @@ fn node_artifact_contract() -> &'static ValidatedArtifactContract {
 }
 
 pub(crate) fn runtime_catalog_wire() -> Result<String, BindingError> {
-    binding_boundary(runtime_catalog_wire_inner)
+    binding_boundary(|| cached_runtime_catalog().map(str::to_owned))
+}
+
+fn cached_runtime_catalog() -> Result<&'static str, BindingError> {
+    // Identity admission and engines share the same compiled artifact and wire contract.
+    static CATALOG: OnceLock<Result<String, BindingError>> = OnceLock::new();
+    CATALOG
+        .get_or_init(runtime_catalog_wire_inner)
+        .as_deref()
+        .map_err(Clone::clone)
 }
 
 fn runtime_catalog_wire_inner() -> Result<String, BindingError> {
