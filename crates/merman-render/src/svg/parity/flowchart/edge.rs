@@ -1,50 +1,11 @@
 //! Flowchart edge marker and class helpers.
 
+pub(in crate::svg::parity::flowchart) use merman_render_flow::markers::FlowchartMarkerBase;
+
 use super::FlowchartCompiledStyles;
 
 pub(super) fn flowchart_neo_mask_uses_dash_pairs(edge: &crate::flowchart::FlowEdge) -> bool {
     matches!(edge.stroke.as_deref(), Some("dotted" | "dashed"))
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(in crate::svg::parity::flowchart) enum FlowchartMarkerBase {
-    PointStart,
-    PointEnd,
-    CircleStart,
-    CircleEnd,
-    CrossStart,
-    CrossEnd,
-    OpenArrowStart,
-    OpenArrowEnd,
-    HollowCircleStart,
-    HollowCircleEnd,
-}
-
-impl FlowchartMarkerBase {
-    pub(in crate::svg::parity::flowchart) const fn id_suffix(self) -> &'static str {
-        match self {
-            Self::PointStart => "pointStart",
-            Self::PointEnd => "pointEnd",
-            Self::CircleStart => "circleStart",
-            Self::CircleEnd => "circleEnd",
-            Self::CrossStart => "crossStart",
-            Self::CrossEnd => "crossEnd",
-            Self::OpenArrowStart => "openArrowStart",
-            Self::OpenArrowEnd => "openArrowEnd",
-            Self::HollowCircleStart => "hollowCircleStart",
-            Self::HollowCircleEnd => "hollowCircleEnd",
-        }
-    }
-
-    pub(in crate::svg::parity::flowchart) const fn supports_margin(self) -> bool {
-        !matches!(
-            self,
-            Self::OpenArrowStart
-                | Self::OpenArrowEnd
-                | Self::HollowCircleStart
-                | Self::HollowCircleEnd
-        )
-    }
 }
 
 pub(super) fn flowchart_edge_marker_end_base(

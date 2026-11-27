@@ -60,3 +60,11 @@ pub mod layout_config;
 pub mod projection;
 #[doc(hidden)]
 pub mod shapes;
+
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
+#[doc(hidden)]
+pub mod markers;

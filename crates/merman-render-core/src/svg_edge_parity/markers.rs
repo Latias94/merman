@@ -32,6 +32,31 @@ pub struct BaseEdgeMarkerGeometry {
     pub style: &'static str,
 }
 
+// Derive the fixed XML fragment from the same attributes as the structured writer.
+// Flow appends this fragment in one write, including when counting bytes.
+macro_rules! marker_geometry {
+    (
+        [$($name:literal => $value:literal),+ $(,)?],
+        $shape:literal [$($shape_name:literal => $shape_value:literal),+ $(,)?],
+        $style:literal $(, $tail:literal)?
+    ) => {
+        (
+            BaseEdgeMarkerGeometry {
+                attributes: &[$(($name, $value)),+],
+                shape: $shape,
+                shape_attributes: &[$(($shape_name, $shape_value)),+],
+                style: $style,
+            },
+            concat!(
+                $(" ", $name, "=\"", $value, "\"",)+
+                "><", $shape,
+                $(" ", $shape_name, "=\"", $shape_value, "\"",)+
+                " class=\"arrowMarkerPath\" style=\"", $style, "\"" $(, $tail)?
+            ),
+        )
+    };
+}
+
 impl BaseEdgeMarkerKind {
     #[cfg(test)]
     pub const ALL: [Self; 12] = [
@@ -92,176 +117,214 @@ impl BaseEdgeMarkerKind {
     }
 
     pub const fn geometry(self) -> BaseEdgeMarkerGeometry {
+        self.geometry_and_fragment().0
+    }
+
+    /// The XML after a shared marker's class attribute and before optional shape paint.
+    #[doc(hidden)]
+    pub const fn shape_fragment(self) -> &'static str {
+        self.geometry_and_fragment().1
+    }
+
+    const fn geometry_and_fragment(self) -> (BaseEdgeMarkerGeometry, &'static str) {
         match self {
-            Self::PointEnd => BaseEdgeMarkerGeometry {
-                attributes: &[
-                    ("viewBox", "0 0 10 10"),
-                    ("refX", "5"),
-                    ("refY", "5"),
-                    ("markerUnits", "userSpaceOnUse"),
-                    ("markerWidth", "8"),
-                    ("markerHeight", "8"),
-                    ("orient", "auto"),
+            Self::PointEnd => marker_geometry!(
+                [
+                    "viewBox" => "0 0 10 10",
+                    "refX" => "5",
+                    "refY" => "5",
+                    "markerUnits" => "userSpaceOnUse",
+                    "markerWidth" => "8",
+                    "markerHeight" => "8",
+                    "orient" => "auto",
                 ],
-                shape: "path",
-                shape_attributes: &[("d", "M 0 0 L 10 5 L 0 10 z")],
-                style: "stroke-width: 1; stroke-dasharray: 1, 0;",
-            },
-            Self::PointStart => BaseEdgeMarkerGeometry {
-                attributes: &[
-                    ("viewBox", "0 0 10 10"),
-                    ("refX", "4.5"),
-                    ("refY", "5"),
-                    ("markerUnits", "userSpaceOnUse"),
-                    ("markerWidth", "8"),
-                    ("markerHeight", "8"),
-                    ("orient", "auto"),
+                "path" ["d" => "M 0 0 L 10 5 L 0 10 z"],
+                "stroke-width: 1; stroke-dasharray: 1, 0;"
+            ),
+            Self::PointStart => marker_geometry!(
+                [
+                    "viewBox" => "0 0 10 10",
+                    "refX" => "4.5",
+                    "refY" => "5",
+                    "markerUnits" => "userSpaceOnUse",
+                    "markerWidth" => "8",
+                    "markerHeight" => "8",
+                    "orient" => "auto",
                 ],
-                shape: "path",
-                shape_attributes: &[("d", "M 0 5 L 10 10 L 10 0 z")],
-                style: "stroke-width: 1; stroke-dasharray: 1, 0;",
-            },
-            Self::PointEndMargin => BaseEdgeMarkerGeometry {
-                attributes: &[
-                    ("viewBox", "0 0 11.5 14"),
-                    ("refX", "11.5"),
-                    ("refY", "7"),
-                    ("markerUnits", "userSpaceOnUse"),
-                    ("markerWidth", "10.5"),
-                    ("markerHeight", "14"),
-                    ("orient", "auto"),
+                "path" ["d" => "M 0 5 L 10 10 L 10 0 z"],
+                "stroke-width: 1; stroke-dasharray: 1, 0;"
+            ),
+            Self::PointEndMargin => marker_geometry!(
+                [
+                    "viewBox" => "0 0 11.5 14",
+                    "refX" => "11.5",
+                    "refY" => "7",
+                    "markerUnits" => "userSpaceOnUse",
+                    "markerWidth" => "10.5",
+                    "markerHeight" => "14",
+                    "orient" => "auto",
                 ],
-                shape: "path",
-                shape_attributes: &[("d", "M 0 0 L 11.5 7 L 0 14 z")],
-                style: "stroke-width: 0; stroke-dasharray: 1, 0;",
-            },
-            Self::PointStartMargin => BaseEdgeMarkerGeometry {
-                attributes: &[
-                    ("viewBox", "0 0 11.5 14"),
-                    ("refX", "1"),
-                    ("refY", "7"),
-                    ("markerUnits", "userSpaceOnUse"),
-                    ("markerWidth", "11.5"),
-                    ("markerHeight", "14"),
-                    ("orient", "auto"),
+                "path" ["d" => "M 0 0 L 11.5 7 L 0 14 z"],
+                "stroke-width: 0; stroke-dasharray: 1, 0;"
+            ),
+            Self::PointStartMargin => marker_geometry!(
+                [
+                    "viewBox" => "0 0 11.5 14",
+                    "refX" => "1",
+                    "refY" => "7",
+                    "markerUnits" => "userSpaceOnUse",
+                    "markerWidth" => "11.5",
+                    "markerHeight" => "14",
+                    "orient" => "auto",
                 ],
-                shape: "polygon",
-                shape_attributes: &[("points", "0,7 11.5,14 11.5,0")],
-                style: "stroke-width: 0; stroke-dasharray: 1, 0;",
-            },
-            Self::CircleEnd => BaseEdgeMarkerGeometry {
-                attributes: &[
-                    ("viewBox", "0 0 10 10"),
-                    ("refX", "11"),
-                    ("refY", "5"),
-                    ("markerUnits", "userSpaceOnUse"),
-                    ("markerWidth", "11"),
-                    ("markerHeight", "11"),
-                    ("orient", "auto"),
+                "polygon" ["points" => "0,7 11.5,14 11.5,0"],
+                "stroke-width: 0; stroke-dasharray: 1, 0;"
+            ),
+            Self::CircleEnd => marker_geometry!(
+                [
+                    "viewBox" => "0 0 10 10",
+                    "refX" => "11",
+                    "refY" => "5",
+                    "markerUnits" => "userSpaceOnUse",
+                    "markerWidth" => "11",
+                    "markerHeight" => "11",
+                    "orient" => "auto",
                 ],
-                shape: "circle",
-                shape_attributes: &[("cx", "5"), ("cy", "5"), ("r", "5")],
-                style: "stroke-width: 1; stroke-dasharray: 1, 0;",
-            },
-            Self::CircleStart => BaseEdgeMarkerGeometry {
-                attributes: &[
-                    ("viewBox", "0 0 10 10"),
-                    ("refX", "-1"),
-                    ("refY", "5"),
-                    ("markerUnits", "userSpaceOnUse"),
-                    ("markerWidth", "11"),
-                    ("markerHeight", "11"),
-                    ("orient", "auto"),
+                "circle" ["cx" => "5", "cy" => "5", "r" => "5"],
+                "stroke-width: 1; stroke-dasharray: 1, 0;"
+            ),
+            Self::CircleStart => marker_geometry!(
+                [
+                    "viewBox" => "0 0 10 10",
+                    "refX" => "-1",
+                    "refY" => "5",
+                    "markerUnits" => "userSpaceOnUse",
+                    "markerWidth" => "11",
+                    "markerHeight" => "11",
+                    "orient" => "auto",
                 ],
-                shape: "circle",
-                shape_attributes: &[("cx", "5"), ("cy", "5"), ("r", "5")],
-                style: "stroke-width: 1; stroke-dasharray: 1, 0;",
-            },
-            Self::CircleEndMargin => BaseEdgeMarkerGeometry {
-                attributes: &[
-                    ("viewBox", "0 0 10 10"),
-                    ("refY", "5"),
-                    ("refX", "12.25"),
-                    ("markerUnits", "userSpaceOnUse"),
-                    ("markerWidth", "14"),
-                    ("markerHeight", "14"),
-                    ("orient", "auto"),
+                "circle" ["cx" => "5", "cy" => "5", "r" => "5"],
+                "stroke-width: 1; stroke-dasharray: 1, 0;"
+            ),
+            Self::CircleEndMargin => marker_geometry!(
+                [
+                    "viewBox" => "0 0 10 10",
+                    "refY" => "5",
+                    "refX" => "12.25",
+                    "markerUnits" => "userSpaceOnUse",
+                    "markerWidth" => "14",
+                    "markerHeight" => "14",
+                    "orient" => "auto",
                 ],
-                shape: "circle",
-                shape_attributes: &[("cx", "5"), ("cy", "5"), ("r", "5")],
-                style: "stroke-width: 0; stroke-dasharray: 1, 0;",
-            },
-            Self::CircleStartMargin => BaseEdgeMarkerGeometry {
-                attributes: &[
-                    ("viewBox", "0 0 10 10"),
-                    ("refX", "-2"),
-                    ("refY", "5"),
-                    ("markerUnits", "userSpaceOnUse"),
-                    ("markerWidth", "14"),
-                    ("markerHeight", "14"),
-                    ("orient", "auto"),
+                "circle" ["cx" => "5", "cy" => "5", "r" => "5"],
+                "stroke-width: 0; stroke-dasharray: 1, 0;"
+            ),
+            Self::CircleStartMargin => marker_geometry!(
+                [
+                    "viewBox" => "0 0 10 10",
+                    "refX" => "-2",
+                    "refY" => "5",
+                    "markerUnits" => "userSpaceOnUse",
+                    "markerWidth" => "14",
+                    "markerHeight" => "14",
+                    "orient" => "auto",
                 ],
-                shape: "circle",
-                shape_attributes: &[("cx", "5"), ("cy", "5"), ("r", "5")],
-                style: "stroke-width: 0; stroke-dasharray: 1, 0;",
-            },
-            Self::CrossEnd => BaseEdgeMarkerGeometry {
-                attributes: &[
-                    ("viewBox", "0 0 11 11"),
-                    ("refX", "12"),
-                    ("refY", "5.2"),
-                    ("markerUnits", "userSpaceOnUse"),
-                    ("markerWidth", "11"),
-                    ("markerHeight", "11"),
-                    ("orient", "auto"),
+                "circle" ["cx" => "5", "cy" => "5", "r" => "5"],
+                "stroke-width: 0; stroke-dasharray: 1, 0;"
+            ),
+            Self::CrossEnd => marker_geometry!(
+                [
+                    "viewBox" => "0 0 11 11",
+                    "refX" => "12",
+                    "refY" => "5.2",
+                    "markerUnits" => "userSpaceOnUse",
+                    "markerWidth" => "11",
+                    "markerHeight" => "11",
+                    "orient" => "auto",
                 ],
-                shape: "path",
-                shape_attributes: &[("d", "M 1,1 l 9,9 M 10,1 l -9,9")],
-                style: "stroke-width: 2; stroke-dasharray: 1, 0;",
-            },
-            Self::CrossStart => BaseEdgeMarkerGeometry {
-                attributes: &[
-                    ("viewBox", "0 0 11 11"),
-                    ("refX", "-1"),
-                    ("refY", "5.2"),
-                    ("markerUnits", "userSpaceOnUse"),
-                    ("markerWidth", "11"),
-                    ("markerHeight", "11"),
-                    ("orient", "auto"),
+                "path" ["d" => "M 1,1 l 9,9 M 10,1 l -9,9"],
+                "stroke-width: 2; stroke-dasharray: 1, 0;"
+            ),
+            Self::CrossStart => marker_geometry!(
+                [
+                    "viewBox" => "0 0 11 11",
+                    "refX" => "-1",
+                    "refY" => "5.2",
+                    "markerUnits" => "userSpaceOnUse",
+                    "markerWidth" => "11",
+                    "markerHeight" => "11",
+                    "orient" => "auto",
                 ],
-                shape: "path",
-                shape_attributes: &[("d", "M 1,1 l 9,9 M 10,1 l -9,9")],
-                style: "stroke-width: 2; stroke-dasharray: 1, 0;",
-            },
-            Self::CrossEndMargin => BaseEdgeMarkerGeometry {
-                attributes: &[
-                    ("viewBox", "0 0 15 15"),
-                    ("refX", "17.7"),
-                    ("refY", "7.5"),
-                    ("markerUnits", "userSpaceOnUse"),
-                    ("markerWidth", "12"),
-                    ("markerHeight", "12"),
-                    ("orient", "auto"),
+                "path" ["d" => "M 1,1 l 9,9 M 10,1 l -9,9"],
+                "stroke-width: 2; stroke-dasharray: 1, 0;"
+            ),
+            Self::CrossEndMargin => marker_geometry!(
+                [
+                    "viewBox" => "0 0 15 15",
+                    "refX" => "17.7",
+                    "refY" => "7.5",
+                    "markerUnits" => "userSpaceOnUse",
+                    "markerWidth" => "12",
+                    "markerHeight" => "12",
+                    "orient" => "auto",
                 ],
-                shape: "path",
-                shape_attributes: &[("d", "M 1,1 L 14,14 M 1,14 L 14,1")],
-                style: "stroke-width: 2.5;",
-            },
-            Self::CrossStartMargin => BaseEdgeMarkerGeometry {
-                attributes: &[
-                    ("viewBox", "0 0 15 15"),
-                    ("refX", "-3.5"),
-                    ("refY", "7.5"),
-                    ("markerUnits", "userSpaceOnUse"),
-                    ("markerWidth", "12"),
-                    ("markerHeight", "12"),
-                    ("orient", "auto"),
+                "path" ["d" => "M 1,1 L 14,14 M 1,14 L 14,1"],
+                "stroke-width: 2.5;"
+            ),
+            Self::CrossStartMargin => marker_geometry!(
+                [
+                    "viewBox" => "0 0 15 15",
+                    "refX" => "-3.5",
+                    "refY" => "7.5",
+                    "markerUnits" => "userSpaceOnUse",
+                    "markerWidth" => "12",
+                    "markerHeight" => "12",
+                    "orient" => "auto",
                 ],
-                shape: "path",
-                shape_attributes: &[("d", "M 1,1 L 14,14 M 1,14 L 14,1")],
-                style: "stroke-width: 2.5; stroke-dasharray: 1, 0;",
-            },
+                "path" ["d" => "M 1,1 L 14,14 M 1,14 L 14,1"],
+                "stroke-width: 2.5; stroke-dasharray: 1, 0;"
+            ),
         }
+    }
+}
+
+const HIERARCHY_END: (BaseEdgeMarkerGeometry, &str) = marker_geometry!(
+    [
+        "viewBox" => "0 0 12 10",
+        "refX" => "10",
+        "refY" => "5",
+        "markerUnits" => "userSpaceOnUse",
+        "markerWidth" => "12",
+        "markerHeight" => "10",
+        "orient" => "auto",
+    ],
+    "path" ["d" => "M 0 0 L 6 5 L 0 10 M 4 0 L 10 5 L 4 10"],
+    "stroke-width: 1; stroke-dasharray: 1, 0; fill: none;",
+    "/></marker>"
+);
+
+const HIERARCHY_START: (BaseEdgeMarkerGeometry, &str) = marker_geometry!(
+    [
+        "viewBox" => "0 0 12 10",
+        "refX" => "2",
+        "refY" => "5",
+        "markerUnits" => "userSpaceOnUse",
+        "markerWidth" => "12",
+        "markerHeight" => "10",
+        "orient" => "auto",
+    ],
+    "path" ["d" => "M 12 0 L 6 5 L 12 10 M 8 0 L 2 5 L 8 10"],
+    "stroke-width: 1; stroke-dasharray: 1, 0; fill: none;",
+    "/></marker>"
+);
+
+/// The complete XML after an Agentflow hierarchy marker's class attribute.
+#[doc(hidden)]
+pub const fn hierarchy_edge_marker_body(start: bool) -> &'static str {
+    if start {
+        HIERARCHY_START.1
+    } else {
+        HIERARCHY_END.1
     }
 }
 
@@ -349,34 +412,8 @@ pub fn push_edge_marker(
         kind.geometry()
     } else {
         match (base, margin) {
-            ("hierarchyEnd", false) => BaseEdgeMarkerGeometry {
-                attributes: &[
-                    ("viewBox", "0 0 12 10"),
-                    ("refX", "10"),
-                    ("refY", "5"),
-                    ("markerUnits", "userSpaceOnUse"),
-                    ("markerWidth", "12"),
-                    ("markerHeight", "10"),
-                    ("orient", "auto"),
-                ],
-                shape: "path",
-                shape_attributes: &[("d", "M 0 0 L 6 5 L 0 10 M 4 0 L 10 5 L 4 10")],
-                style: "stroke-width: 1; stroke-dasharray: 1, 0; fill: none;",
-            },
-            ("hierarchyStart", false) => BaseEdgeMarkerGeometry {
-                attributes: &[
-                    ("viewBox", "0 0 12 10"),
-                    ("refX", "2"),
-                    ("refY", "5"),
-                    ("markerUnits", "userSpaceOnUse"),
-                    ("markerWidth", "12"),
-                    ("markerHeight", "10"),
-                    ("orient", "auto"),
-                ],
-                shape: "path",
-                shape_attributes: &[("d", "M 12 0 L 6 5 L 12 10 M 8 0 L 2 5 L 8 10")],
-                style: "stroke-width: 1; stroke-dasharray: 1, 0; fill: none;",
-            },
+            ("hierarchyEnd", false) => HIERARCHY_END.0,
+            ("hierarchyStart", false) => HIERARCHY_START.0,
             _ => return,
         }
     };
