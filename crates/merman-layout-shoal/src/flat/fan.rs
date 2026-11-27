@@ -6,8 +6,8 @@ use super::{
 };
 use crate::work::{LayoutResult, Work, filled, push, reserved};
 use crate::{
-    Axis, Direction, EdgeGeometry, EdgeSpec, Graph, LayoutError, MarkerMetrics, NodeId, Options,
-    PortSideHint, Rect, RoutePoint, RoutingStyle, Side, Size, WorkError,
+    Axis, Direction, EdgeGeometry, EdgeSpec, Graph, LayoutError, MarkerMetrics, NodeId, NodeSpec,
+    Options, PortSideHint, Rect, RoutePoint, RoutingStyle, Side, Size, WorkError,
 };
 
 const PRECISION: LayoutError = LayoutError::InvalidInput("folded fan exceeds coordinate precision");
@@ -498,15 +498,14 @@ pub(super) fn fold(
     let mut original = reserved(c.nodes.len())?;
     for (vertex, (node, parent)) in c.nodes.iter().zip(&owner).enumerate() {
         work.visit(1)?;
-        let mut node = *node;
-        if let Some(id) = *parent {
+        let node = if let Some(id) = *parent {
             if fans[id].representative().vertex as usize != vertex {
                 continue;
             }
-            node.size = fans[id].size;
-            node.anchor_y = None;
-            node.position_hint = None;
-        }
+            NodeSpec::new(fans[id].size, node.seq)
+        } else {
+            *node
+        };
         remap[vertex] = NodeId(local.nodes.len() as u32);
         original.push(vertex);
         local.nodes.push(node);
@@ -582,4 +581,72 @@ pub(super) fn fold(
         fallbacks,
         reversed,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{NoopWorkControl, OrderHint, ShapeContourHint, WidthPolicy, layout};
+
+    #[test]
+    fn folded_fan_proxy_does_not_inherit_leaf_contour_or_port_metadata() {
+        let mut graph = Graph::default();
+        graph.nodes.push(NodeSpec::new(
+            Size {
+                width: 80.0,
+                height: 40.0,
+            },
+            0,
+        ));
+        for seq in 1..=12u32 {
+            let mut leaf = NodeSpec::new(
+                Size {
+                    width: 60.0,
+                    height: 60.0,
+                },
+                seq,
+            );
+            leaf.contour = ShapeContourHint::Diamond;
+            leaf.port_span = Some(0.0);
+            leaf.split_incoming_ports = true;
+            leaf.order_hint = Some(OrderHint {
+                rank: 5,
+                cross_key: 999.0,
+            });
+            graph.nodes.push(leaf);
+            graph
+                .edges
+                .push(EdgeSpec::new(NodeId(0).into(), NodeId(seq).into()));
+        }
+        let options = Options {
+            width_policy: WidthPolicy::FitWidth {
+                max_width: 240.0,
+                turn_breakpoint: 0.0,
+                allow_turn: true,
+                fold_wide_ranks: true,
+            },
+            ..Options::default()
+        };
+        let mut control = NoopWorkControl;
+        let mut work = Work::new(&mut control);
+        let c = validate::collect(&graph, &options, true, &mut work)
+            .unwrap()
+            .pop()
+            .unwrap();
+        let mut expanded = Expanded::default();
+        prepare_component(&c, &graph, &options, &mut work, &mut expanded).unwrap();
+        let folded = fold(&mut expanded, &c, &graph, &options, 240.0, &mut work)
+            .unwrap()
+            .expect("wide diamond fan should fold");
+        assert_eq!(folded.drawing.nodes.len(), graph.nodes.len());
+
+        let out = layout(&graph, &options).unwrap();
+        assert!(out.nodes.iter().all(|r| r.x.is_finite() && r.y.is_finite()));
+        assert!(
+            out.edges
+                .iter()
+                .flat_map(|e| &e.points)
+                .all(|p| p.x.is_finite() && p.y.is_finite())
+        );
+    }
 }

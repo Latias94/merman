@@ -119,6 +119,7 @@ pub(in crate::svg::parity::flowchart) fn resolve_flowchart_edge_label_position(
 fn render_native_label_background(
     out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &FlowchartRenderCtx<'_>,
+    hierarchy: &FlowchartHierarchyPlan<'_>,
     position: crate::model::LayoutPoint,
     (origin_x, origin_y): (f64, f64),
     (width, height): (f64, f64),
@@ -130,14 +131,13 @@ fn render_native_label_background(
     };
     let mode = native.form.edge_label_bg;
     let fill = match mode {
-        EdgeLabelBackground::Transparent => return Ok(None),
         EdgeLabelBackground::Pill => native.node,
         EdgeLabelBackground::Canvas => native.canvas,
-        EdgeLabelBackground::Auto => {
+        EdgeLabelBackground::Auto | EdgeLabelBackground::Transparent => {
             let layers = match ctx.container_label_layers.get() {
                 Some(layers) => layers,
                 None => {
-                    let layers = ContainerLabelLayers::prepare(ctx, native)?;
+                    let layers = ContainerLabelLayers::prepare(ctx, native, hierarchy)?;
                     ctx.container_label_layers.get_or_init(|| layers)
                 }
             };
@@ -159,9 +159,7 @@ pub(in crate::svg::parity::flowchart) struct ContainerLabelLayers(Vec<ContainerL
 struct ContainerLabelLayer {
     bounds: kurbo::Rect,
     title: Option<kurbo::Rect>,
-    area: f64,
-    index: usize,
-    paint: Option<ContainerLabelPaint>,
+    paint: std::result::Result<ContainerLabelPaint, String>,
 }
 
 struct ContainerLabelPaint {
@@ -174,12 +172,14 @@ impl ContainerLabelLayers {
     fn prepare(
         ctx: &FlowchartRenderCtx<'_>,
         native: &crate::flowchart::native_theme::FlowchartNativeStyle,
+        hierarchy: &FlowchartHierarchyPlan<'_>,
     ) -> crate::Result<Self> {
         let meter = ctx.work_meter;
-        meter.charge_emit_work(ctx.layout.clusters.len())?;
-        let mut layers = Vec::with_capacity(ctx.layout.clusters.len());
+        let clusters = hierarchy.painted_clusters();
+        meter.charge_emit_work(clusters.len())?;
+        let mut layers = Vec::with_capacity(clusters.len());
         let canonical = ctx.layout.route_contract.group_parents().is_some();
-        for (index, cluster) in ctx.layout.clusters.iter().enumerate() {
+        for (index, cluster) in clusters.iter().enumerate() {
             if index != 0 && index.is_multiple_of(256) {
                 meter.charge_emit_work(0)?;
             }
@@ -206,37 +206,27 @@ impl ContainerLabelLayers {
                     None,
                 )
             };
-            let paint = ctx.prepared_nodes.cluster(id).ok().map(|terminal| {
-                let authored = terminal
-                    .compiled
-                    .fill
-                    .as_deref()
-                    .and_then(crate::theme::edge_label_bg::literal_fill);
-                ContainerLabelPaint {
-                    body: authored.unwrap_or(native.container),
-                    title: authored.unwrap_or(native.emphasis),
-                    opacity: terminal.compiled.fill_opacity,
+            let paint = match ctx.prepared_nodes.cluster(id) {
+                Ok(terminal) => {
+                    let authored = terminal
+                        .compiled
+                        .fill
+                        .as_deref()
+                        .and_then(crate::theme::edge_label_bg::literal_fill);
+                    Ok(ContainerLabelPaint {
+                        body: authored.unwrap_or(native.container),
+                        title: authored.unwrap_or(native.emphasis),
+                        opacity: terminal.compiled.fill_opacity,
+                    })
                 }
-            });
+                Err(_) => Err(id.to_owned()),
+            };
             layers.push(ContainerLabelLayer {
                 bounds,
                 title,
-                area: bounds.width() * bounds.height(),
-                index,
                 paint,
             });
         }
-        meter.charge_emit_work(super::super::hierarchy::flowchart_checked_sort_work(
-            layers.len(),
-            meter,
-        )?)?;
-        // Composite large frames first and retain layout order when their areas are equal.
-        layers.sort_unstable_by(|left, right| {
-            right
-                .area
-                .total_cmp(&left.area)
-                .then_with(|| left.index.cmp(&right.index))
-        });
         meter.charge_emit_work(0)?;
         Ok(Self(layers))
     }
@@ -256,11 +246,8 @@ impl ContainerLabelLayers {
             let paint = layer
                 .paint
                 .as_ref()
-                .ok_or_else(|| crate::Error::InvalidModel {
-                    message: format!(
-                        "missing prepared Flowchart cluster `{}`",
-                        ctx.layout.clusters[layer.index].id
-                    ),
+                .map_err(|id| crate::Error::InvalidModel {
+                    message: format!("missing prepared Flowchart cluster `{id}`"),
                 })?;
             let fill = if layer.title.is_some_and(|title| title.contains(point)) {
                 paint.title
@@ -320,23 +307,19 @@ fn flowchart_svg_edge_label_text_style<'a>(
         return Cow::Borrowed(base_label_style);
     }
     let mut out = String::with_capacity(base_label_style.len() + 16);
-    for raw in base_label_style.split(';') {
-        let trimmed = raw.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
+    crate::mermaid_style::visit_parsed_style_declarations(base_label_style, |decl| {
         if !out.is_empty() {
             out.push(';');
         }
-        if let Some((prop, val)) = trimmed.split_once(':')
-            && prop.trim().eq_ignore_ascii_case("color")
-        {
+        if decl.property() == "color" {
             out.push_str("fill:");
-            out.push_str(val);
+            out.push_str(decl.source_value());
         } else {
-            out.push_str(trimmed);
+            out.push_str(decl.property_css());
+            out.push(':');
+            out.push_str(decl.source_value());
         }
-    }
+    });
     if let Some(ink) = adaptive_ink {
         if !out.is_empty() {
             out.push(';');
@@ -347,12 +330,74 @@ fn flowchart_svg_edge_label_text_style<'a>(
     Cow::Owned(out)
 }
 
-pub(in crate::svg::parity) fn render_flowchart_edge_label(
+fn swimlane_html_edge_label_style(
+    first_label_style: &str,
+    adaptive_ink: Option<&'static str>,
+) -> String {
+    let mut out = String::with_capacity(first_label_style.len() + 24);
+    let mut replaced_fill = false;
+    crate::mermaid_style::visit_parsed_style_declarations(first_label_style, |decl| {
+        if !out.is_empty() {
+            out.push(';');
+        }
+        if !replaced_fill && decl.property() == "fill" {
+            replaced_fill = true;
+            out.push_str("color:");
+            out.push_str(decl.source_value());
+        } else {
+            out.push_str(decl.property_css());
+            out.push(':');
+            out.push_str(decl.source_value());
+        }
+    });
+    if let Some(ink) = adaptive_ink {
+        if !out.is_empty() {
+            out.push(';');
+        }
+        let _ = write!(&mut out, "color:{ink} !important");
+    }
+    out
+}
+
+fn swimlane_svg_edge_label_text_style(
+    first_label_style: &str,
+    adaptive_ink: Option<&'static str>,
+) -> String {
+    let mut out = String::with_capacity(first_label_style.len() + 16);
+    crate::mermaid_style::visit_parsed_style_declarations(first_label_style, |decl| {
+        let property = decl.property();
+        if property == "color" || property == "fill" {
+            if !out.is_empty() {
+                out.push(';');
+            }
+            out.push_str("fill:");
+            out.push_str(decl.source_value());
+        } else if crate::flowchart::flowchart_is_source_spelled_label_style_key(property) {
+            if !out.is_empty() {
+                out.push(';');
+            }
+            out.push_str(decl.property_css());
+            out.push(':');
+            out.push_str(decl.source_value());
+        }
+    });
+    if let Some(ink) = adaptive_ink {
+        if !out.is_empty() {
+            out.push(';');
+        }
+        out.push_str("fill:");
+        out.push_str(ink);
+    }
+    out
+}
+
+pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_label(
     out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &FlowchartRenderCtx<'_>,
     edge_ref: super::super::render_input::FlowchartRenderEdgeRef<'_>,
     origin_x: f64,
     origin_y: f64,
+    hierarchy: &FlowchartHierarchyPlan<'_>,
     placements: &super::super::paint::FlowchartEdgeLabels,
 ) -> crate::Result<()> {
     let key = edge_ref.key;
@@ -379,6 +424,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         sampled_backdrop = render_native_label_background(
             out,
             ctx,
+            hierarchy,
             position,
             (origin_x, origin_y),
             (label.width, label.height),
@@ -399,7 +445,10 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
     };
     let base_label_style = compiled_label_styles.label_style.as_str();
     let adaptive_label_ink = sampled_backdrop
-        .filter(|_| !has_explicit_css_color(base_label_style))
+        .filter(|_| {
+            !compiled_label_styles.has_source_label_foreground()
+                && !has_explicit_css_color(base_label_style)
+        })
         .and_then(|backdrop| {
             let default_ink =
                 crate::theme::edge_label_bg::literal_fill(&ctx.compatibility.text_color)?;
@@ -642,7 +691,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 fmt_display(width),
                 fmt_display(height),
                 HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
-                escape_xml_display(&div_style),
+                escape_attr_display(&div_style),
                 span_style_attr,
                 label_html,
             );
@@ -703,7 +752,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 fmt_display(width),
                 fmt_display(height),
                 HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
-                escape_xml_display(&div_style),
+                escape_attr_display(&div_style),
                 span_style_attr,
                 label_html
             );
@@ -715,7 +764,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         out,
         r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0,0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"{}></span></div></foreignObject></g></g>"#,
         escape_xml_display(&edge.id),
-        escape_xml_display(&div_style_prefix),
+        escape_attr_display(&div_style_prefix),
         span_style_attr
     );
     Ok(())
@@ -736,8 +785,8 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
     ctx: &FlowchartRenderCtx<'_>,
     node_id: &str,
     edge_ref: super::super::render_input::FlowchartRenderEdgeRef<'_>,
-    origin_x: f64,
-    origin_y: f64,
+    (origin_x, origin_y): (f64, f64),
+    hierarchy: &FlowchartHierarchyPlan<'_>,
     placements: &super::super::paint::FlowchartEdgeLabels,
 ) -> crate::Result<()> {
     let key = edge_ref.key;
@@ -780,11 +829,19 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
     let width = label.width.max(0.0);
     let height = label.height.max(0.0);
     let sampled_backdrop = if ctx.native.is_some() {
-        render_native_label_background(out, ctx, position, (origin_x, origin_y), (width, height))?
+        render_native_label_background(
+            out,
+            ctx,
+            hierarchy,
+            position,
+            (origin_x, origin_y),
+            (width, height),
+        )?
     } else {
         None
     };
-    let mut has_swimlane_fg = false;
+    let mut has_swimlane_fg =
+        compiled_label_styles.is_some_and(FlowchartCompiledStyles::has_source_label_foreground);
     crate::mermaid_style::visit_parsed_style_declarations(first_label_style, |decl| {
         if matches!(decl.property(), "color" | "fill") {
             has_swimlane_fg = true;
@@ -798,9 +855,10 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
                     crate::theme::edge_label_bg::literal_fill(&ctx.compatibility.text_color)?;
                 crate::theme::edge_label_bg::adaptive_text_ink(backdrop, default_ink)
             });
+    let trimmed_first_style = first_label_style.trim().trim_end_matches(';');
     let swimlane_group_style: Cow<'_, str> = match swimlane_adaptive_ink {
-        Some(ink) if first_label_style.is_empty() => Cow::Owned(format!("fill:{ink}")),
-        Some(ink) => Cow::Owned(format!("{first_label_style};fill:{ink}")),
+        Some(ink) if trimmed_first_style.is_empty() => Cow::Owned(format!("fill:{ink}")),
+        Some(ink) => Cow::Owned(format!("{trimmed_first_style};fill:{ink}")),
         None => Cow::Borrowed(first_label_style),
     };
     let edge_label_dom_id =
@@ -817,11 +875,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
         escape_xml_display(&edge.id),
         fmt_display(x),
         fmt_display(y),
-        if swimlane_adaptive_ink.is_some() {
-            OptionalStyleAttr(swimlane_group_style.as_ref()).to_string()
-        } else {
-            OptionalStyleXmlAttr(first_label_style).to_string()
-        },
+        OptionalStyleAttr(swimlane_group_style.as_ref()),
         fmt_display(-width / 2.0),
         fmt_display(-height / 2.0),
     );
@@ -863,19 +917,15 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
             )
             .width
                 > ctx.wrapping_width;
-        // `createText` maps only the first literal `fill:` occurrence to `color:` before applying
+        // `createText` maps only the first `fill:` declaration to `color:` before applying
         // the copied label style to the HTML span and div. Later fixed declarations override the
         // corresponding inline properties exactly as Mermaid's chained D3 `.style()` calls do.
-        let mut html_label_style = first_label_style.replacen("fill:", "color:", 1);
-        if let Some(ink) = swimlane_adaptive_ink {
-            if !html_label_style.is_empty() && !html_label_style.ends_with(';') {
-                html_label_style.push(';');
-            }
-            let _ = write!(&mut html_label_style, "color:{ink} !important;");
-        }
+        let html_label_style =
+            swimlane_html_edge_label_style(first_label_style, swimlane_adaptive_ink);
         let mut div_style = String::new();
-        if !html_label_style.trim().is_empty() {
-            div_style.push_str(html_label_style.trim());
+        let trimmed_html_style = html_label_style.trim().trim_end_matches(';');
+        if !trimmed_html_style.is_empty() {
+            div_style.push_str(trimmed_html_style);
             div_style.push(';');
         }
         if needs_wrap {
@@ -897,16 +947,8 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
             fmt_display(width),
             fmt_display(height),
             HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
-            if swimlane_adaptive_ink.is_some() {
-                escape_attr_display(&div_style).to_string()
-            } else {
-                escape_xml_display(&div_style).to_string()
-            },
-            if swimlane_adaptive_ink.is_some() {
-                OptionalStyleAttr(&html_label_style).to_string()
-            } else {
-                OptionalStyleXmlAttr(&html_label_style).to_string()
-            },
+            escape_attr_display(&div_style),
+            OptionalStyleAttr(&html_label_style),
             label_html,
         );
         return Ok(());
@@ -926,7 +968,14 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
         true,
         crate::flowchart::FlowchartSvgWidthMode::Bbox,
     );
-    write_flowchart_svg_label_plan(out, &prepared, true);
+    let swimlane_svg_text_style =
+        swimlane_svg_edge_label_text_style(first_label_style, swimlane_adaptive_ink);
+    write_flowchart_svg_label_plan_with_style(
+        out,
+        &prepared,
+        true,
+        (!swimlane_svg_text_style.is_empty()).then_some(swimlane_svg_text_style.as_str()),
+    );
     out.push_str("</g></g></g>");
     Ok(())
 }
@@ -1278,5 +1327,207 @@ style Inner fill:#88CCCC80,fill-opacity:0.5";
                 "expected adaptive white fill on {id} over dark subgraph, got style={style:?}"
             );
         }
+    }
+
+    #[test]
+    fn cssparser_label_style_rewrites_preserve_quoted_semicolons_and_avoid_double_semicolons() {
+        assert_eq!(
+            flowchart_svg_edge_label_text_style(
+                r#"font-family:"Foo;color:red" !important;color:#ff0 !important"#,
+                None,
+                false,
+            ),
+            r#"font-family:"Foo;color:red" !important;fill:#ff0 !important"#
+        );
+        assert_eq!(
+            flowchart_svg_edge_label_text_style(
+                r#"font-family:"Foo;color:red" !important"#,
+                Some("#FFFFFF"),
+                false,
+            ),
+            r#"font-family:"Foo;color:red" !important;fill:#FFFFFF"#
+        );
+        assert_eq!(
+            swimlane_html_edge_label_style(r#"font-family:"Foo;fill:red";FILL:#333;"#, None,),
+            r#"font-family:"Foo;fill:red";color:#333"#
+        );
+        assert_eq!(
+            swimlane_html_edge_label_style("font-size:14px;", Some("#FFFFFF")),
+            "font-size:14px;color:#FFFFFF !important"
+        );
+        assert_eq!(
+            swimlane_svg_edge_label_text_style(r#"font-family:"Foo;color:red";COLOR:yellow"#, None,),
+            r#"font-family:"Foo;color:red";fill:yellow"#
+        );
+        assert_eq!(
+            swimlane_svg_edge_label_text_style("stroke:#2563eb", Some("#FFFFFF")),
+            "fill:#FFFFFF"
+        );
+    }
+
+    #[cfg(all(feature = "diagram-swimlane", feature = "layout-shoal"))]
+    #[test]
+    fn swimlane_svg_and_html_edge_labels_apply_adaptive_ink_and_preserve_hex_styles() {
+        let theme = crate::theme::ThemeCompiler::new()
+            .compile_json(
+                br#"{"schema_version":2,"extends":"studio","form":{"edge_label_bg":"auto"}}"#,
+                None,
+            )
+            .unwrap();
+
+        let svg_source = "---\nconfig:\n  htmlLabels: false\n  flowchart:\n    htmlLabels: false\n---\nswimlane-beta LR\n\
+            subgraph Dark[Dark Lane]\n\
+                A -->|Route| B\n\
+            end\n\
+            style Dark fill:#0b1120,stroke:#334155\n";
+        let parsed = merman_core::MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(svg_source, merman_core::ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session_with_native_theme(crate::theme::NativeTheme::new(theme.clone()))
+            .unwrap();
+        let rendered = crate::family::prepare(
+            parsed.presentation(),
+            &crate::LayoutOptions::default(),
+            session,
+        )
+        .unwrap()
+        .render_svg(&Default::default(), &Default::default())
+        .unwrap();
+        let doc = crate::xml_dom::Document::parse(rendered.svg()).unwrap();
+        let label = doc
+            .descendants()
+            .find(|node| node.has_tag_name("g") && node.attribute("data-et") == Some("edge-label"))
+            .expect("swimlane edge-label group");
+        let text = label
+            .descendants()
+            .find(|node| node.has_tag_name("text"))
+            .expect("swimlane SVG edge label text");
+        assert!(
+            text.attribute("style")
+                .unwrap_or("")
+                .contains("fill:#FFFFFF"),
+            "swimlane SVG-text edge label must set fill:#FFFFFF directly on <text>: {:?}",
+            text.attribute("style")
+        );
+
+        let html_source = "---\nconfig:\n  htmlLabels: true\n---\nswimlane-beta LR\n\
+            subgraph Dark[Dark Lane]\n\
+                A -->|Styled| B\n\
+                B -->|Adaptive| C\n\
+            end\n\
+            style Dark fill:#0b1120,stroke:#334155\n\
+            linkStyle 0 fill:#333;\n";
+        let parsed = merman_core::MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(html_source, merman_core::ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session_with_native_theme(crate::theme::NativeTheme::new(theme))
+            .unwrap();
+        let rendered = crate::family::prepare(
+            parsed.presentation(),
+            &crate::LayoutOptions::default(),
+            session,
+        )
+        .unwrap()
+        .render_svg(&Default::default(), &Default::default())
+        .unwrap();
+        let out = rendered.svg();
+        assert!(
+            !out.contains("&amp;333;"),
+            "hex color followed by `;` in swimlane style must not be Mermaid-entity decoded: {out}"
+        );
+        assert!(
+            !out.contains("color:#FFFFFF !important;;"),
+            "swimlane HTML div style must not emit double semicolons: {out}"
+        );
+    }
+
+    #[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
+    #[test]
+    fn transparent_edge_label_bg_case_insensitive_color_and_hex_edge_style_escaping() {
+        let source = "---\nconfig:\n  layout: shoal\n  htmlLabels: true\n---\nflowchart LR\n\
+            subgraph Dark[Dark Zone]\n\
+                A auto@-->|Auto Ink| B\n\
+                B authored@-->|Authored Upper| C\n\
+            end\n\
+            style Dark fill:#0b1120,stroke:#334155\n\
+            linkStyle 0 stroke:#333;\n\
+            linkStyle 1 COLOR:yellow\n";
+        let parsed = merman_core::MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let theme = crate::theme::ThemeCompiler::new()
+            .compile_json(
+                br#"{"schema_version":2,"extends":"studio","form":{"edge_label_bg":"transparent"}}"#,
+                None,
+            )
+            .unwrap();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session_with_native_theme(crate::theme::NativeTheme::new(theme))
+            .unwrap();
+        let rendered = crate::family::prepare(
+            parsed.presentation(),
+            &crate::LayoutOptions::default(),
+            session,
+        )
+        .unwrap()
+        .render_svg(&Default::default(), &Default::default())
+        .unwrap();
+        let out = rendered.svg();
+        assert!(
+            !out.contains("merman-edge-label-background"),
+            "transparent edge_label_bg must not emit backplate rects: {out}"
+        );
+        assert!(
+            !out.contains("&amp;333;"),
+            "edge path style `#333;` must not be Mermaid-entity corrupted: {out}"
+        );
+        let doc = crate::xml_dom::Document::parse(out).unwrap();
+        let auto_span = doc
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("g")
+                    && node.attribute("class") == Some("label")
+                    && node.attribute("data-id") == Some("auto")
+            })
+            .and_then(|label| {
+                label.descendants().find(|node| {
+                    node.has_tag_name("span") && node.attribute("class") == Some("edgeLabel")
+                })
+            })
+            .expect("auto edge label span");
+        assert!(
+            auto_span
+                .attribute("style")
+                .unwrap_or("")
+                .contains("color:#FFFFFF !important"),
+            "transparent edge_label_bg must still select adaptive white ink over dark cluster: {:?}",
+            auto_span.attribute("style")
+        );
+        let authored_span = doc
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("g")
+                    && node.attribute("class") == Some("label")
+                    && node.attribute("data-id") == Some("authored")
+            })
+            .and_then(|label| {
+                label.descendants().find(|node| {
+                    node.has_tag_name("span") && node.attribute("class") == Some("edgeLabel")
+                })
+            })
+            .expect("authored edge label span");
+        assert!(
+            !authored_span
+                .attribute("style")
+                .unwrap_or("")
+                .contains("color:#FFFFFF"),
+            "uppercase COLOR:yellow must suppress adaptive ink override: {:?}",
+            authored_span.attribute("style")
+        );
     }
 }

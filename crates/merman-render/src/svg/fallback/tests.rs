@@ -2280,3 +2280,24 @@ fn foreign_object_overlay_keeps_nowrap_labels_as_single_fallback_line() {
         "explicit nowrap labels should keep the existing single-line fallback behavior: {out}"
     );
 }
+
+#[test]
+fn self_closing_and_whitespace_etag_foreign_objects_do_not_swallow_or_abort_fallback() {
+    let svg = concat!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg">"#,
+        r#"<foreignObject width="0" height="0"/>"#,
+        r#"<rect x="0" y="0" width="50" height="20"/>"#,
+        r#"<foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><p>Surviving Label</p></div></foreignObject  >"#,
+        r#"</svg>"#,
+    );
+    let out = foreign_object_label_fallback_svg_text(svg);
+    assert!(
+        out.contains(r#"<rect x="0" y="0" width="50" height="20"/>"#),
+        "intervening SVG after self-closing foreignObject must survive: {out}"
+    );
+    assert!(
+        out.contains(">Surviving Label</text>"),
+        "paired foreignObject with whitespace before closing `>` must still produce fallback text: {out}"
+    );
+    crate::xml_dom::Document::parse(&out).expect("fallback output must remain valid XML");
+}

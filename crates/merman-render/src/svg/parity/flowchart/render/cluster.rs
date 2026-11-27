@@ -138,30 +138,25 @@ fn cluster_svg_text_style(label_style: &str) -> String {
     if label_style.is_empty() {
         return String::new();
     }
-    let mut out = String::new();
+    let mut out = String::with_capacity(label_style.len());
     let mut color_value: Option<&str> = None;
     let mut has_fill = false;
-    for decl in label_style.split(';') {
-        let decl = decl.trim();
-        if decl.is_empty() {
-            continue;
-        }
-        if let Some((key, val)) = decl.split_once(':') {
-            let key_trim = key.trim();
-            if key_trim.eq_ignore_ascii_case("fill") {
-                has_fill = true;
-            } else if key_trim.eq_ignore_ascii_case("color") {
-                let val_trim = val.trim();
-                if !val_trim.is_empty() {
-                    color_value = Some(val_trim);
-                }
+    crate::mermaid_style::visit_parsed_style_declarations(label_style, |decl| {
+        if decl.property() == "fill" {
+            has_fill = true;
+        } else if decl.property() == "color" {
+            let val = decl.source_value().trim();
+            if !val.is_empty() {
+                color_value = Some(val);
             }
         }
         if !out.is_empty() {
             out.push(';');
         }
-        out.push_str(decl);
-    }
+        out.push_str(decl.property_css());
+        out.push(':');
+        out.push_str(decl.source_value());
+    });
     if !has_fill && let Some(val) = color_value {
         if !out.is_empty() {
             out.push(';');
@@ -172,7 +167,7 @@ fn cluster_svg_text_style(label_style: &str) -> String {
     out
 }
 
-fn cluster_base_fill<'a>(
+pub(in crate::svg::parity::flowchart) fn cluster_base_fill<'a>(
     ctx: &'a FlowchartRenderCtx<'_>,
     terminal: &'a super::super::node_inventory::FlowchartPreparedCluster,
     id: &str,
@@ -184,6 +179,17 @@ fn cluster_base_fill<'a>(
         return background;
     }
     &terminal.fill
+}
+
+pub(in crate::svg::parity::flowchart) fn compat_theme_canvas_fallback(
+    ctx: &FlowchartRenderCtx<'_>,
+) -> crate::theme::Color {
+    match ctx.config.get_str("theme") {
+        Some("dark" | "redux-dark" | "redux-dark-color" | "neo-dark") => {
+            crate::theme::Color::rgb(0x1F, 0x20, 0x20)
+        }
+        _ => crate::theme::Color::rgb(255, 255, 255),
+    }
 }
 
 fn write_flowchart_cluster_shape(
@@ -205,11 +211,7 @@ fn write_flowchart_cluster_shape(
     let agentflow = ctx.diagram_type == "agentflow";
     let canonical = ctx.layout.route_contract.is_canonical_axis();
     if let Some(native) = ctx.native {
-        let radius = native
-            .form
-            .container_radius
-            .min(rect_w.min(rect_h) / 2.0)
-            .max(0.0);
+        let radius = super::super::cluster_geometry::cluster_container_radius(ctx, rect_w, rect_h);
         let _ = write!(
             out,
             r#"<rect x="{}" y="{}" width="{}" height="{}" rx="{}" style="fill:{};stroke:{};stroke-width:{}px"#,
@@ -331,7 +333,10 @@ fn write_flowchart_cluster_shape(
     );
 }
 
-fn title_halo_color(ctx: &FlowchartRenderCtx<'_>, id: &str) -> crate::Result<crate::theme::Color> {
+fn title_halo_color(
+    ctx: &FlowchartRenderCtx<'_>,
+    id: &str,
+) -> crate::Result<Option<crate::theme::Color>> {
     use crate::theme::{Color, edge_label_bg::literal_fill};
 
     let canvas = ctx.native.map(|native| native.canvas).or_else(|| {
@@ -354,12 +359,17 @@ fn title_halo_color(ctx: &FlowchartRenderCtx<'_>, id: &str) -> crate::Result<cra
         let layer = fill.composite(Color::TRANSPARENT, terminal.compiled.fill_opacity);
         surface = surface.composite(layer, 1.0);
         if surface.channels()[3] == u8::MAX {
-            return Ok(surface);
+            return Ok(Some(surface));
         }
         current = ctx.parent.get(id).copied();
     }
-    let white = Color::rgb(255, 255, 255);
-    Ok(surface.composite(canvas.unwrap_or(white).composite(white, 1.0), 1.0))
+    match canvas {
+        Some(canvas) if canvas.channels()[3] == u8::MAX => Ok(Some(surface.composite(canvas, 1.0))),
+        Some(_) => Ok(None),
+        None => Ok(Some(
+            surface.composite(compat_theme_canvas_fallback(ctx), 1.0),
+        )),
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -540,7 +550,8 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
 
     let halo = struck
         .then(|| title_halo_color(ctx, &cluster.id))
-        .transpose()?;
+        .transpose()?
+        .flatten();
     let overlay = struck && pass == FlowchartClusterPass::Label;
     let _ = write!(out, r#"<g class="{}""#, escape_xml_display(&class_attr));
     if !overlay {
@@ -700,4 +711,23 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
     }
     out.push_str("</g></g>");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cluster_svg_text_style;
+
+    #[test]
+    fn cluster_svg_text_style_preserves_quoted_semicolons_and_mirrors_color() {
+        assert_eq!(
+            cluster_svg_text_style(
+                r#"font-family:"Foo;color:red" !important;COLOR:#fff !important"#
+            ),
+            r#"font-family:"Foo;color:red" !important;COLOR:#fff !important;fill:#fff !important"#
+        );
+        assert_eq!(
+            cluster_svg_text_style(r#"font-family:"Foo;color:red" !important"#),
+            r#"font-family:"Foo;color:red" !important"#
+        );
+    }
 }

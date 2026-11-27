@@ -213,16 +213,20 @@ fn edge_pairs(
     if fans {
         work.charge(segments.len())?;
         let mut ordered = crate::work::reserved(segments.len())?;
-        ordered.extend(groups);
+        ordered.extend(groups.enumerate());
         work.charge_sort(ordered.len())?;
-        ordered.sort_unstable_by(|a, b| {
+        ordered.sort_unstable_by(|(ia, a), (ib, b)| {
             a.bounds
                 .start
                 .total_cmp(&b.bounds.start)
                 .then(a.owners[0].edge.cmp(&b.owners[0].edge))
+                .then(ia.cmp(ib))
         });
         let len = ordered.len();
-        sweep(ordered.into_iter(), len, work)
+        fn group_of<'a>((_, group): (usize, Group<'a>)) -> Group<'a> {
+            group
+        }
+        sweep(ordered.into_iter().map(group_of), len, work)
     } else {
         sweep(groups, segments.len(), work)
     }

@@ -166,6 +166,7 @@ pub(super) fn attach_side_ports(
             let marker = markers[end];
             let side_span = node
                 .perpendicular_port_span
+                .or(node.port_span)
                 .unwrap_or((g.height[i] - 2.0 * options.spacing.corner_clearance).max(0.0));
             if !allow_side
                 || side_span.min(g.height[i]) < marker.width

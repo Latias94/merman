@@ -23,6 +23,9 @@ enum ClearanceTier {
     /// Last-resort local placement on a trapped parallel wire: clears every solid obstacle,
     /// title, marker, and previously placed caption while allowing foreign route lines behind it.
     AcrossForeignRoute,
+    /// Extended local rescue for heavily congested gutters before falling back to distant
+    /// scope-bottom or diagram-bottom rows: keeps a thin clearance margin from solids/captions.
+    TightAcrossForeignRoute,
 }
 
 #[derive(Clone, Copy)]
@@ -48,9 +51,17 @@ struct Caption {
 /// Returns `true` if the straight tether segment `from -> to` crosses `bounds` strictly
 /// after its anchor `from` (`t > 1e-6`), separating a caption candidate from its own route.
 fn segment_crosses_bounds(from: Point, to: Point, bounds: Bounds) -> bool {
+    if !from.x.is_finite()
+        || !from.y.is_finite()
+        || !to.x.is_finite()
+        || !to.y.is_finite()
+        || !bounds.finite()
+    {
+        return false;
+    }
     let dx = to.x - from.x;
     let dy = to.y - from.y;
-    if dx == 0.0 && dy == 0.0 {
+    if !dx.is_finite() || !dy.is_finite() || (dx == 0.0 && dy == 0.0) {
         return false;
     }
     let mut t_min = 0.0_f64;
@@ -63,6 +74,9 @@ fn segment_crosses_bounds(from: Point, to: Point, bounds: Bounds) -> bool {
         } else {
             let t0 = (lo - origin) / delta;
             let t1 = (hi - origin) / delta;
+            if !t0.is_finite() || !t1.is_finite() {
+                return false;
+            }
             t_min = t_min.max(t0.min(t1));
             t_max = t_max.min(t0.max(t1));
             if t_min > t_max {
@@ -132,6 +146,7 @@ impl Scene {
             ClearanceTier::OnOwnRoute
             | ClearanceTier::AcrossFrame
             | ClearanceTier::AcrossForeignRoute => (self.clearance * 0.5).min(4.0),
+            ClearanceTier::TightAcrossForeignRoute => (self.clearance * 0.25).min(1.5),
         };
         let ink = Bounds::from_half_extents(at, size.width / 2.0 + pad, size.height / 2.0 + pad);
         if !ink.finite() {
@@ -165,7 +180,9 @@ impl Scene {
         }
         let allow_frame = matches!(
             tier,
-            ClearanceTier::AcrossFrame | ClearanceTier::AcrossForeignRoute
+            ClearanceTier::AcrossFrame
+                | ClearanceTier::AcrossForeignRoute
+                | ClearanceTier::TightAcrossForeignRoute
         );
         // Phase 1a: check solid nodes, titles, markers, and (unless relaxed) hollow group frames.
         let hit_solid = self.solids.visit(|entry| -> LayoutResult<_> {
@@ -184,8 +201,11 @@ impl Scene {
         if hit_solid.is_break() {
             return Ok(FitResult::Blocked);
         }
-        // Phase 1b: tight `ink`-only check against route segments (skipped in `AcrossForeignRoute`).
-        if !matches!(tier, ClearanceTier::AcrossForeignRoute) {
+        // Phase 1b: tight `ink`-only check against route segments (skipped in foreign-route tiers).
+        if !matches!(
+            tier,
+            ClearanceTier::AcrossForeignRoute | ClearanceTier::TightAcrossForeignRoute
+        ) {
             let block_own = matches!(tier, ClearanceTier::OffAll);
             let hit_route = self.routes.visit(|entry| -> LayoutResult<_> {
                 work.visit(1)?;
@@ -317,6 +337,7 @@ impl Scene {
             work.visit(1)?;
             let pad = match tier {
                 ClearanceTier::OffAll => self.clearance,
+                ClearanceTier::TightAcrossForeignRoute => (self.clearance * 0.25).min(1.5),
                 _ => (self.clearance * 0.5).min(4.0),
             };
             for ((coord, [lo, hi]), half) in candidate
@@ -324,15 +345,20 @@ impl Scene {
                 .zip(room)
                 .zip([size.width / 2.0 + pad, size.height / 2.0 + pad])
             {
-                if lo + half > hi - half {
+                let min_coord = lo + half;
+                let max_coord = hi - half;
+                if min_coord.is_nan() || max_coord.is_nan() || min_coord > max_coord {
                     return Ok(None);
                 }
-                *coord = coord.clamp(lo + half, hi - half);
+                *coord = coord.clamp(min_coord, max_coord);
             }
             let [x, y] = candidate;
             let at = Point { x, y };
             let distance = (x - sample[0]).hypot(y - sample[1]);
-            if distance > radius || best.is_some_and(|best| distance >= best) {
+            if !distance.is_finite()
+                || distance > radius
+                || best.is_some_and(|best| distance >= best)
+            {
                 return Ok(None);
             }
             let tether = check_tether.then_some(Point {
@@ -537,6 +563,175 @@ impl Scene {
                 return Ok(Some(at));
             }
         }
+        self.extended_local_rescue(
+            points,
+            lengths,
+            total,
+            markers,
+            route_index,
+            size,
+            scope,
+            radius,
+            work,
+        )
+    }
+
+    /// Extended local rescue invoked only when standard near-route tiers fail, avoiding
+    /// 200-600 px teleports to scope-bottom or diagram-bottom rows in congested gutters.
+    #[allow(clippy::too_many_arguments)]
+    fn extended_local_rescue(
+        &self,
+        points: &[RoutePoint],
+        lengths: &[f64],
+        total: f64,
+        markers: [f64; 2],
+        route_index: usize,
+        size: Size,
+        scope: Option<Bounds>,
+        base_radius: f64,
+        work: &mut Work<'_>,
+    ) -> LayoutResult<Option<Point>> {
+        let mut anchors = [([0.0; 2], 0usize); 11];
+        let mut anchor_count = 0usize;
+        let mut push_anchor = |at: [f64; 2], cross: usize| {
+            if anchor_count < anchors.len()
+                && !anchors[..anchor_count]
+                    .iter()
+                    .any(|(prev, _)| (prev[0] - at[0]).abs() < 4.0 && (prev[1] - at[1]).abs() < 4.0)
+            {
+                anchors[anchor_count] = (at, cross);
+                anchor_count += 1;
+            }
+        };
+        // Prioritize the longest route legs first so multi-leg routes sample open corridor runs.
+        let mut longest = [(0.0_f64, 0usize); 4];
+        for (idx, &len) in lengths.iter().enumerate() {
+            work.visit(1)?;
+            if len <= 0.0 {
+                continue;
+            }
+            for slot in 0..longest.len() {
+                if len > longest[slot].0 {
+                    for shift in (slot + 1..longest.len()).rev() {
+                        longest[shift] = longest[shift - 1];
+                    }
+                    longest[slot] = (len, idx);
+                    break;
+                }
+            }
+        }
+        for (len, idx) in longest {
+            if len <= 0.0 {
+                continue;
+            }
+            let a = points[idx];
+            let b = points[idx + 1];
+            let mid = [(a.x + b.x) * 0.5, (a.y + b.y) * 0.5];
+            let cross = usize::from(a.y == b.y);
+            push_anchor(mid, cross);
+        }
+        for t in [0.5, 0.35, 0.65, 0.2, 0.8, 0.1, 0.9] {
+            if let Some((at, cross)) = Self::sample_route(points, lengths, total, markers, t, work)?
+            {
+                push_anchor(at, cross);
+            }
+        }
+        if anchor_count == 0 {
+            return Ok(None);
+        }
+        let extended_radius = (base_radius * 2.0).max(240.0);
+        let room = scope.map_or([[0.0, f64::INFINITY]; 2], |bounds| [bounds.x, bounds.y]);
+        for tier in [
+            ClearanceTier::OffAll,
+            ClearanceTier::AcrossFrame,
+            ClearanceTier::AcrossForeignRoute,
+            ClearanceTier::TightAcrossForeignRoute,
+        ] {
+            let pad = match tier {
+                ClearanceTier::OffAll => self.clearance,
+                ClearanceTier::TightAcrossForeignRoute => (self.clearance * 0.25).min(1.5),
+                _ => (self.clearance * 0.5).min(4.0),
+            };
+            let step = [size.width / 2.0 + pad, size.height / 2.0 + pad];
+            let mut closest = None::<(f64, Point)>;
+            for &(sample, cross) in &anchors[..anchor_count] {
+                let along_base = step[1 - cross].min(extended_radius * 0.5);
+                for (mult, radius_fraction) in [
+                    (0.0, 0.0),
+                    (1.0, 0.0),
+                    (1.5, 0.0),
+                    (2.0, 0.0),
+                    (2.5, 0.0),
+                    (3.0, 0.0),
+                    (4.0, 0.0),
+                    (0.0, 0.55),
+                    (0.0, 0.72),
+                    (0.0, 0.88),
+                    (0.0, 0.98),
+                ] {
+                    let across_dist = (mult * step[cross])
+                        .max(extended_radius * radius_fraction)
+                        .next_up();
+                    let signs: &[f64] = if mult == 0.0 && radius_fraction == 0.0 {
+                        &[0.0]
+                    } else {
+                        &[-1.0, 1.0]
+                    };
+                    for &sign in signs {
+                        for along_mult in [0.0, -0.5, 0.5, -1.0, 1.0, -1.5, 1.5] {
+                            work.visit(1)?;
+                            let mut candidate = sample;
+                            candidate[cross] += sign * across_dist;
+                            candidate[1 - cross] += along_mult * along_base;
+                            let mut valid = true;
+                            for ((coord, [lo, hi]), half) in
+                                candidate.iter_mut().zip(room).zip(step)
+                            {
+                                let min_c = lo + half;
+                                let max_c = hi - half;
+                                if min_c.is_nan() || max_c.is_nan() || min_c > max_c {
+                                    valid = false;
+                                    break;
+                                }
+                                *coord = coord.clamp(min_c, max_c);
+                            }
+                            if !valid {
+                                continue;
+                            }
+                            let at = Point {
+                                x: candidate[0],
+                                y: candidate[1],
+                            };
+                            let dist = (at.x - sample[0]).hypot(at.y - sample[1]);
+                            if !dist.is_finite()
+                                || dist > extended_radius
+                                || closest.is_some_and(|(best, _)| dist >= best)
+                            {
+                                continue;
+                            }
+                            if matches!(
+                                self.fits_classified(
+                                    at,
+                                    size,
+                                    scope,
+                                    route_index,
+                                    None,
+                                    &[],
+                                    tier,
+                                    work,
+                                )?,
+                                FitResult::Clear
+                            ) {
+                                closest = Some((dist, at));
+                            }
+                        }
+                    }
+                }
+            }
+            if let Some((_, at)) = closest {
+                return Ok(Some(at));
+            }
+        }
         Ok(None)
     }
 }
@@ -591,7 +786,9 @@ pub(super) fn place(
             )?;
         }
     }
-    let mut route_obstacles = reserved(routes.len().saturating_mul(2))?;
+    let route_cap = routes.len().saturating_mul(2);
+    work.charge(route_cap)?;
+    let mut route_obstacles = reserved(route_cap)?;
     for (edge, route) in routes.iter().enumerate() {
         work.visit(1)?;
         let mut previous: Option<Bounds> = None;
@@ -895,6 +1092,142 @@ mod tests {
         assert!(
             (seat.y - 167.0).abs() <= 45.0 && (100.0..=400.0).contains(&seat.x),
             "expected local seat near (250, 167), got {seat:?}"
+        );
+    }
+
+    #[test]
+    fn non_finite_caption_dimensions_do_not_panic_and_segment_crosses_bounds_rejects_nan() {
+        let mut noop = NoopWorkControl;
+        let mut work = Work::new(&mut noop);
+        assert!(!segment_crosses_bounds(
+            Point {
+                x: f64::NAN,
+                y: 0.0
+            },
+            Point { x: 10.0, y: 10.0 },
+            Bounds {
+                x: [0.0, 20.0],
+                y: [0.0, 20.0],
+            },
+        ));
+        assert!(!segment_crosses_bounds(
+            Point { x: 0.0, y: 0.0 },
+            Point { x: 10.0, y: 10.0 },
+            Bounds {
+                x: [f64::NAN, 20.0],
+                y: [0.0, 20.0],
+            },
+        ));
+        let scene = Scene {
+            solids: Bvh::build_with_work(Vec::new(), |obs: &SolidObstacle| obs.bounds, &mut work)
+                .unwrap(),
+            routes: Bvh::build_with_work(Vec::new(), |obs: &RouteObstacle| obs.bounds, &mut work)
+                .unwrap(),
+            labels: Vec::new(),
+            clearance: f64::MAX,
+        };
+        let route = [
+            RoutePoint {
+                x: 10.0,
+                y: 20.0,
+                axis: Axis::Horizontal,
+                kind: KnotKind::Free,
+            },
+            RoutePoint {
+                x: 200.0,
+                y: 20.0,
+                axis: Axis::Horizontal,
+                kind: KnotKind::Free,
+            },
+        ];
+        let mut lengths = Vec::new();
+        let seat = scene
+            .near_route(
+                &route,
+                0,
+                0.5,
+                [0.0, 0.0],
+                Size {
+                    width: 1e308,
+                    height: 20.0,
+                },
+                None,
+                &mut lengths,
+                &mut work,
+            )
+            .unwrap();
+        assert!(seat.is_none());
+    }
+
+    #[test]
+    fn congested_caption_uses_extended_local_rescue_within_local_radius() {
+        let mut noop = NoopWorkControl;
+        let mut work = Work::new(&mut noop);
+        // Block the immediate 120px neighborhood above and below the route with solid cards so
+        // standard rings fail, while leaving an open pocket ~150px below the route.
+        let solids = vec![
+            SolidObstacle {
+                bounds: Bounds {
+                    x: [0.0, 600.0],
+                    y: [0.0, 195.0],
+                },
+                is_frame: false,
+            },
+            SolidObstacle {
+                bounds: Bounds {
+                    x: [0.0, 600.0],
+                    y: [205.0, 325.0],
+                },
+                is_frame: false,
+            },
+        ];
+        let routes = vec![RouteObstacle {
+            bounds: Bounds {
+                x: [100.0, 400.0],
+                y: [200.0, 200.0],
+            },
+            edge: 0,
+        }];
+        let scene = Scene {
+            solids: Bvh::build_with_work(solids, |obs| obs.bounds, &mut work).unwrap(),
+            routes: Bvh::build_with_work(routes, |obs| obs.bounds, &mut work).unwrap(),
+            labels: Vec::new(),
+            clearance: 8.0,
+        };
+        let route = [
+            RoutePoint {
+                x: 100.0,
+                y: 200.0,
+                axis: Axis::Horizontal,
+                kind: KnotKind::Free,
+            },
+            RoutePoint {
+                x: 400.0,
+                y: 200.0,
+                axis: Axis::Horizontal,
+                kind: KnotKind::Free,
+            },
+        ];
+        let mut lengths = Vec::new();
+        let seat = scene
+            .near_route(
+                &route,
+                0,
+                0.5,
+                [0.0, 0.0],
+                Size {
+                    width: 160.0,
+                    height: 50.0,
+                },
+                None,
+                &mut lengths,
+                &mut work,
+            )
+            .unwrap()
+            .expect("extended local rescue should find the open pocket at y ~ 360");
+        assert!(
+            seat.y >= 350.0 && seat.y <= 400.0,
+            "expected extended local seat near y=360, got {seat:?}"
         );
     }
 }

@@ -275,3 +275,298 @@ fn shoal_flowchart_default_theme_cases_solid_crossing_into_dark_cluster_without_
         );
     }
 }
+
+#[cfg(feature = "diagram-flowchart")]
+#[test]
+fn shoal_node_to_nested_subgraph_edges_get_adaptive_ink_in_dark_and_light_clusters() {
+    // c05: dark custom outer cluster in forest theme with nested dark (and light) subgraph.
+    for inner_fill in ["#1E293B", "#F8FAFC"] {
+        let source = format!(
+            "---\nconfig:\n  layout: shoal\n  theme: forest\n  htmlLabels: false\n---\nflowchart LR\n\
+            subgraph Outer[Dark Control Plane]\n\
+                Scheduler[Scheduler]\n\
+                subgraph sg_inner_dark[Nested Stage]\n\
+                    Worker[Worker]\n\
+                end\n\
+                Reporter[Reporter]\n\
+                Scheduler enter@--> sg_inner_dark\n\
+                sg_inner_dark exit@--> Reporter\n\
+            end\n\
+            style Outer fill:#0B1120,stroke:#334155,color:#F8FAFC\n\
+            style sg_inner_dark fill:{inner_fill},stroke:#475569\n"
+        );
+        let parsed = MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let svg = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+            .unwrap()
+            .render_svg(&Default::default(), &Default::default())
+            .unwrap();
+        let doc = Document::parse(svg.svg()).unwrap();
+        for id in ["enter", "exit"] {
+            let e = edge(&doc, id);
+            assert!(
+                e.attribute("style")
+                    .unwrap_or("")
+                    .contains("stroke:#FFFFFF"),
+                "c05 ({inner_fill}): expected adaptive white ink on {id}, got {:?}",
+                e.attribute("style")
+            );
+            assert_eq!(
+                marker_shape(&doc, e, "marker-end").attribute("stroke"),
+                Some("#FFFFFF"),
+                "c05 ({inner_fill}): expected white marker on {id}"
+            );
+        }
+    }
+
+    // c08: light custom outer cluster in dark studio theme with nested subgraph.
+    let dark_theme_json = br##"{
+        "schema_version":2,"extends":"studio",
+        "roles":{"canvas":"#0F172A","surface.container":"#1E293B","stroke.connector":"#E2E8F0"},
+        "form":{"container_radius":4,"elevation":"flat","marker_style":"filled"}
+    }"##;
+    let source = "---\nconfig:\n  layout: shoal\n  htmlLabels: false\n---\nflowchart LR\n\
+        subgraph Outer[Light Control Plane]\n\
+            Scheduler[Scheduler]\n\
+            subgraph sg_inner[Nested Stage]\n\
+                Worker[Worker]\n\
+            end\n\
+            Reporter[Reporter]\n\
+            Scheduler enter@--> sg_inner\n\
+            sg_inner exit@--> Reporter\n\
+        end\n\
+        style Outer fill:#F8FAFC,stroke:#94A3B8,color:#0F172A\n\
+        style sg_inner fill:#E2E8F0,stroke:#64748B\n";
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let theme = ThemeCompiler::new()
+        .compile_json(dark_theme_json, None)
+        .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_native_theme(NativeTheme::new(theme))
+        .unwrap();
+    let svg = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .unwrap()
+        .render_svg(&Default::default(), &Default::default())
+        .unwrap();
+    let doc = Document::parse(svg.svg()).unwrap();
+    for id in ["enter", "exit"] {
+        let e = edge(&doc, id);
+        assert!(
+            e.attribute("style")
+                .unwrap_or("")
+                .contains("stroke:#000000"),
+            "c08: expected adaptive black ink on {id}, got {:?}",
+            e.attribute("style")
+        );
+        assert_eq!(
+            marker_shape(&doc, e, "marker-end").attribute("stroke"),
+            Some("#000000"),
+            "c08: expected black marker on {id}"
+        );
+    }
+}
+
+#[cfg(feature = "diagram-flowchart")]
+#[test]
+fn shoal_casing_color_avoids_same_color_casing_and_similarly_dark_crossings_adapt_ink() {
+    // Dark outer (#0B1120) -> light inner (#F8FAFC) under light theme (#333333 ink):
+    // casing must pick high-contrast #F8FAFC, NOT dark #0B1120!
+    let svg = render(
+        "flowchart",
+        "shoal",
+        "classic",
+        "subgraph Outer\nA[Dark]\nsubgraph Inner\nB[Light]\nend\nA cross@--> B\nend\n\
+         style Outer fill:#0B1120\nstyle Inner fill:#F8FAFC\n",
+        false,
+    );
+    let doc = Document::parse(&svg).unwrap();
+    let casings = doc
+        .descendants()
+        .find(|node| node.attribute("class") == Some("merman-edge-casings"))
+        .expect("expected casing for dark-to-light nested crossing");
+    let casing = casings.first_element_child().unwrap();
+    assert_eq!(casing.attribute("stroke"), Some("#F8FAFC"));
+
+    // Authored white stroke crossing from light canvas (#FAF7EC) into dark cluster (#0B1120):
+    // casing must pick dark #0B1120, NOT low-contrast #FAF7EC!
+    let svg = render(
+        "flowchart",
+        "shoal",
+        "classic",
+        "subgraph Dark\nA[Inside]\nend\nX cross@--> A\nstyle Dark fill:#0B1120\nlinkStyle 0 stroke:#FFFFFF\n",
+        false,
+    );
+    let doc = Document::parse(&svg).unwrap();
+    let casings = doc
+        .descendants()
+        .find(|node| node.attribute("class") == Some("merman-edge-casings"))
+        .expect("expected casing for authored white crossing into dark cluster");
+    let casing = casings.first_element_child().unwrap();
+    assert_eq!(casing.attribute("stroke"), Some("#0B1120"));
+
+    // Crossing between similarly dark nested clusters (#0B1120 -> #0F172A) has no significant
+    // boundary contrast for casing, so it must fall back to adaptive #FFFFFF ink!
+    let svg = render(
+        "flowchart",
+        "shoal",
+        "classic",
+        "subgraph Outer\nA[Outer]\nsubgraph Inner\nB[Inner]\nend\nA darkcross@--> B\nend\n\
+         style Outer fill:#0B1120\nstyle Inner fill:#0F172A\n",
+        false,
+    );
+    let doc = Document::parse(&svg).unwrap();
+    assert!(
+        edge(&doc, "darkcross")
+            .attribute("style")
+            .unwrap_or("")
+            .contains("stroke:#FFFFFF"),
+        "similarly dark nested crossing must emit adaptive white ink: {svg}"
+    );
+}
+
+#[cfg(feature = "diagram-flowchart")]
+#[test]
+fn shoal_redux_dark_color_neo_dark_and_single_cluster_isolation() {
+    // redux-dark-color flowchart must use cluster_base_fill, not agentflow bkgColorArray,
+    // so light default stroke on dark cluster stays light (not black-on-dark!).
+    let redux_source = "---\nconfig:\n  layout: shoal\n  theme: redux-dark-color\n  htmlLabels: false\n---\nflowchart LR\n\
+        subgraph G[Group]\nA inside@--> B\nend\n";
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(redux_source, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let svg = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .unwrap()
+        .render_svg(&Default::default(), &Default::default())
+        .unwrap();
+    let doc = Document::parse(svg.svg()).unwrap();
+    assert!(
+        !edge(&doc, "inside")
+            .attribute("style")
+            .unwrap_or("")
+            .contains("stroke:#000000"),
+        "redux-dark-color must not falsely treat flowchart clusters as light palette fills: {}",
+        svg.svg()
+    );
+
+    // neo-dark with custom light cluster gets adaptive #000000 ink.
+    let neo_dark_source = "---\nconfig:\n  layout: shoal\n  theme: neo-dark\n  htmlLabels: false\n---\nflowchart LR\n\
+        subgraph Light[Light Box]\nA inside@--> B\nend\nstyle Light fill:#F8FAFC,stroke:#94A3B8\n";
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(neo_dark_source, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let svg = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .unwrap()
+        .render_svg(&Default::default(), &Default::default())
+        .unwrap();
+    let doc = Document::parse(svg.svg()).unwrap();
+    assert!(
+        edge(&doc, "inside")
+            .attribute("style")
+            .unwrap_or("")
+            .contains("stroke:#000000"),
+        "neo-dark custom light cluster must get adaptive black ink: {:?}",
+        edge(&doc, "inside").attribute("style")
+    );
+
+    // One cluster with non-allowlisted `rx:8` must only isolate that cluster, not disable
+    // adaptive ink in a separate proven dark cluster.
+    let isolated_svg = render(
+        "flowchart",
+        "shoal",
+        "classic",
+        "subgraph CustomRx[Rounded]\nA custom@--> B\nend\n\
+         subgraph Dark[Dark]\nC inside@--> D\nend\n\
+         style CustomRx fill:#0B1120,rx:8\n\
+         style Dark fill:#0B1120\n",
+        false,
+    );
+    let doc = Document::parse(&isolated_svg).unwrap();
+    assert!(
+        !edge(&doc, "custom")
+            .attribute("style")
+            .unwrap_or("")
+            .contains("stroke:#FFFFFF"),
+        "unproven rx:8 cluster should skip adaptive ink"
+    );
+    assert!(
+        edge(&doc, "inside")
+            .attribute("style")
+            .unwrap_or("")
+            .contains("stroke:#FFFFFF"),
+        "sibling proven dark cluster must still receive adaptive white ink"
+    );
+}
+
+#[cfg(feature = "diagram-agentflow")]
+#[test]
+fn shoal_compat_agentflow_dark_container_gets_adaptive_ink() {
+    let source = "---\nconfig:\n  layout: shoal\n  htmlLabels: false\n---\nagentflow-beta LR\n\
+        flow Dark[Dark Flow]\nA inside@--> B\nend\nstyle Dark fill:#0B1120,stroke:#334155\n";
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let svg = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .unwrap()
+        .render_svg(&Default::default(), &Default::default())
+        .unwrap();
+    let doc = Document::parse(svg.svg()).unwrap();
+    assert!(
+        edge(&doc, "inside")
+            .attribute("style")
+            .unwrap_or("")
+            .contains("stroke:#FFFFFF"),
+        "compat agentflow dark container must get adaptive white ink: {:?}",
+        edge(&doc, "inside").attribute("style")
+    );
+}
+
+#[cfg(feature = "diagram-flowchart")]
+#[test]
+fn shoal_transparent_canvas_with_none_cluster_fill_omits_white_title_halo() {
+    use merman_render::theme::Color;
+
+    let source = "---\nconfig:\n  layout: shoal\n  htmlLabels: true\n---\nflowchart TB\n\
+        subgraph G[A long title with no room beside the entering route]\n\
+            A[Short]\n\
+        end\n\
+        Outside trunk@--> A\n\
+        style G fill:none,stroke:#60A5FA\n";
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let theme = ThemeCompiler::new()
+        .compile_json(br#"{"schema_version":2,"extends":"tokyo"}"#, None)
+        .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_native_theme(NativeTheme::new(theme))
+        .unwrap()
+        .with_canvas_background(Color::TRANSPARENT);
+    let rendered = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .unwrap()
+        .render_svg(&Default::default(), &Default::default())
+        .unwrap();
+    let svg = rendered.svg();
+    assert!(
+        !svg.contains(r##"stroke="#FFFFFF""##) && !svg.contains("-webkit-text-stroke:5px #FFFFFF"),
+        "transparent canvas with fill:none cluster must never emit a blinding white halo: {svg}"
+    );
+}

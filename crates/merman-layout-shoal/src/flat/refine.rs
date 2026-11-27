@@ -744,7 +744,7 @@ fn weighted_pava(
 ) -> bool {
     let total = gap.iter().skip(1).sum::<f64>();
     let hi = bounds.hi - total;
-    if bounds.lo > hi {
+    if bounds.lo.is_nan() || hi.is_nan() || bounds.lo > hi {
         return false;
     }
     pools.clear();
@@ -909,7 +909,7 @@ fn port_runs(
                         let wa = s.data.marker_width[side][a];
                         let wb = s.data.marker_width[side][b];
                         if wa > 0.0 || wb > 0.0 {
-                            0.5 * (wa + wb) + 4.0
+                            0.5 * wa + 0.5 * wb + 4.0
                         } else {
                             0.0
                         }
@@ -947,17 +947,20 @@ fn port_runs(
                     };
                     let avail = (bounds.hi - bounds.lo).max(0.0);
                     if free.len() >= 2 && avail > 0.0 {
+                        let pair_need = |a: usize, b: usize, base: f64| {
+                            if base > 0.0 {
+                                let clear = marker_clear(a, b);
+                                if clear > requested {
+                                    return base.max(clear.min(avail));
+                                }
+                            }
+                            base
+                        };
                         let mut target_sum = 0.0;
                         for (pair, &base) in free.windows(2).zip(&gap[1..]) {
-                            let clear = marker_clear(pair[0], pair[1]);
-                            let need = if base > 0.0 && clear > requested {
-                                base.max(clear)
-                            } else {
-                                base
-                            };
-                            target_sum += need;
+                            target_sum += pair_need(pair[0], pair[1], base);
                         }
-                        if target_sum > base_sum {
+                        if target_sum > base_sum && target_sum.is_finite() {
                             let scale = if target_sum > avail {
                                 ((avail - base_sum).max(0.0) / (target_sum - base_sum))
                                     .clamp(0.0, 1.0)
@@ -965,10 +968,45 @@ fn port_runs(
                                 1.0
                             };
                             for (pair, step) in free.windows(2).zip(&mut gap[1..]) {
-                                if *step > 0.0 {
-                                    let clear = marker_clear(pair[0], pair[1]);
-                                    if clear > requested {
-                                        *step += scale * (clear - *step).max(0.0);
+                                let need = pair_need(pair[0], pair[1], *step);
+                                if need > *step {
+                                    *step += scale * (need - *step);
+                                }
+                            }
+                            // Ensure IEEE-754 rounding in the scaled gaps cannot exceed `avail`
+                            // by a few ULPs and silently abort `weighted_pava`.
+                            for _ in 0..8 {
+                                let total: f64 = gap[1..].iter().sum();
+                                if bounds.lo <= bounds.hi - total {
+                                    break;
+                                }
+                                let excess = (bounds.lo - (bounds.hi - total)).max(0.0);
+                                let mut count = free
+                                    .windows(2)
+                                    .zip(&gap[1..])
+                                    .filter(|(pair, step)| {
+                                        **step > 0.0 && marker_clear(pair[0], pair[1]) > requested
+                                    })
+                                    .count();
+                                let only_expanded = count > 0;
+                                if !only_expanded {
+                                    count = gap[1..].iter().filter(|&&step| step > 0.0).count();
+                                }
+                                if count == 0 {
+                                    break;
+                                }
+                                let trim = excess / count as f64;
+                                for (pair, step) in free.windows(2).zip(&mut gap[1..]) {
+                                    if *step > 0.0
+                                        && (!only_expanded
+                                            || marker_clear(pair[0], pair[1]) > requested)
+                                    {
+                                        let shrunk = (*step - trim).max(0.0);
+                                        *step = if shrunk < *step {
+                                            shrunk
+                                        } else {
+                                            step.next_down().max(0.0)
+                                        };
                                     }
                                 }
                             }
@@ -1205,7 +1243,9 @@ fn port_accepts(
         .take_while(|r| r.v == v && r.side == side)
         .count();
     if matching_len == 0 {
-        return s.data.free[v][side] >= 2 && want.abs() <= s.data.span[v] * 0.5;
+        return s.data.role[side][edge] != Role::Held
+            && s.data.free[v][side] >= 2
+            && want.abs() <= s.data.span[v] * 0.5;
     }
     let Some((f, i)) = matching[..matching_len].iter().find_map(|f| {
         ports.edges[f.edges.clone()]

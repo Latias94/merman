@@ -87,6 +87,7 @@ impl<'a> ActiveIntervals<'a> {
                 .bounds
                 .low
                 .total_cmp(&rows[b].group.bounds.low)
+                .then(a.cmp(&b))
         })?;
         work.check()?;
         for (slot, &row) in by_low.iter().enumerate() {

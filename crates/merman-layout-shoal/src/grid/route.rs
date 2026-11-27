@@ -681,10 +681,13 @@ impl Routing<'_> {
                 };
                 let mut along = [bounds.x, bounds.y][axis][usize::from(sign > 0)];
                 if let Some(node) = self.graph.nodes.get(first.owner) {
-                    along -= sign as f64
-                        * node
-                            .contour
-                            .inset_at(node.size, first.side, cross - face_center);
+                    let depth = [body.width, body.height][axis];
+                    let inset = node
+                        .contour
+                        .inset_at(node.size, first.side, cross - face_center);
+                    if inset.is_finite() {
+                        along -= sign as f64 * inset.clamp(0.0, depth);
+                    }
                 }
                 site.at = if axis == 0 {
                     Point { x: along, y: cross }
@@ -734,6 +737,12 @@ impl Routing<'_> {
         walls.extend(self.title(scope));
         Ok(walls)
     }
+}
+
+fn copy_points(points: &[RoutePoint]) -> LayoutResult<Vec<RoutePoint>> {
+    let mut out = reserved(points.len())?;
+    out.extend_from_slice(points);
+    Ok(out)
 }
 
 fn knot(at: Point, axis: Axis) -> RoutePoint {
@@ -879,7 +888,7 @@ fn span(
             coords[cross] -= bend;
             path[3] = knot(point(coords), Axis::Horizontal);
             if clear(router, &path, bounds, sides, work)? {
-                return Ok(Some(path.to_vec()));
+                return Ok(Some(copy_points(&path)?));
             }
         }
         return Ok(None);
@@ -892,7 +901,7 @@ fn span(
         for value in values {
             let path = dogleg(a, b, axis, value);
             if clear(router, &path, bounds, sides, work)? {
-                return Ok(Some(path.to_vec()));
+                return Ok(Some(copy_points(&path)?));
             }
         }
     }
@@ -917,8 +926,21 @@ fn add_point(points: &mut Vec<RoutePoint>, mut next: RoutePoint) {
 }
 
 /// Align transverse site coordinates that differ only by floating-point ULP noise
-/// (e.g., two nodes of different widths centered on the same grid track).
-fn snap_collinear_sites(sites: &mut [Site], work: &mut Work<'_>) -> LayoutResult<()> {
+/// (e.g., two nodes of different widths centered on the same grid track), keeping every
+/// snapped site inside its owning face and routing scope bounds.
+fn snap_collinear_sites(
+    context: &Routing<'_>,
+    sites: &mut [Site],
+    work: &mut Work<'_>,
+) -> LayoutResult<()> {
+    let fits = |site: Site, candidate: f64| {
+        let transverse = 1 - normal(site.side).0;
+        let body = Bounds::of(rect(context.drawing, site.owner));
+        let scope = Bounds::of(context.bounds(site.scope));
+        let [face_lo, face_hi] = [body.x, body.y][transverse];
+        let [scope_lo, scope_hi] = [scope.x, scope.y][transverse];
+        candidate >= face_lo.max(scope_lo) && candidate <= face_hi.min(scope_hi)
+    };
     for axis in [Axis::Vertical, Axis::Horizontal] {
         let mut indices = reserved(sites.len())?;
         work.charge(sites.len())?;
@@ -941,7 +963,7 @@ fn snap_collinear_sites(sites: &mut [Site], work: &mut Work<'_>) -> LayoutResult
         for &i in &indices[1..] {
             work.visit(1)?;
             let value = cross(sites[i].side, sites[i].at);
-            if (value - anchor).abs() <= SNAP_EPS {
+            if (value - anchor).abs() <= SNAP_EPS && fits(sites[i], anchor) {
                 match axis {
                     Axis::Vertical => sites[i].at.x = anchor,
                     Axis::Horizontal => sites[i].at.y = anchor,
@@ -1010,13 +1032,14 @@ fn adapt_auto_titles(
             .corner_clearance
             .max(clear)
             .min((x1 - x0) / 2.0);
+        work.visit(face.len())?;
+        let movable_count = face.iter().filter(|&&i| sites[i].offset.is_none()).count();
         let slots = GroupSlots {
             range: [x0 + inset, x1 - inset],
-            count: face.len(),
+            count: movable_count,
             pitch: options.spacing.port_pitch,
             split: None,
         };
-        work.visit(face.len())?;
         let seats = if face.iter().any(|&i| sites[i].straight) {
             let preferred = || {
                 face.iter().filter_map(|&i| {
@@ -1024,16 +1047,12 @@ fn adapt_auto_titles(
                     site.offset.is_none().then_some(site.preferred)
                 })
             };
-            for _ in 0..=candidates.len() {
+            for _ in 0..candidates.len() {
                 work.visit(face.len())?;
             }
-            let movable = GroupSlots {
-                count: preferred().count(),
-                ..slots
-            };
             Some(candidates.map(|x| {
                 let start = x - title.width / 2.0;
-                movable.beside((start - clear, start + title.width + clear), preferred())
+                slots.beside((start - clear, start + title.width + clear), preferred())
             }))
         } else {
             None
@@ -1042,10 +1061,16 @@ fn adapt_auto_titles(
         let mut last = [natural; 3];
         let mut rank = 0;
         let half = title.width / 2.0 + clear;
-        for (ordinal, &i) in face.iter().enumerate() {
+        let face_center = geom.rect.center().x;
+        for &i in face {
             work.visit(1)?;
             let site = sites[i];
-            natural = slots.at(site.preferred, ordinal, natural);
+            let at = if let Some(offset) = site.offset {
+                face_center + offset
+            } else {
+                natural = slots.at(site.preferred, rank, natural);
+                natural
+            };
             for (index, (detours, hits, shift)) in scores.iter_mut().enumerate() {
                 if let Some(seats) = seats
                     && site.offset.is_none()
@@ -1057,7 +1082,7 @@ fn adapt_auto_titles(
                             && (lane_blocked || (last[index] - site.preferred).abs() > SNAP_EPS),
                     );
                 }
-                let shortfall = half - (natural - candidates[index]).abs();
+                let shortfall = half - (at - candidates[index]).abs();
                 if shortfall > 0.0 {
                     *hits += 1;
                     *shift += shortfall;
@@ -1146,7 +1171,7 @@ pub(crate) fn draw(
         options,
     };
     context.ports(&mut indices[group_start..], &mut plan.sites, work)?;
-    snap_collinear_sites(&mut plan.sites, work)?;
+    snap_collinear_sites(&context, &mut plan.sites, work)?;
     let mut routed = reserved(plan.scopes.len())?;
     let mut has_captions = false;
     for (scope, parts) in plan.scopes.iter().enumerate() {
@@ -1182,7 +1207,7 @@ pub(crate) fn draw(
                     None
                 };
                 let ordinary = if let Some(fan) = fan {
-                    Some(fan.to_vec())
+                    Some(copy_points(&fan)?)
                 } else {
                     span(
                         &mut router,
@@ -1375,4 +1400,108 @@ fn normalize(
         height: extent.y[1] - origin[1],
     };
     Ok(point(origin))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{NodeSpec, NoopWorkControl};
+
+    #[test]
+    fn snap_collinear_sites_preserves_owning_face_and_scope_bounds() {
+        let graph = Graph {
+            nodes: vec![
+                NodeSpec::new(
+                    Size {
+                        width: 40.0,
+                        height: 20.0,
+                    },
+                    0,
+                ),
+                NodeSpec::new(
+                    Size {
+                        width: 40.0,
+                        height: 20.0,
+                    },
+                    1,
+                ),
+            ],
+            ..Graph::default()
+        };
+        let options = Options::default();
+        let mut control = NoopWorkControl;
+        let mut work = Work::new(&mut control);
+        let hierarchy = Hierarchy::new(&graph, &mut work).unwrap();
+        let metrics = Metrics::new(&options);
+        let drawing = LayoutOutput {
+            nodes: vec![
+                Rect {
+                    x: 60.0,
+                    y: 0.0,
+                    width: 40.0,
+                    height: 20.0,
+                },
+                Rect {
+                    x: 100.0,
+                    y: 60.0,
+                    width: 40.0,
+                    height: 20.0,
+                },
+            ],
+            bounds: Size {
+                width: 200.0,
+                height: 120.0,
+            },
+            ..LayoutOutput::default()
+        };
+        let context = Routing {
+            graph: &graph,
+            hierarchy: &hierarchy,
+            drawing: &drawing,
+            metrics,
+            options: &options,
+        };
+        let make_site = |owner: usize, side: Side, at: Point| Site {
+            owner,
+            side,
+            preferred: cross(side, at),
+            tie_preferred: cross(side, at),
+            offset: None,
+            inner: false,
+            marker: MarkerMetrics::default(),
+            reach: 0.0,
+            at,
+            lane: FaceLane::default(),
+            aligned_dist: None,
+            straight: false,
+            scope: 0,
+        };
+        // Site 0 lies 5e-10 left of node 1's left edge (`x = 100.0`); snapping site 1 to site 0
+        // would push site 1 outside node 1's owning face `[100.0, 140.0]`.
+        let mut sites = [
+            make_site(
+                0,
+                Side::Bottom,
+                Point {
+                    x: 100.0 - 5e-10,
+                    y: 20.0,
+                },
+            ),
+            make_site(1, Side::Top, Point { x: 100.0, y: 60.0 }),
+            make_site(
+                1,
+                Side::Top,
+                Point {
+                    x: 100.0 + 4e-10,
+                    y: 60.0,
+                },
+            ),
+        ];
+        snap_collinear_sites(&context, &mut sites, &mut work).unwrap();
+        assert_eq!(sites[1].at.x, 100.0, "must not snap outside owning face");
+        assert_eq!(
+            sites[2].at.x, 100.0,
+            "in-bounds neighbor should still snap cleanly to the valid anchor"
+        );
+    }
 }

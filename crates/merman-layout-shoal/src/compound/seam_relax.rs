@@ -758,6 +758,7 @@ fn slide_edits(
             .corridor
             .cmp(&slides[b].corridor)
             .then_with(|| slides[a].originals[0].total_cmp(&slides[b].originals[0]))
+            .then(a.cmp(&b))
     })?;
     work.charge(output.edges.len())?;
     let mut faces = FaceLanes {

@@ -175,8 +175,8 @@ fn render_flowchart_root_pass<'data, 'plan>(
                     ctx,
                     id,
                     edge,
-                    current.origin_x,
-                    current.content_origin_y,
+                    (current.origin_x, current.content_origin_y),
+                    session.hierarchy_plan,
                     session.edge_labels,
                 )?;
 
@@ -453,7 +453,15 @@ fn render_flowchart_elk_edge_labels(
         if edge_label_is_empty(ctx, e) {
             continue;
         }
-        render_flowchart_edge_label(out, ctx, e, 0.0, 0.0, session.edge_labels)?;
+        render_flowchart_edge_label(
+            out,
+            ctx,
+            e,
+            0.0,
+            0.0,
+            session.hierarchy_plan,
+            session.edge_labels,
+        )?;
 
         out.checkpoint()?;
     }
@@ -624,6 +632,7 @@ fn initialize_flowchart_root_frame<'data, 'plan>(
                     e,
                     origin_x,
                     frame.content_origin_y,
+                    session.hierarchy_plan,
                     session.edge_labels,
                 )?;
                 if edge_label_is_empty(ctx, e) {
@@ -653,6 +662,7 @@ fn initialize_flowchart_root_frame<'data, 'plan>(
                     e,
                     origin_x,
                     frame.content_origin_y,
+                    session.hierarchy_plan,
                     session.edge_labels,
                 )?;
 
@@ -669,6 +679,7 @@ fn initialize_flowchart_root_frame<'data, 'plan>(
                     e,
                     origin_x,
                     frame.content_origin_y,
+                    session.hierarchy_plan,
                     session.edge_labels,
                 )?;
 

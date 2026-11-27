@@ -285,8 +285,10 @@ fn same_row_person_cards_keep_direct_neighbor_straight_and_avoid_crossing() {
         graph.nodes.push(node);
     }
     graph.edges.extend([edge(0, 2), edge(1, 2)]);
-    let mut options = Options::default();
-    options.packing = crate::PackingPolicy::AspectTargeted { target_ratio: 3.0 };
+    let options = Options {
+        packing: crate::PackingPolicy::AspectTargeted { target_ratio: 3.0 },
+        ..Options::default()
+    };
     let output = layout_with_control(&graph, &options, &mut NoopWorkControl).unwrap();
     // Confirm cards 0, 1, 2 sit on the same top row with aligned horizontal anchors.
     assert!(output.nodes[0].x < output.nodes[1].x && output.nodes[1].x < output.nodes[2].x);

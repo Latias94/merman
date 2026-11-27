@@ -69,11 +69,11 @@ pub(crate) fn flowchart_marker_metrics(
     )
 }
 
+pub(super) use render::render_flowchart_cluster;
 use render::{
-    FlowchartRootRenderSession, render_flowchart_edge_path, render_flowchart_elk_root_groups,
-    render_flowchart_node, render_flowchart_root,
+    FlowchartRootRenderSession, render_flowchart_edge_label, render_flowchart_edge_path,
+    render_flowchart_elk_root_groups, render_flowchart_node, render_flowchart_root,
 };
-pub(super) use render::{render_flowchart_cluster, render_flowchart_edge_label};
 use types::*;
 use util::{OptionalStyleAttr, OptionalStyleXmlAttr};
 

@@ -86,17 +86,11 @@ pub(super) fn paint(
     };
     let group_contour = |id: u32| {
         let group = ctx.layout.clusters.get(id as usize)?;
-        let raw_radius = ctx.native.map_or_else(
-            || {
-                if ctx.diagram_type == "agentflow" {
-                    10.0
-                } else {
-                    0.0
-                }
-            },
-            |native| native.form.container_radius,
+        let radius = super::super::cluster_geometry::cluster_container_radius(
+            ctx,
+            group.width,
+            group.height,
         );
-        let radius = raw_radius.min(group.width.min(group.height) * 0.5).max(0.0);
         Some((
             contour::ShapePortProfile::rounded_rectangle(group.width, group.height, radius, radius),
             center(group.x, group.y),

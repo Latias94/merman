@@ -8,8 +8,11 @@ mod root;
 
 pub(in crate::svg::parity::flowchart) use cluster::advance_rough_geometry as advance_flowchart_cluster_rough_geometry;
 pub(in crate::svg::parity) use cluster::render_flowchart_cluster;
-pub(in crate::svg::parity) use edge_label::render_flowchart_edge_label;
-pub(super) use edge_label::resolve_flowchart_edge_label_position;
+#[cfg(feature = "layout-shoal")]
+pub(in crate::svg::parity::flowchart) use cluster::{
+    cluster_base_fill, compat_theme_canvas_fallback,
+};
+pub(super) use edge_label::{render_flowchart_edge_label, resolve_flowchart_edge_label_position};
 pub(super) use edge_path::{flowchart_neo_marker_mask_offset, render_flowchart_edge_path};
 pub(super) use node::render_flowchart_node;
 pub(super) use root::{

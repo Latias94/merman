@@ -23,7 +23,7 @@ pub(super) use crate::entities::decode_mermaid_entities_for_render_text;
 pub(crate) use merman_render_core::theme_svg::cssom_color_value;
 pub(super) use merman_render_core::xml::{
     EscapeAttrDisplay, escape_attr_display, escape_attr_into, escape_xml_display, escape_xml_into,
-    escape_xml_serialized_text_into, escaped_xml_len,
+    escape_xml_serialized_text_into, escaped_attr_len, escaped_xml_len,
 };
 pub(crate) use merman_render_core::xml::{escape_attr, escape_xml};
 

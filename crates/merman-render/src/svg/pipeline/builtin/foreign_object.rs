@@ -168,17 +168,33 @@ pub(crate) fn strip_foreign_objects_with_checkpoints<E>(
 ) -> std::result::Result<String, E> {
     let mut out = String::with_capacity(svg.len());
     let mut cursor = 0;
+    let mut pending_switch_closes: Vec<(usize, usize)> = Vec::new();
 
-    while let Some(rel_start) = find_with_checkpoints(&svg[cursor..], "<foreignObject", checkpoint)?
-    {
-        let start = cursor + rel_start;
+    while let Some((start, open_end)) = find_next_foreign_object_start(svg, cursor, checkpoint)? {
+        while let Some(&(close_start, close_end)) = pending_switch_closes.last() {
+            if close_start > start {
+                break;
+            }
+            pending_switch_closes.pop();
+            if close_start >= cursor {
+                out.push_str(&svg[cursor..close_start]);
+            }
+            out.push_str("</g>");
+            cursor = close_end.max(cursor);
+        }
 
-        let Some(open_end) = find_tag_end_with_checkpoints(svg, start, checkpoint)? else {
-            out.push_str(&svg[cursor..]);
-            return Ok(out);
-        };
         let fo_tag = &svg[start..=open_end];
-        let switch_wrapper = find_wrapping_switch(svg, cursor, start, open_end, checkpoint)?;
+        let fo_end = if fo_tag.trim_end().ends_with("/>") {
+            open_end + 1
+        } else if let Some((_, close_end)) =
+            find_foreign_object_close(svg, open_end + 1, checkpoint)?
+        {
+            close_end
+        } else {
+            open_end + 1
+        };
+
+        let switch_wrapper = find_wrapping_switch(svg, cursor, start, fo_end, checkpoint)?;
 
         if let Some((switch_start, switch_close_start, switch_close_end)) = switch_wrapper {
             // Keep the native fallback's inherited presentation and coordinate system.
@@ -212,37 +228,23 @@ pub(crate) fn strip_foreign_objects_with_checkpoints<E>(
                 attr_cursor = attr.full_end;
             }
             out.push('>');
-            if fo_tag.trim_end().ends_with("/>") {
-                out.push_str(&svg[open_end + 1..switch_close_start]);
-            } else {
-                let fo_close_start = open_end + 1;
-                if let Some(fo_close_rel) =
-                    find_with_checkpoints(&svg[fo_close_start..], "</foreignObject>", checkpoint)?
-                {
-                    let after_fo = fo_close_start + fo_close_rel + "</foreignObject>".len();
-                    out.push_str(&svg[after_fo..switch_close_start]);
-                }
-            }
-            out.push_str("</g>");
-            cursor = switch_close_end;
+            // Defer closing this unwrapped `<g>` until `switch_close_start` so any additional
+            // `<foreignObject>` siblings or nested `<switch>` elements inside it are also stripped.
+            pending_switch_closes.push((switch_close_start, switch_close_end));
+            cursor = fo_end;
             continue;
         }
 
         out.push_str(&svg[cursor..start]);
+        cursor = fo_end;
+    }
 
-        if fo_tag.trim_end().ends_with("/>") {
-            cursor = open_end + 1;
-            continue;
+    while let Some((close_start, close_end)) = pending_switch_closes.pop() {
+        if close_start >= cursor {
+            out.push_str(&svg[cursor..close_start]);
         }
-
-        let close_start = open_end + 1;
-        let Some(rel_close) =
-            find_with_checkpoints(&svg[close_start..], "</foreignObject>", checkpoint)?
-        else {
-            cursor = open_end + 1;
-            continue;
-        };
-        cursor = close_start + rel_close + "</foreignObject>".len();
+        out.push_str("</g>");
+        cursor = close_end.max(cursor);
     }
 
     out.push_str(&svg[cursor..]);
@@ -261,7 +263,7 @@ fn find_wrapping_switch<E>(
     svg: &str,
     cursor: usize,
     foreign_object_start: usize,
-    foreign_object_open_end: usize,
+    foreign_object_end: usize,
     checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
 ) -> std::result::Result<Option<(usize, usize, usize)>, E> {
     let Some(switch_start) =
@@ -279,69 +281,70 @@ fn find_wrapping_switch<E>(
     {
         return Ok(None);
     }
-    if find_with_checkpoints(
-        &svg[switch_start..foreign_object_start],
-        "</switch>",
-        checkpoint,
-    )?
-    .is_some()
-    {
-        return Ok(None);
-    }
 
-    let foreign_object_end = if svg[foreign_object_start..=foreign_object_open_end]
-        .trim_end()
-        .ends_with("/>")
-    {
-        foreign_object_open_end + 1
-    } else {
-        let close_search_start = foreign_object_open_end + 1;
-        let Some(relative) =
-            find_with_checkpoints(&svg[close_search_start..], "</foreignObject>", checkpoint)?
-        else {
-            return Ok(None);
-        };
-        close_search_start + relative + "</foreignObject>".len()
-    };
-
-    let Some(switch_close_relative) =
-        find_with_checkpoints(&svg[foreign_object_end..], "</switch>", checkpoint)?
+    let Some((switch_close_start, switch_close_end)) =
+        find_matching_switch_end(svg, switch_start, checkpoint)?
     else {
         return Ok(None);
     };
-    let switch_close_start = foreign_object_end + switch_close_relative;
+    if foreign_object_end > switch_close_start {
+        return Ok(None);
+    }
+
     // Generated in-place text is not a native switch fallback.
     let mut tail_start = foreign_object_end;
     loop {
         let tail = svg[tail_start..switch_close_start].trim_start();
         tail_start = switch_close_start - tail.len();
-        if tail.starts_with("<g")
+        if is_start_foreign_object_tag(tail)
+            && let Some(end) = find_tag_end_with_checkpoints(svg, tail_start, checkpoint)?
+        {
+            let next_start = if svg[tail_start..=end].trim_end().ends_with("/>") {
+                end + 1
+            } else if let Some((_, close_end)) =
+                find_foreign_object_close(svg, end + 1, checkpoint)?
+            {
+                close_end
+            } else {
+                return Ok(None);
+            };
+            if next_start <= switch_close_start {
+                tail_start = next_start;
+                continue;
+            }
+            return Ok(None);
+        }
+        if is_start_g_tag(tail)
             && let Some(end) = find_tag_end_with_checkpoints(svg, tail_start, checkpoint)?
             && extract_quoted_attr(&svg[tail_start..=end], "data-merman-foreignobject")
                 == Some("fallback")
             && let Some((_, end)) = find_matching_g_end(svg, tail_start, checkpoint)?
+            && end <= switch_close_start
         {
             tail_start = end;
             continue;
         }
-        if tail.starts_with("<text") {
+        if is_start_text_tag(tail) {
             break;
         }
         if is_start_g_tag(tail)
             && let Some((_, g_end)) = find_matching_g_end(svg, tail_start, checkpoint)?
             && g_end <= switch_close_start
-            && find_with_checkpoints(&svg[tail_start..g_end], "<text", checkpoint)?.is_some()
+            && contains_start_text_tag(&svg[tail_start..g_end], checkpoint)?
+        {
+            break;
+        }
+        if is_start_switch_tag(tail)
+            && let Some((_, inner_end)) = find_matching_switch_end(svg, tail_start, checkpoint)?
+            && inner_end <= switch_close_start
+            && contains_start_text_tag(&svg[tail_start..inner_end], checkpoint)?
         {
             break;
         }
         return Ok(None);
     }
 
-    Ok(Some((
-        switch_start,
-        switch_close_start,
-        switch_close_start + "</switch>".len(),
-    )))
+    Ok(Some((switch_start, switch_close_start, switch_close_end)))
 }
 
 fn find_wrapping_switch_start<E>(
@@ -463,6 +466,131 @@ fn is_start_switch_tag(tag: &str) -> bool {
             .get("<switch".len())
             .is_some_and(|b| b.is_ascii_whitespace() || *b == b'>' || *b == b'/')
         && !tag.trim_end().ends_with("/>")
+}
+
+fn is_end_switch_tag(tag: &str) -> bool {
+    let Some(rest) = tag.strip_prefix("</switch") else {
+        return false;
+    };
+    let Some(rest) = rest.strip_suffix('>') else {
+        return false;
+    };
+    rest.bytes().all(|b| b.is_ascii_whitespace())
+}
+
+fn is_start_foreign_object_tag(tag: &str) -> bool {
+    let bytes = tag.as_bytes();
+    tag.starts_with("<foreignObject")
+        && bytes
+            .get("<foreignObject".len())
+            .is_some_and(|b| b.is_ascii_whitespace() || *b == b'>' || *b == b'/')
+}
+
+fn is_end_foreign_object_tag(tag: &str) -> bool {
+    let Some(rest) = tag.strip_prefix("</foreignObject") else {
+        return false;
+    };
+    let Some(rest) = rest.strip_suffix('>') else {
+        return false;
+    };
+    rest.bytes().all(|b| b.is_ascii_whitespace())
+}
+
+fn is_start_text_tag(tag: &str) -> bool {
+    let bytes = tag.as_bytes();
+    tag.starts_with("<text")
+        && bytes
+            .get("<text".len())
+            .is_some_and(|b| b.is_ascii_whitespace() || *b == b'>' || *b == b'/')
+}
+
+fn contains_start_text_tag<E>(
+    fragment: &str,
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> std::result::Result<bool, E> {
+    let mut cursor = 0;
+    while let Some(rel) = find_with_checkpoints(&fragment[cursor..], "<text", checkpoint)? {
+        let start = cursor + rel;
+        if is_start_text_tag(&fragment[start..]) {
+            return Ok(true);
+        }
+        cursor = start + "<text".len();
+    }
+    Ok(false)
+}
+
+fn find_next_foreign_object_start<E>(
+    svg: &str,
+    from: usize,
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> std::result::Result<Option<(usize, usize)>, E> {
+    let mut cursor = from;
+    while let Some(rel) = find_with_checkpoints(&svg[cursor..], "<foreignObject", checkpoint)? {
+        let start = cursor + rel;
+        let Some(open_end) = find_tag_end_with_checkpoints(svg, start, checkpoint)? else {
+            return Ok(None);
+        };
+        if is_start_foreign_object_tag(&svg[start..=open_end]) {
+            return Ok(Some((start, open_end)));
+        }
+        cursor = open_end + 1;
+    }
+    Ok(None)
+}
+
+fn find_foreign_object_close<E>(
+    svg: &str,
+    from: usize,
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> std::result::Result<Option<(usize, usize)>, E> {
+    let mut cursor = from;
+    while let Some(rel) = find_with_checkpoints(&svg[cursor..], "</foreignObject", checkpoint)? {
+        let start = cursor + rel;
+        let Some(end) = find_tag_end_with_checkpoints(svg, start, checkpoint)? else {
+            return Ok(None);
+        };
+        if is_end_foreign_object_tag(&svg[start..=end]) {
+            return Ok(Some((start, end + 1)));
+        }
+        cursor = start + "</foreignObject".len();
+    }
+    Ok(None)
+}
+
+fn find_matching_switch_end<E>(
+    svg: &str,
+    switch_start: usize,
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> std::result::Result<Option<(usize, usize)>, E> {
+    let Some(open_end) = find_tag_end_with_checkpoints(svg, switch_start, checkpoint)? else {
+        return Ok(None);
+    };
+    if svg[switch_start..=open_end].trim_end().ends_with("/>") {
+        return Ok(Some((switch_start, open_end + 1)));
+    }
+
+    let mut depth = 1usize;
+    let mut cursor = open_end + 1;
+    while let Some(rel_tag) = find_with_checkpoints(&svg[cursor..], "<", checkpoint)? {
+        let tag_start = cursor + rel_tag;
+        let Some(tag_end) = find_tag_end_with_checkpoints(svg, tag_start, checkpoint)? else {
+            break;
+        };
+        let tag = &svg[tag_start..=tag_end];
+        if is_start_switch_tag(tag) {
+            depth += 1;
+        } else if is_end_switch_tag(tag) {
+            let Some(next_depth) = depth.checked_sub(1) else {
+                return Ok(None);
+            };
+            depth = next_depth;
+            if depth == 0 {
+                return Ok(Some((tag_start, tag_end + 1)));
+            }
+        }
+        cursor = tag_end + 1;
+    }
+    Ok(None)
 }
 
 #[cfg(test)]
@@ -806,5 +934,46 @@ mod tests {
         );
         assert!(out.contains("Only fallback"));
         assert!(out.contains(r#"class="task">Make tea</text>"#));
+    }
+
+    #[test]
+    fn strip_foreign_objects_checks_tag_delimiters_and_whitespace_etags() {
+        let svg = r#"<svg><foreignObjectExtra>keep</foreignObjectExtra><foreignObject width="10" height="10"><div>drop</div></foreignObject  ><text>ok</text></svg>"#;
+        let out = strip_foreign_objects(svg);
+        assert!(
+            out.contains("<foreignObjectExtra>keep</foreignObjectExtra>"),
+            "{out}"
+        );
+        assert!(!out.contains("drop"), "{out}");
+        assert!(out.contains("<text>ok</text>"), "{out}");
+        crate::xml_dom::Document::parse(&out).expect("output must be well-formed XML");
+    }
+
+    #[test]
+    fn strip_foreign_objects_tracks_nested_switch_depth_and_strips_all_inner_foreign_objects() {
+        let svg = concat!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg">"#,
+            r#"<switch id="outer">"#,
+            r#"<foreignObject width="10" height="10"><div>Outer HTML</div></foreignObject >"#,
+            r#"<foreignObject width="10" height="10"/>"#,
+            r#"<g><switch id="inner">"#,
+            r#"<foreignObject width="10" height="10"><div>Inner HTML</div></foreignObject>"#,
+            r#"<text x="1" y="2">Inner Text</text>"#,
+            r#"<foreignObject width="5" height="5"><div>Trailing HTML</div></foreignObject>"#,
+            r#"</switch></g>"#,
+            r#"</switch></svg>"#,
+        );
+        let out = strip_foreign_objects(svg);
+        assert!(!out.contains("<foreignObject"), "{out}");
+        assert!(!out.contains("<switch"), "{out}");
+        assert!(!out.contains("</switch"), "{out}");
+        assert!(!out.contains("Outer HTML"), "{out}");
+        assert!(!out.contains("Inner HTML"), "{out}");
+        assert!(!out.contains("Trailing HTML"), "{out}");
+        assert!(
+            out.contains(r#"<text x="1" y="2">Inner Text</text>"#),
+            "{out}"
+        );
+        crate::xml_dom::Document::parse(&out).expect("nested switch unwrap must stay well-formed");
     }
 }

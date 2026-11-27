@@ -158,6 +158,56 @@ impl RelationLabel {
     }
 }
 
+/// Collects foreign placed relation-label ink boxes that intersect `route`'s painted shaft so
+/// the SVG renderer can knock out crossing wires cleanly behind captions without opaque pills.
+pub(super) fn collect_foreign_shaft_cutouts(
+    route_index: usize,
+    route: &CanonicalPaintedEdge,
+    stroke_outset: f64,
+    label_inks: &[Option<Rect>],
+    out: &mut Vec<Rect>,
+    work: &mut OperationLayoutWorkControl,
+) -> Result<()> {
+    let bounds = &route.path.bounds;
+    let shaft_bounds = Rect::new(bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y)
+        .inflate(stroke_outset, stroke_outset);
+    let mut path: Option<BezPath> = None;
+    for (other_index, ink) in label_inks.iter().enumerate() {
+        if other_index == route_index {
+            continue;
+        }
+        let Some(&ink) = ink.as_ref() else {
+            continue;
+        };
+        if shaft_bounds.intersect(ink).area() <= 0.0 {
+            continue;
+        }
+        let parsed = match &mut path {
+            Some(parsed) => parsed,
+            cached => {
+                work.charge_adapter(route.path.d.len())?;
+                cached.insert(BezPath::from_svg(&route.path.d).map_err(|error| {
+                    crate::Error::InvalidModel {
+                        message: format!("c4: unable to check the painted shaft: {error}"),
+                    }
+                })?)
+            }
+        };
+        work.charge_adapter(parsed.elements().len())?;
+        if parsed.segments().any(|segment| {
+            segment
+                .bounding_box()
+                .inflate(stroke_outset, stroke_outset)
+                .intersect(ink)
+                .area()
+                > 0.0
+        }) {
+            out.push(ink);
+        }
+    }
+    Ok(())
+}
+
 fn relation_ink(
     block: &mut C4TextBlockLayout,
     font: &C4PreparedFont,

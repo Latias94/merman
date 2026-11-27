@@ -852,4 +852,122 @@ fn port_accepts_finds_free_edges_in_every_split_run_around_a_held_port() {
         !port_accepts(&s, &ports, 0, BOTTOM, 2, -25.0),
         "second split run must reject crossing across the held port"
     );
+    assert!(
+        !port_accepts(&s, &PortRuns::default(), 0, BOTTOM, 1, 0.0),
+        "empty run fallback must reject held ports"
+    );
+}
+
+#[test]
+fn extreme_marker_width_with_side_hint_and_nan_pava_never_panic() {
+    use crate::MarkerMetrics;
+
+    let mut values = [0.0, 10.0];
+    let mut pools = Vec::new();
+    assert!(!weighted_pava(
+        &mut values,
+        &[0.0, f64::NAN],
+        Interval {
+            lo: -50.0,
+            hi: 50.0
+        },
+        ZeroGap::Equal,
+        &mut pools,
+        |_| 1.0,
+    ));
+
+    let mut graph = Graph {
+        nodes: (0..3)
+            .map(|seq| {
+                NodeSpec::new(
+                    Size {
+                        width: 100.0,
+                        height: 40.0,
+                    },
+                    seq,
+                )
+            })
+            .collect(),
+        ..Default::default()
+    };
+    for target in 1..=2 {
+        let mut e = EdgeSpec::new(NodeId(0).into(), NodeId(target).into());
+        e.source_port = PortSideHint::Side(Side::Bottom);
+        e.start_marker = MarkerMetrics {
+            length: 0.0,
+            width: 1e308,
+        };
+        graph.edges.push(e);
+    }
+    let out = layout_with_control(
+        &graph,
+        &Options::default(),
+        &mut LayoutScratch::default(),
+        &mut NoopWorkControl,
+    )
+    .unwrap();
+    assert!(
+        out.edges
+            .iter()
+            .flat_map(|e| &e.points)
+            .all(|p| p.x.is_finite() && p.y.is_finite())
+    );
+}
+
+#[test]
+fn er_four_edge_scaled_marker_gaps_never_abort_weighted_pava() {
+    use crate::MarkerMetrics;
+
+    let mut case = Case::new(
+        5,
+        &[&[0], &[1, 2, 3, 4]],
+        &[&[0, 1], &[0, 2], &[0, 3], &[0, 4]],
+    );
+    case.g.width[0] = 110.0;
+    case.c.nodes[0].size.width = 110.0;
+    case.graph.nodes[0].size.width = 110.0;
+    case.options.spacing.corner_clearance = 0.0;
+    case.options.spacing.port_pitch = 16.0;
+    case.options.spacing.min_port_pitch = 8.0;
+    for edge in &mut case.graph.edges {
+        edge.start_marker = MarkerMetrics {
+            length: 18.0,
+            width: 36.0,
+        };
+    }
+    case.g
+        .source_offset
+        .copy_from_slice(&[-45.0, -15.0, 15.0, 45.0]);
+    let x = [0.0, -90.0, -30.0, 30.0, 90.0];
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    let mut geometry_scratch = GeometryScratch::default();
+    let s = case.geom(&x, &mut geometry_scratch, &mut work);
+    let mut ports = PortRuns::default();
+    let mut edges_scratch = Vec::new();
+    port_runs(
+        &s,
+        5,
+        &case.options,
+        &mut ports,
+        &mut edges_scratch,
+        &mut work,
+    )
+    .unwrap();
+    assert_eq!(ports.runs.len(), 1);
+    let f = &ports.runs[0];
+    let gaps = &ports.gaps[f.edges.clone()];
+    let total: f64 = gaps[1..].iter().sum();
+    assert!(
+        f.bounds.lo <= f.bounds.hi - total,
+        "scaled marker gaps must stay within bounds without 1-ULP overshoot: lo={}, hi={}, total={total}",
+        f.bounds.lo,
+        f.bounds.hi
+    );
+    let mut values = [-40.0, -10.0, 10.0, 40.0];
+    let mut pools = Vec::new();
+    assert!(
+        pava(&mut values, gaps, f.bounds, ZeroGap::Equal, &mut pools),
+        "weighted_pava must not abort on ER 4-edge span=110, marker_width=36"
+    );
 }

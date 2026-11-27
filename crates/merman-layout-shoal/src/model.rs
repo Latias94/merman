@@ -217,7 +217,12 @@ impl ShapeContourHint {
             Axis::Vertical => (width, height),
             Axis::Horizontal => (height, width),
         };
-        if across <= 0.0 || along <= 0.0 {
+        if !across.is_finite()
+            || !along.is_finite()
+            || !across_offset.is_finite()
+            || across <= 0.0
+            || along <= 0.0
+        {
             return 0.0;
         }
         let (cross_shift, along_shift) = match (self, side) {
@@ -227,14 +232,22 @@ impl ShapeContourHint {
             (Self::OffsetDiamond { x, y }, Side::Right) => (y, -x),
             _ => (0.0, 0.0),
         };
+        if !cross_shift.is_finite() || !along_shift.is_finite() {
+            return 0.0;
+        }
         let offset = (across_offset - cross_shift).abs();
-        if offset > across {
+        if !offset.is_finite() || offset > across {
             return 0.0;
         }
         let (radius, depth) = match self {
             Self::Rectangle => return 0.0,
             Self::Diamond | Self::OffsetDiamond { .. } => {
-                return (offset / across) * along + along_shift;
+                let inset = (offset / across) * along + along_shift;
+                return if inset.is_finite() {
+                    inset.clamp(-along, 2.0 * along)
+                } else {
+                    0.0
+                };
             }
             Self::Ellipse => (across, along),
             Self::Stadium => (width.min(height), width.min(height)),
@@ -244,7 +257,12 @@ impl ShapeContourHint {
             },
         };
         let corner = offset - (across - radius);
-        if radius <= 0.0 || depth <= 0.0 || corner <= 0.0 {
+        if !radius.is_finite()
+            || !depth.is_finite()
+            || radius <= 0.0
+            || depth <= 0.0
+            || corner <= 0.0
+        {
             0.0
         } else {
             let ratio = (corner / radius).min(1.0);

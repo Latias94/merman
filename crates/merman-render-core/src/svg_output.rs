@@ -466,7 +466,16 @@ impl<'a> BoundedSvgOutput<'a> {
         if let Some(error) = self.state.error() {
             return Err(error);
         }
-        let removed = range.len();
+        if range.start > range.end
+            || range.end > self.out.len()
+            || !self.out.is_char_boundary(range.start)
+            || !self.out.is_char_boundary(range.end)
+        {
+            return Err(self.fail(BoundedSvgOutputFailure::InvalidModel(
+                "bounded SVG replacement range is invalid for the current output",
+            )));
+        }
+        let removed = range.end - range.start;
         let Some(retained_without_range) = self.out.len().checked_sub(removed) else {
             return Err(self.fail(BoundedSvgOutputFailure::InvalidModel(
                 "bounded SVG replacement range exceeds the current output",
@@ -1214,6 +1223,33 @@ mod tests {
             assert_eq!(resource_limit(out.observe_operation().unwrap_err()), first);
             assert_eq!(resource_limit(out.finish().unwrap_err()), first);
             assert_eq!(meter.projected_svg_bytes(), 0);
+        }
+    }
+
+    #[test]
+    fn bounded_svg_output_rejects_invalid_replace_ranges_without_panicking() {
+        for (initial, range) in [
+            ("abcdef", 4..2),
+            ("abcdef", 0..7),
+            ("abcdef", 7..8),
+            ("aéb", 1..2),
+            ("aéb", 2..4),
+        ] {
+            let policy = RenderResourcePolicy::unbounded_for_trusted_input();
+            let meter = OperationWorkMeter::new(policy);
+            let mut out = BoundedSvgOutput::new(&meter);
+            out.push_str(initial);
+            let error = out
+                .replace_range(range.clone(), "x")
+                .expect_err("invalid range must return InvalidModel instead of panicking");
+            assert!(
+                matches!(error, crate::Error::InvalidModel { .. }),
+                "expected InvalidModel for {initial:?} {range:?}, got {error:?}"
+            );
+            assert!(matches!(
+                out.finish().unwrap_err(),
+                crate::Error::InvalidModel { .. }
+            ));
         }
     }
 

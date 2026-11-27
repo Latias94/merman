@@ -144,7 +144,7 @@ impl Run {
                 .min((size - face.width).max(0.0))
         };
         let main_span = usable_span(rect.width, node.port_span);
-        let side_span = usable_span(rect.height, node.perpendicular_port_span);
+        let side_span = usable_span(rect.height, node.perpendicular_port_span.or(node.port_span));
         let runway = face.depth + spacing.edge;
         if main_span <= 0.0 || side_span <= 0.0 || !runway.is_finite() || runway <= 0.0 {
             return None;

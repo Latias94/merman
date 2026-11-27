@@ -348,3 +348,47 @@ fn interruption_before_balance_is_published_preserves_both_offset_arrays() {
     assert_eq!(g.source_offset, [-8.0, 8.0]);
     assert_eq!(g.target_offset, [0.0, 0.0]);
 }
+
+#[test]
+fn extreme_marker_width_with_side_hint_does_not_overflow_or_panic() {
+    use crate::{MarkerMetrics, Options, layout};
+
+    let role = [End::Leaves; 3];
+    let ids = [0, 1, 2];
+    let markers = [1e308; 3];
+    let mut offsets = [0.0; 3];
+    spread_face(
+        &ids,
+        &role,
+        &markers,
+        &mut offsets,
+        100.0,
+        &Spacing::default(),
+        &mut Work::new(&mut NoopWorkControl),
+    )
+    .unwrap();
+    assert!(
+        offsets
+            .iter()
+            .all(|x| x.is_finite() && x.abs() <= 50.0 + 1e-9)
+    );
+
+    let mut g = graph(3);
+    for target in 1..=2 {
+        let mut e = edge(0, target);
+        e.source_port = PortSideHint::Side(Side::Bottom);
+        e.start_marker = MarkerMetrics {
+            length: 0.0,
+            width: 1e308,
+        };
+        g.edges.push(e);
+    }
+    let out = layout(&g, &Options::default()).unwrap();
+    assert!(out.nodes.iter().all(|r| r.x.is_finite() && r.y.is_finite()));
+    assert!(
+        out.edges
+            .iter()
+            .flat_map(|e| &e.points)
+            .all(|p| p.x.is_finite() && p.y.is_finite())
+    );
+}

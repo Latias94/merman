@@ -199,7 +199,7 @@ struct Ports {
 #[inline]
 fn marker_pair_clearance(a: f64, b: f64) -> f64 {
     if a > 0.0 || b > 0.0 {
-        0.5 * (a + b) + 4.0
+        0.5 * a + 0.5 * b + 4.0
     } else {
         0.0
     }
@@ -265,6 +265,15 @@ fn spread_face(
         };
         factor * pitch
     };
+    let pair_need = |prev_e: usize, e: usize, base: f64| {
+        if base > 0.0 {
+            let clear = marker_pair_clearance(markers[prev_e], markers[e]);
+            if clear > desired {
+                return base.max(clear.min(span));
+            }
+        }
+        base
+    };
     let mut base_sum = 0.0;
     let mut target_sum = 0.0;
     let mut prev_edge = None;
@@ -272,27 +281,19 @@ fn spread_face(
     for e in free() {
         if let Some(prev_e) = prev_edge {
             let base = pair_base(prev_e, e);
-            let need = if base > 0.0 {
-                let clear = marker_pair_clearance(markers[prev_e], markers[e]);
-                if clear > desired {
-                    base.max(clear)
-                } else {
-                    base
-                }
-            } else {
-                0.0
-            };
+            let need = pair_need(prev_e, e, base);
             base_sum += base;
             target_sum += need;
         }
         prev_edge = Some(e);
     }
-    let extra_scale = if target_sum > base_sum && target_sum > span {
+    let expand = target_sum > base_sum && target_sum.is_finite();
+    let extra_scale = if expand && target_sum > span {
         ((span - base_sum).max(0.0) / (target_sum - base_sum)).clamp(0.0, 1.0)
     } else {
         1.0
     };
-    let total_width = if target_sum > base_sum {
+    let total_width = if expand {
         base_sum + extra_scale * (target_sum - base_sum)
     } else {
         units * pitch
@@ -303,13 +304,9 @@ fn spread_face(
     for e in free() {
         if let Some(prev_e) = prev_edge {
             let base = pair_base(prev_e, e);
-            let step = if base > 0.0 && target_sum > base_sum {
-                let clear = marker_pair_clearance(markers[prev_e], markers[e]);
-                if clear > desired {
-                    base + extra_scale * (clear - base).max(0.0)
-                } else {
-                    base
-                }
+            let step = if expand {
+                let need = pair_need(prev_e, e, base);
+                base + extra_scale * (need - base)
             } else {
                 base
             };
@@ -807,6 +804,8 @@ impl PositionScratch {
             + capacity_bytes(&self.ports.target)
             + capacity_bytes(&self.ports.starts)
             + capacity_bytes(&self.ports.ends)
+            + capacity_bytes(&self.ports.start_markers)
+            + capacity_bytes(&self.ports.end_markers)
             + self.ports.spine.retained_bytes()
             + capacity_bytes(&self.conflicts.blocked)
             + capacity_bytes(&self.conflicts.anchors)

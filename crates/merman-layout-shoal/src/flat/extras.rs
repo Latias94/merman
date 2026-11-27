@@ -131,7 +131,8 @@ impl Port {
             }
         }
         let room = (tip.x - self.at.x).abs() + (tip.y - self.at.y).abs();
-        if room < marker.length || (desired > 0.0 && room == 0.0) {
+        let tol = f64::EPSILON * (1.0 + self.at.x.abs() + self.at.y.abs()) * 4.0;
+        if (room < marker.length && marker.length - room > tol) || (desired > 0.0 && room == 0.0) {
             return Err(LayoutError::InvalidInput(
                 "requested port has no room for its marker shaft",
             ));
@@ -231,8 +232,7 @@ fn loop_geometry(
     rect: Rect,
     node: &NodeSpec,
     l: &super::Loop,
-    nth: usize,
-    side_total: usize,
+    (nth, side_total): (usize, usize),
     spec: &EdgeSpec,
     dir: Direction,
     options: &Options,
@@ -648,8 +648,7 @@ pub(super) fn finish(
                 drawing.nodes[n],
                 &c.nodes[n],
                 l,
-                *count,
-                totals[n][side_idx],
+                (*count, totals[n][side_idx]),
                 spec,
                 graph.direction,
                 options,

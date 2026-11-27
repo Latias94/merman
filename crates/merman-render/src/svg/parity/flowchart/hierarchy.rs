@@ -909,6 +909,25 @@ impl<'a> FlowchartHierarchyPlan<'a> {
             .unwrap_or(self.top_root.edges())
     }
 
+    pub(in crate::svg::parity::flowchart) fn painted_clusters(
+        &self,
+    ) -> std::borrow::Cow<'_, [&'a LayoutCluster]> {
+        if self.nested_roots.is_empty() {
+            return std::borrow::Cow::Borrowed(self.top_root.clusters());
+        }
+        let mut ordered = Vec::new();
+        let mut stack = vec![&self.top_root];
+        while let Some(root) = stack.pop() {
+            ordered.extend_from_slice(root.clusters());
+            for &id in root.dom_order().iter().rev() {
+                if let Some(nested) = self.nested_roots.get(id) {
+                    stack.push(nested);
+                }
+            }
+        }
+        std::borrow::Cow::Owned(ordered)
+    }
+
     pub(in crate::svg::parity::flowchart) fn rendered_node_ids(
         &self,
     ) -> impl Iterator<Item = &'a str> + '_ {

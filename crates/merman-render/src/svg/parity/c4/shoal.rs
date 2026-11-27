@@ -15,23 +15,41 @@ pub(super) fn open_shaft(
     viewport: root_svg::DiagramBounds,
     points: &mut Vec<u8>,
 ) -> Result<()> {
-    let cutout = route.label.as_ref().and_then(|label| label.shaft_gap).map(|gap| {
+    let cutout = (!route.shaft_cutouts.is_empty()).then(|| {
         let id = format!("{}-label-cutout", route.id);
-        let outer = Rect::new(
+        let mut outer = Rect::new(
             viewport.min_x,
             viewport.min_y,
             viewport.min_x + viewport.width,
             viewport.min_y + viewport.height,
         );
+        for &gap in &route.shaft_cutouts {
+            outer = outer.union(gap);
+        }
         // Knock out only this shaft. The boundary or canvas already behind it shows through.
-        let outer = outer.union(gap).inflate(1.0, 1.0);
+        outer = outer.inflate(1.0, 1.0);
         let _ = write!(
             out,
-            r#"<defs><clipPath id="{}"><path clip-rule="evenodd" d="M{} {}H{}V{}H{}ZM{} {}V{}H{}V{}Z"/></clipPath></defs>"#,
+            r#"<defs><clipPath id="{}"><path clip-rule="evenodd" d="M{} {}H{}V{}H{}Z"#,
             escape_attr_display(scoped_svg_id(diagram_id, &id)),
-            fmt(outer.x0), fmt(outer.y0), fmt(outer.x1), fmt(outer.y1), fmt(outer.x0),
-            fmt(gap.x0), fmt(gap.y0), fmt(gap.y1), fmt(gap.x1), fmt(gap.y0),
+            fmt(outer.x0),
+            fmt(outer.y0),
+            fmt(outer.x1),
+            fmt(outer.y1),
+            fmt(outer.x0),
         );
+        for &gap in &route.shaft_cutouts {
+            let _ = write!(
+                out,
+                "M{} {}V{}H{}V{}Z",
+                fmt(gap.x0),
+                fmt(gap.y0),
+                fmt(gap.y1),
+                fmt(gap.x1),
+                fmt(gap.y0),
+            );
+        }
+        out.push_str(r#""/></clipPath></defs>"#);
         id
     });
     if cutout.is_some() {

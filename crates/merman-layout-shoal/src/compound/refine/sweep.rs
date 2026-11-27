@@ -77,24 +77,57 @@ impl PairSet {
         }
     }
 
+    #[inline]
+    fn load_limit(cap: usize) -> usize {
+        // 68.75% of power-of-two `cap`: overflow-free and division-free.
+        (cap >> 1) + (cap >> 3) + (cap >> 4)
+    }
+
     pub(crate) fn insert(&mut self, pair: (u32, u32), work: &mut Work<'_>) -> LayoutResult<bool> {
         let key = Self::encode(pair);
-        if self.slots.is_empty() || (self.len + 1) * 10 >= self.slots.len() * 7 {
-            self.grow(work)?;
+        if !self.slots.is_empty() {
+            let cap = self.slots.len();
+            let mask = cap - 1;
+            let mut idx = Self::hash(key) & mask;
+            let mut probes = 1usize;
+            loop {
+                let slot = self.slots[idx];
+                if slot == key {
+                    if probes > 8 {
+                        work.visit(probes)?;
+                    }
+                    return Ok(false);
+                }
+                if slot == 0 {
+                    if probes > 8 {
+                        work.visit(probes)?;
+                    }
+                    if self.len < Self::load_limit(cap) {
+                        self.slots[idx] = key;
+                        self.len += 1;
+                        return Ok(true);
+                    }
+                    break;
+                }
+                idx = (idx + 1) & mask;
+                probes += 1;
+            }
         }
+        self.grow(work)?;
         let mask = self.slots.len() - 1;
         let mut idx = Self::hash(key) & mask;
+        let mut probes = 1usize;
         loop {
-            let slot = self.slots[idx];
-            if slot == 0 {
+            if self.slots[idx] == 0 {
+                if probes > 8 {
+                    work.visit(probes)?;
+                }
                 self.slots[idx] = key;
                 self.len += 1;
                 return Ok(true);
             }
-            if slot == key {
-                return Ok(false);
-            }
             idx = (idx + 1) & mask;
+            probes += 1;
         }
     }
 
@@ -189,24 +222,53 @@ impl PairSchedule {
         work: &mut Work<'_>,
     ) -> LayoutResult<()> {
         let key = Self::encode(a, b);
-        if self.slots.is_empty() || (self.len + 1) * 10 >= self.slots.len() * 7 {
-            self.grow(work)?;
+        if !self.slots.is_empty() {
+            let cap = self.slots.len();
+            let mask = cap - 1;
+            let mut idx = PairSet::hash(key) & mask;
+            let mut probes = 1usize;
+            loop {
+                let (slot_key, slot_y) = &mut self.slots[idx];
+                if *slot_key == key {
+                    *slot_y = y_sched;
+                    if probes > 8 {
+                        work.visit(probes)?;
+                    }
+                    return Ok(());
+                }
+                if *slot_key == 0 {
+                    if probes > 8 {
+                        work.visit(probes)?;
+                    }
+                    if self.len < PairSet::load_limit(cap) {
+                        *slot_key = key;
+                        *slot_y = y_sched;
+                        self.len += 1;
+                        return Ok(());
+                    }
+                    break;
+                }
+                idx = (idx + 1) & mask;
+                probes += 1;
+            }
         }
+        self.grow(work)?;
         let mask = self.slots.len() - 1;
         let mut idx = PairSet::hash(key) & mask;
+        let mut probes = 1usize;
         loop {
             let (slot_key, slot_y) = &mut self.slots[idx];
             if *slot_key == 0 {
+                if probes > 8 {
+                    work.visit(probes)?;
+                }
                 *slot_key = key;
                 *slot_y = y_sched;
                 self.len += 1;
                 return Ok(());
             }
-            if *slot_key == key {
-                *slot_y = y_sched;
-                return Ok(());
-            }
             idx = (idx + 1) & mask;
+            probes += 1;
         }
     }
 
@@ -851,13 +913,17 @@ impl MonotonePartition {
             }
             let rev = points[0].y > points[points.len() - 1].y;
             let strict = if rev {
-                points
-                    .windows(2)
-                    .all(|w| w[0].y > w[1].y && ((w[0].x - w[1].x) / (w[0].y - w[1].y)).is_finite())
+                points.windows(2).all(|w| {
+                    let dx = w[0].x - w[1].x;
+                    let dy = w[0].y - w[1].y;
+                    dy > 0.0 && dy.is_finite() && dx.is_finite() && (dx / dy).is_finite()
+                })
             } else {
-                points
-                    .windows(2)
-                    .all(|w| w[0].y < w[1].y && ((w[1].x - w[0].x) / (w[1].y - w[0].y)).is_finite())
+                points.windows(2).all(|w| {
+                    let dx = w[1].x - w[0].x;
+                    let dy = w[1].y - w[0].y;
+                    dy > 0.0 && dy.is_finite() && dx.is_finite() && (dx / dy).is_finite()
+                })
             };
             if !strict {
                 push(&mut other, index)?;
@@ -1454,9 +1520,15 @@ fn coincident_eps(scale: f64) -> f64 {
 }
 
 #[inline]
-fn sole_fan_endpoint(at: Point, edge_ends: [Endpoint; 2], out: &LayoutOutput) -> Option<Endpoint> {
-    let a_in = endpoint_in_fan_interior(at, edge_ends[0], out);
-    let b_in = edge_ends[1] != edge_ends[0] && endpoint_in_fan_interior(at, edge_ends[1], out);
+fn sole_fan_endpoint(
+    at: Point,
+    edge_ends: [Endpoint; 2],
+    margin: f64,
+    out: &LayoutOutput,
+) -> Option<Endpoint> {
+    let a_in = endpoint_in_fan_interior(at, edge_ends[0], margin, out);
+    let b_in =
+        edge_ends[1] != edge_ends[0] && endpoint_in_fan_interior(at, edge_ends[1], margin, out);
     match (a_in, b_in) {
         (true, false) => Some(edge_ends[0]),
         (false, true) => Some(edge_ends[1]),
@@ -1608,14 +1680,16 @@ pub(super) fn run_monotone_sweep(
      -> LayoutResult<bool> {
         let xt = chain_x_at_y(centerlines, &chains[target_id], cur_y);
         let eps = coincident_eps(xt);
+        let fan_margin = (2.0 * eps).max(1e-6);
         let at = Point { x: xt, y: cur_y };
         let target_ends = ends[chains[target_id].edge];
         let epoch = tracker.epoch;
 
-        let mut common_left = sole_fan_endpoint(at, target_ends, out);
+        let mut common_left = sole_fan_endpoint(at, target_ends, fan_margin, out);
         let mut pure_left = common_left.is_some();
         let mut left_steps = 0usize;
         let mut last_left = None;
+        let mut left_stopped_non_coincident = false;
         let mut left = active.prev_chain(target_id);
         while let Some(left_id) = left {
             work.visit(1)?;
@@ -1637,6 +1711,7 @@ pub(super) fn run_monotone_sweep(
                 return Ok(false);
             }
             if !coincident {
+                left_stopped_non_coincident = true;
                 break;
             }
             tracker.steps = tracker.steps.saturating_add(1);
@@ -1654,7 +1729,7 @@ pub(super) fn run_monotone_sweep(
             if tracker.pure_left_epoch[left_id] == epoch
                 && let Some(ep) = tracker.pure_left_end[left_id]
                 && target_ends.contains(&ep)
-                && endpoint_in_fan_interior(at, ep, out)
+                && endpoint_in_fan_interior(at, ep, fan_margin, out)
             {
                 if pure_left && common_left.is_none_or(|c| c == ep) {
                     common_left = Some(ep);
@@ -1685,17 +1760,22 @@ pub(super) fn run_monotone_sweep(
                     if cid == target_id {
                         break;
                     }
-                    tracker.pure_left_epoch[cid] = epoch;
-                    tracker.pure_left_end[cid] = Some(ep);
+                    if !left_stopped_non_coincident
+                        || chain_x_at_y(centerlines, &chains[cid], cur_y) == xt
+                    {
+                        tracker.pure_left_epoch[cid] = epoch;
+                        tracker.pure_left_end[cid] = Some(ep);
+                    }
                     cur = active.next_chain(cid);
                 }
             }
         }
 
-        let mut common_right = sole_fan_endpoint(at, target_ends, out);
+        let mut common_right = sole_fan_endpoint(at, target_ends, fan_margin, out);
         let mut pure_right = common_right.is_some();
         let mut right_steps = 0usize;
         let mut last_right = None;
+        let mut right_stopped_non_coincident = false;
         let mut right = active.next_chain(target_id);
         while let Some(right_id) = right {
             work.visit(1)?;
@@ -1717,6 +1797,7 @@ pub(super) fn run_monotone_sweep(
                 return Ok(false);
             }
             if !coincident {
+                right_stopped_non_coincident = true;
                 break;
             }
             tracker.steps = tracker.steps.saturating_add(1);
@@ -1734,7 +1815,7 @@ pub(super) fn run_monotone_sweep(
             if tracker.pure_right_epoch[right_id] == epoch
                 && let Some(ep) = tracker.pure_right_end[right_id]
                 && target_ends.contains(&ep)
-                && endpoint_in_fan_interior(at, ep, out)
+                && endpoint_in_fan_interior(at, ep, fan_margin, out)
             {
                 if pure_right && common_right.is_none_or(|c| c == ep) {
                     common_right = Some(ep);
@@ -1765,8 +1846,12 @@ pub(super) fn run_monotone_sweep(
                     if cid == target_id {
                         break;
                     }
-                    tracker.pure_right_epoch[cid] = epoch;
-                    tracker.pure_right_end[cid] = Some(ep);
+                    if !right_stopped_non_coincident
+                        || chain_x_at_y(centerlines, &chains[cid], cur_y) == xt
+                    {
+                        tracker.pure_right_epoch[cid] = epoch;
+                        tracker.pure_right_end[cid] = Some(ep);
+                    }
                     cur = active.prev_chain(cid);
                 }
             }
@@ -1941,7 +2026,7 @@ pub(super) fn run_monotone_sweep(
                 }
                 let d_lo = x_at_y(ord_a, cur_y) - x_at_y(ord_b, cur_y);
                 let d_hi = x_at_y(ord_a, y_hi) - x_at_y(ord_b, y_hi);
-                if d_hi < 0.0 || (d_hi == 0.0 && d_lo <= 0.0) {
+                if d_lo <= 0.0 && d_hi <= 0.0 {
                     // A multi-chord chain can graze or remain collinear at a chord boundary while
                     // still crossing later chords; re-schedule strictly below `cur_y`.
                     if (ca.chord_count > 1 || cb.chord_count > 1)
@@ -1966,10 +2051,17 @@ pub(super) fn run_monotone_sweep(
                 active.swap_adjacent(a_id, b_id);
                 tracker.invalidate(a_id);
                 tracker.invalidate(b_id);
+                if let Some(left_id) = active.prev_chain(b_id) {
+                    tracker.pure_right_epoch[left_id] = 0;
+                }
+                if let Some(right_id) = active.next_chain(a_id) {
+                    tracker.pure_left_epoch[right_id] = 0;
+                }
 
                 // Re-check `(b, a)` strictly below `cur_y` when either curve has multiple chords
-                // so a double-crossing lens between two curves still triggers its second swap.
-                if (ca.chord_count > 1 || cb.chord_count > 1)
+                // or the swapped pair was already inverted at `cur_y` and crosses back before
+                // `y_hi` (`d_hi < 0.0`), so the return crossing still triggers its second swap.
+                if (ca.chord_count > 1 || cb.chord_count > 1 || d_hi < 0.0)
                     && !check_pair(
                         b_id,
                         a_id,

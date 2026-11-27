@@ -48,6 +48,7 @@ pub(crate) struct C4ShoalRelation {
     pub(crate) path: String,
     pub(crate) points: Vec<LayoutPoint>,
     pub(crate) label: Option<labels::PlacedRelationLabel>,
+    pub(crate) shaft_cutouts: Vec<kurbo::Rect>,
 }
 
 impl C4ShoalGeometry {
@@ -381,7 +382,9 @@ pub(crate) fn layout_c4_shoal(
         max_x: solved.bounds.width,
         max_y: solved.bounds.height,
     };
-    let mut geometry = Vec::with_capacity(relation_count);
+    let mut painted_routes = Vec::with_capacity(relation_count);
+    let mut placed_labels = Vec::with_capacity(relation_count);
+    let mut label_inks = Vec::with_capacity(relation_count);
     let mut paint_scratch = CanonicalPaintScratch::default();
     for ((rel, id), (edge, label)) in relations
         .iter_mut()
@@ -409,18 +412,43 @@ pub(crate) fn layout_c4_shoal(
             .zip(edge.label.as_ref())
             .map(|(prep, placed)| prep.place(placed, &painted, stroke_outset, &mut work))
             .transpose()?;
-        if let Some((prep, placed)) = label.as_ref().zip(placed_label.as_ref()) {
-            let label_ink = prep.ink_at(&placed.origin);
-            bounds.min_x = bounds.min_x.min(label_ink.x0);
-            bounds.min_y = bounds.min_y.min(label_ink.y0);
-            bounds.max_x = bounds.max_x.max(label_ink.x1);
-            bounds.max_y = bounds.max_y.max(label_ink.y1);
+        let label_ink = label
+            .as_ref()
+            .zip(placed_label.as_ref())
+            .map(|(prep, placed)| {
+                let ink = prep.ink_at(&placed.origin);
+                bounds.min_x = bounds.min_x.min(ink.x0);
+                bounds.min_y = bounds.min_y.min(ink.y0);
+                bounds.max_x = bounds.max_x.max(ink.x1);
+                bounds.max_y = bounds.max_y.max(ink.y1);
+                ink
+            });
+        painted_routes.push((id, painted));
+        placed_labels.push(placed_label);
+        label_inks.push(label_ink);
+    }
+    let mut geometry = Vec::with_capacity(relation_count);
+    for (route_index, ((id, painted), placed_label)) in
+        painted_routes.into_iter().zip(placed_labels).enumerate()
+    {
+        let mut shaft_cutouts = Vec::new();
+        if let Some(gap) = placed_label.as_ref().and_then(|label| label.shaft_gap) {
+            shaft_cutouts.push(gap);
         }
+        labels::collect_foreign_shaft_cutouts(
+            route_index,
+            &painted,
+            stroke_outset,
+            &label_inks,
+            &mut shaft_cutouts,
+            &mut work,
+        )?;
         geometry.push(C4ShoalRelation {
             id,
             path: painted.path.d,
             points: painted.data_points,
             label: placed_label,
+            shaft_cutouts,
         });
     }
     let ink_width = bounds.max_x - bounds.min_x;

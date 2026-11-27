@@ -663,3 +663,67 @@ Rel(db, q, "Publishes<br/>replicated change capture events across regional zones
         parts
     );
 }
+
+#[test]
+fn c4_shoal_knocks_out_foreign_wires_and_keeps_congested_dynamic_captions_local() {
+    let source = r#"---
+config:
+  layout: shoal
+---
+C4Dynamic
+Person(shopper, "Shopper", "Mobile user")
+Container_Boundary(b1, "Checkout Services") {
+  Container(bff, "Mobile BFF", "TypeScript")
+  Container(auth, "Auth Service", "Go")
+  Container(pay, "Payment Service", "Rust")
+  ContainerDb(db, "Orders DB", "PostgreSQL")
+}
+Rel(shopper, bff, "Submit checkout with 3DS device fingerprint", "HTTPS/JSON")
+Rel(bff, auth, "Validate session token and step-up claim", "gRPC/mTLS")
+Rel(auth, bff, "Return signed identity claims", "gRPC/mTLS")
+Rel(bff, pay, "Authorize payment intent with idempotency key", "gRPC/mTLS")
+Rel(pay, bff, "Return payment confirmation receipt", "gRPC/mTLS")
+Rel(pay, db, "Mark authorization captured", "SQL/TLS")
+Rel(bff, shopper, "Display order confirmation screen", "HTTPS/JSON")
+"#;
+    let (_, svg) = render(source, &LayoutOptions::headless_svg_defaults());
+    let doc = Document::parse(svg.svg()).unwrap();
+    // Every relation caption must stay near its own edge (no 400-600px bottom-row teleport)
+    // and any relation shaft passing behind any placed caption must get a clipPath cutout.
+    let mut label_boxes = Vec::new();
+    for idx in 0..7 {
+        let id = format!("c4-rel-{idx}");
+        let edge = element(&doc, "edge", &id);
+        let label = relation_label(&doc, &id);
+        let at: svgtypes::Transform = label.attribute("transform").unwrap().parse().unwrap();
+        let center = Point::new(at.e, at.f);
+        let edge_path = path(edge);
+        let min_dist = edge_path
+            .segments()
+            .map(|seg| seg.nearest(center, 1e-3).distance_sq.sqrt())
+            .fold(f64::INFINITY, f64::min);
+        assert!(
+            min_dist <= 260.0,
+            "{id} caption teleported {min_dist:.1}px away from its own edge"
+        );
+        label_boxes.push((id, edge, edge_path, center));
+    }
+    // Check that whenever a label sits on top of a parallel foreign wire, that wire carries a cutout.
+    for (label_id, _, _, center) in &label_boxes {
+        let probe = Rect::from_center_size(*center, (24.0, 12.0));
+        for (edge_id, edge, edge_path, _) in &label_boxes {
+            if edge_id == label_id {
+                continue;
+            }
+            let crosses = edge_path
+                .segments()
+                .any(|seg| seg.bounding_box().intersect(probe).area() > 0.0);
+            if crosses {
+                assert!(
+                    edge.attribute("clip-path").is_some(),
+                    "{edge_id} crosses behind {label_id} caption without a label cutout clip-path"
+                );
+            }
+        }
+    }
+}

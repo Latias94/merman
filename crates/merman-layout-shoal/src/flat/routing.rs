@@ -574,7 +574,7 @@ fn reaches(points: &[Point], line: &[Point], limit: f64) -> bool {
 /// Maximum horizontal-to-vertical aspect ratio allowed for an unpromoted single cubic S-curve
 /// within realistic diagram spans (`<= MAX_PROMOTABLE_SPAN_RANKS * spacing.rank`).
 /// Sweeps flatter than this threshold squash into "pancake" S-curves and are promoted to a clean
-/// rounded-orthogonal horizontal track even when isolated or part of a non-clashing shared-port fan.
+/// rounded-orthogonal horizontal track when spatially isolated in the gap (or clashing with peers).
 const MAX_SWEEP_ASPECT: f64 = 6.0;
 const MAX_PROMOTABLE_SPAN_RANKS: f64 = 16.0;
 
@@ -986,22 +986,28 @@ impl Gap {
         let guard = finite(self.upper_guard + self.lower_guard)?;
         self.minimum = finite(guard + if ids.is_empty() { 0.0 } else { 2.0 * LEAD })?;
         let max_promotable_span = options.spacing.rank * MAX_PROMOTABLE_SPAN_RANKS;
+        let (widest, widest_promotable) = ids.iter().fold((0.0_f64, 0.0_f64), |(all, prom), &i| {
+            let w = self.pieces[i].span.width();
+            (
+                all.max(w),
+                if w <= max_promotable_span {
+                    prom.max(w)
+                } else {
+                    prom
+                },
+            )
+        });
         if curved && !ids.is_empty() {
-            let widest = ids
-                .iter()
-                .map(|&i| self.pieces[i].span.width())
-                .fold(0.0, f64::max);
             // Guarantee enough net vertical room for wide curved sweeps when guards (such as
             // ER crow's-foot runways) or inserted-label slits squeeze a gap below healthy
             // curvature, without inflating ordinary flat rank gaps or extreme synthetic spans.
             let min_room = (widest * 0.35).min(options.spacing.rank * 0.75);
             let mut target = finite(guard + min_room)?.min(options.spacing.rank);
             let nominal_room = (self.height - guard).max(0.0);
-            if widest > nominal_room * 4.0
-                && widest <= max_promotable_span
-                && (!self.allow_local_sweeps || widest > nominal_room * MAX_SWEEP_ASPECT)
+            if widest_promotable > nominal_room * 4.0
+                && (!self.allow_local_sweeps || widest_promotable > nominal_room * MAX_SWEEP_ASPECT)
             {
-                let wide_room = (widest / 3.2).min(options.spacing.rank * 1.15);
+                let wide_room = (widest_promotable / 3.2).min(options.spacing.rank * 1.15);
                 target = target.max(finite(guard + wide_room)?);
             }
             self.minimum = self.minimum.max(target);
@@ -1011,14 +1017,7 @@ impl Gap {
             return Ok(());
         }
         let room = (self.height - guard).max(0.0);
-        let widest = ids
-            .iter()
-            .map(|&i| self.pieces[i].span.width())
-            .fold(0.0, f64::max);
-        let has_extreme_sweep = curved
-            && room > 0.0
-            && widest > room * MAX_SWEEP_ASPECT
-            && widest <= max_promotable_span;
+        let has_extreme_sweep = curved && room > 0.0 && widest_promotable > room * MAX_SWEEP_ASPECT;
         if (isolated_curve || (curved && ids.len() == 1)) && !has_extreme_sweep {
             return Ok(());
         }
@@ -1055,9 +1054,7 @@ impl Gap {
                         .minimum
                         .max((3.0 * options.spacing.rank).min(widest * 0.5));
                     let inflated_room = (self.height.max(inflated_min) - guard).max(0.0);
-                    if inflated_room > 0.0
-                        && (widest <= inflated_room * MAX_SWEEP_ASPECT
-                            || widest > max_promotable_span)
+                    if inflated_room > 0.0 && widest_promotable <= inflated_room * MAX_SWEEP_ASPECT
                     {
                         self.minimum = inflated_min;
                         self.height = self.height.max(self.minimum);

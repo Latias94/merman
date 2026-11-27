@@ -1113,16 +1113,24 @@ pub(super) fn endpoint_in_fan(at: Point, end: Endpoint, out: &LayoutOutput) -> b
     in_fan(at, rect)
 }
 
-pub(super) fn endpoint_in_fan_interior(at: Point, end: Endpoint, out: &LayoutOutput) -> bool {
-    const SAFE_FAN: f64 = FAN - 1e-6;
+pub(super) fn endpoint_in_fan_interior(
+    at: Point,
+    end: Endpoint,
+    margin: f64,
+    out: &LayoutOutput,
+) -> bool {
+    let safe_fan = FAN - margin;
+    if !safe_fan.is_finite() {
+        return false;
+    }
     let rect = match end {
         Endpoint::Node(id) => out.nodes[id.0 as usize],
         Endpoint::Group(id) => out.groups[id.0 as usize].rect,
     };
-    rect.x - at.x < SAFE_FAN
-        && at.x - (rect.x + rect.width) < SAFE_FAN
-        && rect.y - at.y < SAFE_FAN
-        && at.y - (rect.y + rect.height) < SAFE_FAN
+    rect.x - at.x < safe_fan
+        && at.x - (rect.x + rect.width) < safe_fan
+        && rect.y - at.y < safe_fan
+        && at.y - (rect.y + rect.height) < safe_fan
 }
 
 pub(super) fn shared_fan(

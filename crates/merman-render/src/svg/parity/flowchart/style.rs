@@ -181,11 +181,11 @@ impl FlowchartCompiledStyles {
             0usize,
             |bytes, (index, declaration)| {
                 let declaration_bytes = usize::from(index != 0)
-                    .checked_add(super::super::util::escaped_xml_len(
+                    .checked_add(super::super::util::escaped_attr_len(
                         declaration.property_css(),
                     ))?
                     .checked_add(1)?
-                    .checked_add(super::super::util::escaped_xml_len(
+                    .checked_add(super::super::util::escaped_attr_len(
                         declaration.source_value(),
                     ))?;
                 bytes.checked_add(declaration_bytes)
@@ -515,7 +515,7 @@ fn projected_joined_style_bytes(a: &[String], b: &[String]) -> Option<usize> {
         .enumerate()
         .try_fold(0usize, |bytes, (index, part)| {
             bytes.checked_add(
-                usize::from(index != 0).checked_add(super::super::util::escaped_xml_len(part))?,
+                usize::from(index != 0).checked_add(super::super::util::escaped_attr_len(part))?,
             )
         })
 }
@@ -750,11 +750,10 @@ fn flowchart_compile_prepared_styles_for_class_names<'a>(
                 "opacity" | "stroke-opacity" => {
                     crate::theme::edge_label_bg::literal_opacity(decl.value()) == Some(1.0)
                 }
-                _ => crate::flowchart::flowchart_is_source_spelled_label_style_key(
-                    decl.property_css(),
-                ),
+                _ => crate::flowchart::flowchart_is_source_spelled_label_style_key(property),
             }
         });
+    has_source_label_foreground |= semantic.contains_key("color");
     let label_sources = semantic
         .into_values()
         .filter(|decl| {
@@ -763,9 +762,6 @@ fn flowchart_compile_prepared_styles_for_class_names<'a>(
             )
         })
         .collect::<Vec<_>>();
-    has_source_label_foreground |= label_sources
-        .iter()
-        .any(|decl| decl.prepared.property() == "color");
 
     Ok(FlowchartCompiledStyles {
         edge_class_declarations,
@@ -794,7 +790,7 @@ fn flowchart_compile_prepared_styles_for_class_names<'a>(
 
 fn is_source_color(raw: &str) -> bool {
     raw.split_once(':')
-        .is_some_and(|(property, _)| property.trim() == "color")
+        .is_some_and(|(property, _)| property.trim().eq_ignore_ascii_case("color"))
 }
 
 pub(super) fn admitted_flowchart_source_stroke_width(value: &str) -> Option<f32> {

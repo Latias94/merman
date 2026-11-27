@@ -323,8 +323,8 @@ impl FlowchartEdgeSvgEmission<'_> {
             write!(
                 out,
                 "{}:{}",
-                escape_xml_display(declaration.property_css()),
-                escape_xml_display(declaration.source_value())
+                escape_attr_display(declaration.property_css()),
+                escape_attr_display(declaration.source_value())
             )?;
         }
         if !self
@@ -353,7 +353,7 @@ fn write_style_joined(
         if index != 0 {
             out.write_char(';')?;
         }
-        write!(out, "{}", escape_xml_display(part))?;
+        write!(out, "{}", escape_attr_display(part))?;
     }
     Ok(())
 }

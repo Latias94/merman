@@ -248,14 +248,27 @@ fn shell_contacts(
             let rect = shells[lane].0;
             let center = cross(side, rect.center());
             let (at, fixed) = if let PortSideHint::FixedOffset { offset, .. } = hint {
-                crate::validate::port(
+                let (lo, hi) = match side.axis() {
+                    Axis::Vertical => (rect.x, finite(rect.x + rect.width)?),
+                    Axis::Horizontal => (rect.y, finite(rect.y + rect.height)?),
+                };
+                let half = across(
+                    side,
                     Size {
                         width: rect.width,
                         height: rect.height,
                     },
-                    hint,
-                )?;
-                (finite(center + offset)?, true)
+                ) * 0.5;
+                // Column widths come from `high - low` after horizontal translation, which can
+                // lose a few ULPs relative to `keep_offset`'s `2.0 * offset.abs()`.
+                let tol = f64::EPSILON * (1.0 + lo.abs() + hi.abs()) * 4.0;
+                if !offset.is_finite() || offset.abs() > half + tol {
+                    return Err(LayoutError::InvalidInput("port offset outside face"));
+                }
+                (
+                    finite(center + offset.clamp(-half, half))?.clamp(lo, hi),
+                    true,
+                )
             } else {
                 let peer = wire.contacts[1 - end].map_or_else(
                     || match wire.ends[1 - end] {

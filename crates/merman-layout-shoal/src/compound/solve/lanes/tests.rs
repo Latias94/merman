@@ -283,3 +283,29 @@ fn close_compacts_only_empty_turn_free_transition_depth() {
     options.compact_ranks = true;
     assert_eq!(layout(&graph, &options).unwrap(), full);
 }
+
+#[test]
+fn swimlane_fixed_offset_survives_column_width_ulp_rounding() {
+    let mut graph = swimlane(&[0, 1], &[]);
+    // Lane 0 shifts lane 1 past x = 1000.0; lane 1's `min_width = 2 * 30.3 = 60.6` loses 1 ULP
+    // when reconstructed as `(1000.0 + 60.6) - 1000.0 = 60.59999999999991 < 60.6`.
+    graph.groups[0].min_size.width = 1000.0;
+    graph.groups[1].padding = crate::Insets::default();
+    graph.nodes[1].size = Size {
+        width: 10.0,
+        height: 10.0,
+    };
+    let mut edge = EdgeSpec::new(NodeId(0).into(), GroupId(1).into());
+    edge.target_port = PortSideHint::FixedOffset {
+        side: Side::Top,
+        offset: 30.3,
+    };
+    graph.edges.push(edge);
+    let drawing = layout(&graph, &orthogonal()).unwrap();
+    let lane = drawing.groups[1].rect;
+    let contact = drawing.edges[0].points.last().unwrap();
+    assert!(
+        contact.x >= lane.x && contact.x <= lane.x + lane.width,
+        "fixed offset contact {contact:?} must lie on lane face {lane:?}"
+    );
+}

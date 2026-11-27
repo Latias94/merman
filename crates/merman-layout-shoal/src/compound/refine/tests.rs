@@ -1027,3 +1027,184 @@ fn monotone_sweep_handles_cancelling_coords_large_horiz_and_non_x_monotone_cubic
         "chord-boundary graze followed by crossing must match Bands"
     );
 }
+
+#[test]
+fn monotone_sweep_matches_bands_on_eps_bundles_large_x_fans_inverted_lenses_and_huge_y() {
+    let assert_equivalent = |graph: &Graph, out: &LayoutOutput, style: RoutingStyle| -> u64 {
+        let mut noop = NoopWorkControl;
+        let mut work = Work::new(&mut noop);
+        let sweep_count = count_crossings_impl(graph, out, style, u64::MAX, true, &mut work)
+            .expect("sweep count");
+        let band_count = count_crossings_impl(graph, out, style, u64::MAX, false, &mut work)
+            .expect("bands count");
+        assert_eq!(sweep_count, band_count, "sweep vs bands mismatch");
+        sweep_count
+    };
+
+    // (a) Non-transitive `eps` foreign-neighbor bundle on both left and right walks:
+    // `F` sits 1.5*eps away from `target` (non-coincident with `target`), while `C1`/`N` sit
+    // within `0.8*eps` of `F` and `0.8*eps` of `target`. Back-filling `pure_left`/`pure_right`
+    // across `C1`/`C2` would let `N` skip checking `F`.
+    let mut eps_routes = vec![
+        // Left foreign chain active before y = 0.0, passing through (100.0 - 1.5e-7, 0.0)
+        // (`dx/dy = +0.2`) and slanting right across C1, C2, target, and N.
+        route(
+            &[(98.0 - 1.5e-7, -10.0), (140.0 - 1.5e-7, 200.0)],
+            Axis::Vertical,
+        ),
+        // Right foreign chain active before y = 0.0, passing through (100.0 + 1.5e-7, 0.0)
+        // (`dx/dy = -0.2`) and slanting left across C1_r, C2_r, target_r, and N_r.
+        route(
+            &[(102.0 + 1.5e-7, -10.0), (60.0 + 1.5e-7, 200.0)],
+            Axis::Vertical,
+        ),
+        // Fan A chains on left of target: C1, C2, target, then N inserted after target.
+        route(&[(100.0 - 0.8e-7, 0.0), (80.0, 200.0)], Axis::Vertical),
+        route(&[(100.0 - 0.4e-7, 0.0), (85.0, 200.0)], Axis::Vertical),
+        route(&[(100.0, 0.0), (95.0, 200.0)], Axis::Vertical),
+        route(&[(100.0 - 0.7e-7, 0.0), (75.0, 200.0)], Axis::Vertical),
+        // Fan A chains on right of target: C1_r, C2_r, target_r, then N_r inserted after target_r.
+        route(&[(100.0 + 0.8e-7, 0.0), (120.0, 200.0)], Axis::Vertical),
+        route(&[(100.0 + 0.4e-7, 0.0), (115.0, 200.0)], Axis::Vertical),
+        route(&[(100.0, 0.0), (105.0, 200.0)], Axis::Vertical),
+        route(&[(100.0 + 0.7e-7, 0.0), (125.0, 200.0)], Axis::Vertical),
+    ];
+    for i in 0..32 {
+        let x = 300.0 + (i as f64) * 5.0;
+        eps_routes.push(route(&[(x, -10.0), (x + 10.0, 200.0)], Axis::Vertical));
+    }
+    let (mut g_eps, mut o_eps) = drawing(eps_routes);
+    o_eps.nodes[4] = Rect {
+        x: 96.0,
+        y: -4.0,
+        width: 8.0,
+        height: 8.0,
+    };
+    for edge in &mut g_eps.edges[2..10] {
+        edge.source = NodeId(4).into();
+    }
+    let c_eps = assert_equivalent(&g_eps, &o_eps, RoutingStyle::Polyline);
+    assert!(c_eps >= 8, "expected foreign-bundle crossings, got {c_eps}");
+
+    // (b) Large-`|x|` (`100_000+`) fan boundary where `coincident_eps(x) ≈ 1e-4 >> 1e-6`:
+    // fan chains straddling the exact `FAN = 24.0` boundary must not prune crossings outside `FAN`.
+    let base = 100_000.0_f64;
+    let fan_edge = base + 20.0 + FAN;
+    let mut big_x_routes = vec![
+        route(
+            &[(fan_edge - 6e-5, 10.0), (fan_edge + 20.0, 210.0)],
+            Axis::Vertical,
+        ),
+        route(
+            &[(fan_edge - 3e-5, 10.0), (fan_edge + 10.0, 210.0)],
+            Axis::Vertical,
+        ),
+        route(
+            &[(fan_edge + 2e-5, 10.0), (fan_edge - 20.0, 210.0)],
+            Axis::Vertical,
+        ),
+        route(
+            &[(fan_edge + 4e-5, 10.0), (fan_edge - 30.0, 210.0)],
+            Axis::Vertical,
+        ),
+    ];
+    for i in 0..32 {
+        let x = base + 200.0 + (i as f64) * 5.0;
+        big_x_routes.push(route(&[(x, 10.0), (x + 8.0, 210.0)], Axis::Vertical));
+    }
+    let (mut g_big, mut o_big) = drawing(big_x_routes);
+    o_big.nodes[0] = Rect {
+        x: base,
+        y: 0.0,
+        width: 20.0,
+        height: 20.0,
+    };
+    for edge in &mut g_big.edges[0..4] {
+        edge.source = NodeId(0).into();
+    }
+    let c_big = assert_equivalent(&g_big, &o_big, RoutingStyle::Polyline);
+    assert!(
+        c_big >= 1,
+        "large-x fan boundary crossings must match Bands"
+    );
+
+    // (c) Inverted double-crossing lens + `EV_HORIZ` slicing across the lens interior:
+    // chains cross twice with an early swap and a return crossing, intersected by horizontal lines.
+    let mut lens_routes = vec![
+        route(
+            &[(100.0, 0.0), (140.0, 50.0), (140.0, 150.0), (100.0, 200.0)],
+            Axis::Vertical,
+        ),
+        route(
+            &[(120.0, 0.0), (110.0, 50.0), (110.0, 150.0), (120.0, 200.0)],
+            Axis::Vertical,
+        ),
+        // Same-start inverted crossing pair crossing immediately and again before y_hi.
+        route(
+            &[(115.0, 0.0), (135.0, 100.0), (105.0, 200.0)],
+            Axis::Vertical,
+        ),
+        route(
+            &[(115.0, 0.0), (115.0, 100.0), (130.0, 200.0)],
+            Axis::Vertical,
+        ),
+        // Horizontal probes across the lens interior and crossing vertices.
+        route(&[(90.0, 40.0), (150.0, 40.0)], Axis::Horizontal),
+        route(&[(90.0, 100.0), (150.0, 100.0)], Axis::Horizontal),
+        route(&[(90.0, 160.0), (150.0, 160.0)], Axis::Horizontal),
+    ];
+    for i in 0..32 {
+        let x = 250.0 + (i as f64) * 6.0;
+        lens_routes.push(route(&[(x, 0.0), (x + 12.0, 200.0)], Axis::Vertical));
+    }
+    let (g_lens, o_lens) = drawing(lens_routes);
+    assert_equivalent(&g_lens, &o_lens, RoutingStyle::Polyline);
+    let c_lens = assert_equivalent(&g_lens, &o_lens, RoutingStyle::Curved);
+    assert!(
+        c_lens >= 10,
+        "inverted lens + EV_HORIZ crossings must match Bands"
+    );
+
+    // (d) Huge `y` (`-1e308..1e308`) where `dy = y1 - y0 = +inf` must NOT be misclassified
+    // as a zero-slope vertical sweep chain (`dx / +inf == 0.0`).
+    let mut huge_y_routes = vec![
+        route(&[(-100.0, -1e308), (100.0, 1e308)], Axis::Vertical),
+        route(&[(0.0, -100.0), (0.0, 100.0)], Axis::Vertical),
+    ];
+    for i in 0..34 {
+        let x = 300.0 + (i as f64) * 5.0;
+        huge_y_routes.push(route(&[(x, -100.0), (x + 8.0, 100.0)], Axis::Vertical));
+    }
+    let (g_huge, o_huge) = drawing(huge_y_routes);
+    let mut noop = NoopWorkControl;
+    let mut work = Work::new(&mut noop);
+    let mut cl = trace(&o_huge, RoutingStyle::Polyline, &mut work).unwrap();
+    let (mask, _) = sweep::x_overlap_mask(&cl.primitives, &mut work).unwrap();
+    let partition = sweep::MonotonePartition::build(&mut cl, &mask, &mut work)
+        .unwrap()
+        .expect("sweep partition should activate for >= 32 chains");
+    assert!(
+        !partition.in_sweep[0] && partition.other.contains(&0),
+        "non-finite dy segment must be excluded from sweep chains and routed to Bands"
+    );
+    let sweep_huge = count_crossings_impl(
+        &g_huge,
+        &o_huge,
+        RoutingStyle::Polyline,
+        u64::MAX,
+        true,
+        &mut Work::new(&mut NoopWorkControl),
+    );
+    let bands_huge = count_crossings_impl(
+        &g_huge,
+        &o_huge,
+        RoutingStyle::Polyline,
+        u64::MAX,
+        false,
+        &mut Work::new(&mut NoopWorkControl),
+    );
+    assert_eq!(
+        sweep_huge, bands_huge,
+        "sweep and Bands must agree on non-finite dy segment"
+    );
+}

@@ -103,7 +103,7 @@ pub(crate) fn gutter_route(
                 turn[axis_b] = to;
                 let candidate = [start.0, knot(p), knot(turn), knot(q), end.0];
                 if clear(router, &candidate, bounds, sides, work)? {
-                    return Ok(Some(candidate.to_vec()));
+                    return Ok(Some(super::copy_points(&candidate)?));
                 }
                 continue;
             }
@@ -113,7 +113,7 @@ pub(crate) fn gutter_route(
                 v[cross] = track;
                 let candidate = [start.0, knot(p), knot(u), knot(v), knot(q), end.0];
                 if clear(router, &candidate, bounds, sides, work)? {
-                    return Ok(Some(candidate.to_vec()));
+                    return Ok(Some(super::copy_points(&candidate)?));
                 }
             }
         }

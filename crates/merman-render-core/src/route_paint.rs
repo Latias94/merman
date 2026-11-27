@@ -179,10 +179,16 @@ fn step_level(
         }
 }
 
-/// v13 moves an existing four-point step only when its crossbar lies between the ends.
-/// A same-side loop's crossbar has a different job and must stay in its exterior lane.
-fn move_step(style: RouteStyle, knots: &mut [RoutePoint], markers: (Marker, Marker)) {
-    let [a, b, c, d] = knots else { return };
+/// v13 moves an existing four-point step only when its crossbar lies between the ends,
+/// both endpoints are real terminals (not a compound border stitch), and the relocated
+/// segments remain clear of obstacles.
+fn move_step(
+    style: RouteStyle,
+    knots: &mut [RoutePoint],
+    markers: (Marker, Marker),
+    clearance: Option<EdgeClearance<'_>>,
+) {
+    let [a, b, c, d] = *knots else { return };
     if style == RouteStyle::Step {
         return;
     }
@@ -198,13 +204,25 @@ fn move_step(style: RouteStyle, knots: &mut [RoutePoint], markers: (Marker, Mark
         return;
     }
     let level = step_level(style, from, to, (Some(markers.0), Some(markers.1)));
+    let (mut next_b, mut next_c) = (b, c);
     if vertical {
-        b.y = level;
-        c.y = level;
+        next_b.y = level;
+        next_c.y = level;
     } else {
-        b.x = level;
-        c.x = level;
+        next_b.x = level;
+        next_c.x = level;
     }
+    if let Some(clearance) = clearance {
+        let candidate = [a, next_b, next_c, d];
+        if candidate
+            .windows(2)
+            .any(|seg| clearance.blocks_line(position(seg[0]), position(seg[1])))
+        {
+            return;
+        }
+    }
+    knots[1] = next_b;
+    knots[2] = next_c;
 }
 
 fn steps(
@@ -778,11 +796,14 @@ fn draw_section(
             terminals.0.map(|end| end.marker),
             terminals.1.map(|end| end.marker),
         );
-        move_step(
-            style,
-            route,
-            (markers.0.unwrap_or_default(), markers.1.unwrap_or_default()),
-        );
+        if terminals.0.is_some() && terminals.1.is_some() {
+            move_step(
+                style,
+                route,
+                (markers.0.unwrap_or_default(), markers.1.unwrap_or_default()),
+                clearance,
+            );
+        }
         if has_offset_leg(route) {
             steps(body, style, route, markers);
             std::mem::swap(route, body);
@@ -1439,6 +1460,60 @@ mod tests {
             paint(&internal, sides, RouteStyle::StepBefore)
                 .d
                 .contains("L60,30")
+        );
+
+        // Moving a step crossbar must be declined when the relocated shaft would hit an obstacle
+        // or when the section starts/ends at a compound border stitch.
+        let obstacle = Clearance::new(vec![(
+            kurbo::Rect::new(-10.0, 55.0, 10.0, 75.0),
+            ObstacleOwner::Node(99),
+        )]);
+        let blocked = build_svg_path(
+            &z,
+            sides,
+            RouteStyle::StepAfter,
+            (m, m),
+            CurveTerminals::Fixed,
+            &[],
+            Some(obstacle.for_edge(0, (Endpoint::Node(0), Endpoint::Node(1)), Vec2::ZERO, 1.0)),
+        )
+        .unwrap();
+        assert!(
+            segments(&blocked)
+                .into_iter()
+                .any(|s| s.start() == Point::new(0.0, 50.0) && s.end() == Point::new(100.0, 50.0)),
+            "StepAfter must keep Shoal's clear y=50 crossbar when y=84 hits an obstacle: {}",
+            blocked.d
+        );
+        let stitched_route = [
+            v(0.0, 0.0),
+            v(0.0, 20.0),
+            v(0.0, 40.0),
+            h(100.0, 40.0),
+            v(100.0, 100.0),
+        ];
+        let stitch = BorderStitch {
+            edge: 0,
+            point: 1,
+            group: 0,
+            side: Side::Bottom,
+        };
+        let stitched = build_svg_path(
+            &stitched_route,
+            sides,
+            RouteStyle::StepAfter,
+            (m, m),
+            CurveTerminals::Fixed,
+            &[stitch],
+            None,
+        )
+        .unwrap();
+        assert!(
+            segments(&stitched)
+                .into_iter()
+                .any(|s| s.start() == Point::new(0.0, 40.0) && s.end() == Point::new(100.0, 40.0)),
+            "StepAfter must preserve stitched compound corridor crossbars: {}",
+            stitched.d
         );
     }
 

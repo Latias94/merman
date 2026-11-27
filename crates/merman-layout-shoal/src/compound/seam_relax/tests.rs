@@ -74,8 +74,10 @@ fn seam(point: usize, group: u32, side: Side) -> BorderStitch {
 
 #[test]
 fn group_endpoint_and_child_stitch_follow_the_same_peer_order() {
-    let mut graph = Graph::default();
-    graph.direction = crate::Direction::Right;
+    let mut graph = Graph {
+        direction: crate::Direction::Right,
+        ..Graph::default()
+    };
     for (id, (parent, title_width)) in [
         (Some(1), 75.74),
         (Some(3), 73.92),

@@ -263,7 +263,7 @@ fn shafts(
     let usable = |tip: Contact| {
         let (len, span) = match tip.side.axis() {
             Axis::Vertical => (rect.width, node.port_span),
-            Axis::Horizontal => (rect.height, node.perpendicular_port_span),
+            Axis::Horizontal => (rect.height, node.perpendicular_port_span.or(node.port_span)),
         };
         let inset = corner.min(len * 0.5).max(tip.marker.width * 0.5);
         distance(tip) <= (len * 0.5 - inset).min(span.unwrap_or(len) * 0.5)

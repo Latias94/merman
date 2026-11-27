@@ -80,7 +80,14 @@ pub(crate) fn options(options: &Options) -> LayoutResult<()> {
 pub(crate) fn node(node: &NodeSpec) -> LayoutResult<()> {
     if !measured(node.size)
         || matches!(node.contour, crate::ShapeContourHint::Rounded { rx, ry } if !length(rx) || !length(ry))
-        || matches!(node.contour, crate::ShapeContourHint::OffsetDiamond { x, y } if !x.is_finite() || !y.is_finite())
+        || matches!(
+            node.contour,
+            crate::ShapeContourHint::OffsetDiamond { x, y }
+                if !x.is_finite()
+                    || !y.is_finite()
+                    || x.abs() > node.size.width * 0.5
+                    || y.abs() > node.size.height * 0.5
+        )
         || node.port_span.is_some_and(|v| !length(v))
         || node.perpendicular_port_span.is_some_and(|v| !length(v))
         || node
@@ -145,5 +152,22 @@ mod tests {
         let mut ok = EdgeSpec::new(ends.0, ends.1);
         ok.set_marker_runways([0.0, 14.0]);
         assert!(edge(&ok).is_ok());
+    }
+
+    #[test]
+    fn node_validation_bounds_offset_diamond_to_node_half_extents() {
+        let mut spec = NodeSpec::new(
+            Size {
+                width: 40.0,
+                height: 20.0,
+            },
+            0,
+        );
+        spec.contour = crate::ShapeContourHint::OffsetDiamond { x: 20.0, y: -10.0 };
+        assert!(node(&spec).is_ok());
+        spec.contour = crate::ShapeContourHint::OffsetDiamond { x: 20.1, y: 0.0 };
+        assert!(node(&spec).is_err());
+        spec.contour = crate::ShapeContourHint::OffsetDiamond { x: 0.0, y: -10.1 };
+        assert!(node(&spec).is_err());
     }
 }

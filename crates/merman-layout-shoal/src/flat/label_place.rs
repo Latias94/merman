@@ -77,6 +77,30 @@ impl GapPolicy<'_> {
     }
 }
 
+fn inset_contact(
+    mut contact: RoutePoint,
+    local: usize,
+    side: Side,
+    drawing: &Drawing,
+    component: &Component,
+    direction: Direction,
+) -> RoutePoint {
+    let node = component.nodes[local];
+    let center = drawing.nodes[local].center();
+    let offset = match side.axis() {
+        Axis::Vertical => contact.x - center.x,
+        Axis::Horizontal => contact.y - center.y,
+    };
+    let inset = contour_inset(node, direction, side, offset);
+    match side {
+        Side::Top => contact.y += inset,
+        Side::Bottom => contact.y -= inset,
+        Side::Left => contact.x += inset,
+        Side::Right => contact.x -= inset,
+    }
+    contact
+}
+
 fn scene(
     drawing: &Drawing,
     graph: &Graph,
@@ -126,8 +150,30 @@ fn scene(
         let [first, .., last] = route.points.as_slice() else {
             return Ok(None);
         };
-        if !scene.marker(*first, route.ports.0, spec.start_marker, work)?
-            || !scene.marker(*last, route.ports.1, spec.end_marker, work)?
+        let (start_tip, end_tip) = if let Some(&link) = component.links.get(index) {
+            (
+                inset_contact(
+                    *first,
+                    link.from as usize,
+                    route.ports.0,
+                    drawing,
+                    component,
+                    graph.direction,
+                ),
+                inset_contact(
+                    *last,
+                    link.to as usize,
+                    route.ports.1,
+                    drawing,
+                    component,
+                    graph.direction,
+                ),
+            )
+        } else {
+            (*first, *last)
+        };
+        if !scene.marker(start_tip, route.ports.0, spec.start_marker, work)?
+            || !scene.marker(end_tip, route.ports.1, spec.end_marker, work)?
             || !scene.stroke(index, &route.points, options.routing, work)?
         {
             return Ok(None);
@@ -439,29 +485,25 @@ pub(super) fn place(
         let (id, route) = &drawing.edges[edge];
         let spec = &graph.edges[*id as usize];
         let size = spec.label.expect("inline edge has a measured label");
-        let mut ends = [
-            route.points[0],
-            *route.points.last().expect("a routed edge"),
-        ];
         let link = component.links[edge];
-        for (contact, (local, side)) in ends.iter_mut().zip([
-            (link.from as usize, route.ports.0),
-            (link.to as usize, route.ports.1),
-        ]) {
-            let node = component.nodes[local];
-            let center = drawing.nodes[local].center();
-            let offset = match side.axis() {
-                Axis::Vertical => contact.x - center.x,
-                Axis::Horizontal => contact.y - center.y,
-            };
-            let inset = contour_inset(node, graph.direction, side, offset);
-            match side {
-                Side::Top => contact.y += inset,
-                Side::Bottom => contact.y -= inset,
-                Side::Left => contact.x += inset,
-                Side::Right => contact.x -= inset,
-            }
-        }
+        let ends = [
+            inset_contact(
+                route.points[0],
+                link.from as usize,
+                route.ports.0,
+                drawing,
+                component,
+                graph.direction,
+            ),
+            inset_contact(
+                *route.points.last().expect("a routed edge"),
+                link.to as usize,
+                route.ports.1,
+                drawing,
+                component,
+                graph.direction,
+            ),
+        ];
         let label = Label {
             edge,
             route: &route.points,
@@ -486,4 +528,101 @@ pub(super) fn place(
         drawing.edges[edge].1.label_center = Some(at);
     }
     Ok(Placement::Placed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::flat::Link;
+    use crate::{EdgeGeometry, NodeId, NoopWorkControl, Rect};
+
+    #[test]
+    fn scene_registers_contour_inset_marker_footprints_for_diamonds() {
+        let mut diamond = NodeSpec::new(
+            Size {
+                width: 80.0,
+                height: 80.0,
+            },
+            0,
+        );
+        diamond.contour = ShapeContourHint::Diamond;
+        let target = NodeSpec::new(
+            Size {
+                width: 80.0,
+                height: 40.0,
+            },
+            1,
+        );
+        let mut spec = EdgeSpec::new(NodeId(0).into(), NodeId(1).into());
+        spec.start_marker = MarkerMetrics {
+            length: 14.0,
+            width: 12.0,
+        };
+        let graph = Graph {
+            nodes: vec![diamond, target],
+            edges: vec![spec],
+            ..Graph::default()
+        };
+        let component = Component {
+            ids: vec![0, 1],
+            nodes: graph.nodes.clone(),
+            links: vec![Link {
+                from: 0,
+                to: 1,
+                edge: 0,
+                span: 1,
+                weight: 1.0,
+            }],
+            ..Component::default()
+        };
+        // Off-center departure at x = 20 on an 80x80 diamond centered at (0, 0) has
+        // `contour_inset = 20`, placing the painted start marker along y = 20..34.
+        let drawing = Drawing {
+            nodes: vec![
+                Rect {
+                    x: -40.0,
+                    y: -40.0,
+                    width: 80.0,
+                    height: 80.0,
+                },
+                Rect {
+                    x: -40.0,
+                    y: 100.0,
+                    width: 80.0,
+                    height: 40.0,
+                },
+            ],
+            edges: vec![(
+                0,
+                EdgeGeometry {
+                    points: vec![
+                        RoutePoint::new(20.0, 40.0, Axis::Vertical),
+                        RoutePoint::new(20.0, 100.0, Axis::Vertical),
+                    ],
+                    ports: (Side::Bottom, Side::Top),
+                    label_center: None,
+                    start_label_center: None,
+                    end_label_center: None,
+                    shared_bus: false,
+                    corridor_clearance: 0.0,
+                    reversed_for_ranking: false,
+                },
+            )],
+        };
+        let mut control = NoopWorkControl;
+        let mut work = Work::new(&mut control);
+        let mut clearance = scene(&drawing, &graph, &component, &Options::default(), &mut work)
+            .unwrap()
+            .unwrap();
+        let inside_inset_marker = Bounds::from_half_extents(Point { x: 20.0, y: 27.0 }, 3.0, 3.0);
+        assert!(
+            !clearance.clear(inside_inset_marker, 1, &mut work).unwrap(),
+            "inset diamond marker footprint (y=20..34) must block overlapping labels"
+        );
+        let past_uninset_face = Bounds::from_half_extents(Point { x: 20.0, y: 47.0 }, 3.0, 3.0);
+        assert!(
+            clearance.clear(past_uninset_face, 0, &mut work).unwrap(),
+            "un-inset box face band (y=40..54) must not hold a phantom marker"
+        );
+    }
 }

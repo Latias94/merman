@@ -522,6 +522,8 @@ struct Projection {
 
 const INLINE_LEGS: usize = 8;
 
+// Keep the common `<= 8`-leg orthogonal projections stack-inline to avoid per-edge heap allocations.
+#[allow(clippy::large_enum_variant)]
 enum ProjectedLegs {
     Inline {
         data: [ProjectedLeg; INLINE_LEGS],

@@ -825,7 +825,9 @@ fn boundary_leg(
             let path = connection.path(dummy, outer, [0.0, markers[border]], None, work)?;
             let mut extension = knots(path, border == 0, side.axis(), work)?;
             if border == 0 {
-                extension.pop();
+                if let Some(last) = extension.pop() {
+                    edge.points[0].axis = last.axis;
+                }
                 extension
                     .try_reserve(edge.points.len())
                     .map_err(|_| LayoutError::AllocationLimit)?;
@@ -928,7 +930,24 @@ pub(super) fn finish(
         return Ok(legs);
     }
     let mut walls = Walls::new(nodes, wires, title, work)?;
+    let base_box_count = walls.boxes.len();
     let placed = labels(fit, wires, &mut walls, options, work)?;
+    let mut label_boxes = reserved(wires.len())?;
+    let mut seat_box_indices = filled(wires.len(), None::<usize>)?;
+    {
+        let mut cursor = base_box_count;
+        for (index, seats) in placed.iter().enumerate() {
+            for (slot, seat) in seats.iter().enumerate() {
+                if seat.is_some() {
+                    if slot == 0 {
+                        seat_box_indices[index] = Some(label_boxes.len());
+                    }
+                    push(&mut label_boxes, walls.boxes[cursor])?;
+                    cursor += 1;
+                }
+            }
+        }
+    }
     let mut walls = walls.into_route_walls();
     for (index, (wire, seats)) in wires.iter_mut().zip(placed).enumerate() {
         work.visit(1)?;
@@ -942,5 +961,365 @@ pub(super) fn finish(
         edge.end_label_center = seats[2].or(edge.end_label_center);
         legs.push(edge);
     }
+    rehome_detached_border_captions(
+        fit,
+        &walls.walls.boxes[..base_box_count],
+        walls.walls.title,
+        &walls.walls.markers,
+        &mut label_boxes,
+        &seat_box_indices,
+        wires,
+        &mut legs,
+        options,
+        work,
+    )?;
     Ok(legs)
+}
+
+fn rect_to_segment_distance(rect: Rect, a: Point, b: Point) -> f64 {
+    if blocks(rect, a, b) {
+        return 0.0;
+    }
+    let rx0 = rect.x;
+    let rx1 = rect.x + rect.width;
+    let ry0 = rect.y;
+    let ry1 = rect.y + rect.height;
+    let point_to_rect = |p: Point| {
+        let dx = if p.x < rx0 {
+            rx0 - p.x
+        } else if p.x > rx1 {
+            p.x - rx1
+        } else {
+            0.0
+        };
+        let dy = if p.y < ry0 {
+            ry0 - p.y
+        } else if p.y > ry1 {
+            p.y - ry1
+        } else {
+            0.0
+        };
+        dx.hypot(dy)
+    };
+    let mut best = point_to_rect(a).min(point_to_rect(b));
+    for corner in [
+        Point { x: rx0, y: ry0 },
+        Point { x: rx1, y: ry0 },
+        Point { x: rx0, y: ry1 },
+        Point { x: rx1, y: ry1 },
+    ] {
+        best = best.min(point_to_segment_distance(corner, a, b));
+    }
+    // Also check orthogonal projection of axis-aligned segment onto the rectangle's interval.
+    if (a.x - b.x).abs() <= 1e-9 {
+        let y_lo = a.y.min(b.y);
+        let y_hi = a.y.max(b.y);
+        if y_hi >= ry0 && y_lo <= ry1 {
+            let dx = if a.x < rx0 {
+                rx0 - a.x
+            } else if a.x > rx1 {
+                a.x - rx1
+            } else {
+                0.0
+            };
+            best = best.min(dx);
+        }
+    } else if (a.y - b.y).abs() <= 1e-9 {
+        let x_lo = a.x.min(b.x);
+        let x_hi = a.x.max(b.x);
+        if x_hi >= rx0 && x_lo <= rx1 {
+            let dy = if a.y < ry0 {
+                ry0 - a.y
+            } else if a.y > ry1 {
+                a.y - ry1
+            } else {
+                0.0
+            };
+            best = best.min(dy);
+        }
+    }
+    best
+}
+
+fn point_to_segment_distance(p: Point, a: Point, b: Point) -> f64 {
+    let dx = b.x - a.x;
+    let dy = b.y - a.y;
+    let len_sq = dx * dx + dy * dy;
+    let t = if len_sq > 0.0 {
+        (((p.x - a.x) * dx + (p.y - a.y) * dy) / len_sq).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    (p.x - (a.x + t * dx)).hypot(p.y - (a.y + t * dy))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn rehome_detached_border_captions(
+    fit: &fit::Fit,
+    base_boxes: &[Rect],
+    title: Option<Rect>,
+    markers: &[(usize, Contact, Rect)],
+    label_boxes: &mut [Rect],
+    seat_box_indices: &[Option<usize>],
+    wires: &[Wire],
+    legs: &mut [EdgeGeometry],
+    options: &Options,
+    work: &mut Work<'_>,
+) -> LayoutResult<()> {
+    let gap = options.spacing.edge.max(4.0);
+    for index in 0..wires.len() {
+        work.visit(1)?;
+        if !wires[index].uses_caption_band() {
+            continue;
+        }
+        let (Some(size), Some(current_center), Some(box_slot)) = (
+            wires[index].spec.label,
+            legs[index].label_center,
+            seat_box_indices[index],
+        ) else {
+            continue;
+        };
+        if legs[index].points.len() < 2 {
+            continue;
+        }
+        let current_rect = centered(current_center, size);
+        let mut min_rect_dist = f64::INFINITY;
+        for seg in legs[index].points.windows(2) {
+            work.visit(1)?;
+            min_rect_dist = min_rect_dist.min(rect_to_segment_distance(
+                current_rect,
+                point(seg[0]),
+                point(seg[1]),
+            ));
+        }
+        if min_rect_dist <= gap + 6.0 {
+            continue;
+        }
+        // Collect route segments sorted longest-first (with index tie-breaker).
+        let mut segments = reserved(legs[index].points.len() - 1)?;
+        for seg in legs[index].points.windows(2) {
+            work.visit(1)?;
+            let a = point(seg[0]);
+            let b = point(seg[1]);
+            let len = (b.x - a.x).hypot(b.y - a.y);
+            if len > 1e-6 && len.is_finite() {
+                segments.push((len, a, b));
+            }
+        }
+        let mut order = reserved(segments.len())?;
+        order.extend(0..segments.len());
+        work.sort(&mut order, |&x, &y| {
+            segments[y]
+                .0
+                .total_cmp(&segments[x].0)
+                .then_with(|| x.cmp(&y))
+        })?;
+        let mut chosen = None::<Point>;
+        // Phase A: centered directly on a clear long leg of this edge.
+        // Phase B: offset immediately beside a clear leg of this edge.
+        'search: for beside in [false, true] {
+            for &ord in &order {
+                let (len, a, b) = segments[ord];
+                let horizontal = (a.y - b.y).abs() <= (a.x - b.x).abs();
+                let along_need = if horizontal { size.width } else { size.height };
+                if !beside && len < along_need + 2.0 * gap {
+                    continue;
+                }
+                let across_offset = if horizontal { size.height } else { size.width } * 0.5 + gap;
+                let offsets: &[f64] = if beside {
+                    &[across_offset, -across_offset]
+                } else {
+                    &[0.0]
+                };
+                for t in [0.5, 0.35, 0.65] {
+                    let base = Point {
+                        x: a.x + (b.x - a.x) * t,
+                        y: a.y + (b.y - a.y) * t,
+                    };
+                    for &off in offsets {
+                        work.visit(1)?;
+                        let center = if horizontal {
+                            Point {
+                                x: base.x,
+                                y: base.y + off,
+                            }
+                        } else {
+                            Point {
+                                x: base.x + off,
+                                y: base.y,
+                            }
+                        };
+                        let candidate = centered(center, size);
+                        if candidate.x < 0.0
+                            || candidate.y < 0.0
+                            || candidate.x + candidate.width > fit.size.width
+                            || candidate.y + candidate.height > fit.size.height
+                        {
+                            continue;
+                        }
+                        let mut clear_ok = true;
+                        for &wall in base_boxes
+                            .iter()
+                            .chain(title.iter())
+                            .chain(markers.iter().map(|entry| &entry.2))
+                        {
+                            work.visit(1)?;
+                            if overlaps(wall, candidate) {
+                                clear_ok = false;
+                                break;
+                            }
+                        }
+                        if !clear_ok {
+                            continue;
+                        }
+                        for (other_slot, &other_label) in label_boxes.iter().enumerate() {
+                            if other_slot == box_slot {
+                                continue;
+                            }
+                            work.visit(1)?;
+                            if overlaps(other_label, candidate) {
+                                clear_ok = false;
+                                break;
+                            }
+                        }
+                        if !clear_ok {
+                            continue;
+                        }
+                        for (other_idx, other_leg) in legs.iter().enumerate() {
+                            if !beside && other_idx == index {
+                                continue;
+                            }
+                            for seg in other_leg.points.windows(2) {
+                                work.visit(1)?;
+                                if blocks(candidate, point(seg[0]), point(seg[1])) {
+                                    clear_ok = false;
+                                    break;
+                                }
+                            }
+                            if !clear_ok {
+                                break;
+                            }
+                        }
+                        if clear_ok {
+                            chosen = Some(center);
+                            break 'search;
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(center) = chosen {
+            legs[index].label_center = Some(center);
+            label_boxes[box_slot] = centered(center, size);
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod route_unit_tests {
+    use super::*;
+    use crate::{
+        Direction, Endpoint, GroupId, GroupSpec, Insets, NodeId, NodeSpec, RoutingStyle, layout,
+    };
+
+    #[test]
+    fn border_entry_preserves_incoming_axis_and_rehomes_detached_parent_label() {
+        let mut graph = Graph {
+            direction: Direction::Down,
+            ..Default::default()
+        };
+        let outer = GroupSpec {
+            padding: Insets {
+                top: 20.0,
+                right: 20.0,
+                bottom: 20.0,
+                left: 20.0,
+            },
+            title: Some(Size {
+                width: 120.0,
+                height: 20.0,
+            }),
+            ..Default::default()
+        };
+        let inner = GroupSpec {
+            parent: Some(GroupId(0)),
+            padding: Insets {
+                top: 16.0,
+                right: 16.0,
+                bottom: 16.0,
+                left: 16.0,
+            },
+            ..Default::default()
+        };
+        graph.groups = vec![outer, inner];
+        let mut n0 = NodeSpec::new(
+            Size {
+                width: 100.0,
+                height: 40.0,
+            },
+            0,
+        );
+        n0.parent = Some(GroupId(1));
+        let mut n1 = NodeSpec::new(
+            Size {
+                width: 100.0,
+                height: 40.0,
+            },
+            1,
+        );
+        n1.parent = Some(GroupId(0));
+        let n2 = NodeSpec::new(
+            Size {
+                width: 80.0,
+                height: 40.0,
+            },
+            2,
+        );
+        graph.nodes = vec![n0, n1, n2];
+        // Child-to-parent-subgraph labeled edge (like `a2 -->|Parent Escalation| outer_sg`).
+        let mut to_parent = EdgeSpec::new(Endpoint::Node(NodeId(0)), Endpoint::Group(GroupId(0)));
+        to_parent.label = Some(Size {
+            width: 120.0,
+            height: 22.0,
+        });
+        // Cross-boundary entry into `outer` to exercise `border == 0` extension axis.
+        let entry = EdgeSpec::new(Endpoint::Node(NodeId(2)), Endpoint::Node(NodeId(1)));
+        graph.edges = vec![to_parent, entry];
+
+        let options = Options {
+            routing: RoutingStyle::Orthogonal,
+            ..Default::default()
+        };
+        let out = layout(&graph, &options).expect("orthogonal compound layout");
+        let label = out.edges[0]
+            .label_center
+            .expect("child-to-parent edge must place its label");
+        let label_rect = centered(
+            label,
+            Size {
+                width: 120.0,
+                height: 22.0,
+            },
+        );
+        let min_rect_dist = out.edges[0]
+            .points
+            .windows(2)
+            .map(|seg| rect_to_segment_distance(label_rect, point(seg[0]), point(seg[1])))
+            .fold(f64::INFINITY, f64::min);
+        assert!(
+            min_rect_dist <= 20.0,
+            "border caption box should stay adjacent to its own edge instead of floating detached (rect_dist={min_rect_dist:.1})"
+        );
+        // Every interior knot of the orthogonal entry edge must carry the incoming segment's travel axis.
+        for pair in out.edges[1].points.windows(2) {
+            let dx = (pair[1].x - pair[0].x).abs();
+            let dy = (pair[1].y - pair[0].y).abs();
+            if dx > 1e-6 && dy <= 1e-6 {
+                assert_eq!(pair[1].axis, Axis::Horizontal);
+            } else if dy > 1e-6 && dx <= 1e-6 {
+                assert_eq!(pair[1].axis, Axis::Vertical);
+            }
+        }
+    }
 }
