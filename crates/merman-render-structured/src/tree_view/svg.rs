@@ -341,7 +341,6 @@ fn tree_view_icon_svg(
                     width_px: TREE_VIEW_ICON_SIZE,
                     height_px: TREE_VIEW_ICON_SIZE,
                     fallback_prefix: None,
-                    extra_class: None,
                     id_scope,
                     effective_config,
                     work_meter,
@@ -350,9 +349,7 @@ fn tree_view_icon_svg(
         }
         None => None,
     }
-    .unwrap_or_else(|| {
-        mermaid_unknown_icon_svg(fmt(TREE_VIEW_ICON_SIZE), fmt(TREE_VIEW_ICON_SIZE))
-    });
+    .unwrap_or_else(|| mermaid_unknown_icon_svg(TREE_VIEW_ICON_SIZE, TREE_VIEW_ICON_SIZE));
     Ok(icon_svg)
 }
 

@@ -102,7 +102,6 @@ pub(super) fn write_arch_icon_svg_with_registry(
                 width_px: icon_size_px,
                 height_px: icon_size_px,
                 fallback_prefix: Some("mermaid-architecture"),
-                extra_class: None,
                 id_scope,
                 effective_config: resources.effective_config,
                 work_meter: resources.work_meter,

@@ -1,15 +1,18 @@
 use super::{IconDefsPlacement, IconIdScope, IconRegistry, ParsedIconBody, ResolvedIcon};
+use crate::number_format::canonical_number;
 use crate::svg_xml::validate_well_formed_svg_with_controls;
 use merman_markup::sanitize::{SanitizeFailure, SanitizeOutputSink};
 use merman_model::OperationPhase;
 #[cfg(test)]
 use quick_xml::events::Event;
-use std::{cell::Cell, fmt};
+use std::cell::Cell;
 
 const MERMAID_UNKNOWN_ICON_BODY: &str = r#"<g><rect width="80" height="80" style="fill: #087ebf; stroke-width: 0px;"/><text transform="translate(21.16 64.67)" style="fill: #fff; font-family: ArialMT, Arial; font-size: 67.75px;"><tspan x="0" y="0">?</tspan></text></g>"#;
 
 /// Emits the Mermaid placeholder for an unresolved icon.
-pub fn mermaid_unknown_icon_svg(width: impl fmt::Display, height: impl fmt::Display) -> String {
+pub fn mermaid_unknown_icon_svg(width: f64, height: f64) -> String {
+    let width = canonical_number(width);
+    let height = canonical_number(height);
     format!(
         r#"<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 80 80">{MERMAID_UNKNOWN_ICON_BODY}</svg>"#
     )
@@ -32,7 +35,6 @@ pub struct IconRenderRequest<'a> {
     pub width_px: f64,
     pub height_px: f64,
     pub fallback_prefix: Option<&'a str>,
-    pub extra_class: Option<&'a str>,
     pub id_scope: IconIdScope,
     pub effective_config: &'a merman_model::presentation::PresentationConfig,
     pub work_meter: &'a crate::resources::OperationWorkMeter,
@@ -177,17 +179,13 @@ fn render_resolved_icon(
     let width = render_dimension(request.width_px, "width")?;
     let height = render_dimension(request.height_px, "height")?;
     let transformed = transformed_icon(icon)?;
-    let class_attr = request
-        .extra_class
-        .map(|class| format!(r#" class="{}""#, escape_xml_attr(class)))
-        .unwrap_or_default();
     let xlink_attr = if body.uses_xlink() {
         r#" xmlns:xlink="http://www.w3.org/1999/xlink""#
     } else {
         ""
     };
     let open = format!(
-        r#"<svg xmlns="http://www.w3.org/2000/svg"{xlink_attr}{class_attr} width="{width}" height="{height}" viewBox="{} {} {} {}">"#,
+        r#"<svg xmlns="http://www.w3.org/2000/svg"{xlink_attr} width="{width}" height="{height}" viewBox="{} {} {} {}">"#,
         js_number(transformed.left),
         js_number(transformed.top),
         js_number(transformed.width),
@@ -487,14 +485,6 @@ fn transformed_icon(icon: &ResolvedIcon) -> crate::Result<TransformedIcon> {
     })
 }
 
-fn escape_xml_attr(value: &str) -> String {
-    crate::xml::strip_forbidden_xml_1_0_chars(value)
-        .replace('&', "&amp;")
-        .replace('"', "&quot;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-}
-
 fn js_number(mut value: f64) -> String {
     if value == -0.0 {
         value = 0.0;
@@ -599,7 +589,6 @@ mod tests {
                 width_px: 16.0,
                 height_px: 16.0,
                 fallback_prefix: None,
-                extra_class: None,
                 id_scope: icon_id_scope_for_test("icon-scope"),
                 effective_config: &config,
                 work_meter: &work_meter,
@@ -635,7 +624,6 @@ mod tests {
                             width_px: 16.0,
                             height_px: 16.0,
                             fallback_prefix: None,
-                            extra_class: None,
                             id_scope: icon_id_scope_for_test(&scope),
                             effective_config: &config,
                             work_meter: &work_meter,

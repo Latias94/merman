@@ -241,7 +241,6 @@ pub(super) fn write_node(
                             width_px: 42.0,
                             height_px: 42.0,
                             fallback_prefix: Some("fa"),
-                            extra_class: None,
                             id_scope: prefix.scope_parts(&[&actor.id], work)?,
                             effective_config: context.labels.config,
                             work_meter: work,
@@ -251,7 +250,7 @@ pub(super) fn write_node(
                     None
                 };
                 let fallback = icon.is_none();
-                let icon = icon.unwrap_or_else(|| mermaid_unknown_icon_svg(42, 42));
+                let icon = icon.unwrap_or_else(|| mermaid_unknown_icon_svg(42.0, 42.0));
                 let _ = write!(
                     out,
                     r#"<g class="usecase-actor-icon-symbol{}" aria-hidden="true" transform="translate(-21,-23)"><g>{icon}</g></g>"#,

@@ -83,12 +83,7 @@ pub(in crate::svg) fn bpmn_icon_svg(
             .transpose()?
             .flatten()
     };
-    Ok(rendered.unwrap_or_else(|| {
-        mermaid_unknown_icon_svg(
-            crate::number_format::canonical_number(width),
-            crate::number_format::canonical_number(height),
-        )
-    }))
+    Ok(rendered.unwrap_or_else(|| mermaid_unknown_icon_svg(width, height)))
 }
 
 /// Rewrites IDs in renderer-owned Architecture artwork.
@@ -158,7 +153,6 @@ mod tests {
                 width_px: 18.0,
                 height_px: 18.0,
                 fallback_prefix: Some("bpmn"),
-                extra_class: None,
                 id_scope: icon_id_scope_for_test("bpmn"),
                 effective_config: &config,
                 work_meter: &meter,

@@ -34,7 +34,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn icon_svg_or_placeholder(
                     width_px: icon_size,
                     height_px: icon_size,
                     fallback_prefix: None,
-                    extra_class: None,
                     id_scope,
                     effective_config: ctx.config,
                     work_meter: ctx.work_meter,
@@ -43,9 +42,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn icon_svg_or_placeholder(
         }
         None => None,
     };
-    Ok(icon.unwrap_or_else(|| {
-        mermaid_unknown_icon_svg(fmt_display(icon_size), fmt_display(icon_size))
-    }))
+    Ok(icon.unwrap_or_else(|| mermaid_unknown_icon_svg(icon_size, icon_size)))
 }
 
 fn is_self_loop_label_node_id(id: &str) -> bool {
