@@ -10,6 +10,8 @@ use merman_render_flow::cluster_shell::{
     ClusterHandDrawn, ClusterShellForm, ClusterShellPaint, write_cluster_shell,
 };
 
+use merman_render_flow::graph::FlowchartClusterPass;
+
 const TITLE_HALO_WIDTH: u8 = 5;
 
 pub(in crate::svg::parity::flowchart) fn advance_rough_geometry(
@@ -207,13 +209,7 @@ fn title_halo_color(
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(in crate::svg::parity::flowchart) enum FlowchartClusterPass {
-    Complete,
-    Background,
-    Label,
-}
-
+#[cfg(all(test, feature = "diagram-flowchart"))]
 pub(in crate::svg::parity) fn render_flowchart_cluster(
     out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &FlowchartRenderCtx<'_>,

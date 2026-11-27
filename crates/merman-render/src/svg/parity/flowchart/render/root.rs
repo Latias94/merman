@@ -1,650 +1,173 @@
-//! Flowchart root renderer.
+//! Flow graph paint adapter for facade-owned services.
 
-use merman_render_flow::edge_labels::{write_edge_labels, write_elk_edge_labels};
+use merman_render_flow::graph::{
+    FlowchartClusterPass, FlowchartGraph, FlowchartGraphPaint, FlowchartGraphTimings,
+};
 
-use super::super::defs::FlowchartMarkerEmissionPlan;
+use super::super::defs::{FlowchartDefs, FlowchartMarkerEmissionPlan};
 use super::super::edge_fill::FlowchartEdgeFillPlan;
+use super::super::paint::{FlowchartEdgeLabels, prepare_rough_edge_paths};
+use super::super::render_input::FlowchartRenderEdgeRef;
 use super::super::*;
-use super::cluster::{FlowchartClusterPass, render_flowchart_cluster_pass};
+use super::cluster::render_flowchart_cluster_pass;
 use super::edge_label::render_swimlane_edge_label_node;
 use super::node::render_flowchart_node_depth;
 use crate::svg::parity::timing::RenderTiming;
 
-pub(in crate::svg::parity::flowchart) fn flowchart_elk_renders_empty_subgraph_as_cluster(
-    ctx: &FlowchartRenderCtx<'_>,
-) -> bool {
-    ctx.uses_elk_adapter_dom
+pub(in crate::svg::parity::flowchart) struct FlowchartRootPaint<'a, 'data> {
+    pub ctx: &'a FlowchartRenderCtx<'data>,
+    pub defs: FlowchartDefs<'a>,
+    pub timing: RenderTiming,
+    pub details: &'a mut FlowchartRenderDetails,
+    pub node_label_div_style: String,
+    pub edge_cache:
+        &'a mut FxHashMap<crate::flowchart::FlowchartEdgeKey, FlowchartEdgePathCacheEntry>,
+    pub hierarchy_plan: &'a FlowchartHierarchyPlan<'data>,
+    pub marker_plan: &'a FlowchartMarkerEmissionPlan,
+    pub edge_fills: &'a FlowchartEdgeFillPlan,
+    pub edge_labels: &'a mut FlowchartEdgeLabels,
+    pub step_badges: &'a super::super::step::StepBadges,
 }
 
-pub(in crate::svg::parity::flowchart) struct FlowchartRootRenderSession<
-    'details,
-    'cache,
-    'marker,
-    'data,
-> {
-    pub(in crate::svg::parity::flowchart) timing: RenderTiming,
-    pub(in crate::svg::parity::flowchart) details: &'details mut FlowchartRenderDetails,
-    pub(in crate::svg::parity::flowchart) node_label_div_style: String,
-    pub(in crate::svg::parity::flowchart) edge_cache:
-        &'cache mut FxHashMap<crate::flowchart::FlowchartEdgeKey, FlowchartEdgePathCacheEntry>,
-    pub(in crate::svg::parity::flowchart) hierarchy_plan: &'marker FlowchartHierarchyPlan<'data>,
-    pub(in crate::svg::parity::flowchart) marker_plan: &'marker FlowchartMarkerEmissionPlan,
-    pub(in crate::svg::parity::flowchart) edge_fills: &'marker FlowchartEdgeFillPlan,
-    pub(in crate::svg::parity::flowchart) edge_labels:
-        &'cache mut super::super::paint::FlowchartEdgeLabels,
-    pub(in crate::svg::parity::flowchart) step_badges: &'marker super::super::step::StepBadges,
-}
-
-struct FlowchartRootFrame<'data, 'plan> {
-    cluster_id: Option<&'data str>,
-    parent_origin_x: f64,
-    parent_origin_y: f64,
-    origin_x: f64,
-    origin_y: f64,
-    content_origin_y: f64,
-    dom_order: &'plan [&'data str],
-    next_dom_index: usize,
-    initialized: bool,
-    nested_start: Option<merman_model::runtime::OperationTimer>,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum FlowchartRootPass {
-    Complete,
-    Depth,
-    Foreground,
-}
-
-impl<'data, 'plan> FlowchartRootFrame<'data, 'plan> {
-    fn new(
-        cluster_id: Option<&'data str>,
-        parent_origin_x: f64,
-        parent_origin_y: f64,
-        nested_start: Option<merman_model::runtime::OperationTimer>,
-    ) -> Self {
-        Self {
-            cluster_id,
-            parent_origin_x,
-            parent_origin_y,
-            origin_x: parent_origin_x,
-            origin_y: parent_origin_y,
-            content_origin_y: parent_origin_y,
-            dom_order: &[],
-            next_dom_index: 0,
-            initialized: false,
-            nested_start,
+impl FlowchartRootPaint<'_, '_> {
+    pub(in crate::svg::parity::flowchart) fn write_graph(
+        &mut self,
+        out: &mut impl SvgOutput,
+        graph_timings: &mut FlowchartGraphTimings,
+    ) -> Result<()> {
+        let ctx = self.ctx;
+        let hierarchy = self.hierarchy_plan;
+        let timing = self.timing;
+        FlowchartGraph {
+            hierarchy,
+            model: ctx.model,
+            work_meter: ctx.work_meter,
+            subgraphs_by_id: &ctx.subgraphs_by_id,
+            subgraph_ids_with_children: &ctx.subgraph_ids_with_children,
+            recursive_clusters: &ctx.recursive_clusters,
+            swimlane_label_edges: &ctx.swimlane_edge_label_edges_by_node_id,
+            swimlane: ctx.swimlane_direction.is_some(),
+            has_depth: ctx.native.is_some_and(|style| style.has_depth()),
+            edge_html_labels: ctx.edge_html_labels,
+            dagre_merges_self_loop_segments:
+                crate::flowchart::flowchart_dagre_merges_self_loop_segments(&ctx.model.keyword),
         }
+        .write(out, self, timing, graph_timings)
     }
 }
 
-pub(in crate::svg::parity::flowchart) fn render_flowchart_root<'data, 'plan>(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    ctx: &'data FlowchartRenderCtx<'data>,
-    cluster_id: Option<&'data str>,
-    parent_origin_x: f64,
-    parent_origin_y: f64,
-    session: &mut FlowchartRootRenderSession<'_, '_, 'plan, 'data>,
-) -> crate::Result<()> {
-    if ctx.native.is_some_and(|style| style.has_depth()) {
-        render_flowchart_root_pass(
-            out,
-            ctx,
-            cluster_id,
-            parent_origin_x,
-            parent_origin_y,
-            session,
-            FlowchartRootPass::Depth,
-        )?;
-        render_flowchart_root_pass(
-            out,
-            ctx,
-            cluster_id,
-            parent_origin_x,
-            parent_origin_y,
-            session,
-            FlowchartRootPass::Foreground,
-        )
-    } else {
-        render_flowchart_root_pass(
-            out,
-            ctx,
-            cluster_id,
-            parent_origin_x,
-            parent_origin_y,
-            session,
-            FlowchartRootPass::Complete,
-        )
-    }
-}
+impl<S: SvgOutput> FlowchartGraphPaint<S> for FlowchartRootPaint<'_, '_> {
+    type EdgeScratch = FlowchartEdgeDataPointsScratch;
 
-#[allow(clippy::too_many_arguments)]
-fn render_flowchart_root_pass<'data, 'plan>(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    ctx: &'data FlowchartRenderCtx<'data>,
-    cluster_id: Option<&'data str>,
-    parent_origin_x: f64,
-    parent_origin_y: f64,
-    session: &mut FlowchartRootRenderSession<'_, '_, 'plan, 'data>,
-    pass: FlowchartRootPass,
-) -> crate::Result<()> {
-    ctx.checkpoint_emit()?;
-    let mut stack = vec![FlowchartRootFrame::new(
-        cluster_id,
-        parent_origin_x,
-        parent_origin_y,
-        None,
-    )];
-
-    while let Some(frame) = stack.pop() {
-        if pass == FlowchartRootPass::Depth {
-            ctx.work_meter.charge(1)?;
-        }
-        ctx.checkpoint_emit()?;
-        let mut frame = Some(frame);
-        if !frame.as_ref().is_some_and(|frame| frame.initialized)
-            && let Some(frame) = frame.as_mut()
-        {
-            initialize_flowchart_root_frame(out, ctx, session, frame, pass)?;
-        }
-
-        let mut pushed_nested = false;
-        while frame
-            .as_ref()
-            .is_some_and(|frame| frame.next_dom_index < frame.dom_order.len())
-        {
-            ctx.checkpoint_emit()?;
-            let id = {
-                let Some(frame) = frame.as_mut() else {
-                    break;
-                };
-                let id = frame.dom_order[frame.next_dom_index];
-                frame.next_dom_index += 1;
-                id
-            };
-            if pass == FlowchartRootPass::Depth {
-                ctx.work_meter.charge(1)?;
-            }
-
-            if let Some(edge) = ctx.swimlane_edge_label_edges_by_node_id.get(id).copied() {
-                if pass == FlowchartRootPass::Depth {
-                    continue;
-                }
-                let Some(current) = frame.as_ref() else {
-                    break;
-                };
-                render_swimlane_edge_label_node(
-                    out,
-                    ctx,
-                    id,
-                    edge,
-                    (current.origin_x, current.content_origin_y),
-                    session.hierarchy_plan,
-                    session.edge_labels,
-                )?;
-
-                ctx.checkpoint_emit()?;
-                out.checkpoint()?;
-                continue;
-            }
-
-            if ctx.subgraphs_by_id.contains_key(id)
-                && ctx.subgraph_has_children(id)
-                && !ctx.is_subgraph_collapsed(id)
-            {
-                // Non-recursive clusters render as cluster boxes (in `.clusters`) and do not emit a
-                // node DOM element. Recursive clusters render as nested `.root` groups.
-                if ctx.recursive_clusters.contains(id) {
-                    let nested_start = session.timing.start();
-                    if let Some(parent) = frame.take() {
-                        let child = FlowchartRootFrame::new(
-                            Some(id),
-                            parent.origin_x,
-                            parent.origin_y,
-                            nested_start,
-                        );
-                        stack.push(parent);
-                        stack.push(child);
-                        pushed_nested = true;
-                    }
-                    break;
-                }
-                continue;
-            }
-
-            let node_start = session.timing.start();
-            let Some(current) = frame.as_ref() else {
-                break;
-            };
-            if pass == FlowchartRootPass::Depth {
-                render_flowchart_node_depth(
-                    out,
-                    ctx,
-                    id,
-                    current.origin_x,
-                    current.content_origin_y,
-                )?;
-            } else {
-                render_flowchart_node(
-                    out,
-                    ctx,
-                    id,
-                    current.origin_x,
-                    current.content_origin_y,
-                    session.timing,
-                    &mut *session.details,
-                    &mut session.node_label_div_style,
-                )?;
-            }
-            ctx.checkpoint_emit()?;
-            out.checkpoint()?;
-            if let Some(s) = node_start {
-                session.details.nodes += s.elapsed();
-            }
-        }
-
-        if pushed_nested {
-            continue;
-        }
-
-        if let Some(frame) = frame.take() {
-            out.push_str("</g>");
-            if pass != FlowchartRootPass::Depth {
-                session.step_badges.write_root(out, ctx, frame.cluster_id)?;
-            }
-            out.push_str("</g>");
-            out.checkpoint()?;
-            if let Some(start) = frame.nested_start {
-                session.details.nested_roots += start.elapsed();
-            }
-        }
-    }
-    Ok(())
-}
-
-fn edge_label_is_empty(
-    ctx: &FlowchartRenderCtx<'_>,
-    edge: super::super::render_input::FlowchartRenderEdgeRef<'_>,
-) -> bool {
-    let label_text = ctx
-        .model
-        .edge_label_for_occurrence(edge.key, edge.edge)
-        .unwrap_or_default();
-    crate::flowchart::flowchart_label_is_empty_for_render(label_text)
-}
-
-pub(in crate::svg::parity::flowchart) fn render_flowchart_elk_root_groups(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    ctx: &FlowchartRenderCtx<'_>,
-    session: &mut FlowchartRootRenderSession<'_, '_, '_, '_>,
-) -> crate::Result<()> {
-    ctx.checkpoint_emit()?;
-    session.details.root_calls += 1;
-
-    // The published `@mermaid-js/layout-elk@0.2.3` renderer creates the common
-    // layout groups below one `.root` wrapper. Keep this wrapper in the ELK
-    // adapter path as well; the browser-facing Mermaid source and the package
-    // artifact agree on the hierarchy even though the package still uses the
-    // historical singular `edgePath` class.
-    out.push_str(r#"<g class="root">"#);
-    let has_depth = ctx.native.is_some_and(|style| style.has_depth());
-    render_flowchart_elk_subgraphs(
-        out,
-        ctx,
-        session,
-        if has_depth {
-            FlowchartClusterPass::Background
-        } else {
-            FlowchartClusterPass::Complete
-        },
-    )?;
-
-    if has_depth {
-        out.push_str(r#"<g class="nodes" data-merman-theme-depth="layer">"#);
-        for &id in session.hierarchy_plan.root(None)?.dom_order() {
-            ctx.checkpoint_emit()?;
-            render_flowchart_node_depth(out, ctx, id, 0.0, 0.0)?;
-        }
-        out.push_str("</g>");
-        out.checkpoint()?;
-        render_flowchart_elk_subgraphs(out, ctx, session, FlowchartClusterPass::Label)?;
+    fn write_base_markers(&self, out: &mut S) -> Result<()> {
+        self.defs.push_base_markers(out)
     }
 
-    let _g_edges_select = detail_guard(session.timing, &mut session.details.edges_select);
-    let edges = session.hierarchy_plan.ordered_edges();
-    drop(_g_edges_select);
-
-    render_flowchart_elk_edge_paths(out, ctx, session, edges)?;
-    render_flowchart_elk_edge_labels(out, ctx, session, edges)?;
-    render_flowchart_elk_nodes(out, ctx, session)?;
-    session.step_badges.write_root(out, ctx, None)?;
-    out.push_str("</g>");
-    out.checkpoint()?;
-    Ok(())
-}
-
-fn render_flowchart_elk_subgraphs(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    ctx: &FlowchartRenderCtx<'_>,
-    session: &mut FlowchartRootRenderSession<'_, '_, '_, '_>,
-    pass: FlowchartClusterPass,
-) -> crate::Result<()> {
-    ctx.checkpoint_emit()?;
-    let _g_clusters = detail_guard(session.timing, &mut session.details.clusters);
-    let clusters_to_draw = session.hierarchy_plan.root(None)?.clusters();
-
-    if clusters_to_draw.is_empty() {
-        out.push_str(r#"<g class="clusters"/>"#);
-        return out.checkpoint();
+    fn write_extra_markers(&self, out: &mut S) -> Result<()> {
+        self.defs.push_extra_markers(out)
     }
 
-    out.push_str(r#"<g class="clusters">"#);
-    for &cluster in clusters_to_draw {
-        ctx.checkpoint_emit()?;
-        if pass == FlowchartClusterPass::Complete {
-            render_flowchart_cluster(out, ctx, cluster, 0.0, 0.0)?;
-        } else {
-            render_flowchart_cluster_pass(out, ctx, cluster, 0.0, 0.0, pass)?;
+    fn group_title_is_struck(&self, id: &str) -> bool {
+        self.ctx.layout.route_contract.group_title_is_struck(id)
+    }
+
+    fn write_cluster(
+        &self,
+        out: &mut S,
+        cluster: &LayoutCluster,
+        (x, y): (f64, f64),
+        pass: FlowchartClusterPass,
+    ) -> Result<()> {
+        render_flowchart_cluster_pass(out, self.ctx, cluster, x, y, pass)
+    }
+
+    fn prepare_edges(&mut self, edges: &[FlowchartRenderEdgeRef<'_>]) -> Result<()> {
+        prepare_rough_edge_paths(self.ctx, edges, self.edge_cache)?;
+        if self.ctx.hand_drawn_seed.seed().may_use_math_random() {
+            self.edge_labels
+                .update(self.ctx, self.hierarchy_plan, self.edge_cache, edges)?;
         }
-        out.checkpoint()?;
-    }
-    out.push_str("</g>");
-    out.checkpoint()
-}
-
-fn render_flowchart_elk_nodes(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    ctx: &FlowchartRenderCtx<'_>,
-    session: &mut FlowchartRootRenderSession<'_, '_, '_, '_>,
-) -> crate::Result<()> {
-    ctx.checkpoint_emit()?;
-    out.push_str(r#"<g class="nodes">"#);
-
-    let _g_dom_order = detail_guard(session.timing, &mut session.details.dom_order);
-    let dom_order = session.hierarchy_plan.root(None)?.dom_order();
-    drop(_g_dom_order);
-
-    for &id in dom_order {
-        ctx.checkpoint_emit()?;
-        if ctx.subgraphs_by_id.contains_key(id)
-            && !ctx.is_subgraph_collapsed(id)
-            && (ctx.subgraph_has_children(id)
-                || flowchart_elk_renders_empty_subgraph_as_cluster(ctx))
-        {
-            continue;
-        }
-
-        let node_start = session.timing.start();
-        render_flowchart_node(
-            out,
-            ctx,
-            id,
-            0.0,
-            0.0,
-            session.timing,
-            &mut *session.details,
-            &mut session.node_label_div_style,
-        )?;
-        ctx.checkpoint_emit()?;
-        out.checkpoint()?;
-        if let Some(s) = node_start {
-            session.details.nodes += s.elapsed();
-        }
+        Ok(())
     }
 
-    out.push_str("</g>");
-    out.checkpoint()
-}
-
-fn render_flowchart_elk_edge_paths(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    ctx: &FlowchartRenderCtx<'_>,
-    session: &mut FlowchartRootRenderSession<'_, '_, '_, '_>,
-    edges: &[super::super::render_input::FlowchartRenderEdgeRef<'_>],
-) -> crate::Result<()> {
-    ctx.checkpoint_emit()?;
-    super::super::paint::prepare_rough_edge_paths(ctx, edges, session.edge_cache)?;
-    if ctx.hand_drawn_seed.seed().may_use_math_random() {
-        session
-            .edge_labels
-            .update(ctx, session.hierarchy_plan, session.edge_cache, edges)?;
-    }
-    let _g_edge_paths = detail_guard(session.timing, &mut session.details.edge_paths);
-    if edges.is_empty() {
-        out.push_str(r#"<g class="edges edgePaths"/>"#);
-        return out.checkpoint();
+    fn write_edge_casings(&self, out: &mut S, edges: &[FlowchartRenderEdgeRef<'_>]) -> Result<()> {
+        self.edge_fills
+            .write_casings(out, self.ctx, self.marker_plan, edges, self.edge_cache)
     }
 
-    out.push_str(r#"<g class="edges edgePaths">"#);
-    let mut scratch = FlowchartEdgeDataPointsScratch::default();
-    for &e in edges {
-        ctx.checkpoint_emit()?;
+    fn write_edge(
+        &self,
+        out: &mut S,
+        edge: FlowchartRenderEdgeRef<'_>,
+        (x, y): (f64, f64),
+        scratch: &mut Self::EdgeScratch,
+    ) -> Result<()> {
         render_flowchart_edge_path(
             out,
-            ctx,
-            session.marker_plan,
-            session.edge_fills.ink(e.key),
-            e,
-            0.0,
-            0.0,
-            &mut scratch,
-            &*session.edge_cache,
-        )?;
-        ctx.checkpoint_emit()?;
-        out.checkpoint()?;
+            self.ctx,
+            self.marker_plan,
+            self.edge_fills.ink(edge.key),
+            edge,
+            x,
+            y,
+            scratch,
+            self.edge_cache,
+        )
     }
-    out.push_str("</g>");
-    out.checkpoint()
-}
 
-fn render_flowchart_elk_edge_labels(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    ctx: &FlowchartRenderCtx<'_>,
-    session: &mut FlowchartRootRenderSession<'_, '_, '_, '_>,
-    edges: &[super::super::render_input::FlowchartRenderEdgeRef<'_>],
-) -> crate::Result<()> {
-    ctx.checkpoint_emit()?;
-    let _g_edge_labels = detail_guard(session.timing, &mut session.details.edge_labels);
-    write_elk_edge_labels(
-        out,
-        edges,
-        || ctx.checkpoint_emit(),
-        |edge| edge_label_is_empty(ctx, edge),
-        |out, edge| {
-            render_flowchart_edge_label(
-                out,
-                ctx,
-                edge,
-                0.0,
-                0.0,
-                session.hierarchy_plan,
-                session.edge_labels,
-            )
-        },
-    )
-}
+    fn write_edge_label(
+        &self,
+        out: &mut S,
+        edge: FlowchartRenderEdgeRef<'_>,
+        (x, y): (f64, f64),
+    ) -> Result<()> {
+        render_flowchart_edge_label(
+            out,
+            self.ctx,
+            edge,
+            x,
+            y,
+            self.hierarchy_plan,
+            self.edge_labels,
+        )
+    }
 
-fn initialize_flowchart_root_frame<'data, 'plan>(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    ctx: &'data FlowchartRenderCtx<'data>,
-    session: &mut FlowchartRootRenderSession<'_, '_, 'plan, 'data>,
-    frame: &mut FlowchartRootFrame<'data, 'plan>,
-    pass: FlowchartRootPass,
-) -> crate::Result<()> {
-    ctx.checkpoint_emit()?;
-    session.details.root_calls += 1;
-    let root_emission = session.hierarchy_plan.root(frame.cluster_id)?;
+    fn write_swimlane_edge_label(
+        &self,
+        out: &mut S,
+        id: &str,
+        edge: FlowchartRenderEdgeRef<'_>,
+        origin: (f64, f64),
+    ) -> Result<()> {
+        render_swimlane_edge_label_node(
+            out,
+            self.ctx,
+            id,
+            edge,
+            origin,
+            self.hierarchy_plan,
+            self.edge_labels,
+        )
+    }
 
-    let (origin_x, origin_y, transform_attr) = if let Some(cid) = frame.cluster_id {
-        if let Some(off) = session.hierarchy_plan.root_offsets(cid) {
-            let rel_x = off.origin_x - frame.parent_origin_x;
-            let rel_y = off.abs_top_transform - frame.parent_origin_y;
-            (
-                off.origin_x,
-                off.origin_y,
-                format!(
-                    r#" transform="translate({},{})""#,
-                    fmt_display(rel_x),
-                    fmt_display(rel_y)
-                ),
-            )
+    fn write_node(&mut self, out: &mut S, id: &str, (x, y): (f64, f64), depth: bool) -> Result<()> {
+        if depth {
+            render_flowchart_node_depth(out, self.ctx, id, x, y)
         } else {
-            // Fallback: keep the group in the parent's coordinate space.
-            (
-                frame.parent_origin_x,
-                frame.parent_origin_y,
-                r#" transform="translate(0,0)""#.to_string(),
+            render_flowchart_node(
+                out,
+                self.ctx,
+                id,
+                x,
+                y,
+                self.timing,
+                self.details,
+                &mut self.node_label_div_style,
             )
         }
-    } else {
-        (0.0, 0.0, String::new())
-    };
-
-    frame.origin_x = origin_x;
-    frame.origin_y = origin_y;
-    frame.content_origin_y = origin_y;
-
-    let _ = write!(out, r#"<g class="root"{}>"#, transform_attr);
-
-    let _g_clusters = detail_guard(session.timing, &mut session.details.clusters);
-    let clusters_to_draw = root_emission.clusters();
-    let mut struck_titles = Vec::new();
-    if clusters_to_draw.is_empty() {
-        out.push_str(r#"<g class="clusters"/>"#);
-    } else {
-        out.push_str(r#"<g class="clusters">"#);
-        for &cluster in clusters_to_draw {
-            ctx.checkpoint_emit()?;
-            let cluster_pass = match pass {
-                FlowchartRootPass::Depth => FlowchartClusterPass::Background,
-                _ if ctx.layout.route_contract.group_title_is_struck(&cluster.id) => {
-                    struck_titles.push(cluster);
-                    if pass == FlowchartRootPass::Foreground {
-                        continue;
-                    }
-                    FlowchartClusterPass::Background
-                }
-                FlowchartRootPass::Complete => FlowchartClusterPass::Complete,
-                FlowchartRootPass::Foreground => FlowchartClusterPass::Label,
-            };
-            render_flowchart_cluster_pass(
-                out,
-                ctx,
-                cluster,
-                origin_x,
-                frame.content_origin_y,
-                cluster_pass,
-            )?;
-            out.checkpoint()?;
-        }
-        out.push_str("</g>");
-    }
-    drop(_g_clusters);
-
-    if pass == FlowchartRootPass::Depth {
-        out.push_str(r#"<g class="nodes" data-merman-theme-depth="layer">"#);
-        frame.dom_order = root_emission.dom_order();
-        frame.initialized = true;
-        return out.checkpoint();
     }
 
-    let _g_edges_select = detail_guard(session.timing, &mut session.details.edges_select);
-    let edges = root_emission.edges();
-    drop(_g_edges_select);
-
-    super::super::paint::prepare_rough_edge_paths(ctx, edges, session.edge_cache)?;
-    if ctx.hand_drawn_seed.seed().may_use_math_random() {
-        session
-            .edge_labels
-            .update(ctx, session.hierarchy_plan, session.edge_cache, edges)?;
+    fn write_step_badges(&self, out: &mut S, root: Option<&str>) -> Result<()> {
+        self.step_badges.write_root(out, self.ctx, root)
     }
-    let _g_edge_paths = detail_guard(session.timing, &mut session.details.edge_paths);
-    session
-        .edge_fills
-        .write_casings(out, ctx, session.marker_plan, edges, session.edge_cache)?;
-    let edge_group_class = if ctx.swimlane_direction.is_some() {
-        "edges edgePaths"
-    } else {
-        "edgePaths"
-    };
-    if edges.is_empty() {
-        let _ = write!(out, r#"<g class="{}"/>"#, edge_group_class);
-    } else {
-        let _ = write!(out, r#"<g class="{}">"#, edge_group_class);
-        let mut scratch = FlowchartEdgeDataPointsScratch::default();
-        for &e in edges {
-            ctx.checkpoint_emit()?;
-            render_flowchart_edge_path(
-                out,
-                ctx,
-                session.marker_plan,
-                session.edge_fills.ink(e.key),
-                e,
-                origin_x,
-                frame.content_origin_y,
-                &mut scratch,
-                &*session.edge_cache,
-            )?;
-            ctx.checkpoint_emit()?;
-            out.checkpoint()?;
-        }
-        out.push_str("</g>");
-    }
-    drop(_g_edge_paths);
-
-    if !struck_titles.is_empty() {
-        let _g_clusters = detail_guard(session.timing, &mut session.details.clusters);
-        out.push_str(r#"<g class="merman-struck-cluster-titles">"#);
-        for cluster in struck_titles {
-            render_flowchart_cluster_pass(
-                out,
-                ctx,
-                cluster,
-                origin_x,
-                frame.content_origin_y,
-                FlowchartClusterPass::Label,
-            )?;
-            out.checkpoint()?;
-        }
-        out.push_str("</g>");
-    }
-
-    let _g_edge_labels = detail_guard(session.timing, &mut session.details.edge_labels);
-    let label_edges = if ctx.swimlane_direction.is_some() {
-        &[]
-    } else {
-        edges
-    };
-    let merge_self_loop_segments = ctx.edge_html_labels
-        || label_edges.is_empty()
-        || crate::flowchart::flowchart_dagre_merges_self_loop_segments(&ctx.model.keyword);
-    write_edge_labels(
-        out,
-        label_edges,
-        ctx.edge_html_labels,
-        merge_self_loop_segments,
-        || ctx.checkpoint_emit(),
-        |edge| edge_label_is_empty(ctx, edge),
-        |out, edge| {
-            render_flowchart_edge_label(
-                out,
-                ctx,
-                edge,
-                origin_x,
-                frame.content_origin_y,
-                session.hierarchy_plan,
-                session.edge_labels,
-            )
-        },
-    )?;
-    drop(_g_edge_labels);
-
-    out.push_str(r#"<g class="nodes">"#);
-
-    let _g_dom_order = detail_guard(session.timing, &mut session.details.dom_order);
-    let dom_order = root_emission.dom_order();
-    drop(_g_dom_order);
-
-    frame.dom_order = dom_order;
-    frame.initialized = true;
-    out.checkpoint()
 }

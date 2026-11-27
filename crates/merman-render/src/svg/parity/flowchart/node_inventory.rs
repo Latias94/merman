@@ -5,6 +5,7 @@ use super::hierarchy::{
     flowchart_elk_dom_order,
 };
 use super::*;
+use merman_render_flow::graph::{FlowchartNodeRootOrder, FlowchartNodeRootSchedule};
 
 #[derive(Clone, Copy)]
 pub(crate) enum FlowchartNodeLayoutView<'a> {
@@ -246,13 +247,6 @@ impl<'a> FlowchartNodeInventoryInput<'a> {
 }
 
 #[derive(Debug)]
-pub(crate) struct FlowchartNodeRootSchedule {
-    top: Vec<String>,
-    nested: Vec<(String, Vec<String>)>,
-    effective_parents: FlowchartEffectiveParentIndex,
-}
-
-#[derive(Debug)]
 pub(crate) struct FlowchartPreparedNodes {
     schedule: FlowchartNodeRootSchedule,
     terminals: FxHashMap<String, super::node_style::PreparedNodeTerminal>,
@@ -326,7 +320,7 @@ impl FlowchartPreparedNodes {
         );
         let input =
             FlowchartNodeInventoryInput::prepare(model, render_context, layout, &helper_ids, work);
-        let schedule = FlowchartNodeRootSchedule::prepare(&input)?;
+        let schedule = prepare_flowchart_node_root_schedule(&input)?;
         let ordinals = super::svg_emit::flowchart_node_theme_ordinals(
             &model.nodes,
             &model.subgraphs,
@@ -346,9 +340,9 @@ impl FlowchartPreparedNodes {
         // Hold those reservations through cluster admission on both paths.
         let mut layout_typography = Vec::new();
         for id in schedule
-            .top
+            .top()
             .iter()
-            .chain(schedule.nested.iter().flat_map(|(_, order)| order.iter()))
+            .chain(schedule.nested().iter().flat_map(|(_, order)| order.iter()))
         {
             work.checkpoint(merman_model::OperationPhase::Layout)?;
             work.charge(1)?;
@@ -644,7 +638,7 @@ fn prepared_cluster_ids(
 ) -> crate::Result<Vec<String>> {
     let mut ids = Vec::new();
     let scheduled_roots = schedule
-        .nested
+        .nested()
         .iter()
         .map(|(id, _)| id.as_str())
         .collect::<FxHashSet<_>>();
@@ -686,7 +680,7 @@ fn prepared_cluster_ids(
             let root = if input.recursive_clusters.contains(id) {
                 Some(id)
             } else {
-                schedule.effective_parents.parent(id)
+                schedule.effective_parents().parent(id)
             };
             if root.is_none_or(|root| scheduled_roots.contains(root)) {
                 ids.push(id.to_owned());
@@ -705,88 +699,30 @@ fn prepared_cluster_ids(
     Ok(ids)
 }
 
-impl FlowchartNodeRootSchedule {
-    pub(super) fn prepare(ctx: &FlowchartNodeInventoryInput<'_>) -> crate::Result<Self> {
-        let effective_parents = FlowchartEffectiveParentIndex::prepare(
-            &ctx.parent,
-            |id| {
-                (ctx.subgraphs_by_id.contains_key(id) || ctx.layout_clusters_by_id.contains_key(id))
-                    && !ctx.recursive_clusters.contains(id)
-            },
+fn prepare_flowchart_node_root_schedule(
+    ctx: &FlowchartNodeInventoryInput<'_>,
+) -> crate::Result<FlowchartNodeRootSchedule> {
+    let effective_parents = FlowchartEffectiveParentIndex::prepare(
+        &ctx.parent,
+        |id| {
+            (ctx.subgraphs_by_id.contains_key(id) || ctx.layout_clusters_by_id.contains_key(id))
+                && !ctx.recursive_clusters.contains(id)
+        },
+        ctx.work_meter,
+    )?;
+    let mut candidates = FlowchartDomCandidateBuckets::prepare(ctx, &effective_parents)?;
+    let order = if ctx.uses_elk_adapter_dom {
+        FlowchartNodeRootOrder::flat(flowchart_elk_dom_order(ctx, candidates.take(None))?)
+    } else {
+        FlowchartNodeRootOrder::prepare_nested(
+            &ctx.subgraphs_by_id,
+            &ctx.subgraph_ids_with_children,
+            &ctx.recursive_clusters,
             ctx.work_meter,
-        )?;
-        let (top, nested) = {
-            let mut candidates = FlowchartDomCandidateBuckets::prepare(ctx, &effective_parents)?;
-            if ctx.uses_elk_adapter_dom {
-                let top = flowchart_elk_dom_order(ctx, candidates.take(None))?;
-                (top.into_iter().map(str::to_owned).collect(), Vec::new())
-            } else {
-                ctx.work_meter
-                    .checkpoint(merman_model::OperationPhase::Layout)?;
-                ctx.work_meter.charge(1)?;
-                let top = flowchart_dom_order_for_root(ctx, None, candidates.take(None))?;
-                let mut pending = Vec::new();
-                let push_roots = |order: &[&str], pending: &mut Vec<String>| {
-                    pending.extend(
-                        order
-                            .iter()
-                            .rev()
-                            .filter(|id| {
-                                ctx.subgraphs_by_id.contains_key(**id)
-                                    && ctx.subgraph_has_children(id)
-                                    && ctx.recursive_clusters.contains(**id)
-                            })
-                            .map(|id| (*id).to_owned()),
-                    );
-                };
-                push_roots(&top, &mut pending);
-                let mut nested = Vec::new();
-                let mut visited = FxHashSet::default();
-                while let Some(root) = pending.pop() {
-                    ctx.work_meter
-                        .checkpoint(merman_model::OperationPhase::Layout)?;
-                    ctx.work_meter.charge(1)?;
-                    let root_id = ctx
-                        .recursive_clusters
-                        .get(root.as_str())
-                        .copied()
-                        .ok_or_else(|| crate::Error::InvalidModel {
-                            message: format!("missing prepared Flowchart recursive root `{root}`"),
-                        })?;
-                    if !visited.insert(root_id) {
-                        return Err(crate::Error::InvalidModel {
-                            message: format!(
-                                "Flowchart hierarchy visits extracted root `{root}` more than once"
-                            ),
-                        });
-                    }
-                    let order = flowchart_dom_order_for_root(
-                        ctx,
-                        Some(root_id),
-                        candidates.take(Some(root_id)),
-                    )?;
-                    push_roots(&order, &mut pending);
-                    nested.push((root, order.into_iter().map(str::to_owned).collect()));
-                }
-                (top.into_iter().map(str::to_owned).collect(), nested)
-            }
-        };
-        Ok(Self {
-            top,
-            nested,
-            effective_parents,
-        })
-    }
-
-    pub(super) fn top(&self) -> &[String] {
-        &self.top
-    }
-    pub(super) fn nested(&self) -> &[(String, Vec<String>)] {
-        &self.nested
-    }
-    pub(super) fn effective_parents(&self) -> &FlowchartEffectiveParentIndex {
-        &self.effective_parents
-    }
+            |root| flowchart_dom_order_for_root(ctx, root, candidates.take(root)),
+        )?
+    };
+    Ok(FlowchartNodeRootSchedule::new(effective_parents, order))
 }
 
 #[cfg(all(test, feature = "diagram-flowchart", feature = "layout-dagre"))]
@@ -894,7 +830,7 @@ mod source_typography_tests {
                 &helpers,
                 &work,
             );
-            let schedule = FlowchartNodeRootSchedule::prepare(&input).unwrap();
+            let schedule = prepare_flowchart_node_root_schedule(&input).unwrap();
             let error = prepared_cluster_ids(
                 &model,
                 FlowchartNodeLayoutView::Flowchart(&layout),

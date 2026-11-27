@@ -293,7 +293,7 @@ pub(super) fn with_flowchart_paint_context<T>(
     };
 
     ctx.elk_cluster_geometry = super::cluster_geometry::prepare_elk_cluster_geometry(&ctx)?;
-    let hierarchy_plan = FlowchartHierarchyPlan::prepare(&ctx, prepared_nodes.schedule())?;
+    let hierarchy_plan = prepare_flowchart_hierarchy(&ctx, prepared_nodes.schedule())?;
     consume(&ctx, &render_edges, &hierarchy_plan)
 }
 

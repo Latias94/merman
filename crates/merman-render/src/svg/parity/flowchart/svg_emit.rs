@@ -1,4 +1,5 @@
 use merman_render_flow::document::{FlowchartSvgDocumentRequest, prepare_flowchart_svg_document};
+use merman_render_flow::graph::FlowchartGraphTimings;
 use merman_render_flow::stylesheet::{FlowchartStylesheetRequest, SwimlaneStylesheet};
 
 use super::defs::{FlowchartMarkerEmissionPlan, prepare_flowchart_defs};
@@ -120,6 +121,7 @@ pub(super) fn render_flowchart_svg_model(
                     .render_subgraph_title_y_shift();
 
             let mut detail = FlowchartRenderDetails::default();
+            let mut graph_timings = FlowchartGraphTimings::default();
             let mut viewbox_edge_curve_bounds = std::time::Duration::ZERO;
             let _g_viewbox = render_timing.section(&mut timings.viewbox);
 
@@ -252,7 +254,9 @@ pub(super) fn render_flowchart_svg_model(
                         &marker_plan,
                     );
 
-                    let mut root_session = FlowchartRootRenderSession {
+                    let mut paint = render::FlowchartRootPaint {
+                        ctx,
+                        defs,
                         timing: render_timing,
                         details: &mut detail,
                         node_label_div_style: String::new(),
@@ -263,17 +267,7 @@ pub(super) fn render_flowchart_svg_model(
                         edge_labels: &mut edge_labels,
                         step_badges: &step_badges,
                     };
-                    if ctx.uses_elk_adapter_dom {
-                        defs.push_base_markers(out)?;
-                        out.checkpoint()?;
-                        defs.push_extra_markers(out)?;
-                        out.checkpoint()?;
-                        render_flowchart_elk_root_groups(out, ctx, &mut root_session)?;
-                    } else {
-                        defs.push_base_markers(out)?;
-                        render_flowchart_root(out, ctx, None, 0.0, 0.0, &mut root_session)?;
-                        defs.push_extra_markers(out)?;
-                    }
+                    paint.write_graph(out, &mut graph_timings)?;
                     Ok(ctx.steps.emitted())
                 },
             )?;
@@ -298,19 +292,19 @@ pub(super) fn render_flowchart_svg_model(
                     detail.viewbox_edge_curve_geom_skipped_bounds,
                     timings.render_svg,
                     timings.finalize_svg,
-                    detail.root_calls,
-                    detail.clusters,
-                    detail.edges_select,
-                    detail.edge_paths,
-                    detail.edge_labels,
-                    detail.dom_order,
-                    detail.nodes,
+                    graph_timings.root_calls,
+                    graph_timings.clusters,
+                    graph_timings.edges_select,
+                    graph_timings.edge_paths,
+                    graph_timings.edge_labels,
+                    graph_timings.dom_order,
+                    graph_timings.nodes,
                     detail.node_style_compile,
                     detail.node_roughjs,
                     detail.node_roughjs_calls,
                     detail.node_label_html,
                     detail.node_label_html_calls,
-                    detail.nested_roots,
+                    graph_timings.nested_roots,
                 );
             }
             document.finish()

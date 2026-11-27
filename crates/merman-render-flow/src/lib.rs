@@ -46,6 +46,13 @@ pub mod edge_svg;
     feature = "diagram-swimlane"
 ))]
 #[doc(hidden)]
+pub mod graph;
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
+#[doc(hidden)]
 pub mod hierarchy;
 #[cfg(any(
     feature = "diagram-agentflow",

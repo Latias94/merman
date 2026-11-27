@@ -54,6 +54,21 @@ impl FlowchartEdgeKey {
     }
 }
 
+/// A borrowed render edge with its semantic occurrence identity.
+#[derive(Debug, Clone, Copy)]
+pub struct FlowchartRenderEdgeRef<'a> {
+    pub key: FlowchartEdgeKey,
+    pub edge: &'a FlowEdge,
+}
+
+impl std::ops::Deref for FlowchartRenderEdgeRef<'_> {
+    type Target = FlowEdge;
+
+    fn deref(&self) -> &Self::Target {
+        self.edge
+    }
+}
+
 /// Collision-safe adapter identities for one prepared set of semantic edge occurrences.
 ///
 /// Unique Mermaid ids stay byte-identical so source-backed adapter ordering remains unchanged.

@@ -20,19 +20,7 @@ impl FlowchartRenderEdge<'_> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(in crate::svg::parity) struct FlowchartRenderEdgeRef<'a> {
-    pub(in crate::svg::parity::flowchart) key: crate::flowchart::FlowchartEdgeKey,
-    pub(in crate::svg::parity::flowchart) edge: &'a crate::flowchart::FlowEdge,
-}
-
-impl std::ops::Deref for FlowchartRenderEdgeRef<'_> {
-    type Target = crate::flowchart::FlowEdge;
-
-    fn deref(&self) -> &Self::Target {
-        self.edge
-    }
-}
+pub(in crate::svg::parity) use merman_render_flow::projection::FlowchartRenderEdgeRef;
 
 pub(in crate::svg::parity::flowchart) struct FlowchartRenderInputs<'a> {
     pub render_edges: Vec<FlowchartRenderEdge<'a>>,
