@@ -3386,6 +3386,38 @@ mod tests {
     }
 
     #[test]
+    fn source_graph_dump_with_cross_boundary_origins_is_small_stack_safe() {
+        let depth = 256;
+        let mut graph = deep_include_graph(depth);
+        graph.nodes.push(leaf("outside"));
+        graph.edges.push(edge("cross", "terminal", "outside"));
+        let mut diagnostics = SourcePhaseDiagnostics::from_graph(&graph).unwrap();
+        diagnostics
+            .execute_compound_until_processor(ProcessorKind::LongEdgeSplitter)
+            .unwrap();
+        let dump = std::thread::Builder::new()
+            .name("elk-source-cross-boundary-dump-small-stack".to_string())
+            .stack_size(128 * 1024)
+            .spawn(move || diagnostics.graph_dump())
+            .unwrap()
+            .join()
+            .expect("source graph dump must not overflow the worker stack");
+
+        assert_eq!(
+            dump.lines()
+                .filter(|line| line.trim_start().starts_with("graph "))
+                .count(),
+            depth + 1
+        );
+        assert!(dump.contains(r#"dummy=Some(GraphNodeRef { graph_id: "group-255", node: "#));
+        assert!(
+            dump.contains(r#"origin=Some(GraphPortRef { graph_id: "group-254", port: PortRef { "#)
+        );
+        assert!(!dump.contains("domain:"));
+        assert!(!dump.contains("GraphSeedScope"));
+    }
+
+    #[test]
     fn separate_children_cross_boundary_edges_merge_once_with_one_label() {
         let mut a = leaf("a");
         a.parent = Some("left".to_string());

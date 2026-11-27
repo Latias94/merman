@@ -2414,7 +2414,6 @@ version = "0.11.0"
 dependencies = [
  "cssparser",
  "futures",
- "granit-parser",
  "indexmap",
  "json5",
  "merman-core-flow",
@@ -2458,7 +2457,9 @@ dependencies = [
 name = "merman-core-preprocess"
 version = "0.11.0"
 dependencies = [
+ "granit-parser",
  "merman-model",
+ "serde_json",
 ]
 
 [[package]]
@@ -2739,11 +2740,13 @@ version = "0.11.0"
 dependencies = [
  "cssparser",
  "indexmap",
+ "kurbo 0.13.1",
  "libm",
  "merman-markup",
  "merman-model",
  "merman-render-core",
  "merman-theme-contract",
+ "roughr-merman",
  "roxmltree 0.21.2",
  "rustc-hash 2.1.3",
  "ryu-js",
@@ -2769,6 +2772,7 @@ dependencies = [
  "merman-model",
  "merman-theme-contract",
  "merman-unicode-linebreak",
+ "pulldown-cmark",
  "quick-xml",
  "ratex-font",
  "ratex-layout",
@@ -2803,8 +2807,17 @@ dependencies = [
 name = "merman-render-graph"
 version = "0.11.0"
 dependencies = [
+ "cssparser",
+ "euclid",
+ "indexmap",
  "kurbo 0.13.1",
+ "merman-markup",
+ "merman-model",
  "merman-render-core",
+ "merman-theme-contract",
+ "rustc-hash 2.1.3",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

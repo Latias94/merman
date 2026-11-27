@@ -235,6 +235,7 @@ with `benchmark-stages` and times stage scopes exclusively. Each report includes
 Mermaid theme materialization and the Flowchart family theme binding. `measure` covers routed
 measurement and built-in streaming label widths. `css_emit` covers streamed style output and the
 XML serialization of buffered style blocks. A stage with no captured work reports zero calls.
+Nested calls in the same stage count separately and share one contiguous timing interval.
 The stage matrix includes the quick `fan-in-500` control and records the realized backend for every
 successful request. Family-fixed layouts such as Sequence contribute phase observations and are
 ineligible for cross-backend comparisons. An unexpected fallback fails verification. Resource
@@ -1019,7 +1020,9 @@ change against the same Merman base/head public operation before accepting it.
 ## Stage and render diagnostics
 
 Run `bench.py stages` after observing a public-operation signal. `--with-memory` runs the independent
-allocation probe with the same inputs. `--chrome-trace` captures timing scopes for Perfetto.
+allocation probe with the same inputs. For a recurring stage, `peak_growth_bytes` reports the
+largest increase from the live bytes at the start of any one interval. Allocation counts and
+requested bytes are summed across all intervals. `--chrome-trace` captures timing scopes for Perfetto.
 
 ```bash
 python3 tools/bench/bench.py stages --plan target/bench/plan.json --layouts dagre,elk,shoal \

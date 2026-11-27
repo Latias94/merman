@@ -681,7 +681,7 @@ pub fn execute_ported_processors_with_work_control(
     // graph. Account for the validation copy before materializing it, then run the normal charged
     // configuration path only after the copied graph has proved the processor list is supported.
     charge_hierarchy_work(graph, work_control)?;
-    let mut validation_graph = graph.clone();
+    let mut validation_graph = graph.copy_preserving_reference_domains();
     configure_graph_properties(&mut validation_graph)?;
     validate_ported_processors(&assemble_processors_for_graph(&validation_graph))?;
     drop(validation_graph);
@@ -1253,15 +1253,8 @@ fn transfer_nested_graph_layout_to_parent_node(
     node_index: usize,
     size: LSize,
 ) {
-    let has_external_ports = {
-        let node = &mut parent.layerless_nodes[node_index];
-        transfer_external_port_dummy_layout_to_parent_node(
-            nested_graph,
-            node_index,
-            &mut node.ports,
-        );
-        nested_graph.graph_properties.external_ports
-    };
+    transfer_external_port_dummy_layout_to_parent_node(nested_graph, parent, node_index);
+    let has_external_ports = nested_graph.graph_properties.external_ports;
 
     {
         let node = &mut parent.layerless_nodes[node_index];
@@ -1287,26 +1280,27 @@ fn actual_graph_size(graph: &LGraph) -> LSize {
 
 fn transfer_external_port_dummy_layout_to_parent_node(
     nested_graph: &mut LGraph,
+    parent: &mut LGraph,
     parent_node_index: usize,
-    parent_ports: &mut [crate::graph::LPort],
 ) {
     for dummy_index in 0..nested_graph.layerless_nodes.len() {
         if nested_graph.layerless_nodes[dummy_index].kind != LNodeKind::ExternalPort {
             continue;
         }
-        let Some(origin_port) = nested_graph.layerless_nodes[dummy_index]
-            .origin_port
-            .clone()
-        else {
+        let Some(origin_port) = &nested_graph.layerless_nodes[dummy_index].origin_port else {
             continue;
         };
-        if origin_port.port.node != parent_node_index {
+        if !origin_port.belongs_to(parent) || origin_port.port.node != parent_node_index {
             continue;
         }
 
+        let parent_port_index = origin_port.port.port;
         let port_position = external_port_position(nested_graph, dummy_index);
         let external_side = nested_graph.layerless_nodes[dummy_index].external_port_side;
-        if let Some(parent_port) = parent_ports.get_mut(origin_port.port.port) {
+        if let Some(parent_port) = parent.layerless_nodes[parent_node_index]
+            .ports
+            .get_mut(parent_port_index)
+        {
             parent_port.position = port_position;
             parent_port.set_side(external_side);
         }
@@ -6680,6 +6674,89 @@ mod tests {
         assert!(cluster.size.width > 1.0);
         assert!(cluster.size.height > 1.0);
         assert!(cluster.nested_graph.as_ref().unwrap().layers.is_empty());
+    }
+
+    #[test]
+    fn compound_same_name_domains_preserve_parent_origins_and_routes() {
+        let mut options = LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Right);
+        options.hierarchy_handling = crate::options::HierarchyHandling::IncludeChildren;
+        let nodes = [
+            ("cluster", None),
+            ("inside", Some("cluster")),
+            ("peer", Some("cluster")),
+            ("other", Some("cluster")),
+            ("outside", None),
+            ("outside2", None),
+        ]
+        .map(|(name, parent)| ElkInputNode {
+            width: 50.0,
+            height: 25.0,
+            parent: parent.map(str::to_owned),
+            ..node(name)
+        });
+        let pairs = [
+            ("outside", "inside"),
+            ("inside", "outside"),
+            ("inside", "peer"),
+            ("peer", "inside"),
+            ("inside", "other"),
+            ("outside2", "inside"),
+        ];
+
+        for rotation in [0, 1] {
+            let mut ordered = pairs;
+            ordered.rotate_left(rotation);
+            let mut output = [None, None];
+            for (index, root_id) in ["root", "cluster"].into_iter().enumerate() {
+                let input = ElkInputGraph {
+                    id: root_id.to_owned(),
+                    options: options.clone(),
+                    nodes: nodes.to_vec(),
+                    edges: ordered
+                        .into_iter()
+                        .enumerate()
+                        .map(|(edge_index, (src, dst))| {
+                            edge(&format!("edge-{edge_index}"), src, dst)
+                        })
+                        .collect(),
+                };
+                let mut graph = import_graph(&input).unwrap();
+                execute_ported_compound_processors(&mut graph).unwrap();
+                let parent = &graph.layerless_nodes[0];
+                let child = parent.nested_graph.as_deref().unwrap();
+                assert_eq!(parent.ports.len(), 3);
+                for (port_index, port) in parent.ports.iter().enumerate() {
+                    let dummy = port.port_dummy.as_ref().unwrap();
+                    assert!(dummy.belongs_to(child));
+                    let origin = child.layerless_nodes[dummy.node]
+                        .origin_port
+                        .as_ref()
+                        .unwrap();
+                    assert!(origin.belongs_to(&graph));
+                    assert_eq!(
+                        origin.port,
+                        crate::PortRef {
+                            node: 0,
+                            port: port_index
+                        }
+                    );
+                }
+                output[index] = Some((
+                    parent
+                        .ports
+                        .iter()
+                        .map(|port| (port.side, port.position, port.anchor))
+                        .collect::<Vec<_>>(),
+                    graph
+                        .edges
+                        .iter()
+                        .chain(&child.edges)
+                        .map(|edge| (edge.source, edge.target, edge.bend_points.clone()))
+                        .collect::<Vec<_>>(),
+                ));
+            }
+            assert_eq!(output[0], output[1]);
+        }
     }
 
     #[test]

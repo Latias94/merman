@@ -1,5 +1,8 @@
 use merman_model::presentation::PresentationConfig;
-use merman_render_core::{config as mermaid_config, text::TextStyle};
+use merman_render_core::{
+    config::{self as mermaid_config, ConfigLookup},
+    text::TextStyle,
+};
 use serde_json::Value;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,13 +68,13 @@ enum SequenceFontProperty {
 }
 
 pub struct SequenceConfigView<'a> {
-    effective_config: &'a Value,
+    effective_config: &'a dyn ConfigLookup,
     sequence_config: &'a Value,
     config_provenance: Option<&'a PresentationConfig>,
 }
 
 impl<'a> SequenceConfigView<'a> {
-    pub fn new(effective_config: &'a Value) -> Self {
+    pub fn new(effective_config: &'a dyn ConfigLookup) -> Self {
         Self {
             effective_config,
             sequence_config: effective_config.get("sequence").unwrap_or(&Value::Null),
@@ -81,12 +84,8 @@ impl<'a> SequenceConfigView<'a> {
 
     pub(crate) fn from_mermaid_config(effective_config: &'a PresentationConfig) -> Self {
         Self {
-            effective_config: effective_config.as_value(),
-            sequence_config: effective_config
-                .as_value()
-                .get("sequence")
-                .unwrap_or(&Value::Null),
             config_provenance: Some(effective_config),
+            ..Self::new(effective_config)
         }
     }
 
@@ -334,7 +333,7 @@ pub(super) struct SequenceLayoutSettings {
 
 impl SequenceLayoutSettings {
     pub(super) fn from_effective_config(
-        effective_config: &Value,
+        effective_config: &PresentationConfig,
         typography: &super::typography::SequenceTypographyPlan,
     ) -> Self {
         let config = SequenceConfigView::new(effective_config);
@@ -390,7 +389,7 @@ mod tests {
         let effective_config = crate::preparation::test_support::presentation_config(config);
         let typography =
             super::super::typography::SequenceTypographyPlan::resolve(&effective_config);
-        SequenceLayoutSettings::from_effective_config(effective_config.as_value(), &typography)
+        SequenceLayoutSettings::from_effective_config(&effective_config, &typography)
     }
 
     #[test]
@@ -733,9 +732,7 @@ mod tests {
             .resolve_role_typography(SequenceTypographyConfigRole::Actor);
         let generated_root_family = metadata
             .effective_config
-            .as_value()
-            .get("fontFamily")
-            .and_then(Value::as_str)
+            .get_str("fontFamily")
             .expect("generated root fontFamily");
 
         assert_eq!(

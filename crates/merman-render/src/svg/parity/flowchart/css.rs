@@ -1,6 +1,7 @@
 //! Flowchart CSS generation.
 
 use super::*;
+use indexmap::IndexMap;
 use merman_render_core::write_static_css;
 use std::borrow::Cow;
 

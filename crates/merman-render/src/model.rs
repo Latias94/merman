@@ -593,185 +593,18 @@ pub use merman_render_structured::packet::{
 #[cfg(feature = "diagram-pie")]
 pub use merman_render_charts::pie::{PieDiagramLayout, PieLegendItemLayout, PieSliceLayout};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-timeline")]
-pub struct TimelineNodeLayout {
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-    /// Width used for wrapping (excluding padding).
-    pub content_width: f64,
-    /// Padding used to compute `width` (Mermaid 11.12.2 uses 20).
-    pub padding: f64,
-    pub section_class: String,
-    pub label: String,
-    /// Wrapped lines as rendered into `<tspan>` nodes.
-    pub label_lines: Vec<String>,
-    pub kind: String,
-}
+pub use merman_render_structured::timeline::{
+    TimelineDiagramLayout, TimelineLineLayout, TimelineNodeLayout, TimelineSectionLayout,
+    TimelineTaskLayout,
+};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-timeline")]
-pub struct TimelineLineLayout {
-    pub kind: String,
-    pub x1: f64,
-    pub y1: f64,
-    pub x2: f64,
-    pub y2: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-timeline")]
-pub struct TimelineTaskLayout {
-    pub node: TimelineNodeLayout,
-    #[serde(default)]
-    pub connectors: Vec<TimelineLineLayout>,
-    pub events: Vec<TimelineNodeLayout>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-timeline")]
-pub struct TimelineSectionLayout {
-    pub node: TimelineNodeLayout,
-    pub tasks: Vec<TimelineTaskLayout>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-timeline")]
-pub struct TimelineDiagramLayout {
-    pub direction: merman_model::families::timeline::TimelineDirection,
-    pub bounds: Option<Bounds>,
-    pub left_margin: f64,
-    pub base_x: f64,
-    pub base_y: f64,
-    /// `svg.node().getBBox().width` computed *before* title/activity line are inserted.
-    pub pre_title_box_width: f64,
-    pub sections: Vec<TimelineSectionLayout>,
-    #[serde(default)]
-    pub orphan_tasks: Vec<TimelineTaskLayout>,
-    pub activity_line: TimelineLineLayout,
-    pub title: Option<String>,
-    pub title_x: f64,
-    pub title_y: f64,
-    #[serde(default = "crate::timeline::default_use_max_width")]
-    pub use_max_width: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-journey")]
-pub struct JourneyActorLegendLineLayout {
-    pub text: String,
-    pub x: f64,
-    pub y: f64,
-    pub tspan_x: f64,
-    pub text_margin: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-journey")]
-pub struct JourneyActorLegendItemLayout {
-    pub actor: String,
-    pub pos: i64,
-    pub color: String,
-    pub circle_cx: f64,
-    pub circle_cy: f64,
-    pub circle_r: f64,
-    pub label_lines: Vec<JourneyActorLegendLineLayout>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-journey")]
-pub enum JourneyMouthKind {
-    Smile,
-    Sad,
-    Ambivalent,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-journey")]
-pub struct JourneyTaskActorCircleLayout {
-    pub actor: String,
-    pub pos: i64,
-    pub color: String,
-    pub cx: f64,
-    pub cy: f64,
-    pub r: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-journey")]
-pub struct JourneyTaskLayout {
-    pub index: i64,
-    pub section: String,
-    pub task: String,
-    /// JavaScript Number score, including signed infinities.
-    ///
-    /// Invalid authored Number input retains zero with NaN geometry in `face_cy`.
-    pub score: f64,
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-    pub fill: String,
-    pub num: i64,
-    pub people: Vec<String>,
-    pub actor_circles: Vec<JourneyTaskActorCircleLayout>,
-    pub line_id: String,
-    pub line_x1: f64,
-    pub line_y1: f64,
-    pub line_x2: f64,
-    pub line_y2: f64,
-    pub face_cx: f64,
-    /// Face center y coordinate; `None` represents a NaN score.
-    ///
-    /// `Some` retains signed infinity from either the score or coordinate arithmetic overflow.
-    /// SVG emits its JavaScript spelling; JSON serialization projects it as null.
-    pub face_cy: Option<f64>,
-    pub mouth: JourneyMouthKind,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-journey")]
-pub struct JourneySectionLayout {
-    pub section: String,
-    pub num: i64,
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-    pub fill: String,
-    pub task_count: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-journey")]
-pub struct JourneyLineLayout {
-    pub x1: f64,
-    pub y1: f64,
-    pub x2: f64,
-    pub y2: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-journey")]
-pub struct JourneyDiagramLayout {
-    pub bounds: Option<Bounds>,
-    pub left_margin: f64,
-    pub max_actor_label_width: f64,
-    pub width: f64,
-    pub height: f64,
-    pub svg_height: f64,
-    #[serde(default = "crate::journey::default_use_max_width")]
-    pub use_max_width: bool,
-    pub title: Option<String>,
-    pub title_x: f64,
-    pub title_y: f64,
-    pub actor_legend: Vec<JourneyActorLegendItemLayout>,
-    pub sections: Vec<JourneySectionLayout>,
-    pub tasks: Vec<JourneyTaskLayout>,
-    pub activity_line: JourneyLineLayout,
-}
+pub use merman_render_structured::journey::{
+    JourneyActorLegendItemLayout, JourneyActorLegendLineLayout, JourneyDiagramLayout,
+    JourneyLineLayout, JourneyMouthKind, JourneySectionLayout, JourneyTaskActorCircleLayout,
+    JourneyTaskLayout,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-kanban")]
@@ -827,62 +660,10 @@ pub struct KanbanDiagramLayout {
     pub items: Vec<KanbanItemLayout>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-git-graph")]
-pub struct GitGraphBranchLayout {
-    pub name: String,
-    pub index: i64,
-    pub pos: f64,
-    pub bbox_width: f64,
-    pub bbox_height: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-git-graph")]
-pub struct GitGraphCommitLayout {
-    pub id: String,
-    pub message: String,
-    pub seq: i64,
-    pub commit_type: i64,
-    #[serde(default)]
-    pub custom_type: Option<i64>,
-    #[serde(default)]
-    pub custom_id: Option<bool>,
-    #[serde(default)]
-    pub tags: Vec<String>,
-    #[serde(default)]
-    pub parents: Vec<String>,
-    pub branch: String,
-    pub pos: f64,
-    pub pos_with_offset: f64,
-    pub x: f64,
-    pub y: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-git-graph")]
-pub struct GitGraphArrowLayout {
-    pub from: String,
-    pub to: String,
-    pub class_index: i64,
-    pub d: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-git-graph")]
-pub struct GitGraphDiagramLayout {
-    pub bounds: Option<Bounds>,
-    pub direction: String,
-    pub rotate_commit_label: bool,
-    pub show_branches: bool,
-    pub show_commit_label: bool,
-    pub parallel_commits: bool,
-    pub diagram_padding: f64,
-    pub max_pos: f64,
-    pub branches: Vec<GitGraphBranchLayout>,
-    pub commits: Vec<GitGraphCommitLayout>,
-    pub arrows: Vec<GitGraphArrowLayout>,
-}
+pub use merman_render_graph::gitgraph::{
+    GitGraphArrowLayout, GitGraphBranchLayout, GitGraphCommitLayout, GitGraphDiagramLayout,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-tree-view")]
@@ -1006,193 +787,21 @@ pub struct EventModelingDiagramLayout {
     pub relations: Vec<EventModelingRelationLayout>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-cynefin")]
-pub struct CynefinDomainLayout {
-    pub name: String,
-    pub cx: f64,
-    pub cy: f64,
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-cynefin")]
-pub struct CynefinItemLayout {
-    pub domain: String,
-    pub label: String,
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-    pub text_x: f64,
-    pub text_y: f64,
-    pub overflow: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-cynefin")]
-pub struct CynefinTransitionLayout {
-    pub from: String,
-    pub to: String,
-    pub label: Option<String>,
-    pub x1: f64,
-    pub y1: f64,
-    pub x2: f64,
-    pub y2: f64,
-    pub cpx: f64,
-    pub cpy: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-cynefin")]
-pub struct CynefinDiagramLayout {
-    pub bounds: Option<Bounds>,
-    pub width: f64,
-    pub height: f64,
-    pub padding: f64,
-    pub total_width: f64,
-    pub total_height: f64,
-    pub use_max_width: bool,
-    pub show_domain_descriptions: bool,
-    pub boundary_amplitude: f64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub seed: Option<f64>,
-    pub domain_layouts: Vec<CynefinDomainLayout>,
-    pub items: Vec<CynefinItemLayout>,
-    pub transitions: Vec<CynefinTransitionLayout>,
-}
+pub use merman_render_structured::cynefin::{
+    CynefinDiagramLayout, CynefinDomainLayout, CynefinItemLayout, CynefinTransitionLayout,
+};
 
 #[cfg(feature = "diagram-railroad")]
 pub use merman_render_structured::railroad::{
     RailroadDiagramLayout, RailroadElementLayout, RailroadPathLayout, RailroadRuleLayout,
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-gantt")]
-pub struct GanttAxisTickLayout {
-    pub time_ms: i64,
-    pub x: f64,
-    pub label: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-gantt")]
-pub struct GanttExcludeRangeLayout {
-    pub id: String,
-    pub start_ms: i64,
-    pub end_ms: i64,
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-gantt")]
-pub struct GanttSectionTitleLayout {
-    pub section: String,
-    pub index: i64,
-    pub x: f64,
-    pub y: f64,
-    pub dy_em: f64,
-    pub lines: Vec<String>,
-    pub class: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-gantt")]
-pub struct GanttRowLayout {
-    pub index: i64,
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-    pub class: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-gantt")]
-pub struct GanttTaskLabelLayout {
-    pub id: String,
-    pub text: String,
-    pub font_size: f64,
-    pub width: f64,
-    pub x: f64,
-    pub y: f64,
-    pub class: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-gantt")]
-pub struct GanttTaskBarLayout {
-    pub id: String,
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-    pub rx: f64,
-    pub ry: f64,
-    pub class: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-gantt")]
-pub struct GanttTaskLayout {
-    pub id: String,
-    pub task: String,
-    pub section: String,
-    pub task_type: String,
-    pub order: i64,
-    pub start_ms: i64,
-    pub end_ms: i64,
-    #[serde(default)]
-    pub render_end_ms: Option<i64>,
-    pub milestone: bool,
-    pub vert: bool,
-    pub bar: GanttTaskBarLayout,
-    pub label: GanttTaskLabelLayout,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-gantt")]
-pub struct GanttDiagramLayout {
-    pub bounds: Option<Bounds>,
-    pub width: f64,
-    pub height: f64,
-    pub left_padding: f64,
-    pub right_padding: f64,
-    pub top_padding: f64,
-    pub grid_line_start_padding: f64,
-    pub bar_height: f64,
-    pub bar_gap: f64,
-    pub title_top_margin: f64,
-    pub font_size: f64,
-    pub section_font_size: f64,
-    pub number_section_styles: i64,
-    pub display_mode: String,
-    pub date_format: String,
-    pub axis_format: String,
-    #[serde(default)]
-    pub tick_interval: Option<String>,
-    pub top_axis: bool,
-    pub today_marker: String,
-    pub categories: Vec<String>,
-    pub rows: Vec<GanttRowLayout>,
-    pub section_titles: Vec<GanttSectionTitleLayout>,
-    pub tasks: Vec<GanttTaskLayout>,
-    pub excludes: Vec<GanttExcludeRangeLayout>,
-    #[serde(default)]
-    pub has_excludes_layer: bool,
-    pub bottom_ticks: Vec<GanttAxisTickLayout>,
-    #[serde(default)]
-    pub top_ticks: Vec<GanttAxisTickLayout>,
-    pub title: Option<String>,
-    pub title_x: f64,
-    pub title_y: f64,
-}
+pub use merman_render_structured::gantt::{
+    GanttAxisTickLayout, GanttDiagramLayout, GanttExcludeRangeLayout, GanttRowLayout,
+    GanttSectionTitleLayout, GanttTaskBarLayout, GanttTaskLabelLayout, GanttTaskLayout,
+};
 
 #[derive(Debug, Clone)]
 #[cfg(feature = "diagram-c4")]

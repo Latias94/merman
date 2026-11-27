@@ -1,7 +1,5 @@
 use super::*;
-use crate::graph::{
-    GraphPortRef, LNode, LPort, PortType, SelfHyperLoop, SelfLoopHolder, SelfLoopPort,
-};
+use crate::graph::{LNode, LPort, PortType, SelfHyperLoop, SelfLoopHolder, SelfLoopPort};
 use crate::options::LayeredOptions;
 
 struct Budget {
@@ -270,17 +268,13 @@ fn deferred_repair_prepays_the_exit_walk_and_charges_only_affected_maps() {
         node.ports.push(LPort::new("a", owner, PortType::Input));
         node.ports.push(LPort::new("b", owner, PortType::Input));
     }
-    let origin = |graph_id: &str, node| {
-        Some(GraphPortRef {
-            graph_id: graph_id.to_owned(),
-            port: PortRef { node, port: 0 },
-        })
-    };
-    original.layerless_nodes[0].origin_port = origin("root", 2);
-    original.layerless_nodes[1].origin_port = origin("peer", 2);
+    let peer = LGraph::new("peer", LayeredOptions::default());
+    original.layerless_nodes[0].origin_port =
+        Some(original.scoped_port(PortRef { node: 2, port: 0 }));
+    original.layerless_nodes[1].origin_port = Some(peer.scoped_port(PortRef { node: 2, port: 0 }));
     let mut child = LGraph::new("child", LayeredOptions::default());
     let mut dummy = LNode::new("dummy", 0.0, 0.0, None);
-    dummy.origin_port = origin("root", 1);
+    dummy.origin_port = Some(original.scoped_port(PortRef { node: 1, port: 0 }));
     dummy.nested_graph = Some(Box::new(LGraph::new("empty", LayeredOptions::default())));
     child.layerless_nodes.push(dummy);
     original.layerless_nodes[0].nested_graph = Some(Box::new(child));
@@ -363,10 +357,7 @@ fn reference_context_reuses_counts_across_owners_with_nested_and_long_edge_refs(
     let mut child = LGraph::new("child", LayeredOptions::default());
     for (node, port) in [(0, 0), (1, 1)] {
         let mut external = LNode::new(format!("external-{node}"), 0.0, 0.0, None);
-        external.origin_port = Some(GraphPortRef {
-            graph_id: "root".to_string(),
-            port: PortRef { node, port },
-        });
+        external.origin_port = Some(graph.scoped_port(PortRef { node, port }));
         child.layerless_nodes.push(external);
     }
     graph.layerless_nodes[0].nested_graph = Some(Box::new(child));
@@ -521,10 +512,7 @@ fn damaged_reference_graph(damage: DamagedReference, owner: usize) -> LGraph {
         DamagedReference::DescendantOrigin => {
             let mut child = LGraph::new("child", LayeredOptions::default());
             let mut dummy = LNode::new("origin", 0.0, 0.0, None);
-            dummy.origin_port = Some(GraphPortRef {
-                graph_id: graph.id.clone(),
-                port: invalid,
-            });
+            dummy.origin_port = Some(graph.scoped_port(invalid));
             child.layerless_nodes.push(dummy);
             graph.layerless_nodes[0].nested_graph = Some(Box::new(child));
         }

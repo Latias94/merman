@@ -2,6 +2,7 @@ use super::*;
 use crate::Error;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{LayoutLabel, LayoutPoint};
+use merman_render_core::graph_layout::elk_terminal_jogs;
 use std::collections::HashMap;
 
 #[cfg(any(
@@ -506,14 +507,12 @@ pub(super) fn prepare_edge_paths(
         let mut labelled_routes: Vec<_> = routes
             .iter_mut()
             .zip(&route_layout_indexes)
-            .map(
-                |(points, &index)| crate::elk_terminal_jogs::LabeledTerminalRoute {
-                    points,
-                    label: labels[index].take(),
-                },
-            )
+            .map(|(points, &index)| elk_terminal_jogs::LabeledTerminalRoute {
+                points,
+                label: labels[index].take(),
+            })
             .collect();
-        crate::elk_terminal_jogs::straighten_edge_terminals(&mut labelled_routes, |units| {
+        elk_terminal_jogs::straighten_edge_terminals(&mut labelled_routes, |units| {
             work.charge_adapter(units)
         })?;
     }
@@ -537,7 +536,7 @@ pub(super) fn prepare_edge_paths(
         }
     }
     if elk {
-        crate::elk_terminal_jogs::separate_opposite_edge_labels(
+        elk_terminal_jogs::separate_opposite_edge_labels(
             layout
                 .edges
                 .iter_mut()

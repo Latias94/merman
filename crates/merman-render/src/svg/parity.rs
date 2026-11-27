@@ -21,14 +21,6 @@ use crate::{Error, Result};
     )
 )]
 use base64::Engine as _;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        unused_imports,
-        reason = "Common SVG imports are consumed by the selected family emitters."
-    )
-)]
-use indexmap::IndexMap;
 use merman_model::OperationPhase;
 use merman_render_core::root_svg;
 use merman_render_core::svg_css::{SvgDiagramIdProjection, SvgDiagramIdValue, SvgId};
@@ -104,15 +96,6 @@ mod edge_label_geometry;
     )
 )]
 mod edge_path;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
-    )
-)]
-mod emitted_bounds;
 #[cfg(feature = "diagram-er")]
 mod er;
 #[cfg(all(feature = "diagram-er", feature = "layout-shoal"))]
@@ -145,8 +128,6 @@ pub(crate) use flowchart::{
 };
 #[cfg(feature = "diagram-gantt")]
 mod gantt;
-#[cfg(feature = "diagram-git-graph")]
-mod gitgraph;
 #[cfg(all(test, feature = "diagram-info"))]
 mod info;
 #[cfg(feature = "diagram-journey")]
@@ -156,21 +137,11 @@ mod kanban;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
-        dead_code,
         unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
+        reason = "The shared label writer serves selected families."
     )
 )]
-mod label;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
-    )
-)]
-mod layout_debug;
+use merman_render_core::text::svg_label as label;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -234,8 +205,6 @@ mod path_bounds;
 mod pie;
 #[cfg(feature = "diagram-quadrant-chart")]
 mod quadrantchart;
-#[cfg(feature = "diagram-railroad")]
-mod railroad;
 #[cfg(feature = "diagram-requirement")]
 mod requirement;
 #[cfg(any(
@@ -248,8 +217,7 @@ mod requirement;
     feature = "diagram-requirement",
     feature = "diagram-state",
     feature = "diagram-swimlane",
-    feature = "diagram-usecase",
-    feature = "diagram-venn"
+    feature = "diagram-usecase"
 ))]
 #[cfg_attr(
     not(feature = "all-diagrams"),
@@ -308,12 +276,6 @@ mod usecase;
     )
 )]
 mod util;
-#[cfg(feature = "diagram-venn")]
-mod venn;
-#[cfg(feature = "diagram-wardley")]
-mod wardley;
-#[cfg(feature = "diagram-xychart")]
-mod xychart;
 #[cfg(feature = "diagram-zenuml")]
 mod zenuml;
 use output::{BoundedSvgOutput, SvgOutput};
@@ -323,9 +285,6 @@ pub(crate) fn mindmap_cloud_rendered_bbox_size_px(w: f64, h: f64) -> Option<(f64
     mindmap::mindmap_cloud_rendered_bbox_size_px(w, h)
 }
 
-pub use emitted_bounds::{
-    SvgEmittedBoundsContributor, SvgEmittedBoundsDebug, debug_svg_emitted_bounds,
-};
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -333,7 +292,10 @@ pub use emitted_bounds::{
         reason = "Common SVG imports are consumed by the selected family emitters."
     )
 )]
-use emitted_bounds::{svg_emitted_bounds_from_svg, svg_emitted_bounds_from_svg_inner};
+use merman_render_core::svg_bounds::svg_emitted_bounds_from_svg;
+pub use merman_render_core::svg_bounds::{
+    SvgEmittedBoundsContributor, SvgEmittedBoundsDebug, debug_svg_emitted_bounds,
+};
 #[cfg(feature = "diagram-requirement")]
 use roughjs_common::{ops_to_svg_path_d as roughjs_ops_to_svg_path_d, roughjs_paths_for_rect};
 #[cfg_attr(
@@ -959,8 +921,7 @@ impl<'a> SvgExecution<'a> {
         feature = "diagram-requirement",
         feature = "diagram-state",
         feature = "diagram-swimlane",
-        feature = "diagram-usecase",
-        feature = "diagram-venn"
+        feature = "diagram-usecase"
     ))]
     pub(crate) fn rough_randomness(
         &self,
@@ -1245,20 +1206,36 @@ fn render_builtin_family_artifact_raw(
             options,
         ),
         #[cfg(feature = "diagram-wardley")]
-        BuiltinFamilyArtifact::Wardley(artifact) => wardley::render_wardley_diagram_svg_model(
-            artifact.pair().layout(),
-            artifact.pair().semantic(),
-            artifact.style(),
-            options,
-        ),
+        BuiltinFamilyArtifact::Wardley(artifact) => {
+            use merman_render_charts::wardley::{WardleySvgContext, render_wardley_svg};
+
+            let diagram_id = options.diagram_id_or("wardley");
+            let context = WardleySvgContext {
+                diagram_id,
+                viewport: options.root_viewport(crate::DiagramFamilyId::WARDLEY, diagram_id),
+                work_meter: options.work_meter(),
+                has_host_canvas: options.family.session().canvas_background().is_some(),
+            };
+            render_wardley_svg(
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
+                artifact.style(),
+                &context,
+            )
+        }
         #[cfg(feature = "diagram-railroad")]
-        BuiltinFamilyArtifact::Railroad(artifact) => railroad::render_railroad_diagram_svg_model(
-            artifact.pair().layout(),
-            artifact.pair().semantic(),
-            artifact.style(),
-            measurer,
-            options,
-        ),
+        BuiltinFamilyArtifact::Railroad(artifact) => {
+            let diagram_id = options.diagram_id_or("railroad");
+            crate::railroad::render_railroad_svg(
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
+                artifact.style(),
+                diagram_id,
+                &options.root_viewport(crate::DiagramFamilyId::RAILROAD, diagram_id),
+                options.work_meter(),
+                measurer,
+            )
+        }
         #[cfg(feature = "diagram-mindmap")]
         BuiltinFamilyArtifact::Mindmap(artifact) => {
             mindmap::render_mindmap_diagram_svg_model_with_config(
@@ -1442,13 +1419,21 @@ fn render_builtin_family_artifact_raw(
             )
         }
         #[cfg(feature = "diagram-venn")]
-        BuiltinFamilyArtifact::Venn(artifact) => venn::render_venn_diagram_svg_model(
-            artifact.pair().layout(),
-            artifact.pair().semantic(),
-            artifact.typography_theme(),
-            title,
-            options,
-        ),
+        BuiltinFamilyArtifact::Venn(artifact) => {
+            let diagram_id = options.diagram_id_or("venn");
+            merman_render_charts::venn::render_venn_svg(
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
+                artifact.style(),
+                title,
+                &merman_render_charts::venn::VennSvgContext {
+                    diagram_id,
+                    viewport: options.root_viewport(crate::DiagramFamilyId::VENN, diagram_id),
+                    work_meter: options.work_meter(),
+                    operation: options.family.session().operation_context(),
+                },
+            )
+        }
         #[cfg(feature = "diagram-block")]
         BuiltinFamilyArtifact::Block(artifact) => block::render_block_diagram_svg_model_with_theme(
             artifact.pair().layout(),
@@ -1482,18 +1467,44 @@ fn render_builtin_family_artifact_raw(
         }
         #[cfg(feature = "diagram-xychart")]
         BuiltinFamilyArtifact::XyChart(artifact) => {
-            xychart::render_xychart_diagram_svg(artifact, options)
+            use merman_render_charts::xychart::{XyChartSvgContext, render_xychart_svg};
+
+            let diagram_id = options.diagram_id_or("xychart");
+            let context = XyChartSvgContext {
+                diagram_id,
+                viewport: options.root_viewport(crate::DiagramFamilyId::XY_CHART, diagram_id),
+                work_meter: options.work_meter(),
+                native_theme: options.native_family_theme(),
+            };
+            render_xychart_svg(
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
+                artifact.style(),
+                &context,
+            )
         }
         #[cfg(feature = "diagram-git-graph")]
-        BuiltinFamilyArtifact::GitGraph(artifact) => gitgraph::render_gitgraph_diagram_svg_model(
-            artifact.pair().layout(),
-            artifact.pair().semantic(),
-            artifact.typography_theme(),
-            effective_config.as_value(),
-            title,
-            measurer,
-            options,
-        ),
+        BuiltinFamilyArtifact::GitGraph(artifact) => {
+            use merman_render_graph::gitgraph::{
+                GitGraphSvgContext, render_gitgraph_diagram_svg_model,
+            };
+
+            let diagram_id = options.diagram_id_or("merman");
+            let context = GitGraphSvgContext {
+                diagram_id,
+                viewport: options.root_viewport(crate::DiagramFamilyId::GIT_GRAPH, diagram_id),
+                work_meter: options.work_meter(),
+            };
+            render_gitgraph_diagram_svg_model(
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
+                artifact.typography_theme(),
+                effective_config.as_value(),
+                title,
+                measurer,
+                &context,
+            )
+        }
         #[cfg(feature = "diagram-tree-view")]
         BuiltinFamilyArtifact::TreeView(artifact) => tree_view::render_tree_view_diagram_svg_model(
             artifact.pair().layout(),
@@ -1582,21 +1593,6 @@ fn curve_basis_path_d(points: &[crate::model::LayoutPoint]) -> String {
     curve::curve_basis_path_d(points)
 }
 
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        reason = "Shared SVG execution support is used by the selected family emitters."
-    )
-)]
-fn compute_layout_bounds(
-    clusters: &[LayoutCluster],
-    nodes: &[LayoutNode],
-    edges: &[crate::model::LayoutEdge],
-) -> Option<Bounds> {
-    layout_debug::compute_layout_bounds(clusters, nodes, edges)
-}
-
 #[cfg(test)]
 mod operation_time_tests {
     use super::*;
@@ -1635,8 +1631,7 @@ mod operation_time_tests {
         feature = "diagram-requirement",
         feature = "diagram-state",
         feature = "diagram-swimlane",
-        feature = "diagram-usecase",
-        feature = "diagram-venn"
+        feature = "diagram-usecase"
     )
 ))]
 mod operation_rough_seed_tests {

@@ -238,16 +238,8 @@ pub(super) fn construct_sequence_semantic_source(
 
 pub(super) fn sequence_wrap_enabled_from_config(config: &MermaidConfig) -> Option<bool> {
     config
-        .as_value()
-        .get("wrap")
-        .and_then(|v| v.as_bool())
-        .or_else(|| {
-            config
-                .as_value()
-                .get("sequence")
-                .and_then(|v| v.get("wrap"))
-                .and_then(|v| v.as_bool())
-        })
+        .get_bool("wrap")
+        .or_else(|| config.get_bool("sequence.wrap"))
 }
 
 #[cfg(feature = "editor-facts")]
@@ -699,6 +691,24 @@ mod tests {
             config: MermaidConfig::empty_object(),
             effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
+        }
+    }
+
+    #[test]
+    fn sequence_wrap_prefers_root_booleans_over_the_layered_family_value() {
+        let base = MermaidConfig::from_value(serde_json::json!({"sequence": {"wrap": false}}));
+        for (root, expected) in [
+            (None, true),
+            (Some(serde_json::json!(false)), false),
+            (Some(serde_json::Value::Null), true),
+            (Some(serde_json::json!("false")), true),
+        ] {
+            let mut config = base.clone().with_shared_sections();
+            config.set_value("sequence.wrap", serde_json::json!(true));
+            if let Some(root) = root {
+                config.set_value("wrap", root);
+            }
+            assert_eq!(sequence_wrap_enabled_from_config(&config), Some(expected));
         }
     }
 

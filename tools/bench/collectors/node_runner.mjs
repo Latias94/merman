@@ -383,6 +383,7 @@ function deferredValidation(requests, validate, directory, maxBytes) {
 export async function measureScenario(requests, render, {
   samples, now = () => performance.now(), asyncSvg = false, importStart, afterLastBatch,
   warmup = DEFAULT_WARMUP, validate = validateOutputs, validationDirectory, validationBatchBytes = VALIDATION_BATCH_BYTES,
+  readPeakRss = () => process.resourceUsage().maxRSS,
 }) {
   const timing = { now, asyncSvg };
   const cold = await measureBatch(requests, render, { ...timing, importStart });
@@ -391,6 +392,7 @@ export async function measureScenario(requests, render, {
   for (let i = 0; i < samples; i++) {
     warm.push(await measureBatch(requests, render, timing));
   }
+  const peakRss = readPeakRss();
   const lastAttempts = afterLastBatch ? warm.at(-1).attempts : undefined;
   const validation = deferredValidation(requests, validate, validationDirectory, validationBatchBytes);
   const observedCold = validation.observe(cold);
@@ -401,6 +403,7 @@ export async function measureScenario(requests, render, {
     cold_batch: summarizeBatch(requests, observedCold, importStart),
     warmup: observedWarmup,
     warm_samples: warm.map((batch) => summarizeBatch(requests, batch)),
+    peak_rss_kib: peakRss,
   };
 }
 
@@ -543,7 +546,6 @@ async function runScenario({ product, engine, variant, scenario, samples, warmup
     }
     const measured = await measureScenario(requests, render, options);
     const { cold_batch, warm_samples } = measured;
-    const peakRss = process.resourceUsage().maxRSS;
     const layoutPlans = siteLayout && requests.map(({ source, options, diagram_id }, index) => {
       if (!["ok", "diagram-id-not-applied"].includes(cold_batch.results[index].status)) return null;
       const planJson = directId ? instance.svgPlanJsonSync(source) : instance.svgPlanJsonSync(source, options);
@@ -576,7 +578,6 @@ async function runScenario({ product, engine, variant, scenario, samples, warmup
     const first = cold_batch.results[0];
     return {
       ...scenarioIdentity(scenario), init_ms,
-      peak_rss_kib: peakRss,
       ...(layoutPlans ? { layout_plans: layoutPlans } : {}),
       artifact_identity: await productArtifacts(product, previousModules),
       first_render_ms: first.status === "ok" ? first.elapsed_ms : null,

@@ -110,10 +110,8 @@ pub fn sequence_drawn_text_style(style: &TextStyle, config: &PresentationConfig)
     let mut effective = style.clone();
     // CSSOM rejects invalid assignments, while accepted tokens must be serialized before
     // embedding them in a declaration list (an EOF-terminated string needs its closing quote).
-    effective.font_family = Some(
-        sequence_inline_font_family(style)
-            .unwrap_or_else(|| config_font_family_css(config.as_value())),
-    );
+    effective.font_family =
+        Some(sequence_inline_font_family(style).unwrap_or_else(|| config_font_family_css(config)));
     effective
 }
 

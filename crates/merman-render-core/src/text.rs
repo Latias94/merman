@@ -13,7 +13,23 @@ pub use common_dimensions::{
 #[cfg(feature = "text-layout")]
 mod create_text;
 mod css_font;
+#[cfg(feature = "text-layout")]
+mod icons;
+#[cfg(all(feature = "text-layout", feature = "svg-parse"))]
+mod label_metrics;
+#[cfg(all(feature = "text-layout", feature = "svg-output"))]
+#[doc(hidden)]
+pub mod literal_label;
+#[cfg(feature = "markdown-labels")]
+mod markdown;
+#[cfg(feature = "markdown-labels")]
+mod markdown_label;
 mod measure;
+#[cfg(all(feature = "text-layout", feature = "svg-parse"))]
+#[doc(hidden)]
+pub mod svg_label;
+#[cfg(feature = "xhtml-labels")]
+mod xhtml_label;
 pub use measure::TextMeasurer;
 #[cfg(feature = "text-layout")]
 mod deterministic;
@@ -83,7 +99,40 @@ pub use heuristic::{
     append_monospace_text_width_em, append_text_width_em, estimate_monospace_text_width_em,
     estimate_text_width_em, is_monospace_font_family,
 };
+#[cfg(feature = "text-layout")]
+#[doc(hidden)]
+pub use icons::replace_fontawesome_icons;
+#[cfg(feature = "markdown-labels")]
+#[doc(hidden)]
+pub use label_metrics::{
+    measure_markdown_with_inline_styles, measure_wrapped_markdown_with_inline_styles,
+    mermaid_markdown_to_wrapped_word_lines,
+};
+#[cfg(all(feature = "text-layout", feature = "svg-parse"))]
+#[doc(hidden)]
+pub use label_metrics::{
+    measure_svg_markdown_word_lines, measure_svg_markdown_word_lines_with_origin,
+    wrap_markdown_word_lines,
+};
+#[cfg(feature = "markdown-labels")]
+#[doc(hidden)]
+pub use markdown::{
+    MermaidMarkdownAnalysis, analyze_mermaid_markdown, mermaid_markdown_contains_html_tags,
+    mermaid_markdown_is_plain_text, mermaid_markdown_to_lines,
+};
+#[cfg(feature = "markdown-labels")]
+#[doc(hidden)]
+pub use markdown_label::{
+    mermaid_markdown_contains_raw_blocks, mermaid_markdown_to_html_label_fragment,
+    mermaid_markdown_to_xhtml_label_fragment, mermaid_markdown_wants_paragraph_wrap,
+};
 pub use whitespace::*;
+#[cfg(feature = "xhtml-labels")]
+#[doc(hidden)]
+pub use xhtml_label::{
+    measure_xhtml_label_fragment_with_terminal_fonts, mermaid_xhtml_label_plain_text,
+    mermaid_xhtml_label_text_content,
+};
 
 pub fn flowchart_html_line_height_px(font_size_px: f64) -> f64 {
     font_size_px.max(0.0) * 1.5

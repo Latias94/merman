@@ -9,6 +9,7 @@ use merman_core_preprocess::scan::controlled::{
     ControlledScanCheckpoints, trim_whitespace_bounds_controlled,
 };
 use merman_core_preprocess::text::{PreprocessMarkers, cleanup_text_controlled};
+use merman_core_preprocess::yaml::YamlInsertOrder;
 use merman_model::config::values_equal_controlled;
 use merman_model::json::clone_value_nonrecursive_controlled;
 use merman_model::json::ordered::{JsonOrderScope, OrderedJson};
@@ -24,50 +25,29 @@ const MAX_REWRITE_DIRECTIVES: usize = 128;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FrontmatterInsertOrder {
-    compatibility: CompatibilityOrder,
+    compatibility: YamlInsertOrder,
     display_mode: Option<Arc<str>>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-enum CompatibilityOrder {
-    NoRoutes,
-    Captured(Arc<str>),
-    ExceededBudget,
-}
-
 impl FrontmatterInsertOrder {
-    pub(crate) fn without_compatibility_routes() -> Self {
-        Self {
-            compatibility: CompatibilityOrder::NoRoutes,
-            display_mode: None,
+    pub(super) fn from_yaml_capture(
+        compatibility: YamlInsertOrder,
+        display_mode: Option<&str>,
+    ) -> Option<Self> {
+        if display_mode.is_some_and(|mode| mode.len() > MAX_DIRECTIVE_CONFIG_PARSE_BYTES) {
+            return None;
         }
-    }
-
-    pub(crate) fn from_compatibility_capture(json: Option<String>) -> Self {
-        Self {
-            compatibility: match json {
-                Some(json) => CompatibilityOrder::Captured(json.into()),
-                None => CompatibilityOrder::ExceededBudget,
-            },
-            display_mode: None,
-        }
-    }
-
-    pub(super) fn with_display_mode(mut self, display_mode: Option<&str>) -> Option<Self> {
-        if let Some(mode) = display_mode {
-            if mode.len() > MAX_DIRECTIVE_CONFIG_PARSE_BYTES {
-                return None;
-            }
-            self.display_mode = Some(mode.into());
-        }
-        Some(self)
+        Some(Self {
+            compatibility,
+            display_mode: display_mode.map(Arc::from),
+        })
     }
 
     pub fn estimated_owned_heap_bytes(&self) -> usize {
         let size = |text: &str| text.len().saturating_add(2 * std::mem::size_of::<usize>());
         let compatibility = match &self.compatibility {
-            CompatibilityOrder::Captured(json) => size(json),
-            CompatibilityOrder::NoRoutes | CompatibilityOrder::ExceededBudget => 0,
+            YamlInsertOrder::Captured(json) => size(json),
+            YamlInsertOrder::NoRoutes | YamlInsertOrder::ExceededBudget => 0,
         };
         compatibility.saturating_add(self.display_mode.as_deref().map_or(0, size))
     }
@@ -87,9 +67,9 @@ impl FrontmatterInsertOrder {
         }
 
         let json = match &self.compatibility {
-            CompatibilityOrder::NoRoutes => return Ok(Some(empty_order())),
-            CompatibilityOrder::Captured(json) => json,
-            CompatibilityOrder::ExceededBudget => return Ok(None),
+            YamlInsertOrder::NoRoutes => return Ok(Some(empty_order())),
+            YamlInsertOrder::Captured(json) => json,
+            YamlInsertOrder::ExceededBudget => return Ok(None),
         };
         if max_nesting_depth != MAX_REWRITE_DEPTH
             || json.len() > max_bytes.saturating_mul(JSON_ESCAPE_EXPANSION)

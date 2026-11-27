@@ -22,7 +22,7 @@ diagram-pie = [
     "dep:serde", "dep:serde_json", "merman-model/diagram-pie", "merman-render-core/root-svg",
     "merman-render-core/text-layout", "merman-render-core/theme-svg",
 ]
-diagram-quadrant-chart = ["dep:merman-model", "dep:merman-render-core", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-quadrant-chart"]
+diagram-quadrant-chart = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-quadrant-chart", "merman-render-core/root-svg"]
 diagram-radar = [
     "dep:cssparser", "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract",
     "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-radar",
@@ -39,27 +39,38 @@ diagram-treemap = [
     "merman-render-core/root-svg", "merman-render-core/text-layout", "merman-render-core/theme-svg",
 ]
 diagram-venn = [
-    "dep:indexmap", "dep:libm", "dep:merman-model", "dep:merman-render-core", "dep:ryu-js",
-    "dep:serde", "dep:serde_json", "dep:thiserror", "merman-model/diagram-venn",
+    "dep:indexmap", "dep:libm", "dep:merman-markup", "dep:merman-model", "dep:merman-render-core",
+    "dep:merman-theme-contract", "dep:roughr", "dep:ryu-js", "dep:serde", "dep:serde_json",
+    "dep:svgtypes", "dep:thiserror", "merman-model/diagram-venn", "merman-render-core/root-svg",
+    "merman-render-core/rough-svg",
 ]
-diagram-wardley = ["dep:merman-model", "dep:merman-render-core", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-wardley"]
-diagram-xychart = [
+diagram-wardley = [
     "dep:cssparser", "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract",
-    "dep:rustc-hash", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-xychart",
+    "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-wardley",
+    "merman-render-core/root-svg",
+]
+diagram-xychart = [
+    "dep:cssparser", "dep:kurbo", "dep:merman-model", "dep:merman-render-core",
+    "dep:merman-theme-contract", "dep:rustc-hash", "dep:ryu-js", "dep:serde", "dep:serde_json",
+    "dep:svgtypes", "merman-model/diagram-xychart", "merman-render-core/root-svg",
+    "merman-render-core/theme-elevation",
 ]
 
 [dependencies]
 cssparser = { workspace = true, optional = true }
 indexmap = { workspace = true, optional = true }
+kurbo = { workspace = true, optional = true }
 libm = { workspace = true, optional = true }
 merman-markup = { workspace = true, features = ["color"], optional = true }
 merman-model = { workspace = true, features = ["presentation-data"], optional = true }
 merman-render-core = { workspace = true, features = ["css-style", "svg-output"], optional = true }
 merman-theme-contract = { workspace = true, optional = true }
+roughr = { workspace = true, optional = true }
 rustc-hash = { workspace = true, optional = true }
 ryu-js = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
+svgtypes = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 
 [dev-dependencies]

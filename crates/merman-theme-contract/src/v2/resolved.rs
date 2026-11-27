@@ -114,6 +114,9 @@ pub enum Elevation {
 }
 
 /// A contrast result reported when resolving a theme.
+///
+/// Family-specific foregrounds are qualified as `family_overrides["<id>"].<role>`.
+/// Shared results use the role or data slot directly.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ThemeNotice {

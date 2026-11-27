@@ -3,6 +3,7 @@
 use super::*;
 use crate::flowchart::{FlowchartSourceFacetStatus, FlowchartStyleDeclaration};
 use cssparser::{BasicParseErrorKind, Parser, Token};
+use indexmap::IndexMap;
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]

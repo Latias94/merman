@@ -75,7 +75,8 @@ mod tests {
 
     fn prepared_settings(id: &str, config: &serde_json::Value) -> ArchitectureRenderSettings {
         let config = crate::test_support::presentation_config(config.clone());
-        let typography = crate::architecture::ArchitectureTypographyThemePlan::resolve(&config);
+        let typography =
+            crate::architecture::ArchitectureTypographyThemePlan::resolve(&config, None);
         let request = crate::svg::SvgRenderOptions {
             diagram_id: Some(id.to_owned()),
             ..Default::default()

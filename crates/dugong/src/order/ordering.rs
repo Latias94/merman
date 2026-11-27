@@ -359,7 +359,7 @@ where
         let rank = rank as usize;
         let sorted = workspace.sort_rank(g, rank, relationship, bias_right, work_control)?;
 
-        for (i, &local_ix) in sorted.vs.iter().enumerate() {
+        for (i, &local_ix) in sorted.iter().enumerate() {
             let Some(original_ix) = workspace.original_ix(rank, local_ix) else {
                 continue;
             };
@@ -370,7 +370,7 @@ where
                 n.set_order(i);
             }
         }
-        workspace.add_constraints(rank, &sorted.vs);
+        workspace.add_constraints(rank, &sorted);
     }
     Ok(primary_order_changed)
 }

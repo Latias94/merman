@@ -262,12 +262,11 @@ fn prepare_railroad_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme();
-    let style = crate::railroad::resolve_railroad_style(&meta.effective_config, native);
-    let layout = crate::railroad::layout_railroad_diagram_typed_for_type_with_style(
+    let (layout, style) = crate::railroad::prepare_railroad_diagram(
         model,
         diagram_type,
-        &style,
+        &meta.effective_config,
+        execution.native_family_theme(),
         execution.text_measurer(),
     )?;
     Ok(BuiltinFamilyArtifact::Railroad(Box::new(
@@ -323,12 +322,10 @@ fn prepare_cynefin_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme();
-    let style = crate::cynefin::CynefinStyle::resolve(&meta.effective_config, native);
-    let layout = crate::cynefin::layout_cynefin_diagram_typed_with_style(
+    let (layout, style) = merman_render_structured::cynefin::prepare_cynefin_diagram(
         model,
-        meta.effective_config.as_value(),
-        &style,
+        &meta.effective_config,
+        execution.native_family_theme(),
         execution.text_measurer(),
     )?;
     Ok(BuiltinFamilyArtifact::Cynefin(Box::new(
@@ -346,13 +343,11 @@ fn prepare_wardley_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme();
-    let style = crate::wardley::WardleyStyle::resolve(&meta.effective_config, native);
-    let layout = crate::wardley::layout_wardley_diagram_typed_with_style(
+    let (layout, style) = crate::wardley::prepare_wardley_diagram(
         model,
         meta.title.as_deref(),
-        meta.effective_config.as_value(),
-        &style,
+        &meta.effective_config,
+        execution.native_family_theme(),
         execution.text_measurer(),
     )?;
     Ok(BuiltinFamilyArtifact::Wardley(Box::new(
@@ -579,17 +574,17 @@ fn prepare_gantt_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme();
-    let style = crate::gantt::GanttStyle::resolve(&meta.effective_config, native);
-    let (layout, task_source_indices) = crate::gantt::layout_gantt_diagram_typed(
+    let (layout, style, task_source_indices) = crate::gantt::prepare_gantt_diagram(
         model,
         meta.title.as_deref(),
         &meta.effective_config,
-        &style,
-        execution.text_measurer(),
-        execution.container_width,
-        execution.local_time_zone(),
-        execution.work_meter_ref(),
+        execution.native_family_theme(),
+        crate::gantt::GanttLayoutContext {
+            text_measurer: execution.text_measurer(),
+            container_width: execution.container_width,
+            local_time_zone: execution.local_time_zone(),
+            work_meter: execution.work_meter_ref(),
+        },
     )?;
     Ok(BuiltinFamilyArtifact::Gantt(Box::new(
         GanttFamilyArtifact {
@@ -627,11 +622,10 @@ fn prepare_timeline_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme();
-    let style = crate::timeline::TimelineStyle::resolve(&meta.effective_config, native);
-    let layout = crate::timeline::layout_timeline_diagram_typed_with_binding(
+    let (layout, style) = crate::timeline::prepare_timeline_diagram(
         model,
-        style.layout_settings(),
+        &meta.effective_config,
+        execution.native_family_theme(),
         execution.text_measurer(),
         execution.work_meter_ref(),
     )?;
@@ -650,12 +644,11 @@ fn prepare_journey_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme();
-    let style = crate::journey::JourneyStyle::resolve(&meta.effective_config, native);
-    let layout = crate::journey::layout_journey_diagram_typed_with_resolved_typography(
+    let (layout, style) = crate::journey::prepare_journey_diagram(
         model,
         meta.title.as_deref(),
-        &style,
+        &meta.effective_config,
+        execution.native_family_theme(),
         execution.text_measurer(),
     )?;
     Ok(BuiltinFamilyArtifact::Journey(Box::new(
@@ -778,19 +771,12 @@ fn prepare_quadrant_chart_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme();
-    let point_theme = crate::quadrantchart::QuadrantChartPointThemePlan::resolve(
-        native,
-        &meta.effective_config,
-        model,
-        execution.work_meter_ref(),
-    )?;
-    let layout = crate::quadrantchart::layout_quadrantchart_diagram_typed(
+    let (layout, point_theme) = crate::quadrantchart::prepare_quadrantchart_diagram(
         model,
         meta.title.as_deref(),
-        meta.effective_config.as_value(),
-        &point_theme,
-        execution.text_measurer(),
+        &meta.effective_config,
+        execution.native_family_theme(),
+        execution.work_meter_ref(),
     )?;
     Ok(BuiltinFamilyArtifact::QuadrantChart(Box::new(
         QuadrantChartFamilyArtifact {
@@ -807,32 +793,18 @@ fn prepare_xy_chart_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    use crate::xychart::{XyChartTypographyThemePlan, resolve_series_paint};
-
-    let native = execution.native_family_theme();
-    let config = &meta.effective_config;
-    let series_paint = resolve_series_paint(config, model, native);
-    let typography_theme = native.map_or_else(
-        || XyChartTypographyThemePlan::resolve(config),
-        |theme| XyChartTypographyThemePlan::native(config, &theme.typography),
-    );
-    let (mut layout, bar_legend_plots) = crate::xychart::layout_xychart_diagram_typed(
+    let (layout, style) = merman_render_charts::xychart::prepare_xychart_diagram(
         model,
         meta.title.as_deref(),
-        &series_paint,
-        &typography_theme,
-        native,
+        &meta.effective_config,
+        execution.native_family_theme(),
+        execution.family.session().canvas_background().is_some(),
         execution.text_measurer(),
     )?;
-    if execution.family.session().canvas_background().is_some() {
-        layout.background_color = "none".to_owned();
-    }
     Ok(BuiltinFamilyArtifact::XyChart(Box::new(
         XyChartFamilyArtifact {
             pair: FamilyPair::new(model, layout),
-            typography_theme,
-            bar_legend_plots,
-            data_label_color: series_paint.into_data_label_color(),
+            style,
         },
     )))
 }
@@ -844,16 +816,10 @@ fn prepare_gitgraph_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    use crate::gitgraph::GitGraphTypographyThemePlan;
-
-    let typography_theme = match execution.native_family_theme() {
-        Some(theme) => GitGraphTypographyThemePlan::for_native(&meta.effective_config, theme),
-        None => GitGraphTypographyThemePlan::resolve(&meta.effective_config),
-    };
-    let layout = crate::gitgraph::layout_gitgraph_diagram_typed(
+    let (layout, typography_theme) = merman_render_graph::gitgraph::prepare_gitgraph_diagram(
         model,
-        meta.effective_config.as_value(),
-        &typography_theme,
+        &meta.effective_config,
+        execution.native_family_theme(),
         execution.text_measurer(),
     )?;
     Ok(BuiltinFamilyArtifact::GitGraph(Box::new(
@@ -998,25 +964,17 @@ fn prepare_venn_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme();
-    let layout = crate::venn::layout_venn_diagram_typed_with_work_meter(
+    let (layout, style) = merman_render_charts::venn::prepare_venn_diagram(
         model,
         meta.title.as_deref(),
-        meta.effective_config.as_value(),
-        crate::venn::native_font_size(native, &meta.effective_config),
-        execution.work_meter_ref(),
-    )?;
-    let typography_theme = crate::venn::VennTypographyThemePlan::resolve(
-        native,
         &meta.effective_config,
-        &layout,
-        model,
+        execution.native_family_theme(),
         execution.family.session().canvas_background(),
         execution.work_meter_ref(),
     )?;
     Ok(BuiltinFamilyArtifact::Venn(Box::new(VennFamilyArtifact {
         pair: FamilyPair::new(model, layout),
-        typography_theme,
+        style,
     })))
 }
 

@@ -163,13 +163,13 @@ impl FlatPortRemap {
                 work.check(0)?;
             }
             debug_assert!(node.nested_graph.is_none());
-            if let Some(origin) = &node.origin_port
-                && origin.graph_id.len() == graph.id.len()
-            {
-                let bytes = graph.id.len();
-                work.check(bytes)?;
-                work.charge(bytes)?;
-                if origin.graph_id == graph.id {
+            if let Some(origin) = &node.origin_port {
+                if origin.graph_id.len() == graph.id.len() {
+                    let bytes = graph.id.len();
+                    work.check(bytes)?;
+                    work.charge(bytes)?;
+                }
+                if origin.belongs_to(graph) {
                     add(origin.port.node, Reference::Origin(index));
                 }
             }

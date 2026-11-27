@@ -17,10 +17,16 @@ third-party-bundle = true
 
 [features]
 default = []
+diagram-cynefin = ["dep:cssparser", "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-cynefin", "merman-render-core/root-svg", "merman-render-core/text-layout"]
+diagram-gantt = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:serde", "dep:serde_json", "merman-model/diagram-gantt", "merman-render-core/root-svg", "merman-render-core/text-layout"]
 diagram-info = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:serde", "merman-render-core/root-svg", "merman-render-core/theme-svg"]
 diagram-ishikawa = ["dep:cssparser", "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:roughr", "dep:serde", "dep:serde_json", "merman-model/diagram-ishikawa", "merman-render-core/root-svg", "merman-render-core/rough-svg"]
+diagram-journey = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:serde", "dep:serde_json", "merman-model/diagram-journey", "merman-render-core/root-svg", "merman-render-core/text-layout"]
 diagram-packet = ["dep:merman-markup", "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-packet", "merman-render-core/root-svg"]
-diagram-railroad = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:serde", "dep:serde_json", "merman-model/diagram-railroad"]
+diagram-railroad = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:serde", "dep:serde_json", "merman-model/diagram-railroad", "merman-render-core/root-svg"]
+diagram-timeline = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:serde", "dep:serde_json", "merman-model/diagram-timeline", "merman-render-core/root-svg"]
+
+system-timezone = ["merman-model?/system-timezone"]
 
 [dependencies]
 cssparser = { workspace = true, optional = true }
@@ -34,5 +40,7 @@ serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 
 [dev-dependencies]
+merman-render-core = { workspace = true, features = ["text-layout"] }
+merman-theme-contract = { workspace = true, features = ["presets"] }
 roxmltree.workspace = true
 svgtypes.workspace = true

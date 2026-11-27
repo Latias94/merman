@@ -27,13 +27,13 @@ pub use frontmatter::{
     parse_frontmatter_yaml_fields_controlled,
 };
 #[cfg(feature = "editor-facts")]
+pub(crate) use merman_core_preprocess::SourceConfigPath;
+#[cfg(feature = "editor-facts")]
 #[doc(hidden)]
 pub use rewrite_order::{
     FrontmatterInsertOrder, FrontmatterRewrite, SourceConfigRewriteOrder,
     source_config_rewrite_order_controlled,
 };
-#[cfg(feature = "editor-facts")]
-pub(crate) use source_config::SourceConfigPath;
 #[cfg(feature = "editor-facts")]
 pub use source_config::{
     FrontmatterSourceEvidence, SourceAppearanceDeclaration, SourceAppearanceSummary,

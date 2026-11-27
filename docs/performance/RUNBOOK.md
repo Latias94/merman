@@ -263,6 +263,7 @@ collects the measured warm batches. Override the warmup with `--warmup-calls` an
 Set either to zero to skip it. The SVG validator starts after the last measured batch. The collector
 retains rendered strings until sampling ends, then hashes the outputs, deduplicates checks and
 spills validation jobs beyond 32 MiB to worker scratch. Worker RSS can include all sampled strings.
+Peak RSS is sampled at the end of the render batches, before hashing, SVG validation and drawing capture.
 The variant bundle freezes settings in `variants.json`. See its `summary.md` and `process-rounds.json`
 for diagnostic comparisons and any incomplete rounds. For an Options JSON bridge control on the
 same Merman transport and backend, eligible output must also match byte for byte.

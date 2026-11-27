@@ -36,8 +36,9 @@ Use `merman_model::families::<family>` as the canonical family namespace. Core r
 
 `merman-core-preprocess` owns controlled UTF-8 edits, byte-span mapping, and the source-only
 line-ending, HTML attribute, and Mermaid entity rewrites. It also scans the shared Langium string
-and declaration terminals. Core's preprocessing orchestrator combines the frontmatter and
-directive modules, which own their configuration admission and source evidence. Core also owns
+and declaration terminals and owns the bounded YAML arena, value materialization, and YAML-local
+source ranges. Core's preprocessing orchestrator combines the frontmatter and directive modules,
+which admit configuration and map the YAML evidence to the diagram source. Core also owns
 `PreprocessedSource` and the projection of parser diagnostics and editor facts back to the
 original source.
 
@@ -91,8 +92,8 @@ construction, using the shared line cursor in `merman-core-preprocess`. `merman-
 the source, builds Ishikawa's semantic tree, supplies config-dependent sanitization, and maps
 models and syntax diagnostics into public parse results with optional editor facts.
 
-`merman-render-structured` owns the typed layout and complete SVG emission for Info, Ishikawa,
-and Packet, and typed layout and SVG contents for Railroad. It uses the shared root SVG, CSS,
+`merman-render-structured` owns the typed layout and complete SVG emission for Cynefin, Info,
+Ishikawa, Packet, and Railroad. It uses the shared root SVG, CSS,
 `TextMeasurer`, and controlled Rough SVG contracts in `merman-render-core`. `merman-render`
 dispatches through the family features, selects the operation's measurement and viewport
 policies, and owns final canvas and SVG admission.
@@ -122,20 +123,15 @@ follows the vertical renderer boundary in [ADR-0103](0103-vertical-workspace-cra
 
 ### Chart rendering
 
-`merman-render-charts` owns typed layout, style binding, and complete SVG emission for Pie,
-Sankey, and Treemap. It uses the shared text measurement, CSS, XML escaping, and theme paint
-writers in `merman-render-core`. `merman-render` supplies the operation's measurer and viewport
-context and owns terminal SVG policy. For XY Chart, the chart crate owns typed layout, plot
-geometry, and bar label placement.
+`merman-render-charts` owns preparation, typed layout, style binding, and complete SVG emission
+for Pie, Quadrant Chart, Radar, Sankey, Treemap, Venn, Wardley, and XY Chart. It uses the shared
+text measurement, CSS, XML escaping, and theme paint writers in `merman-render-core`.
+`merman-render` supplies the operation's selected theme, measurement, work meter, and viewport
+context and applies terminal SVG policy.
 
-The chart crate owns Quadrant Chart geometry, paint binding, and SVG content. It also owns Radar
-layout and its point and radius codecs, Venn layout and its solver, and Wardley layout and
-annotation boxes. `merman-render` supplies theme precedence, the operation work meter, and
-document assembly for those families.
-
-For Treemap, the chart crate owns hierarchy layout, style binding, label fitting, and complete
-SVG emission. The facade supplies theme precedence, the operation's measurement routes and
-viewport context, and applies terminal SVG policy.
+`merman-render-structured` owns the Gantt task and time-axis layout, style and font admission,
+and complete SVG emission. The facade supplies the time and time-zone services from the render
+session and retains the public layout model paths and terminal SVG policy.
 
 ### Frozen presentation is distinct from engine initialization
 

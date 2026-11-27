@@ -1,7 +1,7 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::ParseOptions;
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 
 use merman_render::environment::RenderEnvironment;
@@ -10,6 +10,7 @@ use merman_render::resources::{
     RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
 };
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+use merman_render::theme::{NativeTheme, ThemeCompiler};
 
 #[test]
 fn quadrantchart_source_theme_preserves_point_foreground() {
@@ -433,4 +434,69 @@ fn quadrantchart_svg_preserves_db_accessibility_text() {
         let svg = render_quadrantchart_svg_from_text(&source);
         common::assert_svg_accessibility(&svg, expected_title, expected_description);
     }
+}
+
+#[test]
+fn native_theme_v2_quadrant_resolves_roles_before_layout_and_preserves_point_overrides() {
+    let theme = ThemeCompiler::new()
+        .compile_json(
+            br##"{
+                "schema_version":2,"extends":"paper",
+                "roles":{"surface.node":"#DDEEFF","surface.container":"#EEF1F4","stroke.connector":"#123456","text.title":"#213243"},
+                "typography":{"sans":["Chart Body","sans-serif"],"serif":["Chart Title","serif"],"title_family":"serif","base_size_px":20},
+                "appearances":{"light":{"data":{"ink":["#15505D","#54216B","#713336","#433511"]}}}
+            }"##,
+            None,
+        )
+        .unwrap();
+    let source = concat!(
+        "---\nconfig:\n  quadrantChart:\n    pointLabelFontSize: 13\n---\n",
+        "quadrantChart\ntitle Value\nx-axis Low --> High\nquadrant-1 First\n",
+        "Native: [0.2, 0.7]\nStyled: [0.75, 0.9] radius: 9, color: #aabbcc\n",
+    );
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let prepared = family::prepare(
+        parsed.presentation(),
+        &LayoutOptions::default(),
+        RenderEnvironment::deterministic()
+            .begin_session_with_native_theme(NativeTheme::new(theme))
+            .unwrap(),
+    )
+    .unwrap();
+    let rendered = prepared
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+    let dom = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let find_label = |name| {
+        dom.descendants()
+            .find(|node| node.has_tag_name("text") && node.text() == Some(name))
+            .unwrap()
+    };
+    let point_for = |name| {
+        find_label(name)
+            .parent()
+            .unwrap()
+            .children()
+            .find(|node| node.has_tag_name("circle"))
+            .unwrap()
+    };
+    let native_label = find_label("Native");
+    assert_eq!(point_for("Native").attribute("fill"), Some("#54216B"));
+    let styled = point_for("Styled");
+    assert_eq!(styled.attribute("fill"), Some("#aabbcc"));
+    assert_eq!(styled.attribute("r"), Some("9"));
+    assert_eq!(native_label.attribute("font-size"), Some("13"));
+    let title = dom
+        .descendants()
+        .find(|node| node.has_tag_name("text") && node.text() == Some("Value"))
+        .unwrap();
+    assert_eq!(title.attribute("fill"), Some("#213243"));
+    assert_eq!(title.attribute("font-size"), Some("25"));
+    assert!(
+        dom.descendants()
+            .any(|node| node.has_tag_name("rect") && node.attribute("fill") == Some("#DDEEFF"))
+    );
 }

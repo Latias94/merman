@@ -15,11 +15,15 @@ paint. The writer does not select an output profile or replace terminal SVG admi
 `svg-parse` provides lexical scanning, XML stylesheet decoding, and SVG structure
 validation for postprocessing.
 `svg-animation` validates and removes Mermaid Step animations for static SVG output.
+`svg-bounds` measures emitted SVG shape and path bounds for parity viewports.
 `svg-identity` rewrites Mermaid marker selectors for the native SVG CSS engine.
 `css-style` provides presentation lookups, Mermaid CSS value parsing, and the shared `TextMeasurer`
 trait and its value types. `text-layout` provides font stacks, deterministic measurement, and
 line breaking. With `resources`, it also provides host measurement routing and provenance for one
 operation. `theme-svg` writes resolved canvas paint, markers, and categorical patterns to SVG.
+`xhtml-labels` provides XHTML label font measurement and plain-paragraph projection.
+`markdown-labels` adds Markdown source words, bounded HTML projection, and shared wrapping for
+HTML and SVG label terminals.
 `math-labels` provides shared label measurement and prepared math projections. The optional `math`
 feature adds the RaTeX backend and embedded math fonts. Family renderers share the bounded HTML
 sink and SVG navigation policy from `html`. The facade owns whole-document math reference checks.

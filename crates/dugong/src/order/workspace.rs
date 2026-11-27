@@ -1,9 +1,12 @@
-use super::barycenter::{BarycenterEntryIx, SortEntryIx, SortResultIx, sort_ix};
+use super::barycenter::{BarycenterEntryIx, SortEntryIx, sort_ix};
 use super::{OrderEdgeWeight, OrderNodeLabel, Relationship};
 use crate::graphlib::Graph;
 use crate::work::{checked_add, checked_mul, checked_n_log_n};
 use crate::{WorkControl, WorkError};
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
+
+mod assembly;
+use assembly::{SortAssembly, SubgraphOrder};
 
 #[derive(Debug, Clone, Copy)]
 struct WeightedNeighbor {
@@ -227,6 +230,11 @@ impl ConstraintGraph {
 struct SortScratch {
     entry_by_original: Vec<Option<usize>>,
     touched_originals: Vec<usize>,
+    resolved: Vec<SortEntryIx>,
+    group_members: Vec<usize>,
+    sortable: Vec<usize>,
+    unsortable: Vec<usize>,
+    assembly: SortAssembly,
 }
 
 impl SortScratch {
@@ -376,18 +384,14 @@ impl OrderWorkspace {
         relationship: Relationship,
         bias_right: bool,
         work_control: &mut dyn WorkControl,
-    ) -> Result<SortResultIx, WorkError>
+    ) -> Result<Vec<usize>, WorkError>
     where
         N: Default + OrderNodeLabel + 'static,
         E: Default + 'static,
         G: Default,
     {
         let Some(layer) = self.layers.get(rank) else {
-            return Ok(SortResultIx {
-                vs: Vec::new(),
-                barycenter: None,
-                weight: None,
-            });
+            return Ok(Vec::new());
         };
         let neighbors = match relationship {
             Relationship::InEdges => &self.in_neighbors,
@@ -533,7 +537,7 @@ fn sort_subgraph<N, E, G>(
     scratch: &mut SortScratch,
     bias_right: bool,
     work_control: &mut dyn WorkControl,
-) -> Result<SortResultIx, WorkError>
+) -> Result<Vec<usize>, WorkError>
 where
     N: Default + OrderNodeLabel + 'static,
     E: Default + 'static,
@@ -558,7 +562,7 @@ where
         tracked_orders,
         constraints,
     } = context;
-    let mut results: Vec<Option<SortResultIx>> = (0..layer.nodes.len()).map(|_| None).collect();
+    scratch.assembly.begin_rank(layer.nodes.len());
     let mut stack = vec![Step::Enter(layer.root)];
 
     while let Some(step) = stack.pop() {
@@ -594,13 +598,13 @@ where
             }
             Step::Exit(mut frame) => {
                 for entry in &mut frame.barycenters {
-                    let Some(subgraph) = results[entry.v_ix].as_ref() else {
+                    let Some(subgraph) = scratch.assembly.subgraph(entry.v_ix) else {
                         continue;
                     };
                     merge_barycenters(entry, subgraph);
                 }
 
-                let mut entries = resolve_conflicts(
+                resolve_conflicts(
                     layer,
                     &frame.barycenters,
                     constraints,
@@ -608,21 +612,30 @@ where
                     neighbors.len(),
                     work_control,
                 )?;
-                expand_subgraphs(&mut entries, &results);
-                for entry in &frame.barycenters {
-                    results[entry.v_ix].take();
+                let assembly = &mut scratch.assembly;
+                let group_members = &scratch.group_members;
+                let borders = frame.border_left.zip(frame.border_right);
+                let start = assembly.item_count();
+                let mut len = 0;
+                if let Some((border_left, _)) = borders {
+                    assembly.append_node(border_left);
+                    len += 1;
                 }
-                let mut result = sort_ix(&entries, bias_right);
+                let (mut barycenter, mut weight) = sort_ix(
+                    &scratch.resolved,
+                    bias_right,
+                    &mut scratch.sortable,
+                    &mut scratch.unsortable,
+                    |entry| {
+                        let added = assembly.append_members(&group_members[entry.members.clone()]);
+                        len += added;
+                        added
+                    },
+                );
 
-                if let (Some(border_left), Some(border_right)) =
-                    (frame.border_left, frame.border_right)
-                {
-                    let mut ordered = Vec::with_capacity(result.vs.len() + 2);
-                    ordered.push(border_left);
-                    ordered.extend(result.vs);
-                    ordered.push(border_right);
-                    result.vs = ordered;
-
+                if let Some((border_left, border_right)) = borders {
+                    assembly.append_node(border_right);
+                    len += 1;
                     let left_predecessor = first_neighbor_original(layer, neighbors, border_left);
                     let right_predecessor = first_neighbor_original(layer, neighbors, border_right);
                     if let (Some(left), Some(right)) = (left_predecessor, right_predecessor) {
@@ -632,25 +645,23 @@ where
                         let right_order = layer
                             .order_by_original(graph, tracked_orders, right)
                             .unwrap_or(0) as f64;
-                        let barycenter = result.barycenter.unwrap_or(0.0);
-                        let weight = result.weight.unwrap_or(0.0);
-                        let denominator = weight + 2.0;
-                        result.barycenter =
-                            Some((barycenter * weight + left_order + right_order) / denominator);
-                        result.weight = Some(denominator);
+                        let prior_barycenter = barycenter.unwrap_or(0.0);
+                        let prior_weight = weight.unwrap_or(0.0);
+                        let denominator = prior_weight + 2.0;
+                        barycenter = Some(
+                            (prior_barycenter * prior_weight + left_order + right_order)
+                                / denominator,
+                        );
+                        weight = Some(denominator);
                     }
                 }
 
-                results[frame.local_ix] = Some(result);
+                assembly.finish_subgraph(frame.local_ix, start, len, barycenter, weight);
             }
         }
     }
 
-    Ok(results[layer.root].take().unwrap_or(SortResultIx {
-        vs: Vec::new(),
-        barycenter: None,
-        weight: None,
-    }))
+    Ok(scratch.assembly.flatten(layer.root))
 }
 
 fn barycenters<N, E, G>(
@@ -720,7 +731,7 @@ fn first_neighbor_original(
         .map(|edge| edge.original_ix)
 }
 
-fn merge_barycenters(target: &mut BarycenterEntryIx, other: &SortResultIx) {
+fn merge_barycenters(target: &mut BarycenterEntryIx, other: &SubgraphOrder) {
     let Some(other_barycenter) = other.barycenter else {
         return;
     };
@@ -733,20 +744,6 @@ fn merge_barycenters(target: &mut BarycenterEntryIx, other: &SortResultIx) {
     } else {
         target.barycenter = Some(other_barycenter);
         target.weight = Some(other_weight);
-    }
-}
-
-fn expand_subgraphs(entries: &mut [SortEntryIx], subgraphs: &[Option<SortResultIx>]) {
-    for entry in entries {
-        let mut expanded = Vec::new();
-        for local_ix in std::mem::take(&mut entry.vs) {
-            if let Some(Some(subgraph)) = subgraphs.get(local_ix) {
-                expanded.extend(subgraph.vs.iter().copied());
-            } else {
-                expanded.push(local_ix);
-            }
-        }
-        entry.vs = expanded;
     }
 }
 
@@ -770,7 +767,9 @@ fn resolve_conflicts(
     scratch: &mut SortScratch,
     node_slots: usize,
     work_control: &mut dyn WorkControl,
-) -> Result<Vec<SortEntryIx>, WorkError> {
+) -> Result<(), WorkError> {
+    scratch.group_members.clear();
+    scratch.resolved.clear();
     scratch.prepare_entries(node_slots);
     let mut conflicts = Vec::with_capacity(entries.len());
     let mut next_in_group = vec![None; entries.len()];
@@ -852,26 +851,25 @@ fn resolve_conflicts(
         }
     }
 
-    let mut resolved = Vec::new();
     for entry_ix in processed {
         let entry = &conflicts[entry_ix];
         if entry.merged {
             continue;
         }
-        let mut vs = Vec::new();
+        let start = scratch.group_members.len();
         let mut current = entry.head;
         while let Some(entry_ix) = current {
-            vs.push(entries[entry_ix].v_ix);
+            scratch.group_members.push(entries[entry_ix].v_ix);
             current = next_in_group[entry_ix];
         }
-        resolved.push(SortEntryIx {
-            vs,
+        scratch.resolved.push(SortEntryIx {
+            members: start..scratch.group_members.len(),
             i: entry.i,
             barycenter: entry.barycenter,
             weight: entry.weight,
         });
     }
-    Ok(resolved)
+    Ok(())
 }
 
 fn merge_conflict_entries(

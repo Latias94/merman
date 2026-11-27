@@ -8,28 +8,28 @@ use crate::text::{
     TextStyle, WrapMode, measure_mermaid_text_dimensions,
 };
 use crate::{Error, Result};
+use merman_render_graph::er::compile_er_entity_source_style;
 use merman_render_graph::er::er_marker_id;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 
-mod config;
 #[cfg(feature = "layout-dagre")]
 mod dagre;
 #[cfg(feature = "layout-elk")]
 mod elk;
-mod native_theme;
 #[cfg(feature = "layout-shoal")]
 mod shoal;
 mod swimlane;
 mod theme;
-pub(crate) use native_theme::ErNativeStyle;
-
 use crate::layout_backend::GraphLayoutBackend;
-pub(crate) use config::{ErConfigView, ErEntityMeasurementSettings, ErLayoutSettings};
+pub(crate) use merman_render_graph::er::{
+    ErConfigView, ErCssBinding, ErEntityMeasurementSettings, ErEntitySourceStyle, ErLayoutSettings,
+    ErNativeStyle,
+};
 pub(crate) use swimlane::ErSwimlanePaintLayout;
 pub(crate) use swimlane::relationship_html_source as swimlane_relationship_html_source;
-pub(crate) use theme::{ErCssBinding, ErEntitySourceStyle, ErEntityThemePlan};
+pub(crate) use theme::ErEntityThemePlan;
 
 pub(crate) type ErEntity = merman_model::families::er::ErEntity;
 pub(crate) type ErRelationship = merman_model::families::er::ErRelationship;
@@ -151,7 +151,7 @@ impl ErBoxLabel {
         &mut self,
         measurer: &dyn TextMeasurer,
         probe_style: &TextStyle,
-        source_style: &theme::ErEntitySourceStyle,
+        source_style: &ErEntitySourceStyle,
         width: i64,
         wrap_mode: WrapMode,
         root_font_size: f64,
@@ -735,7 +735,7 @@ impl ErPreparedLabels {
                     }
                 }
             }
-            let source_style = theme::compile_er_entity_source_style(entity, &model.classes);
+            let source_style = compile_er_entity_source_style(entity, &model.classes);
             work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
             let mut measure = measure_entity_box_with_source(
                 entity,
@@ -796,14 +796,24 @@ impl ErPreparedLabels {
 }
 
 #[cfg(test)]
+fn test_layout_settings(config: &Value, direction: &str, swimlane: bool) -> ErLayoutSettings {
+    let view = ErConfigView::new(config);
+    view.layout_settings_with_native_style(
+        direction,
+        None,
+        None,
+        view.relationship_html_labels(swimlane),
+    )
+}
+
+#[cfg(test)]
 pub(crate) fn prepare_er_labels(
     model: &merman_model::families::er::ErDiagramModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
     swimlane: bool,
 ) -> Arc<ErPreparedLabels> {
-    let settings =
-        ErConfigView::new(effective_config).layout_settings_for_test(&model.direction, swimlane);
+    let settings = test_layout_settings(effective_config, &model.direction, swimlane);
     let work_meter = Arc::new(OperationWorkMeter::new(
         crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
     ));
@@ -911,7 +921,7 @@ pub(crate) struct ErEntityMeasureRow {
 
 #[derive(Debug)]
 pub(crate) struct ErEntityMeasure {
-    pub(crate) source_style: theme::ErEntitySourceStyle,
+    pub(crate) source_style: ErEntitySourceStyle,
     pub width: f64,
     pub height: f64,
     pub text_padding: f64,
@@ -972,7 +982,7 @@ pub(crate) fn measure_entity_box(
         label_style,
         None,
         settings,
-        theme::compile_er_entity_source_style(entity, &indexmap::IndexMap::new()),
+        compile_er_entity_source_style(entity, &indexmap::IndexMap::new()),
         &work_meter,
     )
     .expect("measure ER entity")
@@ -990,7 +1000,7 @@ fn measure_entity_box_with_source(
     calculation_style: &TextStyle,
     code_family: Option<&str>,
     settings: ErEntityMeasurementSettings,
-    source_style: theme::ErEntitySourceStyle,
+    source_style: ErEntitySourceStyle,
     work_meter: &OperationWorkMeter,
 ) -> Result<ErEntityMeasure> {
     // Measure through the same HTML/SVG branch used by Mermaid erBox.ts and the painter.
@@ -1552,7 +1562,7 @@ mod tests {
             .prepare_metrics(
                 measurer,
                 style,
-                &super::theme::ErEntitySourceStyle::default(),
+                &super::ErEntitySourceStyle::default(),
                 i64::MAX,
                 WrapMode::HtmlLike,
                 style.font_size,
@@ -2012,8 +2022,7 @@ mod tests {
             ));
             let model = er_resource_model();
             let config = serde_json::json!({"htmlLabels": html});
-            let settings =
-                super::ErConfigView::new(&config).layout_settings_for_test(&model.direction, false);
+            let settings = super::test_layout_settings(&config, &model.direction, false);
             let error = super::ErPreparedLabels::prepare(
                 &model,
                 &DeterministicTextMeasurer::default(),
@@ -2037,8 +2046,7 @@ mod tests {
         ));
         let model = er_resource_model();
         let config = serde_json::json!({"htmlLabels": false});
-        let settings =
-            super::ErConfigView::new(&config).layout_settings_for_test(&model.direction, false);
+        let settings = super::test_layout_settings(&config, &model.direction, false);
         let prepared = std::sync::Arc::new(
             super::ErPreparedLabels::prepare(
                 &model,
@@ -2071,8 +2079,7 @@ mod tests {
         ));
         let mut model = er_resource_model();
         let config = serde_json::json!({"htmlLabels": false});
-        let settings =
-            super::ErConfigView::new(&config).layout_settings_for_test(&model.direction, false);
+        let settings = super::test_layout_settings(&config, &model.direction, false);
         let first = super::ErPreparedLabels::prepare(
             &model,
             &DeterministicTextMeasurer::default(),
@@ -2140,8 +2147,7 @@ mod tests {
             },
         );
         let config = serde_json::json!({"htmlLabels": false});
-        let settings =
-            super::ErConfigView::new(&config).layout_settings_for_test(&model.direction, false);
+        let settings = super::test_layout_settings(&config, &model.direction, false);
         let error =
             super::ErPreparedLabels::prepare(&model, &CancellingLabel(control), &settings, &meter)
                 .unwrap_err();
@@ -2172,8 +2178,7 @@ mod tests {
         });
         let config = serde_json::json!({"layout": "shoal", "htmlLabels": false});
         let prepare = |measurer: &dyn TextMeasurer, meter| {
-            let settings =
-                super::ErConfigView::new(&config).layout_settings_for_test(&model.direction, false);
+            let settings = super::test_layout_settings(&config, &model.direction, false);
             super::layout_er_diagram_typed(
                 &model,
                 &config,
@@ -2230,5 +2235,77 @@ mod tests {
         assert!(matches!(error, crate::Error::Cancelled(_)));
         assert!(meter.prepared_text_retained_bytes_peak() > 0);
         assert_eq!(meter.prepared_text_retained_bytes(), 0);
+    }
+}
+
+#[cfg(all(test, feature = "layout-dagre"))]
+mod native_theme_tests {
+    use merman_core::{MermaidEngine, ParseOptions};
+
+    use crate::environment::RenderEnvironment;
+    use crate::svg::{SvgDebugOptions, SvgRenderOptions};
+    use crate::theme::{NativeTheme, ThemeCompiler};
+    use crate::{LayoutOptions, family};
+
+    #[test]
+    fn native_theme_v2_er_uses_table_roles_and_relationship_background() {
+        let theme = ThemeCompiler::new().compile_json(br##"{
+            "schema_version":2,"extends":"paper",
+            "roles":{"surface.node":"#EEEEEE","surface.emphasis":"#345678","surface.container":"#DFEBFC","stroke.connector":"#123456"},
+            "typography":{"mono":["Attribute Mono","monospace"]},
+            "form":{"radius":6,"edge_label_bg":"canvas","edge_style":"straight"}
+        }"##, None).unwrap();
+        let environment = RenderEnvironment::deterministic();
+        for html in [false, true] {
+            let source = format!(
+                "---\nconfig:\n  htmlLabels: {html}\n---\nerDiagram\nORDER ||--o{{ LINE : contains\nLINE {{\n  string sku\n  int quantity\n}}\n"
+            );
+            let parsed = MermaidEngine::new()
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let prepared = family::prepare(
+                parsed.presentation(),
+                &LayoutOptions::default(),
+                environment
+                    .begin_session_with_native_theme(NativeTheme::new(theme.clone()))
+                    .unwrap()
+                    .with_canvas_background(crate::theme::Color::rgb(250, 251, 252)),
+            )
+            .unwrap();
+            let render = prepared
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
+            let dom = roxmltree::Document::parse(render.svg()).unwrap();
+            for (class, fill) in [
+                ("er-native-header", "#345678"),
+                ("row-rect-odd", "#EEEEEE"),
+                ("row-rect-even", "#DFEBFC"),
+            ] {
+                assert!(
+                    dom.descendants()
+                        .any(|node| node.attribute("class") == Some(class)
+                            && node
+                                .attribute("style")
+                                .is_some_and(|style| style.contains(fill))),
+                    "missing {class} fill"
+                );
+            }
+            let css = dom
+                .descendants()
+                .find(|node| node.has_tag_name("style"))
+                .unwrap()
+                .text()
+                .unwrap();
+            assert!(
+                css.contains(".label.attribute-type{font-family:\"Attribute Mono\", monospace;")
+            );
+            assert!(css.contains(".labelBkg{background-color:#FAFBFC;}"));
+            assert!(css.contains(".edgeLabel .label rect{fill:#FAFBFC;}"));
+            assert!(dom.descendants().any(|node| {
+                node.attribute("marker-end")
+                    .is_some_and(|marker| marker.contains("zeroOrMore"))
+            }));
+        }
     }
 }

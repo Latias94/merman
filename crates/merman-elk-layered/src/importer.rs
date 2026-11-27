@@ -387,6 +387,7 @@ impl ImportPlanningWorkPlan {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ImportMaterializationWorkPlan {
+    graph_reference_domains: usize,
     // Caller-owned edge labels cloned into imported graph objects.
     edge_labels: usize,
     // Paths retained in hierarchy-edge output and paths consumed while producing scoped pieces.
@@ -417,6 +418,7 @@ impl ImportMaterializationWorkPlan {
             scoped_work.materialization_path_steps,
         ])?;
         Ok(Self {
+            graph_reference_domains: index.graph_reference_domains,
             edge_labels,
             hierarchy_path_steps,
             materialized_segments: scoped_work.materialized_segments,
@@ -426,6 +428,7 @@ impl ImportMaterializationWorkPlan {
 
     fn total(self) -> Result<usize, WorkError> {
         checked_sum([
+            self.graph_reference_domains,
             self.edge_labels,
             self.hierarchy_path_steps,
             self.materialized_segments,
@@ -2035,6 +2038,7 @@ struct InputIndex<'a> {
     hierarchy_queries: HierarchyQueryIndex,
     container_depths: Vec<Option<usize>>,
     materialized_graph_depths: Vec<Option<usize>>,
+    graph_reference_domains: usize,
     first_unmaterialized_graph_parents: Vec<Option<&'a str>>,
     edge_owners: Vec<Option<&'a str>>,
     #[cfg(test)]
@@ -2157,6 +2161,7 @@ impl<'a> InputIndex<'a> {
             hierarchy_queries,
             container_depths: vec![None; input.nodes.len()],
             materialized_graph_depths: vec![None; input.nodes.len()],
+            graph_reference_domains: 1,
             first_unmaterialized_graph_parents: vec![None; input.nodes.len()],
             edge_owners: Vec::with_capacity(input.edges.len()),
             #[cfg(test)]
@@ -2321,6 +2326,9 @@ impl<'a> InputIndex<'a> {
             };
             let child_unmaterialized_parent = first_unmaterialized_parent
                 .or_else(|| (!materializes_children).then_some(node.id.as_str()));
+            if graph_depth.is_some() {
+                self.graph_reference_domains = checked_sum([self.graph_reference_domains, 1])?;
+            }
             self.materialized_graph_depths[node_index] = graph_depth;
             stack.extend(
                 self.children(Some(node.id.as_str()))
@@ -2705,7 +2713,10 @@ mod tests {
             let nodes = (0..node_count)
                 .map(|index| node(format!("node-{index}").as_str()))
                 .collect::<Vec<_>>();
-            assert_eq!(measured_import_work(&graph(nodes, Vec::new())), node_count);
+            assert_eq!(
+                measured_import_work(&graph(nodes, Vec::new())),
+                node_count + 1
+            );
         }
 
         for edge_count in [0usize, 8, 32, 128] {
@@ -2714,7 +2725,7 @@ mod tests {
                 .collect::<Vec<_>>();
             assert_eq!(
                 measured_import_work(&graph(vec![node("A"), node("B")], edges)),
-                2 + 3 * edge_count
+                3 + 3 * edge_count
             );
         }
     }
@@ -2733,7 +2744,7 @@ mod tests {
             input.options.hierarchy_handling = HierarchyHandling::IncludeChildren;
             let (imported, work, probe) = measured_hierarchical_import(&input);
 
-            assert_eq!(work, node_count);
+            assert_eq!(work, 2 * node_count);
             assert_eq!(probe.node_imports, node_count);
             assert_eq!(probe.edge_imports, 0);
             assert_eq!(probe.nested_graphs, node_count.saturating_sub(1));
@@ -2778,9 +2789,9 @@ mod tests {
                 let mut input = graph(nodes, edges);
                 input.options.hierarchy_handling = HierarchyHandling::IncludeChildren;
                 let retained_path_components = edge_count * (node_count - 1);
-                // One descriptor plus a two-probe owner-query ceiling per edge, then the path
-                // components that ELK's compound preprocessor must consume from the output.
-                let expected_work = node_count + 3 * edge_count + retained_path_components;
+                // The node descriptors and graph domains are independent of the edge descriptor,
+                // owner-query, and retained path work.
+                let expected_work = 2 * node_count + 3 * edge_count + retained_path_components;
 
                 let (imported, work, probe) = measured_hierarchical_import(&input);
 
@@ -2948,7 +2959,7 @@ mod tests {
             input.options.hierarchy_handling = HierarchyHandling::IncludeChildren;
 
             let (_, work, probe) = measured_hierarchical_import(&input);
-            assert_eq!(work, node_count);
+            assert_eq!(work, node_count + 2);
             assert_eq!(probe.node_imports, 2);
             assert_eq!(probe.nested_graphs, 1);
             assert_eq!(probe.output_path_components, 0);
@@ -2970,7 +2981,7 @@ mod tests {
         input.options.inside_self_loops_activate = true;
 
         let (imported, work, probe) = measured_hierarchical_import(&input);
-        assert_eq!(work, 5);
+        assert_eq!(work, 7);
         assert_eq!(probe.node_imports, 1);
         assert_eq!(probe.edge_imports, 1);
         assert_eq!(probe.nested_graphs, 1);
@@ -3005,7 +3016,7 @@ mod tests {
 
                 assert_eq!(
                     measured_scoped_import_work(&input, &segments),
-                    node_count + segment_count * (2 + 4 * (ceil_log2(node_count.max(1)) + 1))
+                    node_count + 1 + segment_count * (2 + 4 * (ceil_log2(node_count.max(1)) + 1))
                 );
             }
         }
@@ -3188,7 +3199,7 @@ mod tests {
             &mut unlimited,
         )
         .unwrap();
-        assert_eq!(unlimited.charged, planning + 128);
+        assert_eq!(unlimited.charged, planning + 1 + 128);
         assert_eq!(imported.edges[0].labels.len(), 128);
     }
 
@@ -3228,10 +3239,10 @@ mod tests {
         let materialization = required - planning;
         assert_eq!(unlimited.first_check, Some(planning));
         assert_eq!(unlimited.checked, required);
-        // Planning covers four descriptors plus the heavy-light query ceiling. Output work then
-        // owns one retained path hop and two concrete hierarchy-local segments.
+        // Planning covers four descriptors plus the heavy-light query ceiling. Output work owns
+        // two graph domains, one retained path hop, and two concrete hierarchy-local segments.
         assert_eq!(planning, 16);
-        assert_eq!(materialization, 3);
+        assert_eq!(materialization, 5);
         assert_eq!(imported.cross_hierarchy_edges.len(), 1);
         let nested = imported.layerless_nodes[0]
             .nested_graph

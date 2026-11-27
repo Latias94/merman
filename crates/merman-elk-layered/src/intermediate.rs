@@ -18,8 +18,8 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::graph::{
-    EdgeLabelPlacement, LGraph, LNode, LNodeKind, LPoint, LayeredEdge, PortRef, PortSide, PortType,
-    reverse_edge,
+    EdgeLabelPlacement, GraphPortRef, LGraph, LNode, LNodeKind, LPoint, LayeredEdge, PortRef,
+    PortSide, PortType, reverse_edge,
 };
 use crate::options::{Alignment, ELK_DEFAULT_EDGE_THICKNESS, LayerConstraint, PortConstraints};
 use crate::p5edges::orthogonal::{RoutingDirection, route_edges};
@@ -2724,7 +2724,7 @@ fn replacement_dummy_for_original(
     let key = north_south_replacement_key(graph, original_dummy);
     if let Some((_, replacement)) = maps[virtual_layer]
         .iter()
-        .find(|(candidate, _)| *candidate == key)
+        .find(|(candidate, _)| candidate.same_target(&key))
     {
         return *replacement;
     }
@@ -2735,10 +2735,20 @@ fn replacement_dummy_for_original(
     replacement
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 enum NorthSouthReplacementKey {
-    Origin { graph_id: String, port: PortRef },
+    Origin(GraphPortRef),
     Dummy(usize),
+}
+
+impl NorthSouthReplacementKey {
+    fn same_target(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Origin(first), Self::Origin(second)) => first.same_target(second),
+            (Self::Dummy(first), Self::Dummy(second)) => first == second,
+            _ => false,
+        }
+    }
 }
 
 fn north_south_replacement_key(graph: &LGraph, original_dummy: usize) -> NorthSouthReplacementKey {
@@ -2746,15 +2756,13 @@ fn north_south_replacement_key(graph: &LGraph, original_dummy: usize) -> NorthSo
         .layerless_nodes
         .get(original_dummy)
         .and_then(|node| node.origin_port.as_ref())
-        .map(|origin| NorthSouthReplacementKey::Origin {
-            graph_id: origin.graph_id.clone(),
-            port: origin.port,
-        })
+        .cloned()
+        .map(NorthSouthReplacementKey::Origin)
         .unwrap_or(NorthSouthReplacementKey::Dummy(original_dummy))
 }
 
 fn create_hierarchical_port_replacement_dummy(graph: &mut LGraph, original_dummy: usize) -> usize {
-    let original = graph.layerless_nodes[original_dummy].clone();
+    let original = graph.layerless_nodes[original_dummy].copy_preserving_reference_domains();
     let node_index = graph.layerless_nodes.len();
     let mut replacement = LNode::new(
         format!("{}:replacement:{node_index}", original.id),
@@ -4077,14 +4085,9 @@ mod tests {
         let b = push_normal_node(&mut graph, "B");
 
         let origin_port = PortRef { node: 42, port: 7 };
-        graph.layerless_nodes[first].origin_port = Some(crate::graph::GraphPortRef {
-            graph_id: "parent".to_string(),
-            port: origin_port,
-        });
-        graph.layerless_nodes[second].origin_port = Some(crate::graph::GraphPortRef {
-            graph_id: "parent".to_string(),
-            port: origin_port,
-        });
+        let parent = LGraph::new("parent", LayeredOptions::default());
+        graph.layerless_nodes[first].origin_port = Some(parent.scoped_port(origin_port));
+        graph.layerless_nodes[second].origin_port = Some(parent.scoped_port(origin_port));
 
         graph.set_node_layer(first, 0);
         graph.set_node_layer(second, 0);
@@ -4121,11 +4124,9 @@ mod tests {
         let next = push_normal_node(&mut graph, "next");
 
         let origin_port = PortRef { node: 13, port: 5 };
+        let parent = LGraph::new("parent", LayeredOptions::default());
         for dummy in [north_source, north_target] {
-            graph.layerless_nodes[dummy].origin_port = Some(crate::graph::GraphPortRef {
-                graph_id: "parent".to_string(),
-                port: origin_port,
-            });
+            graph.layerless_nodes[dummy].origin_port = Some(parent.scoped_port(origin_port));
         }
 
         graph.set_node_layer(next, 0);
@@ -4176,10 +4177,8 @@ mod tests {
         graph.options.port_constraints = PortConstraints::FixedSide;
         let north = push_external_dummy(&mut graph, "north", PortSide::North, 0.42);
         let target = push_normal_node(&mut graph, "target");
-        let origin = crate::graph::GraphPortRef {
-            graph_id: "parent".to_string(),
-            port: PortRef { node: 9, port: 3 },
-        };
+        let parent = LGraph::new("parent", LayeredOptions::default());
+        let origin = parent.scoped_port(PortRef { node: 9, port: 3 });
         graph.layerless_nodes[north].origin_port = Some(origin.clone());
         graph.layerless_nodes[north].model_order = Some(17);
         graph.layerless_nodes[north].in_layer_constraint = InLayerConstraint::Top;
