@@ -336,10 +336,16 @@ impl FlowchartCompiledStyles {
         &self,
         base: &'a text::TextStyle,
     ) -> FlowchartTextStyleResolution<'a> {
-        let mut cascade = mermaid_style::TextStyleCascade::new(
+        self.resolve_edge_label_text_style(mermaid_style::TextStyleCascade::new(
             base,
             mermaid_style::CssFontSizeContext::uniform(base.font_size),
-        );
+        ))
+    }
+
+    pub(super) fn resolve_edge_label_text_style<'a>(
+        &self,
+        mut cascade: mermaid_style::TextStyleCascade<'a>,
+    ) -> FlowchartTextStyleResolution<'a> {
         let mut terminal_foreground = None;
         for declaration in &self.label_sources {
             cascade.observe(
@@ -362,6 +368,26 @@ impl FlowchartCompiledStyles {
             style: cascade.finish(),
             terminal_foreground,
             html_geometry: self.html_label_geometry(),
+        }
+    }
+
+    #[cfg(feature = "layout-grid")]
+    pub(super) fn label_font_size(&self) -> Option<&FlowchartStyleDeclaration> {
+        self.label_sources
+            .iter()
+            .map(|declaration| declaration.prepared.as_ref())
+            .find(|declaration| declaration.property() == "font-size")
+    }
+
+    #[cfg(feature = "layout-grid")]
+    pub(super) fn observe_label_fonts(&self, cascade: &mut mermaid_style::TextStyleCascade<'_>) {
+        for declaration in &self.label_sources {
+            let declaration = &declaration.prepared;
+            cascade.observe(
+                declaration.property(),
+                declaration.value(),
+                declaration.important(),
+            );
         }
     }
 

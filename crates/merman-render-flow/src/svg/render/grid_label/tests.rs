@@ -63,8 +63,8 @@ impl TextMeasurer for BboxOffsetMeasurer {
         self.0.measure_wrapped(text, style, max_width_px, mode)
     }
 
-    fn measure_svg_create_text_bbox_y_offset_px(&self, _text: &str, _style: &TextStyle) -> f64 {
-        2.5
+    fn measure_svg_create_text_bbox_y_offset_px(&self, _text: &str, style: &TextStyle) -> f64 {
+        style.font_size / 6.4
     }
 }
 
@@ -73,6 +73,16 @@ fn render(
     route: FlowchartSvgRoute<'_>,
     node_html: bool,
     policy: RenderResourcePolicy,
+) -> Result<String> {
+    render_with_first_style(diagram_id, route, node_html, policy, "color:#304050")
+}
+
+fn render_with_first_style(
+    diagram_id: &str,
+    route: FlowchartSvgRoute<'_>,
+    node_html: bool,
+    policy: RenderResourcePolicy,
+    first_style: &str,
 ) -> Result<String> {
     let mut value = json!({
         "look": "classic", "securityLevel": "strict",
@@ -96,7 +106,7 @@ fn render(
         "subgraphs": [{"id":"empty","title":"Empty cluster","nodes":[]}],
         "edges": [
             {"id":RAW_EDGE_ID,"from":"A","to":"B","length":1,"label":"First & safe",
-             "style":["color:#304050","font-size:44px"]},
+             "style":[first_style,"font-size:44px"]},
             {"id":RAW_EDGE_ID,"from":"A","to":"B","length":1,"label":"Second"},
             {"id":"missing","from":"A","to":"B","length":1,"label":"Unboxed"}
         ],
@@ -390,6 +400,22 @@ fn grid_label_rect_ids_stay_in_their_document_namespace() {
 }
 
 #[test]
+fn grid_svg_label_rect_seats_relative_text_using_the_final_font_size() {
+    let svg = render_with_first_style(
+        "grid-helpers",
+        GRID_ROUTE,
+        false,
+        RenderResourcePolicy::unbounded_for_trusted_input(),
+        "font-size:2em",
+    )
+    .unwrap();
+    let (helpers, _) = measured_helpers(&svg);
+    // The prepared box is 42px tall. The nested 2em text is 64px, with a 10px host offset.
+    assert!(helpers[0].contains(r#"style="font-size:2em" transform="translate(-45, -31)""#));
+    assert!(helpers[0].contains(r#"<text y="-10.1" style="font-size:2em""#));
+}
+
+#[test]
 fn grid_label_rects_share_the_svg_byte_ceiling() {
     let policy = RenderResourcePolicy::unbounded_for_trusted_input();
     let svg = render("grid-helpers", GRID_ROUTE, true, policy.clone()).unwrap();
@@ -421,4 +447,183 @@ fn elk_keeps_ordinary_labels_in_its_flat_edge_label_group() {
     assert!(svg.contains(r#"<g class="edgeLabels"><g class="edgeLabel""#));
     assert!(svg.contains("Unboxed"));
     assert!(!svg.contains(r#"<g class="label edgeLabel""#));
+}
+
+#[cfg(feature = "layout-grid")]
+mod typography {
+    use super::*;
+    use crate::{
+        measured::{FlowchartMeasurement, MeasuredLabel},
+        projection::FlowchartRenderModelRef,
+        svg_label::FlowchartSvgLabelSidecarBuilder,
+    };
+    use serde_json::Value;
+    use std::cell::RefCell;
+
+    #[derive(Default)]
+    struct LabelFontProbe {
+        wraps: RefCell<Vec<f64>>,
+        rows: RefCell<Vec<(String, f64)>>,
+        html: RefCell<Vec<(f64, Option<String>)>>,
+    }
+
+    impl TextMeasurer for LabelFontProbe {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            TextMetrics {
+                width: text.chars().count() as f64 * style.font_size / 2.0,
+                height: style.font_size,
+                line_count: 1,
+            }
+        }
+
+        fn measure_wrapped(
+            &self,
+            text: &str,
+            style: &TextStyle,
+            width: Option<f64>,
+            mode: WrapMode,
+        ) -> TextMetrics {
+            assert_eq!(mode, WrapMode::HtmlLike);
+            assert_eq!(width, Some(160.0));
+            self.html
+                .borrow_mut()
+                .push((style.font_size, style.font_family.clone()));
+            self.measure(text, style)
+        }
+
+        fn measure_svg_text_computed_length_px(&self, text: &str, style: &TextStyle) -> f64 {
+            self.wraps.borrow_mut().push(style.font_size);
+            self.measure(text, style).width
+        }
+
+        fn measure_svg_tspan_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+            self.rows
+                .borrow_mut()
+                .push((text.to_owned(), style.font_size));
+            self.measure(text, style).width
+        }
+    }
+
+    fn measure_label(
+        html: Option<bool>,
+        base: &str,
+        inline: Option<&str>,
+        class_defs: Value,
+    ) -> (MeasuredLabel, LabelFontProbe) {
+        let mut config = json!({
+            "look":"classic", "securityLevel":"strict",
+            "themeVariables":{"fontSize":base},
+            "flowchart":{"wrappingWidth":160, "htmlLabels":false},
+        });
+        if let Some(html) = html {
+            config["htmlLabels"] = json!(html);
+        }
+        let config = PresentationConfig::from_config_controlled(
+            MermaidConfig::from_value(config),
+            &InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput),
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+        let model: FlowchartModel = serde_json::from_value(json!({
+            "keyword":"flowchart", "direction":"LR", "classDefs":class_defs,
+            "nodes":[{"id":"A"}, {"id":"B"}],
+            "edges":[{"id":"review", "from":"A", "to":"B", "length":1,
+                "label":"alpha beta gamma delta", "style":inline.into_iter().collect::<Vec<_>>() }],
+        }))
+        .unwrap();
+        let context = FlowchartRenderContext::from_model(&model);
+        let class_defs = FlowchartClassDefinitions::new(&model.class_defs);
+        let work = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+        let styles = FlowchartEdgeStylePlan::prepare_with_class_definitions(
+            &model,
+            &config,
+            true,
+            &class_defs,
+            &work,
+        )
+        .unwrap()
+        .with_typography_work_meter(Arc::clone(&work));
+        let labels = FlowchartSvgLabelSidecarBuilder::new_with_work_meter(work);
+        let probe = LabelFontProbe::default();
+        let measurement = FlowchartMeasurement::new(
+            FlowchartRenderModelRef::new(&model, &context),
+            &class_defs,
+            &config,
+            &probe,
+            None,
+            Some(&labels),
+            &styles,
+        );
+        let label = measurement
+            .grid_edge_label(&model.edges[0], FlowchartEdgeKey::new(0))
+            .unwrap()
+            .unwrap();
+        labels.check_prepared_label_errors().unwrap();
+        (label, probe)
+    }
+
+    #[test]
+    fn grid_svg_label_rect_wraps_and_measures_at_the_observed_font_sizes() {
+        for (base, size, wrap_px, bbox_px) in [
+            ("16px", "2em", 32.0, 64.0),
+            ("16px", "200%", 32.0, 64.0),
+            ("24px", "2rem", 32.0, 32.0),
+        ] {
+            let source = format!("font-size:{size}");
+            let (label, probe) = measure_label(Some(false), base, Some(&source), json!({}));
+            let wraps = probe.wraps.into_inner();
+            assert!(
+                !wraps.is_empty() && wraps.iter().all(|&px| px == wrap_px),
+                "{wraps:?}"
+            );
+            assert_eq!(
+                probe.rows.into_inner(),
+                ["alpha beta", "gamma", "delta"].map(|row| (row.to_owned(), bbox_px)),
+                "{source}"
+            );
+            assert_eq!(label.width, 5.0 * bbox_px);
+        }
+    }
+
+    #[test]
+    fn grid_html_label_rect_uses_nodes_cascade_on_the_outer_group_and_span() {
+        for (html, class, class_size, inline, expected) in [
+            (Some(true), "nodes", "40px", None, 40.0),
+            (Some(true), "nodes", "2em", None, 64.0),
+            (Some(true), "nodes", "40px", Some("2em"), 40.0),
+            (Some(true), "nodes", "40px", Some("2em !important"), 320.0),
+            (Some(true), "unmatched", "40px", Some("2em"), 128.0),
+            (Some(true), "edgeLabel", "40px", None, 16.0),
+            (None, "nodes", "40px", Some("2em"), 128.0),
+        ] {
+            let inline = inline.map(|size| format!("font-size:{size}"));
+            let class_defs = json!({ (class):[format!("font-size:{class_size}")] });
+            let (label, probe) = measure_label(html, "16px", inline.as_deref(), class_defs);
+            let (control, _) = measure_label(
+                Some(true),
+                "16px",
+                Some(&format!("font-size:{expected}px")),
+                json!({}),
+            );
+            let html = probe.html.into_inner();
+            assert!(
+                !html.is_empty() && html.iter().all(|(size, _)| *size == expected),
+                "{html:?}"
+            );
+            assert_eq!((label.width, label.height), (control.width, control.height));
+        }
+        let (_, probe) = measure_label(
+            Some(true),
+            "16px",
+            None,
+            json!({"nodes":["font-family:monospace"]}),
+        );
+        assert_eq!(
+            probe.html.into_inner(),
+            [(16.0, Some("monospace".to_owned()))]
+        );
+    }
 }

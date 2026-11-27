@@ -10,6 +10,8 @@ use super::{
     },
     first_label_rect_style,
 };
+#[cfg(feature = "layout-grid")]
+use crate::class_style::FlowchartPreparedClassShell;
 use crate::{
     class_style::FlowchartClassDefinitions, projection::FlowchartEdgeKey,
     source_style::FlowchartSourceFacetStatus, stylesheet::flowchart_classdef_cssom_string,
@@ -19,6 +21,8 @@ use indexmap::IndexMap;
 use merman_model::families::flowchart::{FlowEdge, FlowchartModel};
 use merman_render_core::{Error, Result, config, mermaid_style, resources, text};
 use rustc_hash::FxHashMap;
+#[cfg(feature = "layout-grid")]
+use std::borrow::Cow;
 use std::cell::OnceCell;
 use std::sync::Arc;
 
@@ -75,6 +79,73 @@ struct PreparedEdgeLabelTypography {
 enum EdgeLabelTypographyPurpose {
     Ordinary,
     LabelRect,
+}
+
+#[cfg(feature = "layout-grid")]
+fn grid_label_cascade(parent: &text::TextStyle) -> mermaid_style::TextStyleCascade<'_> {
+    // Mermaid renders into an HTML document. `rem` uses its initial root font size even when
+    // the diagram's SVG root has an authored font size.
+    const DOCUMENT_ROOT_FONT_SIZE_PX: f64 = 16.0;
+    mermaid_style::TextStyleCascade::new(
+        parent,
+        mermaid_style::CssFontSizeContext::new(parent.font_size, DOCUMENT_ROOT_FONT_SIZE_PX),
+    )
+}
+
+#[cfg(feature = "layout-grid")]
+fn grid_label_inline_style<'a>(
+    cascade: mermaid_style::TextStyleCascade<'a>,
+    inline: Option<&FlowchartCompiledStyles>,
+) -> FlowchartTextStyleResolution<'a> {
+    match inline {
+        Some(inline) => inline.resolve_edge_label_text_style(cascade),
+        None => FlowchartTextStyleResolution {
+            style: cascade.finish(),
+            terminal_foreground: None,
+            html_geometry: Default::default(),
+        },
+    }
+}
+
+#[cfg(feature = "layout-grid")]
+fn grid_html_label_style<'a>(
+    base: &'a text::TextStyle,
+    inline: Option<&FlowchartCompiledStyles>,
+    nodes: Option<&FlowchartPreparedClassShell>,
+) -> FlowchartTextStyleResolution<'a> {
+    // `.nodes > *` matches the outer label group. The inner `.label`, XHTML div and XHTML
+    // span each receive the helper's inline declaration. `.nodes span` competes at the span.
+    let mut outer = grid_label_cascade(base);
+    if let Some(nodes) = nodes {
+        nodes.observe_grid_html_label_fonts(&mut outer);
+    }
+    let outer = outer.finish();
+    let mut group = grid_label_cascade(&outer);
+    if outer.font_family != base.font_family
+        && let Some(family) = &base.font_family
+    {
+        // Flow's default `.label` rule supplies the diagram font family at the inner group.
+        group.observe("font-family", family, false);
+    }
+    if let Some(inline) = inline {
+        inline.observe_label_fonts(&mut group);
+    }
+    let group = group.finish();
+    let mut div = grid_label_cascade(&group);
+    if let Some(inline) = inline {
+        inline.observe_label_fonts(&mut div);
+    }
+    let div = div.finish();
+    let mut span = grid_label_cascade(&div);
+    if let Some(nodes) = nodes {
+        nodes.observe_grid_html_label_fonts(&mut span);
+    }
+    let resolved = grid_label_inline_style(span, inline);
+    FlowchartTextStyleResolution {
+        style: Cow::Owned(resolved.style.into_owned()),
+        terminal_foreground: resolved.terminal_foreground,
+        html_geometry: resolved.html_geometry,
+    }
 }
 
 impl PreparedEdgeLabelTypography {
@@ -571,6 +642,13 @@ impl FlowchartEdgeStylePlan {
         Ok(resolved)
     }
 
+    #[cfg(any(
+        test,
+        all(
+            feature = "layout-swimlane",
+            any(feature = "diagram-flowchart", feature = "diagram-swimlane")
+        )
+    ))]
     pub(crate) fn label_rect_text_style_for<'a>(
         &'a self,
         key: FlowchartEdgeKey,
@@ -595,6 +673,79 @@ impl FlowchartEdgeStylePlan {
             resolved.style = std::borrow::Cow::Borrowed(&prepared.style);
         }
         Ok(resolved)
+    }
+
+    #[cfg(feature = "layout-grid")]
+    pub(crate) fn grid_label_rect_text_style_for<'a>(
+        &self,
+        key: FlowchartEdgeKey,
+        base: &'a text::TextStyle,
+        mode: text::WrapMode,
+        html_class_defs: Option<&FlowchartClassDefinitions<'_>>,
+    ) -> Result<FlowchartTextStyleResolution<'a>> {
+        let inline = self.label_rect_for(key)?;
+        let nodes = html_class_defs
+            .map(|classes| {
+                classes.prepare_shell("nodes", |units| {
+                    if let Some(work) = &self.typography_work {
+                        work.charge(units)?;
+                    }
+                    Ok(())
+                })
+            })
+            .transpose()?
+            .flatten();
+        let resolved = if mode == text::WrapMode::HtmlLike && (inline.is_some() || nodes.is_some())
+        {
+            grid_html_label_style(base, inline, nodes.as_deref())
+        } else {
+            grid_label_inline_style(grid_label_cascade(base), inline)
+        };
+        self.record_layout_typography(
+            key,
+            base,
+            resolved.as_ref(),
+            EdgeLabelTypographyPurpose::LabelRect,
+        )?;
+        Ok(resolved)
+    }
+
+    #[cfg(feature = "layout-grid")]
+    pub(crate) fn grid_label_rect_svg_wrap_style<'a>(
+        &'a self,
+        key: FlowchartEdgeKey,
+        base: &'a text::TextStyle,
+    ) -> Result<Cow<'a, text::TextStyle>> {
+        let occurrence = self.occurrence(key)?;
+        if let Some(layout) = occurrence
+            .layout_typography
+            .get()
+            .filter(|layout| layout.matches_base(base))
+        {
+            return Ok(Cow::Borrowed(&layout.style));
+        }
+        Ok(
+            grid_label_inline_style(grid_label_cascade(base), occurrence.label_rect.as_deref())
+                .style,
+        )
+    }
+
+    #[cfg(feature = "layout-grid")]
+    pub(crate) fn grid_label_rect_svg_bbox_style<'a>(
+        &self,
+        key: FlowchartEdgeKey,
+        wrap_style: &'a text::TextStyle,
+    ) -> Result<Cow<'a, text::TextStyle>> {
+        // createFormattedText wraps inside the styled group before applying the same style
+        // to the final `<text>`. Relative sizes resolve against the group on that second pass.
+        let mut cascade = grid_label_cascade(wrap_style);
+        if let Some(size) = self
+            .label_rect_for(key)?
+            .and_then(FlowchartCompiledStyles::label_font_size)
+        {
+            cascade.observe("font-size", size.value(), size.important());
+        }
+        Ok(cascade.finish())
     }
 
     pub fn with_typography_work_meter(mut self, work: Arc<resources::OperationWorkMeter>) -> Self {

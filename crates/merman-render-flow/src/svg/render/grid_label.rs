@@ -158,20 +158,25 @@ fn write_grid_edge_label_node(
             rendered,
         );
     } else {
-        let typography = ctx.edge_style_plan.terminal_label_text_style(edge.key)?;
+        let wrap_style = ctx
+            .edge_style_plan
+            .grid_label_rect_svg_wrap_style(edge.key, ctx.text_style)?;
+        let metrics_style = ctx
+            .edge_style_plan
+            .grid_label_rect_svg_bbox_style(edge.key, &wrap_style)?;
         let prepared = FlowchartSvgLabelRenderPlan::new(
             ctx.svg_label_sidecar,
             Some(owner),
             source,
             ctx.measurer,
-            typography,
+            &wrap_style,
             Some(ctx.wrapping_width),
             true,
             FlowchartSvgWidthMode::Bbox,
         );
         let bbox_top = ctx
             .measurer
-            .measure_svg_create_text_bbox_y_offset_px(prepared.plain_text(), typography);
+            .measure_svg_create_text_bbox_y_offset_px(prepared.plain_text(), &metrics_style);
         write_inner_frame(out, label, &style.group, bbox_top);
         out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
         write_flowchart_svg_label_plan_with_style(out, &prepared, true, Some(&style.text));

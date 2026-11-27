@@ -290,10 +290,21 @@ impl<'a> FlowchartMeasurement<'a> {
         // Grid turns an edge label into its own labelRect node. It inherits node label mode and
         // wrapping width. The helper has no labelType field or ordinary edge-label padding.
         let mode = self.settings.node_wrap_mode;
-        let style = self
-            .edge_style_plan
-            .label_rect_text_style_for(key, self.label_base_style(mode))?;
-        let metrics = measure_flowchart_svg_label_for_layout_with_source_style(
+        let html_class_defs = (mode == WrapMode::HtmlLike && self.settings.edge_html_labels)
+            .then_some(self.class_defs);
+        let style = self.edge_style_plan.grid_label_rect_text_style_for(
+            key,
+            self.label_base_style(mode),
+            mode,
+            html_class_defs,
+        )?;
+        let metrics_style = if mode == WrapMode::SvgLike {
+            self.edge_style_plan
+                .grid_label_rect_svg_bbox_style(key, style.as_ref())?
+        } else {
+            std::borrow::Cow::Borrowed(style.as_ref())
+        };
+        let metrics = measure_flowchart_svg_label_for_layout_with_metrics_and_source_style(
             self.svg_label_sidecar,
             Some(FlowchartSvgLabelOwner::Edge(key.semantic_index())),
             Some(edge.id.as_str()),
@@ -307,6 +318,7 @@ impl<'a> FlowchartMeasurement<'a> {
                 config: self.effective_config,
                 math_renderer: self.math_renderer,
             },
+            &metrics_style,
             Some(&style),
             FlowchartSvgWidthMode::Bbox,
         );
