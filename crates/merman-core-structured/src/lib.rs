@@ -29,6 +29,14 @@ pub mod packet;
 #[doc(hidden)]
 pub mod pie;
 
+#[cfg(feature = "diagram-quadrant-chart")]
+#[doc(hidden)]
+pub mod quadrant_chart;
+
+#[cfg(feature = "diagram-radar")]
+#[doc(hidden)]
+pub mod radar;
+
 #[cfg(feature = "diagram-railroad")]
 pub mod railroad;
 

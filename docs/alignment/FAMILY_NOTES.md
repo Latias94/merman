@@ -817,7 +817,7 @@ an explicit zero still overrides the class radius. Owners:
 Markdown delimiters select the upstream text token; they do not add rich Markdown rendering to this
 family's direct SVG text terminals. Font measurement remains subject to the shared headless boundary.
 
-Owners: [parser](../../crates/merman-core/src/diagrams/quadrant_chart.rs),
+Owners: [parser](../../crates/merman-core-structured/src/quadrant_chart.rs),
 [SVG emitter](../../crates/merman-render-charts/src/quadrantchart/svg.rs), and
 [SVG tests](../../crates/merman-render/tests/quadrantchart_svg_test.rs).
 

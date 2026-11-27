@@ -4,7 +4,6 @@ use crate::sanitize::sanitize_text;
 #[cfg(any(
     feature = "diagram-event-modeling",
     feature = "diagram-packet",
-    feature = "diagram-radar",
     feature = "diagram-wardley"
 ))]
 pub(crate) use merman_core_preprocess::scan::langium::LangiumCommonDbFields;

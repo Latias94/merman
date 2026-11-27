@@ -7,7 +7,7 @@ pub(crate) use merman_markup::url::format_url;
     feature = "diagram-block",
     feature = "diagram-kanban",
     feature = "diagram-packet",
-    feature = "diagram-radar",
+    all(feature = "diagram-radar", feature = "editor-facts"),
     feature = "diagram-wardley",
     feature = "diagram-xychart"
 ))]
@@ -15,9 +15,6 @@ pub(crate) fn format_js_number(value: f64) -> String {
     // Mermaid template strings use Number text, including nonfinite values and unsigned zero.
     ryu_js::Buffer::new().format(value).to_owned()
 }
-
-#[cfg(feature = "diagram-quadrant-chart")]
-pub(crate) use merman_model::number::parse_js_number;
 
 pub(crate) fn cleanup_mermaid_comments(input: &str) -> std::borrow::Cow<'_, str> {
     if !input.contains("%%") {
