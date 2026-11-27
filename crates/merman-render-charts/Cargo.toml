@@ -39,8 +39,10 @@ diagram-treemap = [
     "merman-render-core/root-svg", "merman-render-core/text-layout", "merman-render-core/theme-svg",
 ]
 diagram-venn = [
-    "dep:indexmap", "dep:libm", "dep:merman-model", "dep:merman-render-core", "dep:ryu-js",
-    "dep:serde", "dep:serde_json", "dep:thiserror", "merman-model/diagram-venn",
+    "dep:indexmap", "dep:libm", "dep:merman-markup", "dep:merman-model", "dep:merman-render-core",
+    "dep:merman-theme-contract", "dep:roughr", "dep:ryu-js", "dep:serde", "dep:serde_json",
+    "dep:svgtypes", "dep:thiserror", "merman-model/diagram-venn", "merman-render-core/root-svg",
+    "merman-render-core/rough-svg",
 ]
 diagram-wardley = [
     "dep:cssparser", "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract",
@@ -60,10 +62,12 @@ merman-markup = { workspace = true, features = ["color"], optional = true }
 merman-model = { workspace = true, features = ["presentation-data"], optional = true }
 merman-render-core = { workspace = true, features = ["css-style", "svg-output"], optional = true }
 merman-theme-contract = { workspace = true, optional = true }
+roughr = { workspace = true, optional = true }
 rustc-hash = { workspace = true, optional = true }
 ryu-js = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
+svgtypes = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 
 [dev-dependencies]

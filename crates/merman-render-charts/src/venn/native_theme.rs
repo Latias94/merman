@@ -1,22 +1,28 @@
 use merman_model::presentation::PresentationConfig;
 
-use crate::theme::{Color, FamilyTheme, font_family_css};
+use merman_render_core::{
+    Result, config::config_f64_css_px, mermaid_style::font_family_css,
+    resources::OperationWorkMeter,
+};
+use merman_theme_contract::v2::{Color, FamilyTheme};
+
+use super::{
+    VennDiagramLayout,
+    theme::{VennAreaPaintBinding, VennCssBinding},
+};
 
 const CIRCLE_OPACITY: f64 = 0.45;
 
-pub(crate) fn native_font_size(
+pub(super) fn native_font_size(
     theme: Option<&FamilyTheme>,
     config: &PresentationConfig,
 ) -> Option<f64> {
     let theme = theme?;
     if config.explicit_config_owns_path("themeVariables.fontSize") {
-        return crate::config::config_f64_css_px(
-            config.as_value(),
-            &["themeVariables", "fontSize"],
-        );
+        return config_f64_css_px(config.as_value(), &["themeVariables", "fontSize"]);
     }
     if config.explicit_config_owns_path("fontSize") {
-        return crate::config::config_f64_css_px(config.as_value(), &["fontSize"]);
+        return config_f64_css_px(config.as_value(), &["fontSize"]);
     }
     Some(theme.typography.base_size_px)
 }
@@ -71,14 +77,14 @@ fn contrast_ink(ink: Color, background: Color) -> String {
 }
 
 pub(super) fn apply_paints(
-    binding: &mut super::theme::VennCssBinding,
+    binding: &mut VennCssBinding,
     theme: &FamilyTheme,
     config: &PresentationConfig,
-    layout: &crate::model::VennDiagramLayout,
+    layout: &VennDiagramLayout,
     canvas: Option<Color>,
-    work: &crate::resources::OperationWorkMeter,
-) -> crate::Result<()> {
-    use super::VennAreaPaintBinding::{Circle, Intersection};
+    work: &OperationWorkMeter,
+) -> Result<()> {
+    use VennAreaPaintBinding::{Circle, Intersection};
 
     let roles = &theme.roles;
     let base = canvas.unwrap_or_else(|| roles.canvas.first_color());
@@ -181,86 +187,4 @@ pub(super) fn apply_paints(
         }
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use merman_core::{MermaidEngine, ParseOptions};
-
-    use crate::environment::RenderEnvironment;
-    use crate::svg::{SvgDebugOptions, SvgRenderOptions};
-    use crate::theme::{NativeTheme, ThemeCompiler};
-    use crate::{LayoutOptions, family};
-
-    #[test]
-    fn native_theme_v2_venn_composites_circle_ink_and_preserves_source_paint() {
-        let theme = ThemeCompiler::new()
-            .compile_json(
-                br##"{
-                    "schema_version":2,"extends":"paper",
-                    "roles":{"canvas":"#FFFFFF","text.primary":"#FFFFFF","text.title":"#123456"},
-                    "typography":{"sans":["Venn Body","sans-serif"],"base_size_px":18},
-                    "appearances":{"light":{"data":{"ink":["#15505D","#54216B","#713336","#433511"],"fill":["#CCEEDD","#EEDDEE","#EEDDDD","#EEEEDD"]}}}
-                }"##,
-                None,
-            )
-            .unwrap();
-        let source = concat!(
-            "venn-beta\ntitle Venn Roles\n",
-            "set A[\"Alpha\"]:20\nset B[\"Beta\"]:12\nunion A,B[\"Overlap\"]:3\n",
-            "style A fill:#aabbcc\n",
-        );
-        let parsed = MermaidEngine::new()
-            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-            .unwrap()
-            .unwrap();
-        let prepared = family::prepare(
-            parsed.presentation(),
-            &LayoutOptions::default(),
-            RenderEnvironment::deterministic()
-                .begin_session_with_native_theme(NativeTheme::new(theme))
-                .unwrap(),
-        )
-        .unwrap();
-        let rendered = prepared
-            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-            .unwrap();
-        let dom = roxmltree::Document::parse(rendered.svg()).unwrap();
-        let circles = dom
-            .descendants()
-            .filter(|node| {
-                node.attribute("class").is_some_and(|classes| {
-                    classes
-                        .split_whitespace()
-                        .any(|class| class == "venn-circle")
-                })
-            })
-            .map(|node| {
-                node.children()
-                    .find(|node| node.has_tag_name("path"))
-                    .unwrap()
-                    .attribute("style")
-                    .unwrap()
-            })
-            .collect::<Vec<_>>();
-        assert!(circles[0].contains("fill: #aabbcc; fill-opacity: 0.45;"));
-        assert!(circles[1].contains("fill: #EEDDEE; fill-opacity: 0.45; stroke: #54216B;"));
-        let overlap = dom
-            .descendants()
-            .find(|node| node.has_tag_name("tspan") && node.text() == Some("Overlap"))
-            .unwrap();
-        assert!(
-            overlap
-                .parent_element()
-                .unwrap()
-                .attribute("style")
-                .unwrap()
-                .contains("fill: #000000;")
-        );
-        let title = dom
-            .descendants()
-            .find(|node| node.attribute("class") == Some("venn-title"))
-            .unwrap();
-        assert_eq!(title.attribute("font-size"), Some("22.5px"));
-    }
 }

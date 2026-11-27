@@ -578,7 +578,7 @@ pub(crate) struct SankeyFamilyArtifact<'parsed> {
 #[cfg(feature = "diagram-venn")]
 pub(crate) struct VennFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::venn::VennDiagramModel, VennDiagramLayout>,
-    typography_theme: crate::venn::VennTypographyThemePlan,
+    style: merman_render_charts::venn::VennStyle,
 }
 
 #[derive(Debug)]
@@ -668,8 +668,8 @@ impl<'parsed> VennFamilyArtifact<'parsed> {
         &self.pair
     }
 
-    pub(crate) const fn typography_theme(&self) -> &crate::venn::VennTypographyThemePlan {
-        &self.typography_theme
+    pub(crate) const fn style(&self) -> &merman_render_charts::venn::VennStyle {
+        &self.style
     }
 }
 

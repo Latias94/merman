@@ -1196,10 +1196,12 @@ dependencies = [
  "merman-model",
  "merman-render-core",
  "merman-theme-contract",
+ "roughr-merman",
  "rustc-hash",
  "ryu-js",
  "serde",
  "serde_json",
+ "svgtypes",
  "thiserror 2.0.21",
 ]
 

@@ -20,8 +20,9 @@ The `diagram-treemap` feature provides layout, theme binding, label fitting, and
 emission. `merman-render` supplies the operation's text measurement and viewport context and
 applies the terminal SVG policies.
 
-The `diagram-venn` feature provides the Venn solver and typed layout. `merman-render` binds the
-theme and supplies the operation's work meter and SVG writer.
+The `diagram-venn` feature provides the Venn solver, typed preparation, theme binding, and
+complete classic and hand-drawn SVG emission. `merman-render` supplies the selected theme,
+viewport, and operation context and applies the terminal SVG policies.
 
 The `diagram-wardley` feature provides preparation, typed layout, annotation measurement, theme
 binding, and complete SVG emission. `merman-render` supplies the selected theme, viewport,

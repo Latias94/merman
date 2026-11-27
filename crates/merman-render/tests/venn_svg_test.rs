@@ -682,3 +682,77 @@ fn venn_font_ampersand_is_xml_text_encoded_without_changing_css() {
 
 #[allow(dead_code)]
 mod common;
+
+#[test]
+fn native_theme_v2_venn_composites_circle_ink_and_preserves_source_paint() {
+    use merman_render::theme::{NativeTheme, ThemeCompiler};
+
+    let theme = ThemeCompiler::new()
+        .compile_json(
+            br##"{
+                "schema_version":2,"extends":"paper",
+                "roles":{"canvas":"#FFFFFF","text.primary":"#FFFFFF","text.title":"#123456"},
+                "typography":{"sans":["Venn Body","sans-serif"],"base_size_px":18},
+                "appearances":{"light":{"data":{"ink":["#15505D","#54216B","#713336","#433511"],"fill":["#CCEEDD","#EEDDEE","#EEDDDD","#EEEEDD"]}}}
+            }"##,
+            None,
+        )
+        .unwrap();
+    let source = concat!(
+        "venn-beta\ntitle Venn Roles\n",
+        "set A[\"Alpha\"]:20\nset B[\"Beta\"]:12\nunion A,B[\"Overlap\"]:3\n",
+        "style A fill:#aabbcc\n",
+    );
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let prepared = family::prepare(
+        parsed.presentation(),
+        &LayoutOptions::default(),
+        RenderEnvironment::deterministic()
+            .begin_session_with_native_theme(NativeTheme::new(theme))
+            .unwrap(),
+    )
+    .unwrap();
+    let rendered = prepared
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+    let dom = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let circles = dom
+        .descendants()
+        .filter(|node| {
+            node.attribute("class").is_some_and(|classes| {
+                classes
+                    .split_whitespace()
+                    .any(|class| class == "venn-circle")
+            })
+        })
+        .map(|node| {
+            node.children()
+                .find(|node| node.has_tag_name("path"))
+                .unwrap()
+                .attribute("style")
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+    assert!(circles[0].contains("fill: #aabbcc; fill-opacity: 0.45;"));
+    assert!(circles[1].contains("fill: #EEDDEE; fill-opacity: 0.45; stroke: #54216B;"));
+    let overlap = dom
+        .descendants()
+        .find(|node| node.has_tag_name("tspan") && node.text() == Some("Overlap"))
+        .unwrap();
+    assert!(
+        overlap
+            .parent_element()
+            .unwrap()
+            .attribute("style")
+            .unwrap()
+            .contains("fill: #000000;")
+    );
+    let title = dom
+        .descendants()
+        .find(|node| node.attribute("class") == Some("venn-title"))
+        .unwrap();
+    assert_eq!(title.attribute("font-size"), Some("22.5px"));
+}

@@ -3,16 +3,25 @@ use std::collections::{BTreeMap, HashMap};
 use merman_markup::theme_color::{darken, is_dark, lighten};
 use merman_model::families::venn::VennDiagramModel;
 
-use crate::config::config_string;
-use crate::model::VennDiagramLayout;
+use merman_render_core::{
+    Result,
+    config::{config_diagram_look, config_string},
+    mermaid_style::{
+        is_safe_browser_css_color_value, is_supported_css_color_value, parse_style_declaration,
+    },
+    number_format::canonical_number,
+    resources::OperationWorkMeter,
+};
+
+use crate::venn::VennDiagramLayout;
 
 #[derive(Debug)]
-pub(crate) struct VennCirclePaintBinding {
-    pub(crate) fill: String,
-    pub(crate) text: String,
-    pub(crate) fill_opacity: String,
-    pub(crate) stroke: String,
-    pub(crate) stroke_width: String,
+pub(in crate::venn) struct VennCirclePaintBinding {
+    pub(in crate::venn) fill: String,
+    pub(in crate::venn) text: String,
+    pub(in crate::venn) fill_opacity: String,
+    pub(in crate::venn) stroke: String,
+    pub(in crate::venn) stroke_width: String,
     pub(in crate::venn) source_fill_owned: bool,
     pub(in crate::venn) source_stroke_owned: bool,
     pub(in crate::venn) source_text_owned: bool,
@@ -20,7 +29,7 @@ pub(crate) struct VennCirclePaintBinding {
     pub(in crate::venn) fill_config_role: Option<usize>,
 }
 
-fn circle_text_color(fill: &str, dark: bool) -> crate::Result<String> {
+fn circle_text_color(fill: &str, dark: bool) -> Result<String> {
     Ok(if dark {
         lighten(fill, 30.0)?
     } else {
@@ -29,7 +38,7 @@ fn circle_text_color(fill: &str, dark: bool) -> crate::Result<String> {
 }
 
 #[derive(Debug)]
-pub(crate) enum VennAreaPaintBinding {
+pub(in crate::venn) enum VennAreaPaintBinding {
     Circle(VennCirclePaintBinding),
     Intersection {
         fill: Option<String>,
@@ -48,8 +57,8 @@ struct VennColorDeclaration {
 fn color_declaration(value: &str, svg_fill: bool) -> Option<VennColorDeclaration> {
     let property = if svg_fill { "fill" } else { "color" };
     let source = format!("{property}:{value}");
-    let declaration = crate::mermaid_style::parse_style_declaration(&source)?;
-    if !crate::mermaid_style::is_safe_browser_css_color_value(declaration.value())
+    let declaration = parse_style_declaration(&source)?;
+    if !is_safe_browser_css_color_value(declaration.value())
         && !(svg_fill && declaration.value().eq_ignore_ascii_case("none"))
     {
         return None;
@@ -126,9 +135,22 @@ mod tests {
     use merman_model::families::venn::{VennStyleEntryModel, VennSubsetModel};
     use serde_json::json;
 
-    fn work_meter() -> crate::resources::OperationWorkMeter {
-        crate::resources::OperationWorkMeter::new(
-            crate::resources::RenderResourcePolicy::interactive(),
+    fn work_meter() -> OperationWorkMeter {
+        OperationWorkMeter::new(merman_render_core::resources::RenderResourcePolicy::interactive())
+    }
+
+    fn layout_venn_diagram_typed(
+        model: &VennDiagramModel,
+        diagram_title: Option<&str>,
+        config: &serde_json::Value,
+        resource_policy: merman_render_core::resources::RenderResourcePolicy,
+    ) -> Result<VennDiagramLayout> {
+        crate::venn::layout_venn_diagram_typed_with_work_meter(
+            model,
+            diagram_title,
+            config,
+            None,
+            &OperationWorkMeter::new(resource_policy),
         )
     }
 
@@ -195,11 +217,11 @@ mod tests {
             ]
             .into(),
         });
-        let layout = crate::venn::layout_venn_diagram_typed(
+        let layout = layout_venn_diagram_typed(
             &model,
             None,
             &json!({}),
-            crate::resources::RenderResourcePolicy::interactive(),
+            merman_render_core::resources::RenderResourcePolicy::interactive(),
         )
         .unwrap();
         let binding = VennCssBinding::resolve(
@@ -221,11 +243,11 @@ mod tests {
     #[test]
     fn contrast_uses_background_and_invalid_color_still_errors() {
         let model = model();
-        let layout = crate::venn::layout_venn_diagram_typed(
+        let layout = layout_venn_diagram_typed(
             &model,
             None,
             &json!({}),
-            crate::resources::RenderResourcePolicy::interactive(),
+            merman_render_core::resources::RenderResourcePolicy::interactive(),
         )
         .unwrap();
         let binding = VennCssBinding::resolve(
@@ -247,7 +269,7 @@ mod tests {
                 &layout,
                 &work_meter(),
             ),
-            Err(crate::Error::Color(_))
+            Err(merman_render_core::Error::Color(_))
         ));
     }
 
@@ -272,11 +294,11 @@ mod tests {
             styles: [("color".into(), "var(--label)".into())].into(),
         });
         let config = json!({"venn": {"width": 1200}, "handDrawnSeed": 17});
-        let mut layout = crate::venn::layout_venn_diagram_typed(
+        let mut layout = layout_venn_diagram_typed(
             &model,
             None,
             &config,
-            crate::resources::RenderResourcePolicy::interactive(),
+            merman_render_core::resources::RenderResourcePolicy::interactive(),
         )
         .unwrap();
         let mut intersection = layout.areas[0].clone();
@@ -303,11 +325,11 @@ mod tests {
     #[test]
     fn default_roles_and_palette_match_mermaid_defaults() {
         let model = model();
-        let layout = crate::venn::layout_venn_diagram_typed(
+        let layout = layout_venn_diagram_typed(
             &model,
             None,
             &json!({}),
-            crate::resources::RenderResourcePolicy::interactive(),
+            merman_render_core::resources::RenderResourcePolicy::interactive(),
         )
         .unwrap();
         let binding = VennCssBinding::resolve(
@@ -374,15 +396,15 @@ mod tests {
 }
 
 #[derive(Debug)]
-pub(crate) struct VennCssBinding {
-    pub(crate) title_color: String,
-    pub(crate) set_text_color: Option<String>,
-    pub(crate) text_node_color: Option<String>,
-    pub(crate) inherited_text_fill: Option<String>,
-    pub(crate) areas: Box<[VennAreaPaintBinding]>,
-    pub(crate) text_node_colors: HashMap<String, String>,
-    pub(crate) is_hand_drawn: bool,
-    pub(crate) hand_drawn_seed: Option<f64>,
+pub(in crate::venn) struct VennCssBinding {
+    pub(in crate::venn) title_color: String,
+    pub(in crate::venn) set_text_color: Option<String>,
+    pub(in crate::venn) text_node_color: Option<String>,
+    pub(in crate::venn) inherited_text_fill: Option<String>,
+    pub(in crate::venn) areas: Box<[VennAreaPaintBinding]>,
+    pub(in crate::venn) text_node_colors: HashMap<String, String>,
+    pub(in crate::venn) is_hand_drawn: bool,
+    pub(in crate::venn) hand_drawn_seed: Option<f64>,
 }
 
 impl VennCssBinding {
@@ -412,8 +434,8 @@ impl VennCssBinding {
         config: &serde_json::Value,
         model: &VennDiagramModel,
         layout: &VennDiagramLayout,
-        work_meter: &crate::resources::OperationWorkMeter,
-    ) -> crate::Result<Self> {
+        work_meter: &OperationWorkMeter,
+    ) -> Result<Self> {
         let option = |key: &str| config_string(config, &["themeVariables", key]);
         let dark = is_dark(&option("background").unwrap_or_else(|| "#f4f4f4".into()))?;
         let palette = (1..=8)
@@ -492,14 +514,13 @@ impl VennCssBinding {
                     fill_config_role,
                     fill_opacity: value("fill-opacity").unwrap_or_else(|| "0.1".into()),
                     stroke: value("stroke").unwrap_or_else(|| fill.clone()),
-                    stroke_width: value("stroke-width").unwrap_or_else(|| {
-                        crate::number_format::canonical_number(5.0 * layout.scale).to_string()
-                    }),
+                    stroke_width: value("stroke-width")
+                        .unwrap_or_else(|| canonical_number(5.0 * layout.scale).to_string()),
                     fill,
                     text,
                 }))
             })
-            .collect::<crate::Result<Vec<_>>>()?
+            .collect::<Result<Vec<_>>>()?
             .into_boxed_slice();
         let text_node_colors = layout
             .text_nodes
@@ -517,7 +538,7 @@ impl VennCssBinding {
             || areas.iter().any(|area| match area {
                 VennAreaPaintBinding::Intersection { text, .. } => text
                     .as_deref()
-                    .is_none_or(|color| !crate::mermaid_style::is_supported_css_color_value(color)),
+                    .is_none_or(|color| !is_supported_css_color_value(color)),
                 VennAreaPaintBinding::Circle(_) => false,
             });
         Ok(Self {
@@ -531,7 +552,7 @@ impl VennCssBinding {
             text_node_color: text_node_color.map(|color| color.css),
             areas,
             text_node_colors,
-            is_hand_drawn: crate::config::config_diagram_look(config).as_str() == "handDrawn",
+            is_hand_drawn: config_diagram_look(config).as_str() == "handDrawn",
             hand_drawn_seed: config
                 .get("handDrawnSeed")
                 .and_then(serde_json::Value::as_f64),

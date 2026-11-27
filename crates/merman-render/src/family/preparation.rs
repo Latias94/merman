@@ -981,25 +981,17 @@ fn prepare_venn_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme();
-    let layout = crate::venn::layout_venn_diagram_typed_with_work_meter(
+    let (layout, style) = merman_render_charts::venn::prepare_venn_diagram(
         model,
         meta.title.as_deref(),
-        meta.effective_config.as_value(),
-        crate::venn::native_font_size(native, &meta.effective_config),
-        execution.work_meter_ref(),
-    )?;
-    let typography_theme = crate::venn::VennTypographyThemePlan::resolve(
-        native,
         &meta.effective_config,
-        &layout,
-        model,
+        execution.native_family_theme(),
         execution.family.session().canvas_background(),
         execution.work_meter_ref(),
     )?;
     Ok(BuiltinFamilyArtifact::Venn(Box::new(VennFamilyArtifact {
         pair: FamilyPair::new(model, layout),
-        typography_theme,
+        style,
     })))
 }
 

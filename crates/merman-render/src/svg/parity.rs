@@ -238,8 +238,7 @@ mod requirement;
     feature = "diagram-requirement",
     feature = "diagram-state",
     feature = "diagram-swimlane",
-    feature = "diagram-usecase",
-    feature = "diagram-venn"
+    feature = "diagram-usecase"
 ))]
 #[cfg_attr(
     not(feature = "all-diagrams"),
@@ -298,8 +297,6 @@ mod usecase;
     )
 )]
 mod util;
-#[cfg(feature = "diagram-venn")]
-mod venn;
 #[cfg(feature = "diagram-xychart")]
 mod xychart;
 #[cfg(feature = "diagram-zenuml")]
@@ -947,8 +944,7 @@ impl<'a> SvgExecution<'a> {
         feature = "diagram-requirement",
         feature = "diagram-state",
         feature = "diagram-swimlane",
-        feature = "diagram-usecase",
-        feature = "diagram-venn"
+        feature = "diagram-usecase"
     ))]
     pub(crate) fn rough_randomness(
         &self,
@@ -1446,13 +1442,21 @@ fn render_builtin_family_artifact_raw(
             )
         }
         #[cfg(feature = "diagram-venn")]
-        BuiltinFamilyArtifact::Venn(artifact) => venn::render_venn_diagram_svg_model(
-            artifact.pair().layout(),
-            artifact.pair().semantic(),
-            artifact.typography_theme(),
-            title,
-            options,
-        ),
+        BuiltinFamilyArtifact::Venn(artifact) => {
+            let diagram_id = options.diagram_id_or("venn");
+            merman_render_charts::venn::render_venn_svg(
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
+                artifact.style(),
+                title,
+                &merman_render_charts::venn::VennSvgContext {
+                    diagram_id,
+                    viewport: options.root_viewport(crate::DiagramFamilyId::VENN, diagram_id),
+                    work_meter: options.work_meter(),
+                    operation: options.family.session().operation_context(),
+                },
+            )
+        }
         #[cfg(feature = "diagram-block")]
         BuiltinFamilyArtifact::Block(artifact) => block::render_block_diagram_svg_model_with_theme(
             artifact.pair().layout(),
@@ -1639,8 +1643,7 @@ mod operation_time_tests {
         feature = "diagram-requirement",
         feature = "diagram-state",
         feature = "diagram-swimlane",
-        feature = "diagram-usecase",
-        feature = "diagram-venn"
+        feature = "diagram-usecase"
     )
 ))]
 mod operation_rough_seed_tests {

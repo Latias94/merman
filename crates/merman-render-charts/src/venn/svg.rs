@@ -1,9 +1,41 @@
-use super::super::roughjs_common::{controlled, ops_to_svg_path_d};
-use super::super::*;
+use std::{collections::HashMap, fmt::Write as _, str::FromStr as _};
+
 use merman_markup::theme_color::transparentize;
-use merman_model::families::venn::VennDiagramModel;
-use std::collections::HashMap;
-use std::str::FromStr as _;
+use merman_model::{OperationPhase, families::venn::VennDiagramModel, runtime::OperationContext};
+use merman_render_core::{
+    Error, Result,
+    number_format::canonical_number as fmt,
+    resources::OperationWorkMeter,
+    root_svg,
+    rough_svg::{controlled, ops_to_svg_path_d},
+    svg_css::SvgId,
+    svg_output::{BoundedSvgOutput, SvgOutput, XmlTextOutput},
+    xml::{escape_attr, escape_xml},
+};
+use roughr::core::{RoughJsSeed, RoughMathRandom, RoughRandomness};
+
+use super::{
+    VENN_TITLE_CLASS, VennAreaLayout, VennCircleLayout, VennDiagramLayout, VennStyle,
+    VennTextNodeLayout, rendered_area_label, rendered_text_node_label, theme::VennAreaPaintBinding,
+};
+
+/// The host's root projection and operation state for Venn emission.
+pub struct VennSvgContext<'a> {
+    pub diagram_id: SvgId<'a>,
+    pub viewport: root_svg::RootViewportContext<'a>,
+    pub work_meter: &'a OperationWorkMeter,
+    pub operation: &'a OperationContext,
+}
+
+fn rough_randomness(configured_seed: Option<f64>, operation: &OperationContext) -> RoughRandomness {
+    let seed = configured_seed
+        .filter(|seed| *seed != 0.0)
+        .unwrap_or_else(|| operation.derive_nonzero_u64("render.root", 0).get() as f64);
+    RoughRandomness::new(
+        RoughJsSeed::new(seed),
+        RoughMathRandom::new(operation.derive_u64("render.venn.roughjs", 0)),
+    )
+}
 
 fn stable_sets_key(sets: &[String]) -> String {
     sets.join("|")
@@ -48,13 +80,13 @@ fn parse_stroke_width(value: &str) -> Option<f32> {
 }
 
 fn rough_circle_paths(
-    circle: &crate::model::VennCircleLayout,
+    circle: &VennCircleLayout,
     base_color: &str,
     stroke_color: &str,
     stroke_width: f32,
     hachure_angle: f32,
-    randomness: &roughr::core::RoughRandomness,
-    work_meter: &crate::resources::OperationWorkMeter,
+    randomness: &RoughRandomness,
+    work_meter: &OperationWorkMeter,
 ) -> Result<(String, String)> {
     let options = roughr::core::OptionsBuilder::default()
         .randomness(randomness.clone())
@@ -71,16 +103,15 @@ fn rough_circle_paths(
         .disable_multi_stroke_fill(false)
         .build()
         .map_err(|error| invalid_rough_options("circle", error))?;
-    let drawable =
-        controlled::generate(work_meter, merman_model::OperationPhase::Emit, |control| {
-            roughr::generator::Generator::default().circle_with_control::<f64>(
-                circle.x,
-                circle.y,
-                circle.radius * 2.0,
-                &Some(options),
-                control,
-            )
-        })?;
+    let drawable = controlled::generate(work_meter, OperationPhase::Emit, |control| {
+        roughr::generator::Generator::default().circle_with_control::<f64>(
+            circle.x,
+            circle.y,
+            circle.radius * 2.0,
+            &Some(options),
+            control,
+        )
+    })?;
     let mut fill_path = None;
     let mut stroke_path = None;
     for set in drawable.sets {
@@ -104,8 +135,8 @@ fn rough_circle_paths(
 fn rough_intersection_fill_path(
     path: &str,
     fill: &str,
-    randomness: &roughr::core::RoughRandomness,
-    work_meter: &crate::resources::OperationWorkMeter,
+    randomness: &RoughRandomness,
+    work_meter: &OperationWorkMeter,
 ) -> Result<String> {
     let mut options = roughr::core::OptionsBuilder::default()
         .randomness(randomness.clone())
@@ -125,23 +156,21 @@ fn rough_intersection_fill_path(
     let distance = (1.0 + options.roughness.unwrap_or(1.0) as f64) / 2.0;
     // RoughJS computes the outline even when `stroke: none`, so its PRNG state advances before
     // the cross-hatch fill is generated. The discarded operation is part of seeded parity.
-    let fill_path =
-        controlled::generate(work_meter, merman_model::OperationPhase::Emit, |control| {
-            let segments = roughr::points_on_path::normalized_path_with_control(path, control)?;
-            let mut polygons = roughr::points_on_path::points_on_normalized_segments_with_control::<
-                f64,
-            >(&segments, Some(1.0), Some(distance), control)?;
-            let _discarded_outline = roughr::renderer::svg_normalized_segments_with_control::<f64>(
-                &segments,
-                &mut options,
-                control,
-            )?;
-            roughr::renderer::hachure_fill_polygons_with_control(
-                &mut polygons,
-                &mut options,
-                control,
-            )
-        })?;
+    let fill_path = controlled::generate(work_meter, OperationPhase::Emit, |control| {
+        let segments = roughr::points_on_path::normalized_path_with_control(path, control)?;
+        let mut polygons = roughr::points_on_path::points_on_normalized_segments_with_control::<f64>(
+            &segments,
+            Some(1.0),
+            Some(distance),
+            control,
+        )?;
+        let _discarded_outline = roughr::renderer::svg_normalized_segments_with_control::<f64>(
+            &segments,
+            &mut options,
+            control,
+        )?;
+        roughr::renderer::hachure_fill_polygons_with_control(&mut polygons, &mut options, control)
+    })?;
     if fill_path.op_set_type != roughr::core::OpSetType::FillSketch {
         return Err(Error::InvalidModel {
             message: "Venn RoughJS intersection did not produce a sketch fill path".to_string(),
@@ -152,7 +181,7 @@ fn rough_intersection_fill_path(
 
 fn write_area_label(
     out: &mut impl SvgOutput,
-    area: &crate::model::VennAreaLayout,
+    area: &VennAreaLayout,
     font_size: f64,
     text_color: Option<&str>,
 ) -> Result<()> {
@@ -165,20 +194,19 @@ fn write_area_label(
         x = fmt(area.text_x),
         y = fmt(area.text_y),
         font_size = fmt(font_size),
-        label = escape_xml(crate::venn::rendered_area_label(area)),
+        label = escape_xml(rendered_area_label(area)),
     );
     out.checkpoint()
 }
 
 fn root_open(
     out: &mut impl SvgOutput,
-    diagram_id: SvgDiagramId<'_>,
     layout: &VennDiagramLayout,
     aria_labelledby: Option<&str>,
     aria_describedby: Option<&str>,
-    options: &SvgExecution<'_>,
+    context: &VennSvgContext<'_>,
 ) -> Result<root_svg::RootDocument> {
-    let mut root_chrome = root_svg::RootChrome::new(diagram_id, "venn");
+    let mut root_chrome = root_svg::RootChrome::new(context.diagram_id, "venn");
     root_chrome.aria_labelledby = aria_labelledby;
     root_chrome.aria_describedby = aria_describedby;
     root_chrome.dom = root_svg::RootDomProfile {
@@ -187,26 +215,25 @@ fn root_open(
         trailing_newline: false,
         ..root_svg::RootDomProfile::default()
     };
-    options
-        .root_viewport(crate::DiagramFamilyId::VENN, diagram_id)
-        .write_open(
-            out,
-            root_svg::RootViewportSpec::mermaid(
-                root_svg::DiagramBounds::from_view_box(0.0, 0.0, layout.width, layout.height),
-                layout.use_max_width,
-            ),
-            root_chrome,
-        )
+    context.viewport.write_open(
+        out,
+        root_svg::RootViewportSpec::mermaid(
+            root_svg::DiagramBounds::from_view_box(0.0, 0.0, layout.width, layout.height),
+            layout.use_max_width,
+        ),
+        root_chrome,
+    )
 }
 
-pub(crate) fn render_venn_diagram_svg_model(
+/// Emits the complete Venn document before shared terminal processing.
+pub fn render_venn_svg(
     layout: &VennDiagramLayout,
     model: &VennDiagramModel,
-    typography_theme: &crate::venn::VennTypographyThemePlan,
+    style: &VennStyle,
     diagram_title: Option<&str>,
-    options: &SvgExecution<'_>,
+    context: &VennSvgContext<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id_or("venn");
+    let diagram_id = context.diagram_id;
     let title = model
         .title
         .as_deref()
@@ -228,14 +255,13 @@ pub(crate) fn render_venn_diagram_svg_model(
     let aria_labelledby = has_acc_title.then(|| format!("chart-title-{diagram_id}"));
     let aria_describedby = has_acc_descr.then(|| format!("chart-desc-{diagram_id}"));
 
-    let mut out = BoundedSvgOutput::new(options.work_meter());
+    let mut out = BoundedSvgOutput::new(context.work_meter);
     let root_document = root_open(
         &mut out,
-        diagram_id,
         layout,
         aria_labelledby.as_deref(),
         aria_describedby.as_deref(),
-        options,
+        context,
     )?;
     out.checkpoint()?;
 
@@ -258,11 +284,11 @@ pub(crate) fn render_venn_diagram_svg_model(
         out.checkpoint()?;
     }
 
-    let theme = typography_theme.css_binding();
+    let theme = style.css_binding();
     let title_fill = theme.title_color.as_str();
-    let css = typography_theme.stylesheet(diagram_id.semantic_str());
+    let css = style.stylesheet(diagram_id.semantic_str());
     out.push_str("<style>");
-    super::super::output::XmlTextOutput::new(&mut out).push_str(&css);
+    XmlTextOutput::new(&mut out).push_str(&css);
     out.push_str("</style>");
     drop(css);
     out.checkpoint()?;
@@ -270,11 +296,11 @@ pub(crate) fn render_venn_diagram_svg_model(
     out.checkpoint()?;
 
     if let Some(title) = title {
-        let title_size = typography_theme.title_font_size(layout.scale);
+        let title_size = style.title_font_size(layout.scale);
         let _ = write!(
             &mut out,
             r#"<text class="{class}" font-size="{font_size}px" text-anchor="middle" dominant-baseline="middle" x="50%" y="{y}" style="fill: {fill};">{text}</text>"#,
-            class = crate::venn::VENN_TITLE_CLASS,
+            class = VENN_TITLE_CLASS,
             font_size = fmt(title_size),
             y = fmt(title_size),
             fill = escape_xml(title_fill),
@@ -291,16 +317,13 @@ pub(crate) fn render_venn_diagram_svg_model(
     out.checkpoint()?;
 
     let is_hand_drawn = theme.is_hand_drawn;
-    let hand_drawn_seed = options.rough_randomness(
-        theme.hand_drawn_seed.unwrap_or(options.seed() as f64),
-        "render.venn.roughjs",
-    );
+    let hand_drawn_seed = rough_randomness(theme.hand_drawn_seed, context.operation);
     let mut circle_index = 0usize;
-    let area_font_size = typography_theme.area_font_size(layout.scale);
+    let area_font_size = style.area_font_size(layout.scale);
 
     for (area, paint) in layout.areas.iter().zip(&theme.areas) {
         let sets_key = stable_sets_key(&area.sets);
-        if let crate::venn::VennAreaPaintBinding::Circle(paint) = paint {
+        if let VennAreaPaintBinding::Circle(paint) = paint {
             let base_color = &paint.fill;
             let fill_opacity = paint.fill_opacity.as_str();
             let stroke_color = paint.stroke.as_str();
@@ -332,7 +355,7 @@ pub(crate) fn render_venn_diagram_svg_model(
                     stroke_width_value,
                     -41.0 + circle_index as f32 * 60.0,
                     &hand_drawn_seed,
-                    options.work_meter(),
+                    context.work_meter,
                 )?;
                 let fill_stroke = transparentize(base_color, 0.7)?;
                 let _ = write!(
@@ -361,7 +384,7 @@ pub(crate) fn render_venn_diagram_svg_model(
             out.push_str("</g>");
             out.checkpoint()?;
             circle_index += 1;
-        } else if let crate::venn::VennAreaPaintBinding::Intersection { fill, text, .. } = paint {
+        } else if let VennAreaPaintBinding::Intersection { fill, text, .. } = paint {
             let custom_fill = fill.as_deref();
             let text_color = text.as_deref();
             let _ = write!(
@@ -376,7 +399,7 @@ pub(crate) fn render_venn_diagram_svg_model(
                         &area.path,
                         fill,
                         &hand_drawn_seed,
-                        options.work_meter(),
+                        context.work_meter,
                     )?;
                     let fill_stroke = transparentize(fill, 0.3)?;
                     let _ = write!(
@@ -413,8 +436,7 @@ pub(crate) fn render_venn_diagram_svg_model(
     }
 
     if !layout.text_areas.is_empty() {
-        let mut nodes_by_key: HashMap<String, Vec<&crate::model::VennTextNodeLayout>> =
-            HashMap::new();
+        let mut nodes_by_key: HashMap<String, Vec<&VennTextNodeLayout>> = HashMap::new();
         for node in &layout.text_nodes {
             nodes_by_key
                 .entry(stable_sets_key(&node.sets))
@@ -469,7 +491,7 @@ pub(crate) fn render_venn_diagram_svg_model(
                     span_style.push_str(text_color);
                     span_style.push(';');
                 }
-                let label = crate::venn::rendered_text_node_label(node);
+                let label = rendered_text_node_label(node);
                 let _ = write!(
                     &mut out,
                     r#"<foreignObject class="venn-text-node-fo" width="{width}" height="{height}" x="{x}" y="{y}" overflow="visible"><span xmlns="http://www.w3.org/1999/xhtml" class="venn-text-node" style="{style}">{label}</span></foreignObject>"#,
@@ -498,6 +520,27 @@ mod tests {
     use super::*;
     use std::fmt;
     use std::ops::Range;
+
+    #[test]
+    fn venn_rough_seed_preserves_root_fallback_and_family_stream() {
+        use merman_model::runtime::RuntimePolicy;
+
+        let operation = RuntimePolicy::deterministic().begin_operation().unwrap();
+        let fallback = operation.derive_nonzero_u64("render.root", 0).get() as f64;
+        let stream = operation.derive_u64("render.venn.roughjs", 0);
+        for (configured, expected) in [
+            (None, fallback),
+            (Some(0.0), fallback),
+            (Some(-0.0), fallback),
+            (Some(-1.0), -1.0),
+            (Some(1.75), 1.75),
+            (Some(4_294_967_297.0), 4_294_967_297.0),
+        ] {
+            let randomness = rough_randomness(configured, &operation);
+            assert_eq!(randomness.seed().number(), expected);
+            assert_eq!(randomness.math_random().initial_seed(), stream);
+        }
+    }
 
     #[test]
     fn venn_controlled_cross_hatch_keeps_invisible_outline_and_following_prng() {
@@ -533,8 +576,8 @@ mod tests {
             );
             let _discarded = roughr::renderer::svg_path::<f64>(path.into(), &mut expected_options);
             let expected = roughr::renderer::pattern_fill_polygons(polygons, &mut expected_options);
-            let meter = crate::resources::OperationWorkMeter::new(
-                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            let meter = OperationWorkMeter::new(
+                merman_render_core::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
             );
             let actual =
                 rough_intersection_fill_path(path, "#123456", &actual_randomness, &meter).unwrap();
@@ -602,14 +645,14 @@ mod tests {
             self.retained.as_str()
         }
 
-        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()> {
+        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> Result<()> {
             self.retained.replace_range(range, replacement);
             Ok(())
         }
 
-        fn checkpoint(&mut self) -> crate::Result<()> {
+        fn checkpoint(&mut self) -> Result<()> {
             if self.rejected {
-                Err(crate::Error::InvalidModel {
+                Err(Error::InvalidModel {
                     message: "test SVG sink rejected the first write".to_string(),
                 })
             } else {
@@ -621,7 +664,7 @@ mod tests {
     #[test]
     fn venn_area_label_stops_after_the_first_svg_sink_failure() {
         let mut out = RejectAfterFirstWrite::default();
-        let area = crate::model::VennAreaLayout {
+        let area = VennAreaLayout {
             sets: vec!["A".to_string()],
             size: 1.0,
             label: Some("Alpha".to_string()),
@@ -635,7 +678,7 @@ mod tests {
         let error = write_area_label(&mut out, &area, 24.0, Some("#111111"))
             .expect_err("the rejecting sink must stop Venn label emission");
 
-        assert!(matches!(error, crate::Error::InvalidModel { .. }));
+        assert!(matches!(error, Error::InvalidModel { .. }));
         assert_eq!(
             out.write_attempts, 1,
             "Venn label emission must stop at the first failed sink checkpoint"

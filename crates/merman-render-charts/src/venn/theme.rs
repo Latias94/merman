@@ -1,56 +1,49 @@
 use std::fmt::Write as _;
 
-use merman_model::presentation::PresentationConfig;
-use merman_render_charts::venn::VennFontSizes;
+use merman_model::{families::venn::VennDiagramModel, presentation::PresentationConfig};
+use merman_render_core::{
+    Result, config::config_font_family_css, resources::OperationWorkMeter,
+    svg_css::escape_css_identifier,
+};
+use merman_theme_contract::v2::{Color, FamilyTheme};
 
-use crate::model::VennDiagramLayout;
-use crate::resources::OperationWorkMeter;
-use crate::theme::{Color, FamilyTheme};
+use super::{VennDiagramLayout, VennFontSizes, native_theme};
 
 mod css_binding;
-pub(crate) use css_binding::{VennAreaPaintBinding, VennCssBinding};
+pub(super) use css_binding::{VennAreaPaintBinding, VennCssBinding};
 
-/// Final Venn inherited font stack shared by its four local stylesheet selectors.
+/// The paint and typography resolved for a Venn diagram.
 #[derive(Debug)]
-pub(crate) struct VennTypographyThemePlan {
+pub struct VennStyle {
     css_binding: VennCssBinding,
-    native: Option<super::native_theme::VennNativeTypography>,
+    native: Option<native_theme::VennNativeTypography>,
     font_family_css: String,
 }
 
-impl VennTypographyThemePlan {
-    pub(crate) fn resolve(
+impl VennStyle {
+    pub(super) fn resolve(
         theme: Option<&FamilyTheme>,
         config: &PresentationConfig,
         layout: &VennDiagramLayout,
-        model: &merman_model::families::venn::VennDiagramModel,
+        model: &VennDiagramModel,
         canvas: Option<Color>,
         work: &OperationWorkMeter,
-    ) -> crate::Result<Self> {
+    ) -> Result<Self> {
         let mut css_binding = VennCssBinding::resolve(config.as_value(), model, layout, work)?;
         let native = if let Some(theme) = theme {
-            super::native_theme::apply_paints(
-                &mut css_binding,
-                theme,
-                config,
-                layout,
-                canvas,
-                work,
-            )?;
-            Some(super::native_theme::VennNativeTypography::resolve(
-                theme, config,
-            ))
+            native_theme::apply_paints(&mut css_binding, theme, config, layout, canvas, work)?;
+            Some(native_theme::VennNativeTypography::resolve(theme, config))
         } else {
             None
         };
         Ok(Self {
             css_binding,
             native,
-            font_family_css: crate::config::config_font_family_css(config),
+            font_family_css: config_font_family_css(config),
         })
     }
 
-    pub(crate) fn title_font_size(&self, scale: f64) -> f64 {
+    pub(super) fn title_font_size(&self, scale: f64) -> f64 {
         VennFontSizes::new(
             self.native.as_ref().and_then(|native| native.base_size),
             scale,
@@ -58,7 +51,7 @@ impl VennTypographyThemePlan {
         .title
     }
 
-    pub(crate) fn area_font_size(&self, scale: f64) -> f64 {
+    pub(super) fn area_font_size(&self, scale: f64) -> f64 {
         VennFontSizes::new(
             self.native.as_ref().and_then(|native| native.base_size),
             scale,
@@ -66,19 +59,19 @@ impl VennTypographyThemePlan {
         .area
     }
 
-    pub(crate) fn css_binding(&self) -> &VennCssBinding {
+    pub(super) fn css_binding(&self) -> &VennCssBinding {
         &self.css_binding
     }
 
-    pub(crate) fn font_family_css(&self) -> &str {
+    fn font_family_css(&self) -> &str {
         self.native
             .as_ref()
             .and_then(|native| native.body_family.as_deref())
             .unwrap_or(&self.font_family_css)
     }
 
-    pub(crate) fn stylesheet(&self, diagram_id: &str) -> String {
-        let id = crate::svg::escape_css_identifier(diagram_id);
+    pub(super) fn stylesheet(&self, diagram_id: &str) -> String {
+        let id = escape_css_identifier(diagram_id);
         let mut css = String::new();
         if let Some(fill) = &self.css_binding.inherited_text_fill {
             let _ = write!(css, "#{id}{{fill:{fill};}}");
