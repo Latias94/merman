@@ -17,6 +17,7 @@ use merman_render_core::{
     resources::OperationWorkMeter,
     root_svg::{self, RootViewportContext},
     svg_output::SvgOutputProfile,
+    text::svg_label::SVG_SOURCE_WORD_LINE_HEIGHT_EM,
     text::{FontStyle, parse_css_font_stack},
 };
 use merman_theme_contract::v2::{Color, Elevation, MarkerStyle, Paint, Texture};
@@ -268,12 +269,14 @@ fn admit_edge(
     Ok(end.is_some())
 }
 
-fn plain_node_items<'a>(
+fn append_plain_node_items<'a>(
     ctx: &'a FlowchartRenderCtx<'_>,
     id: &str,
     font: SceneTextStyle<'a>,
     width: f64,
-) -> Result<[SceneItem<'a>; 2]> {
+    items: &mut Vec<SceneItem<'a>>,
+    element_count: &mut usize,
+) -> Result<()> {
     let meter = ctx.work_meter;
     meter.checkpoint(OperationPhase::Emit)?;
     let node = ctx
@@ -342,12 +345,16 @@ fn plain_node_items<'a>(
     );
     let wrapped = plan.wrapped_lines();
     meter.checkpoint(OperationPhase::Emit)?;
-    let [line] = wrapped.as_ref() else {
-        return Err(unsupported(meter, "flowchart-single-row-label"));
-    };
-    // The parity writer emits one space between the measured words. Borrow the
-    // authored label if its sole row has exactly that representation.
-    if !line.iter().map(String::as_str).eq(label.split(' ')) {
+    // A literal label can lend its row text when the prepared wrapping only moved
+    // whole words between rows and the parity writer separates them with one space.
+    if wrapped.is_empty()
+        || wrapped.iter().any(Vec::is_empty)
+        || !wrapped
+            .iter()
+            .flatten()
+            .map(String::as_str)
+            .eq(label.split(' '))
+    {
         return Err(unsupported(meter, "flowchart-literal-label"));
     }
     let coordinates = [
@@ -386,27 +393,40 @@ fn plain_node_items<'a>(
         Some(color) => resolved_color(color, meter)?,
         None => font.fill,
     };
-    Ok([
-        SceneItem::Rect(SceneRect {
-            bounds: SceneBox {
-                x: x + rect.x0,
-                y: y + rect.y0,
-                width: rect.width(),
-                height: rect.height(),
-            },
-            radius,
-            paint: ScenePaint {
-                fill: Some(fill),
-                stroke: Some(SceneStroke {
-                    color: border,
-                    width,
-                    dash: None,
-                }),
-            },
-        }),
-        SceneItem::Text(SceneText {
-            text: label,
-            position: [x, y - height / 2.0],
+    let extra_rows = wrapped.len() - 1;
+    if extra_rows != 0 {
+        *element_count = element_count
+            .checked_add(extra_rows)
+            .ok_or_else(|| meter.arithmetic_overflow())?;
+        meter.preflight_svg_element_count(*element_count, OperationPhase::Emit)?;
+        meter.charge_emit_work(extra_rows)?;
+    }
+    reserve(items, 1 + wrapped.len())?;
+    items.push(SceneItem::Rect(SceneRect {
+        bounds: SceneBox {
+            x: x + rect.x0,
+            y: y + rect.y0,
+            width: rect.width(),
+            height: rect.height(),
+        },
+        radius,
+        paint: ScenePaint {
+            fill: Some(fill),
+            stroke: Some(SceneStroke {
+                color: border,
+                width,
+                dash: None,
+            }),
+        },
+    }));
+    let label_top = y - height / 2.0;
+    let line_step = font.size * SVG_SOURCE_WORD_LINE_HEIGHT_EM;
+    let mut start = 0;
+    for (index, words) in wrapped.iter().enumerate() {
+        let end = start + words.iter().map(|word| word.len() + 1).sum::<usize>() - 1;
+        items.push(SceneItem::Text(SceneText {
+            text: &label[start..end],
+            position: [x, label_top + index as f64 * line_step],
             dy: font.size,
             anchor: SceneTextAnchor::Middle,
             baseline: SceneTextBaseline::Alphabetic,
@@ -414,8 +434,10 @@ fn plain_node_items<'a>(
                 fill: text_fill,
                 ..font
             },
-        }),
-    ])
+        }));
+        start = end + 1;
+    }
+    Ok(())
 }
 
 fn reserve(items: &mut Vec<impl Sized>, additional: usize) -> Result<()> {
@@ -452,7 +474,7 @@ fn render_scene(
         .checked_mul(2)
         .and_then(|count| count.checked_add(edges.len()))
         .ok_or_else(|| meter.arithmetic_overflow())?;
-    let element_count = item_count
+    let mut element_count = item_count
         .checked_add(
             2 + usize::from(!edges.is_empty())
                 + usize::from(canvas.is_some())
@@ -490,7 +512,14 @@ fn render_scene(
     let mut items = Vec::new();
     reserve(&mut items, item_count)?;
     for id in nodes {
-        items.extend(plain_node_items(ctx, id, text_style, node_width)?);
+        append_plain_node_items(
+            ctx,
+            id,
+            text_style,
+            node_width,
+            &mut items,
+            &mut element_count,
+        )?;
     }
     let edge_layer_start = items.len();
     let bounds = prepare_flowchart_rendered_bounds(
@@ -570,6 +599,7 @@ fn render_scene(
         )?
         .view_box()
         .ok_or_else(|| invalid("Flowchart compact viewport has no viewBox"))?;
+    reserve(&mut items, ranges.len())?;
     for (span, marker) in ranges {
         items.push(SceneItem::Path(ScenePath {
             commands: &commands[span],

@@ -101,8 +101,9 @@ let svg = Renderer::new().render_svg_with(
 
 - With `diagram-sequence`, the producer uses the prepared layout for classic rectangular
   participants, plain notes, activation bars, and supported straight messages.
-- With `diagram-flowchart`, the producer supports classic, ungrouped diagrams with plain,
-  single-row rectangular node labels and unlabeled edges. Disable `htmlLabels` for either backend.
+- With `diagram-flowchart`, the producer supports classic, ungrouped diagrams with rectangular
+  nodes and unlabeled edges. Plain node labels may wrap between whole words. Disable `htmlLabels`
+  for either backend.
   - With `layout-dagre`, select `layout: dagre` and set `flowchart.curve: linear` to reuse clipped
     linear routes.
   - With `layout-elk`, select `layout: elk`, keep the default `rounded` curve, and set

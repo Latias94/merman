@@ -117,6 +117,84 @@ fn compact_flowchart_keeps_the_prepared_dagre_shafts() {
 
 #[cfg(feature = "layout-dagre")]
 #[test]
+fn compact_flowchart_reuses_wrapped_literal_rows_and_charges_their_elements() {
+    let config = FLOWCHART_CONFIG.replace(
+        "    curve: linear",
+        "    curve: linear\n    wrappingWidth: 72",
+    );
+    let source = "flowchart LR\nA[One two three four five six]";
+    let parity = render_with_config(&config, source, SvgRequest::default()).unwrap();
+    let compact = render_with_config(&config, source, compact_request()).unwrap();
+    let parity = roxmltree::Document::parse(&parity).unwrap();
+    let compact_dom = roxmltree::Document::parse(&compact).unwrap();
+    let (parity_rows, parity_baselines): (Vec<_>, Vec<_>) = parity
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("tspan")
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_ascii_whitespace()
+                        .any(|name| name == "text-outer-tspan")
+                })
+        })
+        .map(|node| {
+            let text = node
+                .descendants()
+                .filter(roxmltree::Node::is_text)
+                .filter_map(|word| word.text())
+                .collect::<String>();
+            let em = |attribute| {
+                node.attribute(attribute)
+                    .unwrap()
+                    .strip_suffix("em")
+                    .unwrap()
+                    .parse::<f64>()
+                    .unwrap()
+            };
+            (text, em("y") + em("dy"))
+        })
+        .unzip();
+    assert!(parity_rows.len() > 1);
+    let mut rows = Vec::new();
+    let mut positions = Vec::new();
+    for label in compact_dom
+        .descendants()
+        .filter(|node| node.has_tag_name("text"))
+    {
+        rows.push(label.text().expect("literal row"));
+        let y = label.attribute("y").unwrap().parse::<f64>().unwrap();
+        let font_size = label.attribute("dy").unwrap().parse::<f64>().unwrap();
+        positions.push((y + font_size) / font_size);
+    }
+    assert_eq!(rows, parity_rows);
+    for (actual, expected) in positions.windows(2).zip(parity_baselines.windows(2)) {
+        assert!(((actual[1] - actual[0]) - (expected[1] - expected[0])).abs() < 1e-6);
+    }
+    let elements = compact_dom
+        .descendants()
+        .filter(roxmltree::Node::is_element)
+        .count();
+    let render_capped = |maximum| {
+        let mut request = compact_request();
+        request.environment = request.environment.with_resource_policy(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxSvgElements, maximum)
+                .unwrap(),
+        );
+        render_with_config(&config, source, request)
+    };
+    assert_eq!(render_capped(elements).unwrap(), compact);
+    let RenderError::ResourceLimitExceeded(limit) = render_capped(elements - 1).unwrap_err() else {
+        panic!("expected the SVG element limit");
+    };
+    assert_eq!(
+        (limit.id, limit.actual, limit.maximum),
+        ("max_svg_elements", elements as u64, (elements - 1) as u64)
+    );
+}
+
+#[cfg(feature = "layout-dagre")]
+#[test]
 fn compact_flowchart_keeps_the_native_label_weight() {
     let source = "flowchart LR\nA[Plan]";
     let theme = ThemeSelection::preset(BuiltinPreset::Monograph, None);

@@ -120,6 +120,9 @@ pub fn write_measured_svg_title(
     write_svg_text_source_word_lines_impl(out, lines, Some(style), false, font_weight, length);
 }
 
+/// Vertical separation between Mermaid's literal SVG label rows, in em.
+pub const SVG_SOURCE_WORD_LINE_HEIGHT_EM: f64 = 1.1;
+
 fn write_svg_text_source_word_lines_impl(
     out: &mut impl SvgOutput,
     lines: &[Vec<String>],
@@ -131,13 +134,20 @@ fn write_svg_text_source_word_lines_impl(
     open_svg_text(out, style, center_text, text_length);
 
     if lines.len() == 1 && lines[0].is_empty() {
-        write_empty_tspan(out, center_text, true, 1.1);
+        write_empty_tspan(out, center_text, true, SVG_SOURCE_WORD_LINE_HEIGHT_EM);
         out.push_str("</text>");
         return;
     }
 
     for (line_index, words) in lines.iter().enumerate() {
-        open_tspan(out, line_index, center_text, true, 1.1, false);
+        open_tspan(
+            out,
+            line_index,
+            center_text,
+            true,
+            SVG_SOURCE_WORD_LINE_HEIGHT_EM,
+            false,
+        );
         for (word_index, word) in words.iter().enumerate() {
             write_svg_text_inner_word(
                 out,
