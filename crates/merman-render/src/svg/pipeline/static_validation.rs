@@ -7,12 +7,6 @@ use cssparser::{
 use std::collections::{BTreeSet, HashMap, HashSet};
 use svgtypes::{Length, LengthUnit, NumberListParser};
 
-use super::builtin::attr_sanitize::{is_safe_data_image_url, matches_active_svg_element};
-use super::builtin::css_sanitize::{
-    CssValidationError, matches_external_image_function,
-    validate_resvg_css_declaration_list_with_checkpoints,
-    validate_resvg_css_stylesheet_with_checkpoints,
-};
 use super::final_validation::{
     ReferenceDependencyGraph, ReferencePlanningError,
     summarize_svg_reference_dependencies_with_checkpoints, validate_well_formed_svg_with_execution,
@@ -21,6 +15,11 @@ use super::{
     SvgPostprocessExecution, checkpoint_loop, is_css_value_attribute, is_svg_idref_attribute,
 };
 use crate::svg::parity::{C4_EXTERNAL_PERSON_IMG, C4_PERSON_IMG};
+use merman_render_core::svg_safety::{
+    CssValidationError, is_safe_data_image_url, matches_active_svg_element,
+    matches_external_image_function, validate_resvg_css_declaration_list_with_checkpoints,
+    validate_resvg_css_stylesheet_with_checkpoints,
+};
 use std::cell::{Cell, RefCell};
 
 const STATIC_VALIDATION_PASS: &str = "validate-static-inline-svg";

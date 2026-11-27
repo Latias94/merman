@@ -226,6 +226,11 @@ pub mod quadrantchart;
 pub mod radar;
 #[cfg(feature = "diagram-railroad")]
 pub mod railroad;
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 mod raster_data_url;
 #[cfg(feature = "diagram-requirement")]
 pub mod requirement;

@@ -18,16 +18,14 @@ use std::collections::HashMap;
 use std::ops::Range;
 use svgtypes::{FuncIRI, IRI, Length, SimplePathSegment, SimplifyingPathParser};
 
-use super::builtin::attr_sanitize::{
-    matches_active_svg_element, parsed_attribute_violates_resvg_contract,
-};
-use super::builtin::css_sanitize::{
-    CssValidationError, validate_resvg_css_declaration_list_with_checkpoints,
-    validate_resvg_css_stylesheet_with_checkpoints,
-};
 use super::resource_closure::{SvgResourceClosure, SvgResourceClosureBuilder};
 use super::text_tracking::{SvgFontSeal, SvgTextContentTracker};
 use super::{SvgPostprocessExecution, SvgReferencePlan, checkpoint_loop};
+use merman_render_core::svg_safety::{
+    CssValidationError, is_data_url, matches_active_svg_element,
+    parsed_attribute_violates_resvg_contract, validate_resvg_css_declaration_list_with_checkpoints,
+    validate_resvg_css_stylesheet_with_checkpoints,
+};
 
 const XLINK_NAMESPACE: &str = "http://www.w3.org/1999/xlink";
 const XML_NAMESPACE: &str = "http://www.w3.org/XML/1998/namespace";
@@ -1028,7 +1026,7 @@ fn validate_element_after_xml(
         && !element_name.eq_ignore_ascii_case("use")
         && element_name != "tref"
     {
-        if matches!(element_name, "image" | "feImage") && data_url::DataUrl::process(href).is_ok() {
+        if matches!(element_name, "image" | "feImage") && is_data_url(href) {
             resource_closure.observe_inline_data_resource();
             inline_raster_href = Some(InlineRasterHref::new(source, href));
         } else if match inline_text_path {

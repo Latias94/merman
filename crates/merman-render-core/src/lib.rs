@@ -64,6 +64,9 @@ pub mod svg_edge_parity;
 #[cfg(feature = "svg-output")]
 #[doc(hidden)]
 pub mod svg_output;
+#[cfg(feature = "svg-safety")]
+#[doc(hidden)]
+pub mod svg_safety;
 #[cfg(feature = "svg-parse")]
 #[doc(hidden)]
 pub mod svg_scan;

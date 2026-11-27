@@ -1158,7 +1158,6 @@ version = "0.11.0"
 dependencies = [
  "base64 0.23.1",
  "cssparser",
- "data-url",
  "dugong",
  "euclid",
  "imagesize 0.14.0",
@@ -1216,6 +1215,7 @@ name = "merman-render-core"
 version = "0.11.0"
 dependencies = [
  "cssparser",
+ "data-url",
  "dugong",
  "kurbo",
  "manatee",

@@ -13,7 +13,8 @@ errors. `root-svg` provides viewport planning and emission for family SVG docume
 `paint-scene` provides an internal typed scene and bounded SVG writer for resolved geometry and
 paint. The writer does not select an output profile or replace terminal SVG admission.
 `svg-parse` provides lexical scanning, XML stylesheet decoding, and SVG structure
-validation for postprocessing.
+validation for postprocessing. `svg-safety` provides the bounded CSS and attribute sanitizers
+and the inline raster URL policy used by terminal SVG validation.
 `svg-animation` validates and removes Mermaid Step animations for static SVG output.
 `svg-bounds` measures emitted SVG shape and path bounds for parity viewports.
 `svg-identity` rewrites Mermaid marker selectors for the native SVG CSS engine.
