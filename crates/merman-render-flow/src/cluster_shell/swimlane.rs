@@ -10,17 +10,16 @@ use merman_render_core::{
     number_format::canonical_number as fmt_display,
     svg_output::SvgOutput,
     text::{
-        TextMeasurer, TextStyle, inline_html::SvgTextEntityMode,
-        literal_label::FlowchartSvgWidthMode, svg_label::write_svg_markdown_word_lines_with_style,
+        TextMeasurer, inline_html::SvgTextEntityMode, literal_label::FlowchartSvgWidthMode,
+        svg_label::write_svg_markdown_word_lines_with_style,
     },
     xml::escape_xml_display,
 };
 
-use super::{
-    ClusterHandDrawn, ClusterShellPaint, swimlane_terminal_geometry, write_swimlane_shell,
-};
+use super::{FlowchartClusterShape, swimlane_terminal_geometry, write_swimlane_shell};
 use crate::{
     document::FlowchartDocumentIds,
+    graph::FlowchartClusterPass,
     lane_title::zero_width_lane_title_rows,
     layout_config::FLOWCHART_FIXED_LABEL_WRAP_WIDTH,
     projection::FlowchartRenderModelRef,
@@ -46,10 +45,7 @@ pub struct SwimlaneClusterSvg<'a> {
     pub canonical: bool,
     pub is_pool: bool,
     pub look: DiagramLook<'a>,
-    pub paint: ClusterShellPaint<'a>,
-    pub rough: Option<ClusterHandDrawn<'a>>,
-    pub label_style: &'a str,
-    pub title_text_style: &'a TextStyle,
+    pub shape: FlowchartClusterShape<'a>,
     pub translation: Vec2,
     pub group_origin: Point,
     pub html_labels: bool,
@@ -57,6 +53,13 @@ pub struct SwimlaneClusterSvg<'a> {
     pub config: &'a PresentationConfig,
     pub measurer: &'a dyn TextMeasurer,
     pub math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
+}
+
+impl FlowchartClusterPass {
+    /// Lanes emit their title with the shell, including in a background pass.
+    pub fn draws_swimlane(self) -> bool {
+        self != Self::Label
+    }
 }
 
 /// Write the group, body and title shells, and title label into the operation sink.
@@ -71,7 +74,7 @@ pub fn write_swimlane_cluster(
     let class_names = source
         .map(|(subgraph, index)| model.effective_subgraph_css(index, subgraph).0)
         .unwrap_or_default();
-    let label_style = input.label_style.trim();
+    let label_style = input.shape.terminal.compiled.label_style.trim();
     let render_title = source.map_or(lane.title.as_str(), |(subgraph, index)| {
         model.subgraph_title_for_render(index, subgraph)
     });
@@ -149,8 +152,8 @@ pub fn write_swimlane_cluster(
         input.translation,
         input.group_origin,
         is_pool,
-        input.paint,
-        input.rough,
+        input.shape.paint(),
+        input.shape.hand_drawn(input.look),
     );
 
     let (label_x, label_y, label_transform) = if horizontal {
@@ -251,7 +254,7 @@ pub fn write_swimlane_cluster(
             title_owner,
             render_title,
             input.measurer,
-            input.title_text_style,
+            input.shape.terminal.title_text_style.as_ref(),
             Some(FLOWCHART_FIXED_LABEL_WRAP_WIDTH),
             true,
             FlowchartSvgWidthMode::Bbox,

@@ -1,9 +1,10 @@
 use super::super::*;
 use crate::model::SwimlaneLaneLayout;
 use merman_render_flow::cluster_shell::{
-    ClusterHandDrawn, ClusterShellPaint,
+    FlowchartClusterShape,
     swimlane::{SwimlaneClusterSvg, write_swimlane_cluster},
 };
+use merman_render_flow::graph::FlowchartClusterPass;
 
 pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
     out: &mut impl crate::svg::parity::SvgOutput,
@@ -12,7 +13,11 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
     lane: &SwimlaneLaneLayout,
     origin_x: f64,
     origin_y: f64,
+    pass: FlowchartClusterPass,
 ) -> crate::Result<()> {
+    if !pass.draws_swimlane() {
+        return Ok(());
+    }
     ctx.checkpoint_emit()?;
     if !super::is_lane_or_pool_cluster(ctx, lane.id.as_str()) {
         return Err(crate::Error::InvalidModel {
@@ -48,23 +53,11 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             canonical,
             is_pool,
             look: ctx.compatibility.look,
-            paint: ClusterShellPaint {
-                style: terminal.rect_style.as_str(),
-                fill: terminal.fill.as_str(),
-                stroke: terminal.stroke.as_str(),
+            shape: FlowchartClusterShape {
+                terminal,
+                work_meter: ctx.work_meter,
+                randomness: &ctx.hand_drawn_seed,
             },
-            rough: ctx
-                .compatibility
-                .look
-                .is_hand_drawn()
-                .then_some(ClusterHandDrawn {
-                    stroke_width: terminal.compiled.stroke_width.as_deref(),
-                    stroke_dasharray: terminal.compiled.stroke_dasharray.as_deref(),
-                    work_meter: ctx.work_meter,
-                    randomness: &ctx.hand_drawn_seed,
-                }),
-            label_style: &terminal.compiled.label_style,
-            title_text_style: terminal.title_text_style.as_ref(),
             translation: kurbo::Vec2::new(ctx.tx, ctx.ty),
             group_origin: kurbo::Point::new(origin_x, origin_y),
             html_labels: ctx.swimlane_title_html_labels,

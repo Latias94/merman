@@ -22,7 +22,6 @@ pub(crate) use node_inventory::{FlowchartNodeLayoutView, FlowchartPreparedNodes}
 mod render;
 mod render_input;
 mod step;
-use merman_render_flow::style::compiled as style;
 mod swimlane;
 mod types;
 mod util;
@@ -43,7 +42,6 @@ use hierarchy::*;
 pub(super) use label::*;
 pub(crate) use merman_render_flow::style::FlowchartEdgeStylePlan;
 pub(crate) use render_config::{FlowchartRenderConfig, prepare_flowchart_render_config};
-pub(super) use style::*;
 
 /// Measure the same marker descriptors used by SVG emission in drawing units.
 #[cfg(any(feature = "layout-shoal", test))]

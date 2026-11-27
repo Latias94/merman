@@ -39,9 +39,7 @@ pub(crate) use native_theme::{FlowchartCompatibilityBinding, FlowchartPreparedTh
     feature = "diagram-agentflow"
 ))]
 pub(crate) use config::FlowchartLayoutSettings;
-pub(crate) use config::{
-    FLOWCHART_FIXED_LABEL_WRAP_WIDTH, FlowchartBaseTypographyPlan, FlowchartConfigView,
-};
+pub(crate) use config::{FlowchartBaseTypographyPlan, FlowchartConfigView};
 #[cfg(not(test))]
 pub(crate) use label::flowchart_non_markdown_svg_source_word_lines;
 pub(crate) use label::{

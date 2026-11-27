@@ -6,9 +6,6 @@ use std::fmt::Write as _;
 use crate::svg::parity::flowchart::label::{
     append_native_label_color, flowchart_label_html_with_prepared_label,
 };
-use crate::svg::parity::flowchart::style::{
-    FlowchartCompiledStyles, flowchart_label_div_style_prefix,
-};
 use crate::svg::parity::flowchart::types::{FlowchartRenderCtx, FlowchartRenderDetails};
 use crate::svg::parity::flowchart::util::{
     HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR, OptionalStyleXmlAttr,
@@ -17,6 +14,9 @@ use crate::svg::parity::flowchart::{
     write_flowchart_svg_label_plan_with_style, write_flowchart_svg_text_markdown_wrapped_with_style,
 };
 use crate::svg::parity::{escape_xml_display, fmt_display};
+use merman_render_flow::style::compiled::{
+    FlowchartCompiledStyles, flowchart_label_div_style_prefix,
+};
 
 pub(super) struct FlowchartNodeLabelEmissionPlan<'a> {
     source_text_style: &'a crate::text::TextStyle,

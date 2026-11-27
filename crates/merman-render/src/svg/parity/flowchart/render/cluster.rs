@@ -1,12 +1,10 @@
 //! Flowchart cluster renderer.
 
 use super::super::*;
-use crate::flowchart::FLOWCHART_FIXED_LABEL_WRAP_WIDTH;
 use crate::svg::parity::flowchart::cluster_geometry::painted_cluster_frame;
 
 use merman_render_flow::cluster_shell::{
-    ClusterHandDrawn, ClusterShellForm, ClusterShellPaint, FlowchartClusterShape,
-    FlowchartClusterSvg, FlowchartClusterTitle,
+    ClusterHandDrawn, FlowchartClusterShape, FlowchartClusterSvg, FlowchartClusterTitle,
 };
 
 use merman_render_flow::graph::FlowchartClusterPass;
@@ -35,136 +33,34 @@ pub(in crate::svg::parity::flowchart) fn advance_rough_geometry(
         kurbo::Vec2::new(ctx.tx, ctx.ty),
         kurbo::Point::new(origin_x, origin_y),
     );
-    cluster_hand_drawn(ctx, &terminal.compiled)
+    ClusterHandDrawn::for_compiled_styles(&terminal.compiled, ctx.work_meter, &ctx.hand_drawn_seed)
         .advance_cluster(frame, ctx.diagram_type == "agentflow");
     ctx.work_meter
         .checkpoint(merman_model::OperationPhase::Layout)
         .map_err(crate::Error::from)
 }
 
-fn cluster_hand_drawn<'a>(
-    ctx: &'a FlowchartRenderCtx<'_>,
-    compiled: &'a FlowchartCompiledStyles,
-) -> ClusterHandDrawn<'a> {
-    ClusterHandDrawn {
-        stroke_width: compiled.stroke_width.as_deref(),
-        stroke_dasharray: compiled.stroke_dasharray.as_deref(),
-        work_meter: ctx.work_meter,
-        randomness: &ctx.hand_drawn_seed,
-    }
-}
-
+#[cfg(feature = "layout-shoal")]
 pub(in crate::svg::parity::flowchart) fn cluster_base_fill<'a>(
     ctx: &'a FlowchartRenderCtx<'_>,
     terminal: &'a super::super::node_inventory::FlowchartPreparedCluster,
     id: &str,
 ) -> &'a str {
-    if ctx.diagram_type == "agentflow"
-        && let Some(slot) = super::super::agentflow::container_color_slot(ctx, id)
-        && let Some(background) = ctx.palette.background_color(slot)
-    {
-        return background;
+    if ctx.diagram_type == "agentflow" {
+        return FlowchartClusterShape::agentflow_fill(
+            &terminal.fill,
+            &ctx.palette,
+            super::super::agentflow::container_color_slot(ctx, id),
+        );
     }
     &terminal.fill
 }
 
+#[cfg(feature = "layout-shoal")]
 pub(in crate::svg::parity::flowchart) fn compat_theme_canvas_fallback(
     ctx: &FlowchartRenderCtx<'_>,
 ) -> crate::theme::Color {
-    match ctx.config.get_str("theme") {
-        Some("dark" | "redux-dark" | "redux-dark-color" | "neo-dark") => {
-            crate::theme::Color::rgb(0x1F, 0x20, 0x20)
-        }
-        _ => crate::theme::Color::rgb(255, 255, 255),
-    }
-}
-
-fn prepare_flowchart_cluster_shape<'a>(
-    ctx: &'a FlowchartRenderCtx<'_>,
-    terminal: &'a super::super::node_inventory::FlowchartPreparedCluster,
-    id: &str,
-    frame: super::super::cluster_geometry::PaintedClusterFrame,
-) -> FlowchartClusterShape<'a> {
-    let compiled = &terminal.compiled;
-    let fill = cluster_base_fill(ctx, terminal, id);
-    let canonical = ctx.layout.route_contract.is_canonical_axis();
-    let form = if let Some(native) = ctx.native {
-        ClusterShellForm::Native {
-            radius: super::super::cluster_geometry::cluster_container_radius(
-                ctx,
-                frame.size.width,
-                frame.size.height,
-            ),
-            stroke_width: native.form.stroke_width,
-        }
-    } else if ctx.diagram_type == "agentflow" {
-        ClusterShellForm::Agentflow {
-            stroke: &ctx.compatibility.agentflow_container_stroke,
-            canonical_fill: canonical.then(|| {
-                (
-                    compiled.fill.as_deref().unwrap_or(fill),
-                    compiled.fill_opacity,
-                )
-            }),
-        }
-    } else {
-        ClusterShellForm::Flowchart {
-            inline_fill: canonical && ctx.palette.color_count() > 0,
-        }
-    };
-    FlowchartClusterShape {
-        frame,
-        paint: ClusterShellPaint {
-            style: &terminal.rect_style,
-            fill,
-            stroke: &terminal.stroke,
-        },
-        form,
-        rough: ctx
-            .compatibility
-            .look
-            .is_hand_drawn()
-            .then(|| cluster_hand_drawn(ctx, compiled)),
-    }
-}
-
-fn title_halo_color(
-    ctx: &FlowchartRenderCtx<'_>,
-    id: &str,
-) -> crate::Result<Option<crate::theme::Color>> {
-    use crate::theme::{Color, edge_label_bg::literal_fill};
-
-    let canvas = ctx.native.map(|native| native.canvas).or_else(|| {
-        ctx.config
-            .get_str("themeVariables.background")
-            .and_then(literal_fill)
-    });
-    let mut surface = Color::TRANSPARENT;
-    let mut current = Some(id);
-    while let Some(id) = current {
-        ctx.work_meter.charge(1)?;
-        let terminal = ctx.prepared_nodes.cluster(id)?;
-        let fill = terminal
-            .compiled
-            .fill
-            .as_deref()
-            .and_then(literal_fill)
-            .or_else(|| literal_fill(cluster_base_fill(ctx, terminal, id)))
-            .unwrap_or(Color::TRANSPARENT);
-        let layer = fill.composite(Color::TRANSPARENT, terminal.compiled.fill_opacity);
-        surface = surface.composite(layer, 1.0);
-        if surface.channels()[3] == u8::MAX {
-            return Ok(Some(surface));
-        }
-        current = ctx.parent.get(id).copied();
-    }
-    match canvas {
-        Some(canvas) if canvas.channels()[3] == u8::MAX => Ok(Some(surface.composite(canvas, 1.0))),
-        Some(_) => Ok(None),
-        None => Ok(Some(
-            surface.composite(compat_theme_canvas_fallback(ctx), 1.0),
-        )),
-    }
+    FlowchartClusterSvg::compat_theme_canvas_fallback(ctx.config)
 }
 
 #[cfg(all(test, feature = "diagram-flowchart"))]
@@ -196,13 +92,9 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
     if let Some(lane) = ctx.swimlane_lanes_by_id.get(cluster.id.as_str())
         && super::super::swimlane::is_lane_or_pool_cluster(ctx, cluster.id.as_str())
     {
-        if pass == FlowchartClusterPass::Label {
-            return Ok(());
-        }
-        super::super::swimlane::render_swimlane_cluster(
-            out, ctx, cluster, lane, origin_x, origin_y,
-        )?;
-        return Ok(());
+        return super::super::swimlane::render_swimlane_cluster(
+            out, ctx, cluster, lane, origin_x, origin_y, pass,
+        );
     }
 
     let Some(sg) = ctx.subgraphs_by_id.get(cluster.id.as_str()) else {
@@ -228,15 +120,12 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
     }
 
     let terminal = ctx.prepared_nodes.cluster(cluster.id.as_str())?;
-    let compiled_styles = &terminal.compiled;
-    let label_style = compiled_styles.label_style.trim();
     let classes = ctx.model.effective_subgraph_css(subgraph_index, sg).0;
 
     let elk_geometry = ctx.elk_cluster_geometry.get(cluster.id.as_str());
-    let frame = painted_cluster_frame(ctx, cluster).in_root(
-        kurbo::Vec2::new(ctx.tx, ctx.ty),
-        kurbo::Point::new(origin_x, origin_y),
-    );
+    let translation = kurbo::Vec2::new(ctx.tx, ctx.ty);
+    let group_origin = kurbo::Point::new(origin_x, origin_y);
+    let frame = painted_cluster_frame(ctx, cluster).in_root(translation, group_origin);
     let Some(cluster_dom_id) = ctx.document_ids().cluster(cluster.id.as_str()) else {
         return Err(crate::Error::InvalidModel {
             message: format!(
@@ -253,13 +142,8 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
         .svg_label_sidecar
         .and_then(|sidecar| sidecar.subgraph_title_owner(cluster.id.as_str()));
     let title_text_style = terminal.title_text_style.as_ref();
-    // ELK paints Markdown after the final frame is known. clusters.js passes node.width to
-    // createText, so these paint metrics differ from the wrapped pre-layout placeholder.
-    let markdown_wrap_width = if ctx.uses_elk_adapter_dom {
-        cluster.width.max(1.0)
-    } else {
-        FLOWCHART_FIXED_LABEL_WRAP_WIDTH
-    };
+    let markdown_wrap_width =
+        FlowchartClusterTitle::markdown_wrap_width(cluster, ctx.uses_elk_adapter_dom);
     let painted_markdown = elk_geometry.map(|geometry| geometry.label).or_else(|| {
         (ctx.uses_elk_adapter_dom && label_type == "markdown").then(|| {
             crate::flowchart::flowchart_label_metrics_for_layout(
@@ -276,24 +160,6 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
             )
         })
     });
-    let label_w = painted_markdown
-        .map_or(cluster.title_label.width, |metrics| metrics.width)
-        .max(0.0);
-    let label_h = painted_markdown
-        .map_or(cluster.title_label.height, |metrics| metrics.height)
-        .max(0.0);
-    let (label_left, label_top) = if ctx.layout.route_contract.group_parents().is_some() {
-        (
-            cluster.title_label.x + ctx.tx - origin_x - label_w / 2.0,
-            cluster.title_label.y + ctx.ty - origin_y - label_h / 2.0,
-        )
-    } else {
-        (
-            cluster.x + ctx.tx - origin_x - label_w / 2.0,
-            frame.origin.y + cluster.title_margin_top.max(0.0),
-        )
-    };
-
     let struck = ctx
         .layout
         .route_contract
@@ -303,38 +169,31 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
         semantic_id: &cluster.id,
         document_id: cluster_dom_id,
         classes,
-        agentflow: ctx.diagram_type == "agentflow",
-        look: ctx.compatibility.look.as_str(),
-        color_slot: super::super::agentflow::container_color_slot(ctx, &cluster.id),
+        model: ctx.model,
+        diagram_type: ctx.diagram_type,
+        compatibility: ctx.compatibility,
+        native: ctx.native,
+        palette: &ctx.palette,
+        canonical_axis: ctx.layout.route_contract.is_canonical_axis(),
         struck,
+        frame,
+        prepared_nodes: ctx.prepared_nodes,
+        parent: &ctx.parent,
     };
-    if pass == FlowchartClusterPass::Background {
-        return svg.write_background(
-            out,
-            prepare_flowchart_cluster_shape(ctx, terminal, &cluster.id, frame),
-        );
-    }
-
-    let halo = struck
-        .then(|| title_halo_color(ctx, &cluster.id))
-        .transpose()?
-        .flatten();
-    let overlay = struck && pass == FlowchartClusterPass::Label;
-    let shape = (pass == FlowchartClusterPass::Complete)
-        .then(|| prepare_flowchart_cluster_shape(ctx, terminal, &cluster.id, frame));
+    let shape = FlowchartClusterShape {
+        terminal,
+        work_meter: ctx.work_meter,
+        randomness: &ctx.hand_drawn_seed,
+    };
     let title = FlowchartClusterTitle {
-        position: kurbo::Point::new(label_left, label_top),
-        size: kurbo::Size::new(label_w, label_h),
+        layout: cluster,
+        translation,
+        group_origin,
+        canonical_group_title: ctx.layout.route_contract.group_parents().is_some(),
+        painted_markdown,
         markdown_wrap_width,
-        measured_title_width: ctx
-            .layout
-            .route_contract
-            .group_parents()
-            .map(|_| cluster.title_label.width),
         label_type,
         source: render_title,
-        label_style,
-        text_style: title_text_style,
         html_labels: ctx.edge_html_labels,
         uses_elk_adapter_dom: ctx.uses_elk_adapter_dom,
         owner: title_owner,
@@ -343,6 +202,5 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
         config: ctx.config,
         math_renderer: ctx.math_renderer,
     };
-    svg.write_foreground(out, shape, title, halo, overlay);
-    Ok(())
+    svg.write(out, pass, shape, title)
 }
