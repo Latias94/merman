@@ -28,9 +28,6 @@ pub mod class;
 use merman_render_core::{config, mermaid_style, number_format};
 #[cfg(feature = "diagram-cynefin")]
 pub mod cynefin;
-#[cfg(feature = "layout-elk")]
-#[cfg_attr(not(feature = "all-diagrams"), allow(unused_imports))]
-use merman_render_core::elk_adapter::feedback_edges as elk_feedback_edges;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -794,7 +791,7 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
                     options.text_measurer(),
                     options.math_renderer(),
                     options.elk_operation_seed(),
-                    algorithm,
+                    algorithm.algorithm(),
                     svg_label_sidecar,
                     edge_style_plan,
                     options.work_meter(),

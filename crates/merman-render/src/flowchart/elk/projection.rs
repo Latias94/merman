@@ -1,18 +1,27 @@
-use crate::Result;
-use crate::flowchart::config::FlowchartConfigView;
-use crate::flowchart::{FlowchartEdgeOwners, FlowchartRenderModelRef};
-use crate::layout_work::OperationLayoutWorkControl;
-use crate::model::FlowchartLayout;
+#[cfg(test)]
+use crate::{
+    Result,
+    flowchart::{FlowchartRenderModelRef, config::FlowchartConfigView},
+    layout_work::OperationLayoutWorkControl,
+};
+use crate::{flowchart::FlowchartEdgeOwners, model::FlowchartLayout};
+#[cfg(test)]
 use merman_layout_elk as elk;
-use merman_model::families::flowchart::{FlowchartModel, FlowchartRenderContext};
-use merman_model::presentation::PresentationConfig;
-use merman_render_flow::elk::{FlowchartElkProjection, project_layout};
+#[cfg(test)]
+use merman_model::{
+    families::flowchart::{FlowchartModel, FlowchartRenderContext},
+    presentation::PresentationConfig,
+};
+use merman_render_flow::elk::FlowchartElkProjection;
+#[cfg(test)]
+use merman_render_flow::elk::project_layout;
 
 #[cfg(test)]
 pub(super) use merman_render_flow::elk::{
     align_degenerate_node_to_anchor, mermaid_elk_paint_order,
 };
 
+#[cfg(test)]
 pub(super) fn flowchart_layout_from_elk_with_render_labels_and_work_control(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderContext,
@@ -23,6 +32,10 @@ pub(super) fn flowchart_layout_from_elk_with_render_labels_and_work_control(
 ) -> Result<FlowchartLayout> {
     let render_model = FlowchartRenderModelRef::new(model, render_label_sources);
     let settings = FlowchartConfigView::new(effective_config).layout_settings();
+    project_layout(render_model, settings, graph, layout, work_control).map(assemble_layout)
+}
+
+pub(super) fn assemble_layout(projection: FlowchartElkProjection) -> FlowchartLayout {
     let FlowchartElkProjection {
         nodes,
         edges,
@@ -30,9 +43,9 @@ pub(super) fn flowchart_layout_from_elk_with_render_labels_and_work_control(
         clusters,
         bounds,
         dom_node_order_by_root,
-    } = project_layout(render_model, settings, graph, layout, work_control)?;
+    } = projection;
 
-    Ok(FlowchartLayout {
+    FlowchartLayout {
         nodes,
         edges,
         edge_owners: FlowchartEdgeOwners::new(edge_keys),
@@ -42,5 +55,5 @@ pub(super) fn flowchart_layout_from_elk_with_render_labels_and_work_control(
         route_contract: crate::graph_layout::RouteContract::ElkParity,
         placement: Default::default(),
         uses_elk_adapter_dom: true,
-    })
+    }
 }
