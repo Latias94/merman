@@ -6,6 +6,7 @@ use merman_render_core::{Error, LayoutNode, LayoutPoint, Result, text::TextMetri
 
 use crate::svg_label::FlowchartSvgLabelSidecar;
 
+pub mod brace;
 mod dimensions;
 mod label;
 mod validation;
@@ -64,6 +65,17 @@ impl ImageSquareSizing<'_> {
                 (false, _) => Size::new(raw_width, height),
             }
         }
+    }
+}
+
+pub fn flowchart_image_square_geometry(
+    labels: &FlowchartSvgLabelSidecar,
+    node_id: &str,
+    swimlane: bool,
+) -> Option<ImageSquareGeometry> {
+    match labels.node_geometry(node_id, swimlane)? {
+        PreparedFlowchartNodeGeometry::ImageSquare(image) => Some(image),
+        PreparedFlowchartNodeGeometry::Rectangle(_) => None,
     }
 }
 

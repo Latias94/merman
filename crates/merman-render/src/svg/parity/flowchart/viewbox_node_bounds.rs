@@ -1,8 +1,8 @@
 //! Flowchart node rendered-bounds preparation for final viewBox calculation.
 
-use super::render::node::geom::generate_full_sine_wave_points;
 use super::*;
 use crate::svg::parity::path_bounds::{SvgPathBounds, svg_path_bounds_from_rough_ops};
+use merman_render_flow::node_body::document_shapes::generate_full_sine_wave_points;
 
 fn rough_svg_path_bounds(
     randomness: &roughr::core::RoughRandomness,

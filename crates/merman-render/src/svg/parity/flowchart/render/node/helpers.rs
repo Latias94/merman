@@ -545,24 +545,18 @@ pub(in crate::svg::parity::flowchart) fn node_source_text_style<'a>(
     node_classes: &[String],
     node_styles: &[String],
 ) -> std::borrow::Cow<'a, crate::text::TextStyle> {
-    if let Some(prepared) = node_id.and_then(|id| ctx.prepared_nodes.node(id)) {
-        return std::borrow::Cow::Borrowed(prepared.source_text_style.as_ref());
-    }
-    // Standalone geometry probes may not have a scheduled terminal node. Complete renders
-    // always prepare their source typography, including when SVG label preparation is disabled.
     let label_base_style = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
-        &ctx.html_label_text_style
+        ctx.html_label_text_style
     } else {
-        &ctx.text_style
+        ctx.text_style
     };
-    std::borrow::Cow::Owned(
-        crate::flowchart::flowchart_effective_text_style_for_node_classes(
-            label_base_style,
-            ctx.class_defs,
-            node_classes,
-            node_styles,
-        )
-        .into_owned(),
+    merman_render_flow::node_inventory::flowchart_node_source_text_style(
+        ctx.prepared_nodes,
+        node_id,
+        label_base_style,
+        ctx.class_defs,
+        node_classes,
+        node_styles,
     )
 }
 

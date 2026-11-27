@@ -32,10 +32,8 @@ mod triangle;
 pub(super) use basic_geoms::{render_circle, render_diamond, render_double_circle};
 pub(super) use bpmn::render_bpmn;
 pub(super) use collapsed_group::{render_collapsed_group_body, render_collapsed_group_indicators};
+pub(in crate::svg::parity::flowchart) use curly_braces::curly_brace_comment_geometry;
 pub(super) use curly_braces::render_curly_brace_comment;
-pub(in crate::svg::parity::flowchart) use curly_braces::{
-    curly_brace_comment_geometry, curly_brace_comment_intersection_points,
-};
 pub(super) use cylinders::{render_cylinder, render_horizontal_cylinder, render_lined_cylinder};
 pub(super) use dispatch::render_flowchart_shape;
 pub(super) use document_shapes::{

@@ -69,13 +69,19 @@ pub(crate) use merman_render_flow::svg_label::{
 };
 #[cfg(any(feature = "layout-elk", feature = "layout-shoal"))]
 pub(crate) use style::flowchart_apply_html_node_class_box_metrics;
+#[cfg(all(
+    test,
+    feature = "diagram-flowchart",
+    feature = "diagram-agentflow",
+    feature = "layout-shoal"
+))]
+pub(crate) use style::flowchart_effective_text_style_for_node_classes;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) use style::flowchart_node_layout_style;
 #[cfg(all(test, feature = "all-diagrams"))]
 pub(crate) use style::flowchart_swimlane_label_rect_text_style;
 pub(crate) use style::{
     flowchart_effective_node_class_names,
-    flowchart_effective_text_style_for_classes_with_provenance,
-    flowchart_effective_text_style_for_node_classes, flowchart_insert_style_by_spelling,
+    flowchart_effective_text_style_for_classes_with_provenance, flowchart_insert_style_by_spelling,
     flowchart_split_mermaid_style_decls,
 };

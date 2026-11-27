@@ -175,15 +175,11 @@ impl<'a> FlowchartRenderCtx<'a> {
         &self,
         id: &str,
     ) -> Option<crate::flowchart::ImageSquareGeometry> {
-        match self.node_geometry(id)? {
-            crate::flowchart::PreparedFlowchartNodeGeometry::ImageSquare(image) => Some(image),
-            _ => None,
-        }
-    }
-
-    fn node_geometry(&self, id: &str) -> Option<crate::flowchart::PreparedFlowchartNodeGeometry> {
-        self.svg_label_sidecar?
-            .node_geometry(id, self.swimlane_layout.is_some())
+        merman_render_flow::node_geometry::flowchart_image_square_geometry(
+            self.svg_label_sidecar?,
+            id,
+            self.swimlane_layout.is_some(),
+        )
     }
 
     pub(in crate::svg::parity::flowchart) fn rectangle_geometry(

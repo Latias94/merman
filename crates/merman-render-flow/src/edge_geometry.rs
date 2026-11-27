@@ -14,8 +14,12 @@ use crate::edge_svg::arrow_types_for_edge;
 
 mod basis;
 mod curve_path;
+mod endpoint;
 mod rect_clip;
 
+pub use endpoint::{
+    FlowchartEndpointContext, force_intersect_for_layout_shape, intersect_for_layout_shape,
+};
 pub use rect_clip::EdgeClipRect;
 
 /// The provider's original points and the exact root-local translation for the singleton fallback.

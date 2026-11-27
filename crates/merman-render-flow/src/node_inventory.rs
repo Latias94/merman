@@ -1,5 +1,8 @@
 //! Retained node and container terminals and their metered SVG document order.
 
+use std::borrow::Cow;
+
+use indexmap::IndexMap;
 use merman_model::{
     OperationPhase,
     families::flowchart::{FlowNode, FlowSubgraph, FlowchartModel, FlowchartRenderContext},
@@ -9,7 +12,7 @@ use merman_render_core::{
     Error, LayoutCluster, LayoutNode, Result, SwimlaneDirection, SwimlaneLaneLayout,
     SwimlaneNodeLayout,
     resources::{OperationWorkMeter, PreparedTextRetainedReservation},
-    text::WrapMode,
+    text::{TextStyle, WrapMode},
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -692,6 +695,29 @@ impl FlowchartPreparedNodes {
             message: format!("missing prepared Flowchart cluster `{id}`"),
         })
     }
+}
+
+/// Borrows prepared typography or resolves the source cascade for a standalone probe.
+pub fn flowchart_node_source_text_style<'a>(
+    prepared_nodes: &'a FlowchartPreparedNodes,
+    node_id: Option<&str>,
+    label_base_style: &TextStyle,
+    class_defs: &IndexMap<String, Vec<String>>,
+    node_classes: &[String],
+    node_styles: &[String],
+) -> Cow<'a, TextStyle> {
+    if let Some(prepared) = node_id.and_then(|id| prepared_nodes.node(id)) {
+        return Cow::Borrowed(prepared.source_text_style.as_ref());
+    }
+    Cow::Owned(
+        flowchart_effective_text_style_for_node_classes(
+            label_base_style,
+            class_defs,
+            node_classes,
+            node_styles,
+        )
+        .into_owned(),
+    )
 }
 
 fn prepared_cluster_ids(
