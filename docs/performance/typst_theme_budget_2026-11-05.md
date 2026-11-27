@@ -223,3 +223,23 @@ measured the same `publish` recipe at head `4ce1199f1181371c799379fce6e919085d25
 The raw ceiling restores the 3% margin, rounded upward to 1,000 bytes. All three
 published-artifact measurements fit their existing ceilings. The job stopped before
 running the Typst package smoke tests.
+
+## Vertical family crate split, 2026-11-27
+
+[PR 378's Linux Typst job](https://github.com/Latias94/merman/actions/runs/45919546699/job/140246838265)
+measured the same `publish` recipe at head `b337847baa207c365e0bf7094b8dbec3f703ee73`.
+It used Rust 1.100.0, Binaryen 133 and wasm-tools 1.263.0.
+
+| Metric | Linux measurement | Previous ceiling | Selected ceiling |
+| --- | ---: | ---: | ---: |
+| Raw | 22,192,403 | 22,668,000 | 22,668,000 |
+| Stripped | 11,335,157 | 11,453,000 | 11,676,000 |
+| Gzip | 4,353,990 | 4,339,000 | 4,485,000 |
+| Brotli | 3,221,232 | 3,245,000 | 3,318,000 |
+
+Gzip exceeded its ceiling by 14,990 bytes. The old stripped and Brotli ceilings
+left 117,843 and 23,768 bytes of headroom. Apply the existing 3% margin and
+1,000-byte rounding rule to all three published-artifact metrics for the remaining
+crate moves. The raw ceiling already leaves 475,597 bytes of headroom.
+The recorded job stopped at the budget check. The updated head still needs the
+complete package validation and Typst runtime smoke.
