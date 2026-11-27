@@ -588,7 +588,9 @@ pub(in crate::svg::parity) fn render_native_compact_flowchart_artifact(
     let request = flowchart_request(artifact, metadata)?;
     admit_request(request, execution)?;
     let canvas = admit_canvas(execution)?;
-    with_flowchart_paint_context(request, execution, |ctx, edges, hierarchy| {
-        render_scene(request, ctx, edges, hierarchy, canvas, execution)
-    })
+    with_flowchart_paint_context(
+        request,
+        &super::svg_services(execution),
+        |ctx, edges, hierarchy| render_scene(request, ctx, edges, hierarchy, canvas, execution),
+    )
 }

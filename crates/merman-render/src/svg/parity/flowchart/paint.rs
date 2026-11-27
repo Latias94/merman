@@ -10,7 +10,7 @@ use merman_render_core::rough_svg::constrained_rough_edge_path;
 
 pub(super) fn with_flowchart_paint_context<T>(
     request: FlowchartSvgModelRequest<'_>,
-    options: &SvgExecution<'_>,
+    services: &FlowchartSvgServices<'_>,
     consume: impl FnOnce(
         &FlowchartRenderCtx<'_>,
         &[FlowchartRenderEdge<'_>],
@@ -55,17 +55,16 @@ pub(super) fn with_flowchart_paint_context<T>(
     #[cfg(not(feature = "layout-shoal"))]
     let owner_occurrences = validate_layout_edges()?;
 
-    let measurer = options.text_measurer();
-
-    let hand_drawn_seed = options.rough_randomness(
+    let hand_drawn_seed = merman_render_core::rough_svg::operation_randomness(
+        services.operation,
         prepared_theme
             .compatibility
             .hand_drawn_seed
-            .unwrap_or(options.seed() as f64),
+            .unwrap_or(services.render_seed as f64),
         "render.flowchart.roughjs",
     );
 
-    let diagram_id = options.diagram_id_or("merman");
+    let diagram_id = services.diagram_id;
 
     let FlowchartRenderInputs {
         mut render_edges,
@@ -229,8 +228,7 @@ pub(super) fn with_flowchart_paint_context<T>(
             node_dom_index.insert(node.id.as_str(), index);
         }
     }
-    let flowchart_edge_trace = options.debug.flowchart_edge_trace();
-    let checkpoint_emit = || options.checkpoint_emit();
+    let flowchart_edge_trace = services.edge_trace;
     let mut palette = super::agentflow::ContainerPalette::new(effective_config);
     if prepared_theme.native.is_some() {
         palette = palette.without_theme_colors();
@@ -243,18 +241,17 @@ pub(super) fn with_flowchart_paint_context<T>(
         diagram_type,
         tx,
         ty,
-        measurer,
+        measurer: services.measurer,
         config: effective_config,
         compatibility: &prepared_theme.compatibility,
         native: prepared_theme.native.as_ref(),
         container_label_layers: std::cell::OnceCell::new(),
         palette,
         hand_drawn_seed,
-        work_meter: options.work_meter(),
-        emit: FlowchartEmitCheckpoint::new(&checkpoint_emit),
-        math_renderer: options.math_renderer(),
+        work_meter: services.work_meter,
+        math_renderer: services.math_renderer,
         svg_label_sidecar: Some(svg_label_sidecar),
-        icon_registry: options.icon_registry(),
+        icon_registry: services.icon_registry,
         security_level_loose: effective_config.get_str("securityLevel") == Some("loose"),
         node_html_labels,
         edge_html_labels,
@@ -740,7 +737,7 @@ pub(super) fn edge_geometry(
     request: FlowchartSvgModelRequest<'_>,
     options: &SvgExecution<'_>,
 ) -> Result<Vec<crate::model::EdgePaintGeometry>> {
-    with_flowchart_paint_context(request, options, |ctx, edges, hierarchy| {
+    with_flowchart_paint_context(request, &svg_services(options), |ctx, edges, hierarchy| {
         let mut routes = prepare_edge_routes(ctx, edges, hierarchy, false)?;
         let mut labels = FlowchartEdgeLabels::prepare(ctx, hierarchy, &routes)?;
         if prepare_query_rough_paths(ctx, hierarchy, &mut routes, &labels)? {
@@ -916,27 +913,31 @@ mod tests {
             DAGRE_LINEAR_CONFIG.replace("look: classic", "look: neo"),
         );
         with_source(&source, false, |request, execution| {
-            with_flowchart_paint_context(request, execution, |ctx, edges, hierarchy| {
-                assert_eq!(edges.len(), 2);
-                let query = prepare_edge_routes(ctx, edges, hierarchy, false)?;
-                let paint = prepare_edge_routes(ctx, edges, hierarchy, true)?;
-                let mut measured_count = 0;
-                for edge in edges {
-                    let query = &query[&edge.key].geom;
-                    let paint = &paint[&edge.key].geom;
-                    assert_eq!(query.d, paint.d);
-                    assert!(query.neo_length.is_none());
-                    if ctx.edge_style_plan.animation_for(edge.key)?.is_active() {
-                        assert!(paint.neo_length.is_none());
-                    } else {
-                        assert!(paint.neo_length.is_some());
-                        assert_eq!(paint.neo_length, svg_path_length_from_d(&paint.d));
-                        measured_count += 1;
+            with_flowchart_paint_context(
+                request,
+                &svg_services(execution),
+                |ctx, edges, hierarchy| {
+                    assert_eq!(edges.len(), 2);
+                    let query = prepare_edge_routes(ctx, edges, hierarchy, false)?;
+                    let paint = prepare_edge_routes(ctx, edges, hierarchy, true)?;
+                    let mut measured_count = 0;
+                    for edge in edges {
+                        let query = &query[&edge.key].geom;
+                        let paint = &paint[&edge.key].geom;
+                        assert_eq!(query.d, paint.d);
+                        assert!(query.neo_length.is_none());
+                        if ctx.edge_style_plan.animation_for(edge.key)?.is_active() {
+                            assert!(paint.neo_length.is_none());
+                        } else {
+                            assert!(paint.neo_length.is_some());
+                            assert_eq!(paint.neo_length, svg_path_length_from_d(&paint.d));
+                            measured_count += 1;
+                        }
                     }
-                }
-                assert_eq!(measured_count, 1);
-                Ok(())
-            })
+                    assert_eq!(measured_count, 1);
+                    Ok(())
+                },
+            )
         });
     }
 
@@ -956,54 +957,58 @@ mod tests {
                 &format!("{DAGRE_LINEAR_CONFIG}{body}"),
                 true,
                 |request, execution| {
-                    with_flowchart_paint_context(request, execution, |ctx, edges, hierarchy| {
-                        let expected_work = edges.len()
-                            + edges
-                                .iter()
-                                .map(|edge| {
-                                    ctx.layout_edges_by_key[&edge.key].points().len().max(2)
-                                })
-                                .sum::<usize>();
-                        let before_parity = ctx.work_meter.used();
-                        let parity = prepare_edge_routes(ctx, edges, hierarchy, false)?;
-                        assert_eq!(ctx.work_meter.used() - before_parity, expected_work);
+                    with_flowchart_paint_context(
+                        request,
+                        &svg_services(execution),
+                        |ctx, edges, hierarchy| {
+                            let expected_work = edges.len()
+                                + edges
+                                    .iter()
+                                    .map(|edge| {
+                                        ctx.layout_edges_by_key[&edge.key].points().len().max(2)
+                                    })
+                                    .sum::<usize>();
+                            let before_parity = ctx.work_meter.used();
+                            let parity = prepare_edge_routes(ctx, edges, hierarchy, false)?;
+                            assert_eq!(ctx.work_meter.used() - before_parity, expected_work);
 
-                        let before_typed = ctx.work_meter.used();
-                        ctx.work_meter.charge(edges.len())?;
-                        let mut scratch = FlowchartEdgeDataPointsScratch::default();
-                        let mut saw_bend = false;
-                        for edge in edges {
-                            let route = prepare_dagre_linear_edge_route(
-                                ctx,
-                                edge.as_ref(),
-                                hierarchy,
-                                &mut scratch,
-                            )?
-                            .expect("Dagre linear shaft");
-                            assert_eq!(
-                                crate::svg::parity::curve::curve_linear_path_d(&route.points),
-                                parity[&edge.key].geom.d
-                            );
-                            assert_eq!(
-                                Some(bounds_bits(route.bounds)),
-                                parity[&edge.key].geom.pb.map(bounds_bits)
-                            );
-                            saw_bend |= route.points.windows(3).any(|points| {
-                                let first_x = points[1].x - points[0].x;
-                                let first_y = points[1].y - points[0].y;
-                                let second_x = points[2].x - points[1].x;
-                                let second_y = points[2].y - points[1].y;
-                                (first_x * second_y - first_y * second_x).abs() > 0.001
-                            });
-                        }
-                        ctx.work_meter
-                            .checkpoint(merman_model::OperationPhase::Layout)?;
-                        assert_eq!(saw_bend, bends);
-                        assert_eq!(ctx.work_meter.used() - before_typed, expected_work);
-                        assert_eq!(ctx.work_meter.projected_svg_bytes(), 0);
-                        assert!(ctx.document_ids.get().is_none());
-                        Ok(())
-                    })
+                            let before_typed = ctx.work_meter.used();
+                            ctx.work_meter.charge(edges.len())?;
+                            let mut scratch = FlowchartEdgeDataPointsScratch::default();
+                            let mut saw_bend = false;
+                            for edge in edges {
+                                let route = prepare_dagre_linear_edge_route(
+                                    ctx,
+                                    edge.as_ref(),
+                                    hierarchy,
+                                    &mut scratch,
+                                )?
+                                .expect("Dagre linear shaft");
+                                assert_eq!(
+                                    crate::svg::parity::curve::curve_linear_path_d(&route.points),
+                                    parity[&edge.key].geom.d
+                                );
+                                assert_eq!(
+                                    Some(bounds_bits(route.bounds)),
+                                    parity[&edge.key].geom.pb.map(bounds_bits)
+                                );
+                                saw_bend |= route.points.windows(3).any(|points| {
+                                    let first_x = points[1].x - points[0].x;
+                                    let first_y = points[1].y - points[0].y;
+                                    let second_x = points[2].x - points[1].x;
+                                    let second_y = points[2].y - points[1].y;
+                                    (first_x * second_y - first_y * second_x).abs() > 0.001
+                                });
+                            }
+                            ctx.work_meter
+                                .checkpoint(merman_model::OperationPhase::Layout)?;
+                            assert_eq!(saw_bend, bends);
+                            assert_eq!(ctx.work_meter.used() - before_typed, expected_work);
+                            assert_eq!(ctx.work_meter.projected_svg_bytes(), 0);
+                            assert!(ctx.document_ids.get().is_none());
+                            Ok(())
+                        },
+                    )
                 },
             );
         }
@@ -1030,34 +1035,39 @@ mod tests {
             Some(layout),
             true,
             |request, execution| {
-                with_flowchart_paint_context(request, execution, |ctx, edges, hierarchy| {
-                    let parity = prepare_edge_routes(ctx, edges, hierarchy, false)?;
-                    let edge = edges[0].as_ref();
-                    let geom = &parity[&edge.key].geom;
-                    let mut scratch = FlowchartEdgeDataPointsScratch::default();
-                    let route =
-                        prepare_dagre_linear_edge_route(ctx, edge, hierarchy, &mut scratch)?
-                            .expect("Dagre linear shaft");
-                    assert_eq!(geom.data_points.len(), 4);
-                    assert_eq!((geom.data_points[0].x, geom.data_points[3].x), (10.0, 50.0));
-                    assert_eq!(route.points.len(), 8);
-                    let expected = "M10,0L25,0L27.828,2.172L30,5L30,35L32.172,37.828L35,40L46,40";
-                    assert_eq!(geom.d, expected);
-                    assert_eq!(
-                        crate::svg::parity::curve::curve_linear_path_d(&route.points),
-                        expected
-                    );
-                    assert_eq!(
-                        (
-                            route.bounds.min_x,
-                            route.bounds.min_y,
-                            route.bounds.max_x,
-                            route.bounds.max_y
-                        ),
-                        (10.0, 0.0, 46.0, 40.0)
-                    );
-                    Ok(())
-                })
+                with_flowchart_paint_context(
+                    request,
+                    &svg_services(execution),
+                    |ctx, edges, hierarchy| {
+                        let parity = prepare_edge_routes(ctx, edges, hierarchy, false)?;
+                        let edge = edges[0].as_ref();
+                        let geom = &parity[&edge.key].geom;
+                        let mut scratch = FlowchartEdgeDataPointsScratch::default();
+                        let route =
+                            prepare_dagre_linear_edge_route(ctx, edge, hierarchy, &mut scratch)?
+                                .expect("Dagre linear shaft");
+                        assert_eq!(geom.data_points.len(), 4);
+                        assert_eq!((geom.data_points[0].x, geom.data_points[3].x), (10.0, 50.0));
+                        assert_eq!(route.points.len(), 8);
+                        let expected =
+                            "M10,0L25,0L27.828,2.172L30,5L30,35L32.172,37.828L35,40L46,40";
+                        assert_eq!(geom.d, expected);
+                        assert_eq!(
+                            crate::svg::parity::curve::curve_linear_path_d(&route.points),
+                            expected
+                        );
+                        assert_eq!(
+                            (
+                                route.bounds.min_x,
+                                route.bounds.min_y,
+                                route.bounds.max_x,
+                                route.bounds.max_y
+                            ),
+                            (10.0, 0.0, 46.0, 40.0)
+                        );
+                        Ok(())
+                    },
+                )
             },
         );
     }
@@ -1068,26 +1078,31 @@ mod tests {
             &format!("{DAGRE_LINEAR_CONFIG}flowchart LR\nA -->|label| B"),
             true,
             |request, execution| {
-                with_flowchart_paint_context(request, execution, |ctx, edges, hierarchy| {
-                    let edge = edges[0].as_ref();
-                    let mut scratch = FlowchartEdgeDataPointsScratch::default();
-                    assert!(
-                        prepare_edge_routes(ctx, edges, hierarchy, false)?.contains_key(&edge.key)
-                    );
-                    assert!(
-                        prepare_dagre_linear_edge_route(ctx, edge, hierarchy, &mut scratch)?
-                            .is_none()
-                    );
-                    let before_cancel = ctx.work_meter.used();
-                    ctx.work_meter.control().cancel();
-                    assert!(matches!(
-                        prepare_dagre_linear_edge_route(ctx, edge, hierarchy, &mut scratch),
-                        Err(crate::Error::Cancelled(error))
-                            if error.phase == merman_model::OperationPhase::Layout
-                    ));
-                    assert_eq!(ctx.work_meter.used(), before_cancel);
-                    Ok(())
-                })
+                with_flowchart_paint_context(
+                    request,
+                    &svg_services(execution),
+                    |ctx, edges, hierarchy| {
+                        let edge = edges[0].as_ref();
+                        let mut scratch = FlowchartEdgeDataPointsScratch::default();
+                        assert!(
+                            prepare_edge_routes(ctx, edges, hierarchy, false)?
+                                .contains_key(&edge.key)
+                        );
+                        assert!(
+                            prepare_dagre_linear_edge_route(ctx, edge, hierarchy, &mut scratch)?
+                                .is_none()
+                        );
+                        let before_cancel = ctx.work_meter.used();
+                        ctx.work_meter.control().cancel();
+                        assert!(matches!(
+                            prepare_dagre_linear_edge_route(ctx, edge, hierarchy, &mut scratch),
+                            Err(crate::Error::Cancelled(error))
+                                if error.phase == merman_model::OperationPhase::Layout
+                        ));
+                        assert_eq!(ctx.work_meter.used(), before_cancel);
+                        Ok(())
+                    },
+                )
             },
         );
     }
@@ -1114,35 +1129,39 @@ mod tests {
                 })
                 .collect();
             with_source(&source, true, |request, execution| {
-                with_flowchart_paint_context(request, execution, |ctx, edges, hierarchy| {
-                    let mut routes = prepare_edge_routes(ctx, edges, hierarchy, false)?;
-                    let labels = FlowchartEdgeLabels::prepare(ctx, hierarchy, &routes)?;
-                    assert!(prepare_query_rough_paths(
-                        ctx,
-                        hierarchy,
-                        &mut routes,
-                        &labels
-                    )?);
-                    let mut compared = 0;
-                    for edge in edges {
-                        let Some(rough) = routes
-                            .get(&edge.key)
-                            .and_then(|entry| entry.geom.emitted_d_for_label.as_ref())
-                        else {
-                            continue;
-                        };
-                        assert_eq!(
-                            rough, &actual[&edge.edge.id],
-                            "seed {seed}, edge {}",
-                            edge.edge.id
-                        );
-                        compared += 1;
-                    }
-                    assert!(compared >= 2);
-                    assert_eq!(ctx.work_meter.projected_svg_bytes(), 0);
-                    assert!(ctx.document_ids.get().is_none());
-                    Ok(())
-                })
+                with_flowchart_paint_context(
+                    request,
+                    &svg_services(execution),
+                    |ctx, edges, hierarchy| {
+                        let mut routes = prepare_edge_routes(ctx, edges, hierarchy, false)?;
+                        let labels = FlowchartEdgeLabels::prepare(ctx, hierarchy, &routes)?;
+                        assert!(prepare_query_rough_paths(
+                            ctx,
+                            hierarchy,
+                            &mut routes,
+                            &labels
+                        )?);
+                        let mut compared = 0;
+                        for edge in edges {
+                            let Some(rough) = routes
+                                .get(&edge.key)
+                                .and_then(|entry| entry.geom.emitted_d_for_label.as_ref())
+                            else {
+                                continue;
+                            };
+                            assert_eq!(
+                                rough, &actual[&edge.edge.id],
+                                "seed {seed}, edge {}",
+                                edge.edge.id
+                            );
+                            compared += 1;
+                        }
+                        assert!(compared >= 2);
+                        assert_eq!(ctx.work_meter.projected_svg_bytes(), 0);
+                        assert!(ctx.document_ids.get().is_none());
+                        Ok(())
+                    },
+                )
             });
         }
     }
@@ -1151,24 +1170,28 @@ mod tests {
     fn geometry_without_positioned_labels_does_not_prepare_rough_paths() {
         let source = "---\nconfig:\n  layout: dagre\n  htmlLabels: false\n  look: handDrawn\n  handDrawnSeed: -1\n---\nflowchart LR\nA --> B";
         with_source(source, true, |request, execution| {
-            with_flowchart_paint_context(request, execution, |ctx, edges, hierarchy| {
-                let mut routes = prepare_edge_routes(ctx, edges, hierarchy, false)?;
-                let labels = FlowchartEdgeLabels::prepare(ctx, hierarchy, &routes)?;
-                let before = ctx.work_meter.used();
-                assert!(!prepare_query_rough_paths(
-                    ctx,
-                    hierarchy,
-                    &mut routes,
-                    &labels
-                )?);
-                assert_eq!(before, ctx.work_meter.used());
-                assert!(
-                    routes
-                        .values()
-                        .all(|entry| entry.geom.emitted_d_for_label.is_none())
-                );
-                Ok(())
-            })
+            with_flowchart_paint_context(
+                request,
+                &svg_services(execution),
+                |ctx, edges, hierarchy| {
+                    let mut routes = prepare_edge_routes(ctx, edges, hierarchy, false)?;
+                    let labels = FlowchartEdgeLabels::prepare(ctx, hierarchy, &routes)?;
+                    let before = ctx.work_meter.used();
+                    assert!(!prepare_query_rough_paths(
+                        ctx,
+                        hierarchy,
+                        &mut routes,
+                        &labels
+                    )?);
+                    assert_eq!(before, ctx.work_meter.used());
+                    assert!(
+                        routes
+                            .values()
+                            .all(|entry| entry.geom.emitted_d_for_label.is_none())
+                    );
+                    Ok(())
+                },
+            )
         });
     }
 

@@ -82,11 +82,12 @@ pub(super) fn render_flowchart_svg_model(
         svg_label_sidecar: _,
         edge_style_plan: _,
     } = request;
+    let services = svg_services(options);
     super::paint::with_flowchart_paint_context(
         request,
-        options,
+        &services,
         |ctx, render_edges, hierarchy_plan| {
-            let render_timing = options.timing();
+            let render_timing = services.timing;
             let mut timings = timing::RenderTimings::default();
             let total_timer = render_timing.start();
             let document_ids = ctx.document_ids();
@@ -156,7 +157,7 @@ pub(super) fn render_flowchart_svg_model(
                         ctx,
                         hierarchy_plan,
                         &edge_path_cache,
-                        options,
+                        &services,
                     )?;
                     if let Some(bounds) = edge_fills.casing_bounds() {
                         bbox_min_x = bbox_min_x.min(bounds.x0);
@@ -190,7 +191,7 @@ pub(super) fn render_flowchart_svg_model(
                 &mut bbox_max_y,
             );
             let document = prepare_flowchart_svg_document(FlowchartSvgDocumentRequest {
-                root_viewport: options.root_viewport(options.family_id(), diagram_id),
+                root_viewport: services.root_viewport.clone(),
                 document_scope,
                 uses_elk_adapter_dom: ctx.uses_elk_adapter_dom,
                 use_max_width,
@@ -211,7 +212,7 @@ pub(super) fn render_flowchart_svg_model(
             let _g_render_svg = render_timing.section(&mut timings.render_svg);
 
             let document = document.write(
-                options.work_meter(),
+                services.work_meter,
                 FlowchartStylesheetRequest {
                     diagram_id,
                     diagram_type,
@@ -224,8 +225,7 @@ pub(super) fn render_flowchart_svg_model(
                     font_size,
                     class_defs: &model.class_defs,
                     swimlane: swimlane_layout.is_some(),
-                    allow_deferred_palette: options.generation == crate::svg::SvgGeneration::Static
-                        && ctx.icon_registry.is_none(),
+                    allow_deferred_palette: services.defer_palette_stylesheet,
                 },
                 |out| {
                     let mut paint = render::FlowchartRootPaint {

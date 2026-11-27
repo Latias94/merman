@@ -88,6 +88,13 @@ pub mod stylesheet;
     feature = "diagram-swimlane"
 ))]
 #[doc(hidden)]
+pub mod svg;
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
+#[doc(hidden)]
 pub mod svg_label;
 
 #[cfg(feature = "layout-dagre")]

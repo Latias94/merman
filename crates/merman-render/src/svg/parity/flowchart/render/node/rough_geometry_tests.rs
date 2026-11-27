@@ -161,7 +161,7 @@ fn with_context<T>(
 
             edge_style_plan: &edge_style_plan,
         },
-        &execution,
+        &flow::svg_services(&execution),
         |ctx, _, _| consume(ctx),
     )
     .unwrap()

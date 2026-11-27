@@ -11,23 +11,6 @@ pub(in crate::svg::parity::flowchart) use merman_render_flow::graph::FlowchartRo
 use rustc_hash::{FxHashMap, FxHashSet};
 
 #[derive(Clone, Copy)]
-pub(in crate::svg::parity::flowchart) struct FlowchartEmitCheckpoint<'a> {
-    checkpoint: &'a dyn Fn() -> crate::Result<()>,
-}
-
-impl<'a> FlowchartEmitCheckpoint<'a> {
-    pub(in crate::svg::parity::flowchart) fn new(
-        checkpoint: &'a dyn Fn() -> crate::Result<()>,
-    ) -> Self {
-        Self { checkpoint }
-    }
-
-    pub(in crate::svg::parity::flowchart) fn checkpoint(self) -> crate::Result<()> {
-        (self.checkpoint)()
-    }
-}
-
-#[derive(Clone, Copy)]
 pub(super) enum FlowchartLayoutEdgeRef<'a> {
     Materialized(&'a crate::model::LayoutEdge),
     #[cfg(feature = "layout-shoal")]
@@ -99,7 +82,6 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) palette: super::agentflow::ContainerPalette<'a>,
     pub(in crate::svg::parity::flowchart) hand_drawn_seed: roughr::core::RoughRandomness,
     pub(in crate::svg::parity::flowchart) work_meter: &'a crate::resources::OperationWorkMeter,
-    pub(in crate::svg::parity::flowchart) emit: FlowchartEmitCheckpoint<'a>,
     pub(in crate::svg::parity::flowchart) math_renderer:
         Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub(in crate::svg::parity::flowchart) svg_label_sidecar:
@@ -217,7 +199,9 @@ impl<'a> FlowchartRenderCtx<'a> {
     }
 
     pub(in crate::svg::parity::flowchart) fn checkpoint_emit(&self) -> crate::Result<()> {
-        self.emit.checkpoint()
+        self.work_meter
+            .checkpoint(merman_model::OperationPhase::Emit)
+            .map_err(Into::into)
     }
 }
 

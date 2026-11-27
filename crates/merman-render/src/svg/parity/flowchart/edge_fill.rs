@@ -116,7 +116,7 @@ impl FlowchartEdgeFillPlan {
         _ctx: &FlowchartRenderCtx<'_>,
         _hierarchy: &FlowchartHierarchyPlan<'_>,
         _cache: &FxHashMap<FlowchartEdgeKey, FlowchartEdgePathCacheEntry>,
-        _options: &SvgExecution<'_>,
+        _services: &FlowchartSvgServices<'_>,
     ) -> Result<Self> {
         Ok(Self::default())
     }
@@ -183,7 +183,7 @@ mod shoal {
             ctx: &FlowchartRenderCtx<'_>,
             hierarchy: &FlowchartHierarchyPlan<'_>,
             cache: &FxHashMap<FlowchartEdgeKey, FlowchartEdgePathCacheEntry>,
-            options: &SvgExecution<'_>,
+            services: &FlowchartSvgServices<'_>,
         ) -> Result<Self> {
             let RouteContract::CanonicalAxis(axis) = &ctx.layout.route_contract else {
                 return Ok(Self::default());
@@ -194,7 +194,7 @@ mod shoal {
             else {
                 return Ok(plan);
             };
-            let canvas = solid_canvas(ctx, options);
+            let canvas = solid_canvas(ctx, services);
             let groups = &ctx.layout.clusters;
             ctx.work_meter.charge(groups.len())?;
             let indices: FxHashMap<_, _> = groups
@@ -442,22 +442,22 @@ mod shoal {
         }
     }
 
-    fn solid_canvas(ctx: &FlowchartRenderCtx<'_>, options: &SvgExecution<'_>) -> Option<Color> {
-        let session = options.family.session();
-        if session.native_theme().is_some_and(|theme| {
-            theme
-                .resolved()
-                .canvas()
+    fn solid_canvas(
+        ctx: &FlowchartRenderCtx<'_>,
+        services: &FlowchartSvgServices<'_>,
+    ) -> Option<Color> {
+        if services.native_canvas.is_some_and(|canvas| {
+            canvas
                 .textures
                 .iter()
                 .any(|texture| !matches!(texture, Texture::None))
         }) {
             return None;
         }
-        session
-            .canvas_background()
+        services
+            .canvas_background
             .or_else(|| {
-                if let Some(native) = options.native_family_theme() {
+                if let Some(native) = services.native_family_theme {
                     match &native.roles.canvas {
                         Paint::Solid(color) => Some(*color),
                         Paint::LinearGradient(_) => None,
