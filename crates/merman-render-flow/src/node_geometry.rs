@@ -6,6 +6,22 @@ use merman_render_core::{Error, LayoutNode, LayoutPoint, Result, text::TextMetri
 
 use crate::svg_label::FlowchartSvgLabelSidecar;
 
+mod dimensions;
+mod label;
+mod validation;
+
+pub use dimensions::{
+    CROSSED_CIRCLE_RADIUS, DelayGeometry, DisplayGeometry, DoubleCircleGeometry, HexagonGeometry,
+    LeanGeometry, LeanKind, NodeLayoutDimensionsRequest, OddGeometry, StadiumGeometry,
+    flowchart_brace_content_dimensions, flowchart_node_render_dimensions,
+    flowchart_stacked_document_geometry,
+};
+pub use label::{flowchart_node_label_min_width, flowchart_node_svg_width_mode};
+pub use validation::{
+    resolve_flowchart_shape, validate_flowchart_model_shapes,
+    validate_flowchart_node_asset_dimensions,
+};
+
 #[derive(Debug, Clone, Copy)]
 pub struct ImageSquareGeometry {
     pub image: Size,

@@ -1,5 +1,5 @@
 use crate::mermaid_style::HtmlTextGeometryDeclarations;
-#[cfg(any(feature = "layout-dagre", feature = "layout-elk", test))]
+#[cfg(any(feature = "layout-elk", test))]
 use crate::model::{Bounds, LayoutEdge, LayoutNode};
 #[cfg(all(
     test,
@@ -30,74 +30,8 @@ pub(crate) use merman_render_core::text::html_label_layout::flowchart_html_label
 pub(crate) use merman_render_core::text::html_label_layout::flowchart_label_plain_text_for_layout;
 pub(crate) use merman_render_core::text::literal_label::FlowchartSvgWidthMode;
 
-/// The FlowDB minimum only reaches ordinary nodes that use `labelHelper`.
-/// Asset shapes set `node.width` before calling it; fixed-size symbols and label-derived
-/// circles opt out of it.
-#[cfg(any(
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-agentflow"
-))]
-pub(crate) fn flowchart_node_label_min_width(
-    raw_label: &str,
-    layout_shape: Option<&str>,
-    config: &PresentationConfig,
-) -> f64 {
-    use crate::flowchart::FlowchartShape;
-
-    let shape = FlowchartShape::resolve(layout_shape.unwrap_or("squareRect"));
-    if raw_label.is_empty()
-        || matches!(
-            shape,
-            Some(
-                FlowchartShape::Anchor
-                    | FlowchartShape::Circle
-                    | FlowchartShape::Choice
-                    | FlowchartShape::CrossedCircle
-                    | FlowchartShape::DoubleCircle
-                    | FlowchartShape::FilledCircle
-                    | FlowchartShape::ForkJoin
-                    | FlowchartShape::FramedCircle
-                    | FlowchartShape::SmallCircle
-                    | FlowchartShape::LightningBolt
-                    | FlowchartShape::Icon
-                    | FlowchartShape::IconCircle
-                    | FlowchartShape::IconRounded
-                    | FlowchartShape::IconSquare
-                    | FlowchartShape::ImageSquare
-                    | FlowchartShape::CollapsedGroup
-            )
-        )
-    {
-        return 0.0;
-    }
-    crate::config::config_f64(config, &["flowchart", "minNodeWidth"])
-        .unwrap_or(0.0)
-        .max(0.0)
-}
-
-#[cfg(any(
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-agentflow"
-))]
-pub(crate) fn flowchart_node_svg_width_mode(
-    raw_label: &str,
-    label_type: &str,
-    wrap_mode: WrapMode,
-    layout_shape: &str,
-) -> FlowchartSvgWidthMode {
-    if wrap_mode == WrapMode::SvgLike
-        && label_type != "markdown"
-        && !raw_label.contains('<')
-        && !raw_label.contains('>')
-        && crate::flowchart::is_flowchart_process_shape(layout_shape)
-    {
-        FlowchartSvgWidthMode::ComputedLength
-    } else {
-        FlowchartSvgWidthMode::Bbox
-    }
-}
+#[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
+use merman_render_flow::node_geometry::flowchart_node_label_min_width;
 
 // Mermaid 11.16 inserts decoded labels through `addHtmlSpan(...).html(...)`. HTML collapses the
 // ASCII whitespace set at a boundary, but U+00A0 remains visible and contributes to the line box.
@@ -165,68 +99,23 @@ pub(crate) fn flowchart_html_label_metrics_with_geometry(
     )
 }
 
-#[cfg(any(feature = "layout-dagre", feature = "layout-elk", test))]
-fn compute_bounds_impl<E>(
-    nodes: &[LayoutNode],
-    edges: &[LayoutEdge],
-    mut charge: impl FnMut(usize) -> std::result::Result<(), E>,
-) -> std::result::Result<Option<Bounds>, E> {
-    fn include(bounds: &mut Option<Bounds>, x: f64, y: f64) {
-        let Some(bounds) = bounds.as_mut() else {
-            *bounds = Some(Bounds {
-                min_x: x,
-                min_y: y,
-                max_x: x,
-                max_y: y,
-            });
-            return;
-        };
-        bounds.min_x = bounds.min_x.min(x);
-        bounds.min_y = bounds.min_y.min(y);
-        bounds.max_x = bounds.max_x.max(x);
-        bounds.max_y = bounds.max_y.max(y);
-    }
-
-    let mut bounds = None;
-    for n in nodes {
-        charge(2)?;
-        let hw = n.width / 2.0;
-        let hh = n.height / 2.0;
-        include(&mut bounds, n.x - hw, n.y - hh);
-        include(&mut bounds, n.x + hw, n.y + hh);
-    }
-    for e in edges {
-        charge(1)?;
-        charge(e.points.len())?;
-        for p in &e.points {
-            include(&mut bounds, p.x, p.y);
-        }
-        if let Some(l) = &e.label {
-            charge(2)?;
-            let hw = l.width / 2.0;
-            let hh = l.height / 2.0;
-            include(&mut bounds, l.x - hw, l.y - hh);
-            include(&mut bounds, l.x + hw, l.y + hh);
-        }
-    }
-    Ok(bounds)
-}
-
 #[cfg(feature = "layout-elk")]
 pub(crate) fn compute_bounds(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> {
-    match compute_bounds_impl(nodes, edges, |_| Ok::<(), std::convert::Infallible>(())) {
+    match merman_render_core::measure_layout_bounds(nodes, edges, |_| {
+        Ok::<(), std::convert::Infallible>(())
+    }) {
         Ok(bounds) => bounds,
         Err(never) => match never {},
     }
 }
 
-#[cfg(any(feature = "layout-dagre", test))]
-pub(crate) fn compute_bounds_controlled(
+#[cfg(test)]
+fn compute_bounds_controlled(
     nodes: &[LayoutNode],
     edges: &[LayoutEdge],
     charge: impl FnMut(usize) -> crate::Result<()>,
 ) -> crate::Result<Option<Bounds>> {
-    compute_bounds_impl(nodes, edges, charge)
+    merman_render_core::measure_layout_bounds(nodes, edges, charge)
 }
 
 #[cfg(all(

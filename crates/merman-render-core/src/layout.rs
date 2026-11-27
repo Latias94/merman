@@ -1,6 +1,6 @@
 //! Shared graph layout projections for renderer families.
 
-use crate::LayoutPoint;
+use crate::{Bounds, LayoutPoint};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -148,4 +148,51 @@ pub struct SwimlaneNodeLayout {
     pub layer: usize,
     pub order: usize,
     pub is_edge_label: bool,
+}
+
+/// Bound measured nodes and edge paths in traversal order, charging each retained part.
+pub fn measure_layout_bounds<E>(
+    nodes: &[LayoutNode],
+    edges: &[LayoutEdge],
+    mut charge: impl FnMut(usize) -> std::result::Result<(), E>,
+) -> std::result::Result<Option<Bounds>, E> {
+    fn include(bounds: &mut Option<Bounds>, x: f64, y: f64) {
+        let Some(bounds) = bounds.as_mut() else {
+            *bounds = Some(Bounds {
+                min_x: x,
+                min_y: y,
+                max_x: x,
+                max_y: y,
+            });
+            return;
+        };
+        bounds.min_x = bounds.min_x.min(x);
+        bounds.min_y = bounds.min_y.min(y);
+        bounds.max_x = bounds.max_x.max(x);
+        bounds.max_y = bounds.max_y.max(y);
+    }
+
+    let mut bounds = None;
+    for n in nodes {
+        charge(2)?;
+        let hw = n.width / 2.0;
+        let hh = n.height / 2.0;
+        include(&mut bounds, n.x - hw, n.y - hh);
+        include(&mut bounds, n.x + hw, n.y + hh);
+    }
+    for e in edges {
+        charge(1)?;
+        charge(e.points.len())?;
+        for p in &e.points {
+            include(&mut bounds, p.x, p.y);
+        }
+        if let Some(l) = &e.label {
+            charge(2)?;
+            let hw = l.width / 2.0;
+            let hh = l.height / 2.0;
+            include(&mut bounds, l.x - hw, l.y - hh);
+            include(&mut bounds, l.x + hw, l.y + hh);
+        }
+    }
+    Ok(bounds)
 }

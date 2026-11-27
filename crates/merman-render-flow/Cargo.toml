@@ -111,7 +111,7 @@ diagram-swimlane = [
     "merman-render-core/theme-label-background",
     "merman-render-core/theme-svg",
 ]
-layout-dagre = ["dep:dugong", "dep:serde_json", "merman-render-core/layout-dagre"]
+layout-dagre = ["dep:dugong", "dep:serde_json", "merman-render-core/euclid-geometry", "merman-render-core/layout-dagre"]
 layout-swimlane = [
     "dep:indexmap",
     "dep:merman-model",

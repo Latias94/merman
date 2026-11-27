@@ -1,7 +1,6 @@
 //! Measured leaf shapes and edge labels shared by Flowchart graph adapters.
 
 use super::config::{FlowchartConfigView, FlowchartLayoutSettings};
-use super::node::NodeLayoutDimensionsRequest;
 use super::{
     FlowEdge, FlowNode, FlowchartClassDefinitions, FlowchartEdgeKey, FlowchartLabelMetricsRequest,
     FlowchartRenderModelRef, FlowchartSvgLabelOwner, FlowchartSvgLabelSidecarBuilder,
@@ -14,6 +13,7 @@ use crate::Result;
 use crate::math::MathRenderer;
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use merman_model::presentation::PresentationConfig;
+use merman_render_flow::node_geometry::NodeLayoutDimensionsRequest;
 
 pub(super) struct MeasuredLabel {
     pub width: f64,
