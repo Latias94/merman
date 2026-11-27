@@ -80,6 +80,41 @@ fn same_id_shape_data_routes_to_subgraph_metadata_without_mutating_node() {
 }
 
 #[test]
+fn flowchart_source_strips_prototype_keys_from_subgraph_metadata() {
+    let ast = parse_ast(concat!(
+        "flowchart TD\n",
+        "subgraph __group\n",
+        "  A\n",
+        "end\n",
+        "__group@{\n",
+        "  algorithm: elk.box\n",
+        "  __proto__: ignored\n",
+        "  details:\n",
+        "    - constructor: ignored\n",
+        "      prototype: ignored\n",
+        "      note: kept\n",
+        "}\n",
+    ));
+    let source = build_flowchart_source(
+        ast,
+        None,
+        None,
+        &MermaidConfig::empty_object(),
+        false,
+        &OperationControl::new(),
+    )
+    .expect("a private parse control cannot be cancelled")
+    .expect("subgraph metadata should parse");
+
+    let group = &source.subgraphs[0];
+    assert_eq!(group.id, "__group");
+    assert_eq!(
+        group.metadata.as_ref(),
+        Some(&json!({"algorithm": "elk.box", "details": [{"note": "kept"}]}))
+    );
+}
+
+#[test]
 fn single_large_chain_observes_cancellation_in_post_parse_projections() {
     let nodes = (0..256)
         .map(|index| format!("n{index}"))

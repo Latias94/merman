@@ -233,16 +233,18 @@ fn prepare_flowchart_shape_data_document(
     if documents.contains_key(source) {
         return control.checkpoint();
     }
-    let document = parse_mermaid_inline_yaml_with_root_order_controlled(source, control)?.map(
-        |(mut value, key_order)| {
+    let document = match parse_mermaid_inline_yaml_with_root_order_controlled(source, control)? {
+        Ok((mut value, key_order)) => {
+            crate::metadata::strip_prototype_keys(&mut value, control)?;
             if let Value::Object(map) = &mut value {
                 for key in ["laneRole", "laneIndex", "drawnExtent"] {
                     map.remove(key);
                 }
             }
-            ShapeDataDocument { value, key_order }
-        },
-    );
+            Ok(ShapeDataDocument { value, key_order })
+        }
+        Err(error) => Err(error),
+    };
     documents.insert(source.to_string(), document);
     Ok(())
 }

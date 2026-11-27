@@ -12,3 +12,10 @@ pub mod agentflow;
     feature = "diagram-agentflow"
 ))]
 pub mod flowchart;
+
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
+mod metadata;

@@ -1893,11 +1893,16 @@ fn parse_metadata(
             result = Ok(value);
         }
     }
-    Ok(result.and_then(|value| match strip_prototype_keys(value) {
+    let mut value = match result {
+        Ok(value) => value,
+        Err(error) => return Ok(Err(error)),
+    };
+    crate::metadata::strip_prototype_keys(&mut value, control)?;
+    Ok(match value {
         Value::Null => Ok(Map::new()),
         Value::Object(object) => Ok(object),
         _ => Err("agentflow metadata must be an object".to_string()),
-    }))
+    })
 }
 
 // The shapeDataStr lexer rewrites LF plus following ECMAScript whitespace
@@ -1985,24 +1990,6 @@ fn strip_line_trailing_commas(body: &str) -> String {
         }
     }
     out
-}
-
-fn strip_prototype_keys(value: Value) -> Value {
-    match value {
-        Value::Array(values) => {
-            Value::Array(values.into_iter().map(strip_prototype_keys).collect())
-        }
-        Value::Object(object) => Value::Object(
-            object
-                .into_iter()
-                .filter(|(key, _)| {
-                    !matches!(key.as_str(), "__proto__" | "constructor" | "prototype")
-                })
-                .map(|(key, value)| (key, strip_prototype_keys(value)))
-                .collect(),
-        ),
-        other => other,
-    }
 }
 
 fn unquote(value: &str) -> String {
