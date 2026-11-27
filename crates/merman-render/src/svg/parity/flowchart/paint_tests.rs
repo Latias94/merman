@@ -1,5 +1,6 @@
 use super::svg_emit::test_support::{FlowchartSvgModelRequest, render_flowchart_svg_model};
 use super::*;
+use merman_render_core::svg_bounds::SvgPathBounds;
 use merman_render_core::svg_edge_parity::{curve, svg_path_length_from_d};
 use merman_render_flow::svg::{self as flow_svg, test_support::*};
 use rustc_hash::FxHashMap;
@@ -168,7 +169,7 @@ fn dagre_neo_centerline_length_is_precomputed_only_for_svg_paint() {
 
 #[test]
 fn dagre_linear_typed_routes_match_parity_shafts_bounds_and_work() {
-    let bounds_bits = |bounds: path_bounds::SvgPathBounds| {
+    let bounds_bits = |bounds: SvgPathBounds| {
         [bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y].map(f64::to_bits)
     };
     for (body, bends) in [

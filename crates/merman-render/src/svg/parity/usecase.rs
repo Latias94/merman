@@ -2,8 +2,6 @@
 
 use super::SvgExecution;
 #[cfg(feature = "layout-shoal")]
-use super::svg_path_bounds_from_d;
-#[cfg(feature = "layout-shoal")]
 use crate::{Error, model::Bounds};
 use crate::{Result, usecase::UsecasePreparedArtifact};
 use merman_model::{

@@ -1,5 +1,3 @@
-pub(super) use merman_render_core::svg_bounds::{SvgPathBounds, svg_path_bounds_from_d};
-
 #[cfg(test)]
 mod tests {
     use merman_render_core::svg_edge_parity::svg_path_length_from_d;
@@ -11,10 +9,10 @@ mod tests {
     ))]
     #[test]
     fn rough_operation_bounds_match_serialized_path_bounds() {
-        use super::svg_path_bounds_from_d;
         use merman_render_core::rough_svg::{
             ops_to_svg_path_d, paths::svg_path_bounds_from_rough_ops,
         };
+        use merman_render_core::svg_bounds::{SvgPathBounds, svg_path_bounds_from_d};
         use roughr::core::{Op, OpSet, OpSetType, OpType};
 
         let opset = OpSet {
@@ -42,7 +40,7 @@ mod tests {
         };
         let expected = svg_path_bounds_from_d(&ops_to_svg_path_d(&opset)).unwrap();
         let actual = svg_path_bounds_from_rough_ops(&opset).unwrap();
-        let coordinates = |bounds: super::SvgPathBounds| {
+        let coordinates = |bounds: SvgPathBounds| {
             [bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y].map(f64::to_bits)
         };
         assert_eq!(coordinates(actual), coordinates(expected));

@@ -81,14 +81,7 @@ mod journey;
 use merman_render_core::rough_svg as canonical_rough;
 #[cfg(feature = "diagram-mindmap")]
 mod mindmap;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
-    )
-)]
+#[cfg(test)]
 mod path_bounds;
 #[cfg(feature = "diagram-pie")]
 mod pie;
@@ -141,12 +134,6 @@ mod usecase;
 mod util;
 #[cfg(feature = "diagram-zenuml")]
 mod zenuml;
-#[cfg(all(
-    feature = "layout-shoal",
-    any(feature = "diagram-er", feature = "diagram-usecase")
-))]
-use path_bounds::svg_path_bounds_from_d;
-
 pub use merman_render_core::svg_bounds::{
     SvgEmittedBoundsContributor, SvgEmittedBoundsDebug, debug_svg_emitted_bounds,
 };
@@ -702,6 +689,7 @@ impl<'a> SvgExecution<'a> {
     ///
     /// Family emitters call this at bounded loop boundaries so an early SVG-byte rejection or
     /// cancellation stops the tail of a high-fanout render instead of waiting for finalization.
+    #[cfg(any(test, all(feature = "diagram-usecase", feature = "layout-shoal")))]
     pub(crate) fn checkpoint_emit(&self) -> Result<()> {
         self.work_meter()
             .checkpoint(OperationPhase::Emit)
