@@ -23,7 +23,7 @@ use crate::{
         FlowchartEffectiveParentIndex, apply_solved_group_parents, flowchart_node_dom_indices,
     },
     layout_config::{FlowchartBaseTypographyPlan, FlowchartConfigView, FlowchartRenderConfig},
-    projection::{FlowchartEdgeKey, FlowchartRenderModelRef, flowchart_helper_node_ids},
+    projection::{FlowchartEdgeOwners, FlowchartRenderModelRef, flowchart_helper_node_ids},
     style::{
         compiled::{
             FlowchartCompiledStyles, FlowchartNodeClassStyles, FlowchartPreparedClassStyles,
@@ -47,7 +47,7 @@ pub enum FlowchartNodeLayoutView<'a> {
         nodes: &'a [LayoutNode],
         clusters: &'a [LayoutCluster],
         dom_node_order_by_root: &'a std::collections::HashMap<String, Vec<String>>,
-        edge_owners: &'a [FlowchartEdgeKey],
+        edge_owners: &'a FlowchartEdgeOwners,
         solved_parents: Option<&'a [Option<u32>]>,
         uses_elk_adapter_dom: bool,
         uses_projected_edges: bool,
@@ -55,7 +55,7 @@ pub enum FlowchartNodeLayoutView<'a> {
     Swimlane {
         nodes: &'a [SwimlaneNodeLayout],
         lanes: &'a [SwimlaneLaneLayout],
-        edge_owners: &'a [FlowchartEdgeKey],
+        edge_owners: &'a FlowchartEdgeOwners,
         direction: SwimlaneDirection,
         canonical: bool,
     },

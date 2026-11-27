@@ -9,8 +9,9 @@ use merman_model::families::flowchart::{
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::{
-    FlowchartEdgeKey, FlowchartRenderEdgeRef, flowchart_dagre_merges_self_loop_segments,
-    flowchart_self_loop_helper_edges, project_flowchart_edge,
+    FlowchartEdgeKey, FlowchartEdgeOwners, FlowchartRenderEdgeRef,
+    flowchart_dagre_merges_self_loop_segments, flowchart_self_loop_helper_edges,
+    project_flowchart_edge,
 };
 
 #[derive(Debug)]
@@ -36,7 +37,7 @@ pub struct FlowchartRenderInputs<'a> {
 pub(crate) fn flowchart_helper_node_ids(
     model: &FlowchartModel,
     render_context: &FlowchartRenderContext,
-    owners: &[FlowchartEdgeKey],
+    owners: &FlowchartEdgeOwners,
     uses_elk: bool,
 ) -> BTreeSet<String> {
     if uses_elk {
@@ -60,7 +61,7 @@ pub(crate) fn flowchart_helper_node_ids(
 pub fn prepare_flowchart_render_inputs<'a>(
     model: &'a FlowchartModel,
     render_context: &'a FlowchartRenderContext,
-    layout_edge_owners: &[FlowchartEdgeKey],
+    layout_edge_owners: &FlowchartEdgeOwners,
     owner_occurrences: Option<HashMap<usize, u8>>,
     use_semantic_edges: bool,
 ) -> FlowchartRenderInputs<'a> {

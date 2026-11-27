@@ -1,53 +1,56 @@
-use super::{FlowEdge, FlowchartEdgeKey};
+use merman_model::families::flowchart::FlowEdge;
+use merman_render_core::{Error, LayoutEdge, Result};
+
+use super::FlowchartEdgeKey;
 use std::collections::HashMap;
 
 /// Atomic ownership ledger aligned with a prepared layout's renderable edges.
 ///
-/// Keeping the typed keys behind this crate-private seam prevents public Mermaid ids and naked
+/// Keeping the typed keys behind this family-owned seam prevents public Mermaid ids and naked
 /// `usize` sidecars from becoming competing sources of occurrence identity.
 #[derive(Debug, Clone, Default)]
-pub(crate) struct FlowchartEdgeOwners(Vec<FlowchartEdgeKey>);
+pub struct FlowchartEdgeOwners(Vec<FlowchartEdgeKey>);
 
 impl FlowchartEdgeOwners {
-    pub(crate) fn new(keys: Vec<FlowchartEdgeKey>) -> Self {
+    pub fn new(keys: Vec<FlowchartEdgeKey>) -> Self {
         Self(keys)
     }
 
-    #[cfg(test)]
-    pub(crate) fn from_semantic_indices(indices: impl IntoIterator<Item = usize>) -> Self {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn from_semantic_indices(indices: impl IntoIterator<Item = usize>) -> Self {
         Self(indices.into_iter().map(FlowchartEdgeKey::new).collect())
     }
 
-    pub(crate) fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.0.len()
     }
 
-    pub(crate) fn keys(&self) -> &[FlowchartEdgeKey] {
-        &self.0
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
 
-    pub(crate) fn iter(&self) -> impl ExactSizeIterator<Item = FlowchartEdgeKey> + '_ {
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = FlowchartEdgeKey> + '_ {
         self.0.iter().copied()
     }
 
     /// Returns `None` for complete, ordered regular ownership. Otherwise the
     /// validated occurrence map also serves as semantic owner membership.
-    pub(crate) fn validate(
+    pub fn validate(
         &self,
-        layout_edges: &[crate::model::LayoutEdge],
+        layout_edges: &[LayoutEdge],
         semantic_edges: &[FlowEdge],
-    ) -> crate::Result<Option<HashMap<usize, u8>>> {
+    ) -> Result<Option<HashMap<usize, u8>>> {
         self.validate_bindings(layout_edges.len(), semantic_edges, |index| {
             Some(layout_edges[index].id.as_str())
         })
     }
 
-    #[cfg(feature = "layout-shoal")]
-    pub(crate) fn validate_projected(
+    #[cfg(feature = "canonical-edge-paint")]
+    pub fn validate_projected(
         &self,
         edge_count: usize,
         semantic_edges: &[FlowEdge],
-    ) -> crate::Result<Option<HashMap<usize, u8>>> {
+    ) -> Result<Option<HashMap<usize, u8>>> {
         self.validate_bindings(edge_count, semantic_edges, |_| None)
     }
 
@@ -56,11 +59,11 @@ impl FlowchartEdgeOwners {
         edge_count: usize,
         semantic_edges: &[FlowEdge],
         layout_id: impl Fn(usize) -> Option<&'a str>,
-    ) -> crate::Result<Option<HashMap<usize, u8>>> {
+    ) -> Result<Option<HashMap<usize, u8>>> {
         const REGULAR_OCCURRENCE: u8 = 0b1000;
 
         if self.len() != edge_count {
-            return Err(crate::Error::InvalidModel {
+            return Err(Error::InvalidModel {
                 message: format!(
                     "Flowchart layout edge-owner count {} does not match edge count {edge_count}",
                     self.len(),
@@ -73,7 +76,7 @@ impl FlowchartEdgeOwners {
         for (layout_index, key) in self.iter().enumerate() {
             let id = layout_id(layout_index);
             let Some(semantic_edge) = semantic_edges.get(key.semantic_index()) else {
-                return Err(crate::Error::InvalidModel {
+                return Err(Error::InvalidModel {
                     message: if let Some(id) = id {
                         format!(
                             "Flowchart layout edge `{id}` references missing semantic owner {}",
@@ -107,7 +110,7 @@ impl FlowchartEdgeOwners {
                     )
                 }
                 Some(_) => {
-                    return Err(crate::Error::InvalidModel {
+                    return Err(Error::InvalidModel {
                         message: format!(
                             "Flowchart layout has an invalid self-loop segment occurrence {key:?}"
                         ),
@@ -117,7 +120,7 @@ impl FlowchartEdgeOwners {
             if let Some(id) = id
                 && id != expected_id.as_ref()
             {
-                return Err(crate::Error::InvalidModel {
+                return Err(Error::InvalidModel {
                     message: format!(
                         "Flowchart layout edge `{id}` is not bound to semantic owner {} (`{}`)",
                         key.semantic_index(),
@@ -137,7 +140,7 @@ impl FlowchartEdgeOwners {
                 .entry(key.semantic_index())
                 .or_default();
             if *occurrences & occurrence_bit != 0 {
-                return Err(crate::Error::InvalidModel {
+                return Err(Error::InvalidModel {
                     message: format!("Flowchart layout contains duplicate edge occurrence {key:?}"),
                 });
             }
@@ -146,7 +149,7 @@ impl FlowchartEdgeOwners {
         if let Some(owners) = &owner_occurrences {
             for (&semantic_index, &occurrences) in owners {
                 if !matches!(occurrences, 0b0111 | REGULAR_OCCURRENCE) {
-                    return Err(crate::Error::InvalidModel {
+                    return Err(Error::InvalidModel {
                         message: format!(
                             "Flowchart semantic owner {semantic_index} has incomplete or mixed render occurrences"
                         ),
@@ -161,7 +164,6 @@ impl FlowchartEdgeOwners {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::LayoutEdge;
     use std::collections::HashSet;
 
     fn semantic_edge(id: &str) -> FlowEdge {
@@ -224,12 +226,12 @@ mod tests {
             FlowchartEdgeOwners::new(vec![FlowchartEdgeKey::new(0), FlowchartEdgeKey::new(0)]);
         assert!(matches!(
             duplicate.validate(&layout, &semantic),
-            Err(crate::Error::InvalidModel { message })
+            Err(Error::InvalidModel { message })
                 if message.contains("duplicate edge occurrence")
         ));
         assert!(matches!(
             duplicate.validate(&[layout_edge("same"), layout_edge("other")], &semantic),
-            Err(crate::Error::InvalidModel { message })
+            Err(Error::InvalidModel { message })
                 if message.contains("is not bound to semantic owner 0")
         ));
 
@@ -270,7 +272,7 @@ mod tests {
         let mut semantic = semantic_edge("loop");
         semantic.from = "A".to_owned();
         semantic.to = "A".to_owned();
-        let helpers = merman_render_flow::projection::flowchart_self_loop_helper_edges(&semantic);
+        let helpers = super::super::flowchart_self_loop_helper_edges(&semantic);
         let layout = [helpers.edge1, helpers.edge_mid, helpers.edge2]
             .into_iter()
             .map(|helper| {

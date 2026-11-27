@@ -337,13 +337,8 @@ mod integration_tests {
             .unwrap()
         });
         let coverage = owners.validate(&layout_edges, &model.edges).unwrap();
-        let inputs = prepare_flowchart_render_inputs(
-            &model,
-            &render_context,
-            owners.keys(),
-            coverage,
-            false,
-        );
+        let inputs =
+            prepare_flowchart_render_inputs(&model, &render_context, &owners, coverage, false);
         let render_model = crate::flowchart::FlowchartRenderModelRef::new(&model, &render_context);
         assert_eq!(
             inputs

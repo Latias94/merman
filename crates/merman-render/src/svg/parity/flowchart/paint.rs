@@ -73,7 +73,7 @@ pub(super) fn with_flowchart_paint_context<T>(
     } = prepare_flowchart_render_inputs(
         model,
         render_context,
-        layout.edge_owners.keys(),
+        &layout.edge_owners,
         owner_occurrences,
         layout.route_contract.uses_projected_edges(),
     );

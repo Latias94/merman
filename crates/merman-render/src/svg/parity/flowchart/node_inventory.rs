@@ -15,7 +15,7 @@ impl FlowchartLayout {
             nodes: &self.nodes,
             clusters: &self.clusters,
             dom_node_order_by_root: &self.dom_node_order_by_root,
-            edge_owners: self.edge_owners.keys(),
+            edge_owners: &self.edge_owners,
             solved_parents: self.route_contract.group_parents(),
             uses_elk_adapter_dom: self.route_contract.is_elk_parity(),
             uses_projected_edges: self.route_contract.uses_projected_edges(),
@@ -29,7 +29,7 @@ impl SwimlaneLayout {
         FlowchartNodeLayoutView::Swimlane {
             nodes: &self.nodes,
             lanes: &self.lanes,
-            edge_owners: self.edge_owners.keys(),
+            edge_owners: &self.edge_owners,
             direction: self.direction,
             canonical: self.has_canonical_routes(),
         }

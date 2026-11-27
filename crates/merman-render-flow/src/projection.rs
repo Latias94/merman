@@ -7,9 +7,11 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
 
+mod edge_occurrence;
 mod render_input;
 mod self_loop;
 
+pub use edge_occurrence::FlowchartEdgeOwners;
 pub(crate) use render_input::flowchart_helper_node_ids;
 pub use render_input::{
     FlowchartRenderEdge, FlowchartRenderInputs, prepare_flowchart_render_inputs,

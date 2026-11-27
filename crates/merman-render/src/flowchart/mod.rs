@@ -6,7 +6,6 @@ use merman_render_flow::{class_style, style};
 mod bpmn_layout_tests;
 #[cfg(feature = "layout-dagre")]
 pub(crate) mod dagre;
-mod edge_occurrence;
 #[cfg(feature = "layout-elk")]
 pub mod elk;
 use crate::graph_label as label;
@@ -25,11 +24,10 @@ pub(crate) use merman_model::families::flowchart::{
 pub(crate) use class_style::{
     FlowchartClassDefinitions, FlowchartLabelDom, FlowchartStructuralLabelTypography,
 };
-pub(crate) use edge_occurrence::FlowchartEdgeOwners;
 pub(crate) use merman_render_flow::lane_title::zero_width_lane_title_rows;
 pub(crate) use merman_render_flow::projection::{
-    FlowchartEdgeKey, FlowchartEdgeTransportPlan, FlowchartRenderModelRef, ProjectedFlowchartEdge,
-    project_flowchart_edge,
+    FlowchartEdgeKey, FlowchartEdgeOwners, FlowchartEdgeTransportPlan, FlowchartRenderModelRef,
+    ProjectedFlowchartEdge, project_flowchart_edge,
 };
 pub(crate) use native_theme::{FlowchartCompatibilityBinding, FlowchartPreparedTheme};
 
