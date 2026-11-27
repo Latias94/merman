@@ -978,17 +978,19 @@ mod tests {
             .find(|edge| edge.id == "req1-cyclic-special-1")
             .expect("middle self-loop segment");
         let middle_label = middle_edge.label.as_ref().expect("middle label geometry");
-        let middle_path = crate::svg::parity::curve::curve_basis_path_d(&middle_edge.points);
-        let final_position = crate::svg::parity::edge_label_geometry::position_edge_label(
-            crate::model::LayoutPoint {
-                x: middle_label.x,
-                y: middle_label.y,
-            },
-            Some(&middle_edge.points),
-            &middle_edge.points,
-            &middle_path,
-            false,
-        );
+        let middle_path =
+            merman_render_core::svg_edge_parity::curve::curve_basis_path_d(&middle_edge.points);
+        let final_position =
+            merman_render_core::svg_edge_parity::edge_label_geometry::position_edge_label(
+                crate::model::LayoutPoint {
+                    x: middle_label.x,
+                    y: middle_label.y,
+                },
+                Some(&middle_edge.points),
+                &middle_edge.points,
+                &middle_path,
+                false,
+            );
         let view_box = root_view_box(&svg);
         assert!(
             final_position.x - middle_label.width / 2.0 >= view_box[0]

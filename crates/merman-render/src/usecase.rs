@@ -1,17 +1,16 @@
 //! Selects a Usecase backend and pairs prepared graph data with its terminal routes.
 
-use crate::{LayoutExecution, Result, elk_edge_geometry};
+use crate::{LayoutExecution, Result};
 use merman_model::{families::usecase::UsecaseDiagramModel, presentation::PresentationConfig};
 use merman_render_graph::usecase::{UsecasePrepared, prepare_usecase_measurements};
 
 pub use merman_render_graph::usecase::UsecaseDiagramLayout;
 #[cfg(feature = "layout-shoal")]
 pub(crate) use merman_render_graph::usecase::actor;
+pub(crate) use merman_render_graph::usecase::requires_math;
 #[cfg(feature = "layout-shoal")]
 use merman_render_graph::usecase::{UsecaseCanonicalSvg, UsecaseEdgePainter};
-pub(crate) use merman_render_graph::usecase::{UsecaseEdgePlan, UsecaseNodePlan, requires_math};
 
-mod layout;
 #[cfg(feature = "layout-shoal")]
 mod shoal;
 
@@ -56,12 +55,13 @@ pub(crate) fn prepare_usecase_diagram(
     effective_config: &PresentationConfig,
     execution: &LayoutExecution<'_>,
 ) -> Result<UsecasePreparedArtifact> {
+    #[cfg(feature = "layout-shoal")]
+    use crate::graph_layout::RouteContract;
     #[cfg(any(
         feature = "layout-dagre",
         feature = "layout-elk",
         feature = "layout-shoal"
     ))]
-    use crate::graph_layout::RouteContract;
     use crate::layout_backend::GraphLayoutBackend;
 
     let work_meter = execution.work_meter();
@@ -89,50 +89,34 @@ pub(crate) fn prepare_usecase_diagram(
             canonical: Some(canonical),
         });
     }
-    #[cfg(feature = "layout-dagre")]
-    let mut measured = measured;
-    let (mut layout, route_contract) = match backend {
+    match (backend, config_value, measured) {
         #[cfg(feature = "layout-dagre")]
-        GraphLayoutBackend::Dagre => Ok((
-            merman_render_graph::usecase::layout_dagre(
-                model,
-                config_value,
-                &mut measured,
-                &mut work,
+        (GraphLayoutBackend::Dagre, config, measured) => Ok(UsecasePreparedArtifact {
+            prepared: merman_render_graph::usecase::prepare_dagre(
+                model, config, measured, &mut work,
             )?,
-            RouteContract::DagreParity,
-        )),
+            #[cfg(feature = "layout-shoal")]
+            route_contract: RouteContract::DagreParity,
+            #[cfg(feature = "layout-shoal")]
+            canonical: None,
+        }),
         #[cfg(feature = "layout-elk")]
-        GraphLayoutBackend::Elk(algorithm) => Ok((
-            layout::elk_layout(
+        (GraphLayoutBackend::Elk(algorithm), config, measured) => Ok(UsecasePreparedArtifact {
+            prepared: merman_render_graph::usecase::prepare_elk(
                 model,
-                config_value,
-                &measured.nodes,
-                &measured.edges,
+                config,
+                measured,
                 &mut work,
-                algorithm,
+                algorithm.algorithm(),
                 execution.elk_operation_seed(),
             )?,
-            RouteContract::ElkParity,
-        )),
-        _ => Err(backend.unavailable_for(execution.family_id().as_str())),
-    }?;
-    let edge_paths = layout::prepare_edge_paths(
-        &mut layout,
-        &measured.nodes,
-        &measured.edges,
-        config_value,
-        &route_contract,
-        &mut work,
-    )?;
-    let elk = route_contract.is_elk_parity();
-    Ok(UsecasePreparedArtifact {
-        prepared: UsecasePrepared::new(measured, layout, edge_paths, elk),
-        #[cfg(feature = "layout-shoal")]
-        route_contract,
-        #[cfg(feature = "layout-shoal")]
-        canonical: None,
-    })
+            #[cfg(feature = "layout-shoal")]
+            route_contract: RouteContract::ElkParity,
+            #[cfg(feature = "layout-shoal")]
+            canonical: None,
+        }),
+        (backend, _, _) => Err(backend.unavailable_for(execution.family_id().as_str())),
+    }
 }
 
 #[cfg(all(test, feature = "layout-dagre"))]

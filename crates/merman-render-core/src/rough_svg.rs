@@ -1,11 +1,11 @@
+use crate::number_format::canonical_number as number;
 use std::fmt::Write as _;
 
-mod constrained;
-pub mod controlled;
-
-pub use constrained::constrained_rough_edge_path;
+mod canonical_edge;
+pub use canonical_edge::constrained_rough_edge_path;
 #[cfg(feature = "layout-shoal")]
-pub use constrained::constrained_rough_edge_with_geometry;
+pub use canonical_edge::constrained_rough_edge_with_geometry;
+pub mod controlled;
 #[cfg(feature = "svg-edge-parity")]
 #[doc(hidden)]
 pub mod paths;
@@ -55,21 +55,56 @@ pub fn ops_to_svg_path_d(opset: &roughr::core::OpSet<f64>) -> String {
     for op in &opset.ops {
         match op.op {
             roughr::core::OpType::Move => {
-                let _ = write!(&mut out, "M{} {} ", op.data[0], op.data[1]);
+                let _ = write!(&mut out, "M{} {} ", number(op.data[0]), number(op.data[1]));
             }
             roughr::core::OpType::BCurveTo => {
                 let _ = write!(
                     &mut out,
                     "C{} {}, {} {}, {} {} ",
-                    op.data[0], op.data[1], op.data[2], op.data[3], op.data[4], op.data[5]
+                    number(op.data[0]),
+                    number(op.data[1]),
+                    number(op.data[2]),
+                    number(op.data[3]),
+                    number(op.data[4]),
+                    number(op.data[5]),
                 );
             }
             roughr::core::OpType::LineTo => {
-                let _ = write!(&mut out, "L{} {} ", op.data[0], op.data[1]);
+                let _ = write!(&mut out, "L{} {} ", number(op.data[0]), number(op.data[1]));
             }
         }
     }
     // Each operation appends one trailing ASCII space.
     out.pop();
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use roughr::core::{Op, OpSet, OpSetType, OpType};
+
+    #[test]
+    fn rough_path_coordinates_share_canonical_svg_number_format() {
+        let operations = OpSet {
+            op_set_type: OpSetType::Path,
+            ops: vec![
+                Op {
+                    op: OpType::Move,
+                    data: vec![-0.0, 2.0 + 1e-8],
+                },
+                Op {
+                    op: OpType::BCurveTo,
+                    data: vec![1e-10, 2.5, 3.0, 4.0 - 1e-8, 5.0, 6.0],
+                },
+                Op {
+                    op: OpType::LineTo,
+                    data: vec![7.0 + 1e-8, 8.0],
+                },
+            ],
+            size: None,
+            path: None,
+        };
+        assert_eq!(ops_to_svg_path_d(&operations), "M0 2 C0 2.5, 3 4, 5 6 L7 8");
+    }
 }

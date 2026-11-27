@@ -1,17 +1,11 @@
-use super::config_scan::{
-    MAX_CONFIG_NESTING_DEPTH, config_nesting_exceeds_limit,
-    config_nesting_exceeds_limit_controlled, max_yaml_indent_depth_controlled,
-};
-use super::directive_config::{parse_directive_like_upstream, sanitize_directive};
-use super::frontmatter_config::FrontmatterCapture;
+use super::config_policy::{FrontmatterCapture, sanitize_directive};
 #[cfg(feature = "editor-facts")]
 use super::rewrite_order::MAX_REWRITE_DEPTH;
 use super::*;
+use crate::MAX_DIAGRAM_NESTING_DEPTH;
 use merman_core_preprocess::MappedSource;
 use merman_core_preprocess::frontmatter::dedent_frontmatter_body_controlled;
-use merman_core_preprocess::scan::controlled::{
-    CONTROLLED_SCAN_CHECKPOINT_BYTES, ControlledScanCheckpoints, trim_whitespace_bounds_controlled,
-};
+use merman_core_preprocess::scan::controlled::CONTROLLED_SCAN_CHECKPOINT_BYTES;
 use merman_core_preprocess::text::{
     normalize_crlf_controlled, normalize_html_tag_attributes_like_upstream_controlled,
 };
@@ -112,42 +106,6 @@ fn frontmatter_collection_text_preserves_source_order() {
                 .unwrap();
         assert!(captured.keys.is_empty());
         assert_fields(captured);
-    }
-}
-
-#[test]
-fn directive_json5_decodes_literal_keys_and_preserves_numeric_and_duplicate_semantics() {
-    let directive = parse_directive_like_upstream(
-        r#"init: {
-                '$serde_json::private::RawValue': 'true',
-                values: [/* JSON5 */ {
-                    '\u0024serde_json::private::Number': '123',
-                    hex: +0x10, fraction: .5, large: 18446744073709551615, nan: NaN,
-                }],
-                theme: 'dark',
-                '$serde_json::private::RawValue': 'false',
-            }"#,
-    )
-    .expect("valid directive")
-    .expect("init directive");
-    let args = directive.args.expect("decoded argument");
-    let args = args.as_object().unwrap();
-    assert_eq!(args.len(), 3);
-    assert_eq!(args["$serde_json::private::RawValue"], "false");
-    assert_eq!(args["theme"], "dark");
-    let values = args["values"].as_array().unwrap();
-    assert_eq!(values.len(), 1);
-    let value = values[0].as_object().unwrap();
-    assert_eq!(value.len(), 5);
-    assert_eq!(value["$serde_json::private::Number"], "123");
-    assert_eq!(value["hex"], 16);
-    assert_eq!(value["fraction"].as_f64(), Some(0.5));
-    assert_eq!(value["large"].as_u64(), Some(u64::MAX));
-    assert!(value["nan"].is_null());
-
-    for raw in ["init: {theme: 'dark'} {}", "init: {theme: 'dark'} /*"] {
-        let directive = parse_directive_like_upstream(raw).unwrap().unwrap();
-        assert!(directive.args.is_none(), "{raw}");
     }
 }
 
@@ -443,7 +401,7 @@ fn transformed(
 
 #[test]
 fn frontmatter_depth_ignores_brackets_in_yaml_comments_and_block_scalars() {
-    let brackets = "[".repeat(MAX_CONFIG_NESTING_DEPTH + 1);
+    let brackets = "[".repeat(MAX_DIAGRAM_NESTING_DEPTH + 1);
     for (body, expected_css) in [
         (format!("# {brackets}\nconfig:\n  theme: dark\n"), None),
         (
@@ -465,7 +423,7 @@ fn frontmatter_depth_ignores_brackets_in_yaml_comments_and_block_scalars() {
 
 #[test]
 fn frontmatter_depth_rejects_actual_flow_and_block_collections() {
-    let depth = MAX_CONFIG_NESTING_DEPTH + 1;
+    let depth = MAX_DIAGRAM_NESTING_DEPTH + 1;
     for body in [
         format!(
             "config:\n  values: {}0{}\n",
@@ -885,8 +843,8 @@ fn source_config_evidence_retains_first_yaml_error_and_later_directive_facts() {
 fn source_config_evidence_retains_later_directives_after_a_directive_budget_error() {
     let nested = format!(
         "{}true{}",
-        "{".repeat(MAX_CONFIG_NESTING_DEPTH + 1),
-        "}".repeat(MAX_CONFIG_NESTING_DEPTH + 1)
+        "{".repeat(MAX_DIAGRAM_NESTING_DEPTH + 1),
+        "}".repeat(MAX_DIAGRAM_NESTING_DEPTH + 1)
     );
     let source = format!(
         "%%{{init: {nested}}}%%\n%%{{initialize: {{ theme: 'dark' }} }}%%\nflowchart TD\nA-->B\n"
@@ -910,8 +868,8 @@ fn source_config_evidence_retains_later_directives_after_a_directive_budget_erro
 fn incomplete_directive_capture_stops_after_the_keyword() {
     let nested = format!(
         "{}true{}",
-        "{".repeat(MAX_CONFIG_NESTING_DEPTH + 1),
-        "}".repeat(MAX_CONFIG_NESTING_DEPTH + 1)
+        "{".repeat(MAX_DIAGRAM_NESTING_DEPTH + 1),
+        "}".repeat(MAX_DIAGRAM_NESTING_DEPTH + 1)
     );
     let source = format!("%%{{ initialize: {nested}\nflowchart TD\nA-->B\n");
     let captured = capture_source_config(&source);
@@ -1370,61 +1328,6 @@ fn sanitize_directive_validates_dictionary_arrays_like_javascript_objects() {
         value["treeView"]["extensionIcons"],
         json!(["logos:typescript-icon", null, null])
     );
-}
-
-#[test]
-fn config_nesting_counts_inline_yaml_sequence_indicators() {
-    let yaml = format!(
-        "config:\n  {}\"leaf\"",
-        "- ".repeat(MAX_CONFIG_NESTING_DEPTH + 1)
-    );
-    assert!(config_nesting_exceeds_limit(&yaml));
-}
-
-#[test]
-fn controlled_config_nesting_preserves_existing_depth_semantics() {
-    let deep_flow = "[".repeat(MAX_CONFIG_NESTING_DEPTH + 1);
-    for (yaml, expected) in [
-        ("title: '[not, nesting]'\n", false),
-        ("config:\r\n  theme: dark\r\n", false),
-        ("# [ignored]\nconfig: { theme: dark }\n", false),
-        (deep_flow.as_str(), true),
-    ] {
-        let controlled = config_nesting_exceeds_limit_controlled(yaml, &OperationControl::new())
-            .expect("an active parse control must not cancel");
-
-        assert_eq!(controlled, expected, "yaml: {yaml:?}");
-        assert_eq!(controlled, config_nesting_exceeds_limit(yaml));
-    }
-}
-
-#[test]
-fn config_nesting_flow_scan_cancels_deterministically_on_a_long_line() {
-    let yaml = format!("title: \"{}\"", "x".repeat(16 * 1024));
-    let control = OperationControl::new();
-    control.cancel_after_checkpoints(2);
-
-    assert!(config_nesting_exceeds_limit_controlled(&yaml, &control).is_err());
-}
-
-#[test]
-fn config_nesting_indent_scan_cancels_deterministically_on_a_long_line() {
-    let yaml = format!("{}key: value", " ".repeat(16 * 1024));
-    let control = OperationControl::new();
-    control.cancel_after_checkpoints(2);
-    let mut checkpoints = ControlledScanCheckpoints::new(&control).unwrap();
-
-    assert!(max_yaml_indent_depth_controlled(&yaml, &mut checkpoints).is_err());
-}
-
-#[test]
-fn config_nesting_trim_cancels_deterministically_on_long_whitespace() {
-    let line = format!("{}value{}", " ".repeat(16 * 1024), " ".repeat(16 * 1024));
-    let control = OperationControl::new();
-    control.cancel_after_checkpoints(2);
-    let mut checkpoints = ControlledScanCheckpoints::new(&control).unwrap();
-
-    assert!(trim_whitespace_bounds_controlled(&line, &mut checkpoints).is_err());
 }
 
 fn deep_directive_value(depth: usize, leaf: Value) -> Value {

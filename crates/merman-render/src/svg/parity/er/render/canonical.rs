@@ -5,10 +5,12 @@ use crate::graph_layout::{
 };
 use crate::model::{LayoutEdge, LayoutPoint};
 use crate::resources::OperationWorkMeter;
-use crate::svg::parity::svg_path_bounds_from_d;
 use crate::{Error, Result};
 use kurbo::{Rect, Vec2};
-use merman_render_core::rough_svg::constrained_rough_edge_path;
+use merman_render_core::{
+    rough_svg::constrained_rough_edge_path,
+    svg_bounds::{SvgPathBounds, svg_path_bounds_from_d},
+};
 use merman_render_graph::er::er_marker_paint_bounds;
 use merman_theme_contract::v2::EdgeStyle;
 use roughr::core::RoughRandomness;
@@ -64,7 +66,7 @@ pub(super) fn paint_edge<'points>(
         let bounds = path.bounds;
         (
             path.d,
-            crate::svg::parity::path_bounds::SvgPathBounds {
+            SvgPathBounds {
                 min_x: bounds.min_x,
                 min_y: bounds.min_y,
                 max_x: bounds.max_x,

@@ -6,7 +6,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Layout configuration, shape vocabulary, and geometry for Merman's flow diagram renderers."
+description = "Layout and SVG rendering for Merman's Flowchart, Swimlane, and Agentflow diagrams."
 documentation = "https://docs.rs/merman-render-flow"
 readme = "README.md"
 keywords = ["mermaid", "diagrams", "layout", "geometry", "flowchart"]
@@ -17,8 +17,10 @@ third-party-bundle = true
 
 [features]
 benchmark-stages = ["merman-model?/benchmark-stages"]
+canonical-edge-paint = ["merman-render-core/graph-layout", "merman-render-core/route-paint"]
 diagram-agentflow = [
     "dep:base64",
+    "dep:cssparser",
     "dep:indexmap",
     "dep:memchr",
     "dep:merman-markup",
@@ -29,17 +31,28 @@ diagram-agentflow = [
     "dep:rustc-hash",
     "dep:ryu-js",
     "dep:serde_json",
+    "dep:svgtypes",
     "dep:unicode-segmentation",
+    "merman-render-core/svg-animation",
     "merman-render-core/svg-edge-parity",
     "merman-model/diagram-agentflow",
     "merman-render-core/css-style",
+    "merman-render-core/graph-layout",
+    "merman-render-core/icon-svg",
+    "merman-render-core/inline-raster-size",
     "merman-render-core/markdown-labels",
+    "merman-render-core/math-labels",
     "merman-render-core/root-svg",
     "merman-render-core/rough-svg",
+    "merman-render-core/styled-html-labels",
+    "merman-render-core/svg-safety",
+    "merman-render-core/theme-elevation",
+    "merman-render-core/theme-label-background",
     "merman-render-core/theme-svg",
 ]
 diagram-flowchart = [
     "dep:base64",
+    "dep:cssparser",
     "dep:indexmap",
     "dep:memchr",
     "dep:merman-markup",
@@ -50,17 +63,28 @@ diagram-flowchart = [
     "dep:rustc-hash",
     "dep:ryu-js",
     "dep:serde_json",
+    "dep:svgtypes",
     "dep:unicode-segmentation",
+    "merman-render-core/svg-animation",
     "merman-render-core/svg-edge-parity",
     "merman-model/diagram-flowchart",
     "merman-render-core/css-style",
+    "merman-render-core/graph-layout",
+    "merman-render-core/icon-svg",
+    "merman-render-core/inline-raster-size",
     "merman-render-core/markdown-labels",
+    "merman-render-core/math-labels",
     "merman-render-core/root-svg",
     "merman-render-core/rough-svg",
+    "merman-render-core/styled-html-labels",
+    "merman-render-core/svg-safety",
+    "merman-render-core/theme-elevation",
+    "merman-render-core/theme-label-background",
     "merman-render-core/theme-svg",
 ]
 diagram-swimlane = [
     "dep:base64",
+    "dep:cssparser",
     "dep:indexmap",
     "dep:memchr",
     "dep:merman-markup",
@@ -71,23 +95,46 @@ diagram-swimlane = [
     "dep:rustc-hash",
     "dep:ryu-js",
     "dep:serde_json",
+    "dep:svgtypes",
     "dep:unicode-segmentation",
+    "merman-render-core/svg-animation",
     "merman-render-core/svg-edge-parity",
     "merman-model/diagram-swimlane",
     "merman-render-core/css-style",
+    "merman-render-core/graph-layout",
+    "merman-render-core/icon-svg",
+    "merman-render-core/inline-raster-size",
     "merman-render-core/markdown-labels",
+    "merman-render-core/math-labels",
     "merman-render-core/root-svg",
     "merman-render-core/rough-svg",
+    "merman-render-core/styled-html-labels",
+    "merman-render-core/svg-safety",
+    "merman-render-core/theme-elevation",
+    "merman-render-core/theme-label-background",
     "merman-render-core/theme-svg",
 ]
-layout-dagre = ["dep:dugong", "dep:serde_json", "merman-render-core/layout-dagre"]
+layout-dagre = ["dep:dugong", "dep:serde_json", "merman-render-core/euclid-geometry", "merman-render-core/layout-dagre"]
+layout-elk = ["dep:merman-layout-elk", "merman-render-core/layout-elk"]
+layout-shoal = ["canonical-edge-paint", "merman-render-core/layout-shoal"]
+layout-swimlane = [
+    "dep:indexmap",
+    "dep:merman-model",
+    "dep:serde_json",
+    "merman-render-core/css-style",
+    "merman-render-core/resources",
+]
+native-compact = ["merman-render-core/paint-scene"]
+test-support = []
 
 [dependencies]
 base64 = { workspace = true, optional = true }
+cssparser = { workspace = true, optional = true }
 dugong = { workspace = true, optional = true }
 indexmap = { workspace = true, optional = true }
 kurbo.workspace = true
 memchr = { workspace = true, optional = true }
+merman-layout-elk = { workspace = true, optional = true }
 merman-markup = { workspace = true, features = ["color"], optional = true }
 merman-model = { workspace = true, features = ["presentation-data"], optional = true }
 merman-render-core.workspace = true
@@ -97,7 +144,9 @@ roughr = { workspace = true, optional = true }
 rustc-hash = { workspace = true, optional = true }
 ryu-js = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
+svgtypes = { workspace = true, optional = true }
 unicode-segmentation = { workspace = true, optional = true }
 
 [dev-dependencies]
-merman-render-core = { workspace = true, features = ["test-support"] }
+merman-model = { workspace = true, features = ["test-support"] }
+merman-render-core = { workspace = true, features = ["graph-layout", "test-support"] }

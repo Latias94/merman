@@ -250,22 +250,38 @@ pub(super) fn copy_graph(graph: &Graph, work: &mut Work<'_>) -> LayoutResult<Gra
 
 fn turn_down(graph: &mut Graph, options: &Options, work: &mut Work<'_>) -> LayoutResult<()> {
     let original = graph.direction;
-    graph.direction = Direction::Down;
     let flat = graph.groups.is_empty();
+    let levels = if flat {
+        None
+    } else {
+        Some(crate::compound::authored_directions(
+            &graph.groups,
+            original,
+            work,
+        )?)
+    };
+    let node_axis = |node: &crate::NodeSpec| {
+        levels
+            .as_ref()
+            .map_or(original.axis(), |levels| levels.axis(node.parent))
+    };
+    graph.direction = Direction::Down;
     for node in &mut graph.nodes {
         work.visit(1)?;
         let primary = node.port_span;
         node.port_span = node.perpendicular_port_span.or(primary);
         node.perpendicular_port_span = primary.or_else(|| {
+            // A vertical level already reads the perpendicular span as its primary span.
+            // After the root turns, keep its secondary span inheriting that same value.
             node.port_span
+                .filter(|_| node_axis(node) == Axis::Horizontal)
                 .map(|_| (node.size.height - 2.0 * options.spacing.corner_clearance).max(0.0))
         });
         if flat {
             node.align_flow(graph.direction);
         }
     }
-    let mut directions = None;
-    let mut turn_port = |endpoint, hint, work: &mut Work<'_>| -> LayoutResult<_> {
+    let turn_port = |endpoint, opposite, hint, work: &mut Work<'_>| -> LayoutResult<_> {
         if !matches!(
             hint,
             PortSideHint::Side(Side::Left | Side::Right)
@@ -276,28 +292,23 @@ fn turn_down(graph: &mut Graph, options: &Options, work: &mut Work<'_>) -> Layou
         ) {
             return Ok(hint);
         }
-        let (node, scope) = match endpoint {
+        let (node, axis) = match endpoint {
             Endpoint::Node(id) => {
                 let node = graph.nodes[id.0 as usize];
-                (Some(node), node.parent)
+                (Some(node), node_axis(&node))
             }
-            Endpoint::Group(id) => (None, Some(id)),
+            Endpoint::Group(id) => {
+                let levels = levels.as_ref().ok_or(LayoutError::InvalidInput(
+                    "group port is outside the group array",
+                ))?;
+                (
+                    None,
+                    levels.group_port_axis(id, opposite, &graph.nodes, work)?,
+                )
+            }
         };
-        if let Some(scope) = scope {
-            if directions.is_none() {
-                directions = Some(crate::compound::authored_directions(
-                    &graph.groups,
-                    original,
-                    work,
-                )?);
-            }
-            if directions
-                .as_ref()
-                .and_then(|levels| levels[scope.0 as usize])
-                .is_some_and(|direction| direction.axis() == Axis::Vertical)
-            {
-                return Ok(hint);
-            }
+        if axis == Axis::Vertical {
+            return Ok(hint);
         }
         // The root turn is shared by horizontal scopes. An opposed scope becomes Up.
         let turned = flat::to_canonical_port(original, hint);
@@ -314,8 +325,8 @@ fn turn_down(graph: &mut Graph, options: &Options, work: &mut Work<'_>) -> Layou
     };
     for edge in &mut graph.edges {
         work.visit(1)?;
-        edge.source_port = turn_port(edge.source, edge.source_port, work)?;
-        edge.target_port = turn_port(edge.target, edge.target_port, work)?;
+        edge.source_port = turn_port(edge.source, edge.target, edge.source_port, work)?;
+        edge.target_port = turn_port(edge.target, edge.source, edge.target_port, work)?;
     }
     for group in &mut graph.groups {
         work.visit(1)?;
@@ -462,6 +473,121 @@ mod tests {
         assert_eq!(graph.direction, Direction::Down);
         assert_eq!(graph.edges[0].source_port, pin);
         assert_eq!(graph.edges[0].target_port, pin);
+    }
+
+    #[test]
+    fn a_width_turn_uses_the_level_that_routes_each_group_contact() {
+        let mut graph = Graph {
+            direction: Direction::Left,
+            groups: (0..4).map(GroupSpec::new).collect(),
+            nodes: (0..3)
+                .map(|id| {
+                    NodeSpec::new(
+                        Size {
+                            width: 60.,
+                            height: 80.,
+                        },
+                        id,
+                    )
+                })
+                .collect(),
+            ..Default::default()
+        };
+        graph.groups[0].direction = Some(Direction::Down);
+        graph.groups[1].parent = Some(GroupId(0));
+        graph.groups[2].parent = Some(GroupId(1));
+        graph.groups[2].direction = Some(Direction::Right);
+        graph.groups[3].parent = Some(GroupId(2));
+        graph.groups[3].direction = Some(Direction::Up);
+        graph.nodes[0].parent = Some(GroupId(1));
+        graph.nodes[2].parent = Some(GroupId(2));
+        let group = |id| Endpoint::Group(GroupId(id));
+        let node = |id| Endpoint::Node(NodeId(id));
+        let pin = PortSideHint::FixedOffset {
+            side: Side::Right,
+            offset: 12.,
+        };
+        let turned = PortSideHint::FixedOffset {
+            side: Side::Top,
+            offset: 12.,
+        };
+        let cases = [
+            (group(0), node(1), [turned, turned]),
+            (node(1), group(0), [turned, turned]),
+            (group(0), node(0), [pin, pin]),
+            (node(0), group(0), [pin, pin]),
+            (group(0), group(3), [pin, turned]),
+            (group(2), group(1), [pin, pin]),
+            (group(2), node(2), [turned, turned]),
+            (group(0), group(0), [turned, turned]),
+        ];
+        graph.edges = cases
+            .iter()
+            .map(|&(from, to, _)| {
+                let mut edge = EdgeSpec::new(from, to);
+                edge.source_port = pin;
+                edge.target_port = pin;
+                edge
+            })
+            .collect();
+        turn_down(
+            &mut graph,
+            &Options::default(),
+            &mut Work::new(&mut crate::NoopWorkControl),
+        )
+        .unwrap();
+        for (edge, (source, target, expected)) in graph.edges.iter().zip(cases) {
+            assert_eq!(
+                [edge.source_port, edge.target_port],
+                expected,
+                "{source:?} -> {target:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn a_width_turn_preserves_physical_face_spans_in_vertical_levels() {
+        let size = Size {
+            width: 60.,
+            height: 80.,
+        };
+        let mut graph = Graph {
+            direction: Direction::Right,
+            groups: vec![GroupSpec::new(0), GroupSpec::new(1)],
+            nodes: (0..4).map(|id| NodeSpec::new(size, id)).collect(),
+            ..Default::default()
+        };
+        graph.groups[0].direction = Some(Direction::Up);
+        graph.groups[1].parent = Some(GroupId(0));
+        graph.nodes[1].parent = Some(GroupId(0));
+        graph.nodes[2].parent = Some(GroupId(1));
+        graph.nodes[3].parent = Some(GroupId(1));
+        for node in &mut graph.nodes {
+            node.perpendicular_port_span = Some(20.);
+        }
+        graph.nodes[3].port_span = Some(45.);
+        let options = Options::default();
+        turn_down(
+            &mut graph,
+            &options,
+            &mut Work::new(&mut crate::NoopWorkControl),
+        )
+        .unwrap();
+        let spans: Vec<_> = graph
+            .nodes
+            .iter()
+            .map(|node| (node.port_span, node.perpendicular_port_span))
+            .collect();
+        let full_height = size.height - 2. * options.spacing.corner_clearance;
+        assert_eq!(
+            spans,
+            [
+                (Some(20.), Some(full_height)),
+                (Some(20.), None),
+                (Some(20.), None),
+                (Some(20.), Some(45.))
+            ]
+        );
     }
 
     #[test]

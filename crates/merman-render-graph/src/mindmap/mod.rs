@@ -92,18 +92,6 @@ pub type MindmapSwimlaneSolver = fn(
     Arc<OperationWorkMeter>,
 ) -> Result<MindmapSwimlaneGeometry>;
 
-#[cfg(feature = "layout-elk")]
-pub type MindmapElkSolver<'a> = dyn Fn(
-        &mut merman_layout_elk::Graph,
-        &Value,
-        &mut OperationLayoutWorkControl,
-    ) -> Result<merman_layout_elk::LayoutResult>
-    + 'a;
-
-#[cfg(feature = "layout-elk")]
-pub type MindmapElkEndpoints =
-    fn(&[LayoutPoint], &LayoutNode, &LayoutNode, bool, bool) -> Vec<LayoutPoint>;
-
 /// The facade selects a Mermaid loader before preparing the family.
 pub enum MindmapLayoutBackend<'a> {
     TidyTree,
@@ -114,8 +102,8 @@ pub enum MindmapLayoutBackend<'a> {
     Swimlane(MindmapSwimlaneSolver),
     #[cfg(feature = "layout-elk")]
     Elk {
-        solve: &'a MindmapElkSolver<'a>,
-        sanitize_endpoints: MindmapElkEndpoints,
+        algorithm: merman_layout_elk::Algorithm,
+        operation_seed: merman_layout_elk::ElkOperationSeed,
     },
     Unavailable(&'a dyn Fn() -> Error),
 }
@@ -137,7 +125,7 @@ enum MindmapEdgeRouting {
     CoseBilkent,
     Swimlane,
     #[cfg(feature = "layout-elk")]
-    Elk(MindmapElkEndpoints),
+    Elk,
 }
 
 impl MindmapEdgeRouting {
@@ -712,11 +700,18 @@ pub fn prepare_mindmap_diagram(
         ),
         #[cfg(feature = "layout-elk")]
         MindmapLayoutBackend::Elk {
-            solve,
-            sanitize_endpoints,
+            algorithm,
+            operation_seed,
         } => (
-            registered::elk(model, nodes, effective_config, &mut work, solve)?,
-            MindmapEdgeRouting::Elk(sanitize_endpoints),
+            registered::elk(
+                model,
+                nodes,
+                effective_config,
+                algorithm,
+                operation_seed,
+                &mut work,
+            )?,
+            MindmapEdgeRouting::Elk,
         ),
         #[cfg(feature = "layout-cytoscape")]
         MindmapLayoutBackend::CoseBilkent => (

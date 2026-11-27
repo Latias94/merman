@@ -13,11 +13,7 @@ use kurbo::{Arc, CubicBez, Line, ParamCurveArclen, PathSeg, Point, Shape, SvgArc
 use std::fmt::Write as _;
 
 /// Straight shaft beyond the marker setback, in layout units (v13 `shared/svg/route.ts`).
-#[cfg(feature = "layout-shoal")]
-pub use merman_layout_shoal::MIN_MARKER_LEAD as LEAD;
-/// Straight shaft beyond the marker setback for standalone route painting.
-#[cfg(not(feature = "layout-shoal"))]
-pub const LEAD: f64 = 6.0;
+pub use crate::route_types::MIN_MARKER_LEAD as LEAD;
 const STEP_INSET: f64 = 12.0;
 const TURN_HANDLE: f64 = 0.62;
 const TERMINAL_TURN_RADIUS: f64 = 24.0;
@@ -312,27 +308,35 @@ fn steps(
     }
 }
 
-/// Reduce multiple same-direction offsets between fixed borders to one caption crossbar.
-fn caption_crossbar(route: &[RoutePoint], guard: EdgeClearance<'_>) -> Option<[RoutePoint; 4]> {
+/// Reduce multiple same-direction offsets between fixed borders to one clear turn near the caption.
+fn caption_crossbar(
+    route: &[RoutePoint],
+    style: RouteStyle,
+    guard: EdgeClearance<'_>,
+) -> Option<[RoutePoint; 4]> {
     let &[first, second, .., penultimate, last] = route else {
         return None;
     };
     let label = guard.label_bounds?;
+    if !label.is_finite() || label.width() <= 0.0 || label.height() <= 0.0 {
+        return None;
+    }
     let vertical = (first.x - second.x).abs() <= ALIGN_EPS;
     let axes = |p: Point| if vertical { (p.y, p.x) } else { (p.x, p.y) };
     let (start_run, start_lane) = axes(position(first));
     let (end_run, end_lane) = axes(position(last));
     let (run, lane) = axes(label.center());
     let inside = |from: f64, value: f64, to: f64| from.min(to) < value && value < from.max(to);
-    let nearest_lane = lane.clamp(start_lane.min(end_lane), start_lane.max(end_lane));
     let caption_half_span = if vertical {
         label.width()
     } else {
         label.height()
     } / 2.0;
+    let gap = LEAD + guard.stroke_outset();
+    let attaches = |shaft_lane: f64| (shaft_lane - lane).abs() + gap < caption_half_span;
     if !inside(start_run, run, end_run)
         || start_lane == end_lane
-        || (nearest_lane - lane).abs() >= caption_half_span
+        || !(attaches(start_lane) || attaches(end_lane))
         || (axes(position(second)).1 - start_lane).abs() > ALIGN_EPS
         || (axes(position(penultimate)).1 - end_lane).abs() > ALIGN_EPS
     {
@@ -363,18 +367,51 @@ fn caption_crossbar(route: &[RoutePoint], guard: EdgeClearance<'_>) -> Option<[R
     } else {
         Axis::Vertical
     };
-    let on_plane = |p: RoutePoint| {
-        if vertical {
-            RoutePoint { y: run, axis, ..p }
-        } else {
-            RoutePoint { x: run, axis, ..p }
-        }
+    let (lo, hi) = if vertical {
+        (label.y0, label.y1)
+    } else {
+        (label.x0, label.x1)
     };
-    let candidate = [first, on_plane(first), on_plane(last), last];
-    candidate
-        .windows(2)
-        .all(|pair| !guard.blocks_line(position(pair[0]), position(pair[1])))
-        .then_some(candidate)
+    // Keep a visible lead between the label backplate and the bend. The parallel arm may
+    // still meet the caption so its backplate interrupts the shaft across its short axis.
+    let levels = if (end_run > start_run) == (style == RouteStyle::StepBefore) {
+        [lo - gap, hi + gap]
+    } else {
+        [hi + gap, lo - gap]
+    };
+    levels.into_iter().find_map(|level| {
+        if !inside(first_turn, level, last_turn) {
+            return None;
+        }
+        let lane_at_caption = if inside(start_run, run, level) {
+            start_lane
+        } else {
+            end_lane
+        };
+        if !attaches(lane_at_caption) {
+            return None;
+        }
+        let on_plane = |p: RoutePoint| {
+            if vertical {
+                RoutePoint {
+                    y: level,
+                    axis,
+                    ..p
+                }
+            } else {
+                RoutePoint {
+                    x: level,
+                    axis,
+                    ..p
+                }
+            }
+        };
+        let candidate = [first, on_plane(first), on_plane(last), last];
+        candidate
+            .windows(2)
+            .all(|pair| !guard.blocks_line(position(pair[0]), position(pair[1])))
+            .then_some(candidate)
+    })
 }
 
 fn sweep_curve(from: Point, end: RoutePoint, contour_departure: bool, scale: f64) -> CubicBez {
@@ -1051,7 +1088,7 @@ fn draw_section(
         if style != RouteStyle::Step
             && terminals.0.is_none()
             && terminals.1.is_none()
-            && let Some(path) = clearance.and_then(|guard| caption_crossbar(route, guard))
+            && let Some(path) = clearance.and_then(|guard| caption_crossbar(route, style, guard))
         {
             route.clear();
             route.extend(path);
@@ -1796,15 +1833,17 @@ mod tests {
             v(36., 90.),
         ];
         let unblocked = Clearance::default();
-        let blocked = Clearance::new(vec![(
-            Rect::new(4., 28., 12., 36.),
-            ObstacleOwner::GroupTitle(4),
-        )])
+        let neighboring_label = (Rect::new(4., 39., 12., 45.), ObstacleOwner::EdgeLabel(1));
+        let one_side_blocked = Clearance::new(vec![neighboring_label]).unwrap();
+        let both_sides_blocked = Clearance::new(vec![
+            neighboring_label,
+            (Rect::new(4., 19., 12., 25.), ObstacleOwner::GroupTitle(4)),
+        ])
         .unwrap();
         fn guard(clearance: &Clearance) -> EdgeClearance<'_> {
             clearance
                 .for_edge(0, (Endpoint::Node(0), Endpoint::Node(1)), Vec2::ZERO, 0.)
-                .with_label_bounds(Some(Rect::new(16., 28., 24., 36.)))
+                .with_label_bounds(Some(Rect::new(-12., 28., 48., 36.)))
         }
         let mut pen = Pen::new(position(points[0]), true, false, None);
         draw_section(
@@ -1818,8 +1857,32 @@ mod tests {
         )
         .unwrap();
         pen.flush_line();
-        assert_eq!(pen.finish().unwrap().d, "M0,0L0,32L36,32L36,90");
-        assert!(caption_crossbar(&points, guard(&blocked)).is_none());
+        assert_eq!(pen.finish().unwrap().d, "M0,0L0,42L36,42L36,90");
+        let fallback =
+            caption_crossbar(&points, RouteStyle::StepAfter, guard(&one_side_blocked)).unwrap();
+        assert_eq!((fallback[1].y, fallback[2].y), (22.0, 22.0));
+        assert!(
+            caption_crossbar(&points, RouteStyle::StepBefore, guard(&both_sides_blocked)).is_none()
+        );
+        let target_lane_only =
+            guard(&unblocked).with_label_bounds(Some(Rect::new(29., 28., 43., 36.)));
+        let attached = caption_crossbar(&points, RouteStyle::StepAfter, target_lane_only).unwrap();
+        assert_eq!((attached[1].y, attached[2].y), (22.0, 22.0));
+
+        for label in [
+            Rect::new(f64::NAN, 28., 43., 36.),
+            Rect::new(16., 28., 24., 36.),
+            Rect::new(22., 28., 37., 36.),
+        ] {
+            assert!(
+                caption_crossbar(
+                    &points,
+                    RouteStyle::StepAfter,
+                    guard(&unblocked).with_label_bounds(Some(label)),
+                )
+                .is_none()
+            );
+        }
     }
 
     #[test]

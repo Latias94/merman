@@ -44,7 +44,7 @@ impl Columns {
         for (id, &slot) in slots.iter().enumerate() {
             work.charge_adapter(1)?;
             let node = &working.nodes[slot];
-            if shell_kind(node).is_some() {
+            if is_lane_shell(node) {
                 let mut group = Some(id);
                 while let Some(id) = group.filter(|&id| !on_grid[id]) {
                     work.charge_adapter(1)?;

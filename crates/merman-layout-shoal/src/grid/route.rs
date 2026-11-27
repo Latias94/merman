@@ -4,7 +4,7 @@ mod captions;
 mod comb;
 mod gutters;
 
-use gutters::{GutterSpan, LaneUse, card_channel, gutter_route};
+use gutters::{GutterSpan, LaneUse, card_channel, gutter_route, simple_candidate};
 
 use super::*;
 use crate::geom::Bounds;
@@ -917,12 +917,12 @@ fn fan_channel(
 // on the facing midline and the four open perimeter tracks before declining the route.
 fn span(
     router: &mut OrthoRouter,
-    start: (RoutePoint, Side),
-    end: (RoutePoint, Side),
+    span: GutterSpan,
     bounds: Rect,
     separation: f64,
     work: &mut Work<'_>,
 ) -> LayoutResult<Option<Vec<RoutePoint>>> {
+    let [start, end] = span.leads;
     let [a, b] = [start.0, end.0];
     let sides = [start.1, end.1];
     if (position(a) != position(b) || start.1 == opposite(end.1))
@@ -968,7 +968,8 @@ fn span(
     ] {
         for value in values {
             let path = dogleg(a, b, axis, value);
-            if clear(router, &path, bounds, sides, work)? {
+            if clear(router, &path, bounds, sides, work)? && simple_candidate(&path, span.contacts)
+            {
                 return Ok(Some(copy_points(&path)?));
             }
         }
@@ -1335,8 +1336,7 @@ pub(crate) fn draw(
                     }
                     span(
                         &mut router,
-                        start,
-                        end,
+                        gutter_span,
                         scope_bounds,
                         metrics.separation,
                         work,
@@ -1552,6 +1552,45 @@ fn normalize(
 mod tests {
     use super::*;
     use crate::{NodeSpec, NoopWorkControl};
+
+    #[test]
+    fn perimeter_dogleg_cannot_cross_its_source_contact_lead() {
+        let mut control = NoopWorkControl;
+        let mut work = Work::new(&mut control);
+        let bounds = Rect {
+            width: 10.0,
+            height: 10.0,
+            ..Rect::default()
+        };
+        let walls = [point([2.0, 2.75]), point([0.75, 2.0])].map(|center| Rect {
+            x: center.x - 0.125,
+            y: center.y - 0.125,
+            width: 0.25,
+            height: 0.25,
+        });
+        // Disable visibility so the fallback has to test the otherwise clear top track.
+        let mut router = OrthoRouter::new(&walls, 0.0, 0, &mut work).unwrap();
+        let from = knot(point([2.0, 2.0]), Axis::Horizontal);
+        let to = knot(point([4.0, 4.0]), Axis::Horizontal);
+        let mut terminals = GutterSpan {
+            leads: [(from, Side::Left), (to, Side::Left)],
+            contacts: [point([3.0, 2.0]), point([5.0, 4.0])],
+        };
+        let expected = dogleg(from, to, Axis::Vertical, 0.0);
+        assert_eq!(
+            span(&mut router, terminals, bounds, 1.0, &mut work)
+                .unwrap()
+                .as_deref(),
+            Some(expected.as_slice())
+        );
+
+        terminals.contacts[0].x = 4.5;
+        assert!(
+            span(&mut router, terminals, bounds, 1.0, &mut work)
+                .unwrap()
+                .is_none()
+        );
+    }
 
     #[test]
     fn snap_collinear_sites_preserves_owning_face_and_scope_bounds() {

@@ -1,8 +1,8 @@
 use crate::validate;
 use crate::work::{LayoutResult, Work, filled, push, reserved};
 use crate::{
-    Direction, Endpoint, Graph, GroupId, GroupSpec, LayoutError, NodeId, Options, PortSideHint,
-    WorkError,
+    Axis, Direction, Endpoint, Graph, GroupId, GroupSpec, LayoutError, NodeId, NodeSpec, Options,
+    PortSideHint, WorkError,
 };
 
 #[derive(Debug)]
@@ -207,12 +207,57 @@ fn normalize_parents(groups: &[GroupSpec], work: &mut Work<'_>) -> LayoutResult<
     Ok(parents)
 }
 
+pub(crate) struct AuthoredLevels {
+    parents: Vec<usize>,
+    directions: Vec<Option<Direction>>,
+    root_direction: Direction,
+}
+
+impl AuthoredLevels {
+    pub(crate) fn axis(&self, level: Option<GroupId>) -> Axis {
+        let direction = level.and_then(|id| self.directions[id.0 as usize]);
+        direction.unwrap_or(self.root_direction).axis()
+    }
+
+    pub(crate) fn group_port_axis(
+        &self,
+        group: GroupId,
+        opposite: Endpoint,
+        nodes: &[NodeSpec],
+        work: &mut Work<'_>,
+    ) -> LayoutResult<Axis> {
+        let root = self.parents.len() - 1;
+        let outer = self.parents[group.0 as usize];
+        let outer_axis = self.directions[outer].unwrap_or(self.root_direction).axis();
+        let inner_axis = self.axis(Some(group));
+        if outer_axis == inner_axis || opposite == Endpoint::Group(group) {
+            return Ok(outer_axis);
+        }
+
+        // An edge to a descendant attaches to the group's own boundary. Otherwise the parent
+        // routes the contact on the group as an item, including an edge from the group to itself.
+        let mut level = match opposite {
+            Endpoint::Node(id) => nodes[id.0 as usize].parent.map_or(root, |id| id.0 as usize),
+            Endpoint::Group(id) => id.0 as usize,
+        };
+        while level != root && level != group.0 as usize {
+            work.visit(1)?;
+            level = self.parents[level];
+        }
+        Ok(if level == root {
+            outer_axis
+        } else {
+            inner_axis
+        })
+    }
+}
+
 // Width turns honor authored directions even where the natural trial inherited a crossed scope.
 pub(crate) fn authored_directions(
     groups: &[GroupSpec],
     root_direction: Direction,
     work: &mut Work<'_>,
-) -> LayoutResult<Vec<Option<Direction>>> {
+) -> LayoutResult<AuthoredLevels> {
     let parents = normalize_parents(groups, work)?;
     work.charge(parents.len())?;
     let mut directions = reserved(parents.len())?;
@@ -235,7 +280,11 @@ pub(crate) fn authored_directions(
             directions[group] = Some(inherited);
         }
     }
-    Ok(directions)
+    Ok(AuthoredLevels {
+        parents,
+        directions,
+        root_direction,
+    })
 }
 
 fn breadth_first(

@@ -1,6 +1,6 @@
 use super::UsecaseDiagramLayout;
 use crate::graph_layout::canonical::{CanonicalRoutes, CaptionClearance};
-use crate::graph_layout::contour::ShapePortProfile;
+use crate::graph_layout::contour::{ShapePortProfile, shoal_contour, usecase_actor};
 use crate::graph_layout::ir::{
     Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, Side, Size,
     SolvedGroup, TitlePosition,
@@ -12,8 +12,9 @@ use crate::{Error, LayoutExecution, Result};
 use kurbo::Insets;
 use merman_model::families::usecase::{UsecaseDiagramModel, UsecaseNodeKind};
 use merman_render_graph::usecase::{
-    UsecaseLabelPlan, UsecaseMeasured, configured_usecase_spacing, package_tab_geometry,
-    package_tab_size,
+    UsecaseLabelPlan, UsecaseMeasured, configured_usecase_spacing,
+    layout::{edge as layout_edge, node as layout_node},
+    package_tab_geometry, package_tab_size,
 };
 use rustc_hash::FxHashMap;
 use serde_json::Value;
@@ -174,7 +175,7 @@ pub(super) fn layout(
             let (profile, size, anchor_y) = if let Some(&variant) = actors.get(plan.id.as_str()) {
                 let actor = super::actor::ActorPlacement::canonical(plan, variant);
                 (
-                    ShapePortProfile::usecase_actor(
+                    usecase_actor(
                         variant,
                         actor.placement,
                         dimensions(&plan.label),
@@ -200,7 +201,7 @@ pub(super) fn layout(
             };
             graph.nodes.push(MeasuredNode {
                 size,
-                contour: profile.shoal_contour(size),
+                contour: shoal_contour(&profile, size),
                 seq,
                 parent: None,
                 port_span: Some(profile.port_span(face)),
@@ -314,7 +315,7 @@ pub(super) fn layout(
             }
         };
         let center = rect.center();
-        nodes.push(super::layout::node(
+        nodes.push(layout_node(
             plan,
             center.x,
             center.y,
@@ -339,7 +340,7 @@ pub(super) fn layout(
             work.checked_add(plan.source.len(), plan.target.len())?,
         )?;
         work.charge_adapter(work.checked_add(strings, edge.points.len())?)?;
-        let mut projected = super::layout::edge(
+        let mut projected = layout_edge(
             plan,
             edge.points
                 .into_iter()

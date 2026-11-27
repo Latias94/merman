@@ -8,6 +8,20 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
 
+mod edge_occurrence;
+mod render_input;
+mod self_loop;
+
+pub use edge_occurrence::FlowchartEdgeOwners;
+pub(crate) use render_input::flowchart_helper_node_ids;
+pub use render_input::{
+    FlowchartRenderEdge, FlowchartRenderInputs, prepare_flowchart_render_inputs,
+};
+pub use self_loop::{
+    FlowchartSelfLoopHelperEdges, flowchart_dagre_merges_self_loop_segments,
+    flowchart_self_loop_helper_edges,
+};
+
 /// Operation-local identity for one rendered Flowchart edge occurrence.
 ///
 /// Mermaid permits distinct semantic edges to share the same public `edge.id`. Internal layout
@@ -52,6 +66,21 @@ impl FlowchartEdgeKey {
                 )
             }
         }
+    }
+}
+
+/// A borrowed render edge with its semantic occurrence identity.
+#[derive(Debug, Clone, Copy)]
+pub struct FlowchartRenderEdgeRef<'a> {
+    pub key: FlowchartEdgeKey,
+    pub edge: &'a FlowEdge,
+}
+
+impl std::ops::Deref for FlowchartRenderEdgeRef<'_> {
+    type Target = FlowEdge;
+
+    fn deref(&self) -> &Self::Target {
+        self.edge
     }
 }
 

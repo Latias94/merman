@@ -5,6 +5,7 @@
 
 use super::controlled;
 use super::ops_to_svg_path_d;
+use crate::number_format::canonicalize_number;
 use crate::resources::OperationWorkMeter;
 use crate::svg_bounds::{
     CubicBezier, SvgPathBounds, svg_path_bounds_from_d, svg_path_bounds_include_cubic,
@@ -28,12 +29,14 @@ pub fn svg_path_bounds_from_rough_ops(opset: &roughr::core::OpSet<f64>) -> Optio
         }
         match (&op.op, op.data.as_slice()) {
             (OpType::Move | OpType::LineTo, &[nx, ny]) => {
+                let [nx, ny] = [nx, ny].map(canonicalize_number);
                 bounds
                     .get_or_insert_with(|| SvgPathBounds::at(nx, ny))
                     .include_point(nx, ny);
                 (x, y) = (nx, ny);
             }
             (OpType::BCurveTo, &[x1, y1, x2, y2, x3, y3]) => {
+                let [x1, y1, x2, y2, x3, y3] = [x1, y1, x2, y2, x3, y3].map(canonicalize_number);
                 svg_path_bounds_include_cubic(
                     bounds.get_or_insert_with(|| SvgPathBounds::at(x, y)),
                     CubicBezier {

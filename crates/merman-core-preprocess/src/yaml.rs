@@ -9,7 +9,7 @@ use merman_model::json::{
     JSON_OBJECT_ENTRY_CHARGE_BYTES, JSON_VALUE_CHARGE_BYTES, clone_value_nonrecursive,
     drop_value_nonrecursive,
 };
-use merman_model::{OperationControl, OperationControlResult};
+use merman_model::{MAX_DIAGRAM_NESTING_DEPTH, OperationControl, OperationControlResult};
 use serde_json::{Map, Number, Value};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::mem::size_of;
@@ -20,13 +20,38 @@ const YAML_MATERIALIZATION_MIN_BYTES: usize = 64 * 1024;
 const YAML_MATERIALIZATION_INPUT_MULTIPLIER: usize = 16;
 const YAML_PARSER_MAX_INPUT_BYTES: usize = 4 * 1024 * 1024;
 
-/// Wraps Mermaid inline metadata for the bounded YAML parser.
-pub fn mermaid_inline_yaml(input: &str) -> String {
+fn mermaid_inline_yaml(input: &str) -> String {
     if input.contains('\n') {
         format!("{input}\n")
     } else {
         format!("{{\n{input}\n}}")
     }
+}
+
+/// Parses Mermaid inline YAML with the diagram nesting limit and the YAML parser budgets.
+pub fn parse_mermaid_inline_yaml_controlled(
+    input: &str,
+    control: &OperationControl,
+) -> OperationControlResult<Result<Value, String>> {
+    let parsed = parse_mermaid_inline_yaml_with_collection_text_controlled(input, &[], control)?;
+    Ok(parsed.map(|(value, _)| value))
+}
+
+/// Parses Mermaid inline YAML and captures ordered JSON for selected top-level collections.
+pub fn parse_mermaid_inline_yaml_with_collection_text_controlled(
+    input: &str,
+    collection_text_keys: &[&'static str],
+    control: &OperationControl,
+) -> OperationControlResult<Result<(Value, YamlCollectionText), String>> {
+    let captured = parse_yaml_with_capture_controlled(
+        &mermaid_inline_yaml(input),
+        MAX_DIAGRAM_NESTING_DEPTH,
+        collection_text_keys,
+        control,
+    )?;
+    Ok(captured
+        .value
+        .map(|value| (value, captured.collection_text)))
 }
 
 #[cfg(test)]
@@ -174,17 +199,18 @@ pub fn parse_yaml_frontmatter_capture_controlled(
     Ok((captured, insert_order))
 }
 
-pub fn parse_yaml_value_with_root_order_controlled(
+/// Parses Mermaid inline YAML and preserves the authored order of its root keys.
+pub fn parse_mermaid_inline_yaml_with_root_order_controlled(
     input: &str,
-    max_nesting_depth: usize,
     control: &OperationControl,
 ) -> OperationControlResult<Result<(Value, Vec<String>), String>> {
+    let input = mermaid_inline_yaml(input);
     let mut root_key_order = Vec::new();
     let captured = parse_yaml_controlled(
-        input,
+        &input,
         YAML_PARSER_MAX_INPUT_BYTES,
-        max_nesting_depth,
-        default_materialization_budget(input),
+        MAX_DIAGRAM_NESTING_DEPTH,
+        default_materialization_budget(&input),
         Capture {
             root_key_order: Some(&mut root_key_order),
             ..Capture::default()
@@ -1550,6 +1576,55 @@ mod tests {
     use merman_model::OperationCancelled;
     use serde_json::json;
 
+    #[test]
+    fn inline_shape_data_uses_the_canonical_yaml_parser() {
+        let value = parse_mermaid_inline_yaml_controlled(
+            r#"shape: rounded, label: "End", flag: true"#,
+            &OperationControl::new(),
+        )
+        .expect("active parse control")
+        .expect("valid Mermaid inline shape data");
+        assert_eq!(
+            value,
+            json!({"shape": "rounded", "label": "End", "flag": true})
+        );
+    }
+
+    #[test]
+    fn controlled_inline_shape_data_propagates_cancellation() {
+        let control = OperationControl::new();
+        control.cancel();
+
+        assert!(matches!(
+            parse_mermaid_inline_yaml_controlled("shape: rounded", &control),
+            Err(OperationCancelled { .. })
+        ));
+    }
+
+    #[test]
+    fn inline_collection_text_preserves_authored_keys_through_aliases() {
+        let input = "details: &details {z: 1, __proto__: 2, constructor: 3, prototype: 4, a: 5}\n\
+                     ticket: *details";
+        let (value, collection_text) = parse_mermaid_inline_yaml_with_collection_text_controlled(
+            input,
+            &["ticket"],
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(value["ticket"], value["details"]);
+        assert_eq!(value["ticket"]["__proto__"], 2);
+        assert_eq!(value["ticket"]["constructor"], 3);
+        assert_eq!(value["ticket"]["prototype"], 4);
+        assert_eq!(
+            collection_text,
+            YamlCollectionText::from([(
+                "ticket",
+                r#"{"z":1,"__proto__":2,"constructor":3,"prototype":4,"a":5}"#.to_owned(),
+            )])
+        );
+    }
+
     #[cfg(feature = "yaml-editor")]
     fn capture_yaml(input: &str) -> YamlValueCapture {
         parse_yaml_controlled(
@@ -1579,9 +1654,8 @@ mod tests {
     #[test]
     fn root_key_order_keeps_authored_sequence_in_the_value_parse() {
         let control = OperationControl::new();
-        let (value, order) = parse_yaml_value_with_root_order_controlled(
-            "z: &items [first, second]\n'b': *items\na: 3\n",
-            16,
+        let (value, order) = parse_mermaid_inline_yaml_with_root_order_controlled(
+            "z: &items [first, second]\n'b': *items\na: 3",
             &control,
         )
         .unwrap()

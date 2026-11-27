@@ -4,7 +4,7 @@ use merman_core::presentation::SourcePresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::environment::RenderEnvironment;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
-use merman_render::theme::{NativeTheme, ThemeCompiler};
+use merman_render::theme::{Color, NativeTheme, ThemeCompiler};
 use merman_render::{LayoutOptions, family};
 use roxmltree::{Document, Node};
 use serde_json::{Value, json};
@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 const SOURCE: &str = "swimlane-beta TD\nsubgraph Lane[Lane]\nA\nend\n";
 
 fn render(source: &str, config: Value, theme: Option<NativeTheme>) -> String {
-    with_artifact(source, config, theme, |artifact| {
+    with_artifact(source, config, theme, None, |artifact| {
         artifact
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .unwrap()
@@ -25,6 +25,7 @@ fn with_artifact<T>(
     source: &str,
     config: Value,
     theme: Option<NativeTheme>,
+    canvas: Option<Color>,
     use_artifact: impl FnOnce(family::FamilyRenderArtifact<'_>) -> T,
 ) -> T {
     let parsed = MermaidEngine::new()
@@ -39,6 +40,10 @@ fn with_artifact<T>(
         None => environment.begin_session(),
     }
     .unwrap();
+    let session = match canvas {
+        Some(canvas) => session.with_canvas_background(canvas),
+        None => session,
+    };
     use_artifact(
         family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap(),
     )
@@ -214,6 +219,55 @@ fn shoal_swimlane_adapts_html_and_svg_ink_to_authored_fills() {
             if id == "B" {
                 assert_eq!(ink, Color::parse("#624D00").unwrap());
             }
+        }
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_swimlane_translucent_lane_ink_samples_the_effective_canvas() {
+    let source = format!("{SOURCE}style Lane fill:#000000,fill-opacity:0.25\n");
+    let black = Color::rgb(0, 0, 0);
+    let white = Color::rgb(255, 255, 255);
+    for html in [false, true] {
+        for (configured, canvas, adapted) in [
+            ("#000000", None, true),
+            ("#000000", Some(Color::TRANSPARENT), false),
+            ("#000000", Some(white), false),
+            ("#FFFFFF", Some(black), true),
+        ] {
+            let config = json!({
+                "layout":"shoal", "htmlLabels":html, "flowchart":{"htmlLabels":html},
+                "themeVariables":{"background":configured,"titleColor":"#333333"}
+            });
+            let rendered = with_artifact(&source, config, None, canvas, |artifact| {
+                artifact
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .unwrap()
+            });
+            let document = Document::parse(rendered.svg()).unwrap();
+            let label = lane(&document)
+                .descendants()
+                .find(|node| {
+                    if html {
+                        node.has_tag_name("span") && node.attribute("class") == Some("nodeLabel")
+                    } else {
+                        node.has_tag_name("text")
+                    }
+                })
+                .expect("lane title");
+            let white_ink = if html {
+                "color:#FFFFFF !important"
+            } else {
+                "fill:#FFFFFF !important"
+            };
+            assert_eq!(
+                label.descendants().any(|node| node
+                    .attribute("style")
+                    .is_some_and(|style| { style.contains(white_ink) })),
+                adapted,
+                "htmlLabels={html}, theme canvas={configured}, host canvas={canvas:?}"
+            );
         }
     }
 }
@@ -488,7 +542,7 @@ fn shoal_swimlane_keeps_foreign_stroke_clear_of_caption_backplate() {
             "flowchart":{"htmlLabels":false, "curve":"basis"}});
         let native = NativeTheme::new(theme.clone());
         let svg = render(&source, config.clone(), Some(native.clone()));
-        let geometry = with_artifact(&source, config, Some(native), |artifact| {
+        let geometry = with_artifact(&source, config, Some(native), None, |artifact| {
             artifact.edge_geometry_json().unwrap()
         });
         let document = Document::parse(&svg).unwrap();

@@ -4,11 +4,11 @@ use super::config::SwimlaneConfig;
 use super::prepare::{normalize_direction, synthetic_node};
 use super::working::{WorkingLayout, WorkingNode, WorkingNodeKind};
 use crate::flowchart::{
-    FlowchartEdgeKey, FlowchartRenderModelRef, FlowchartShape, FlowchartSvgLabelOwner,
-    FlowchartSvgLabelSidecarBuilder, ProjectedFlowchartEdge, resolve_flowchart_shape,
+    FlowchartRenderModelRef, FlowchartShape, FlowchartSvgLabelOwner,
+    FlowchartSvgLabelSidecarBuilder, resolve_flowchart_shape,
 };
 use crate::graph_layout::axis_clearance::AxisClearance;
-use crate::graph_layout::contour::ShapePortProfile;
+use crate::graph_layout::contour::{ShapePortProfile, shoal_contour};
 use crate::graph_layout::ir::{
     Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, RoutingStyle,
     Side, Size, SolvedGraph, TitlePosition,
@@ -20,6 +20,8 @@ use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{LayoutNode, LayoutPoint, SwimlaneDirection, SwimlaneTitleRect};
 use crate::{Error, LayoutExecution, Result};
 use merman_model::presentation::PresentationConfig;
+use merman_render_flow::node_geometry::contour as flow_contour;
+use merman_render_flow::projection::{FlowchartEdgeKey, ProjectedFlowchartEdge};
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 
@@ -29,13 +31,6 @@ mod columns;
 pub(crate) struct SwimlaneShoal {
     pub(crate) routes: RouteContract,
     pub(crate) placement: GraphPlacement,
-    pub(crate) shells: FxHashMap<String, ShellKind>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ShellKind {
-    Lane,
-    Pool,
 }
 
 struct Bindings {
@@ -109,30 +104,12 @@ pub(super) fn solve(
     )?;
     drop(graph);
     columns.restore_shells(&mut solved, &mut work)?;
-    work.charge_adapter(bindings.group_slots.len())?;
-    let mut shells = FxHashMap::default();
-    for &slot in &bindings.group_slots {
-        let group = &working.nodes[slot];
-        if let Some(kind) = shell_kind(group) {
-            work.charge_adapter(group.id.len())?;
-            shells.insert(group.id.clone(), kind);
-        }
-    }
     let routes = bindings.project(working, solved, view.edges.len(), visible_edges, &mut work)?;
-    Ok(SwimlaneShoal {
-        routes,
-        placement,
-        shells,
-    })
+    Ok(SwimlaneShoal { routes, placement })
 }
 
-fn shell_kind(node: &WorkingNode) -> Option<ShellKind> {
-    match node.shape.as_str() {
-        "pool" => Some(ShellKind::Pool),
-        "swimlane" => Some(ShellKind::Lane),
-        _ if node.parent_id.is_none() => Some(ShellKind::Lane),
-        _ => None,
-    }
+fn is_lane_shell(node: &WorkingNode) -> bool {
+    matches!(node.shape.as_str(), "pool" | "swimlane") || node.parent_id.is_none()
 }
 
 fn measure(
@@ -204,7 +181,7 @@ fn measure(
             width: node.label_width,
             height: node.label_height,
         });
-        if shell_kind(node).is_some()
+        if is_lane_shell(node)
             && horizontal
             && let Some(title) = &mut title
         {
@@ -285,9 +262,9 @@ fn measure(
             _ => None,
         };
         let profile = if shape == FlowchartShape::Diamond {
-            ShapePortProfile::decision(node.width, node.height)
+            flow_contour::decision(node.width, node.height)
         } else {
-            ShapePortProfile::flowchart_with_paint_metrics(
+            flow_contour::from_paint_metrics(
                 source,
                 &LayoutNode {
                     id: String::new(),
@@ -311,7 +288,7 @@ fn measure(
         };
         graph.nodes.push(MeasuredNode {
             size,
-            contour: profile.shoal_contour(size),
+            contour: shoal_contour(&profile, size),
             seq: index(slot, work)?,
             parent,
             port_span: Some(profile.port_span(faces[0])),

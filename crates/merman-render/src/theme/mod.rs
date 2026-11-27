@@ -8,18 +8,6 @@ use merman_model::presentation::PresentationConfig;
 pub(crate) use merman_render_core::mermaid_style::font_family_css;
 
 pub(crate) use merman_render_core::theme_svg::canvas as canvas_svg;
-#[cfg(any(
-    feature = "diagram-flowchart",
-    feature = "diagram-agentflow",
-    feature = "diagram-swimlane"
-))]
-pub(crate) use merman_render_core::theme_svg::edge_label_background as edge_label_bg;
-#[cfg(any(
-    feature = "diagram-flowchart",
-    feature = "diagram-agentflow",
-    feature = "diagram-swimlane",
-))]
-pub(crate) use merman_render_core::theme_svg::elevation as elevation_svg;
 
 pub use merman_theme_contract::v2::{
     Appearance, BuiltinPreset, Color, FamilyTheme, ResolvedThemeV2, ThemeCapabilityFlags,

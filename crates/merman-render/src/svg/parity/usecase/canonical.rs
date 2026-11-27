@@ -3,7 +3,7 @@ use kurbo::{Rect, Vec2};
 use merman_model::OperationPhase;
 use merman_render_core::{
     mermaid_style::visit_parsed_style_declarations, resources::ResourceLimitPhase,
-    rough_svg::constrained_rough_edge_path,
+    rough_svg::constrained_rough_edge_path, svg_bounds::svg_path_bounds_from_d,
 };
 use merman_render_graph::usecase::{UsecaseEdgePlan, UsecasePaintedEdge};
 use roughr::core::{RoughJsSeed, RoughMathRandom, RoughRandomness};

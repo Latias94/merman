@@ -8,6 +8,20 @@ use merman_model::{OperationControl, OperationControlResult};
 use serde_json::{Map, Value};
 use std::borrow::Cow;
 
+#[cfg(feature = "yaml")]
+mod config;
+#[cfg(feature = "yaml")]
+pub use config::{
+    DecodedFrontmatter, FrontmatterFields, decode_frontmatter_controlled,
+    frontmatter_config_namespaces, frontmatter_config_routes, parse_frontmatter_yaml_fields,
+    parse_frontmatter_yaml_fields_controlled,
+};
+#[cfg(feature = "yaml-editor")]
+pub use config::{
+    decode_frontmatter_with_evidence_controlled, parse_frontmatter_insert_order_json,
+    read_ordered_frontmatter_controlled,
+};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FrontmatterByteSpan {
     pub start: usize,
@@ -60,8 +74,7 @@ pub fn parse_frontmatter_yaml_fields_bounded_controlled(
 
 /// Applies the frontmatter object rule to a raw or source-captured YAML value.
 #[cfg(feature = "yaml")]
-#[doc(hidden)]
-pub fn frontmatter_fields_from_yaml_value(
+fn frontmatter_fields_from_yaml_value(
     parsed: Result<Value, String>,
 ) -> Result<Map<String, Value>, String> {
     match parsed? {

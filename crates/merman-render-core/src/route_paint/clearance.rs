@@ -121,10 +121,14 @@ pub struct EdgeClearance<'a> {
 }
 
 impl EdgeClearance<'_> {
-    /// Keeps a relocated step in contact with its caption, in paint coordinates.
+    /// Supplies the painted caption envelope for steps that may move near it.
     pub fn with_label_bounds(mut self, bounds: Option<Rect>) -> Self {
         self.label_bounds = bounds;
         self
+    }
+
+    pub(super) fn stroke_outset(self) -> f64 {
+        self.stroke_outset
     }
 
     /// Records the route's contour contacts in the same space as the obstacle inventory.

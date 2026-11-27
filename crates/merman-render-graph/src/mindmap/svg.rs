@@ -604,6 +604,38 @@ fn clip_circle_endpoints(
     points
 }
 
+#[cfg(feature = "layout-elk")]
+fn sanitize_elk_endpoints(
+    points: &[LayoutPoint],
+    start: &LayoutNode,
+    end: &LayoutNode,
+    start_is_circle: bool,
+    end_is_circle: bool,
+) -> Vec<LayoutPoint> {
+    use merman_render_core::elk_edge_geometry::{Outline, Shape, sanitize};
+    sanitize(
+        points,
+        Shape {
+            intersection: None,
+            node: start,
+            outline: if start_is_circle {
+                Outline::Ellipse
+            } else {
+                Outline::Rect
+            },
+        },
+        Shape {
+            intersection: None,
+            node: end,
+            outline: if end_is_circle {
+                Outline::Ellipse
+            } else {
+                Outline::Rect
+            },
+        },
+    )
+}
+
 pub struct MindmapSvgContext<'a> {
     pub diagram_id: SvgId<'a>,
     pub viewport: root_svg::RootViewportContext<'a>,
@@ -989,7 +1021,7 @@ pub fn render_mindmap_diagram_svg(
                 )
             }
             #[cfg(feature = "layout-elk")]
-            (MindmapEdgeRouting::Elk(sanitize_endpoints), Some(start), Some(end)) => {
+            (MindmapEdgeRouting::Elk, Some(start), Some(end)) => {
                 let points = projected_points();
                 let mut elk_points = Vec::with_capacity(points.len() + 2);
                 elk_points.push(LayoutPoint {
@@ -998,7 +1030,7 @@ pub fn render_mindmap_diagram_svg(
                 });
                 elk_points.extend(points);
                 elk_points.push(LayoutPoint { x: end.x, y: end.y });
-                sanitize_endpoints(
+                sanitize_elk_endpoints(
                     &elk_points,
                     start,
                     end,

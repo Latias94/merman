@@ -115,6 +115,22 @@ Accept drift when:
 Accepted drift must still be visible in a parity report, browser diagnostic, or the owning
 compatibility guide explaining why exact modeling is intentionally out of scope.
 
+### C4 definition ID collisions
+
+The pinned Mermaid 12.3.0 C4 SVG corpus contains two `database` alias collisions:
+
+- [Container diagram](../../fixtures/upstream-svgs/c4/upstream_docs_c4_c4_container_diagram_c4container_006.svg)
+  uses `upstream_docs_c4_c4_container_diagram_c4container_006-database` for both elements.
+- [Context demo](../../fixtures/upstream-svgs/c4/upstream_html_demos_c4context_c4_context_diagram_demos_002.svg)
+  uses `upstream_html_demos_c4context_c4_context_diagram_demos_002-database` for both elements.
+
+In each baseline, the visible database node shares the ID of a `<symbol>` in `<defs>`. Merman
+gives the node a distinct ID and preserves the definition and its references. For `structure`,
+`parity`, and `parity-root` only, the comparator projects the typed node's historical alias
+for matching and sorting when the colliding definition belongs to the same C4 SVG scope.
+A definition under `foreignObject` or in a nested SVG cannot establish that collision.
+Strict comparison still sees the difference.
+
 ## Root viewport transition
 
 Root viewport verification now separates blocking contracts from browser diagnostics. The shared

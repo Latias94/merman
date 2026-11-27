@@ -1,77 +1,29 @@
-// Shared SVG utility helpers (split from parity.rs).
-//
-// Keep behavior identical; these helpers are used across multiple diagram renderers.
-
-#[cfg(test)]
-use merman_render_core::svg_edge_parity::path_numbers::fmt_path_into;
-
-use super::SvgOutput;
-
-pub(super) use merman_render_core::html::HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR;
-pub(crate) use merman_render_core::theme_svg::cssom_color_value;
-pub(super) use merman_render_core::xml::{
-    EscapeAttrDisplay, escape_attr_display, escape_xml_display, escape_xml_serialized_text_into,
-    escaped_attr_len,
-};
-pub(crate) use merman_render_core::xml::{escape_attr, escape_xml};
-
-pub(super) fn fmt_display(v: f64) -> crate::number_format::CanonicalNumber {
-    fmt(v)
-}
-
-pub(super) fn fmt(v: f64) -> crate::number_format::CanonicalNumber {
-    crate::number_format::canonical_number(v)
-}
-
-pub(super) fn fmt_into(out: &mut impl SvgOutput, v: f64) {
-    // Match how Mermaid/D3 generally stringify numbers for SVG attributes:
-    // use a round-trippable decimal form (similar to JS `Number#toString()`),
-    // but avoid `-0` and tiny float noise from our own calculations.
-    let _ = write!(out, "{}", crate::number_format::canonical_number(v));
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use merman_render_core::number_format::canonical_number;
+    use merman_render_core::svg_edge_parity::path_numbers::fmt_path_into;
+    use merman_render_core::theme_svg::cssom_color_value;
     use merman_render_core::xml::{
-        escape_attr_into, escape_xml_into, escape_xml_raw_into, escaped_xml_len,
+        escape_attr, escape_attr_display, escape_attr_into, escape_xml, escape_xml_display,
+        escape_xml_into, escape_xml_raw_into, escape_xml_serialized_text_into, escaped_xml_len,
     };
 
-    fn fmt_string(v: f64) -> String {
-        let mut out = String::new();
-        fmt_into(&mut out, v);
-        out
-    }
-
     #[test]
-    fn fmt_into_matches_expected() {
-        assert_eq!(fmt_string(f64::NAN), "0");
-        assert_eq!(fmt_string(f64::INFINITY), "0");
-        assert_eq!(fmt_string(-0.0), "0");
-        assert_eq!(fmt_string(0.0), "0");
-        assert_eq!(fmt_string(1.0), "1");
-        assert_eq!(fmt_string(1.0000004), "1");
-        assert_eq!(fmt_string(-1.0000004), "-1");
-    }
-
-    #[test]
-    fn fmt_display_matches_fmt() {
-        let samples = [
-            f64::NAN,
-            f64::INFINITY,
-            -f64::INFINITY,
-            -0.0,
-            0.0,
-            1.0,
-            -1.0,
-            1.0000004,
-            -1.0000004,
-            1234.5678,
-            -1234.5678,
-        ];
-        for v in samples {
-            assert_eq!(fmt_display(v).to_string(), fmt_string(v));
-            assert_eq!(fmt(v).to_string(), fmt_string(v));
+    fn canonical_number_matches_svg_attributes() {
+        for (value, expected) in [
+            (f64::NAN, "0"),
+            (f64::INFINITY, "0"),
+            (-f64::INFINITY, "0"),
+            (-0.0, "0"),
+            (0.0, "0"),
+            (1.0, "1"),
+            (-1.0, "-1"),
+            (1.0000004, "1"),
+            (-1.0000004, "-1"),
+            (1234.5678, "1234.5678"),
+            (-1234.5678, "-1234.5678"),
+        ] {
+            assert_eq!(canonical_number(value).to_string(), expected);
         }
     }
 
@@ -160,7 +112,7 @@ mod tests {
                 )
                 .unwrap();
             let meter = crate::resources::OperationWorkMeter::new(policy);
-            let mut bounded = crate::svg::parity::output::BoundedSvgOutput::new(&meter);
+            let mut bounded = merman_render_core::svg_output::BoundedSvgOutput::new(&meter);
             escape_xml_into(&mut bounded, source);
             assert_eq!(bounded.finish().unwrap(), expected);
 

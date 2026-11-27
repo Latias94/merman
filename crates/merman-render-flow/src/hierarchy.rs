@@ -1,7 +1,62 @@
 //! Metered physical and effective group ancestry for Flow SVG planning.
 
-use merman_render_core::{Error, Result, resources::OperationWorkMeter};
+use merman_model::families::flowchart::FlowchartModel;
+use merman_render_core::{Error, LayoutCluster, Result, resources::OperationWorkMeter};
 use rustc_hash::{FxHashMap, FxHashSet};
+
+pub fn apply_solved_group_parents<'a>(
+    clusters_in_layout_order: &'a [LayoutCluster],
+    solved_parents: Option<&[Option<u32>]>,
+    parents: &mut FxHashMap<&'a str, &'a str>,
+    clusters: &mut FxHashSet<&'a str>,
+) {
+    if let Some(solved_parents) = solved_parents {
+        for (group, parent) in clusters_in_layout_order.iter().zip(solved_parents) {
+            let id = group.id.as_str();
+            clusters.insert(id);
+            if let Some(index) = parent {
+                parents.insert(id, &clusters_in_layout_order[*index as usize].id);
+            } else {
+                parents.remove(id);
+            }
+        }
+    }
+}
+
+pub fn flowchart_node_dom_indices<'a>(model: &'a FlowchartModel) -> FxHashMap<&'a str, usize> {
+    if !model.vertex_calls.is_empty() {
+        let mut out: FxHashMap<&'a str, usize> = FxHashMap::default();
+        out.reserve(model.vertex_calls.len());
+        for (vertex_counter, id) in model.vertex_calls.iter().enumerate() {
+            let id: &'a str = id.as_str();
+            let _ = out.entry(id).or_insert(vertex_counter);
+        }
+        return out;
+    }
+
+    let mut out: FxHashMap<&'a str, usize> = FxHashMap::default();
+    out.reserve(model.edges.len().saturating_mul(2) + model.nodes.len());
+    let mut vertex_counter: usize = 0;
+
+    // Mermaid FlowDB assigns `domId` when a vertex is first created, but increments the internal
+    // `vertexCounter` on every `addVertex(...)` call (even for repeated references). This means the
+    // domId suffix depends on the full "first-use" order + repeat uses.
+    fn touch<'a>(id: &'a str, out: &mut FxHashMap<&'a str, usize>, c: &mut usize) {
+        let _ = out.entry(id).or_insert(*c);
+        *c += 1;
+    }
+
+    for e in &model.edges {
+        touch(e.from.as_str(), &mut out, &mut vertex_counter);
+        touch(e.to.as_str(), &mut out, &mut vertex_counter);
+    }
+
+    for n in &model.nodes {
+        touch(n.id.as_str(), &mut out, &mut vertex_counter);
+    }
+
+    out
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct FlowchartClusterAncestryInterval {

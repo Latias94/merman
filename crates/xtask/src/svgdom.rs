@@ -922,7 +922,7 @@ fn c4_disambiguated_shape_id(node: roxmltree::Node<'_, '_>) -> Option<String> {
         && defs.has_tag_name("defs")
         && defs
             .ancestors()
-            .find(|ancestor| ancestor.has_tag_name("svg"))
+            .find(|ancestor| matches!(ancestor.tag_name().name(), "svg" | "foreignObject"))
             == Some(root))
     .then_some(historical_id)
 }
@@ -5121,6 +5121,10 @@ mod tests {
             (
                 r#"<defs><symbol id="diag-database"/></defs>"#,
                 r#"<g><symbol id="diag-database"/></g>"#,
+            ),
+            (
+                r#"<defs><symbol id="diag-database"/></defs>"#,
+                r#"<foreignObject><defs><symbol id="diag-database"/></defs></foreignObject>"#,
             ),
             (r#"id="diag-container""#, r#"id="diag-c4-node-1""#),
             (r#"data-et="node""#, r#"data-et="edge""#),

@@ -2,12 +2,18 @@
 
 use std::fmt;
 
+use merman_model::families::flowchart::FlowEdge;
+
 use merman_render_core::{
     svg_edge_parity::markers::{BaseEdgeMarkerKind, hierarchy_edge_marker_body},
     theme_svg::marker::arrow_path,
     xml::{escape_attr, escape_attr_display},
 };
 use merman_theme_contract::v2::MarkerStyle;
+
+mod plan;
+
+pub use plan::{FlowchartEdgeMarkers, FlowchartMarkerEmissionPlan, FlowchartMarkerSurface};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FlowchartMarkerBase {
@@ -47,6 +53,30 @@ impl FlowchartMarkerBase {
                 | Self::HollowCircleStart
                 | Self::HollowCircleEnd
         )
+    }
+}
+
+pub fn flowchart_edge_marker_end_base(edge: &FlowEdge) -> Option<FlowchartMarkerBase> {
+    match edge.edge_type.as_deref() {
+        Some("double_arrow_point") => Some(FlowchartMarkerBase::PointEnd),
+        Some("double_arrow_circle") => Some(FlowchartMarkerBase::CircleEnd),
+        Some("double_arrow_cross") => Some(FlowchartMarkerBase::CrossEnd),
+        Some("arrow_point") => Some(FlowchartMarkerBase::PointEnd),
+        Some("arrow_cross") => Some(FlowchartMarkerBase::CrossEnd),
+        Some("arrow_circle") => Some(FlowchartMarkerBase::CircleEnd),
+        Some("arrow_open_head") => Some(FlowchartMarkerBase::OpenArrowEnd),
+        Some("arrow_hollow_circle") => Some(FlowchartMarkerBase::HollowCircleEnd),
+        Some("arrow_open") => None,
+        _ => Some(FlowchartMarkerBase::PointEnd),
+    }
+}
+
+pub fn flowchart_edge_marker_start_base(edge: &FlowEdge) -> Option<FlowchartMarkerBase> {
+    match edge.edge_type.as_deref() {
+        Some("double_arrow_point") => Some(FlowchartMarkerBase::PointStart),
+        Some("double_arrow_circle") => Some(FlowchartMarkerBase::CircleStart),
+        Some("double_arrow_cross") => Some(FlowchartMarkerBase::CrossStart),
+        _ => None,
     }
 }
 
@@ -371,21 +401,21 @@ pub fn flowchart_marker_shape_spec(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum FlowchartMarkerVariantMode {
+enum FlowchartMarkerVariantMode {
     Source,
     AdaptiveInk,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct FlowchartMarkerVariantKey {
-    pub base: FlowchartMarkerBase,
-    pub margin: bool,
-    pub color_id: String,
-    pub mode: FlowchartMarkerVariantMode,
+struct FlowchartMarkerVariantKey {
+    base: FlowchartMarkerBase,
+    margin: bool,
+    color_id: String,
+    mode: FlowchartMarkerVariantMode,
 }
 
 impl FlowchartMarkerVariantKey {
-    pub fn color_scan_count(&self) -> usize {
+    fn color_scan_count(&self) -> usize {
         self.paint().color_scan_count()
     }
 
@@ -409,7 +439,7 @@ impl FlowchartMarkerVariantKey {
     }
 }
 
-pub fn base_marker_count(diagram_type: &str, bpmn_markers: bool) -> usize {
+fn base_marker_count(diagram_type: &str, bpmn_markers: bool) -> usize {
     FLOWCHART_MARKER_SHAPE_SPECS.len()
         + if bpmn_markers {
             BPMN_MARKER_SHAPE_SPECS.len()
@@ -424,7 +454,7 @@ pub fn base_marker_count(diagram_type: &str, bpmn_markers: bool) -> usize {
 }
 
 /// Writes the eager marker set in serialization order for byte counting and emission.
-pub fn push_base_markers(
+fn push_base_markers(
     out: &mut impl fmt::Write,
     diagram_id: &str,
     diagram_type: &str,
@@ -479,7 +509,7 @@ fn push_bpmn_markers(out: &mut impl fmt::Write, diagram_id: &str, diagram_type: 
 }
 
 #[inline]
-pub fn write_flowchart_marker_id_xml(
+fn write_flowchart_marker_id_xml(
     out: &mut impl fmt::Write,
     diagram_id: &str,
     diagram_type: &str,
@@ -504,7 +534,7 @@ pub fn write_flowchart_marker_id_xml(
 }
 
 /// Writes one complete source or adaptive-ink marker using the caller's admitted paint.
-pub fn push_colored_marker(
+fn push_colored_marker(
     out: &mut impl fmt::Write,
     diagram_id: &str,
     diagram_type: &str,

@@ -38,7 +38,7 @@ diagram-class = [
     "merman-render-core/root-svg", "merman-render-core/rough-svg", "merman-render-core/svg-edge-parity",
 ]
 diagram-er = [
-    "dep:base64", "dep:indexmap", "dep:kurbo", "dep:merman-markup", "dep:merman-model",
+    "dep:base64", "dep:cssparser", "dep:indexmap", "dep:kurbo", "dep:merman-markup", "dep:merman-model",
     "dep:merman-render-core", "dep:merman-theme-contract", "dep:roxmltree", "dep:roughr",
     "dep:rustc-hash", "dep:ryu-js", "dep:serde_json", "merman-markup/html", "merman-model/diagram-er",
     "merman-render-core/css-style", "merman-render-core/graph-layout", "merman-render-core/markdown-labels",
@@ -57,7 +57,7 @@ diagram-mindmap = [
     "merman-render-core/root-svg", "merman-render-core/svg-edge-parity",
 ]
 diagram-requirement = [
-    "dep:base64", "dep:indexmap", "dep:merman-markup", "dep:merman-model", "dep:merman-render-core",
+    "dep:base64", "dep:cssparser", "dep:indexmap", "dep:merman-markup", "dep:merman-model", "dep:merman-render-core",
     "dep:merman-theme-contract", "dep:roughr", "dep:serde", "dep:serde_json", "merman-markup/html",
     "merman-model/diagram-requirement", "merman-render-core/graph-layout",
     "merman-render-core/markdown-labels", "merman-render-core/root-svg",
@@ -65,10 +65,11 @@ diagram-requirement = [
     "merman-render-core/theme-svg",
 ]
 diagram-state = [
-    "dep:base64", "dep:cssparser", "dep:indexmap", "dep:kurbo", "dep:merman-markup",
+    "dep:base64", "dep:cssparser", "dep:euclid", "dep:indexmap", "dep:kurbo", "dep:merman-markup",
     "dep:merman-model", "dep:merman-render-core",
     "dep:merman-theme-contract", "dep:roughr", "dep:rustc-hash", "dep:ryu-js", "dep:serde", "dep:serde_json",
-    "merman-model/diagram-state", "merman-render-core/graph-layout", "merman-render-core/markdown-labels",
+    "merman-model/diagram-state", "merman-render-core/euclid-geometry",
+    "merman-render-core/graph-layout", "merman-render-core/markdown-labels",
     "merman-render-core/root-svg", "merman-render-core/rough-svg", "merman-render-core/svg-edge-parity",
     "merman-render-core/theme-elevation", "merman-render-core/theme-label-background",
 ]
@@ -83,7 +84,7 @@ diagram-usecase = [
 layout-shoal = ["dep:kurbo", "merman-render-core?/route-paint", "merman-render-core?/rough-svg"]
 layout-cytoscape = ["dep:indexmap", "dep:manatee", "merman-render-core?/layout-cytoscape"]
 layout-dagre = ["dep:dugong", "merman-render-core?/layout-dagre"]
-layout-elk = ["dep:merman-layout-elk"]
+layout-elk = ["dep:merman-layout-elk", "merman-render-core?/layout-elk"]
 benchmark-stages = ["merman-model?/benchmark-stages"]
 
 [dependencies]
@@ -109,7 +110,7 @@ serde_json = { workspace = true, optional = true }
 unicode-segmentation = { workspace = true, optional = true }
 
 [dev-dependencies]
-merman-core = { workspace = true, features = ["diagram-architecture", "diagram-class", "diagram-mindmap", "presentation"] }
+merman-core = { workspace = true, features = ["diagram-architecture", "diagram-class", "diagram-er", "diagram-mindmap", "diagram-state", "presentation"] }
 merman-model = { workspace = true, features = ["test-support"] }
 merman-render-core = { workspace = true, features = ["test-support"] }
 merman-theme-contract = { workspace = true, features = ["presets"] }

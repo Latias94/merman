@@ -12,12 +12,7 @@ pub use merman_render_core::resources::{
     WASM_RESVG_TREE_DEPTH_HARD_CAP, resource_limit_descriptors, resource_profile_descriptors,
 };
 
-#[cfg(any(
-    feature = "diagram-agentflow",
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    all(feature = "diagram-architecture", feature = "layout-shoal")
-))]
+#[cfg(all(feature = "diagram-architecture", feature = "layout-shoal"))]
 pub(crate) use merman_render_core::resources::PreparedTextRetainedReservation;
 #[cfg(test)]
 pub(crate) use merman_render_core::resources::{

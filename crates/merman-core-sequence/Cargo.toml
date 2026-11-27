@@ -17,7 +17,7 @@ third-party-bundle = true
 
 [features]
 default = ["diagram-sequence"]
-diagram-sequence = ["dep:cssparser", "dep:indexmap", "dep:merman-core-preprocess", "dep:rustc-hash", "dep:serde", "dep:serde_json", "merman-model/diagram-sequence"]
+diagram-sequence = ["dep:cssparser", "dep:indexmap", "dep:merman-core-preprocess", "merman-core-preprocess/yaml", "dep:rustc-hash", "dep:serde", "dep:serde_json", "merman-model/diagram-sequence"]
 diagram-zenuml = ["dep:indexmap", "dep:unicode-general-category", "merman-model/diagram-zenuml"]
 editor-facts = []
 

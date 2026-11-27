@@ -7,6 +7,14 @@ use merman_render_core::{
 
 use super::escape_attr;
 
+pub(crate) fn circle_outline(radius: f64) -> String {
+    use kurbo::Shape as _;
+
+    kurbo::Circle::new((0.0, 0.0), radius)
+        .to_path(0.05)
+        .to_svg()
+}
+
 /// Keeps the group's opacity off children that need their own inline paint.
 pub fn grouped_shape_child_style(style: &str) -> Cow<'_, str> {
     let mut grouped_opacity = false;

@@ -5,7 +5,6 @@ use merman_render_core::svg_css::{
     CssSelectorDiagramId, FragmentDiagramId, SvgDiagramIdValue, escape_css_identifier,
 };
 use merman_render_core::svg_output::{SvgOutput, XmlTextOutput};
-use merman_render_core::xml::escape_xml;
 use std::collections::HashMap;
 use std::fmt::Write;
 
@@ -138,21 +137,17 @@ fn write_er_redux_color_css(
                 background_colors[index % background_colors.len()].trim()
             )
         };
-        let _ = write!(
-            out,
-            r#"#{} [data-look="{}"][data-color-id="color-{}"].node path{{stroke:{};{}}}#{} [data-look="{}"][data-color-id="color-{}"].node rect{{stroke:{};{}}}"#,
-            diagram_id.as_ref(),
-            escape_xml(data_look),
-            index,
-            border_color,
-            fill,
-            diagram_id.as_ref(),
-            escape_xml(data_look),
-            index,
-            border_color,
-            fill,
-        );
-        out.checkpoint()?;
+        for shape in ["path", "rect"] {
+            let _ = write!(out, "#{diagram_id} [data-look=")
+                .and_then(|()| cssparser::serialize_string(data_look, out))
+                .and_then(|()| {
+                    write!(
+                        out,
+                        r#"][data-color-id="color-{index}"].node {shape}{{stroke:{border_color};{fill}}}"#,
+                    )
+                });
+            out.checkpoint()?;
+        }
     }
     Ok(())
 }
@@ -320,6 +315,24 @@ mod tests {
             out.write_attempts, 1,
             "ER Redux color CSS emission must stop at the first failed sink checkpoint"
         );
+    }
+
+    #[test]
+    fn er_redux_color_css_serializes_the_look_as_a_css_string_inside_xml() {
+        let mut svg = String::from("<style>");
+        super::write_er_redux_color_css(
+            &mut super::XmlTextOutput::new(&mut svg),
+            "er",
+            "neo\"\\\n&<]]>",
+            &["#123456".into()],
+            &[],
+        )
+        .unwrap();
+        svg.push_str("</style>");
+
+        let parsed = roxmltree::Document::parse(&svg).unwrap();
+        let css = parsed.root_element().text().unwrap();
+        assert_eq!(css.matches(r#"[data-look="neo\"\\\a &<]]>"]"#).count(), 2);
     }
 
     #[test]

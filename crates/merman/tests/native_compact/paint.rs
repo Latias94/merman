@@ -44,15 +44,7 @@ pub(super) fn assert_cyberpunk_shadows(root: Node<'_, '_>, surfaces: usize) {
     assert_eq!(foreground.len(), surfaces);
     let layers: Vec<_> = depth.children().filter(Node::is_element).collect();
     assert_eq!(layers.len(), 2 * surfaces);
-    let view_box: Vec<f64> = root
-        .attribute("viewBox")
-        .unwrap()
-        .split_ascii_whitespace()
-        .map(|value| value.parse().unwrap())
-        .collect();
-    let [left, top, width, height] = view_box[..] else {
-        panic!("invalid scene viewBox {view_box:?}");
-    };
+    let [left, top, width, height] = view_box(root);
     for pair in layers.as_chunks::<2>().0 {
         for (&layer, fill) in pair.iter().zip(["#FF4564", "#29F3EC"]) {
             assert!(layer.has_tag_name("rect"));
@@ -70,6 +62,16 @@ pub(super) fn assert_cyberpunk_shadows(root: Node<'_, '_>, surfaces: usize) {
         foreground.swap_remove(matching_surface.expect("shadow must match a foreground rectangle"));
         assert!(same_bounds(rect_bounds(pair[1]), [x + 7.0, y + 4.0, w, h]));
     }
+}
+
+pub(super) fn view_box(root: Node<'_, '_>) -> [f64; 4] {
+    root.attribute("viewBox")
+        .expect("expected a scene viewBox")
+        .split_ascii_whitespace()
+        .map(|value| value.parse().unwrap())
+        .collect::<Vec<_>>()
+        .try_into()
+        .expect("expected four scene viewBox coordinates")
 }
 
 fn rect_bounds(node: Node<'_, '_>) -> [f64; 4] {

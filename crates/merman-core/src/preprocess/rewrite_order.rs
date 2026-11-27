@@ -1,26 +1,21 @@
-use super::config_scan::max_flow_collection_depth_controlled;
-use super::directive_config::{MAX_DIRECTIVE_CONFIG_PARSE_BYTES, sanitize_directive_controlled};
-use super::frontmatter_config::frontmatter_config_routes;
-use super::split_frontmatter_block_controlled;
+use super::config_policy::sanitize_directive_controlled;
 use crate::{MermaidConfig, OperationControl, OperationControlResult, SourceSpan};
-use merman_core_preprocess::MappedSource;
-use merman_core_preprocess::directives::normalize_directive_quotes_controlled;
-use merman_core_preprocess::scan::controlled::{
-    ControlledScanCheckpoints, trim_whitespace_bounds_controlled,
+use merman_core_preprocess::JSON_ESCAPE_EXPANSION;
+pub(super) use merman_core_preprocess::MAX_CONFIG_REWRITE_DEPTH as MAX_REWRITE_DEPTH;
+use merman_core_preprocess::directives::{
+    MAX_DIRECTIVE_CONFIG_PARSE_BYTES, read_ordered_init_directive_controlled,
 };
-use merman_core_preprocess::text::{PreprocessMarkers, cleanup_text_controlled};
+use merman_core_preprocess::frontmatter::{
+    frontmatter_config_routes, parse_frontmatter_insert_order_json,
+    read_ordered_frontmatter_controlled,
+};
 use merman_core_preprocess::yaml::YamlInsertOrder;
 use merman_model::config::values_equal_controlled;
 use merman_model::json::clone_value_nonrecursive_controlled;
-use merman_model::json::ordered::{JsonOrderScope, OrderedJson};
-use serde::Deserialize;
+use merman_model::json::ordered::OrderedJson;
 use serde_json::{Map, Value};
 use std::sync::Arc;
 
-pub(super) const MAX_REWRITE_DEPTH: usize = 64;
-const JSON_ESCAPE_EXPANSION: usize = 6;
-pub(super) const MAX_INSERT_ORDER_JSON_BYTES: usize =
-    JSON_ESCAPE_EXPANSION * MAX_DIRECTIVE_CONFIG_PARSE_BYTES;
 const MAX_REWRITE_DIRECTIVES: usize = 128;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -77,7 +72,7 @@ impl FrontmatterInsertOrder {
         {
             return Ok(None);
         }
-        let Some(order) = ordered_yaml_json(json) else {
+        let Some(order) = parse_frontmatter_insert_order_json(json) else {
             return Ok(None);
         };
         let Some(compatibility) = clone_value_nonrecursive_controlled(
@@ -152,26 +147,10 @@ pub fn source_config_rewrite_order_controlled(
             else {
                 return Ok(None);
             };
-            let cleaned = clean_construct(text, control)?;
-            let Some(block) = split_frontmatter_block_controlled(cleaned.text(), control)? else {
-                return Ok(None);
-            };
-            let Some(json) = crate::yaml_config::parse_yaml_ordered_document_controlled(
-                &block.dedented_body,
-                max_bytes,
-                max_nesting_depth,
-                control,
-            )?
+            let Some(fields) =
+                read_ordered_frontmatter_controlled(text, max_bytes, max_nesting_depth, control)?
             else {
                 return Ok(None);
-            };
-            let fields = if json.is_empty() {
-                None
-            } else {
-                let Some(ordered) = ordered_yaml_json(&json) else {
-                    return Ok(None);
-                };
-                Some(ordered)
             };
             (fields, empty_order())
         }
@@ -201,7 +180,7 @@ pub fn source_config_rewrite_order_controlled(
         let mut config = compatibility_config
             .object_mut()
             .expect("empty config object");
-        for (key, namespace) in frontmatter_config_routes() {
+        for &(key, namespace) in frontmatter_config_routes() {
             if let Some(value) = fields.view().get(key) {
                 config.insert(namespace.to_owned(), value.to_ordered());
             }
@@ -219,7 +198,9 @@ pub fn source_config_rewrite_order_controlled(
             return Ok(None);
         };
         remaining_bytes -= text.len();
-        let Some(mut order) = parse_init_order(text, max_nesting_depth, control)? else {
+        let Some(mut order) =
+            read_ordered_init_directive_controlled(text, max_nesting_depth, control)?
+        else {
             return Ok(None);
         };
         if let Some(legacy) = order.view().get("config").map(|value| value.to_ordered()) {
@@ -247,74 +228,4 @@ pub fn source_config_rewrite_order_controlled(
 
 fn empty_order() -> OrderedJson {
     OrderedJson::from(Value::Object(Map::new()))
-}
-
-fn ordered_yaml_json(json: &str) -> Option<OrderedJson> {
-    let mut parser = serde_json::Deserializer::from_str(json);
-    OrderedJson::deserialize_with_scope(&mut parser, EveryMember).ok()
-}
-
-fn clean_construct(text: &str, control: &OperationControl) -> OperationControlResult<MappedSource> {
-    let mut source = MappedSource::new_controlled(text, false, control)?;
-    let markers = PreprocessMarkers::scan(text, control)?;
-    cleanup_text_controlled(&mut source, markers, control)?;
-    Ok(source)
-}
-
-fn parse_init_order(
-    text: &str,
-    max_nesting_depth: usize,
-    control: &OperationControl,
-) -> OperationControlResult<Option<OrderedJson>> {
-    let cleaned = clean_construct(text, control)?;
-    let Some(raw) = cleaned
-        .text()
-        .strip_prefix("%%{")
-        .and_then(|s| s.strip_suffix("}%%"))
-    else {
-        return Ok(None);
-    };
-    let normalized = normalize_directive_quotes_controlled(raw, control)?;
-    let mut checkpoints = ControlledScanCheckpoints::new(control)?;
-    let Some((_, argument)) = normalized.split_once(':') else {
-        return Ok(Some(Value::Null.into()));
-    };
-    let (start, end) = trim_whitespace_bounds_controlled(argument, &mut checkpoints)?;
-    let argument = &argument[start..end];
-    if argument.is_empty() {
-        return Ok(Some(Value::Null.into()));
-    }
-    if max_flow_collection_depth_controlled::<true>(argument, &mut checkpoints)? > max_nesting_depth
-    {
-        return Ok(None);
-    }
-    checkpoints.finish()?;
-    let order = json5::from_str::<AllOrderedJson>(argument)
-        .ok()
-        .map(|value| value.0);
-    control.checkpoint()?;
-    Ok(order)
-}
-
-#[derive(Clone, Copy)]
-struct EveryMember;
-
-impl JsonOrderScope for EveryMember {
-    fn member(self, _key: &str) -> Option<Self> {
-        Some(self)
-    }
-
-    fn array_item(self) -> Option<Self> {
-        Some(self)
-    }
-}
-
-struct AllOrderedJson(OrderedJson);
-
-impl<'de> Deserialize<'de> for AllOrderedJson {
-    fn deserialize<D: serde::Deserializer<'de>>(
-        deserializer: D,
-    ) -> std::result::Result<Self, D::Error> {
-        OrderedJson::deserialize_with_scope(deserializer, EveryMember).map(Self)
-    }
 }

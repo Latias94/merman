@@ -1,0 +1,717 @@
+//! Node-level helpers (link sanitization, class building, placeholders).
+
+use std::borrow::Cow;
+
+use merman_render_core::{
+    icon_registry::{IconIdScopePrefix, IconRenderRequest, mermaid_unknown_icon_svg, render_icon},
+    mermaid_style::visit_parsed_style_declarations,
+    svg_security::{
+        MermaidNavigationSecurity, SerializedMermaidNavigationHref, prepare_mermaid_navigation_href,
+    },
+    theme_svg::edge_label_background::literal_opacity,
+    xml::escape_attr_into,
+};
+
+use crate::node_body;
+use crate::svg::document_ids::FlowchartDocumentId;
+use crate::svg::types::{FlowchartRenderCtx, FlowchartRenderDetails};
+use crate::svg::{escape_attr_display, fmt_display};
+
+pub(in crate::svg::render::node) fn icon_svg_or_placeholder(
+    ctx: &FlowchartRenderCtx<'_>,
+    node_id: &str,
+    icon_name: &str,
+    icon_size: f64,
+) -> merman_render_core::Result<String> {
+    let id_scope = ctx.document_ids().icon_scope(node_id).ok_or_else(|| {
+        merman_render_core::Error::InvalidModel {
+            message: format!("missing prepared Flowchart icon scope for node `{node_id}`"),
+        }
+    })?;
+    let icon = match ctx.icon_registry {
+        Some(registry) => {
+            let id_scope = IconIdScopePrefix::from_parts(&[id_scope.as_str()], ctx.work_meter)?
+                .scope_parts(&[], ctx.work_meter)?;
+            render_icon(
+                registry,
+                IconRenderRequest {
+                    icon_name,
+                    width_px: icon_size,
+                    height_px: icon_size,
+                    fallback_prefix: None,
+                    id_scope,
+                    effective_config: ctx.config,
+                    work_meter: ctx.work_meter,
+                },
+            )?
+        }
+        None => None,
+    };
+    Ok(icon.unwrap_or_else(|| mermaid_unknown_icon_svg(icon_size, icon_size)))
+}
+
+fn is_self_loop_label_node_id(id: &str) -> bool {
+    let mut parts = id.split("---");
+    let Some(a) = parts.next() else {
+        return false;
+    };
+    let Some(b) = parts.next() else {
+        return false;
+    };
+    let Some(n) = parts.next() else {
+        return false;
+    };
+    parts.next().is_none() && a == b && (n == "1" || n == "2")
+}
+
+pub(super) fn try_render_self_loop_label_placeholder(
+    out: &mut impl crate::svg::SvgOutput,
+    node_id: &str,
+    dom_id: FlowchartDocumentId<'_>,
+    x: f64,
+    y: f64,
+    html_labels: bool,
+) -> bool {
+    if !is_self_loop_label_node_id(node_id) {
+        return false;
+    }
+
+    let _ = write!(
+        out,
+        r#"<g class="label edgeLabel" id="{}" data-id="{}" data-et="edge-label" transform="translate({},{})"><rect width="0.1" height="0.1"/><g class="label" style="" transform="translate(0,0)"><rect/>"#,
+        dom_id,
+        escape_attr_display(node_id),
+        fmt_display(x),
+        fmt_display(y)
+    );
+    if html_labels {
+        out.push_str(
+            r#"<foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 10px; text-align: center;"><span class="nodeLabel"></span></div></foreignObject>"#,
+        );
+    } else {
+        out.push_str(
+            r#"<g><rect class="background" style="stroke: none"/><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"/></text></g>"#,
+        );
+    }
+    out.push_str("</g></g>");
+    true
+}
+
+#[derive(Clone, Copy)]
+pub(in crate::svg) struct NodeWrapperClasses<'a> {
+    base: &'a str,
+    assigned: &'a [String],
+    extra: Option<&'a str>,
+}
+
+impl<'a> NodeWrapperClasses<'a> {
+    pub(in crate::svg) const fn new(base: &'a str, assigned: &'a [String]) -> Self {
+        Self {
+            base,
+            assigned,
+            extra: None,
+        }
+    }
+
+    pub(super) const fn with_extra(mut self, extra: Option<&'a str>) -> Self {
+        self.extra = extra;
+        self
+    }
+
+    fn write(self, out: &mut impl crate::svg::SvgOutput) {
+        escape_attr_into(out, self.base);
+        for c in self.assigned {
+            let t = c.trim();
+            if t.is_empty() {
+                continue;
+            }
+            out.push(' ');
+            escape_attr_into(out, t);
+        }
+        if let Some(extra) = self.extra {
+            out.push(' ');
+            escape_attr_into(out, extra);
+        }
+    }
+}
+
+pub(super) fn write_class_attr(
+    out: &mut impl crate::svg::SvgOutput,
+    classes: NodeWrapperClasses<'_>,
+) {
+    classes.write(out);
+}
+
+pub(super) struct NodeWrapperAttrs<'a> {
+    pub(super) dom_id: FlowchartDocumentId<'a>,
+    pub(super) data_id: &'a str,
+    pub(super) classes: NodeWrapperClasses<'a>,
+    pub(super) wrapped_in_a: bool,
+    pub(super) href: Option<&'a SerializedMermaidNavigationHref>,
+    pub(super) target: Option<&'a str>,
+    pub(super) x: f64,
+    pub(super) y: f64,
+    pub(super) tooltip_enabled: bool,
+    pub(super) tooltip: &'a str,
+    pub(super) look: &'a str,
+    pub(super) color_slot: Option<usize>,
+}
+
+pub(super) fn open_node_wrapper(out: &mut impl crate::svg::SvgOutput, attrs: NodeWrapperAttrs<'_>) {
+    let NodeWrapperAttrs {
+        dom_id,
+        data_id,
+        classes,
+        wrapped_in_a,
+        href,
+        target,
+        x,
+        y,
+        tooltip_enabled,
+        tooltip,
+        look,
+        color_slot,
+    } = attrs;
+    if wrapped_in_a {
+        if let Some(href) = href {
+            out.push_str(r#"<a xlink:href=""#);
+            out.push_str(href.as_serialized_str());
+            out.push('"');
+            if let Some(target) = target {
+                out.push_str(r#" target=""#);
+                escape_attr_into(out, target);
+                out.push('"');
+            }
+            out.push_str(r#" transform="translate("#);
+            crate::svg::util::fmt_into(out, x);
+            out.push(',');
+            crate::svg::util::fmt_into(out, y);
+            out.push_str(r#")" data-look=""#);
+            escape_attr_into(out, look);
+            out.push_str(r#"">"#);
+        } else {
+            out.push_str(r#"<a transform="translate("#);
+            crate::svg::util::fmt_into(out, x);
+            out.push(',');
+            crate::svg::util::fmt_into(out, y);
+            out.push_str(r#")" data-look=""#);
+            escape_attr_into(out, look);
+            out.push_str(r#"">"#);
+        }
+        out.push_str(r#"<g class=""#);
+        write_class_attr(out, classes);
+        out.push_str(r#"" id=""#);
+        let _ = write!(out, "{dom_id}");
+        out.push_str(r#"" data-id=""#);
+        escape_attr_into(out, data_id);
+        out.push_str(r#"" data-et="node""#);
+    } else {
+        out.push_str(r#"<g class=""#);
+        write_class_attr(out, classes);
+        out.push_str(r#"" id=""#);
+        let _ = write!(out, "{dom_id}");
+        out.push_str(r#"" transform="translate("#);
+        crate::svg::util::fmt_into(out, x);
+        out.push(',');
+        crate::svg::util::fmt_into(out, y);
+        out.push_str(r#")" data-look=""#);
+        escape_attr_into(out, look);
+        out.push_str(r#"" data-id=""#);
+        escape_attr_into(out, data_id);
+        out.push_str(r#"" data-et="node""#);
+    }
+    if tooltip_enabled {
+        let _ = write!(out, r#" title="{}""#, escape_attr_display(tooltip));
+    }
+    if let Some(slot) = color_slot {
+        let _ = write!(out, r#" data-color-id="color-{slot}""#);
+    }
+    out.push('>');
+}
+
+pub(super) fn flowchart_node_label_span_class(label_type: &str) -> &'static str {
+    if label_type == "markdown" {
+        "nodeLabel markdown-node-label"
+    } else {
+        "nodeLabel"
+    }
+}
+
+pub(super) fn timed_node_roughjs<T>(
+    timing: merman_render_core::svg_output::timing::RenderTiming,
+    details: &mut FlowchartRenderDetails,
+    f: impl FnOnce() -> T,
+) -> T {
+    if let Some(start) = timing.start() {
+        details.node_roughjs_calls += 1;
+        let out = f();
+        details.node_roughjs += start.elapsed();
+        out
+    } else {
+        f()
+    }
+}
+
+pub(super) fn prepare_node_path(
+    common: &super::FlowchartNodeGeometry<'_>,
+    path: &str,
+    target: super::roughjs::RoughGeometryTarget,
+) -> Option<super::roughjs::RoughPathPair> {
+    if common.look_is_hand_drawn() {
+        super::roughjs::roughjs_prepare_paths_for_hand_drawn_svg_path(
+            target,
+            path,
+            common.stroke_width,
+            common.stroke_dasharray,
+            common.work_meter,
+            common.hand_drawn_seed,
+        )
+    } else {
+        super::roughjs::roughjs_prepare_paths_for_svg_path(
+            target,
+            path,
+            common.stroke_width,
+            common.stroke_dasharray,
+            common.work_meter,
+            common.hand_drawn_seed,
+        )
+    }
+}
+
+/// Generate the complete RoughJS hand-drawn pair for a node path.
+///
+/// Shape renderers still own their DOM wrappers and classic fallback markup, but the admission
+/// boundary is shared: rejected resources or empty generated paths must fall back as a whole
+/// shape instead of emitting a partial hand-drawn fragment.
+pub(super) fn hand_drawn_path_pair(
+    common: &super::FlowchartNodeRenderCommon<'_>,
+    details: &mut FlowchartRenderDetails,
+    path_data: &str,
+) -> Option<(String, String)> {
+    if !common.look_is_hand_drawn() {
+        return None;
+    }
+    timed_node_roughjs(common.timing, details, || {
+        prepare_node_path(common, path_data, super::roughjs::RoughGeometryTarget::Svg)
+            .and_then(|paths| paths.into_svg_paths(common.work_meter))
+    })
+    .filter(|(fill, stroke)| !fill.is_empty() && !stroke.is_empty())
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The RoughJS adapter passes independent stroke inputs, deterministic randomness, and resource accounting through unchanged."
+)]
+pub(super) fn hand_drawn_path_pair_with_stroke(
+    hand_drawn: bool,
+    timing: merman_render_core::svg_output::timing::RenderTiming,
+    details: &mut FlowchartRenderDetails,
+    path_data: &str,
+    stroke_width: f32,
+    stroke_dasharray: &str,
+    work_meter: &merman_render_core::resources::OperationWorkMeter,
+    hand_drawn_seed: &roughr::core::RoughRandomness,
+) -> Option<(String, String)> {
+    if !hand_drawn {
+        return None;
+    }
+
+    timed_node_roughjs(timing, details, || {
+        super::roughjs::roughjs_paths_for_hand_drawn_svg_path(
+            path_data,
+            stroke_width,
+            stroke_dasharray,
+            work_meter,
+            hand_drawn_seed,
+        )
+    })
+    .filter(|(fill_d, stroke_d)| !fill_d.is_empty() && !stroke_d.is_empty())
+}
+
+pub(super) fn write_hand_drawn_path_pair(
+    out: &mut impl crate::svg::SvgOutput,
+    common: &super::FlowchartNodeRenderCommon<'_>,
+    outline: &str,
+    fill_d: &str,
+    stroke_d: &str,
+) {
+    write_hand_drawn_hachure(out, common, outline, fill_d, 4.0);
+    let _ = write!(
+        out,
+        r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/>"#,
+        escape_attr_display(stroke_d),
+        escape_attr_display(common.stroke_color),
+        fmt_display(common.stroke_width as f64),
+        escape_attr_display(common.stroke_dasharray),
+    );
+}
+
+pub(super) fn hand_drawn_group_style<'a>(common: &super::FlowchartNodeRenderCommon<'a>) -> &'a str {
+    if common.solid_rough_fill {
+        common.style
+    } else {
+        common.rough_group_style
+    }
+}
+
+pub(super) fn grouped_shape_child_style<'a>(
+    common: &super::FlowchartNodeRenderCommon<'a>,
+) -> Cow<'a, str> {
+    if common.solid_rough_fill {
+        node_body::grouped_shape_child_style(common.style)
+    } else {
+        Cow::Borrowed(common.style)
+    }
+}
+
+pub(super) fn write_hand_drawn_hachure(
+    out: &mut impl crate::svg::SvgOutput,
+    common: &super::FlowchartNodeRenderCommon<'_>,
+    outline: &str,
+    hatch: &str,
+    width: f64,
+) {
+    node_body::write_hand_drawn_hachure(
+        out,
+        outline,
+        hatch,
+        width,
+        (common.fill_color, common.stroke_color),
+        rough_fill_opacity(common),
+    );
+}
+
+pub(super) fn rough_fill_opacity(common: &super::FlowchartNodeRenderCommon<'_>) -> Option<f64> {
+    if !common.solid_rough_fill {
+        return None;
+    }
+    // The group composites its opacity once over both the fill and the outline.
+    let mut fill_opacity = 1.0;
+    if common.fill_opacity != 1.0 {
+        visit_parsed_style_declarations(common.style, |decl| {
+            if decl.property() == "fill-opacity" {
+                fill_opacity = literal_opacity(decl.value()).unwrap_or(1.0);
+            }
+        });
+    }
+    Some(fill_opacity)
+}
+
+pub(super) fn timed_node_label_html<T>(
+    timing: merman_render_core::svg_output::timing::RenderTiming,
+    details: &mut FlowchartRenderDetails,
+    f: impl FnOnce() -> T,
+) -> T {
+    if let Some(start) = timing.start() {
+        details.node_label_html_calls += 1;
+        let out = f();
+        details.node_label_html += start.elapsed();
+        out
+    } else {
+        f()
+    }
+}
+
+pub(in crate::svg) struct ResolvedNodeRenderInfo<'a> {
+    pub(super) class_attr_base: &'static str,
+    pub(super) wrapped_in_a: bool,
+    pub(super) href: Option<SerializedMermaidNavigationHref>,
+    pub(super) target: Option<&'a str>,
+    pub(in crate::svg) label_text: &'a str,
+    pub(in crate::svg) label_text_is_node_id: bool,
+    pub(in crate::svg) label_type: &'a str,
+    pub(in crate::svg) shape: &'a str,
+    pub(super) node_icon: Option<&'a str>,
+    pub(super) node_img: Option<&'a str>,
+    pub(super) node_pos: Option<&'a str>,
+    pub(super) node_constraint: Option<&'a str>,
+    pub(super) node_asset_width: Option<f64>,
+    pub(super) node_asset_height: Option<f64>,
+    pub(in crate::svg) node_styles: &'a [String],
+    pub(in crate::svg) node_classes: &'a [String],
+}
+
+pub(in crate::svg) fn resolve_node_render_info<'a>(
+    ctx: &'a FlowchartRenderCtx<'a>,
+    node_id: &str,
+) -> Option<ResolvedNodeRenderInfo<'a>> {
+    if ctx.is_subgraph_collapsed(node_id)
+        && let Some(sg) = ctx.subgraphs_by_id.get(node_id)
+    {
+        let subgraph_index = ctx.subgraph_indices_by_id.get(node_id).copied()?;
+        let (node_classes, node_styles) = ctx.model.effective_subgraph_css(subgraph_index, sg);
+        return Some(ResolvedNodeRenderInfo {
+            class_attr_base: "node",
+            wrapped_in_a: false,
+            href: None,
+            target: None,
+            label_text: ctx.model.subgraph_title_for_render(subgraph_index, sg),
+            label_text_is_node_id: false,
+            label_type: sg.label_type.as_deref().unwrap_or("text"),
+            shape: "collapsedGroup",
+            node_icon: None,
+            node_img: None,
+            node_pos: None,
+            node_constraint: None,
+            node_asset_width: None,
+            node_asset_height: None,
+            node_styles,
+            node_classes,
+        });
+    }
+
+    if let Some(sg) = ctx.subgraphs_by_id.get(node_id)
+        && !ctx.subgraph_has_children(node_id)
+    {
+        let subgraph_index = ctx.subgraph_indices_by_id.get(node_id).copied()?;
+        let (node_classes, node_styles) = ctx.model.effective_subgraph_css(subgraph_index, sg);
+        return Some(ResolvedNodeRenderInfo {
+            class_attr_base: "node",
+            wrapped_in_a: false,
+            href: None,
+            target: None,
+            label_text: ctx.model.subgraph_title_for_render(subgraph_index, sg),
+            label_text_is_node_id: false,
+            label_type: sg.label_type.as_deref().unwrap_or("text"),
+            shape: "squareRect",
+            node_icon: None,
+            node_img: None,
+            node_pos: None,
+            node_constraint: None,
+            node_asset_width: None,
+            node_asset_height: None,
+            node_styles,
+            node_classes,
+        });
+    }
+
+    if let Some(node) = ctx.nodes_by_id.get(node_id) {
+        let shape = node.layout_shape.as_deref().unwrap_or("squareRect");
+
+        // Mermaid flowchart-v2 uses a distinct wrapper class for icon/image nodes.
+        let class_attr_base = if shape == "imageSquare" {
+            "image-shape default"
+        } else if shape == "icon" || shape.starts_with("icon") {
+            "icon-shape default"
+        } else {
+            "node default"
+        };
+
+        let link = node.link.as_deref().filter(|u| !u.is_empty());
+        let link_present = link.is_some();
+        // Mermaid stores the original click link in the model, but the final SVG sanitizer removes
+        // unsafe or unknown schemes from the emitted anchor while keeping the `<a>` wrapper.
+        let security_level_loose = ctx.config.get_str("securityLevel") == Some("loose");
+        let href = link.and_then(|url| {
+            prepare_mermaid_navigation_href(
+                url,
+                MermaidNavigationSecurity::from_security_level_loose(security_level_loose),
+            )
+        });
+        // Mermaid wraps nodes in `<a>` only when a link is present. Callback-based
+        // interactions (`click A someFn`) still mark the node as clickable, but do not
+        // emit an anchor element in the SVG.
+        let wrapped_in_a = link_present;
+        let target = security_level_loose
+            .then_some(node.link_target.as_deref())
+            .flatten()
+            .map(str::trim)
+            .filter(|target| !target.is_empty());
+
+        let (label_text, label_text_is_node_id) =
+            if let Some(v) = ctx.model.node_label_for_render(node) {
+                (v, false)
+            } else {
+                ("", true)
+            };
+
+        Some(ResolvedNodeRenderInfo {
+            class_attr_base,
+            wrapped_in_a,
+            href,
+            target,
+            label_text,
+            label_text_is_node_id,
+            label_type: node.label_type.as_deref().unwrap_or("text"),
+            shape,
+            node_icon: node.icon.as_deref(),
+            node_img: node.img.as_deref(),
+            node_pos: node.pos.as_deref(),
+            node_constraint: node.constraint.as_deref(),
+            node_asset_width: node.asset_width,
+            node_asset_height: node.asset_height,
+            node_styles: &node.styles,
+            node_classes: &node.classes,
+        })
+    } else {
+        None
+    }
+}
+
+pub(in crate::svg) fn compute_node_label_metrics(
+    ctx: &FlowchartRenderCtx<'_>,
+    node_id: &str,
+    layout_node: Option<&merman_render_core::LayoutNode>,
+    label_text: &str,
+    label_type: &str,
+    node_classes: &[String],
+    node_styles: &[String],
+) -> merman_render_core::text::TextMetrics {
+    // Layout metrics are authoritative. Callers without them can reuse a prepared label or
+    // measure with the same effective styles as layout.
+    let node_text_style = node_source_text_style(ctx, Some(node_id), node_classes, node_styles);
+    compute_node_label_metrics_with_style(
+        ctx,
+        layout_node,
+        label_text,
+        label_type,
+        node_text_style.as_ref(),
+    )
+}
+
+pub(in crate::svg) fn node_source_text_style<'a>(
+    ctx: &'a FlowchartRenderCtx<'_>,
+    node_id: Option<&str>,
+    node_classes: &[String],
+    node_styles: &[String],
+) -> std::borrow::Cow<'a, merman_render_core::text::TextStyle> {
+    let label_base_style = if ctx.node_wrap_mode == merman_render_core::text::WrapMode::HtmlLike {
+        ctx.html_label_text_style
+    } else {
+        ctx.text_style
+    };
+    crate::node_inventory::flowchart_node_source_text_style(
+        ctx.prepared_nodes,
+        node_id,
+        label_base_style,
+        ctx.class_defs,
+        node_classes,
+        node_styles,
+    )
+}
+
+pub(in crate::svg::render::node) fn compute_node_label_metrics_with_style(
+    ctx: &FlowchartRenderCtx<'_>,
+    layout_node: Option<&merman_render_core::LayoutNode>,
+    label_text: &str,
+    label_type: &str,
+    node_text_style: &merman_render_core::text::TextStyle,
+) -> merman_render_core::text::TextMetrics {
+    let layout_node = layout_node.filter(|_| !label_text.is_empty());
+    let wrapping_width = node_wrapping_width(ctx, layout_node.map(|node| node.id.as_str()));
+    let prepared_metrics =
+        || prepared_node_label_metrics(ctx, layout_node?.id.as_str(), label_text, node_text_style);
+    let metrics = if let Some(layout_node) = layout_node {
+        if let (Some(width), Some(height)) = (layout_node.label_width, layout_node.label_height) {
+            merman_render_core::text::TextMetrics {
+                width,
+                height,
+                line_count: 0,
+            }
+        } else if let Some(metrics) = prepared_metrics() {
+            metrics
+        } else {
+            crate::svg::label::flowchart_label_metrics_for_layout(
+                merman_render_core::text::create_text_html::FlowchartLabelMetricsRequest {
+                    measurer: ctx.measurer,
+                    raw_label: label_text,
+                    label_type,
+                    style: node_text_style,
+                    max_width_px: Some(wrapping_width),
+                    wrap_mode: ctx.node_wrap_mode,
+                    config: ctx.config,
+                    math_renderer: ctx.math_renderer,
+                },
+            )
+        }
+    } else if let Some(metrics) = prepared_metrics() {
+        metrics
+    } else {
+        crate::svg::label::flowchart_label_metrics_for_layout(
+            merman_render_core::text::create_text_html::FlowchartLabelMetricsRequest {
+                measurer: ctx.measurer,
+                raw_label: label_text,
+                label_type,
+                style: node_text_style,
+                max_width_px: Some(wrapping_width),
+                wrap_mode: ctx.node_wrap_mode,
+                config: ctx.config,
+                math_renderer: ctx.math_renderer,
+            },
+        )
+    };
+
+    // The measurement layer owns empty-label semantics. HTML line boxes and icons can have
+    // nonzero dimensions without plain text; preserve their measured bounds during painting.
+
+    let min_width = layout_node
+        .filter(|node| !ctx.subgraphs_by_id.contains_key(node.id.as_str()))
+        .and_then(|node| ctx.nodes_by_id.get(node.id.as_str()))
+        .map_or(0.0, |node| {
+            crate::node_geometry::flowchart_node_label_min_width(
+                label_text,
+                node.layout_shape.as_deref(),
+                ctx.config,
+            )
+        });
+    metrics.with_label_min_width(label_text, min_width, None)
+}
+
+fn prepared_node_label_metrics(
+    ctx: &FlowchartRenderCtx<'_>,
+    node_id: &str,
+    label_text: &str,
+    style: &merman_render_core::text::TextStyle,
+) -> Option<merman_render_core::text::TextMetrics> {
+    let sidecar = ctx.svg_label_sidecar?;
+    let owner = sidecar.node_owner(node_id, ctx.swimlane_direction.is_some())?;
+    let metrics = sidecar.prepared_metrics(
+        owner,
+        label_text,
+        ctx.measurer,
+        style,
+        Some(node_wrapping_width(ctx, Some(node_id))),
+        true,
+        merman_render_core::text::literal_label::FlowchartSvgWidthMode::Bbox,
+    )?;
+    let min_width = ctx
+        .nodes_by_id
+        .get(node_id)
+        .filter(|_| !ctx.subgraphs_by_id.contains_key(node_id))
+        .map_or(0.0, |node| {
+            crate::node_geometry::flowchart_node_label_min_width(
+                label_text,
+                node.layout_shape.as_deref(),
+                ctx.config,
+            )
+        });
+    Some(metrics.with_label_min_width(label_text, min_width, None))
+}
+
+fn node_wrapping_width(ctx: &FlowchartRenderCtx<'_>, node_id: Option<&str>) -> f64 {
+    crate::bpmn::wrapping_width(
+        node_id
+            .and_then(|id| ctx.nodes_by_id.get(id))
+            .and_then(|node| node.layout_shape.as_deref()),
+        ctx.wrapping_width,
+    )
+}
+
+/// Match createText's wrapping decision for labels with an icon/image background.
+pub(in crate::svg::render::node) fn asset_label_div_style(
+    ctx: &FlowchartRenderCtx<'_>,
+    label_bbox_width: f64,
+) -> String {
+    let width = fmt_display(ctx.wrapping_width);
+    if ctx.node_wrap_mode == merman_render_core::text::WrapMode::HtmlLike
+        && label_bbox_width >= ctx.wrapping_width
+    {
+        format!(
+            "display: table; white-space: break-spaces; line-height: 1.5; max-width: {width}px; text-align: center; width: {width}px;"
+        )
+    } else {
+        format!(
+            "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {width}px; text-align: center;"
+        )
+    }
+}

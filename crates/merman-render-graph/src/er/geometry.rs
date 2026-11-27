@@ -1,6 +1,8 @@
 //! ER paint geometry derived from a borrowed family layout before the SVG root is opened.
 
 use merman_model::families::er::ErRelationship;
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
+use merman_render_core::LayoutPoint;
 use merman_render_core::graph_layout::{elk_geometry, elk_terminal_jogs};
 use merman_render_core::resources::OperationWorkMeter;
 use merman_render_core::{Bounds, LayoutCluster, LayoutEdge, LayoutNode, Result};
@@ -185,6 +187,65 @@ pub fn er_rel_idx_from_edge_id(edge_id: &str) -> Option<usize> {
         return None;
     }
     rest[..digits_len].parse::<usize>().ok()
+}
+
+/// Bounds for the layout projection before the SVG painter resolves its edge geometry.
+pub fn er_layout_bounds(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> {
+    let mut points: Vec<(f64, f64)> = Vec::new();
+    for node in nodes {
+        let half_width = node.width / 2.0;
+        let half_height = node.height / 2.0;
+        points.push((node.x - half_width, node.y - half_height));
+        points.push((node.x + half_width, node.y + half_height));
+    }
+    for edge in edges {
+        points.extend(edge.points.iter().map(|point| (point.x, point.y)));
+        if let Some(label) = &edge.label {
+            let half_width = label.width / 2.0;
+            let half_height = label.height / 2.0;
+            points.push((label.x - half_width, label.y - half_height));
+            points.push((label.x + half_width, label.y + half_height));
+        }
+    }
+    Bounds::from_points(points)
+}
+
+// Layout-engine fallback used before SVG path insertion. This deliberately stays outside the SVG
+// parity layer: rendered-path change detection and five-decimal placement belong to
+// `svg::parity::edge_label_geometry`, while this function only supplies a missing Dagre/ELK anchor.
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
+pub(super) fn calc_label_position(points: &[LayoutPoint]) -> Option<(f64, f64)> {
+    if points.is_empty() {
+        return None;
+    }
+    if points.len() == 1 {
+        return Some((points[0].x, points[0].y));
+    }
+
+    let mut total = 0.0;
+    for i in 1..points.len() {
+        let dx = points[i].x - points[i - 1].x;
+        let dy = points[i].y - points[i - 1].y;
+        total += (dx * dx + dy * dy).sqrt();
+    }
+    let mut remaining = total / 2.0;
+    for i in 1..points.len() {
+        let p0 = &points[i - 1];
+        let p1 = &points[i];
+        let dx = p1.x - p0.x;
+        let dy = p1.y - p0.y;
+        let seg = (dx * dx + dy * dy).sqrt();
+        if seg == 0.0 {
+            continue;
+        }
+        if seg < remaining {
+            remaining -= seg;
+            continue;
+        }
+        let t = (remaining / seg).clamp(0.0, 1.0);
+        return Some((p0.x + t * dx, p0.y + t * dy));
+    }
+    Some((points.last()?.x, points.last()?.y))
 }
 
 fn compute_layout_bounds(

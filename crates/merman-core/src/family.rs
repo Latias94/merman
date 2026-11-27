@@ -16,12 +16,10 @@ use crate::{EditorFamilySemantics, EditorSemanticFacts, EditorSemanticKind};
 use crate::{Error, OperationControl, OperationControlResult, Result};
 #[cfg(any(test, feature = "editor-facts"))]
 use merman_model::family::diagram_type_family_id;
-#[cfg(test)]
-use merman_model::family::diagram_type_metadata_id;
-use merman_model::family::{
-    DiagramFamilyDefinition, DiagramTypeId, FAMILY_CATALOG, FamilyVariantIdentity,
-};
+use merman_model::family::{DiagramFamilyDefinition, DiagramTypeId, FamilyVariantIdentity};
 use merman_model::family::{DiagramFamilyId, DiagramHeaderFact};
+#[cfg(test)]
+use merman_model::family::{FAMILY_CATALOG, diagram_type_metadata_id};
 #[cfg(feature = "compat-json")]
 use merman_model::presentation::compat::CompatProjectionError;
 use serde::Serialize;
@@ -1032,63 +1030,6 @@ fn find_variant(
 ) -> Option<(&'static DiagramFamilyDefinition, FamilyVariantDefinition)> {
     merman_model::family::find_variant(diagram_type)
         .map(|(family, identity)| (family, bind_variant(identity)))
-}
-
-#[derive(Clone, Copy)]
-pub(crate) struct FrontmatterConfigAliasFact {
-    pub(crate) source: &'static str,
-    pub(crate) namespace: &'static str,
-}
-
-pub(crate) fn frontmatter_config_aliases() -> &'static [FrontmatterConfigAliasFact] {
-    static FACTS: OnceLock<Vec<FrontmatterConfigAliasFact>> = OnceLock::new();
-    FACTS
-        .get_or_init(|| {
-            let mut facts: Vec<_> = FAMILY_CATALOG
-                .iter()
-                .flat_map(|family| {
-                    family.variants.iter().filter_map(move |variant| {
-                        variant.frontmatter_alias_order.map(|order| {
-                            let namespace = family
-                                .config
-                                .expect("config aliases require a family namespace")
-                                .namespace;
-                            (
-                                order,
-                                FrontmatterConfigAliasFact {
-                                    source: variant.id,
-                                    namespace,
-                                },
-                            )
-                        })
-                    })
-                })
-                .collect();
-            facts.sort_by_key(|(order, _)| *order);
-            facts.into_iter().map(|(_, fact)| fact).collect()
-        })
-        .as_slice()
-}
-
-pub(crate) fn frontmatter_config_namespaces() -> &'static [&'static str] {
-    static NAMESPACES: OnceLock<Vec<&'static str>> = OnceLock::new();
-    NAMESPACES
-        .get_or_init(|| {
-            let mut namespaces: Vec<_> = FAMILY_CATALOG
-                .iter()
-                .filter_map(|family| {
-                    family
-                        .config
-                        .map(|config| (config.frontmatter_order, config.namespace))
-                })
-                .collect();
-            namespaces.sort_by_key(|(order, _)| *order);
-            namespaces
-                .into_iter()
-                .map(|(_, namespace)| namespace)
-                .collect()
-        })
-        .as_slice()
 }
 
 pub(crate) fn config_namespace_for_diagram_type(diagram_type: &str) -> Option<&'static str> {

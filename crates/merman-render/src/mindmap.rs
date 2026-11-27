@@ -26,32 +26,6 @@ pub(crate) fn prepare(
 ) -> Result<MindmapPreparedArtifact> {
     let selected = execution.layout_backend();
     let unavailable = || selected.unavailable_for("mindmap");
-    #[cfg(feature = "layout-elk")]
-    let solve_elk =
-        |graph: &mut merman_layout_elk::Graph,
-         config: &serde_json::Value,
-         work: &mut crate::layout_work::OperationLayoutWorkControl| {
-            let GraphLayoutBackend::Elk(algorithm) = selected else {
-                return Err(unavailable());
-            };
-            let operation_seed = execution.elk_operation_seed();
-            graph.options = crate::elk_options::layout_options(config, algorithm);
-            let oriented = crate::elk_feedback_edges::orient_feedback_edges(
-                graph,
-                config,
-                &mut Some(&mut *work),
-            )?;
-            let mut placed = crate::layout_work::measure_layout_solve!(
-                merman_layout_elk::layout_with_operation_seed_and_work_control(
-                    oriented.graph(),
-                    operation_seed,
-                    work
-                )
-            )
-            .map_err(|error| work.map_elk_error_with_context(error, "Mindmap ELK"))?;
-            oriented.restore(&mut placed, &mut Some(&mut *work))?;
-            Ok(placed)
-        };
     let backend = match selected {
         GraphLayoutBackend::TidyTree => MindmapLayoutBackend::TidyTree,
         GraphLayoutBackend::Swimlane => MindmapLayoutBackend::Swimlane(solve_swimlane),
@@ -60,9 +34,9 @@ pub(crate) fn prepare(
         #[cfg(feature = "layout-cytoscape")]
         GraphLayoutBackend::CoseBilkent => MindmapLayoutBackend::CoseBilkent,
         #[cfg(feature = "layout-elk")]
-        GraphLayoutBackend::Elk(_) => MindmapLayoutBackend::Elk {
-            solve: &solve_elk,
-            sanitize_endpoints: sanitize_elk_endpoints,
+        GraphLayoutBackend::Elk(algorithm) => MindmapLayoutBackend::Elk {
+            algorithm: algorithm.algorithm(),
+            operation_seed: execution.elk_operation_seed(),
         },
         _ => MindmapLayoutBackend::Unavailable(&unavailable),
     };
@@ -113,36 +87,4 @@ fn solve_swimlane(
         lanes: placed.lanes,
         bounds: placed.bounds,
     })
-}
-
-#[cfg(feature = "layout-elk")]
-fn sanitize_elk_endpoints(
-    points: &[crate::model::LayoutPoint],
-    start: &LayoutNode,
-    end: &LayoutNode,
-    start_is_circle: bool,
-    end_is_circle: bool,
-) -> Vec<crate::model::LayoutPoint> {
-    use crate::elk_edge_geometry::{Outline, Shape, sanitize};
-    sanitize(
-        points,
-        Shape {
-            intersection: None,
-            node: start,
-            outline: if start_is_circle {
-                Outline::Ellipse
-            } else {
-                Outline::Rect
-            },
-        },
-        Shape {
-            intersection: None,
-            node: end,
-            outline: if end_is_circle {
-                Outline::Ellipse
-            } else {
-                Outline::Rect
-            },
-        },
-    )
 }

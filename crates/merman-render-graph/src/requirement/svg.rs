@@ -77,21 +77,19 @@ where
     I: SvgDiagramIdValue,
 {
     let diagram_id = escape_css_identifier(diagram_id.semantic_value());
-    let data_look = escape_xml(data_look);
     for (index, border_color) in border_colors.iter().enumerate() {
         out.checkpoint()?;
         let background =
             background_colors.get(index.checked_rem(background_colors.len()).unwrap_or(0));
         for shape in ["path", "rect"] {
-            let _ = write!(
-                out,
-                r#"#{} [data-look="{}"][data-color-id="color-{}"].node {}{{stroke:{};"#,
-                diagram_id.as_ref(),
-                data_look,
-                index,
-                shape,
-                border_color,
-            );
+            let _ = write!(out, "#{diagram_id} [data-look=")
+                .and_then(|()| cssparser::serialize_string(data_look, out))
+                .and_then(|()| {
+                    write!(
+                        out,
+                        r#"][data-color-id="color-{index}"].node {shape}{{stroke:{border_color};"#,
+                    )
+                });
             out.checkpoint()?;
             if let Some(background) = background {
                 let _ = write!(out, "fill:{background};");
@@ -1408,6 +1406,24 @@ mod tests {
     use super::*;
     use merman_model::families::requirement::{RequirementElement, RequirementNode};
     use merman_render_core::resources::{RenderResourcePolicy, ResourceLimitId};
+
+    #[test]
+    fn requirement_color_css_serializes_the_look_as_a_css_string_inside_xml() {
+        let mut svg = String::from("<style>");
+        write_requirement_color_css(
+            &mut XmlTextOutput::new(&mut svg),
+            "requirement",
+            "neo\"\\\n&<]]>",
+            &["#123456".into()],
+            &[],
+        )
+        .unwrap();
+        svg.push_str("</style>");
+
+        let parsed = roxmltree::Document::parse(&svg).unwrap();
+        let css = parsed.root_element().text().unwrap();
+        assert_eq!(css.matches(r#"[data-look="neo\"\\\a &<]]>"]"#).count(), 2);
+    }
 
     #[test]
     fn palette_css_rejects_repeated_color_expansion_before_retaining_it() {

@@ -943,7 +943,6 @@ name = "merman-core"
 version = "0.11.0"
 dependencies = [
  "cssparser",
- "json5",
  "merman-core-flow",
  "merman-core-graph",
  "merman-core-preprocess",
@@ -987,7 +986,9 @@ name = "merman-core-preprocess"
 version = "0.11.0"
 dependencies = [
  "granit-parser",
+ "json5",
  "merman-model",
+ "serde",
  "serde_json",
 ]
 
@@ -1161,7 +1162,6 @@ dependencies = [
  "cssparser",
  "dugong",
  "euclid",
- "imagesize 0.14.0",
  "indexmap",
  "kurbo",
  "manatee",
@@ -1217,6 +1217,7 @@ dependencies = [
  "data-url",
  "dugong",
  "euclid",
+ "imagesize 0.14.0",
  "kurbo",
  "manatee",
  "memchr",
@@ -1249,10 +1250,12 @@ name = "merman-render-flow"
 version = "0.11.0"
 dependencies = [
  "base64 0.23.1",
+ "cssparser",
  "dugong",
  "indexmap",
  "kurbo",
  "memchr",
+ "merman-layout-elk",
  "merman-markup",
  "merman-model",
  "merman-render-core",
@@ -1262,6 +1265,7 @@ dependencies = [
  "rustc-hash",
  "ryu-js",
  "serde_json",
+ "svgtypes",
  "unicode-segmentation",
 ]
 

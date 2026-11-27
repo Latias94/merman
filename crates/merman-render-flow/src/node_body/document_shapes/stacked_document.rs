@@ -1,15 +1,11 @@
 //! Flowchart v2 stacked document.
 
-use std::borrow::Cow;
-
 use merman_render_core::{
     number_format::canonical_number as fmt, rough_svg::paths::RoughGeometryTarget,
     svg_output::SvgOutput,
 };
 
-use super::super::{
-    NodeBodyGeometry, NodeBodySvg, escape_attr, grouped_shape_child_style, prepare_node_path,
-};
+use super::super::{NodeBodyGeometry, NodeBodySvg, escape_attr, prepare_node_path};
 use super::path_from_points;
 
 pub struct StackedDocumentBody {
@@ -81,11 +77,7 @@ fn write_layer(out: &mut impl SvgOutput, body: &mut NodeBodySvg<'_>, path: &str)
             );
         }
     } else if body.geometry.hand_drawn {
-        let style = if body.rough_fill_opacity.is_some() {
-            grouped_shape_child_style(body.style)
-        } else {
-            Cow::Borrowed(body.style)
-        };
+        let style = body.grouped_child_style();
         let _ = write!(
             out,
             r#"<path d="{}" fill="{}" stroke="{}" stroke-width="{}" style="{}"/>"#,

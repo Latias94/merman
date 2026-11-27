@@ -11,7 +11,7 @@ use super::{
     StateNode, StateNodeStylePlan, StateStylePlan, state_value_to_label_text,
 };
 use crate::graph_layout::canonical::{CanonicalRoutes, CaptionClearance, theme_routing_style};
-use crate::graph_layout::contour::ShapePortProfile;
+use crate::graph_layout::contour::{ShapePortProfile, shoal_contour};
 use crate::graph_layout::ir::{
     Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, Rect,
     RoutePoint, Side, Size, SolvedGraph, TitlePosition, direction_from_rank,
@@ -243,7 +243,7 @@ fn measure<'a>(
         }
         graph.nodes.push(MeasuredNode {
             size,
-            contour: profile.shoal_contour(size),
+            contour: shoal_contour(&profile, size),
             seq,
             parent,
             port_span: Some(profile.port_span(face)),

@@ -8,7 +8,7 @@ use crate::graph_layout::Marker;
 use crate::graph_layout::canonical::{
     CanonicalPaintScratch, CanonicalPaintedEdge, CanonicalRoutes, CaptionClearance,
 };
-use crate::graph_layout::contour::ShapePortProfile;
+use crate::graph_layout::contour::{c4_shape, shoal_contour};
 use crate::graph_layout::ir::{
     Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, Rect, Side,
     Size, TitlePosition,
@@ -253,7 +253,7 @@ pub(crate) fn layout_c4_shoal(
         )?;
         work.charge_adapter(text_bytes)?;
         let layout = measure_c4_shape(shape, &measure);
-        let (profile, size, dx) = ShapePortProfile::c4_shape(
+        let (profile, size, dx) = c4_shape(
             super::c4_node_shape(shape),
             conf.look,
             Size {
@@ -264,7 +264,7 @@ pub(crate) fn layout_c4_shoal(
         );
         graph.nodes.push(MeasuredNode {
             size,
-            contour: profile.shoal_contour(size),
+            contour: shoal_contour(&profile, size),
             seq: index(ordinal, &work)?,
             parent: parent(&shape.parent_boundary)?,
             port_span: Some(profile.port_span(Side::Top)),

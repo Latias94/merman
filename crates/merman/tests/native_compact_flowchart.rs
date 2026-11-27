@@ -152,6 +152,26 @@ fn compact_flowchart_admits_original_presets_on_a_transparent_canvas() {
         let canvas_theme = ThemeCompiler::new()
             .compile_json(&serde_json::to_vec(&theme_doc).unwrap(), None)
             .unwrap();
+        let flat_view_box = (preset == BuiltinPreset::Cyberpunk).then(|| {
+            let mut flat_doc = theme_doc;
+            flat_doc["form"] = serde_json::json!({"elevation": "flat"});
+            let flat_theme = ThemeCompiler::new()
+                .compile_json(&serde_json::to_vec(&flat_doc).unwrap(), None)
+                .unwrap();
+            let svg = render(
+                source,
+                compact_request().with_native_theme(ThemeSelection::compiled(flat_theme)),
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let root = document.root_element();
+            assert!(
+                !root
+                    .children()
+                    .any(|node| node.attribute("data-scene-role") == Some("depth"))
+            );
+            paint::view_box(root)
+        });
         for request in [
             request.with_background(transparent),
             compact_request().with_native_theme(ThemeSelection::compiled(canvas_theme)),
@@ -182,6 +202,10 @@ fn compact_flowchart_admits_original_presets_on_a_transparent_canvas() {
             } else {
                 assert_eq!(glyph.attribute("fill"), Some(stroke));
                 paint::assert_cyberpunk_shadows(root, 2);
+                let [left, top, width, height] = paint::view_box(root);
+                let [flat_left, flat_top, flat_width, flat_height] = flat_view_box.unwrap();
+                assert!(left < flat_left && left + width > flat_left + flat_width);
+                assert!(top + height > flat_top + flat_height);
             }
         }
     }

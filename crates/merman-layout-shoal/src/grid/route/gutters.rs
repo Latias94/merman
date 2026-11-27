@@ -301,7 +301,7 @@ fn trace_gutter(
 }
 
 /// Candidate spans have at most five legs between their two reserved terminal leads.
-fn simple_candidate(path: &[RoutePoint], [start, end]: [Point; 2]) -> bool {
+pub(super) fn simple_candidate(path: &[RoutePoint], [start, end]: [Point; 2]) -> bool {
     let mut legs: [Option<OrthoSegment>; 7] = [None; 7];
     let mut count = 0;
     let mut from = knot(start, Axis::Horizontal);

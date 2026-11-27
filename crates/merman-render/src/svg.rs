@@ -9,15 +9,6 @@
 
 mod fallback;
 mod foreign_objects;
-#[cfg(any(
-    feature = "diagram-agentflow",
-    feature = "diagram-class",
-    feature = "diagram-er",
-    feature = "diagram-flowchart",
-    feature = "diagram-mindmap",
-    feature = "diagram-swimlane"
-))]
-pub(crate) use fallback::measure_styled_html_label;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -28,15 +19,12 @@ pub(crate) use fallback::measure_styled_html_label;
 )]
 mod icon_registry;
 mod parity;
-pub(crate) use merman_render_core::svg_css::PreparedCommonCss;
 #[cfg(all(feature = "diagram-block", feature = "layout-shoal"))]
 pub(crate) use merman_render_core::svg_edge_parity::markers::BaseEdgeMarkerKind;
 #[cfg(all(feature = "diagram-class", feature = "layout-shoal"))]
 pub(crate) use parity::class_canonical_marker;
 #[cfg(all(feature = "diagram-er", feature = "layout-shoal"))]
 pub(crate) use parity::er_canonical_marker;
-#[cfg(feature = "diagram-er")]
-pub(crate) use parity::escape_xml;
 #[cfg(all(feature = "diagram-state", feature = "layout-shoal"))]
 pub(crate) use parity::state_canonical_marker;
 #[cfg(any(
@@ -45,12 +33,6 @@ pub(crate) use parity::state_canonical_marker;
     feature = "diagram-agentflow"
 ))]
 pub(crate) use parity::{FlowchartRenderConfig, prepare_flowchart_render_config};
-#[cfg(any(
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-agentflow"
-))]
-pub(crate) use parity::{PreparedCommonNeoCss, PreparedLookDefs};
 mod pipeline;
 
 pub use fallback::foreign_object_label_fallback_svg_text;

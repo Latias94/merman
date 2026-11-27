@@ -5,9 +5,21 @@
 #[cfg(feature = "css-style")]
 #[doc(hidden)]
 pub mod config;
+#[cfg(all(feature = "euclid-geometry", feature = "layout-dagre"))]
+#[doc(hidden)]
+pub mod dagre_geometry;
+#[cfg(feature = "layout-elk")]
+#[doc(hidden)]
+pub mod elk_adapter;
+#[cfg(any(feature = "layout-elk", feature = "svg-output"))]
+#[doc(hidden)]
+pub mod elk_edge_geometry;
 #[cfg(feature = "svg-output")]
 #[doc(hidden)]
 pub mod entities;
+#[cfg(feature = "error-diagram")]
+#[doc(hidden)]
+pub mod error_diagram;
 #[cfg(feature = "euclid-geometry")]
 #[doc(hidden)]
 pub mod euclid_box;
@@ -22,7 +34,7 @@ pub mod html;
 #[doc(hidden)]
 pub mod icon_registry;
 mod layout;
-#[cfg(feature = "svg-output")]
+#[cfg(feature = "resources")]
 #[doc(hidden)]
 pub mod layout_work;
 #[cfg(feature = "math-labels")]
@@ -37,7 +49,7 @@ pub mod number_format;
 #[cfg(feature = "paint-scene")]
 #[doc(hidden)]
 pub mod paint_scene;
-#[cfg(feature = "svg-output")]
+#[cfg(feature = "resources")]
 mod render_error;
 #[cfg(feature = "resources")]
 pub mod resources;
@@ -54,6 +66,13 @@ pub mod route_types;
 #[doc(hidden)]
 pub mod route_paint;
 
+#[cfg(any(
+    feature = "layout-dagre",
+    feature = "layout-elk",
+    feature = "svg-output"
+))]
+#[doc(hidden)]
+pub mod shape_intersection;
 #[cfg(feature = "svg-animation")]
 #[doc(hidden)]
 pub mod step_animation;
@@ -63,7 +82,7 @@ pub mod svg_bounds;
 #[cfg(feature = "svg-output")]
 #[doc(hidden)]
 pub mod svg_css;
-#[cfg(feature = "svg-edge-parity")]
+#[cfg(feature = "svg-output")]
 #[doc(hidden)]
 pub mod svg_edge_parity;
 #[cfg(feature = "svg-output")]
@@ -94,8 +113,13 @@ pub mod xml;
 mod xml_chars;
 
 pub use geometry::{Bounds, LayoutPoint};
-pub use layout::{LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode};
 #[doc(hidden)]
-pub use layout::{SwimlaneDirection, SwimlaneLaneLayout, SwimlaneTitleRect};
-#[cfg(feature = "svg-output")]
+pub use layout::measure_layout_bounds;
+pub use layout::{EdgePaintGeometry, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode};
+#[doc(hidden)]
+pub use layout::{
+    SwimlaneDirection, SwimlaneEdgeLayout, SwimlaneLaneLayout, SwimlaneNodeLayout,
+    SwimlaneTitleRect,
+};
+#[cfg(feature = "resources")]
 pub use render_error::{Error, RenderCapability, RenderCapabilityPolicy, Result};

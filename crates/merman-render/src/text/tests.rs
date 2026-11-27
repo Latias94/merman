@@ -1,7 +1,11 @@
 use super::*;
 use crate::graph_label::flowchart_label_metrics_for_layout;
 use crate::text::metrics::style_requests_bold_font_weight;
-use merman_render_core::text::{trim_ecmascript_whitespace, wrap_markdown_word_lines};
+use merman_render_core::text::inline_html::SvgTextEntityMode;
+use merman_render_core::text::{
+    svg_title_bbox_vertical_extents_px, trim_ecmascript_whitespace,
+    trim_html_collapsible_ascii_whitespace, wrap_markdown_word_lines,
+};
 
 fn assert_finite_positive_metrics(metrics: TextMetrics) {
     assert!(
@@ -199,12 +203,6 @@ fn ecmascript_and_html_whitespace_helpers_preserve_next_line_control() {
         crate::graph_label::flowchart_label_plain_text_for_layout(" \u{0085} ", "text", false);
     assert_eq!(html, "\u{0085}");
     assert_eq!(svg, "\u{0085}");
-    assert!(!crate::graph_label::flowchart_label_text_is_empty_for_mode(
-        &html, true,
-    ));
-    assert!(!crate::graph_label::flowchart_label_text_is_empty_for_mode(
-        &svg, false,
-    ));
 }
 
 #[test]
