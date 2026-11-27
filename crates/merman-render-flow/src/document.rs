@@ -10,7 +10,7 @@ use merman_render_core::{
     svg_css::{CssSelectorDiagramId, PreparedLookDefs, SvgId},
     svg_output::{BoundedSvgOutput, SvgOutput},
     theme_svg::NEO_SHADOW_OFFSET_PX,
-    xml::{escape_xml, escape_xml_into},
+    xml::{escape_attr_display, escape_xml, escape_xml_into},
 };
 
 use crate::stylesheet::{FlowchartStylesheetRequest, title_css_class, write_flowchart_stylesheet};
@@ -250,14 +250,12 @@ fn push_flowchart_gradient(
         return;
     };
 
-    let gradient_start = escape_xml(gradient_start);
-    let gradient_stop = escape_xml(gradient_stop);
     let _ = write!(
         out,
         r#"<linearGradient id="{}" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient>"#,
         gradient_id,
-        gradient_start.as_str(),
-        gradient_stop.as_str()
+        escape_attr_display(gradient_start),
+        escape_attr_display(gradient_stop)
     );
 }
 

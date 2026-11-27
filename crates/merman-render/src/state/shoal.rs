@@ -10,11 +10,11 @@ use super::{
     StateCompatibilityPlan, StateDiagramModel, StateLabelOwner, StateLabelSidecarBuilder,
     StateNode, StateNodeStylePlan, StateStylePlan, state_value_to_label_text,
 };
-use crate::graph_layout::canonical::CanonicalRoutes;
+use crate::graph_layout::canonical::{CanonicalRoutes, CaptionClearance, theme_routing_style};
 use crate::graph_layout::contour::{ShapePortProfile, shoal_contour};
 use crate::graph_layout::ir::{
     Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, Rect,
-    RoutePoint, RoutingStyle, Side, Size, SolvedGraph, TitlePosition, direction_from_rank,
+    RoutePoint, Side, Size, SolvedGraph, TitlePosition, direction_from_rank,
 };
 use crate::graph_layout::placement;
 use crate::layout_work::OperationLayoutWorkControl;
@@ -79,6 +79,7 @@ pub(super) fn layout_state_diagram_shoal(
         &input.profiles,
         |id| group_corner_radius(input.groups[id as usize].node, style_plan),
         input.edges.iter().map(|edge| edge.id.as_str()),
+        CaptionClearance::Avoid,
         work,
     )?;
     routes.placement = placement;
@@ -103,11 +104,11 @@ fn measure<'a>(
     work: &mut OperationLayoutWorkControl,
 ) -> Result<MeasuredState<'a>> {
     let hidden = state_hidden_prefixes(model);
-    let settings =
-        StateConfigView::new(config).layout_settings(&model.direction, style_plan.compatibility());
+    let compatibility = style_plan.compatibility();
+    let settings = StateConfigView::new(config).layout_settings(&model.direction, compatibility);
     let mut graph = MeasuredGraph {
         direction: settings.direction,
-        routing: RoutingStyle::Curved,
+        routing: theme_routing_style(compatibility.native_edge_style()),
         node_spacing: settings.node_spacing,
         rank_spacing: settings.rank_spacing,
         component_spacing: settings.node_spacing.max(settings.rank_spacing),
@@ -302,10 +303,7 @@ fn measure<'a>(
             start_label: None,
             end_label: None,
             start_marker: Default::default(),
-            end_marker: crate::svg::state_canonical_marker(
-                &edge.arrow_type_end,
-                style_plan.compatibility().is_neo(),
-            ),
+            end_marker: crate::svg::state_canonical_marker(&edge.arrow_type_end, compatibility),
         });
         edges.push(edge);
     }

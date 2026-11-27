@@ -192,6 +192,173 @@ fn c4_nodes_render_each_layout_occurrence_after_alias_updates() {
     );
 }
 
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn c4_shoal_unseatable_caption_is_exported_below_its_graph() {
+    use kurbo::{BezPath, Shape};
+    use merman_render::theme::{Appearance, BuiltinPreset};
+
+    let source = r#"---
+config:
+  layout: shoal
+  htmlLabels: false
+---
+C4Context
+UpdateLayoutConfig($c4ShapeInRow="1")
+System(n0, "Service 0")
+System(n1, "Service 1")
+System(n2, "Service 2")
+Rel(n2, n0, "Caption 0 for the relationship", "HTTPS")
+Rel(n1, n0, "Caption 1 for the relationship", "HTTPS")
+Rel(n0, n2, "Caption 2 for the relationship", "HTTPS")
+Rel(n0, n0, "Caption 3 for the relationship", "HTTPS")
+Rel(n1, n1, "Caption 4 for the relationship", "HTTPS")
+"#;
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let theme = ThemeCompiler::new()
+        .compile_preset(BuiltinPreset::Studio, Some(Appearance::Dark))
+        .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(RenderResourcePolicy::constrained())
+        .begin_session_with_native_theme(NativeTheme::new(theme))
+        .unwrap();
+    let prepared = family::prepare(
+        parsed.presentation(),
+        &LayoutOptions::headless_svg_defaults(),
+        session,
+    )
+    .unwrap();
+    let projection = prepared.layout_json().unwrap();
+    let relation = &projection["layout"]["C4Diagram"]["rels"][4];
+    assert_eq!(relation["label"]["text"], "Caption 4 for the relationship");
+    assert_eq!(relation["techn"]["text"], "HTTPS");
+
+    let svg = prepared
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+    let document = roxmltree::Document::parse(svg.svg()).unwrap();
+    let paths: Vec<_> = document
+        .descendants()
+        .filter(|node| node.attribute("data-et") == Some("edge"))
+        .collect();
+    assert_eq!(paths.len(), 5);
+    let owner = paths
+        .iter()
+        .find(|path| path.attribute("data-id") == Some("c4-rel-4"))
+        .unwrap();
+    assert!(owner.attribute("marker-end").is_some());
+    assert!(owner.attribute("clip-path").is_none());
+    let shaft_bottom = paths
+        .iter()
+        .map(|path| {
+            let shaft = BezPath::from_svg(path.attribute("d").unwrap()).unwrap();
+            let outset = path
+                .attribute("stroke-width")
+                .unwrap()
+                .parse::<f64>()
+                .unwrap()
+                / 2.0;
+            shaft.bounding_box().y1 + outset
+        })
+        .fold(f64::NEG_INFINITY, f64::max);
+    let caption = document
+        .descendants()
+        .find(|node| {
+            node.attribute("class") == Some("label")
+                && node.attribute("data-id") == owner.attribute("data-id")
+        })
+        .unwrap();
+    let blocks: Vec<_> = caption
+        .children()
+        .filter(|node| node.has_tag_name("text"))
+        .map(svg_text_content)
+        .collect();
+    assert_eq!(
+        blocks,
+        ["n1 → n1 (5)", "Caption 4 for the relationship", "[HTTPS]"]
+    );
+    let transform = caption
+        .attribute("transform")
+        .unwrap()
+        .strip_prefix("translate(")
+        .unwrap()
+        .strip_suffix(')')
+        .unwrap();
+    let y: f64 = transform.split_once(',').unwrap().1.trim().parse().unwrap();
+    let viewport = document
+        .root_element()
+        .attribute("viewBox")
+        .unwrap()
+        .parse::<svgtypes::ViewBox>()
+        .unwrap();
+    for line in caption
+        .descendants()
+        .filter(|node| node.has_tag_name("tspan"))
+    {
+        let text_y = line.parent_element().unwrap().attribute("y").unwrap();
+        let baseline = y
+            + text_y.parse::<f64>().unwrap()
+            + line.attribute("dy").unwrap().parse::<f64>().unwrap();
+        assert!(
+            shaft_bottom < baseline && baseline < viewport.y + viewport.h,
+            "{baseline}"
+        );
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn c4_shoal_definitions_keep_unique_ids_after_rebasing() {
+    let source = r##"---
+config:
+  layout: shoal
+  look: neo
+  themeVariables:
+    useGradient: true
+---
+C4Context
+System(computer, "Computer")
+System(gradient, "Gradient")
+System("drop-shadow", "Shadow")
+System("c4-rel-0-label-cutout", "Cutout")
+System("arrowhead-0", "Arrow")
+Rel(computer, gradient, "Own caption")
+UpdateRelStyle(computer, gradient, $lineColor="#1144AA")
+"##;
+    let env = RenderEnvironment::deterministic();
+    let svg = render_c4_svg_with_environment(source, &env);
+    let rebased =
+        merman_render::svg::rebase_svg_ids(&svg, "preview", &env.begin_session().unwrap()).unwrap();
+    for document in [&svg, &rebased] {
+        let doc = roxmltree::Document::parse(document).unwrap();
+        let mut ids = std::collections::HashMap::new();
+        for node in doc.descendants().filter(roxmltree::Node::is_element) {
+            if let Some(id) = node.attribute("id") {
+                assert!(ids.insert(id, node).is_none(), "duplicate ID {id}");
+            }
+        }
+        for tag in ["linearGradient", "filter", "marker", "symbol"] {
+            assert!(
+                ids.values().any(|node| node.has_tag_name(tag)),
+                "missing {tag}"
+            );
+        }
+        for url in document.split("url(#").skip(1) {
+            let id = url.split_once(')').unwrap().0;
+            assert!(ids.contains_key(id), "unresolved fragment {id}");
+        }
+        assert_eq!(
+            doc.descendants()
+                .filter(|node| node.attribute("data-et") == Some("node"))
+                .count(),
+            5
+        );
+    }
+}
+
 #[test]
 fn c4_boundary_labels_render_each_layout_occurrence_after_alias_updates() {
     let source = "C4Context\nBoundary(a, \"A\") {\nUpdateLayoutConfig(4)\n}\nBoundary(b, \"B\") {\nUpdateLayoutConfig(4)\n}\nSystem(outside, \"Outside\")\nUpdateElementStyle(a, $alias=\"b\")\n";
@@ -1218,7 +1385,7 @@ System(framed, "Framed", "Component description", $shape="component")
 }
 
 #[test]
-fn c4_hand_drawn_look_emits_rough_shape_geometry() {
+fn c4_hand_drawn_shapes_have_solid_fills_and_rough_outlines() {
     let source = r#"%%{init: {"look": "handDrawn"}}%%
 C4Context
 Person(person, "Person")
@@ -1240,10 +1407,34 @@ System(queue, "Queue", "SQS", $shape="queue")
         })
         .collect::<Vec<_>>();
     assert_eq!(shape_groups.len(), 5);
-    assert!(shape_groups.iter().all(|group| {
-        group.attribute("data-look") == Some("handDrawn")
-            && group.descendants().any(|node| node.has_tag_name("path"))
-    }));
+    for group in shape_groups {
+        let id = group.attribute("id").unwrap();
+        assert_eq!(group.attribute("data-look"), Some("handDrawn"));
+        let fills: Vec<_> = group
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("path") && node.attribute("class") == Some("rough-fill")
+            })
+            .collect();
+        assert_eq!(fills.len(), if id == "merman-person" { 2 } else { 1 });
+        for fill in fills {
+            assert!(
+                fill.attribute("fill").is_some_and(|color| color != "none"),
+                "{id} needs a continuous fill behind its text"
+            );
+            assert_eq!(fill.attribute("stroke"), Some("none"));
+            let path = svgtypes::PathParser::from(fill.attribute("d").unwrap());
+            assert!(matches!(
+                path.last(),
+                Some(Ok(svgtypes::PathSegment::ClosePath { .. }))
+            ));
+        }
+        assert!(group.descendants().any(|node| {
+            node.has_tag_name("path")
+                && node.attribute("class") == Some("rough-stroke")
+                && node.attribute("fill") == Some("none")
+        }));
+    }
 }
 
 #[test]

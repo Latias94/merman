@@ -340,6 +340,59 @@ fn close_ports() -> (Graph, LayoutOutput) {
 }
 
 #[test]
+fn polyline_sibling_ports_share_the_inboard_lane() {
+    let (graph, mut output) = close_ports();
+    let options = Options {
+        routing: RoutingStyle::Polyline,
+        ..Options::default()
+    };
+    run(&graph, &options, &mut output, &mut NoopWorkControl);
+    let points = &output.edges[0].points;
+    let [first, last] = output.border_stitches.as_slice() else {
+        panic!("expected sibling stitches")
+    };
+    assert_eq!(
+        (points[first.point].y, points[last.point].y),
+        (109.0, 109.0)
+    );
+}
+
+#[test]
+fn orthogonal_sibling_ports_share_a_lane_with_orthogonal_inboard_leads() {
+    let (graph, mut output) = close_ports();
+    let points = &mut output.edges[0].points;
+    let mut first = points[1];
+    first.x = points[2].x;
+    points.insert(2, first);
+    let end = points.len() - 2;
+    let mut last = points[end];
+    last.y = points[end - 1].y;
+    last.axis = Axis::Horizontal;
+    points.insert(end, last);
+    points[3].axis = Axis::Vertical;
+    points[end + 1].axis = Axis::Vertical;
+    for stitch in &mut output.border_stitches {
+        stitch.point += 1;
+    }
+    let options = Options {
+        routing: RoutingStyle::Orthogonal,
+        ..Options::default()
+    };
+    run(&graph, &options, &mut output, &mut NoopWorkControl);
+    let points = &output.edges[0].points;
+    let [first, last] = output.border_stitches.as_slice() else {
+        panic!("expected sibling stitches")
+    };
+    assert_eq!((points[first.point].y, points[last.point].y), (109., 109.));
+    for pair in points.windows(2) {
+        assert!(
+            pair[0].x == pair[1].x || pair[0].y == pair[1].y,
+            "{points:?}"
+        );
+    }
+}
+
+#[test]
 fn close_ports_share_the_inboard_lane_without_moving_either_terminal() {
     let (graph, mut output) = close_ports();
     let old = output.edges[0].points.clone();

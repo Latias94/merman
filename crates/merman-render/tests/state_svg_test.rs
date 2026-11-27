@@ -19,64 +19,69 @@ use merman_render::text::{
 
 #[cfg(feature = "layout-shoal")]
 #[test]
-fn shoal_mermaid_transition_label_inset_matches_layout_and_keeps_empty_container() {
-    for theme in ["default", "dark"] {
-        let source = format!(
-            "---\nconfig:\n  layout: shoal\n  theme: {theme}\n  htmlLabels: true\n---\n\
-             stateDiagram-v2\n  direction LR\n  A --> B: {}\n\
-               B --> C: A long explanation with several words that should wrap across multiple lines\n\
-               C --> D",
-            "i".repeat(42)
-        );
-        let parsed = MermaidEngine::new()
-            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
-            .unwrap()
+fn shoal_state_native_edge_styles_and_neo_open_marker_are_visible() {
+    use kurbo::{BezPath, ParamCurve, PathSeg};
+    use merman_render::theme::{NativeTheme, ThemeCompiler};
+
+    let source = "---\nconfig:\n  layout: shoal\n  look: neo\n---\nstateDiagram-v2\nA --> B\nA --> C\nB --> D\nC --> D\n";
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    for style in ["orthogonal", "straight", "sketch"] {
+        let theme = ThemeCompiler::new().compile_json(
+            format!(r##"{{"schema_version":2,"extends":"blueprint","roles":{{"stroke.connector":"#123456"}},"form":{{"edge_style":"{style}","marker_style":"open"}}}}"##).as_bytes(),
+            None,
+        ).unwrap();
+        let session = RenderEnvironment::deterministic()
+            .begin_session_with_native_theme(NativeTheme::new(theme))
             .unwrap();
-        let session = RenderEnvironment::deterministic().begin_session().unwrap();
-        let artifact =
-            family::prepare(parsed.presentation(), &LayoutOptions::default(), session).unwrap();
-        let layout = artifact.layout_json().unwrap();
-        let svg = artifact
-            .render_svg(&Default::default(), &Default::default())
+        let rendered = family::prepare(
+            parsed.presentation(),
+            &LayoutOptions::headless_svg_defaults(),
+            session,
+        )
+        .unwrap()
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+        let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let css = doc
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .and_then(|node| node.text())
             .unwrap();
-        let doc = roxmltree::Document::parse(svg.svg()).unwrap();
-        let labels = layout["layout"]["StateDiagramV2"]["edges"]
-            .as_array()
-            .unwrap();
-        for (id, wrapping) in [
-            ("edge0", "nowrap"),
-            ("edge1", "break-spaces"),
-            ("edge2", ""),
-        ] {
-            let box_node = doc
-                .descendants()
-                .find(|node| {
-                    node.has_tag_name("foreignObject")
-                        && node.parent_element().unwrap().attribute("data-id") == Some(id)
-                })
-                .unwrap();
-            let style = box_node
-                .first_element_child()
-                .unwrap()
-                .attribute("style")
-                .unwrap();
-            if wrapping.is_empty() {
-                assert_eq!(box_node.attribute("width"), Some("0"));
-                assert_eq!(box_node.attribute("height"), Some("0"));
-                assert!(!style.contains("padding-inline"));
-                continue;
-            }
-            let label = labels.iter().find(|edge| edge["id"] == id).unwrap();
-            let width = label["label"]["width"].as_f64().unwrap();
-            assert!(width > 200.0 && width <= 208.0, "{theme} {id} {width}");
-            assert!(
-                (width - box_node.attribute("width").unwrap().parse::<f64>().unwrap()).abs() < 1e-9
+        assert!(css.contains(r#"[id$="-barbEnd-margin"]{stroke:#123456;"#));
+        for edge in doc
+            .descendants()
+            .filter(|node| node.attribute("data-et") == Some("edge"))
+        {
+            assert_eq!(
+                edge.attribute("marker-end"),
+                Some("url(#merman_stateDiagram-barbEnd-margin)")
             );
-            assert!(style.contains("padding-inline: 4px;"));
-            assert!(style.contains("background-color:"));
-            assert!(style.contains(&format!("white-space: {wrapping};")));
+            let path = BezPath::from_svg(edge.attribute("d").unwrap()).unwrap();
+            assert_eq!(
+                path.segments()
+                    .any(|segment| matches!(segment, PathSeg::Cubic(_))),
+                style == "sketch"
+            );
+            if style == "orthogonal" {
+                for segment in path.segments() {
+                    let delta = segment.end() - segment.start();
+                    assert!(delta.x == 0.0 || delta.y == 0.0);
+                }
+            }
         }
     }
+}
+
+#[test]
+fn state_digit_prefixed_classes_are_css_identifiers() {
+    let svg = render_state_svg_from_text(
+        "stateDiagram-v2\nclassDef 2done fill:#123456\nA --> B\nclass B 2done\n",
+    );
+    assert!(svg.contains(r#".\32 done"#));
+    assert!(svg.contains(" 2done"));
 }
 
 #[cfg(feature = "layout-shoal")]

@@ -9,12 +9,11 @@ use merman_render_core::{
         },
     },
     svg_output::SvgOutput,
-    xml::escape_attr,
 };
 
 use crate::node_geometry::StadiumGeometry;
 
-use super::super::{NodeBodyGeometry, NodeBodySvg, fmt, prepare_node_path};
+use super::super::{NodeBodyGeometry, NodeBodySvg, escape_attr, fmt, prepare_node_path};
 
 const FLOWCHART_STADIUM_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
 const FLOWCHART_STADIUM_HAND_DRAWN_FILL_WEIGHT: f32 = 1.5;
@@ -43,21 +42,21 @@ pub fn write_stadium(
                 geometry.randomness,
             )
         }) {
-            out.push_str(r#"<g class="basic label-container outer-path">"#);
-            let _ = write!(
+            if body.rough_fill_opacity.is_some() {
+                let _ = write!(
+                    out,
+                    r#"<g class="basic label-container outer-path" style="{}">"#,
+                    escape_attr(body.hand_drawn_group_style()),
+                );
+            } else {
+                out.push_str(r#"<g class="basic label-container outer-path">"#);
+            }
+            body.write_hand_drawn_path_pair(
                 out,
-                r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"/>"#,
-                escape_attr(&fill_d),
-                escape_attr(body.fill_color),
-                fmt(FLOWCHART_STADIUM_HAND_DRAWN_FILL_WEIGHT as f64),
-            );
-            let _ = write!(
-                out,
-                r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/>"#,
-                escape_attr(&stroke_d),
-                escape_attr(body.stroke_color),
-                fmt(body.geometry.stroke_width as f64),
-                escape_attr(body.geometry.stroke_dasharray),
+                &path_data,
+                &fill_d,
+                &stroke_d,
+                f64::from(FLOWCHART_STADIUM_HAND_DRAWN_FILL_WEIGHT),
             );
             out.push_str("</g>");
             return;

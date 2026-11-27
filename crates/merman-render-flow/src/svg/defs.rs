@@ -49,6 +49,7 @@ pub(super) fn compact_classic_point_end(
         height: spec.viewport.size[1],
         units: SceneMarkerUnits::UserSpaceOnUse,
         orient: SceneMarkerOrient::Auto,
+        round_stroke: false,
         commands: &COMMANDS,
         paint: ScenePaint {
             fill: Some(color),
@@ -100,17 +101,12 @@ pub(super) fn prepare_flowchart_markers<'a>(
             .edge_style_plan
             .edge_for(edge.key)?
             .edge_marker_color(hand_drawn);
-        let adaptive_ink = if source_color.is_none() {
-            fill_plan.ink(edge.key)
-        } else {
-            None
-        };
         let margin = neo && !ctx.edge_style_plan.animation_for(edge.key)?.is_active();
         Ok(FlowchartEdgeMarkers {
             edge,
             source_color,
-            adaptive_ink,
-            casing_color: fill_plan.casing_color(edge.key),
+            adaptive_ink: fill_plan.ink(edge.key),
+            surfaces: fill_plan.layers(edge.key),
             margin,
         })
     });

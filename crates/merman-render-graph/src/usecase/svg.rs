@@ -1,30 +1,35 @@
 //! Mermaid 12 Usecase paint over its prepared graph and measured labels.
 
 use super::{
-    UsecaseLabelPlan, UsecaseNodePlan, UsecasePrepared, normalize_plain_label_line_breaks,
+    UsecaseLabelPlan, UsecaseNodePlan, UsecasePrepared, create_text_source, package_tab_geometry,
+    sanitize_source_label,
 };
 use base64::Engine as _;
 use kurbo::{Ellipse, Rect, Shape};
+use merman_markup::theme_color::ThemeColor;
 use merman_model::families::usecase::{
     UsecaseActorType, UsecaseAnimation, UsecaseDiagramModel, UsecaseLabelType, UsecaseNodeKind,
     UsecaseRelationshipType,
 };
-use merman_model::{OperationPhase, runtime::OperationContext};
+use merman_model::runtime::OperationContext;
 use merman_render_core::{
-    Bounds, Error, LayoutNode, Result,
+    Bounds, Error, LayoutLabel, LayoutNode, Result,
     config::{config_f64, config_string, json_bool, value_at},
     icon_registry::IconRegistry,
     number_format::canonical_number as fmt,
     resources::OperationWorkMeter,
     root_svg::{self, RootViewportContext},
-    rough_svg::operation_randomness,
+    rough_svg::{constrained_rough_edge_path, operation_randomness},
     svg_css::SvgId,
-    svg_edge_parity::{edge_path, line_hops, markers, path_numbers::json_stringify_points},
+    svg_edge_parity::{
+        edge_path, line_hops, markers::BaseEdgeMarkerKind, path_numbers::json_stringify_points,
+    },
+    svg_output::{BoundedSvgOutput, SvgOutput},
     text::{self, TextMeasurer, svg_label as label},
-    theme_svg::elevation,
+    theme_svg::{elevation, marker::arrow_path},
     xml::{escape_attr, escape_xml},
 };
-use merman_theme_contract::v2::FamilyTheme;
+use merman_theme_contract::v2::{FamilyTheme, MarkerStyle};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::Write as _;
@@ -43,7 +48,7 @@ pub type UsecaseEdgePainter<'a> =
 /// Canonical geometry provided by the facade without transferring the routing backend.
 #[cfg(feature = "layout-shoal")]
 pub struct UsecaseCanonicalSvg<'a> {
-    pub titles: &'a HashMap<String, merman_render_core::LayoutLabel>,
+    pub titles: &'a HashMap<String, LayoutLabel>,
     pub boundary_order: &'a [(usize, usize)],
     pub paint_edges: &'a UsecaseEdgePainter<'a>,
 }
@@ -58,14 +63,6 @@ pub struct UsecaseSvgContext<'a> {
     pub icon_registry: Option<&'a IconRegistry>,
     #[cfg(feature = "layout-shoal")]
     pub canonical: Option<UsecaseCanonicalSvg<'a>>,
-}
-
-impl UsecaseSvgContext<'_> {
-    fn checkpoint_emit(&self) -> Result<()> {
-        self.work_meter
-            .checkpoint(OperationPhase::Emit)
-            .map_err(Into::into)
-    }
 }
 
 fn config_bool(config: &serde_json::Value, path: &[&str]) -> Option<bool> {
@@ -130,28 +127,34 @@ fn accessible_text(text: &str, kind: UsecaseLabelType) -> String {
 struct UsecaseLabelRenderContext<'a> {
     config: &'a merman_model::presentation::PresentationConfig,
     measurer: &'a dyn TextMeasurer,
+    inline_svg_font: bool,
 }
 
 enum UsecaseLabelKind<'a> {
     Node(&'a str),
     PositionedNode(&'a str),
+    CenteredNode(&'a str),
     Boundary { canonical: bool },
     Edge(&'a str),
 }
 
 fn write_label(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     plan: &UsecaseLabelPlan,
     kind: UsecaseLabelKind<'_>,
     center_x: f64,
     center_y: f64,
     context: UsecaseLabelRenderContext<'_>,
 ) {
-    let UsecaseLabelRenderContext { config, measurer } = context;
+    let UsecaseLabelRenderContext {
+        config,
+        measurer,
+        inline_svg_font,
+    } = context;
     let html = config_bool(config.as_value(), &["htmlLabels"]).unwrap_or(true);
     let font_family = plan.style.font_family.as_deref().unwrap_or("sans-serif");
     let font_weight = plan.style.font_weight.as_deref().unwrap_or("normal");
-    let css: String = plan
+    let mut css: String = plan
         .styles
         .iter()
         .map(|(key, value)| {
@@ -166,17 +169,30 @@ fn write_label(
             )
         })
         .collect();
+    if inline_svg_font && !html {
+        // Raster consumers without CSS custom properties must paint the font measured by layout.
+        // Append resolved values after any relative source declarations.
+        let font_style = plan.style.font_style.as_deref().unwrap_or("normal");
+        let _ = write!(
+            css,
+            "font-family:{font_family} !important;font-size:{}px !important;font-weight:{font_weight} !important;font-style:{font_style} !important;",
+            fmt(plan.style.font_size)
+        );
+    }
     let is_edge_label = matches!(kind, UsecaseLabelKind::Edge(_));
     let is_boundary = matches!(kind, UsecaseLabelKind::Boundary { .. });
     let canonical_boundary = matches!(kind, UsecaseLabelKind::Boundary { canonical: true });
     let positioned_node = matches!(kind, UsecaseLabelKind::PositionedNode(_));
-    let svg_bbox_y = if !html && (is_edge_label || positioned_node || canonical_boundary) {
+    let center_text = is_edge_label || matches!(kind, UsecaseLabelKind::CenteredNode(_));
+    let svg_bbox_y = if !html && (center_text || positioned_node || canonical_boundary) {
         measurer.measure_svg_create_text_bbox_y_offset_px(&plan.text, &plan.style)
     } else {
         0.0
     };
     let class_attr = match kind {
-        UsecaseLabelKind::Node(class) | UsecaseLabelKind::PositionedNode(class) => class,
+        UsecaseLabelKind::Node(class)
+        | UsecaseLabelKind::PositionedNode(class)
+        | UsecaseLabelKind::CenteredNode(class) => class,
         UsecaseLabelKind::Boundary { .. } => "cluster-label system-boundary-title",
         UsecaseLabelKind::Edge(_) => "label",
     };
@@ -266,10 +282,7 @@ fn write_label(
                 // prepareUsecaseLayoutData escapes plain labels before createText splits
                 // lines and words. Decode those entities only when writing text content,
                 // so a literal <br/> remains visible instead of becoming a line break.
-                let source = normalize_plain_label_line_breaks(&plan.text)
-                    .replace('&', "&amp;")
-                    .replace('<', "&lt;")
-                    .replace('>', "&gt;");
+                let source = create_text_source(&plan.text, plan.label_type);
                 if canonical_boundary {
                     let words = text::DeterministicTextMeasurer::normalized_text_lines(&source)
                         .iter()
@@ -285,31 +298,20 @@ fn write_label(
                         out,
                         &source,
                         &css,
-                        is_edge_label,
+                        center_text,
                     );
                 }
             }
             UsecaseLabelType::Markdown => {
-                if is_edge_label {
-                    label::write_svg_text_markdown_wrapped_centered_with_style(
-                        out,
-                        &plan.text,
-                        &css,
-                        measurer,
-                        &plan.style,
-                        plan.max_width,
-                    )
-                } else {
-                    label::write_svg_text_markdown_wrapped_from_create_text_source_with_style(
-                        out,
-                        &plan.text,
-                        &css,
-                        measurer,
-                        &plan.style,
-                        plan.max_width,
-                        false,
-                    )
-                }
+                label::write_svg_text_markdown_wrapped_from_create_text_source_with_style(
+                    out,
+                    &plan.text,
+                    &css,
+                    measurer,
+                    &plan.style,
+                    plan.max_width,
+                    center_text,
+                );
             }
         }
         out.push_str("</g>");
@@ -318,6 +320,97 @@ fn write_label(
     if is_edge_label {
         out.push_str("</g>");
     }
+}
+
+fn write_edge_label_mask<'a>(
+    out: &mut impl SvgOutput,
+    diagram_id: SvgId<'_>,
+    bounds: root_svg::DiagramBounds,
+    positions: impl Iterator<Item = &'a LayoutLabel>,
+) -> Result<bool> {
+    let mut positions = positions.peekable();
+    if positions.peek().is_none() {
+        return Ok(false);
+    }
+    let _ = write!(
+        out,
+        r#"<defs><mask id="{diagram_id}_usecase-edge-label-mask" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" x="{}" y="{}" width="{}" height="{}"><rect x="{}" y="{}" width="{}" height="{}" fill="white"/>"#,
+        fmt(bounds.min_x),
+        fmt(bounds.min_y),
+        fmt(bounds.width),
+        fmt(bounds.height),
+        fmt(bounds.min_x),
+        fmt(bounds.min_y),
+        fmt(bounds.width),
+        fmt(bounds.height),
+    );
+    // Opaque black rectangles subtract the union of the label boxes, including overlaps.
+    for position in positions {
+        let rect =
+            Rect::from_center_size((position.x, position.y), (position.width, position.height));
+        let _ = write!(
+            out,
+            r#"<rect x="{}" y="{}" width="{}" height="{}" fill="black"/>"#,
+            fmt(rect.x0),
+            fmt(rect.y0),
+            fmt(rect.width()),
+            fmt(rect.height()),
+        );
+        out.checkpoint()?;
+    }
+    out.push_str("</mask></defs>");
+    out.checkpoint()?;
+    Ok(true)
+}
+
+fn write_legacy_base_markers(
+    out: &mut impl SvgOutput,
+    diagram_id: SvgId<'_>,
+    style: MarkerStyle,
+) -> Result<()> {
+    use BaseEdgeMarkerKind::*;
+
+    let arrow = arrow_path(style);
+    for kind in [
+        PointEnd,
+        PointStart,
+        PointEndMargin,
+        PointStartMargin,
+        CircleEnd,
+        CircleStart,
+        CircleEndMargin,
+        CircleStartMargin,
+        CrossEnd,
+        CrossStart,
+        CrossEndMargin,
+        CrossStartMargin,
+    ] {
+        let suffix = kind.suffix();
+        if let Some(path) = arrow.filter(|_| suffix.starts_with("point")) {
+            let transform = if matches!(kind, PointStart | PointStartMargin) {
+                r#" transform="translate(10 0) scale(-1 1)""#
+            } else {
+                ""
+            };
+            let fill = if style == MarkerStyle::Open {
+                "fill:none;"
+            } else {
+                ""
+            };
+            let _ = write!(
+                out,
+                r#"<marker id="{diagram_id}_usecase-{suffix}" class="marker usecase" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto" overflow="visible"><path d="{path}"{transform} style="stroke-width:1;stroke-dasharray:none;stroke-linecap:round;stroke-linejoin:round;{fill}"/></marker>"#,
+            );
+        } else {
+            let cross = if kind.cross() { "cross " } else { "" };
+            let _ = write!(
+                out,
+                r#"<marker id="{diagram_id}_usecase-{suffix}" class="marker {cross}usecase"{}/></marker>"#,
+                kind.shape_fragment(),
+            );
+        }
+    }
+    out.checkpoint()
 }
 
 pub fn render_usecase_diagram_svg_model(
@@ -332,7 +425,6 @@ pub fn render_usecase_diagram_svg_model(
     let cfg = config.as_value();
     let css_binding = &prepared.measured.css;
     let native = options.native_theme;
-    let labels = UsecaseLabelRenderContext { config, measurer };
     let layout = prepared.layout();
     let geometry: HashMap<_, _> = layout
         .nodes
@@ -427,14 +519,28 @@ pub fn render_usecase_diagram_svg_model(
         }
     }
     #[cfg(feature = "layout-shoal")]
-    let canonical_edges = match &options.canonical {
-        Some(canonical) => (canonical.paint_edges)(&mut viewport_bounds)?,
+    let mut canonical_edges = match &options.canonical {
+        Some(canonical) => (canonical.paint_edges)(&mut viewport_bounds)?.map(Vec::into_iter),
         None => None,
     };
+    #[cfg(feature = "layout-shoal")]
+    if canonical_edges
+        .as_ref()
+        .is_some_and(|edges| edges.len() != prepared.measured.edges.len())
+    {
+        return Err(Error::InvalidModel {
+            message: "canonical Usecase paint does not match the prepared edges".into(),
+        });
+    }
     #[cfg(feature = "layout-shoal")]
     let uses_canonical = canonical_edges.is_some();
     #[cfg(not(feature = "layout-shoal"))]
     let uses_canonical = false;
+    let labels = UsecaseLabelRenderContext {
+        config,
+        measurer,
+        inline_svg_font: uses_canonical || native.is_some(),
+    };
     if let Some(title) = title {
         let style = css_binding
             .native_title_font
@@ -452,14 +558,15 @@ pub fn render_usecase_diagram_svg_model(
         viewport_bounds.min_y = viewport_bounds.min_y.min(-ascent);
         viewport_bounds.max_y = viewport_bounds.max_y.max(descent);
     }
+    let viewport = root_svg::DiagramBounds::from_extents(
+        viewport_bounds.min_x,
+        viewport_bounds.min_y,
+        viewport_bounds.max_x,
+        viewport_bounds.max_y,
+        padding,
+    );
     let spec = root_svg::RootViewportSpec::mermaid(
-        root_svg::DiagramBounds::from_extents(
-            viewport_bounds.min_x,
-            viewport_bounds.min_y,
-            viewport_bounds.max_x,
-            viewport_bounds.max_y,
-            padding,
-        ),
+        viewport,
         config_bool(cfg, &["usecase", "useMaxWidth"]).unwrap_or(true),
     );
     let acc_title_id = model
@@ -502,7 +609,7 @@ pub fn render_usecase_diagram_svg_model(
         ),
     ];
     chrome.custom_properties = &font_properties;
-    let mut out = String::new();
+    let mut out = BoundedSvgOutput::new(options.work_meter);
     let document = options.viewport.write_open(&mut out, spec, chrome)?;
     if let Some(title) = &model.acc_title {
         let _ = write!(
@@ -518,12 +625,11 @@ pub fn render_usecase_diagram_svg_model(
             escape_xml(description)
         );
     }
-    let mermaid_parity = native.is_none();
-    theme::write_css(&mut out, diagram_id, css_binding, mermaid_parity)?;
+    theme::write_css(&mut out, diagram_id, css_binding)?;
     // Mermaid emits marker wrappers that are observable in strict SVG DOM parity.
     out.push_str("<g>");
     if !uses_canonical {
-        markers::push_base_edge_markers(&mut out, diagram_id, "usecase");
+        write_legacy_base_markers(&mut out, diagram_id, css_binding.marker_style)?;
         out.push_str("<defs>");
         let _ = write!(
             out,
@@ -568,7 +674,7 @@ pub fn render_usecase_diagram_svg_model(
         legacy_boundaries.next()
     });
     for (color_index, plan) in boundary_plans {
-        options.checkpoint_emit()?;
+        out.checkpoint()?;
         let node = geometry[plan.id.as_str()];
         let boundary = boundaries[plan.id.as_str()];
         let kind = if plan.package { "package" } else { "rect" };
@@ -594,23 +700,15 @@ pub fn render_usecase_diagram_svg_model(
             .as_ref()
             .and_then(|canonical| canonical.titles.get(&plan.id));
         #[cfg(not(feature = "layout-shoal"))]
-        let placed_title: Option<&merman_render_core::LayoutLabel> = None;
+        let placed_title: Option<&LayoutLabel> = None;
         let left = node.x - node.width / 2.0;
         let top = node.y - node.height / 2.0;
-        let tab_height = if plan.package {
-            placed_title.map_or(plan.label.metrics.height + 10.0, |title| {
-                title.y - top + title.height / 2.0 + 5.0
-            })
+        let (tab_left, tab_width, tab_height) = if plan.package {
+            package_tab_geometry(left, top, node.width, &plan.label, placed_title)
         } else {
-            0.0
+            (left, 0.0, 0.0)
         };
-        let tab_width = node
-            .width
-            .min(80.0_f64.max(plan.label.metrics.width + 20.0));
-        let tab_left = placed_title.map_or(left, |title| {
-            (title.x - tab_width / 2.0).clamp(left, (left + node.width - tab_width).max(left))
-        });
-        let write_tab = |out: &mut String| {
+        let write_tab = |out: &mut BoundedSvgOutput<'_>| {
             if plan.package {
                 shapes::rect(
                     out,
@@ -673,25 +771,43 @@ pub fn render_usecase_diagram_svg_model(
         );
         out.push_str("</g>");
     }
+    out.checkpoint()?;
     let elk = prepared.elk;
-    let hop_points = if elk && config_bool(cfg, &["elk", "lineHops"]) != Some(false) {
-        let clone_work = prepared.measured.edges.iter().fold(0usize, |total, plan| {
-            total.saturating_add(
-                edge_geometry[plan.id.as_str()]
-                    .points
-                    .len()
-                    .saturating_add(3),
-            )
-        });
-        options.work_meter.charge(clone_work)?;
-        prepared
-            .measured
-            .edges
-            .iter()
-            .map(|plan| prepared.edge_points(edge_geometry[plan.id.as_str()]))
-            .collect::<Vec<_>>()
-    } else {
-        Vec::new()
+    let sketch = (!uses_canonical && css_binding.sketches_edges()).then(|| {
+        operation_randomness(
+            options.operation,
+            css_binding.hand_drawn_seed,
+            "usecase-edge",
+        )
+    });
+    let hop_points =
+        if elk && sketch.is_none() && config_bool(cfg, &["elk", "lineHops"]) != Some(false) {
+            let clone_work = prepared.measured.edges.iter().fold(0usize, |total, plan| {
+                total.saturating_add(
+                    edge_geometry[plan.id.as_str()]
+                        .points
+                        .len()
+                        .saturating_add(3),
+                )
+            });
+            options.work_meter.charge(clone_work)?;
+            prepared
+                .measured
+                .edges
+                .iter()
+                .map(|plan| prepared.edge_points(edge_geometry[plan.id.as_str()]))
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+    let elk_curve = |edge: &merman_render_core::LayoutEdge| {
+        css_binding
+            .native_curve()
+            .unwrap_or(if edge.points.is_empty() {
+                "linear"
+            } else {
+                "rounded"
+            })
     };
     let hop_edges = prepared
         .measured
@@ -701,11 +817,7 @@ pub fn render_usecase_diagram_svg_model(
         .map(|(plan, points)| line_hops::LineHopEdge {
             id: plan.id.as_str(),
             points,
-            curve: Some(if edge_geometry[plan.id.as_str()].points.is_empty() {
-                "linear"
-            } else {
-                "rounded"
-            }),
+            curve: Some(elk_curve(edge_geometry[plan.id.as_str()])),
             arrow_type_start: plan.start_marker.as_deref(),
             arrow_type_end: plan.end_marker.as_deref(),
         })
@@ -716,30 +828,50 @@ pub fn render_usecase_diagram_svg_model(
         for (index, silhouette, center) in depth {
             let id = format!("{diagram_id}-usecase-{index}");
             let _ = elevation::write_depth(&mut out, elevation, &id, &silhouette, center);
-            options.checkpoint_emit()?;
+            out.checkpoint()?;
         }
     }
-    out.push_str("<g class=\"edgePaths edges\">");
+    let background = css_binding.edge_background.css().trim();
+    let transparent = background.eq_ignore_ascii_case("none")
+        || background.eq_ignore_ascii_case("transparent")
+        || ThemeColor::parse(background).is_ok_and(|color| color.rgba_channels().alpha == 0.0);
+    let has_edge_mask = transparent
+        && write_edge_label_mask(
+            &mut out,
+            diagram_id,
+            viewport,
+            layout.edges.iter().filter_map(|edge| {
+                edge.label
+                    .as_ref()
+                    .filter(|label| label.width > 0.0 && label.height > 0.0)
+            }),
+        )?;
+    if has_edge_mask {
+        let _ = write!(
+            out,
+            r#"<g class="edgePaths edges" mask="url(#{diagram_id}_usecase-edge-label-mask)">"#
+        );
+    } else {
+        out.push_str("<g class=\"edgePaths edges\">");
+    }
     for (edge_index, plan) in prepared.measured.edges.iter().enumerate() {
         #[cfg(not(feature = "layout-shoal"))]
         let _ = edge_index;
-        options.checkpoint_emit()?;
+        out.checkpoint()?;
         let edge = edge_geometry[plan.id.as_str()];
         let data_look = &css_binding.edge_look;
         #[cfg(feature = "layout-shoal")]
-        let canonical_edge = canonical_edges.as_ref().map(|edges| &edges[edge_index]);
+        let canonical_edge = canonical_edges.as_mut().and_then(Iterator::next);
         let legacy = || {
             let mut points = prepared.edge_points(edge);
             let curve = if elk {
-                if edge.points.is_empty() {
-                    "linear"
-                } else {
-                    "rounded"
-                }
+                elk_curve(edge)
             } else {
-                cfg.pointer("/flowchart/curve")
-                    .and_then(serde_json::Value::as_str)
-                    .unwrap_or("basis")
+                css_binding.native_curve().unwrap_or_else(|| {
+                    cfg.pointer("/flowchart/curve")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or("basis")
+                })
             };
             let data_points = json_stringify_points(&points);
             let path = edge_path::render_path(
@@ -755,7 +887,7 @@ pub fn render_usecase_diagram_svg_model(
             (data_points, path)
         };
         #[cfg(feature = "layout-shoal")]
-        let (data_points, path) = canonical_edge.map_or_else(legacy, |painted| {
+        let (data_points, path) = canonical_edge.as_ref().map_or_else(legacy, |painted| {
             (
                 json_stringify_points(&painted.points),
                 Cow::Borrowed(painted.path.as_str()),
@@ -763,6 +895,17 @@ pub fn render_usecase_diagram_svg_model(
         });
         #[cfg(not(feature = "layout-shoal"))]
         let (data_points, path) = legacy();
+        let rough = if let Some(randomness) = sketch.as_ref().filter(|_| !path.is_empty()) {
+            Some(constrained_rough_edge_path(
+                &path,
+                Default::default(),
+                options.work_meter,
+                randomness,
+            )?)
+        } else {
+            None
+        };
+        let path = rough.as_deref().unwrap_or(&path);
         let data_points = base64::engine::general_purpose::STANDARD.encode(data_points);
         let relation = relationships
             .get(plan.original_id.as_deref().unwrap_or(&plan.id))
@@ -793,7 +936,7 @@ pub fn render_usecase_diagram_svg_model(
             if let Some(marker) = marker {
                 let end = if start { "start" } else { "end" };
                 #[cfg(feature = "layout-shoal")]
-                if let Some(painted) = canonical_edge {
+                if let Some(painted) = &canonical_edge {
                     if let Some(marker) = &painted.markers[usize::from(!start)] {
                         let reference = canonical::write_marker(
                             &mut out, diagram_id, marker, start, edge_index,
@@ -883,6 +1026,7 @@ pub fn render_usecase_diagram_svg_model(
     }
     out.push_str("</g><g class=\"edgeLabels\">");
     for plan in &prepared.measured.edges {
+        out.checkpoint()?;
         if let Some(label) = &plan.label {
             let edge = edge_geometry[plan.id.as_str()];
             if let Some(position) = &edge.label {
@@ -907,7 +1051,7 @@ pub fn render_usecase_diagram_svg_model(
         .filter(|plan| !plan.is_boundary)
         .enumerate()
     {
-        options.checkpoint_emit()?;
+        out.checkpoint()?;
         let node = geometry[plan.id.as_str()];
         if plan.dagre_helper {
             shapes::write_dagre_helper(&mut out, node, config);
@@ -924,7 +1068,7 @@ pub fn render_usecase_diagram_svg_model(
                 .map(|value| {
                     format!(
                         ", stereotype {}",
-                        merman_markup::sanitize::sanitize_text(value, config.as_config())
+                        sanitize_source_label(value, UsecaseLabelType::Text, config)
                     )
                 })
                 .unwrap_or_default();
@@ -1031,18 +1175,15 @@ pub fn render_usecase_diagram_svg_model(
                 labels,
                 diagram_id,
                 options,
-                #[cfg(feature = "layout-shoal")]
                 canonical: uses_canonical,
             },
         )?;
         out.push_str("</g>");
     }
     out.push_str("</g></g></g>");
-    if mermaid_parity {
-        css_binding
-            .look_defs
-            .write_shadow_defs(&mut out, diagram_id)?;
-        css_binding.look_defs.write_gradient(&mut out, diagram_id)?;
+    if let Some(look) = &css_binding.mermaid_look {
+        look.defs.write_shadow_defs(&mut out, diagram_id)?;
+        look.defs.write_gradient(&mut out, diagram_id)?;
     }
     if let Some(title) = title {
         let _ = write!(
@@ -1054,6 +1195,5 @@ pub fn render_usecase_diagram_svg_model(
         );
     }
     out.push_str("</svg>");
-    options.checkpoint_emit()?;
-    document.complete(out)
+    document.complete(out.finish()?)
 }

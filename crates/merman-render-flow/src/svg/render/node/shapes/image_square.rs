@@ -1,9 +1,8 @@
 //! Flowchart v2 image square shape.
 
-use crate::node_geometry::ImageSquareGeometry;
-use crate::node_geometry::ImageSquareSizing;
+use crate::node_geometry::{ImageSquareGeometry, ImageSquareSizing};
 use crate::svg::types::{FlowchartRenderCtx, FlowchartRenderDetails};
-use crate::svg::{escape_xml_display, fmt_display};
+use crate::svg::{escape_attr_display, fmt_display};
 use merman_model::OperationPhase;
 
 use super::super::roughjs::roughjs_stroke_path_for_svg_path;
@@ -29,8 +28,8 @@ pub(in crate::svg::render::node) fn try_render_image_square(
         out,
         r#"<g transform="translate(0,{})"><path d="{}" stroke="none" stroke-width="0" fill="{}"/>"#,
         fmt_display(shape_y),
-        escape_xml_display(&fill_path),
-        escape_xml_display(common.fill_color)
+        escape_attr_display(&fill_path),
+        escape_attr_display(common.fill_color)
     );
     let stroke_path = close_image_path(fill_path, image);
     if let Some(stroke_d) =
@@ -47,10 +46,10 @@ pub(in crate::svg::render::node) fn try_render_image_square(
         let _ = write!(
             out,
             r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/>"#,
-            escape_xml_display(&stroke_d),
-            escape_xml_display(common.stroke_color),
+            escape_attr_display(&stroke_d),
+            escape_attr_display(common.stroke_color),
             fmt_display(common.stroke_width as f64),
-            escape_xml_display(common.stroke_dasharray)
+            escape_attr_display(common.stroke_dasharray)
         );
     }
     out.push_str("</g>");
@@ -85,12 +84,12 @@ pub(in crate::svg::render::node) fn try_render_image_square(
     let _ = write!(
         out,
         r#"<g><path d="{}" stroke="none" stroke-width="0" fill="none"/></g>"#,
-        escape_xml_display(&outer_path)
+        escape_attr_display(&outer_path)
     );
     let _ = write!(
         out,
         r#"<image href="{}" width="{}" height="{}" preserveAspectRatio="none" transform="translate({},{})"/>"#,
-        escape_xml_display(href),
+        escape_attr_display(href),
         fmt_display(image.width),
         fmt_display(image.height),
         fmt_display(image_x),

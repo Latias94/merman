@@ -86,6 +86,7 @@ pub(crate) struct ShoalFramePosition {
 pub(crate) struct FrameSignature([u32; 2]);
 
 #[cfg(any(feature = "layout-shoal", test))]
+#[allow(dead_code, reason = "Used by Shoal position hints.")]
 impl FrameSignature {
     pub(crate) fn from_bits(bits: u64) -> Self {
         Self([bits as u32, (bits >> 32) as u32])

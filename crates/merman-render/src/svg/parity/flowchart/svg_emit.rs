@@ -125,7 +125,7 @@ mod integration_tests {
     use crate::svg::{SvgDebugOptions, SvgRenderOptions};
     use merman_core::{MermaidEngine, ParseOptions};
     use merman_model::presentation::RenderSemanticModel;
-    use merman_render_flow::projection::prepare_flowchart_render_inputs;
+    use merman_render_flow::projection::{FlowchartEdgeKey, prepare_flowchart_render_inputs};
 
     #[test]
     fn unmerged_self_loop_occurrences_keep_source_owner_label_and_first_slot() {
@@ -150,10 +150,10 @@ mod integration_tests {
         // Authored ids may overlap generated helper spellings without sharing an owner.
         model.edges[1].id = "A-cyclic-special-1".to_owned();
         let owners = crate::flowchart::FlowchartEdgeOwners::new(vec![
-            crate::flowchart::FlowchartEdgeKey::self_loop_segment(2, 0),
-            crate::flowchart::FlowchartEdgeKey::self_loop_segment(2, 1),
-            crate::flowchart::FlowchartEdgeKey::self_loop_segment(2, 2),
-            crate::flowchart::FlowchartEdgeKey::new(1),
+            FlowchartEdgeKey::self_loop_segment(2, 0),
+            FlowchartEdgeKey::self_loop_segment(2, 1),
+            FlowchartEdgeKey::self_loop_segment(2, 2),
+            FlowchartEdgeKey::new(1),
         ]);
         let layout_edges = [
             "A-cyclic-special-1",

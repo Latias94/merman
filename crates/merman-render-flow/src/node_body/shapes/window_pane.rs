@@ -21,17 +21,13 @@ pub(super) fn write(
     if let Some((fill_d, stroke_d)) = svg.hand_drawn_path_pair(&path_data) {
         let _ = write!(
             out,
-            r#"<g transform="translate({}, {})" class="basic label-container outer-path" style="{}"><path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"#,
+            r#"<g transform="translate({}, {})" class="basic label-container outer-path" style="{}">"#,
             fmt(rect_offset / 2.0),
             fmt(rect_offset / 2.0),
-            escape_attr(svg.rough_group_style),
-            escape_attr(&fill_d),
-            escape_attr(svg.fill_color),
-            escape_attr(&stroke_d),
-            escape_attr(svg.stroke_color),
-            fmt(svg.geometry.stroke_width as f64),
-            escape_attr(svg.geometry.stroke_dasharray),
+            escape_attr(svg.hand_drawn_group_style()),
         );
+        svg.write_hand_drawn_path_pair(out, &path_data, &fill_d, &stroke_d, 4.0);
+        out.push_str("</g>");
         return;
     }
 

@@ -1,7 +1,11 @@
 //! Operation-owned Usecase visual values from Mermaid 12 styles.ts.
 
-use merman_render_core::config::{config_f64, config_string};
-use merman_render_core::text::TextStyle;
+use merman_render_core::{
+    config::{config_f64, config_string},
+    svg_css::{PreparedCommonNeoCss, PreparedLookDefs},
+    text::TextStyle,
+};
+use merman_theme_contract::v2::{Color, EdgeStyle, MarkerStyle};
 use serde_json::Value;
 
 #[derive(Debug, Clone)]
@@ -41,6 +45,12 @@ impl std::fmt::Display for UsecaseCssPaint {
 }
 
 #[derive(Debug)]
+pub(crate) struct UsecaseMermaidLook {
+    pub(crate) css: PreparedCommonNeoCss,
+    pub(crate) defs: PreparedLookDefs,
+}
+
+#[derive(Debug)]
 pub(crate) struct UsecaseCssBinding {
     pub(crate) generic_font: TextStyle,
     pub(crate) root_font: TextStyle,
@@ -71,8 +81,10 @@ pub(crate) struct UsecaseCssBinding {
     pub(crate) edge_look: String,
     pub(crate) rotate: bool,
     pub(crate) hand_drawn_seed: f64,
-    pub(crate) neo: merman_render_core::svg_css::PreparedCommonNeoCss,
-    pub(crate) look_defs: merman_render_core::svg_css::PreparedLookDefs,
+    native_edge_style: Option<EdgeStyle>,
+    pub(crate) marker_style: MarkerStyle,
+    pub(crate) connector_width: f64,
+    pub(crate) mermaid_look: Option<UsecaseMermaidLook>,
     pub(crate) native_title_font: Option<TextStyle>,
 }
 
@@ -165,8 +177,13 @@ impl UsecaseCssBinding {
                 .and_then(Value::as_str)
                 == Some("rotate"),
             hand_drawn_seed: config_f64(config, &["handDrawnSeed"]).unwrap_or(0.0),
-            neo: merman_render_core::svg_css::PreparedCommonNeoCss::new(config),
-            look_defs: merman_render_core::svg_css::PreparedLookDefs::new(config),
+            native_edge_style: None,
+            marker_style: MarkerStyle::Classic,
+            connector_width: 1.0,
+            mermaid_look: Some(UsecaseMermaidLook {
+                css: PreparedCommonNeoCss::new(config),
+                defs: PreparedLookDefs::new(config),
+            }),
             native_title_font: None,
         }
     }
@@ -175,12 +192,17 @@ impl UsecaseCssBinding {
         &mut self,
         config: &merman_model::presentation::PresentationConfig,
         theme: &merman_theme_contract::v2::FamilyTheme,
-        background: Option<merman_theme_contract::v2::Color>,
+        background: Option<Color>,
     ) {
         use merman_theme_contract::v2::EdgeLabelBackground;
 
         let roles = &theme.roles;
-        let paint = |binding: &mut UsecaseCssPaint, color: merman_theme_contract::v2::Color| {
+        if !config.explicit_config_owns_path("flowchart.curve") {
+            self.native_edge_style = Some(theme.form.edge_style);
+        }
+        self.marker_style = theme.form.marker_style;
+        self.connector_width = theme.form.connector_width;
+        let paint = |binding: &mut UsecaseCssPaint, color: Color| {
             if !binding.variable.is_some_and(|key| {
                 config.explicit_config_owns_path(&format!("themeVariables.{key}"))
             }) {
@@ -220,11 +242,12 @@ impl UsecaseCssBinding {
         let edge_label = match theme.form.edge_label_bg {
             EdgeLabelBackground::Auto | EdgeLabelBackground::Canvas => canvas,
             EdgeLabelBackground::Pill => node,
-            EdgeLabelBackground::Transparent => merman_theme_contract::v2::Color::TRANSPARENT,
+            EdgeLabelBackground::Transparent => Color::TRANSPARENT,
         };
         paint(&mut self.edge_background, edge_label);
         self.palette.clear();
         self.backgrounds.clear();
+        self.mermaid_look = None;
 
         let typography = &theme.typography;
         let family = merman_render_core::mermaid_style::font_family_css(
@@ -249,6 +272,18 @@ impl UsecaseCssBinding {
             font_weight: Some(typography.title_weight.to_string()),
             ..TextStyle::default()
         });
+    }
+
+    pub(crate) fn native_curve(&self) -> Option<&'static str> {
+        self.native_edge_style.map(|style| match style {
+            EdgeStyle::Curved => "basis",
+            EdgeStyle::Orthogonal => "step",
+            EdgeStyle::Straight | EdgeStyle::Sketch => "linear",
+        })
+    }
+
+    pub(crate) fn sketches_edges(&self) -> bool {
+        self.native_edge_style == Some(EdgeStyle::Sketch)
     }
 }
 

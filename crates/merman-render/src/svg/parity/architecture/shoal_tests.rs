@@ -42,6 +42,81 @@ fn render_with_theme(
     (layout, svg.svg().to_owned())
 }
 
+#[test]
+fn architecture_shoal_replays_saved_order_by_service_id() {
+    let render = |source, previous| {
+        let parsed = MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let opts = LayoutOptions::default().with_shoal_layout_frame(previous);
+        let artifact = family::prepare(&parsed, &opts, session).unwrap();
+        let svg = artifact
+            .render_svg(&SvgRenderOptions::default(), &Default::default())
+            .unwrap();
+        svg.shoal_layout_frame().unwrap()
+    };
+    let before = "---\nconfig:\n  layout: shoal\n---\narchitecture-beta\nservice a(server)[A]\nservice b(server)[B]\n";
+    let after = "---\nconfig:\n  layout: shoal\n---\narchitecture-beta\nservice b(server)[B]\nservice a(server)[New A]\n";
+    let first = render(before, None);
+    let cold = render(after, None);
+    let saved = serde_json::to_value(first.as_ref()).unwrap();
+    let saved = std::sync::Arc::new(serde_json::from_value(saved).unwrap());
+    let replay = render(after, Some(saved));
+    assert!(cold.nodes["a"].rank > cold.nodes["b"].rank);
+    assert!(replay.nodes["a"].rank < replay.nodes["b"].rank);
+}
+
+#[test]
+fn architecture_shoal_view_box_contains_the_exterior_stroke_and_resolves_gradient() {
+    let source = r#"---
+config:
+  layout: shoal
+  architecture:
+    padding: 0
+  themeVariables:
+    archEdgeWidth: 180px
+    useGradient: true
+---
+architecture-beta
+service a(server)[A]
+service b(server)[B]
+a:T -- T:b
+"#;
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let svg = family::prepare(&parsed, &LayoutOptions::default(), session)
+        .unwrap()
+        .render_svg(&SvgRenderOptions::default(), &Default::default())
+        .unwrap();
+    let svg = svg.svg();
+    let doc = Document::parse(svg).unwrap();
+    let view_box: svgtypes::ViewBox = doc
+        .root_element()
+        .attribute("viewBox")
+        .unwrap()
+        .parse()
+        .unwrap();
+    let path = element(&doc, "edge", "edge-0");
+    let outer_y = shaft(path)
+        .iter()
+        .map(|leg| leg.p0.y.min(leg.p1.y))
+        .fold(f64::INFINITY, f64::min);
+    assert!(view_box.y <= outer_y - 90.0 + 1e-6);
+    let id = doc.root_element().attribute("id").unwrap();
+    let gradient = format!("{id}-gradient");
+    assert!(svg.contains(&format!("url(#{gradient})")));
+    assert!(doc.descendants().any(|node| {
+        node.has_tag_name("linearGradient") && node.attribute("id") == Some(gradient.as_str())
+    }));
+}
+
 fn element<'a, 'i>(doc: &'a Document<'i>, kind: &str, id: &str) -> Node<'a, 'i> {
     doc.descendants()
         .find(|node| {

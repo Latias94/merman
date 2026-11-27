@@ -1,8 +1,9 @@
 use crate::class::{ClassDiagramModel, ClassRenderConfig, normalize_dir};
+use crate::graph_layout::canonical::theme_routing_style;
 use crate::graph_layout::contour::{ShapePortProfile, shoal_contour};
 use crate::graph_layout::ir::{
-    Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, RoutingStyle,
-    Side, Size, TitlePosition, direction_from_rank,
+    Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, Side, Size,
+    TitlePosition, direction_from_rank,
 };
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::math::MathRenderer;
@@ -17,6 +18,7 @@ use merman_render_graph::class::{
         MeasuredLabels, MeasurementTarget, RelationTerminals, measure_into, positive_label_size,
     },
 };
+use merman_theme_contract::v2::EdgeStyle;
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 use std::borrow::Cow;
 use std::collections::hash_map::Entry;
@@ -46,6 +48,7 @@ pub(in crate::class) fn measure_for_shoal<'a>(
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     render: &ClassRenderConfig,
+    edge_style: Option<EdgeStyle>,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<(ShoalMeasurement<'a>, MeasuredLabels)> {
     let direction = direction_from_rank(&model.model().direction);
@@ -54,7 +57,7 @@ pub(in crate::class) fn measure_for_shoal<'a>(
     let mut target = ShoalInput {
         graph: MeasuredGraph {
             direction,
-            routing: RoutingStyle::Curved,
+            routing: theme_routing_style(edge_style),
             node_spacing: settings.nodesep,
             rank_spacing: settings.ranksep,
             component_spacing: settings.nodesep.max(settings.ranksep),
@@ -386,6 +389,7 @@ A -- B : other
             &DeterministicTextMeasurer::default(),
             None,
             &render,
+            None,
             &mut work,
         )
         .unwrap();

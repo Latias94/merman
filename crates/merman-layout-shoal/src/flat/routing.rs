@@ -154,6 +154,7 @@ struct Piece {
     horizon: Option<usize>,
     keep_landing_runway: bool,
     lower: usize,
+    parallel: Option<(u32, u32)>,
     track: Option<usize>,
 }
 
@@ -425,6 +426,9 @@ fn collect_pieces(
         if g.direct[edge] {
             continue;
         }
+        let bundle = g
+            .has_parallel_links
+            .then(|| (chain[0], *chain.last().unwrap()));
         let first = chain[0] as usize;
         let last = chain[chain.len() - 1] as usize;
         let [side_start, side_end] = ranked.side_ports.get(edge).copied().unwrap_or_default();
@@ -470,6 +474,7 @@ fn collect_pieces(
                     horizon,
                     keep_landing_runway: horizon == Some(next) && lower != last,
                     lower,
+                    parallel: bundle,
                     track: None,
                 });
                 start_lead = 0.0;
@@ -637,6 +642,28 @@ fn curved_levels(
                     promoted[slot] = true;
                 }
             }
+        }
+    }
+    // Overlapping lanes of a parallel bundle must use the same curve family. A
+    // shelf on only one of them can intersect the other lane's ungraded sweep.
+    let mut bundles = Vec::new();
+    for (i, &id) in ids.iter().enumerate() {
+        work.visit(1)?;
+        if promoted[i]
+            && let Some(bundle) = pieces[id].parallel
+        {
+            push(&mut bundles, bundle)?;
+        }
+    }
+    if !bundles.is_empty() {
+        work.charge_sort(bundles.len())?;
+        bundles.sort_unstable();
+        work.check()?;
+        for (i, &id) in ids.iter().enumerate() {
+            work.visit(bundles.len().ilog2() as usize + 1)?;
+            promoted[i] |= pieces[id]
+                .parallel
+                .is_some_and(|bundle| bundles.binary_search(&bundle).is_ok());
         }
     }
     let (mut crossed, mut alongside) = (0u64, 0u64);
@@ -1013,7 +1040,10 @@ impl Gap {
             self.minimum = self.minimum.max(target);
         }
         self.height = self.height.max(self.minimum);
-        if ids.is_empty() || options.routing == RoutingStyle::Polyline {
+        if ids.is_empty()
+            || (options.routing == RoutingStyle::Polyline
+                && (ids.len() == 1 || options.spacing.edge == 0.0))
+        {
             return Ok(());
         }
         let room = (self.height - guard).max(0.0);
@@ -1065,6 +1095,14 @@ impl Gap {
                 ids.retain(|_| flags.next() == Some(true));
             }
             self.tracks = weighed_tracks(&mut self.pieces, ids, work)?;
+        }
+        if options.routing == RoutingStyle::Polyline && self.tracks == 1 {
+            // One shelf offers no separation. Leave independent runs on their original chords.
+            work.visit(ids.len())?;
+            for &id in ids.iter() {
+                self.pieces[id].track = None;
+            }
+            self.tracks = 0;
         }
         if self.tracks > 0 {
             let (margin, pitch, _) = track_metrics(options.routing, options.spacing.edge);
@@ -1516,16 +1554,37 @@ pub(super) fn route(
     .map(|(drawing, _)| drawing)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn route_with_label_gaps(
     g: &mut Expanded,
     c: &Component,
     orientation: &Orientation,
     graph: &Graph,
     options: &Options,
-    x: &[f64],
+    x: &mut [f64],
+    columns: Option<super::lanes::Columns<'_>>,
     work: &mut Work<'_>,
 ) -> LayoutResult<(Drawing, Vec<[f64; 2]>)> {
     let side_ports = exterior::attach_side_ports(g, c, orientation, graph, options, x, work)?;
+    let can_move_ports =
+        g.spine_ports.has_pending() || (g.has_parallel_links && !c.boundaries && !c.group_proxies);
+    let mut offsets = Vec::new();
+    if can_move_ports {
+        work.charge(g.chains.len())?;
+        offsets = reserved(g.chains.len())?;
+        let mut segment = 0;
+        for (edge, chain) in g.chains.iter().enumerate() {
+            work.visit(1)?;
+            let pair = if g.direct[edge] {
+                [0.0; 2]
+            } else {
+                let first = segment;
+                segment += chain.len() - 1;
+                [g.source_offset[first], g.target_offset[segment - 1]]
+            };
+            offsets.push(pair);
+        }
+    }
     g.spine_ports.resolve(
         [&mut g.target_offset, &mut g.source_offset],
         &options.spacing,
@@ -1537,6 +1596,21 @@ pub(super) fn route_with_label_gaps(
         work,
     )?;
     let direct_offsets = parallel::balance(g, c, graph, options, x, &side_ports, work)?;
+    if can_move_ports {
+        super::refine::follow_final_ports(
+            g,
+            options,
+            x,
+            columns,
+            &offsets,
+            |edge| {
+                side_ports
+                    .get(edge)
+                    .is_some_and(|ports| ports.iter().any(Option::is_some))
+            },
+            work,
+        )?;
+    }
     let mut scratch = std::mem::take(&mut g.routing_scratch);
     let ranked = RankedComponent {
         component: c,

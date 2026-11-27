@@ -9,6 +9,43 @@ use super::*;
 use crate::pie::preparation::layout_pie_diagram_typed_with_paint_plan;
 
 #[test]
+fn pie_slice_fill_preserves_a_quoted_paint_reference() {
+    let fill = r##"url("#swatch-#333;") red"##;
+    let config = serde_json::json!({"themeVariables": {"pie1": fill}});
+    let model = PieDiagramModel {
+        sections: vec![merman_model::families::pie::PieSection {
+            label: "Section".to_owned(),
+            value: 1.0,
+        }],
+        ..Default::default()
+    };
+    let plan = PieThemePlan::baseline(&model, &config);
+    let layout = layout_pie_diagram_typed_with_paint_plan(
+        &model,
+        None,
+        &config,
+        &plan,
+        &DeterministicTextMeasurer::default(),
+    )
+    .unwrap();
+    let mut svg = String::from("<svg>");
+    write_mermaid_svg_body(
+        &mut svg,
+        &layout,
+        &model,
+        plan.mermaid_style(),
+        PieConfigView::new(&config).render_settings(),
+        || Ok(()),
+    )
+    .unwrap();
+    svg.push_str("</g></svg>");
+
+    let doc = roxmltree::Document::parse(&svg).unwrap();
+    let slice = doc.descendants().find(|node| node.has_tag_name("path"));
+    assert_eq!(slice.and_then(|node| node.attribute("fill")), Some(fill));
+}
+
+#[test]
 fn pie_legend_rect_style_serializes_default_palette_colors_as_rgb() {
     let effective_config = serde_json::json!({});
     let model = PieDiagramModel {

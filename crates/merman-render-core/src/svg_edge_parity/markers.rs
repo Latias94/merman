@@ -6,7 +6,7 @@
 use std::fmt::Write as _;
 
 use crate::svg_css::SvgId;
-use crate::xml::{escape_attr, escape_xml, escape_xml_display};
+use crate::xml::{escape_attr, escape_attr_display};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum BaseEdgeMarkerKind {
@@ -336,7 +336,7 @@ pub fn push_base_edge_marker(
     suffix: &str,
     paint_style: &str,
 ) {
-    let ty = escape_xml(diagram_type);
+    let ty = escape_attr_display(diagram_type);
     let geometry = kind.geometry();
     let cross = if kind.cross() { "cross " } else { "" };
     let _ = write!(
@@ -421,12 +421,12 @@ pub fn push_edge_marker(
         out,
         r#"<marker id="{}_{}-{}{}"#,
         diagram_id,
-        escape_xml_display(diagram_type),
+        escape_attr_display(diagram_type),
         base,
         if margin { "-margin" } else { "" }
     );
     if let Some((color_id, _)) = color {
-        let _ = write!(out, "_{}", escape_xml_display(color_id));
+        let _ = write!(out, "_{}", escape_attr_display(color_id));
     }
     let _ = write!(
         out,
@@ -438,7 +438,7 @@ pub fn push_edge_marker(
         } else {
             ""
         },
-        escape_xml_display(diagram_type),
+        escape_attr_display(diagram_type),
     );
     for (name, value) in geometry.attributes {
         let _ = write!(out, r#" {}="{}""#, name, value);
@@ -456,9 +456,9 @@ pub fn push_edge_marker(
     if geometry.shape != "polygon"
         && let Some((_, Some(color))) = color
     {
-        let _ = write!(out, r#" stroke="{}""#, escape_xml_display(color));
+        let _ = write!(out, r#" stroke="{}""#, escape_attr_display(color));
         if base.starts_with("point") {
-            let _ = write!(out, r#" fill="{}""#, escape_xml_display(color));
+            let _ = write!(out, r#" fill="{}""#, escape_attr_display(color));
         }
     }
     out.push_str("/></marker>");

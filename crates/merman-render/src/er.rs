@@ -12,7 +12,7 @@ use std::sync::Arc;
 mod shoal;
 mod swimlane;
 use crate::layout_backend::GraphLayoutBackend;
-#[cfg(any(test, feature = "layout-shoal"))]
+#[cfg(any(all(test, feature = "all-diagrams"), feature = "layout-shoal"))]
 pub(crate) use merman_render_graph::er::ErCssBinding;
 pub(crate) use merman_render_graph::er::{
     ErBoxLabel, ErConfigView, ErEntityThemePlan, ErLayoutSettings, ErNativeStyle, ErPreparedLabels,

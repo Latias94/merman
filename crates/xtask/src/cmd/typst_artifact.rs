@@ -27,8 +27,9 @@ const OPTIMIZED_FILE_NAME: &str = "optimized.wasm";
 const TARGET_TRIPLE: &str = "wasm32-unknown-unknown";
 const CARGO_PROFILE: &str = "wasm-size";
 const WASM_OPT_VERSION: &str = "wasm-opt version 133";
-const WASM_OPT_ARGS: [&str; 9] = [
+const WASM_OPT_ARGS: [&str; 10] = [
     "-Oz",
+    "--converge",
     "--enable-bulk-memory",
     "--enable-bulk-memory-opt",
     "--enable-multivalue",

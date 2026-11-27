@@ -18,7 +18,7 @@ use super::icons::{
 use super::labels::write_architecture_centered_text;
 use super::labels::{write_architecture_service_title, write_svg_text_lines};
 use super::settings::ArchitectureRenderSettings;
-use super::{SvgDiagramId, SvgOutput, escape_attr_into, escape_xml_into, fmt};
+use super::{SvgDiagramId, SvgOutput, escape_attr_into, fmt};
 
 pub(super) struct ArchitectureNodeRenderContext<'a, O: SvgOutput> {
     pub(super) out: &'a mut O,
@@ -84,13 +84,13 @@ fn write_diagram_service_id(
 ) {
     let _ = write!(out, "{diagram_id}");
     out.push_str("-service-");
-    escape_xml_into(out, service_id);
+    escape_attr_into(out, service_id);
 }
 
 fn write_diagram_node_id(out: &mut impl SvgOutput, diagram_id: SvgDiagramId<'_>, node_id: &str) {
     let _ = write!(out, "{diagram_id}");
     out.push_str("-node-");
-    escape_xml_into(out, node_id);
+    escape_attr_into(out, node_id);
 }
 
 pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
@@ -328,7 +328,7 @@ fn push_architecture_group_surface(
     #[cfg(feature = "layout-shoal")] shoal: bool,
 ) -> merman_render_core::Result<()> {
     let _ = write!(out, r#"<rect id="{diagram_id}-group-"#);
-    escape_xml_into(out, group.id);
+    escape_attr_into(out, group.id);
     let _ = write!(
         out,
         r#"" x="{x}" y="{y}" width="{w}" height="{h}" class="node-bkg""#,

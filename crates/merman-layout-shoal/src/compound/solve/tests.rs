@@ -472,6 +472,9 @@ fn automatic_top_titles_prefer_left_right_then_center() {
         let frame = &drawing.groups[0];
         assert_eq!(frame.rect.width, 320.);
         assert_eq!(frame.title_center.unwrap().x - frame.rect.x, expected);
+        if crossings.len() == 3 {
+            assert!(frame.title_struck);
+        }
         for (edge, &x) in drawing.edges.iter().zip(crossings) {
             assert_eq!(tip(edge, 0).x - frame.rect.x, x);
         }
@@ -479,7 +482,76 @@ fn automatic_top_titles_prefer_left_right_then_center() {
 }
 
 #[test]
-fn automatic_top_title_preserves_a_straight_trunk_and_reports_an_unavoidable_crossing() {
+fn cross_group_routes_clear_automatic_titles_in_vertical_and_fit_width_layouts() {
+    for (direction, width_policy) in [
+        (Direction::Down, WidthPolicy::Natural),
+        (Direction::Up, WidthPolicy::Natural),
+        (
+            Direction::Right,
+            WidthPolicy::FitWidth {
+                max_width: 320.0,
+                allow_turn: true,
+                turn_breakpoint: 640.0,
+                fold_wide_ranks: true,
+            },
+        ),
+    ] {
+        let graph = Graph {
+            direction,
+            groups: (0..3)
+                .map(|seq| GroupSpec {
+                    title: Some(size(125.0, 21.0)),
+                    title_position: TitlePosition::TopAuto,
+                    padding: Insets {
+                        top: 37.0,
+                        left: 8.0,
+                        right: 8.0,
+                        bottom: 8.0,
+                    },
+                    ..GroupSpec::new(seq)
+                })
+                .collect(),
+            nodes: (0..6)
+                .map(|seq| node(seq, 56.0, 36.0, Some(seq / 2)))
+                .collect(),
+            edges: (0..5)
+                .map(|source| {
+                    let mut edge = edge(NodeId(source), NodeId(source + 1));
+                    edge.end_marker = MarkerMetrics {
+                        width: 7.0,
+                        length: 4.0,
+                    };
+                    edge
+                })
+                .collect(),
+            ..Graph::default()
+        };
+        let options = Options {
+            width_policy,
+            ..Options::default()
+        };
+        let drawing = layout(&graph, &options).unwrap();
+        assert!(matches!(drawing.direction, Direction::Down | Direction::Up));
+        for (group, spec) in drawing.groups.iter().zip(&graph.groups) {
+            let title = centered(group.title_center.unwrap(), spec.title.unwrap());
+            assert!(!group.title_struck, "{direction:?} {title:?}");
+            for route in &drawing.edges {
+                assert!(
+                    route.points.windows(2).all(|pair| !enters(
+                        title,
+                        point(pair[0]),
+                        point(pair[1]),
+                    )),
+                    "{direction:?} {title:?} {:?}",
+                    route.points
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn automatic_top_title_keeps_a_clear_trunk_and_reroutes_an_obstructed_one() {
     let mut graph = Graph::default();
     let mut spec = group(0, None, Direction::Down);
     spec.title = Some(size(80., 18.));
@@ -512,20 +584,219 @@ fn automatic_top_title_preserves_a_straight_trunk_and_reports_an_unavoidable_cro
     graph.groups[0].title = Some(size(300., 18.));
     let drawing = layout(&graph, &independent()).unwrap();
     let frame = &drawing.groups[0];
-    assert_eq!(
-        frame.rect.width,
-        300. + spec.padding.left + spec.padding.right
-    );
-    assert!(frame.title_struck);
+    assert!(frame.rect.width > 300. + spec.padding.left + spec.padding.right);
+    assert!(!frame.title_struck);
     let seam = drawing.border_stitches[0];
     let points = &drawing.edges[0].points[seam.point..];
-    assert!(points.iter().all(|p| p.x == points[0].x), "{points:?}");
     let title = centered(frame.title_center.unwrap(), graph.groups[0].title.unwrap());
+    assert!(
+        points[0].x <= title.x - TITLE_CLEAR || points[0].x >= title.x + title.width + TITLE_CLEAR
+    );
     assert!(
         points
             .windows(2)
-            .any(|pair| enters(title, point(pair[0]), point(pair[1])))
+            .all(|pair| !enters(title, point(pair[0]), point(pair[1])))
     );
+}
+
+#[test]
+fn automatic_title_placement_leaves_the_lateral_entry_clear() {
+    let spec = GroupSpec {
+        title: Some(size(80., 18.)),
+        title_position: TitlePosition::TopAuto,
+        min_size: size(320., 180.),
+        padding: Insets {
+            top: 32.5,
+            left: 15.,
+            right: 17.,
+            ..Insets::default()
+        },
+        ..GroupSpec::new(0)
+    };
+    let options = Options::default();
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    let frame = fit::Fit::new(
+        Some(&spec),
+        size(120., 50.),
+        &[],
+        &[],
+        0.,
+        &options,
+        &mut work,
+    )
+    .unwrap();
+    let lateral = Wire {
+        ends: [
+            End::Border {
+                slot: 0,
+                side: Side::Left,
+                flat: None,
+                hint: PortSideHint::Auto,
+            },
+            End::Item {
+                slot: 0,
+                hint: PortSideHint::Auto,
+                child: None,
+            },
+        ],
+        spec: edge(GroupId(0), NodeId(0)),
+        route: None,
+        contacts: [
+            None,
+            Some(Contact {
+                at: Point { x: 22., y: 24. },
+                side: Side::Left,
+            }),
+        ],
+    };
+    let title = frame
+        .title(
+            Some(&spec),
+            &[lateral],
+            &[Point { x: 0., y: 17. }],
+            &mut work,
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(title.rect.center().x, 263.);
+}
+
+#[test]
+fn an_automatic_title_can_fit_between_top_ports_without_widening_the_group() {
+    let spec = GroupSpec {
+        title: Some(size(60., 20.)),
+        title_position: TitlePosition::TopAuto,
+        min_size: size(320., 150.),
+        padding: Insets {
+            left: 20.,
+            right: 20.,
+            top: 30.,
+            ..Insets::default()
+        },
+        ..GroupSpec::new(0)
+    };
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    let fit = fit::Fit::new(
+        Some(&spec),
+        size(120., 50.),
+        &[],
+        &[],
+        0.,
+        &Options::default(),
+        &mut work,
+    )
+    .unwrap();
+    let wires = std::array::from_fn::<_, 3, _>(|slot| Wire {
+        ends: [
+            End::Border {
+                slot,
+                side: Side::Top,
+                flat: None,
+                hint: PortSideHint::Auto,
+            },
+            End::Item {
+                slot: 0,
+                hint: PortSideHint::Auto,
+                child: None,
+            },
+        ],
+        spec: edge(GroupId(0), NodeId(0)),
+        route: None,
+        contacts: [None; 2],
+    });
+    let points = [50., 160., 270.].map(|x| Point { x, y: 0. });
+    let placement = fit
+        .title(Some(&spec), &wires, &points, &mut work)
+        .unwrap()
+        .unwrap();
+    assert_eq!(placement.reserve_at, None);
+    let title = placement.rect;
+    assert!(
+        points
+            .iter()
+            .all(|p| p.x <= title.x - TITLE_CLEAR || p.x >= title.x + title.width + TITLE_CLEAR)
+    );
+}
+
+#[test]
+fn fixed_contacts_under_a_title_do_not_consume_either_clear_port_run() {
+    let options = Options::default();
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    let frame = fit::Fit::new(None, size(100., 100.), &[], &[], 0., &options, &mut work).unwrap();
+    let spec = edge(GroupId(0), NodeId(0));
+    let mut points = [
+        Point { x: 40., y: 0. },
+        Point { x: 50., y: 0. },
+        Point { x: 64., y: 0. },
+    ];
+    let wires = std::array::from_fn::<_, 3, _>(|slot| Wire {
+        ends: [
+            End::Border {
+                slot,
+                side: Side::Top,
+                flat: None,
+                hint: if slot == 0 {
+                    PortSideHint::FixedOffset {
+                        side: Side::Top,
+                        offset: -10.,
+                    }
+                } else {
+                    PortSideHint::Auto
+                },
+            },
+            End::Item {
+                slot: 0,
+                hint: PortSideHint::Auto,
+                child: None,
+            },
+        ],
+        spec,
+        route: None,
+        contacts: [None; 2],
+    });
+    let title = centered(Point { x: 50., y: 15. }, size(60., 18.));
+    ports::beside_title(
+        &wires,
+        &mut points,
+        title,
+        Side::Top,
+        &frame,
+        &options,
+        &mut work,
+    )
+    .unwrap();
+    assert_eq!(points.map(|point| point.x), [40., 14., 86.]);
+}
+
+#[test]
+fn bottom_title_reports_a_strike_from_an_explicit_bottom_contact() {
+    let mut graph = Graph {
+        direction: Direction::Up,
+        groups: vec![GroupSpec {
+            title: Some(size(100.0, 20.0)),
+            title_position: TitlePosition::BottomCenter,
+            padding: Insets {
+                bottom: 24.0,
+                ..Insets::default()
+            },
+            ..GroupSpec::new(0)
+        }],
+        nodes: vec![node(0, 80.0, 30.0, Some(0))],
+        ..Graph::default()
+    };
+    let mut wire = edge(GroupId(0), NodeId(0));
+    wire.source_port = PortSideHint::FixedOffset {
+        side: Side::Bottom,
+        offset: 0.0,
+    };
+    graph.edges.push(wire);
+    let drawing = layout(&graph, &Options::default()).unwrap();
+    let frame = &drawing.groups[0];
+    assert_eq!(tip(&drawing.edges[0], 0).x, frame.rect.center().x);
+    assert!(frame.title_struck);
 }
 
 #[test]
@@ -772,7 +1043,9 @@ fn nested_title_fan_stitches_beside_the_measured_title_and_never_doubles_back() 
                 title.y - run[1].y
             };
             assert!(past_title >= TITLE_CLEAR - 1e-8);
-            assert!((run[2].x - run[1].x).abs() <= 2.0 * (run[2].y - run[1].y).abs() + 1e-8);
+            let shift = (run[2].x - run[1].x).abs();
+            let room = (run[2].y - run[1].y).abs();
+            assert!(room + 1e-8 >= (shift * 0.75).max(16.0), "{run:?}");
             let across: f64 = run
                 .windows(2)
                 .map(|pair| (pair[0].x - pair[1].x).abs())
@@ -854,6 +1127,143 @@ fn a_mixed_leg_reserves_the_marker_on_its_requested_member_face() {
         let before = point(route.points[route.points.len() - 2]);
         assert_eq!(cross(side, before), cross(side, target));
         assert!((before.x - target.x).abs() + (before.y - target.y).abs() >= 70.);
+    }
+}
+
+#[test]
+fn fixed_offsets_on_non_flat_group_items_must_fit_the_physical_face() {
+    let mut graph = Graph {
+        groups: vec![
+            group(0, None, Direction::Right),
+            group(1, Some(0), Direction::Right),
+        ],
+        nodes: vec![node(0, 56.0, 36.0, Some(1)), node(1, 40.0, 30.0, None)],
+        edges: vec![edge(NodeId(1), GroupId(1))],
+        ..Graph::default()
+    };
+    for offset in [-1_000.0, 1_000.0, f64::MAX] {
+        graph.edges[0].target_port = PortSideHint::FixedOffset {
+            side: Side::Top,
+            offset,
+        };
+        assert_eq!(
+            layout(&graph, &independent()),
+            Err(LayoutError::InvalidInput("port offset outside face"))
+        );
+    }
+
+    graph.edges[0].target_port = PortSideHint::FixedOffset {
+        side: Side::Top,
+        offset: -12.0,
+    };
+    let drawing = layout(&graph, &independent()).unwrap();
+    let rect = drawing.groups[1].rect;
+    assert_eq!(
+        tip(&drawing.edges[0], 1),
+        face(rect, Side::Top, rect.center().x - 12.0)
+    );
+}
+
+#[test]
+fn compound_auto_ports_try_other_faces_when_a_sibling_blocks_the_shaft() {
+    let rects = [
+        Rect {
+            x: 40.0,
+            y: 66.0,
+            width: 32.0,
+            height: 40.0,
+        },
+        Rect {
+            x: 28.0,
+            y: 24.0,
+            width: 58.0,
+            height: 32.0,
+        },
+        Rect {
+            x: 56.0,
+            ..Rect::default()
+        },
+    ];
+    let graph = Graph {
+        direction: Direction::Right,
+        nodes: vec![node(0, 32.0, 40.0, None), node(1, 58.0, 32.0, None)],
+        ..Graph::default()
+    };
+    let mut spec = edge(GroupId(0), NodeId(0));
+    spec.end_marker = MarkerMetrics {
+        length: 45.0,
+        width: 8.0,
+    };
+    let options = independent();
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    for (flat, hint) in [
+        (None, PortSideHint::Side(Side::Top)),
+        (None, PortSideHint::Auto),
+        (Some(NodeId(2)), PortSideHint::Auto),
+    ] {
+        spec.label = flat.map(|_| size(10.0, 8.0));
+        let mut wires = [Wire {
+            ends: [
+                End::Border {
+                    slot: 0,
+                    side: Side::Top,
+                    flat,
+                    hint: PortSideHint::Auto,
+                },
+                End::Item {
+                    slot: 0,
+                    hint,
+                    child: None,
+                },
+            ],
+            spec,
+            route: None,
+            contacts: [None; 2],
+        }];
+        ports::items(&mut wires, &graph, &rects[..2], &options, &mut work).unwrap();
+        let fit = fit::Fit::new(
+            None,
+            size(90.0, 106.0),
+            &rects,
+            &wires,
+            0.0,
+            &options,
+            &mut work,
+        )
+        .unwrap();
+        let ports = ports::border(&wires, &rects, &fit, 1, &options, &mut work).unwrap();
+        let nodes = rects.map(|rect| Rect {
+            x: rect.x + fit.offset.x,
+            y: rect.y + fit.offset.y,
+            ..rect
+        });
+        let routes = routes::finish(
+            &fit,
+            None,
+            &nodes[..2],
+            &mut wires,
+            &ports,
+            &options,
+            &mut work,
+        );
+        if hint == PortSideHint::Auto {
+            let route = &routes.unwrap()[0];
+            let side = route.ports.1;
+            assert_ne!(side, Side::Top);
+            let end = tip(route, 1);
+            assert_eq!(end, face(nodes[0], side, cross(side, end)));
+            let previous = point(route.points[route.points.len() - 2]);
+            assert_eq!(cross(side, previous), cross(side, end));
+            assert!((previous.x - end.x).hypot(previous.y - end.y) >= spec.end_marker.length);
+        } else {
+            assert_eq!(
+                routes,
+                Err(LayoutError::InvalidInput(
+                    "compound port has no room for its marker shaft"
+                ))
+            );
+        }
     }
 }
 

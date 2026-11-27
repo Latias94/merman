@@ -6,21 +6,13 @@ use merman_render_graph::usecase::{UsecasePrepared, prepare_usecase_measurements
 
 pub use merman_render_graph::usecase::UsecaseDiagramLayout;
 #[cfg(feature = "layout-shoal")]
-use merman_render_graph::usecase::UsecaseLabelPlan;
-#[cfg(feature = "layout-shoal")]
 pub(crate) use merman_render_graph::usecase::actor;
 pub(crate) use merman_render_graph::usecase::requires_math;
 #[cfg(feature = "layout-shoal")]
 use merman_render_graph::usecase::{UsecaseCanonicalSvg, UsecaseEdgePainter};
-#[cfg(feature = "layout-shoal")]
-pub(crate) use merman_render_graph::usecase::{UsecaseEdgePlan, UsecaseNodePlan};
 
 #[cfg(feature = "layout-shoal")]
-mod layout;
-#[cfg(feature = "layout-shoal")]
 mod shoal;
-#[cfg(feature = "layout-shoal")]
-pub(crate) use shoal::{UsecaseMarker, canonical_route_style};
 
 #[derive(Debug)]
 pub(crate) struct UsecasePreparedArtifact {
@@ -58,11 +50,6 @@ impl UsecasePreparedArtifact {
     }
 }
 
-#[cfg(feature = "layout-shoal")]
-mod measure {
-    pub(super) use merman_render_graph::usecase::configured_usecase_number as number;
-}
-
 pub(crate) fn prepare_usecase_diagram(
     model: &UsecaseDiagramModel,
     effective_config: &PresentationConfig,
@@ -94,14 +81,8 @@ pub(crate) fn prepare_usecase_diagram(
     backend.validate_rootless_graph()?;
     #[cfg(feature = "layout-shoal")]
     if backend == GraphLayoutBackend::Shoal {
-        let (layout, canonical, routes) = shoal::layout(
-            model,
-            config_value,
-            &measured.nodes,
-            &measured.edges,
-            Some(execution),
-            &mut work,
-        )?;
+        let (layout, canonical, routes) =
+            shoal::layout(model, config_value, &measured, Some(execution), &mut work)?;
         return Ok(UsecasePreparedArtifact {
             prepared: UsecasePrepared::new(measured, layout, Default::default(), false),
             route_contract: RouteContract::canonical_graph(routes),

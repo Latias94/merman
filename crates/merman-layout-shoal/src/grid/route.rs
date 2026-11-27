@@ -4,7 +4,7 @@ mod captions;
 mod comb;
 mod gutters;
 
-use gutters::gutter_route;
+use gutters::{GutterSpan, LaneUse, card_channel, gutter_route, simple_candidate};
 
 use super::*;
 use crate::geom::Bounds;
@@ -376,6 +376,45 @@ fn site_order(sites: &[Site], work: &mut Work<'_>) -> LayoutResult<Vec<usize>> {
     Ok(indices)
 }
 
+fn card_face_room(
+    side: Side,
+    marked: [f64; 4],
+    [lo, hi]: [f64; 2],
+    [face_lo, face_hi]: [f64; 2],
+    slots: f64,
+    pitch: f64,
+) -> [f64; 2] {
+    if marked[side as usize] == 0.0 {
+        return [lo, hi];
+    }
+    let [before, after] = if side.axis() == Axis::Vertical {
+        [Side::Left, Side::Right]
+    } else {
+        [Side::Top, Side::Bottom]
+    };
+    let low = marked[before as usize];
+    let high = marked[after as usize];
+    let before = if low > 0.0 {
+        (pitch.max(low) - (lo - face_lo)).max(0.0)
+    } else {
+        0.0
+    };
+    let after = if high > 0.0 {
+        (pitch.max(high) - (face_hi - hi)).max(0.0)
+    } else {
+        0.0
+    };
+    let spare = (hi - lo - slots * pitch).max(0.0);
+    // Keep the measured same-face separation first. Use any remaining span to keep a
+    // marker pitch clear of occupied perpendicular faces, including authored contacts.
+    let scale = if before + after > spare {
+        spare / (before + after)
+    } else {
+        1.0
+    };
+    [before.mul_add(scale, lo), (-after).mul_add(scale, hi)]
+}
+
 #[derive(Clone, Copy)]
 struct GroupSlots {
     range: [f64; 2],
@@ -532,11 +571,30 @@ impl Routing<'_> {
         &self,
         indices: &mut [usize],
         sites: &mut [Site],
+        card_grid: bool,
         work: &mut Work<'_>,
     ) -> LayoutResult<()> {
         let mut cursor = 0;
+        let mut card = None;
+        let mut marked = [0.0_f64; 4];
         while cursor < indices.len() {
             let first = sites[indices[cursor]];
+            let on_card = card_grid && first.owner < self.hierarchy.node_count;
+            if on_card && card != Some(first.owner) {
+                card = Some(first.owner);
+                marked.fill(0.0);
+                for &i in &indices[cursor..] {
+                    work.visit(1)?;
+                    let site = sites[i];
+                    if site.owner != first.owner {
+                        break;
+                    }
+                    if site.marker.length > 0.0 {
+                        let width = &mut marked[site.side as usize];
+                        *width = width.max(site.marker.width);
+                    }
+                }
+            }
             let mut next = cursor + 1;
             let mut inner = first.inner;
             let mut reach = first.marker.length;
@@ -605,11 +663,21 @@ impl Routing<'_> {
             let [face_lo, face_hi] = [bounds.x, bounds.y][1 - axis];
             let face_center = face_lo.midpoint(face_hi);
             let span = count.saturating_sub(1) as f64;
-            let pitch = self
-                .options
-                .spacing
-                .port_pitch
-                .min((hi - lo) / span.max(1.0));
+            let mut measured_pitch = self.options.spacing.port_pitch;
+            let [lo, hi] = if on_card {
+                measured_pitch = measured_pitch.max(marked[first.side as usize]);
+                card_face_room(
+                    first.side,
+                    marked,
+                    [lo, hi],
+                    [face_lo, face_hi],
+                    span,
+                    measured_pitch,
+                )
+            } else {
+                [lo, hi]
+            };
+            let pitch = measured_pitch.min((hi - lo).max(0.0) / span.max(1.0));
             // If a single unpinned site on a node face is aligned with the face center,
             // anchor it at `center` so straight direct connections avoid an unnecessary jog.
             let mut anchored_start = None;
@@ -849,12 +917,12 @@ fn fan_channel(
 // on the facing midline and the four open perimeter tracks before declining the route.
 fn span(
     router: &mut OrthoRouter,
-    start: (RoutePoint, Side),
-    end: (RoutePoint, Side),
+    span: GutterSpan,
     bounds: Rect,
     separation: f64,
     work: &mut Work<'_>,
 ) -> LayoutResult<Option<Vec<RoutePoint>>> {
+    let [start, end] = span.leads;
     let [a, b] = [start.0, end.0];
     let sides = [start.1, end.1];
     if (position(a) != position(b) || start.1 == opposite(end.1))
@@ -900,7 +968,8 @@ fn span(
     ] {
         for value in values {
             let path = dogleg(a, b, axis, value);
-            if clear(router, &path, bounds, sides, work)? {
+            if clear(router, &path, bounds, sides, work)? && simple_candidate(&path, span.contacts)
+            {
                 return Ok(Some(copy_points(&path)?));
             }
         }
@@ -1117,6 +1186,8 @@ pub(crate) fn draw(
     gutters: Gutters<'_>,
     work: &mut Work<'_>,
 ) -> LayoutResult<()> {
+    let card_grid = matches!(gutters, Gutters::CardGrid(_));
+    let boundary_channels = card_grid && !graph.groups.is_empty();
     let mut plan = {
         let context = Routing {
             graph,
@@ -1150,7 +1221,12 @@ pub(crate) fn draw(
                 metrics,
                 options,
             }
-            .ports(&mut indices[..group_start], &mut plan.sites, work)?;
+            .ports(
+                &mut indices[..group_start],
+                &mut plan.sites,
+                card_grid,
+                work,
+            )?;
             plan.mark_straight_entries(hierarchy.node_count, work)?;
             adapt_auto_titles(
                 graph,
@@ -1170,13 +1246,18 @@ pub(crate) fn draw(
         metrics,
         options,
     };
-    context.ports(&mut indices[group_start..], &mut plan.sites, work)?;
+    context.ports(
+        &mut indices[group_start..],
+        &mut plan.sites,
+        card_grid,
+        work,
+    )?;
     snap_collinear_sites(&context, &mut plan.sites, work)?;
     let mut routed = reserved(plan.scopes.len())?;
     let mut has_captions = false;
     for (scope, parts) in plan.scopes.iter().enumerate() {
         work.visit(1)?;
-        let mut routes = reserved(parts.len())?;
+        let mut routes = reserved::<Vec<RoutePoint>>(parts.len())?;
         if !parts.is_empty() {
             work.charge(parts.len())?;
             let walls = context.walls(scope, work)?;
@@ -1187,12 +1268,19 @@ pub(crate) fn draw(
                 options.caps.max_ortho_grid_nodes,
                 work,
             )?;
+            let mut lanes = LaneUse::default();
+            let mut recorded = 0;
             for part in parts {
                 work.visit(1)?;
                 let from = plan.sites[part.from.site];
                 let to = plan.sites[part.to.site];
                 let start = context.lead(from, part.from.inner);
                 let end = context.lead(to, part.to.inner);
+                let gutter_span = GutterSpan {
+                    leads: [start, end],
+                    contacts: [from.at, to.at],
+                };
+                let early_gutters = card_grid && position(start.0) != position(end.0);
                 let labelled = part.labels.iter().any(Option::is_some);
                 has_captions |= labelled;
                 let fan = if !labelled {
@@ -1208,30 +1296,83 @@ pub(crate) fn draw(
                 };
                 let ordinary = if let Some(fan) = fan {
                     Some(copy_points(&fan)?)
+                } else if options.routing == crate::RoutingStyle::Polyline
+                    && {
+                        // Caption placement seats labels on orthogonal runs of the full route.
+                        let edge = &graph.edges[part.edge];
+                        [edge.label, edge.start_label, edge.end_label]
+                            .iter()
+                            .all(Option::is_none)
+                    }
+                    && let Some(path) = router.direct_polyline(
+                        crate::ortho::OrthogonalSpan { start, end },
+                        Some(scope_bounds),
+                        work,
+                    )?
+                {
+                    Some(path)
+                } else if boundary_channels
+                    && early_gutters
+                    && let Some(path) = card_channel(
+                        &router,
+                        gutter_span,
+                        scope_bounds,
+                        gutters.tracks(scope),
+                        &lanes,
+                        options.spacing.port_pitch,
+                        work,
+                    )?
+                {
+                    Some(path)
                 } else {
+                    if boundary_channels {
+                        // The visibility search uses its own trail costs. Populate them only
+                        // when this scope needs that fallback, in the original route order.
+                        for points in &routes[recorded..] {
+                            work.visit(1)?;
+                            router.record_route(points, work)?;
+                        }
+                        recorded = routes.len();
+                    }
                     span(
                         &mut router,
-                        start,
-                        end,
+                        gutter_span,
                         scope_bounds,
                         metrics.separation,
                         work,
                     )?
                 };
-                let middle = if let Some(points) = ordinary {
-                    points
-                } else {
-                    gutter_route(
+                let ordinary = if early_gutters
+                    && !boundary_channels
+                    && let Some(path) = ordinary.as_ref()
+                    && !lanes.vacant(path, work)?
+                {
+                    card_channel(
                         &router,
-                        [start, end],
+                        gutter_span,
+                        scope_bounds,
+                        gutters.tracks(scope),
+                        &lanes,
+                        options.spacing.port_pitch,
+                        work,
+                    )?
+                    .or(ordinary)
+                } else {
+                    ordinary
+                };
+                let middle = match ordinary {
+                    Some(points) => Some(points),
+                    None => gutter_route(
+                        &router,
+                        gutter_span,
                         scope_bounds,
                         gutters.tracks(scope),
                         work,
-                    )?
-                    .ok_or(LayoutError::InvalidInput(
-                        "no clear orthogonal channel in grid scope",
-                    ))?
-                };
+                    )?,
+                }
+                .ok_or(LayoutError::InvalidInput(
+                    "no clear orthogonal channel in grid scope",
+                ))?;
                 let point_count = middle
                     .len()
                     .checked_add(2)
@@ -1243,7 +1384,12 @@ pub(crate) fn draw(
                     add_point(&mut points, p);
                 }
                 add_point(&mut points, knot(to.at, end.1.axis()));
-                router.record_route(&points, work)?;
+                if card_grid {
+                    lanes.record(&points, work)?;
+                }
+                if !boundary_channels {
+                    router.record_route(&points, work)?;
+                }
                 routes.push(points);
             }
         }
@@ -1293,7 +1439,7 @@ pub(crate) fn draw(
     }
     drop(routed);
     if has_captions {
-        captions::place(&context, &plan, &mut routes, work)?;
+        captions::place(&context, &plan, &mut routes, card_grid, work)?;
     }
     drawing.edges = routes;
     drawing.border_stitches = stitches;
@@ -1406,6 +1552,45 @@ fn normalize(
 mod tests {
     use super::*;
     use crate::{NodeSpec, NoopWorkControl};
+
+    #[test]
+    fn perimeter_dogleg_cannot_cross_its_source_contact_lead() {
+        let mut control = NoopWorkControl;
+        let mut work = Work::new(&mut control);
+        let bounds = Rect {
+            width: 10.0,
+            height: 10.0,
+            ..Rect::default()
+        };
+        let walls = [point([2.0, 2.75]), point([0.75, 2.0])].map(|center| Rect {
+            x: center.x - 0.125,
+            y: center.y - 0.125,
+            width: 0.25,
+            height: 0.25,
+        });
+        // Disable visibility so the fallback has to test the otherwise clear top track.
+        let mut router = OrthoRouter::new(&walls, 0.0, 0, &mut work).unwrap();
+        let from = knot(point([2.0, 2.0]), Axis::Horizontal);
+        let to = knot(point([4.0, 4.0]), Axis::Horizontal);
+        let mut terminals = GutterSpan {
+            leads: [(from, Side::Left), (to, Side::Left)],
+            contacts: [point([3.0, 2.0]), point([5.0, 4.0])],
+        };
+        let expected = dogleg(from, to, Axis::Vertical, 0.0);
+        assert_eq!(
+            span(&mut router, terminals, bounds, 1.0, &mut work)
+                .unwrap()
+                .as_deref(),
+            Some(expected.as_slice())
+        );
+
+        terminals.contacts[0].x = 4.5;
+        assert!(
+            span(&mut router, terminals, bounds, 1.0, &mut work)
+                .unwrap()
+                .is_none()
+        );
+    }
 
     #[test]
     fn snap_collinear_sites_preserves_owning_face_and_scope_bounds() {

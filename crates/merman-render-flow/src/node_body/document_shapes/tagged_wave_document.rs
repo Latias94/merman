@@ -100,15 +100,14 @@ impl TaggedWaveDocumentBody {
             {
                 let _ = write!(
                     out,
-                    r##"<g class="basic label-container outer-path" transform="translate(0,{})" style="{}"><g><path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g><path d="{}" stroke="none" stroke-width="0" fill="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"##,
+                    r##"<g class="basic label-container outer-path" transform="translate(0,{})" style="{}"><g>"##,
                     fmt(-self.wave_amplitude / 2.0),
-                    escape_attr(body.rough_group_style),
-                    escape_attr(&wave_fill_d),
-                    escape_attr(body.fill_color),
-                    escape_attr(&wave_stroke_d),
-                    escape_attr(body.stroke_color),
-                    fmt(body.geometry.stroke_width as f64),
-                    escape_attr(body.geometry.stroke_dasharray),
+                    escape_attr(body.hand_drawn_group_style()),
+                );
+                body.write_hand_drawn_path_pair(out, &wave, &wave_fill_d, &wave_stroke_d, 4.0);
+                let _ = write!(
+                    out,
+                    r##"</g><path d="{}" stroke="none" stroke-width="0" fill="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"##,
                     escape_attr(&tag_fill_d),
                     escape_attr(body.fill_color),
                     escape_attr(&tag_stroke_d),

@@ -1,17 +1,20 @@
 use crate::requirement::RequirementCssBinding;
-use merman_render_core::svg_css::{CssSelectorDiagramId, SvgDiagramIdValue};
-use std::fmt::Write as _;
+use merman_render_core::{
+    Result,
+    svg_css::{CssSelectorDiagramId, FragmentDiagramId, SvgDiagramIdValue},
+    svg_output::SvgOutput,
+};
 
-pub(super) fn write_requirement_css<I>(diagram_id: I, binding: &RequirementCssBinding) -> String
+pub(super) fn write_requirement_css<I>(
+    out: &mut impl SvgOutput,
+    diagram_id: I,
+    binding: &RequirementCssBinding,
+    canonical: bool,
+) -> Result<()>
 where
     I: SvgDiagramIdValue,
 {
     let id = CssSelectorDiagramId(diagram_id);
-    let mut out = String::new();
-    binding
-        .common
-        .write_prefix(&mut out, id)
-        .expect("String-backed Requirement base CSS emission cannot fail");
     let font = binding.common.font_family();
     let font_size = binding.common.font_size_css();
     let node_text_color = &binding.node_text_color;
@@ -28,36 +31,41 @@ where
     let node_border = &binding.node_border;
     let relationship_line_stroke_width = &binding.relationship_line_stroke_width;
     let _ = write!(
-        &mut out,
+        out,
         r#"#{} marker{{fill:{};stroke:{};}}#{} marker.cross{{stroke:{};}}"#,
         id, relation_color, relation_color, id, line_color
     );
     let _ = write!(
-        &mut out,
+        out,
         r#"#{id} svg{{font-family:{font};font-size:{font_size}}}#{id} .reqBox{{fill:{requirement_background};fill-opacity:1.0;stroke:{requirement_border_color};stroke-width:{requirement_border_size};}}#{id} .reqTitle,#{id} .reqLabel{{fill:{requirement_text_color};}}#{id} .reqLabelBox{{fill:{relation_label_background};fill-opacity:1.0;}}#{id} .req-title-line{{stroke:{requirement_border_color};stroke-width:{requirement_border_size};}}#{id} .relationshipLine{{stroke:{relation_color};stroke-width:{relationship_line_stroke_width};}}#{id} .relationshipLabel{{"#,
     );
-    let _ = write!(&mut out, "fill:{relation_label_color};");
+    let _ = write!(out, "fill:{relation_label_color};");
     let _ = write!(
-        &mut out,
+        out,
         r#"}}#{id} .edgeLabel{{background-color:{edge_label_background};}}#{id} .edgeLabel .label rect{{fill:{edge_label_background};}}#{id} .edgeLabel .label text{{"#,
     );
-    let _ = write!(&mut out, "fill:{relation_label_color};");
+    let _ = write!(out, "fill:{relation_label_color};");
     let _ = write!(
-        &mut out,
+        out,
         r#"}}#{id} .divider{{stroke:{node_border};stroke-width:1;}}#{id} .label{{font-family:{font};"#,
     );
-    let _ = write!(&mut out, "color:{node_text_color};");
-    let _ = write!(&mut out, "}}#{id} .label text,#{id} span{{");
-    let _ = write!(&mut out, "fill:{node_text_color};color:{node_text_color};");
+    let _ = write!(out, "color:{node_text_color};");
+    let _ = write!(out, "}}#{id} .label text,#{id} span{{");
+    let _ = write!(out, "fill:{node_text_color};color:{node_text_color};");
     let _ = write!(
-        &mut out,
+        out,
         "}}#{id} .labelBkg{{background-color:{requirement_edge_label_background};}}"
     );
+    if canonical || binding.native.is_some() {
+        let _ = write!(
+            out,
+            "#{id} .edgeLabel span{{color:{relation_label_color};}}"
+        );
+    }
+    out.checkpoint()?;
     binding
         .common
-        .write_root(&mut out, id, diagram_id)
-        .expect("String-backed Requirement root CSS emission cannot fail");
-    out
+        .write_root(out, id, FragmentDiagramId(diagram_id))
 }
 
 #[cfg(test)]
@@ -106,7 +114,8 @@ mod tests {
             &meter,
         )
         .unwrap();
-        let css = write_requirement_css("req", plan.css());
+        let mut css = String::new();
+        write_requirement_css(&mut css, "req", plan.css(), false).unwrap();
 
         assert!(css.contains(r#"#req marker{fill:#222222;stroke:#222222;}"#));
         assert!(css.contains(r#"#req marker.cross{stroke:#333333;}"#));

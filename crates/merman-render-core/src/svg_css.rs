@@ -15,6 +15,8 @@ mod prepared;
 #[cfg(any(feature = "svg-identity", feature = "svg-validation"))]
 mod resource_urls;
 
+#[cfg(feature = "css-style")]
+pub use id::available_local_svg_id;
 pub use id::{
     CssSelectorDiagramId, FragmentDiagramId, SvgDiagramIdProjection, SvgId, sanitize_svg_id,
     scoped_drop_shadow, scoped_svg_id, scoped_svg_url,

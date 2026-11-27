@@ -12,7 +12,8 @@ pub(in crate::svg) fn render_flowchart_edge_path(
     out: &mut impl crate::svg::SvgOutput,
     ctx: &FlowchartRenderCtx<'_>,
     marker_plan: &FlowchartMarkerEmissionPlan<'_>,
-    adaptive_ink: Option<&'static str>,
+    fills: &super::super::edge_fill::FlowchartEdgeFillPlan,
+    label_cutout: bool,
     edge_ref: super::super::render_input::FlowchartRenderEdgeRef<'_>,
     origin_x: f64,
     origin_y: f64,
@@ -28,7 +29,10 @@ pub(in crate::svg) fn render_flowchart_edge_path(
         compatibility: ctx.compatibility,
         steps: &ctx.steps,
         default_edge_style: ctx.default_edge_style,
-        adaptive_ink,
+        adaptive_ink: fills.ink(key),
+        surface_layers: fills.layers(key),
+        label_cutout,
+        canonical: ctx.layout.route_contract.is_canonical_axis(),
         work_meter: ctx.work_meter,
     }
     .bind(edge_ref)?;

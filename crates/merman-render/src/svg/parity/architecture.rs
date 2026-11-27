@@ -34,6 +34,10 @@ pub(super) fn render_architecture_diagram_svg_typed_with_config(
         icon_registry: options.icon_registry(),
         timing: options.timing(),
         #[cfg(feature = "layout-shoal")]
+        operation: options.family.session().operation_context(),
+        #[cfg(feature = "layout-shoal")]
+        canvas_background: options.family.session().canvas_background(),
+        #[cfg(feature = "layout-shoal")]
         canonical: shoal_geometry
             .map(|geometry| geometry as &dyn architecture::ArchitectureCanonicalSvg),
     };
@@ -61,7 +65,6 @@ mod canonical {
         ArchitectureCanonicalEdge, ArchitectureCanonicalGroup, ArchitectureCanonicalSvg,
         ArchitecturePlacedText,
     };
-    use merman_theme_contract::v2::EdgeStyle;
 
     impl ArchitectureCanonicalSvg for ArchitectureShoalGeometry {
         fn group_count(&self) -> usize {
@@ -121,22 +124,18 @@ mod canonical {
         fn paint_edge<'points>(
             &self,
             edge: &LayoutEdge,
-            edge_style: Option<EdgeStyle>,
             work_meter: &OperationWorkMeter,
             scratch: &'points mut CanonicalPaintScratch,
         ) -> Result<ArchitectureCanonicalEdge<'points>> {
-            let route_style = match edge_style {
-                // Grid Core solves orthogonal 90-degree routes without curved gap guards;
-                // bounded rounded corners preserve architectural legs instead of sweeping them.
-                Some(EdgeStyle::Curved) => RouteStyle::Rounded(10.0),
-                Some(EdgeStyle::Straight | EdgeStyle::Sketch) => RouteStyle::Linear,
-                Some(EdgeStyle::Orthogonal) | None => RouteStyle::Step,
+            let route_style = match self.route_style {
+                // Bound the bend within the grid's right-angle channels.
+                RouteStyle::Curved => RouteStyle::Rounded(10.0),
+                style => style,
             };
-            let stroke_outset = edge_style.map_or(0.0, |_| self.edge_stroke_outset);
             let painted = self.routes.paint_with_borrowed_points(
                 edge,
                 kurbo::Vec2::ZERO,
-                stroke_outset,
+                self.edge_stroke_outset,
                 route_style,
                 work_meter,
                 scratch,

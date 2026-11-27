@@ -1,6 +1,6 @@
 //! Self-contained Mermaid Flowchart node bodies shared by the Flow SVG producers.
 
-use std::time::Duration;
+use std::{borrow::Cow, time::Duration};
 
 use merman_render_core::{
     number_format::canonical_number as fmt,
@@ -25,6 +25,7 @@ mod no_label;
 mod outer_path;
 mod rectangle;
 mod rectangle_with_divider;
+mod rough_paint;
 mod shapes;
 mod subroutine;
 
@@ -42,6 +43,8 @@ pub use no_label::{NoLabelStyle, advance_no_label_rough_geometry, try_write_no_l
 pub use outer_path::{OuterPathBody, OuterPathTranslation};
 pub use rectangle::{RectangleBody, RectangleStyle};
 pub use rectangle_with_divider::RectangleWithDivider;
+pub(crate) use rough_paint::circle_outline;
+pub use rough_paint::{grouped_shape_child_style, write_backed_hachure, write_hand_drawn_hachure};
 pub use shapes::{LayoutNodeBody, MeasuredNodeBody};
 pub use subroutine::{advance_subroutine, write_subroutine};
 
@@ -61,6 +64,8 @@ pub struct NodeBodySvg<'a> {
     pub geometry: NodeBodyGeometry<'a>,
     pub style: &'a str,
     pub rough_group_style: &'a str,
+    /// Canonical body fill opacity before group compositing, also used for Rough backing.
+    pub rough_fill_opacity: Option<f64>,
     pub fill_color: &'a str,
     pub stroke_color: &'a str,
     pub timing: RenderTiming,
@@ -101,6 +106,72 @@ impl<'a> NodeBodySvg<'a> {
                 geometry.randomness,
             )
         })
+    }
+
+    fn hand_drawn_group_style(&self) -> &'a str {
+        if self.rough_fill_opacity.is_some() {
+            self.style
+        } else {
+            self.rough_group_style
+        }
+    }
+
+    fn grouped_child_style(&self) -> Cow<'a, str> {
+        if self.rough_fill_opacity.is_some() {
+            grouped_shape_child_style(self.style)
+        } else {
+            Cow::Borrowed(self.style)
+        }
+    }
+
+    fn write_hachure(&self, out: &mut impl SvgOutput, outline: &str, hatch: &str, width: f64) {
+        write_hand_drawn_hachure(
+            out,
+            outline,
+            hatch,
+            width,
+            (self.fill_color, self.stroke_color),
+            self.rough_fill_opacity,
+        );
+    }
+
+    fn write_hand_drawn_path_pair(
+        &self,
+        out: &mut impl SvgOutput,
+        outline: &str,
+        hatch: &str,
+        stroke: &str,
+        hatch_width: f64,
+    ) {
+        self.write_hachure(out, outline, hatch, hatch_width);
+        let _ = write!(
+            out,
+            r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/>"#,
+            escape_attr(stroke),
+            escape_attr(self.stroke_color),
+            fmt(f64::from(self.geometry.stroke_width)),
+            escape_attr(self.geometry.stroke_dasharray),
+        );
+    }
+}
+
+fn rectangle_backing(body: &NodeBodySvg<'_>, width: f64, height: f64) -> String {
+    use kurbo::Shape as _;
+
+    if body.rough_fill_opacity.is_some() {
+        kurbo::Rect::from_center_size((0.0, 0.0), (width, height))
+            .to_path(0.05)
+            .to_svg()
+    } else {
+        String::new()
+    }
+}
+
+fn circle_backing(body: &NodeBodySvg<'_>, radius: f64) -> String {
+    if body.rough_fill_opacity.is_some() {
+        circle_outline(radius)
+    } else {
+        String::new()
     }
 }
 

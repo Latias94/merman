@@ -16,6 +16,22 @@ pub struct ArchitectureCssBinding {
 }
 
 impl ArchitectureCssBinding {
+    pub fn edge_stroke_outset(&self) -> f64 {
+        use merman_render_core::mermaid_style::{CssFontSizeContext, resolve_mermaid_font_size_px};
+
+        let base = CssFontSizeContext::uniform(16.0);
+        let width = self.edge_width.trim();
+        let resolved = if width.contains('%') {
+            // SVG resolves stroke percentages against its viewport, not its font.
+            None
+        } else {
+            let font_size =
+                resolve_mermaid_font_size_px(self.common.font_size_css(), base).unwrap_or(16.0);
+            resolve_mermaid_font_size_px(width, CssFontSizeContext::new(font_size, 16.0))
+        };
+        resolved.unwrap_or(3.0) / 2.0
+    }
+
     pub(super) fn apply_native(
         &mut self,
         theme: &merman_theme_contract::v2::FamilyTheme,
@@ -24,6 +40,7 @@ impl ArchitectureCssBinding {
     ) {
         use super::native_theme::authored;
 
+        self.common = self.common.clone().with_text_color(&native.text_ink);
         self.arch_font_size_px = native.layout_text.font_size;
         self.edge_color = authored(
             config,

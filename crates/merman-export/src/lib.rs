@@ -1913,74 +1913,16 @@ pub fn is_valid_export_color(text: &str) -> bool {
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 fn parse_export_color(text: &str) -> std::result::Result<ExportRgbaColor, ()> {
-    let s = text.trim().to_ascii_lowercase();
-    match s.as_str() {
-        "transparent" => {
-            return Ok(ExportRgbaColor {
-                red: 0,
-                green: 0,
-                blue: 0,
-                alpha: 0,
-            });
-        }
-        "white" => {
-            return Ok(ExportRgbaColor {
-                red: 255,
-                green: 255,
-                blue: 255,
-                alpha: 255,
-            });
-        }
-        "black" => {
-            return Ok(ExportRgbaColor {
-                red: 0,
-                green: 0,
-                blue: 0,
-                alpha: 255,
-            });
-        }
-        _ => {}
-    }
-
-    let hex = s.strip_prefix('#').ok_or(())?;
-    fn hex2(b: &[u8]) -> std::result::Result<u8, ()> {
-        let hi = (*b.first().ok_or(())? as char).to_digit(16).ok_or(())? as u8;
-        let lo = (*b.get(1).ok_or(())? as char).to_digit(16).ok_or(())? as u8;
-        Ok((hi << 4) | lo)
-    }
-    fn hex1(c: u8) -> std::result::Result<u8, ()> {
-        let v = (c as char).to_digit(16).ok_or(())? as u8;
-        Ok((v << 4) | v)
-    }
-
-    let bytes = hex.as_bytes();
-    match bytes.len() {
-        3 => Ok(ExportRgbaColor {
-            red: hex1(bytes[0])?,
-            green: hex1(bytes[1])?,
-            blue: hex1(bytes[2])?,
-            alpha: 255,
-        }),
-        4 => Ok(ExportRgbaColor {
-            red: hex1(bytes[0])?,
-            green: hex1(bytes[1])?,
-            blue: hex1(bytes[2])?,
-            alpha: hex1(bytes[3])?,
-        }),
-        6 => Ok(ExportRgbaColor {
-            red: hex2(&bytes[0..2])?,
-            green: hex2(&bytes[2..4])?,
-            blue: hex2(&bytes[4..6])?,
-            alpha: 255,
-        }),
-        8 => Ok(ExportRgbaColor {
-            red: hex2(&bytes[0..2])?,
-            green: hex2(&bytes[2..4])?,
-            blue: hex2(&bytes[4..6])?,
-            alpha: hex2(&bytes[6..8])?,
-        }),
-        _ => Err(()),
-    }
+    let [red, green, blue, alpha] = merman_markup::theme_color::ThemeColor::parse(text.trim())
+        .map_err(|_| ())?
+        .rgba_channels()
+        .to_rgba8();
+    Ok(ExportRgbaColor {
+        red,
+        green,
+        blue,
+        alpha,
+    })
 }
 
 #[cfg(any(feature = "png", feature = "jpeg"))]

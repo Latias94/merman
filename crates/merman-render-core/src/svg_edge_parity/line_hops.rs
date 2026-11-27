@@ -39,7 +39,7 @@ pub struct LineHopEdge<'a> {
 }
 
 #[derive(Debug, Clone)]
-struct LineHopCrossing<'a> {
+pub struct LineHopCrossing<'a> {
     pub jump_edge_id: &'a str,
     pub other_edge_id: &'a str,
     pub segment_index: usize,
@@ -151,11 +151,22 @@ fn find_edge_intersections<'a>(
     edges: &[LineHopEdge<'a>],
     work_meter: &OperationWorkMeter,
 ) -> crate::Result<Vec<LineHopCrossing<'a>>> {
+    find_edge_intersections_where(edges, work_meter, |_, _| true)
+}
+
+pub fn find_edge_intersections_where<'a>(
+    edges: &[LineHopEdge<'a>],
+    work_meter: &OperationWorkMeter,
+    include: impl Fn(usize, usize) -> bool,
+) -> crate::Result<Vec<LineHopCrossing<'a>>> {
     let segment_count = segment_count(edges);
     work_meter.charge(segment_count.saturating_add(sorting_work_units(segment_count)))?;
     let mut segments = Vec::new();
     for (edge_index, edge) in edges.iter().enumerate() {
         for (segment_index, pair) in edge.points.windows(2).enumerate() {
+            if !include(edge_index, segment_index) {
+                continue;
+            }
             let start = &pair[0];
             let end = &pair[1];
             segments.push(IndexedSegment {
@@ -692,6 +703,51 @@ fn emit_jump(
     }
 }
 
+fn fit_segment_jumps(jumps: &mut Vec<JumpOnSegment>, begin: f64, end: f64, requested_radius: f64) {
+    jumps.sort_by(|left, right| left.t.total_cmp(&right.t));
+    let min_radius = requested_radius * MIN_USEFUL_RADIUS_RATIO;
+    // Drop corner-squeezed hops first so they cannot shrink a usable neighbor.
+    jumps.retain_mut(|jump| {
+        let room = (jump.distance - begin).min(end - jump.distance) - CORNER_JUMP_CLEARANCE;
+        jump.radius = jump.radius.min(room);
+        jump.radius >= min_radius
+    });
+    for index in 0..jumps.len().saturating_sub(1) {
+        let (before, after) = jumps.split_at_mut(index + 1);
+        let first = &mut before[index];
+        let second = &mut after[0];
+        let gap = second.distance - first.distance;
+        if first.radius + second.radius > gap {
+            let half_gap = gap / 2.0;
+            first.radius = first.radius.min(half_gap);
+            second.radius = second.radius.min(half_gap);
+        }
+    }
+    jumps.retain(|jump| jump.radius >= min_radius);
+}
+
+/// Resolve usable radii against the endpoints of an already painted straight segment.
+pub fn painted_line_hop_intervals(
+    length: f64,
+    crossings: &[LineHopCrossing<'_>],
+    radius: f64,
+) -> Vec<(f64, f64)> {
+    let mut jumps: Vec<_> = crossings
+        .iter()
+        .map(|crossing| JumpOnSegment {
+            t: crossing.t,
+            point: crossing.point.clone(),
+            distance: length * crossing.t,
+            radius,
+        })
+        .collect();
+    fit_segment_jumps(&mut jumps, 0.0, length, radius);
+    jumps
+        .into_iter()
+        .map(|jump| (jump.distance, jump.radius))
+        .collect()
+}
+
 fn rewrite_edge_path(
     edge: LineHopEdge<'_>,
     jumps: &[LineHopCrossing<'_>],
@@ -765,34 +821,13 @@ fn rewrite_edge_path(
             upcoming_corner.map_or(segment_length, |corner| segment_length - corner.cut_length);
 
         let mut segment_jumps = jumps_by_segment.remove(&segment_index).unwrap_or_default();
-        segment_jumps
-            .sort_by(|left, right| left.t.partial_cmp(&right.t).unwrap_or(Ordering::Equal));
-        // Discard corner-squeezed hops before adjacency so they cannot shrink a
-        // usable neighbour. Mermaid reserves the same clearance on linear edges.
-        let min_useful_radius = config.jump_radius * MIN_USEFUL_RADIUS_RATIO;
-        segment_jumps.retain_mut(|jump| {
-            let room = (jump.distance - segment_start_consumed)
-                .min(segment_end_stop - jump.distance)
-                - CORNER_JUMP_CLEARANCE;
-            jump.radius = jump.radius.min(room);
-            jump.radius >= min_useful_radius
-        });
-        for index in 0..segment_jumps.len().saturating_sub(1) {
-            let (before, after) = segment_jumps.split_at_mut(index + 1);
-            let first = &mut before[index];
-            let second = &mut after[0];
-            let gap = second.distance - first.distance;
-            if first.radius + second.radius > gap {
-                let half_gap = gap / 2.0;
-                first.radius = first.radius.min(half_gap);
-                second.radius = second.radius.min(half_gap);
-            }
-        }
-
+        fit_segment_jumps(
+            &mut segment_jumps,
+            segment_start_consumed,
+            segment_end_stop,
+            config.jump_radius,
+        );
         for jump in &segment_jumps {
-            if jump.radius < min_useful_radius {
-                continue;
-            }
             emit_jump(jump, unit_x, unit_y, sweep, config.jump_style, &mut parts);
         }
 

@@ -1,5 +1,7 @@
 //! Balanced SVG for a prepared Swimlane lane or pool.
 
+use std::borrow::Cow;
+
 use kurbo::{Point, Vec2};
 use merman_model::{families::flowchart::FlowSubgraph, presentation::PresentationConfig};
 use merman_render_core::{
@@ -13,7 +15,7 @@ use merman_render_core::{
         TextMeasurer, inline_html::SvgTextEntityMode, literal_label::FlowchartSvgWidthMode,
         svg_label::write_svg_markdown_word_lines_with_style,
     },
-    xml::escape_xml_display,
+    xml::escape_attr_display,
 };
 
 use super::{FlowchartClusterShape, swimlane_terminal_geometry, write_swimlane_shell};
@@ -26,8 +28,9 @@ use crate::{
     stylesheet::ContainerPalette,
     svg_label::{
         FlowchartSvgLabelRenderPlan, FlowchartSvgLabelSidecar, OptionalStyleAttr,
-        flowchart_label_html_with_prepared_label, write_flowchart_svg_label_plan,
-        write_flowchart_svg_text_markdown,
+        append_native_label_color, flowchart_label_html_with_prepared_label,
+        write_flowchart_svg_label_plan, write_flowchart_svg_label_plan_with_style,
+        write_flowchart_svg_text_markdown, write_flowchart_svg_text_markdown_wrapped_with_style,
     },
 };
 
@@ -62,11 +65,53 @@ impl FlowchartClusterPass {
     }
 }
 
+pub(crate) fn swimlane_color_slot(
+    model: &FlowchartRenderModelRef<'_>,
+    palette: &ContainerPalette<'_>,
+    diagram_type: &str,
+    id: &str,
+    synthetic: bool,
+) -> Option<usize> {
+    model
+        .subgraph_color_ordinal(id)
+        .and_then(|ordinal| palette.slot_for_ordinal(diagram_type, ordinal))
+        .or_else(|| {
+            let palette_len = palette.color_count();
+            (synthetic && palette_len > 0).then(|| {
+                // The synthetic lane follows the highest visible source container color ordinal.
+                model
+                    .subgraphs
+                    .iter()
+                    .filter(|subgraph| model.collapsed_replacement(&subgraph.id).is_none())
+                    .filter_map(|subgraph| model.subgraph_color_ordinal(&subgraph.id))
+                    .max()
+                    .map_or(0, |ordinal| ordinal.saturating_add(1))
+                    % palette_len
+            })
+        })
+}
+
 /// Write the group, body and title shells, and title label into the operation sink.
 /// The caller checks lane membership and performs its Emit checkpoint before calling this writer.
 pub fn write_swimlane_cluster(
     out: &mut impl SvgOutput,
     input: SwimlaneClusterSvg<'_>,
+) -> Result<()> {
+    let color_slot = swimlane_color_slot(
+        input.model,
+        input.palette,
+        input.diagram_type,
+        &input.lane.id,
+        input.subgraph.is_none(),
+    );
+    write_swimlane_cluster_with_label_ink(out, input, color_slot, None)
+}
+
+pub(crate) fn write_swimlane_cluster_with_label_ink(
+    out: &mut impl SvgOutput,
+    input: SwimlaneClusterSvg<'_>,
+    color_slot: Option<usize>,
+    label_ink: Option<&str>,
 ) -> Result<()> {
     let lane = input.lane;
     let model = input.model;
@@ -75,6 +120,13 @@ pub fn write_swimlane_cluster(
         .map(|(subgraph, index)| model.effective_subgraph_css(index, subgraph).0)
         .unwrap_or_default();
     let label_style = input.shape.terminal.compiled.label_style.trim();
+    let label_style = if let Some(ink) = label_ink {
+        let mut style = label_style.to_owned();
+        append_native_label_color(&mut style, ink);
+        Cow::Owned(style)
+    } else {
+        Cow::Borrowed(label_style)
+    };
     let render_title = source.map_or(lane.title.as_str(), |(subgraph, index)| {
         model.subgraph_title_for_render(index, subgraph)
     });
@@ -118,29 +170,12 @@ pub fn write_swimlane_cluster(
     let _ = write!(
         out,
         r#"<g class="{}" id="{}" data-id="{}" data-et="cluster""#,
-        escape_xml_display(&classes),
+        escape_attr_display(&classes),
         lane_dom_id,
-        escape_xml_display(&lane.id),
+        escape_attr_display(&lane.id),
     );
     let data_look = input.look.as_str();
-    let color_slot = model
-        .subgraph_color_ordinal(&lane.id)
-        .and_then(|ordinal| input.palette.slot_for_ordinal(input.diagram_type, ordinal))
-        .or_else(|| {
-            let palette_len = input.palette.color_count();
-            (input.subgraph.is_none() && palette_len > 0).then(|| {
-                // The synthetic lane follows the highest visible source container color ordinal.
-                model
-                    .subgraphs
-                    .iter()
-                    .filter(|subgraph| model.collapsed_replacement(&subgraph.id).is_none())
-                    .filter_map(|subgraph| model.subgraph_color_ordinal(&subgraph.id))
-                    .max()
-                    .map_or(0, |ordinal| ordinal.saturating_add(1))
-                    % palette_len
-            })
-        });
-    let _ = write!(out, r#" data-look="{}""#, escape_xml_display(data_look));
+    let _ = write!(out, r#" data-look="{}""#, escape_attr_display(data_look));
     if let Some(color_slot) = color_slot {
         let _ = write!(out, r#" data-color-id="color-{color_slot}""#);
     }
@@ -153,7 +188,7 @@ pub fn write_swimlane_cluster(
         input.group_origin,
         is_pool,
         input.shape.paint(),
-        input.shape.hand_drawn(input.look),
+        input.shape.hand_drawn(input.look, canonical),
     );
 
     let (label_x, label_y, label_transform) = if horizontal {
@@ -225,12 +260,12 @@ pub fn write_swimlane_cluster(
             out,
             r#"<g class="cluster-label {}" transform="{}"><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"{}>{}</span></div></foreignObject></g>"#,
             label_class,
-            escape_xml_display(&transform),
+            escape_attr_display(&transform),
             fmt_display(label_width),
             fmt_display(label_height),
             overflow_attr,
-            escape_xml_display(&div_style),
-            OptionalStyleAttr(label_style),
+            escape_attr_display(&div_style),
+            OptionalStyleAttr(label_style.as_ref()),
             title_html,
         );
     } else {
@@ -247,20 +282,27 @@ pub fn write_swimlane_cluster(
             out,
             r#"<g class="cluster-label {}" transform="{}"><g><rect class="background" style="stroke: none"/>"#,
             label_class,
-            escape_xml_display(&transform),
+            escape_attr_display(&transform),
         );
+        let title_text_style = input
+            .svg_label_sidecar
+            .zip(title_owner)
+            .and_then(|(sidecar, owner)| sidecar.node_source_style(owner))
+            .filter(|_| canonical)
+            .unwrap_or(&input.shape.terminal.title_text_style)
+            .as_ref();
+        let svg_style = if canonical { label_style.as_ref() } else { "" };
         let prepared = FlowchartSvgLabelRenderPlan::new(
             input.svg_label_sidecar,
             title_owner,
             render_title,
             input.measurer,
-            input.shape.terminal.title_text_style.as_ref(),
+            title_text_style,
             Some(FLOWCHART_FIXED_LABEL_WRAP_WIDTH),
             true,
             FlowchartSvgWidthMode::Bbox,
         );
         let zero_width_title = lane.width == 0.0;
-        let prepared_title = !zero_width_title && prepared.is_prepared();
         if zero_width_title {
             let rows = zero_width_lane_title_rows(render_title);
             write_svg_markdown_word_lines_with_style(
@@ -269,8 +311,21 @@ pub fn write_swimlane_cluster(
                 Some(""),
                 SvgTextEntityMode::DecodedModel,
             );
-        } else if prepared_title {
-            write_flowchart_svg_label_plan(out, &prepared, true);
+        } else if prepared.is_prepared() {
+            if svg_style.is_empty() {
+                write_flowchart_svg_label_plan(out, &prepared, true);
+            } else {
+                write_flowchart_svg_label_plan_with_style(out, &prepared, true, Some(svg_style));
+            }
+        } else if canonical {
+            write_flowchart_svg_text_markdown_wrapped_with_style(
+                out,
+                render_title,
+                svg_style,
+                input.measurer,
+                title_text_style,
+                Some(FLOWCHART_FIXED_LABEL_WRAP_WIDTH),
+            );
         } else {
             write_flowchart_svg_text_markdown(out, render_title, true);
         }

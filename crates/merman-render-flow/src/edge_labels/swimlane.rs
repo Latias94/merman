@@ -14,7 +14,7 @@ use merman_render_core::{
         html_label_layout::measure_flowchart_html_label, literal_label::FlowchartSvgWidthMode,
     },
     theme_svg::edge_label_background,
-    xml::{escape_attr_display, escape_xml_display},
+    xml::escape_attr_display,
 };
 use merman_theme_contract::v2::Color;
 
@@ -125,7 +125,7 @@ impl<'a> SwimlaneEdgeLabel<'a> {
             out,
             r#"<g class="label edgeLabel" id="{}" data-id="{}" data-et="edge-label" transform="translate({}, {})"><rect width="0.1" height="0.1"/><g class="label"{} transform="translate({}, {})"><rect/>"#,
             edge_label_dom_id,
-            escape_xml_display(&edge.id),
+            escape_attr_display(&edge.id),
             fmt_display(x),
             fmt_display(y),
             OptionalStyleAttr(swimlane_group_style.as_ref()),

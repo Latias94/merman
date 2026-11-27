@@ -33,6 +33,11 @@ impl Color {
         Self([r, g, b, u8::MAX])
     }
 
+    /// Creates a straight-alpha sRGB color.
+    pub const fn rgba(r: u8, g: u8, b: u8, a: u8) -> Self {
+        Self([r, g, b, a])
+    }
+
     /// Returns the red, green, blue, and alpha channels in that order.
     pub const fn channels(self) -> [u8; 4] {
         self.0

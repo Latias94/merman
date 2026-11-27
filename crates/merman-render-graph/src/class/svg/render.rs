@@ -191,7 +191,7 @@ pub fn render_class_diagram_svg_model_with_config(
             }
         }
     }
-    let line_hop_edges = if elk_parity {
+    let line_hop_edges = if elk_parity && !relation_theme.sketch_edges {
         options.work_meter.charge(paint_edges.len())?;
         paint_edges
             .iter()
@@ -261,9 +261,28 @@ pub fn render_class_diagram_svg_model_with_config(
     // coordinates. Rendering consumes that tree directly instead of inferring namespace extraction
     // and edge ownership a second time from flattened compatibility data.
     let nodes_start = timing.start();
+    let mut edge_dom_ids = Vec::new();
+    if !layout.clusters.is_empty() {
+        options.work_meter.charge(layout.edges.len())?;
+        for edge in &layout.edges {
+            let mut id = String::new();
+            super::edge::class_edge_dom_id_into(&mut id, edge, &relation_index_by_id);
+            edge_dom_ids.push(id);
+        }
+    }
+    let namespace_ids = super::namespace::class_namespace_ids(
+        &layout.clusters,
+        class_nodes_by_id
+            .values()
+            .map(|class| class.dom_id)
+            .chain(note_by_id.keys().copied())
+            .chain(iface_by_id.keys().copied())
+            .chain(edge_dom_ids.iter().map(String::as_str)),
+    );
 
     let nodes_ctx = ClassNodesRenderContext {
         layout,
+        namespace_ids: &namespace_ids,
         prepared_svg_titles: &prepared_labels.titles_by_id,
         class_nodes_by_id: &class_nodes_by_id,
         class_color_indices: &class_color_indices,
@@ -281,6 +300,7 @@ pub fn render_class_diagram_svg_model_with_config(
         content_tx,
         content_ty,
         uses_canonical_routes,
+        rough_backing: uses_canonical_routes || relation_theme.rough_backing,
         timing,
         emit,
     };

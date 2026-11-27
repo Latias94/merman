@@ -19,7 +19,7 @@ artifact-profile-required = true
 default = []
 html = ["dep:html5ever", "dep:htmlize", "dep:merman-model", "dep:serde_json"]
 url = ["dep:merman-model", "dep:url"]
-color = ["dep:ryu-js"]
+color = ["dep:merman-model", "dep:ryu-js"]
 
 [dependencies]
 html5ever = { workspace = true, optional = true }

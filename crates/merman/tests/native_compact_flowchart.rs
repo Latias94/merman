@@ -10,9 +10,13 @@
 ))]
 
 use merman::svg::{RenderResourcePolicy, ResourceLimitId, SvgOutputProfile};
-#[cfg(feature = "layout-dagre")]
-use merman::theme::{BuiltinPreset, ThemeSelection};
+#[cfg(any(feature = "layout-dagre", feature = "layout-shoal"))]
+use merman::theme::{BuiltinPreset, Color, ThemeCompiler, ThemeSelection};
 use merman::{OperationControl, RenderError, RenderOutput, RenderRequest, Renderer, SvgRequest};
+
+#[cfg(any(feature = "layout-dagre", feature = "layout-shoal"))]
+#[path = "native_compact/paint.rs"]
+mod paint;
 
 #[cfg(feature = "layout-dagre")]
 const FLOWCHART_CONFIG: &str = r#"---
@@ -23,6 +27,7 @@ config:
   flowchart:
     htmlLabels: false
     curve: linear
+    diagramPadding: 0
 ---
 "#;
 
@@ -82,11 +87,14 @@ fn shaft_nodes<'a, 'input>(
     root: roxmltree::Node<'a, 'input>,
 ) -> impl Iterator<Item = roxmltree::Node<'a, 'input>> {
     root.descendants().filter(|node| {
-        node.has_tag_name("path") && !node.ancestors().any(|parent| parent.has_tag_name("marker"))
+        node.has_tag_name("path")
+            && (node.attribute("data-edge") == Some("true")
+                || node.parent().is_some_and(|group| {
+                    group.has_tag_name("g") && group.attribute("data-scene-role") == Some("edge")
+                }))
     })
 }
 
-#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 fn shafts(root: roxmltree::Node<'_, '_>) -> Vec<Vec<f64>> {
     shaft_nodes(root)
         .map(|node| {
@@ -235,6 +243,119 @@ fn compact_flowchart_keeps_the_native_label_weight() {
         .find(|node| node.has_tag_name("text") && node.text() == Some("Plan"))
         .expect("expected the compact label");
     assert_eq!(label.attribute("font-weight"), Some("600"));
+}
+
+#[cfg(any(feature = "layout-dagre", feature = "layout-shoal"))]
+fn assert_compact_unsupported(result: Result<String, RenderError>, expected: &str) {
+    let error = result.unwrap_err();
+    let RenderError::Svg(merman_render::Error::UnsupportedSvgOutputProfile { profile, reason }) =
+        error
+    else {
+        panic!("expected an unsupported output profile, got {error:?}");
+    };
+    assert_eq!(profile, SvgOutputProfile::NativeCompact);
+    assert_eq!(reason, expected);
+}
+
+#[cfg(feature = "layout-dagre")]
+#[test]
+fn compact_flowchart_admits_original_presets_on_a_transparent_canvas() {
+    let source = "flowchart LR\nA[Plan] --> B[Ship]";
+    for (preset, arrow_path) in [
+        (BuiltinPreset::Blueprint, "M1 1 L10 5 L1 9"),
+        (BuiltinPreset::Cyberpunk, "M0 1 L10 5 L0 9 L2.5 5 Z"),
+    ] {
+        let request = compact_request().with_native_theme(ThemeSelection::preset(preset, None));
+        for request in [
+            request.clone(),
+            request.clone().with_background(Color::rgb(18, 52, 86)),
+            request.clone().with_background(Color::rgba(18, 52, 86, 1)),
+        ] {
+            assert_compact_unsupported(render(source, request), "flowchart-canvas-texture");
+        }
+
+        let transparent = Color::rgba(18, 52, 86, 0);
+        let theme_doc = serde_json::json!({
+            "schema_version": 2,
+            "extends": preset.as_str(),
+            "roles": { "canvas": transparent },
+        });
+        let canvas_theme = ThemeCompiler::new()
+            .compile_json(&serde_json::to_vec(&theme_doc).unwrap(), None)
+            .unwrap();
+        let flat_view_box = (preset == BuiltinPreset::Cyberpunk).then(|| {
+            let mut flat_doc = theme_doc;
+            flat_doc["form"] = serde_json::json!({"elevation": "flat"});
+            let flat_theme = ThemeCompiler::new()
+                .compile_json(&serde_json::to_vec(&flat_doc).unwrap(), None)
+                .unwrap();
+            let svg = render(
+                source,
+                compact_request().with_native_theme(ThemeSelection::compiled(flat_theme)),
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let root = document.root_element();
+            assert!(
+                !root
+                    .children()
+                    .any(|node| node.attribute("data-scene-role") == Some("depth"))
+            );
+            paint::view_box(root)
+        });
+        for request in [
+            request.with_background(transparent),
+            compact_request().with_native_theme(ThemeSelection::compiled(canvas_theme)),
+        ] {
+            let svg = render(source, request).unwrap();
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let root = document.root_element();
+            paint::assert_transparent_scene(root);
+            assert!(
+                root.descendants()
+                    .any(|node| node.has_tag_name("text") && node.text() == Some("Ship"))
+            );
+            let glyph = paint::endpoint_glyph(root);
+            assert_eq!(glyph.attribute("d"), Some(arrow_path));
+            let stroke = glyph
+                .attribute("stroke")
+                .expect("expected painted arrow outline");
+            assert_ne!(stroke, "none");
+            if preset == BuiltinPreset::Blueprint {
+                assert_eq!(glyph.attribute("fill"), Some("none"));
+                assert_eq!(glyph.attribute("stroke-linecap"), Some("round"));
+                assert_eq!(glyph.attribute("stroke-linejoin"), Some("round"));
+                assert!(
+                    !root
+                        .children()
+                        .any(|node| node.attribute("data-scene-role") == Some("depth"))
+                );
+            } else {
+                assert_eq!(glyph.attribute("fill"), Some(stroke));
+                paint::assert_cyberpunk_shadows(root, 2);
+                let [left, top, width, height] = paint::view_box(root);
+                let [flat_left, flat_top, flat_width, flat_height] = flat_view_box.unwrap();
+                assert!(left < flat_left && left + width > flat_left + flat_width);
+                assert!(top + height > flat_top + flat_height);
+            }
+        }
+    }
+}
+
+#[cfg(feature = "layout-dagre")]
+#[test]
+fn compact_flowchart_transparent_canvas_rejects_blurred_elevation() {
+    let source = "flowchart LR\nA[Plan] --> B[Ship]";
+    let blurred_theme = ThemeCompiler::new()
+        .compile_json(
+            br#"{"schema_version":2,"extends":"cyberpunk","form":{"elevation":"soft"}}"#,
+            None,
+        )
+        .unwrap();
+    let request = compact_request()
+        .with_native_theme(ThemeSelection::compiled(blurred_theme))
+        .with_background(Color::TRANSPARENT);
+    assert_compact_unsupported(render(source, request), "flowchart-native-material");
 }
 
 #[cfg(feature = "layout-dagre")]
@@ -483,6 +604,106 @@ fn compact_flowchart_shoal_keeps_parallel_occurrences_and_bent_shafts() {
     );
     assert_ne!(shafts[0].attribute("d"), shafts[1].attribute("d"));
     assert!(shafts[3].attribute("d").unwrap().matches('L').count() > 1);
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn compact_flowchart_shoal_combines_wrapped_rows_and_hard_shadows() {
+    let config = SHOAL_CONFIG.replace(
+        "    curve: linear",
+        "    curve: linear\n    wrappingWidth: 72",
+    );
+    let body = "flowchart LR\nA[One two three four five six] --> B[Ship] --- C[Done]";
+    let themed = |request: SvgRequest| {
+        request
+            .with_native_theme(ThemeSelection::preset(BuiltinPreset::Cyberpunk, None))
+            .with_background(Color::TRANSPARENT)
+    };
+    let parity = render_with_config(&config, body, themed(SvgRequest::default())).unwrap();
+    let compact = render_with_config(&config, body, themed(compact_request())).unwrap();
+    let parity = roxmltree::Document::parse(&parity).unwrap();
+    let compact_dom = roxmltree::Document::parse(&compact).unwrap();
+    let root = compact_dom.root_element();
+    paint::assert_transparent_scene(root);
+    paint::assert_cyberpunk_shadows(root, 3);
+    assert_eq!(
+        paint::endpoint_glyph(root).attribute("d"),
+        Some("M0 1 L10 5 L0 9 L2.5 5 Z")
+    );
+    let parity_shafts = shafts(parity.root_element());
+    assert_eq!(parity_shafts.len(), 2);
+    assert_eq!(shafts(root), parity_shafts);
+
+    let rows: Vec<_> = root
+        .descendants()
+        .filter(|node| node.has_tag_name("text"))
+        .filter_map(|node| node.text())
+        .filter(|text| !matches!(*text, "Ship" | "Done"))
+        .collect();
+    assert!(rows.len() > 1);
+    assert_eq!(rows.join(" "), "One two three four five six");
+
+    let elements = root
+        .descendants()
+        .filter(roxmltree::Node::is_element)
+        .count();
+    let render_capped = |maximum| {
+        let mut request = themed(compact_request());
+        request.environment = request.environment.with_resource_policy(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxSvgElements, maximum)
+                .unwrap(),
+        );
+        render_with_config(&config, body, request)
+    };
+    assert_eq!(render_capped(elements).unwrap(), compact);
+    let RenderError::ResourceLimitExceeded(limit) = render_capped(elements - 1).unwrap_err() else {
+        panic!("expected the SVG element limit");
+    };
+    assert_eq!(
+        (limit.id, limit.actual, limit.maximum),
+        ("max_svg_elements", elements as u64, (elements - 1) as u64)
+    );
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn compact_flowchart_shoal_refuses_sketch_shafts_with_no_authored_curve() {
+    let theme = ThemeSelection::compiled(
+        ThemeCompiler::new()
+            .compile_json(
+                br#"{"schema_version":2,"extends":"blueprint","form":{"edge_style":"sketch"}}"#,
+                None,
+            )
+            .unwrap(),
+    );
+    let themed = |request: SvgRequest| {
+        request
+            .with_native_theme(theme.clone())
+            .with_background(Color::TRANSPARENT)
+    };
+    let inherited_curve = SHOAL_CONFIG.replace("    curve: linear\n", "");
+    let body = "flowchart LR\nA[Plan] --> B[Ship]";
+    let parity = render_with_config(&inherited_curve, body, themed(SvgRequest::default())).unwrap();
+    let parity = roxmltree::Document::parse(&parity).unwrap();
+    assert!(shaft_nodes(parity.root_element()).any(|shaft| {
+        shaft.attribute("data-points").is_some()
+            && shaft.attribute("d").is_some_and(|path| path.contains('C'))
+    }));
+    assert_compact_unsupported(
+        render_with_config(&inherited_curve, body, themed(compact_request())),
+        "flowchart-shoal-sketch-painted-route",
+    );
+
+    let authored_edge = format!("{body}\nlinkStyle 0 interpolate linear");
+    for (config, body) in [
+        (SHOAL_CONFIG, body),
+        (inherited_curve.as_str(), authored_edge.as_str()),
+    ] {
+        let compact = render_with_config(config, body, themed(compact_request())).unwrap();
+        let compact = roxmltree::Document::parse(&compact).unwrap();
+        assert_eq!(shafts(compact.root_element()).len(), 1);
+    }
 }
 
 #[cfg(feature = "layout-shoal")]

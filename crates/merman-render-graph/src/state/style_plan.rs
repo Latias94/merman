@@ -8,6 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use merman_render_core::mermaid_style::{
     CssFontSizeContext, ParsedStyleDeclaration, is_label_style_key, is_safe_css_font_family_value,
     is_supported_css_font_style_value, is_supported_css_font_weight_value, parse_style_declaration,
+    visit_parsed_style_declarations,
 };
 use merman_render_core::text::{FontStyle, TextMeasurer, TextMetrics, TextStyle, WrapMode};
 use merman_theme_contract::v2::{Color, FamilyTheme};
@@ -582,14 +583,15 @@ fn prepare_node(
             );
         }
     }
-    for declaration in node
+    for style in node
         .css_styles
         .iter()
         .map(String::as_str)
-        .chain(node.label_style.split(';'))
-        .filter_map(parse_style_declaration)
+        .chain(std::iter::once(node.label_style.as_str()))
     {
-        apply(declaration, SourceStyle::Inline);
+        visit_parsed_style_declarations(style, |declaration| {
+            apply(declaration, SourceStyle::Inline);
+        });
     }
     typography.canonicalize_emission(&mut label);
     let composite_outer_radius_override =

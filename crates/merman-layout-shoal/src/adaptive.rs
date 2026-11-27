@@ -4,8 +4,8 @@ use crate::flat::{self, Expanded};
 use crate::validate;
 use crate::work::{LayoutResult, Work, reserved};
 use crate::{
-    Direction, Graph, GroupSpec, LayoutDetail, LayoutError, LayoutOutput, Options, PackingPolicy,
-    TitlePosition, WidthPolicy,
+    Axis, Direction, Endpoint, Graph, GroupSpec, LayoutDetail, LayoutError, LayoutOutput, Options,
+    PackingPolicy, PortSideHint, Side, TitlePosition, WidthPolicy,
 };
 
 #[derive(Clone, Copy)]
@@ -249,18 +249,95 @@ pub(super) fn copy_graph(graph: &Graph, work: &mut Work<'_>) -> LayoutResult<Gra
 }
 
 fn turn_down(graph: &mut Graph, options: &Options, work: &mut Work<'_>) -> LayoutResult<()> {
-    graph.direction = Direction::Down;
+    let original = graph.direction;
     let flat = graph.groups.is_empty();
+    let levels = if flat {
+        None
+    } else {
+        Some(crate::compound::authored_directions(
+            &graph.groups,
+            original,
+            work,
+        )?)
+    };
+    let node_axis = |node: &crate::NodeSpec| {
+        levels
+            .as_ref()
+            .map_or(original.axis(), |levels| levels.axis(node.parent))
+    };
+    graph.direction = Direction::Down;
     for node in &mut graph.nodes {
         work.visit(1)?;
         let primary = node.port_span;
         node.port_span = node.perpendicular_port_span.or(primary);
         node.perpendicular_port_span = primary.or_else(|| {
+            // A vertical level already reads the perpendicular span as its primary span.
+            // After the root turns, keep its secondary span inheriting that same value.
             node.port_span
+                .filter(|_| node_axis(node) == Axis::Horizontal)
                 .map(|_| (node.size.height - 2.0 * options.spacing.corner_clearance).max(0.0))
         });
         if flat {
             node.align_flow(graph.direction);
+        }
+    }
+    let turn_port = |endpoint, opposite, hint, work: &mut Work<'_>| -> LayoutResult<_> {
+        if !matches!(
+            hint,
+            PortSideHint::Side(Side::Left | Side::Right)
+                | PortSideHint::FixedOffset {
+                    side: Side::Left | Side::Right,
+                    ..
+                }
+        ) {
+            return Ok(hint);
+        }
+        let (node, axis) = match endpoint {
+            Endpoint::Node(id) => {
+                let node = graph.nodes[id.0 as usize];
+                (Some(node), node_axis(&node))
+            }
+            Endpoint::Group(id) => {
+                let levels = levels.as_ref().ok_or(LayoutError::InvalidInput(
+                    "group port is outside the group array",
+                ))?;
+                (
+                    None,
+                    levels.group_port_axis(id, opposite, &graph.nodes, work)?,
+                )
+            }
+        };
+        if axis == Axis::Vertical {
+            return Ok(hint);
+        }
+        // The root turn is shared by horizontal scopes. An opposed scope becomes Up.
+        let turned = flat::to_canonical_port(original, hint);
+        if let (Some(mut node), PortSideHint::FixedOffset { side, .. }) = (node, turned) {
+            let measured = node.size;
+            node.align_flow(Direction::Down);
+            if validate::port(measured, turned).is_err()
+                || validate::port(node.size, turned).is_err()
+            {
+                return Ok(PortSideHint::Side(side));
+            }
+        }
+        Ok(turned)
+    };
+    for edge in &mut graph.edges {
+        work.visit(1)?;
+        edge.source_port = turn_port(edge.source, edge.target, edge.source_port, work)?;
+        edge.target_port = turn_port(edge.target, edge.source, edge.target_port, work)?;
+    }
+    for group in &mut graph.groups {
+        work.visit(1)?;
+        if let Some(direction) = group.direction
+            && direction.axis() == Axis::Horizontal
+        {
+            group.direction = Some(if direction == original {
+                Direction::Down
+            } else {
+                Direction::Up
+            });
         }
     }
     Ok(())
@@ -287,4 +364,268 @@ fn tighten_groups(groups: &mut [GroupSpec], work: &mut Work<'_>) -> LayoutResult
         group.padding.right *= 0.6;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{EdgeSpec, GroupId, NodeId, NodeSpec, Size};
+
+    #[test]
+    fn a_horizontal_width_trial_remaps_flow_ports_and_matching_subgroups() {
+        for (direction, source, target) in [
+            (Direction::Right, Side::Right, Side::Left),
+            (Direction::Left, Side::Left, Side::Right),
+        ] {
+            for grouped in [false, true] {
+                let mut graph = Graph {
+                    direction,
+                    nodes: (0..4)
+                        .map(|id| {
+                            NodeSpec::new(
+                                Size {
+                                    width: 120.,
+                                    height: 56.,
+                                },
+                                id,
+                            )
+                        })
+                        .collect(),
+                    edges: (0..3)
+                        .map(|id| EdgeSpec::new(NodeId(id).into(), NodeId(id + 1).into()))
+                        .collect(),
+                    ..Default::default()
+                };
+                if grouped {
+                    let mut group = GroupSpec::new(0);
+                    group.direction = Some(direction);
+                    graph.groups.push(group);
+                    for node in &mut graph.nodes[..2] {
+                        node.parent = Some(GroupId(0));
+                    }
+                }
+                graph.edges[0].source_port = PortSideHint::FixedOffset {
+                    side: source,
+                    offset: 12.,
+                };
+                graph.edges[0].target_port = PortSideHint::FixedOffset {
+                    side: target,
+                    offset: -9.,
+                };
+                let options = Options {
+                    width_policy: WidthPolicy::FitWidth {
+                        max_width: 220.,
+                        allow_turn: true,
+                        turn_breakpoint: 300.,
+                        fold_wide_ranks: false,
+                    },
+                    ..Default::default()
+                };
+                let drawing = crate::layout(&graph, &options).unwrap();
+                assert_eq!(drawing.direction, Direction::Down);
+                assert!(drawing.bounds.width <= 220.);
+                if grouped {
+                    assert_eq!(drawing.groups[0].effective_direction, Direction::Down);
+                    assert!(!drawing.border_stitches.is_empty());
+                }
+                let route = &drawing.edges[0];
+                assert_eq!(route.ports, (Side::Bottom, Side::Top));
+                assert_eq!(route.points[0].x, drawing.nodes[0].center().x + 12.);
+                assert_eq!(
+                    route.points.last().unwrap().x,
+                    drawing.nodes[1].center().x - 9.
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_width_turn_preserves_physical_pins_in_authored_vertical_scopes() {
+        let mut graph = Graph {
+            direction: Direction::Left,
+            groups: vec![GroupSpec::new(0), GroupSpec::new(1)],
+            nodes: vec![NodeSpec::new(
+                Size {
+                    width: 40.,
+                    height: 100.,
+                },
+                0,
+            )],
+            ..Default::default()
+        };
+        graph.groups[0].parent = Some(GroupId(1));
+        graph.groups[1].direction = Some(Direction::Down);
+        graph.nodes[0].parent = Some(GroupId(0));
+        let pin = PortSideHint::FixedOffset {
+            side: Side::Right,
+            offset: 35.,
+        };
+        let mut edge = EdgeSpec::new(NodeId(0).into(), GroupId(0).into());
+        edge.source_port = pin;
+        edge.target_port = pin;
+        graph.edges.push(edge);
+        turn_down(
+            &mut graph,
+            &Options::default(),
+            &mut Work::new(&mut crate::NoopWorkControl),
+        )
+        .unwrap();
+        assert_eq!(graph.direction, Direction::Down);
+        assert_eq!(graph.edges[0].source_port, pin);
+        assert_eq!(graph.edges[0].target_port, pin);
+    }
+
+    #[test]
+    fn a_width_turn_uses_the_level_that_routes_each_group_contact() {
+        let mut graph = Graph {
+            direction: Direction::Left,
+            groups: (0..4).map(GroupSpec::new).collect(),
+            nodes: (0..3)
+                .map(|id| {
+                    NodeSpec::new(
+                        Size {
+                            width: 60.,
+                            height: 80.,
+                        },
+                        id,
+                    )
+                })
+                .collect(),
+            ..Default::default()
+        };
+        graph.groups[0].direction = Some(Direction::Down);
+        graph.groups[1].parent = Some(GroupId(0));
+        graph.groups[2].parent = Some(GroupId(1));
+        graph.groups[2].direction = Some(Direction::Right);
+        graph.groups[3].parent = Some(GroupId(2));
+        graph.groups[3].direction = Some(Direction::Up);
+        graph.nodes[0].parent = Some(GroupId(1));
+        graph.nodes[2].parent = Some(GroupId(2));
+        let group = |id| Endpoint::Group(GroupId(id));
+        let node = |id| Endpoint::Node(NodeId(id));
+        let pin = PortSideHint::FixedOffset {
+            side: Side::Right,
+            offset: 12.,
+        };
+        let turned = PortSideHint::FixedOffset {
+            side: Side::Top,
+            offset: 12.,
+        };
+        let cases = [
+            (group(0), node(1), [turned, turned]),
+            (node(1), group(0), [turned, turned]),
+            (group(0), node(0), [pin, pin]),
+            (node(0), group(0), [pin, pin]),
+            (group(0), group(3), [pin, turned]),
+            (group(2), group(1), [pin, pin]),
+            (group(2), node(2), [turned, turned]),
+            (group(0), group(0), [turned, turned]),
+        ];
+        graph.edges = cases
+            .iter()
+            .map(|&(from, to, _)| {
+                let mut edge = EdgeSpec::new(from, to);
+                edge.source_port = pin;
+                edge.target_port = pin;
+                edge
+            })
+            .collect();
+        turn_down(
+            &mut graph,
+            &Options::default(),
+            &mut Work::new(&mut crate::NoopWorkControl),
+        )
+        .unwrap();
+        for (edge, (source, target, expected)) in graph.edges.iter().zip(cases) {
+            assert_eq!(
+                [edge.source_port, edge.target_port],
+                expected,
+                "{source:?} -> {target:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn a_width_turn_preserves_physical_face_spans_in_vertical_levels() {
+        let size = Size {
+            width: 60.,
+            height: 80.,
+        };
+        let mut graph = Graph {
+            direction: Direction::Right,
+            groups: vec![GroupSpec::new(0), GroupSpec::new(1)],
+            nodes: (0..4).map(|id| NodeSpec::new(size, id)).collect(),
+            ..Default::default()
+        };
+        graph.groups[0].direction = Some(Direction::Up);
+        graph.groups[1].parent = Some(GroupId(0));
+        graph.nodes[1].parent = Some(GroupId(0));
+        graph.nodes[2].parent = Some(GroupId(1));
+        graph.nodes[3].parent = Some(GroupId(1));
+        for node in &mut graph.nodes {
+            node.perpendicular_port_span = Some(20.);
+        }
+        graph.nodes[3].port_span = Some(45.);
+        let options = Options::default();
+        turn_down(
+            &mut graph,
+            &options,
+            &mut Work::new(&mut crate::NoopWorkControl),
+        )
+        .unwrap();
+        let spans: Vec<_> = graph
+            .nodes
+            .iter()
+            .map(|node| (node.port_span, node.perpendicular_port_span))
+            .collect();
+        let full_height = size.height - 2. * options.spacing.corner_clearance;
+        assert_eq!(
+            spans,
+            [
+                (Some(20.), Some(full_height)),
+                (Some(20.), None),
+                (Some(20.), None),
+                (Some(20.), Some(45.))
+            ]
+        );
+    }
+
+    #[test]
+    fn a_tall_upright_node_does_not_block_a_width_turn_with_its_old_face_offset() {
+        let mut graph = Graph {
+            direction: Direction::Right,
+            nodes: (0..4)
+                .map(|id| {
+                    NodeSpec::new(
+                        Size {
+                            width: 40.,
+                            height: 100.,
+                        },
+                        id,
+                    )
+                })
+                .collect(),
+            edges: (0..3)
+                .map(|id| EdgeSpec::new(NodeId(id).into(), NodeId(id + 1).into()))
+                .collect(),
+            ..Default::default()
+        };
+        graph.edges[0].source_port = PortSideHint::FixedOffset {
+            side: Side::Right,
+            offset: 35.,
+        };
+        let options = Options {
+            width_policy: WidthPolicy::FitWidth {
+                max_width: 120.,
+                allow_turn: true,
+                turn_breakpoint: 200.,
+                fold_wide_ranks: false,
+            },
+            ..Options::default()
+        };
+        let drawing = crate::layout(&graph, &options).unwrap();
+        assert_eq!(drawing.direction, Direction::Down);
+        assert!(drawing.bounds.width <= 120.);
+        assert_eq!(drawing.edges[0].ports, (Side::Bottom, Side::Top));
+    }
 }

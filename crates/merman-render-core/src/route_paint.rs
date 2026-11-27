@@ -1,23 +1,20 @@
 //! Paint a boundary-to-boundary axis route in the coordinate space supplied by its caller.
 
 mod clearance;
-pub use clearance::{Clearance, EdgeClearance, ObstacleOwner};
+pub use clearance::{Clearance, EdgeClearance, ObstacleOwner, TerminalContact};
 
+use crate::number_format::{canonical_number as number, canonicalize_number};
 use crate::route_types::{
     Axis, BorderStitch, KnotKind, Marker, RoutePoint, SVG_LENGTH_ACCURACY, Side,
     sweep_handle_fraction,
 };
 use crate::{Bounds, LayoutPoint};
-use kurbo::{CubicBez, ParamCurveArclen, Point, Shape, Vec2};
+use kurbo::{Arc, CubicBez, Line, ParamCurveArclen, PathSeg, Point, Shape, SvgArc, Vec2};
 use std::convert::Infallible;
 use std::fmt::Write as _;
 
 /// Straight shaft beyond the marker setback, in layout units (v13 `shared/svg/route.ts`).
-#[cfg(feature = "layout-shoal")]
-pub use merman_layout_shoal::MIN_MARKER_LEAD as LEAD;
-/// Straight shaft beyond the marker setback for standalone route painting.
-#[cfg(not(feature = "layout-shoal"))]
-pub const LEAD: f64 = 6.0;
+pub use crate::route_types::MIN_MARKER_LEAD as LEAD;
 const STEP_INSET: f64 = 12.0;
 const TURN_HANDLE: f64 = 0.62;
 const TERMINAL_TURN_RADIUS: f64 = 24.0;
@@ -43,6 +40,18 @@ pub enum CurveTerminals {
 }
 
 impl RouteStyle {
+    /// Selects the base shaft. Families that support sketch strokes paint them over a polyline.
+    #[cfg(feature = "theme-svg")]
+    pub fn from_theme(style: merman_theme_contract::v2::EdgeStyle) -> Self {
+        use merman_theme_contract::v2::EdgeStyle;
+
+        match style {
+            EdgeStyle::Curved => Self::Curved,
+            EdgeStyle::Orthogonal => Self::Step,
+            EdgeStyle::Straight | EdgeStyle::Sketch => Self::Linear,
+        }
+    }
+
     pub fn from_interpolate(name: &str, rounded_radius: f64) -> Self {
         match name {
             "rounded" => Self::Rounded(rounded_radius),
@@ -54,6 +63,19 @@ impl RouteStyle {
         }
     }
 
+    #[cfg(feature = "layout-shoal")]
+    pub fn routing_style(self) -> merman_layout_shoal::RoutingStyle {
+        use merman_layout_shoal::RoutingStyle;
+
+        match self {
+            Self::Curved => RoutingStyle::Curved,
+            Self::Rounded(_) | Self::Step | Self::StepBefore | Self::StepAfter => {
+                RoutingStyle::Orthogonal
+            }
+            Self::Linear => RoutingStyle::Polyline,
+        }
+    }
+
     fn stepped(self) -> bool {
         matches!(self, Self::Step | Self::StepBefore | Self::StepAfter)
     }
@@ -62,7 +84,7 @@ impl RouteStyle {
 #[derive(Debug, Clone)]
 pub struct PaintedRoute {
     pub d: String,
-    /// Tight geometric bounds of `d`, excluding stroke width, markers and effects.
+    /// Centerline bounds for the parity SVG, excluding stroke width, markers and effects.
     pub bounds: Bounds,
 }
 
@@ -98,10 +120,13 @@ impl<E> From<RoutePaintError> for RouteCommandError<E> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum RoutePaintError {
     InvalidGeometry,
     NoClearDetour,
     DetourBudgetExceeded,
+    ClearanceAllocationFailed,
+    ShaftAllocationFailed,
 }
 
 impl std::fmt::Display for RoutePaintError {
@@ -110,6 +135,8 @@ impl std::fmt::Display for RoutePaintError {
             Self::InvalidGeometry => "invalid canonical route geometry",
             Self::NoClearDetour => "no clear path between fixed route points",
             Self::DetourBudgetExceeded => "canonical route detour budget exceeded",
+            Self::ClearanceAllocationFailed => "could not allocate the route clearance index",
+            Self::ShaftAllocationFailed => "could not allocate the painted route segments",
         })
     }
 }
@@ -262,6 +289,7 @@ fn steps(
     style: RouteStyle,
     route: &[RoutePoint],
     markers: (Option<Marker>, Option<Marker>),
+    clearance: Option<EdgeClearance<'_>>,
 ) {
     out.clear();
     out.reserve(route.len());
@@ -277,21 +305,145 @@ fn steps(
                     None
                 },
             );
-            let (p, q) = match b.axis {
-                Axis::Vertical => {
-                    let y = step_level(style, a.y, b.y, ends);
-                    (RoutePoint { y, ..a }, RoutePoint { y, ..b })
+            for candidate in std::iter::once(style).chain(
+                [
+                    RouteStyle::Step,
+                    RouteStyle::StepBefore,
+                    RouteStyle::StepAfter,
+                ]
+                .into_iter()
+                .filter(|candidate| *candidate != style),
+            ) {
+                let (p, q) = match b.axis {
+                    Axis::Vertical => {
+                        let y = step_level(candidate, a.y, b.y, ends);
+                        (RoutePoint { y, ..a }, RoutePoint { y, ..b })
+                    }
+                    Axis::Horizontal => {
+                        let x = step_level(candidate, a.x, b.x, ends);
+                        (RoutePoint { x, ..a }, RoutePoint { x, ..b })
+                    }
+                };
+                if clearance.is_none_or(|guard| {
+                    [a, p, q, b]
+                        .windows(2)
+                        .all(|leg| !guard.blocks_line(position(leg[0]), position(leg[1])))
+                }) {
+                    push_knot(out, p);
+                    push_knot(out, q);
+                    break;
                 }
-                Axis::Horizontal => {
-                    let x = step_level(style, a.x, b.x, ends);
-                    (RoutePoint { x, ..a }, RoutePoint { x, ..b })
-                }
-            };
-            push_knot(out, p);
-            push_knot(out, q);
+            }
+            // An offset leg without a clear crossbar reaches the bounded rectilinear detour.
         }
         push_knot(out, b);
     }
+}
+
+/// Reduce multiple same-direction offsets between fixed borders to one clear turn near the caption.
+fn caption_crossbar(
+    route: &[RoutePoint],
+    style: RouteStyle,
+    guard: EdgeClearance<'_>,
+) -> Option<[RoutePoint; 4]> {
+    let &[first, second, .., penultimate, last] = route else {
+        return None;
+    };
+    let label = guard.label_bounds?;
+    if !label.is_finite() || label.width() <= 0.0 || label.height() <= 0.0 {
+        return None;
+    }
+    let vertical = (first.x - second.x).abs() <= ALIGN_EPS;
+    let axes = |p: Point| if vertical { (p.y, p.x) } else { (p.x, p.y) };
+    let (start_run, start_lane) = axes(position(first));
+    let (end_run, end_lane) = axes(position(last));
+    let (run, lane) = axes(label.center());
+    let inside = |from: f64, value: f64, to: f64| from.min(to) < value && value < from.max(to);
+    let caption_half_span = if vertical {
+        label.width()
+    } else {
+        label.height()
+    } / 2.0;
+    let gap = LEAD + guard.stroke_outset();
+    let attaches = |shaft_lane: f64| (shaft_lane - lane).abs() + gap < caption_half_span;
+    if !inside(start_run, run, end_run)
+        || start_lane == end_lane
+        || !(attaches(start_lane) || attaches(end_lane))
+        || (axes(position(second)).1 - start_lane).abs() > ALIGN_EPS
+        || (axes(position(penultimate)).1 - end_lane).abs() > ALIGN_EPS
+    {
+        return None;
+    }
+    let mut changes = 0;
+    let mut first_turn = None;
+    let mut last_turn = start_run;
+    let mut lateral_reversal = 0.0;
+    for pair in route.windows(2) {
+        let (a, b) = (axes(position(pair[0])), axes(position(pair[1])));
+        if (b.0 - a.0) * (end_run - start_run).signum() < -ALIGN_EPS {
+            return None;
+        }
+        if (b.1 - a.1).abs() > ALIGN_EPS {
+            changes += 1;
+            first_turn.get_or_insert(a.0);
+            last_turn = b.0;
+            lateral_reversal += ((a.1 - b.1) * (end_lane - start_lane).signum()).max(0.0);
+        }
+    }
+    let first_turn = first_turn?;
+    if changes < 2 || lateral_reversal > STEP_INSET || !inside(first_turn, run, last_turn) {
+        return None;
+    }
+    let axis = if vertical {
+        Axis::Horizontal
+    } else {
+        Axis::Vertical
+    };
+    let (lo, hi) = if vertical {
+        (label.y0, label.y1)
+    } else {
+        (label.x0, label.x1)
+    };
+    // Keep a visible lead between the label backplate and the bend. The parallel arm may
+    // still meet the caption so its backplate interrupts the shaft across its short axis.
+    let levels = if (end_run > start_run) == (style == RouteStyle::StepBefore) {
+        [lo - gap, hi + gap]
+    } else {
+        [hi + gap, lo - gap]
+    };
+    levels.into_iter().find_map(|level| {
+        if !inside(first_turn, level, last_turn) {
+            return None;
+        }
+        let lane_at_caption = if inside(start_run, run, level) {
+            start_lane
+        } else {
+            end_lane
+        };
+        if !attaches(lane_at_caption) {
+            return None;
+        }
+        let on_plane = |p: RoutePoint| {
+            if vertical {
+                RoutePoint {
+                    y: level,
+                    axis,
+                    ..p
+                }
+            } else {
+                RoutePoint {
+                    x: level,
+                    axis,
+                    ..p
+                }
+            }
+        };
+        let candidate = [first, on_plane(first), on_plane(last), last];
+        candidate
+            .windows(2)
+            .all(|pair| !guard.blocks_line(position(pair[0]), position(pair[1])))
+            .then_some(candidate)
+    })
 }
 
 fn sweep_curve(from: Point, end: RoutePoint, contour_departure: bool, scale: f64) -> CubicBez {
@@ -357,7 +509,8 @@ impl<E> RouteOutput<'_, E> {
                         end,
                     } => write!(
                         d,
-                        "A{radius},{radius} 0 0,{} {},{}",
+                        "A{0},{0} 0 0,{1} {2},{3}",
+                        number(radius),
                         u8::from(clockwise),
                         end.x,
                         end.y
@@ -379,7 +532,13 @@ struct Pen<'a, E> {
     compact_lines: bool,
     line_start: Option<Point>,
     length: Option<f64>,
+    segments: Option<&'a mut Vec<PathSeg>>,
+    shaft_allocation_failed: bool,
     detour_budget: clearance::DetourBudget,
+}
+
+fn svg_point(point: Point) -> Point {
+    Point::new(canonicalize_number(point.x), canonicalize_number(point.y))
 }
 
 impl<'a, E> Pen<'a, E> {
@@ -388,21 +547,29 @@ impl<'a, E> Pen<'a, E> {
         compact_lines: bool,
         measure_length: bool,
         output: RouteOutput<'a, E>,
+        segments: Option<&'a mut Vec<PathSeg>>,
     ) -> Self {
+        let bounds_start = if matches!(&output, RouteOutput::Commands(_)) {
+            svg_point(p)
+        } else {
+            p
+        };
         Self {
             output,
             started: false,
             bounds: Bounds {
-                min_x: p.x,
-                min_y: p.y,
-                max_x: p.x,
-                max_y: p.y,
+                min_x: bounds_start.x,
+                min_y: bounds_start.y,
+                max_x: bounds_start.x,
+                max_y: bounds_start.y,
             },
             at: p,
             finite: p.is_finite(),
             compact_lines,
             line_start: None,
             length: measure_length.then_some(0.0),
+            segments,
+            shaft_allocation_failed: false,
             detour_budget: clearance::DetourBudget::default(),
         }
     }
@@ -410,7 +577,8 @@ impl<'a, E> Pen<'a, E> {
     fn start_path(&mut self, points: usize, style: RouteStyle) -> Result<(), RouteCommandError<E>> {
         if !self.started {
             self.output.reserve_start(points, style);
-            self.output.write_command(RouteCommand::MoveTo(self.at))?;
+            self.output
+                .write_command(RouteCommand::MoveTo(svg_point(self.at)))?;
             self.started = true;
         }
         Ok(())
@@ -434,7 +602,12 @@ impl<'a, E> Pen<'a, E> {
                 }
             }
             self.line_start.get_or_insert(self.at);
-            self.include(p);
+            // The parity root still uses layout bounds. Typed scenes use the emitted shaft.
+            if matches!(&self.output, RouteOutput::Svg(_)) {
+                self.include(p);
+            } else {
+                self.finite &= p.is_finite();
+            }
             self.at = p;
             if !self.compact_lines {
                 self.flush_line()?;
@@ -445,12 +618,32 @@ impl<'a, E> Pen<'a, E> {
 
     fn flush_line(&mut self) -> Result<(), RouteCommandError<E>> {
         if let Some(start) = self.line_start.take() {
-            self.output.write_command(RouteCommand::LineTo(self.at))?;
+            let (start, end) = (svg_point(start), svg_point(self.at));
+            if start == end {
+                return Ok(());
+            }
+            self.output.write_command(RouteCommand::LineTo(end))?;
+            self.record_segment(PathSeg::Line(Line::new(start, end)));
+            if matches!(&self.output, RouteOutput::Commands(_)) {
+                self.include(end);
+            }
             if let Some(length) = &mut self.length {
-                *length += (self.at - start).hypot();
+                *length += (end - start).hypot();
             }
         }
         Ok(())
+    }
+
+    fn record_segment(&mut self, segment: PathSeg) {
+        if let Some(segments) = &mut self.segments
+            && !self.shaft_allocation_failed
+        {
+            if segments.try_reserve(1).is_ok() {
+                segments.push(segment);
+            } else {
+                self.shaft_allocation_failed = true;
+            }
+        }
     }
 
     fn cubic(&mut self, a: Point, b: Point, end: Point) -> Result<(), RouteCommandError<E>> {
@@ -459,12 +652,14 @@ impl<'a, E> Pen<'a, E> {
             return Ok(());
         }
         self.flush_line()?;
+        let [from, a, b, emitted_end] = [self.at, a, b, end].map(svg_point);
         self.output.write_command(RouteCommand::CubicTo {
             control1: a,
             control2: b,
-            end,
+            end: emitted_end,
         })?;
-        let curve = CubicBez::new(self.at, a, b, end);
+        let curve = CubicBez::new(from, a, b, emitted_end);
+        self.record_segment(PathSeg::Cubic(curve));
         if let Some(length) = &mut self.length {
             *length += curve.arclen(SVG_LENGTH_ACCURACY);
         }
@@ -494,10 +689,7 @@ impl<'a, E> Pen<'a, E> {
                     guard.blocks_cubic(curve(scale))
                 }
             }) else {
-                for point in guard.detour(self.at, target, &mut self.detour_budget)? {
-                    self.line(point)?;
-                }
-                return Ok(());
+                return self.detour_to(target, guard, false);
             };
             if scale == 0.0 {
                 return self.line(target);
@@ -509,6 +701,18 @@ impl<'a, E> Pen<'a, E> {
         self.cubic(sweep.p1, sweep.p2, sweep.p3)
     }
 
+    fn detour_to(
+        &mut self,
+        target: Point,
+        clearance: EdgeClearance<'_>,
+        orthogonal: bool,
+    ) -> Result<(), RouteCommandError<E>> {
+        for point in clearance.detour(self.at, target, orthogonal, &mut self.detour_budget)? {
+            self.line(point)?;
+        }
+        Ok(())
+    }
+
     fn quarter_arc(
         &mut self,
         radius: f64,
@@ -518,19 +722,52 @@ impl<'a, E> Pen<'a, E> {
         self.flush_line()?;
         // The SVG arc parser measures a cubic approximation of its rounded parameters.
         self.length = None;
+        let emitted_end = svg_point(end);
+        let radius = canonicalize_number(radius);
         self.output.write_command(RouteCommand::QuarterArcTo {
             radius,
             clockwise,
-            end,
+            end: emitted_end,
         })?;
+        if self.segments.is_some() {
+            let mut from = svg_point(self.at);
+            let svg_arc = SvgArc {
+                from,
+                to: emitted_end,
+                radii: Vec2::splat(radius),
+                x_rotation: 0.0,
+                large_arc: false,
+                sweep: clockwise,
+            };
+            if let Some(arc) = Arc::from_svg_arc(&svg_arc) {
+                // Use the same cubic conversion as kurbo's SVG path reader.
+                arc.to_cubic_beziers(0.1, |a, b, to| {
+                    self.record_segment(PathSeg::Cubic(CubicBez::new(from, a, b, to)));
+                    from = to;
+                });
+            } else {
+                self.record_segment(PathSeg::Line(Line::new(from, emitted_end)));
+            }
+        }
         // Each coordinate is monotone on an axis-aligned quarter circle.
-        self.include(end);
+        self.finite &= end.is_finite();
+        self.include(if matches!(&self.output, RouteOutput::Commands(_)) {
+            emitted_end
+        } else {
+            end
+        });
         self.at = end;
         Ok(())
     }
 
-    fn finish(self) -> Option<Bounds> {
-        self.finite.then_some(self.bounds)
+    fn finish(self) -> Result<Bounds, RoutePaintError> {
+        if self.shaft_allocation_failed {
+            return Err(RoutePaintError::ShaftAllocationFailed);
+        }
+        if !self.finite {
+            return Err(RoutePaintError::InvalidGeometry);
+        }
+        Ok(self.bounds)
     }
 }
 
@@ -577,6 +814,24 @@ fn draw_body<E>(
     terminals: (Option<&Terminal>, Option<&Terminal>),
     clearance: Option<EdgeClearance<'_>>,
 ) -> Result<(), RouteCommandError<E>> {
+    if let Some(guard) = clearance
+        && (style.stepped() || style == RouteStyle::Linear)
+    {
+        for (i, &knot) in body.iter().enumerate().skip(1) {
+            let p = position(knot);
+            if (style.stepped() && !aligned(pen.at, p)) || guard.blocks_line(pen.at, p) {
+                // A bend from the placement style can lie inside an obstacle after switching
+                // styles. The section ends capture the fixed terminals and border contacts.
+                if i + 1 < body.len() && guard.blocks_line(p, p) {
+                    continue;
+                }
+                pen.detour_to(p, guard, style.stepped())?;
+            } else {
+                pen.line(p)?;
+            }
+        }
+        return Ok(());
+    }
     for i in 1..body.len() {
         let p = position(body[i]);
         if matches!(style, RouteStyle::Curved | RouteStyle::Rounded(_)) && right_angle(body, i) {
@@ -732,6 +987,35 @@ pub fn marker_lead(port: RoutePoint, side: Side, marker: Marker) -> (LayoutPoint
     (point(terminal.shaft_end()), point(terminal.lead_end()))
 }
 
+/// Marker ink envelope at a canonical contour contact, before the edge's stroke outset.
+pub fn marker_bounds(port: RoutePoint, side: Side, marker: Marker) -> Option<kurbo::Rect> {
+    if marker.depth == 0.0 || marker.width == 0.0 {
+        return None;
+    }
+    let start = position(port);
+    let outward = outward(side);
+    let end = start + outward * (marker.trim + marker.depth);
+    let width = marker.width / 2.0;
+    Some(
+        kurbo::Rect::from_points(start, end)
+            .inflate(outward.y.abs() * width, outward.x.abs() * width),
+    )
+}
+
+pub fn marker_obstacle(
+    edge: usize,
+    endpoint: crate::route_types::Endpoint,
+    port: RoutePoint,
+    side: Side,
+    marker: Marker,
+) -> Option<(kurbo::Rect, ObstacleOwner)> {
+    let rect = marker_bounds(port, side, marker)?;
+    Some((
+        rect,
+        ObstacleOwner::Marker(edge, TerminalContact::new(endpoint, port)),
+    ))
+}
+
 /// Temporary route points reusable across the edges of one SVG operation.
 #[derive(Default)]
 pub struct RoutePaintScratch {
@@ -739,6 +1023,8 @@ pub struct RoutePaintScratch {
     body: Vec<RoutePoint>,
     measure_length: bool,
     measured_length: Option<f64>,
+    record_segments: bool,
+    segments: Vec<PathSeg>,
 }
 
 /// Per-operation buffers shared by a canonical route adapter and its SVG writer.
@@ -759,6 +1045,16 @@ impl RoutePaintScratch {
     /// Returns the requested centerline length of the last successful paint, when measured.
     pub fn measured_length(&self) -> Option<f64> {
         self.measured_length
+    }
+
+    /// Retains the shaft segments of the next route alongside its SVG path.
+    pub fn record_segments(&mut self) {
+        self.record_segments = true;
+    }
+
+    /// The last painted shaft, in the same coordinate space as its path data.
+    pub fn segments(&self) -> &[PathSeg] {
+        &self.segments
     }
 }
 
@@ -850,10 +1146,10 @@ impl RoutePaintRequest<'_> {
         self.paint(scratch, RouteOutput::Commands(&mut write))
     }
 
-    fn paint<E>(
+    fn paint<'a, E>(
         self,
-        scratch: &mut RoutePaintScratch,
-        output: RouteOutput<'_, E>,
+        scratch: &'a mut RoutePaintScratch,
+        output: RouteOutput<'a, E>,
     ) -> Result<Bounds, RouteCommandError<E>> {
         let Self {
             points,
@@ -866,6 +1162,8 @@ impl RoutePaintRequest<'_> {
         } = self;
         let measure_length = std::mem::take(&mut scratch.measure_length);
         scratch.measured_length = None;
+        scratch.segments.clear();
+        let record_segments = std::mem::take(&mut scratch.record_segments);
         if points.len() < 2
             || [markers.0, markers.1].iter().any(|m| {
                 !m.trim.is_finite() || m.trim < 0.0 || !m.depth.is_finite() || m.depth < 0.0
@@ -894,8 +1192,9 @@ impl RoutePaintRequest<'_> {
             smooth,
             measure_length && !matches!(style, RouteStyle::Rounded(_)),
             output,
+            record_segments.then_some(&mut scratch.segments),
         );
-        let RoutePaintScratch { knots, body, .. } = scratch;
+        let (knots, body) = (&mut scratch.knots, &mut scratch.body);
         let mut begin = 0;
         for finish in stitches
             .iter()
@@ -923,7 +1222,7 @@ impl RoutePaintRequest<'_> {
             begin = finish;
         }
         let length = pen.length.filter(|length| length.is_finite());
-        let bounds = pen.finish().ok_or(RoutePaintError::InvalidGeometry)?;
+        let bounds = pen.finish()?;
         scratch.measured_length = length;
         Ok(bounds)
     }
@@ -952,6 +1251,14 @@ fn draw_section<E>(
             .ok_or(RoutePaintError::InvalidGeometry.into());
     }
     if style.stepped() {
+        if style != RouteStyle::Step
+            && terminals.0.is_none()
+            && terminals.1.is_none()
+            && let Some(path) = clearance.and_then(|guard| caption_crossbar(route, style, guard))
+        {
+            route.clear();
+            route.extend(path);
+        }
         let markers = (
             terminals.0.map(|end| end.marker),
             terminals.1.map(|end| end.marker),
@@ -965,7 +1272,7 @@ fn draw_section<E>(
             );
         }
         if has_offset_leg(route) {
-            steps(body, style, route, markers);
+            steps(body, style, route, markers, clearance);
             std::mem::swap(route, body);
         }
     }
@@ -981,7 +1288,11 @@ fn draw_section<E>(
         if gap < 0.0 {
             return Err(RoutePaintError::InvalidGeometry.into());
         }
-        if aligned(start.tip, end.tip) && (end.tip - start.tip).dot(start.normal) > 0.0 {
+        if aligned(start.tip, end.tip)
+            && (end.tip - start.tip).dot(start.normal) > 0.0
+            && (!(style.stepped() || style == RouteStyle::Linear)
+                || clearance.is_none_or(|guard| !guard.blocks_line(pen.at, end.shaft_end())))
+        {
             // Opposed markers can share this one straight segment up to its full length.
             if gap < start.lead().max(end.lead()) {
                 return Err(RoutePaintError::InvalidGeometry.into());
@@ -1017,7 +1328,7 @@ fn draw_section<E>(
     // With different endpoint sides, inserting a normal shaft can create an offset leg even
     // on a previously orthogonal route. Step renderers must still emit only axis-aligned legs.
     if style.stepped() && has_offset_leg(body) {
-        steps(route, style, body, (None, None));
+        steps(route, style, body, (None, None), clearance);
         std::mem::swap(route, body);
     }
     pen.start_path(body.len(), style)?;
@@ -1034,6 +1345,57 @@ mod tests {
     use super::*;
     use crate::route_types::Endpoint;
     use kurbo::{BezPath, ParamCurve, ParamCurveArclen, PathEl, PathSeg};
+
+    #[test]
+    fn serialized_lines_skip_knots_that_round_to_the_same_point() {
+        let mut svg = String::new();
+        let mut segments = Vec::new();
+        let mut pen = Pen::new(
+            Point::ORIGIN,
+            false,
+            true,
+            RouteOutput::<Infallible>::Svg(&mut svg),
+            Some(&mut segments),
+        );
+        pen.start_path(4, RouteStyle::Step).unwrap();
+        pen.line(Point::new(3.0, 0.0)).unwrap();
+        pen.line(Point::new(3.0, 0.000_000_5)).unwrap();
+        pen.line(Point::new(3.0, 4.0)).unwrap();
+        assert_eq!(pen.length, Some(7.0));
+        pen.finish().unwrap();
+        assert_eq!(svg, "M0,0L3,0L3,4");
+        assert_eq!(segments.len(), 2);
+    }
+
+    #[test]
+    fn typed_shaft_bounds_include_the_emitted_line_endpoint() {
+        let points = [h(0.0, 0.0), h(15.999_999_5, 0.0)];
+        let request = || RoutePaintRequest {
+            points: &points,
+            sides: (Side::Right, Side::Left),
+            style: RouteStyle::Linear,
+            markers: (Marker::default(), Marker::default()),
+            curve_terminals: CurveTerminals::Fixed,
+            stitches: &[],
+            clearance: None,
+        };
+        let mut scratch = RoutePaintScratch::default();
+        scratch.record_segments();
+        let mut commands = Vec::new();
+        let bounds = request()
+            .paint_commands(&mut scratch, |command| {
+                commands.push(command);
+                Ok::<_, Infallible>(())
+            })
+            .unwrap();
+        let end = Point::new(16.0, 0.0);
+        assert_eq!(commands.last(), Some(&RouteCommand::LineTo(end)));
+        assert_eq!(scratch.segments().last().unwrap().end(), end);
+        assert_eq!(bounds.max_x, end.x);
+        let svg = request().paint_svg(&mut scratch).unwrap();
+        assert_eq!(svg.d, "M0,0L16,0");
+        assert_eq!(svg.bounds.max_x, points[1].x);
+    }
 
     fn v(x: f64, y: f64) -> RoutePoint {
         RoutePoint::new(x, y, Axis::Vertical)
@@ -1241,7 +1603,7 @@ mod tests {
         let delta = Vec2::new(732., -127.);
         let markers = (Marker::default(), Marker::default());
         let endpoints = (Endpoint::Node(3), Endpoint::Node(7));
-        let tree = Clearance::new(vec![(obstacle + delta, ObstacleOwner::EdgeLabel(1))]);
+        let tree = Clearance::new(vec![(obstacle + delta, ObstacleOwner::EdgeLabel(1))]).unwrap();
         for style in [RouteStyle::Curved, RouteStyle::Rounded(40.)] {
             let paint = |guard| {
                 build_svg_path(
@@ -1320,7 +1682,7 @@ mod tests {
                 true,
             ),
         ] {
-            let tree = Clearance::new(vec![(obstacle, owner)]);
+            let tree = Clearance::new(vec![(obstacle, owner)]).unwrap();
             let result = paint(&points, Some(tree.for_edge(1, endpoints, Vec2::ZERO, 0.)));
             assert_eq!(samples_inside(&result, obstacle), !protected);
             assert_eq!(result.d == original.d, !protected);
@@ -1349,7 +1711,8 @@ mod tests {
                 .into_iter()
                 .map(|rect| (rect, ObstacleOwner::EdgeLabel(1)))
                 .collect(),
-        );
+        )
+        .unwrap();
         let markers = (marker(3., 8.), marker(2., 9.));
         let path = build_svg_path(
             &points,
@@ -1390,7 +1753,8 @@ mod tests {
         let tree = Clearance::new(vec![(
             kurbo::Rect::new(18., -2., 22., 2.),
             ObstacleOwner::GroupTitle(0),
-        )]);
+        )])
+        .unwrap();
         let result = build_svg_path(
             &points,
             (Side::Right, Side::Left),
@@ -1401,6 +1765,74 @@ mod tests {
             Some(tree.for_edge(0, (Endpoint::Node(0), Endpoint::Node(1)), Vec2::ZERO, 1.)),
         );
         assert!(matches!(result, Err(RoutePaintError::NoClearDetour)));
+    }
+
+    #[test]
+    fn coincident_marker_contacts_preserve_the_shaft_and_other_obstacles() {
+        let points = [h(0., 0.), h(12., 0.), h(120., 30.), h(140., 30.)];
+        let offset = Vec2::new(1024., -256.);
+        let layout_contact = |p: RoutePoint| RoutePoint {
+            x: p.x + offset.x,
+            y: p.y + offset.y,
+            ..p
+        };
+        let contacts = (layout_contact(points[0]), layout_contact(points[3]));
+        let endpoints = (Endpoint::Node(4), Endpoint::Group(1));
+        let marker = Marker {
+            trim: 2.,
+            depth: 10.,
+            width: 16.,
+        };
+        let bound = |port, side| marker_bounds(port, side, marker).unwrap();
+        let port = contacts.0;
+        let marker_for =
+            |endpoint, contact| ObstacleOwner::Marker(1, TerminalContact::new(endpoint, contact));
+        let adjacent = RoutePoint {
+            y: port.y + 1.,
+            ..port
+        };
+        let co_terminal = Clearance::new(vec![
+            (bound(port, Side::Right), marker_for(endpoints.0, port)),
+            (
+                bound(port, Side::Top),
+                marker_for(endpoints.0, v(port.x, port.y)),
+            ),
+        ])
+        .unwrap();
+        for style in [RouteStyle::Curved, RouteStyle::Step] {
+            let paint = |clearance: Option<&Clearance>| {
+                build_svg_path(
+                    &points,
+                    (Side::Right, Side::Left),
+                    style,
+                    (Marker::default(), Marker::default()),
+                    CurveTerminals::Smooth,
+                    &[],
+                    clearance.map(|tree| {
+                        tree.for_edge(0, endpoints, offset, 1.)
+                            .with_terminal_contacts(contacts)
+                    }),
+                )
+            };
+            for (rect, owner) in [
+                (
+                    bound(adjacent, Side::Right),
+                    marker_for(endpoints.0, adjacent),
+                ),
+                (
+                    bound(port, Side::Right),
+                    marker_for(Endpoint::Node(5), port),
+                ),
+                (bound(port, Side::Right), ObstacleOwner::GroupTitle(1)),
+            ] {
+                let tree = Clearance::new(vec![(rect, owner)]).unwrap();
+                assert!(
+                    matches!(paint(Some(&tree)), Err(RoutePaintError::NoClearDetour)),
+                    "{style:?} through {owner:?}"
+                );
+            }
+            assert_eq!(paint(Some(&co_terminal)).unwrap().d, paint(None).unwrap().d);
+        }
     }
 
     #[test]
@@ -1592,6 +2024,79 @@ mod tests {
     }
 
     #[test]
+    fn a_captioned_step_between_borders_uses_one_clear_crossbar() {
+        use kurbo::Rect;
+
+        let points = [
+            v(0., 0.),
+            v(0., 10.),
+            h(20., 10.),
+            v(20., 45.),
+            v(36., 75.),
+            v(36., 90.),
+        ];
+        let unblocked = Clearance::default();
+        let neighboring_label = (Rect::new(4., 39., 12., 45.), ObstacleOwner::EdgeLabel(1));
+        let one_side_blocked = Clearance::new(vec![neighboring_label]).unwrap();
+        let both_sides_blocked = Clearance::new(vec![
+            neighboring_label,
+            (Rect::new(4., 19., 12., 25.), ObstacleOwner::GroupTitle(4)),
+        ])
+        .unwrap();
+        fn guard(clearance: &Clearance) -> EdgeClearance<'_> {
+            clearance
+                .for_edge(0, (Endpoint::Node(0), Endpoint::Node(1)), Vec2::ZERO, 0.)
+                .with_label_bounds(Some(Rect::new(-12., 28., 48., 36.)))
+        }
+        let mut svg = String::new();
+        let mut pen = Pen::new(
+            position(points[0]),
+            true,
+            false,
+            RouteOutput::<Infallible>::Svg(&mut svg),
+            None,
+        );
+        draw_section(
+            &mut pen,
+            &points,
+            (None, None),
+            RouteStyle::StepAfter,
+            &mut Vec::new(),
+            &mut Vec::new(),
+            Some(guard(&unblocked)),
+        )
+        .unwrap();
+        pen.flush_line().unwrap();
+        pen.finish().unwrap();
+        assert_eq!(svg, "M0,0L0,42L36,42L36,90");
+        let fallback =
+            caption_crossbar(&points, RouteStyle::StepAfter, guard(&one_side_blocked)).unwrap();
+        assert_eq!((fallback[1].y, fallback[2].y), (22.0, 22.0));
+        assert!(
+            caption_crossbar(&points, RouteStyle::StepBefore, guard(&both_sides_blocked)).is_none()
+        );
+        let target_lane_only =
+            guard(&unblocked).with_label_bounds(Some(Rect::new(29., 28., 43., 36.)));
+        let attached = caption_crossbar(&points, RouteStyle::StepAfter, target_lane_only).unwrap();
+        assert_eq!((attached[1].y, attached[2].y), (22.0, 22.0));
+
+        for label in [
+            Rect::new(f64::NAN, 28., 43., 36.),
+            Rect::new(16., 28., 24., 36.),
+            Rect::new(22., 28., 37., 36.),
+        ] {
+            assert!(
+                caption_crossbar(
+                    &points,
+                    RouteStyle::StepAfter,
+                    guard(&unblocked).with_label_bounds(Some(label)),
+                )
+                .is_none()
+            );
+        }
+    }
+
+    #[test]
     fn steps_move_only_the_internal_crossbar_and_keep_u_turns_outside() {
         let m = marker(4.0, 10.0);
         let paint = |p: &[RoutePoint], sides, style| {
@@ -1626,7 +2131,8 @@ mod tests {
         let obstacle = Clearance::new(vec![(
             kurbo::Rect::new(-10.0, 55.0, 10.0, 75.0),
             ObstacleOwner::Node(99),
-        )]);
+        )])
+        .unwrap();
         let blocked = build_svg_path(
             &z,
             sides,
@@ -1674,6 +2180,48 @@ mod tests {
             "StepAfter must preserve stitched compound corridor crossbars: {}",
             stitched.d
         );
+    }
+
+    #[test]
+    fn straight_route_styles_detour_around_blocked_offset_legs() {
+        let points = [v(0.0, 0.0), v(100.0, 100.0)];
+        let tree = Clearance::new(vec![(
+            kurbo::Rect::new(45.0, 12.0, 55.0, 88.0),
+            ObstacleOwner::GroupTitle(0),
+        )])
+        .unwrap();
+        let guard = tree.for_edge(0, (Endpoint::Node(0), Endpoint::Node(1)), Vec2::ZERO, 1.0);
+        for style in [
+            RouteStyle::Step,
+            RouteStyle::StepBefore,
+            RouteStyle::StepAfter,
+            RouteStyle::Linear,
+        ] {
+            let route = build_svg_path(
+                &points,
+                (Side::Bottom, Side::Top),
+                style,
+                (marker(4.0, 10.0), marker(4.0, 10.0)),
+                CurveTerminals::Fixed,
+                &[],
+                Some(guard),
+            )
+            .unwrap();
+            let segments = segments(&route);
+            assert!(
+                segments.iter().all(|segment| {
+                    matches!(segment, PathSeg::Line(_))
+                        && (!style.stepped() || aligned(segment.start(), segment.end()))
+                        && !guard.blocks_line(segment.start(), segment.end())
+                }),
+                "{style:?}: {}",
+                route.d
+            );
+            assert_eq!(segments[0].start(), Point::new(0.0, 4.0));
+            assert_eq!(segments[0].end(), Point::new(0.0, 14.0));
+            assert_eq!(segments.last().unwrap().start(), Point::new(100.0, 86.0));
+            assert_eq!(segments.last().unwrap().end(), Point::new(100.0, 96.0));
+        }
     }
 
     #[test]
@@ -1871,6 +2419,41 @@ mod tests {
     }
 
     #[test]
+    fn recorded_segments_match_the_serialized_shaft() {
+        let route = [h(0., 0.), h(48., 0.), v(48., 64.), h(100., 64.)];
+        let mut scratch = RoutePaintScratch::default();
+        for style in [
+            RouteStyle::Linear,
+            RouteStyle::Curved,
+            RouteStyle::Rounded(5.0),
+            RouteStyle::StepAfter,
+        ] {
+            scratch.record_segments();
+            let painted = build_svg_path_with_scratch(
+                &route,
+                (Side::Right, Side::Left),
+                style,
+                (marker(3., 12.), marker(3., 12.)),
+                CurveTerminals::Fixed,
+                &[],
+                None,
+                &mut scratch,
+            )
+            .unwrap();
+            let parsed = segments(&painted);
+            assert_eq!(parsed.len(), scratch.segments().len(), "{style:?}");
+            for (expected, actual) in parsed.iter().zip(scratch.segments()) {
+                for t in [0., 0.25, 0.5, 0.75, 1.] {
+                    assert!(
+                        (expected.eval(t) - actual.eval(t)).hypot() < 1e-9,
+                        "{style:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn every_curve_passes_through_the_shared_group_port_in_one_subpath() {
         let route = [
             h(0., 0.),
@@ -1924,6 +2507,7 @@ mod tests {
             false,
             false,
             RouteOutput::Commands(&mut write),
+            None,
         );
         p.start_path(2, RouteStyle::Curved).unwrap();
         p.cubic(

@@ -16,9 +16,15 @@ use std::sync::{Arc, Mutex};
 pub(crate) struct Constraints<'a> {
     pub(crate) flow_relative_nodes: &'a [(usize, Axis)],
     pub(crate) split_incoming_ports: &'a [usize],
+    pub(crate) edge_ports: &'a [(
+        merman_layout_shoal::PortSideHint,
+        merman_layout_shoal::PortSideHint,
+    )],
     pub(crate) lane_order: &'a [u32],
+    pub(crate) lane_boundaries: &'a [u32],
     pub(crate) capture_ranks: bool,
     pub(crate) allow_turn: bool,
+    pub(crate) flush_top_left_titles: bool,
 }
 
 /// IDs are supplied in measured node and group order so persisted hints survive reindexing.
@@ -32,8 +38,11 @@ pub(crate) fn solve<'id>(
 ) -> Result<(SolvedGraph, GraphPlacement)> {
     let projected = shoal_bridge::Constraints {
         flow_relative_nodes: constraints.flow_relative_nodes,
+        edge_ports: constraints.edge_ports,
         lane_order: constraints.lane_order,
+        lane_boundaries: constraints.lane_boundaries,
         capture_ranks: constraints.capture_ranks,
+        flush_top_left_titles: constraints.flush_top_left_titles,
         ..Default::default()
     };
     let split = constraints.split_incoming_ports;
@@ -62,10 +71,7 @@ pub(crate) fn solve<'id>(
         WidthPolicy::Natural
     };
     let family = execution.family_id().as_str();
-    let previous = execution
-        .previous_shoal_frame
-        .as_deref()
-        .filter(|frame| frame.family == family && !frame.nodes.is_empty());
+    let previous = previous_frame(execution);
     let capture = execution.capture_shoal_frame;
     if (capture || previous.is_some())
         && (node_ids.len() != graph.nodes.len() || group_ids.len() != graph.groups.len())
@@ -138,6 +144,33 @@ pub(crate) fn solve<'id>(
         },
     };
     Ok((solved, placement))
+}
+
+fn previous_frame<'a>(execution: &'a LayoutExecution<'_>) -> Option<&'a ShoalLayoutFrame> {
+    let family = execution.family_id().as_str();
+    execution
+        .previous_shoal_frame
+        .as_deref()
+        .filter(|frame| frame.family == family && !frame.nodes.is_empty())
+}
+
+#[cfg(any(feature = "diagram-architecture", feature = "diagram-c4"))]
+pub(crate) fn previous_order_hints<'id>(
+    graph: &MeasuredGraph,
+    nodes: impl ExactSizeIterator<Item = &'id str> + Clone,
+    groups: impl ExactSizeIterator<Item = &'id str>,
+    execution: &LayoutExecution<'_>,
+    work: &mut OperationLayoutWorkControl,
+) -> Result<Vec<Option<NodeHint>>> {
+    let Some(previous) = previous_frame(execution) else {
+        return Ok(Vec::new());
+    };
+    if nodes.len() != graph.nodes.len() || groups.len() != graph.groups.len() {
+        return Err(Error::InvalidModel {
+            message: "Shoal frame identities do not match the measured graph".into(),
+        });
+    }
+    hints(graph, nodes, groups, previous, None, work)
 }
 
 fn adaptation(

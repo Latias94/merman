@@ -5,11 +5,14 @@ use crate::graph_layout::{
 };
 use crate::model::{LayoutEdge, LayoutPoint};
 use crate::resources::OperationWorkMeter;
-use crate::svg::parity::canonical_rough::constrained_rough_edge_path;
 use crate::{Error, Result};
 use kurbo::{Rect, Vec2};
-use merman_render_core::svg_bounds::{SvgPathBounds, svg_path_bounds_from_d};
+use merman_render_core::{
+    rough_svg::constrained_rough_edge_path,
+    svg_bounds::{SvgPathBounds, svg_path_bounds_from_d},
+};
 use merman_render_graph::er::er_marker_paint_bounds;
+use merman_theme_contract::v2::EdgeStyle;
 use roughr::core::RoughRandomness;
 
 pub(super) struct PaintedEdge<'points> {
@@ -39,12 +42,9 @@ pub(super) fn paint_edge<'points>(
         |style| style.connector_width,
     ) / 2.0;
     work_meter.charge(edge.points.len())?;
-    use merman_theme_contract::v2::EdgeStyle;
-    let style = match native.map(|style| style.edge_style) {
-        Some(EdgeStyle::Orthogonal) => RouteStyle::Step,
-        Some(EdgeStyle::Straight | EdgeStyle::Sketch) => RouteStyle::Linear,
-        _ => RouteStyle::Curved,
-    };
+    let style = native.map_or(RouteStyle::Curved, |theme| {
+        RouteStyle::from_theme(theme.edge_style)
+    });
     let geometry = routes.paint_with_borrowed_points(
         edge,
         translation,
@@ -54,7 +54,8 @@ pub(super) fn paint_edge<'points>(
         scratch,
     )?;
     let path = geometry.path;
-    let (d, path_bounds) = if look == "handDrawn" {
+    let sketch = native.is_some_and(|theme| theme.edge_style == EdgeStyle::Sketch);
+    let (d, path_bounds) = if sketch || look == "handDrawn" {
         work_meter.charge(path.d.len().max(1))?;
         let d = constrained_rough_edge_path(&path.d, geometry.markers, work_meter, randomness)?;
         let bounds = svg_path_bounds_from_d(&d).ok_or_else(|| Error::InvalidModel {

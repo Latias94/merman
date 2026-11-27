@@ -359,7 +359,6 @@ impl<'plan, 'data> FlowchartGraph<'plan, 'data> {
             }
             out.push_str(r#"<g class="edges edgePaths">"#);
         } else {
-            emission.paint.write_edge_casings(out, edges)?;
             let class = if self.swimlane {
                 "edges edgePaths"
             } else {

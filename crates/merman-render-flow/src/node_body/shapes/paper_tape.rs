@@ -24,18 +24,9 @@ pub(super) fn render_paper_tape(
         let _ = write!(
             out,
             r#"<g class="basic label-container" style="{}">"#,
-            escape_attr(svg.rough_group_style),
+            escape_attr(svg.hand_drawn_group_style()),
         );
-        let _ = write!(
-            out,
-            r#"<path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/>"#,
-            escape_attr(&fill_d),
-            escape_attr(svg.fill_color),
-            escape_attr(&stroke_d),
-            escape_attr(svg.stroke_color),
-            fmt_display(svg.geometry.stroke_width as f64),
-            escape_attr(svg.geometry.stroke_dasharray),
-        );
+        svg.write_hand_drawn_path_pair(out, &path_data, &fill_d, &stroke_d, 4.0);
         out.push_str("</g>");
     } else if svg.geometry.hand_drawn {
         let _ = write!(

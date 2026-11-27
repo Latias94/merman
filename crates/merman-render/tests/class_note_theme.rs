@@ -116,3 +116,46 @@ fn classic_notes_keep_their_paints_and_markup_in_both_label_modes() {
         assert_eq!(text, "Retry on failure");
     }
 }
+
+#[test]
+fn hand_drawn_class_and_note_have_backings_and_a_single_group_opacity() {
+    let mut config = config(false);
+    config["theme"] = json!("dark");
+    config["look"] = json!("handDrawn");
+    config["themeVariables"] = json!({"background": "transparent", "noteTextColor": AUTHORED});
+    let source =
+        format!("{SOURCE}Job : +retry()\nstyle Job fill:#eecc88,fill-opacity:0.6,opacity:0.4\n");
+    let rendered = render(&source, config).unwrap();
+    let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let note = note_label(&doc).parent().unwrap();
+    let job = doc
+        .descendants()
+        .find(|node| {
+            node.attribute("id")
+                .is_some_and(|id| id.contains("classId-Job-"))
+        })
+        .unwrap();
+    let backing = |node: roxmltree::Node<'_, '_>| {
+        let shell = node
+            .children()
+            .find(|node| has_class(*node, "outer-path"))
+            .unwrap();
+        let backing = shell.first_element_child().unwrap();
+        assert!(has_class(backing, "merman-rough-backing"));
+        assert_eq!(backing.attribute("stroke"), Some("none"));
+        backing.attribute("style").unwrap().to_owned()
+    };
+    assert!(backing(job).contains("fill-opacity:0.6"));
+    assert!(backing(note).contains("fill:"));
+    assert_eq!(job.attribute("style"), Some("opacity:0.4"));
+    assert!(job.descendants().skip(1).all(|child| {
+        !child
+            .attribute("style")
+            .is_some_and(|css| css.contains("opacity:0.4"))
+    }));
+    assert!(
+        rendered
+            .svg()
+            .contains(&format!(".noteLabel text{{fill:{AUTHORED};}}"))
+    );
+}

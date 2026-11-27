@@ -41,14 +41,13 @@ pub(super) fn render_tag_rect(
         {
             let _ = write!(
                 out,
-                r##"<g class="basic label-container outer-path" style="{}"><g><path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g><path d="{}" stroke="none" stroke-width="0" fill="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"##,
-                escape_attr(svg.rough_group_style),
-                escape_attr(&rect_fill_d),
-                escape_attr(svg.fill_color),
-                escape_attr(&rect_stroke_d),
-                escape_attr(svg.stroke_color),
-                fmt_display(svg.geometry.stroke_width as f64),
-                escape_attr(svg.geometry.stroke_dasharray),
+                r#"<g class="basic label-container outer-path" style="{}"><g>"#,
+                escape_attr(svg.hand_drawn_group_style()),
+            );
+            svg.write_hand_drawn_path_pair(out, &rect_path, &rect_fill_d, &rect_stroke_d, 4.0);
+            let _ = write!(
+                out,
+                r#"</g><path d="{}" stroke="none" stroke-width="0" fill="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"#,
                 escape_attr(&tag_fill_d),
                 escape_attr(svg.fill_color),
                 escape_attr(&tag_stroke_d),

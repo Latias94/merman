@@ -15,6 +15,7 @@ pub(crate) use merman_render_graph::state::state_canonical_marker;
 #[cfg(feature = "layout-shoal")]
 fn state_canonical_edge_painter<'a>(
     routes: &'a crate::graph_layout::canonical::CanonicalRoutes,
+    edge_style: Option<merman_theme_contract::v2::EdgeStyle>,
     work_meter: &'a crate::resources::OperationWorkMeter,
 ) -> impl for<'points> Fn(
     &crate::model::LayoutEdge,
@@ -32,13 +33,13 @@ fn state_canonical_edge_painter<'a>(
             edge,
             translation,
             stroke_outset,
-            RouteStyle::Curved,
+            edge_style.map_or(RouteStyle::Curved, RouteStyle::from_theme),
             work_meter,
             scratch,
         )?;
         let rough_d = if let Some(randomness) = randomness {
             work_meter.charge(geometry.path.d.len().max(1))?;
-            Some(super::canonical_rough::constrained_rough_edge_path(
+            Some(merman_render_core::rough_svg::constrained_rough_edge_path(
                 &geometry.path.d,
                 geometry.markers,
                 work_meter,
@@ -74,9 +75,13 @@ pub(super) fn render_state_diagram_svg_model(
     options: &SvgExecution<'_>,
 ) -> Result<RootedSvg> {
     #[cfg(feature = "layout-shoal")]
-    let canonical_routes = route_contract
-        .canonical_routes()
-        .map(|routes| state_canonical_edge_painter(routes, options.work_meter()));
+    let canonical_routes = route_contract.canonical_routes().map(|routes| {
+        state_canonical_edge_painter(
+            routes,
+            style_plan.compatibility().native_edge_style(),
+            options.work_meter(),
+        )
+    });
 
     let diagram_id = options.diagram_id_or("merman");
     let context = StateSvgContext {

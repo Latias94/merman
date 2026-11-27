@@ -4,13 +4,14 @@ use super::ArchitectureGroupThemePlan;
 use crate::architecture_metrics::{ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX, extend_bounds};
 use crate::config::config_f64;
 use crate::graph_layout::Marker;
-use crate::graph_layout::canonical::CanonicalRoutes;
+use crate::graph_layout::canonical::{CanonicalRoutes, CaptionClearance};
 use crate::graph_layout::contour::{ShapePortProfile, shoal_contour};
 use crate::graph_layout::ir::{
     Axis, Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, Point,
-    Rect, RoutingStyle, Side, Size, SolvedGroup, TitlePosition,
+    Rect, Side, Size, SolvedGroup, TitlePosition,
 };
 use crate::graph_layout::placement;
+use crate::graph_layout::route_paint::RouteStyle;
 use crate::layout_frame::GraphPlacement;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{
@@ -40,6 +41,7 @@ pub(crate) struct ArchitectureShoalGeometry {
     pub(crate) service_titles: Vec<Option<ArchitectureShoalTitle>>,
     pub(crate) edge_labels: Vec<Option<ArchitectureShoalText>>,
     pub(crate) edge_stroke_outset: f64,
+    pub(crate) route_style: RouteStyle,
     _label_storage: PreparedTextRetainedReservation,
 }
 
@@ -221,16 +223,10 @@ pub(crate) fn layout_architecture_shoal(
     let icon = binding.icon_size_px;
     let arrow = icon / 6.0;
     let marker_style = native.map_or(MarkerStyle::Classic, |style| style.marker_style);
-    let edge_stroke_outset = binding
-        .edge_width
-        .trim()
-        .trim_end_matches("px")
-        .trim()
-        .parse::<f64>()
-        .ok()
-        .filter(|width| width.is_finite() && *width >= 0.0)
-        .unwrap_or(3.0)
-        / 2.0;
+    let route_style = native.map_or(RouteStyle::Step, |style| {
+        RouteStyle::from_theme(style.edge_style())
+    });
+    let edge_stroke_outset = binding.edge_stroke_outset();
     // The deterministic measurer can supply a neutral middle baseline. Leave half an em for
     // differences in the browser's x-height and keep the visible shaft outside that allowance.
     let label_clearance = (style.font_size / 2.0 + edge_stroke_outset).max(TEXT_CLEARANCE);
@@ -471,7 +467,7 @@ pub(crate) fn layout_architecture_shoal(
     }
     let graph = MeasuredGraph {
         direction: Direction::Right,
-        routing: RoutingStyle::Orthogonal,
+        routing: route_style.routing_style(),
         node_spacing,
         rank_spacing,
         component_spacing: node_spacing,
@@ -480,6 +476,10 @@ pub(crate) fn layout_architecture_shoal(
         groups,
         edges,
     };
+    let node_ids = || model.nodes.iter().map(|node| node.id.as_str());
+    let group_ids = || model.groups.iter().map(|group| group.id.as_str());
+    let hints =
+        placement::previous_order_hints(&graph, node_ids(), group_ids(), execution, &mut work)?;
     let input = Placement {
         width: if execution.adaptation == crate::LayoutAdaptation::FitWidth {
             merman_layout_shoal::WidthPolicy::FitWidth {
@@ -492,6 +492,7 @@ pub(crate) fn layout_architecture_shoal(
             merman_layout_shoal::WidthPolicy::Natural
         },
         capture_ranks: execution.capture_shoal_frame,
+        hints: &hints,
         constraints: Constraints {
             edge_ports: &ports,
             ..Default::default()
@@ -513,8 +514,8 @@ pub(crate) fn layout_architecture_shoal(
     let placement = placement::placement_for_solved(
         &graph,
         &solved,
-        model.nodes.iter().map(|node| node.id.as_str()),
-        model.groups.iter().map(|group| group.id.as_str()),
+        node_ids(),
+        group_ids(),
         execution,
         &mut work,
     )?;
@@ -607,11 +608,13 @@ pub(crate) fn layout_architecture_shoal(
                 }
             }
         }
-        extend_bounds(
-            &mut layout.bounds,
-            Bounds::from_points(points.iter().map(|p| (p.x, p.y)))
-                .ok_or_else(|| invalid(format!("Architecture route edge-{i} has no points")))?,
-        );
+        let mut edge_bounds = Bounds::from_points(points.iter().map(|p| (p.x, p.y)))
+            .ok_or_else(|| invalid(format!("Architecture route edge-{i} has no points")))?;
+        edge_bounds.min_x -= edge_stroke_outset;
+        edge_bounds.min_y -= edge_stroke_outset;
+        edge_bounds.max_x += edge_stroke_outset;
+        edge_bounds.max_y += edge_stroke_outset;
+        extend_bounds(&mut layout.bounds, edge_bounds);
         layout.edges.push(LayoutEdge {
             id: format!("edge-{i}"),
             from: edge.lhs_id.clone(),
@@ -644,6 +647,7 @@ pub(crate) fn layout_architecture_shoal(
         &profiles,
         |_| native.map_or(0.0, |style| style.group_radius),
         layout.edges.iter().map(|edge| edge.id.as_str()),
+        CaptionClearance::Avoid,
         &mut work,
     )?;
     routes.placement = placement;
@@ -673,6 +677,7 @@ pub(crate) fn layout_architecture_shoal(
             service_titles: titles,
             edge_labels,
             edge_stroke_outset,
+            route_style,
             _label_storage: work.reserve_prepared_text_retained_bytes(retained)?,
         },
     ))

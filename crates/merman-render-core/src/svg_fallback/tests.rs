@@ -1,4 +1,5 @@
 use super::foreign_object_label_fallback_svg_text as render_fallback;
+use crate::text::styled_html::cascade;
 use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle};
 use roxmltree as xml_dom;
 use std::cell::RefCell;
@@ -672,6 +673,60 @@ fn isolated_fallback_accounts_for_definition_and_instance_bytes() {
 }
 
 #[test]
+fn foreign_object_fallback_requires_a_real_native_branch_in_the_same_switch() {
+    let foreign = concat!(
+        "<foreignObject width='80' height='20'>",
+        "<![CDATA[</foreignObject>]]>",
+        "<div xmlns='http://www.w3.org/1999/xhtml'>HTML label</div>",
+        "</foreignObject >",
+    );
+    let svg = format!(
+        "<svg xmlns='http://www.w3.org/2000/svg'><switch>{foreign}<!-- don't </switch> -->\
+         <switch><text>Native</text></switch ></switch >\
+         <switch>{foreign}<textPath/> <!-- <text>fake</text> --> </switch ></svg>"
+    );
+    let out = foreign_object_label_fallback_svg_text(&svg);
+    let doc = xml_dom::Document::parse(&out).expect("well-formed SVG after fallback");
+    let switches: Vec<_> = doc
+        .root_element()
+        .children()
+        .filter(|node| node.has_tag_name("switch"))
+        .collect();
+    let is_native = |node: xml_dom::Node<'_, '_>| {
+        node.attribute("data-merman-foreignobject-source") == Some("switch-native-fallback")
+    };
+    assert!(switches[0].children().any(is_native), "{out}");
+    assert!(!switches[1].children().any(is_native), "{out}");
+}
+
+#[test]
+fn foreign_object_fallback_places_defs_in_the_qualified_root() {
+    let svg = concat!(
+        r#"<s:svg xmlns:s="http://www.w3.org/2000/svg" xmlns="http://www.w3.org/2000/svg" id="diagram">"#,
+        r#"<svg><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml">Label</div></foreignObject></svg>"#,
+        "</s:svg><!-- literal </svg> -->",
+    );
+    let output = foreign_object_label_fallback_svg_text(svg);
+    let doc = xml_dom::Document::parse(&output).unwrap();
+    let reference = doc
+        .descendants()
+        .find(|node| node.has_tag_name("use"))
+        .and_then(|node| node.attribute("href"))
+        .and_then(|href| href.strip_prefix('#'))
+        .expect("fallback instance has a fragment reference");
+    let defs = doc
+        .root_element()
+        .children()
+        .find(|node| node.has_tag_name("defs"))
+        .unwrap();
+    assert!(
+        defs.children()
+            .any(|node| node.attribute("id") == Some(reference))
+    );
+    assert!(output.ends_with("<!-- literal </svg> -->"));
+}
+
+#[test]
 fn foreign_object_inside_switch_with_native_text_generates_tagged_fallback() {
     let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><switch><foreignObject x="150" y="50" width="550" height="50"><div class="journey-section" xmlns="http://www.w3.org/1999/xhtml" style="display: table; height: 100%; width: 100%;"><div class="label" style="display: table-cell; text-align: center; vertical-align: middle;">Go to work</div></div></foreignObject><text x="425" y="75" fill="#333"><tspan x="425" dy="0">Go to work</tspan></text></switch></svg>"##;
     let out = foreign_object_label_fallback_svg_text(svg);
@@ -1278,7 +1333,7 @@ fn foreign_object_overlay_rejects_malformed_functional_paints() {
 #[test]
 fn foreign_object_overlay_keeps_late_universal_winners() {
     let mut svg = String::from(r#"<svg xmlns="http://www.w3.org/2000/svg"><style>"#);
-    for _ in 0..super::cascade::MAX_UNIVERSAL_POSTINGS {
+    for _ in 0..cascade::MAX_UNIVERSAL_POSTINGS {
         svg.push_str("*{font-size:12px}");
     }
     svg.push_str(
@@ -1299,7 +1354,7 @@ fn foreign_object_overlay_keeps_late_universal_winners() {
 #[test]
 fn foreign_object_overlay_rejects_universal_selector_overflow_in_controlled_path() {
     let mut svg = String::from(r#"<svg xmlns="http://www.w3.org/2000/svg"><style>"#);
-    for _ in 0..=super::cascade::MAX_UNIVERSAL_POSTINGS {
+    for _ in 0..=cascade::MAX_UNIVERSAL_POSTINGS {
         svg.push_str("*{font-size:12px}");
     }
     svg.push_str(
@@ -1309,8 +1364,8 @@ fn foreign_object_overlay_rejects_universal_selector_overflow_in_controlled_path
     let measurer = DeterministicTextMeasurer::default();
     let mut checkpoint = || Ok::<(), &'static str>(());
     let mut selector_limit = |actual, maximum| {
-        assert_eq!(actual, super::cascade::MAX_UNIVERSAL_POSTINGS + 1);
-        assert_eq!(maximum, super::cascade::MAX_UNIVERSAL_POSTINGS);
+        assert_eq!(actual, cascade::MAX_UNIVERSAL_POSTINGS + 1);
+        assert_eq!(maximum, cascade::MAX_UNIVERSAL_POSTINGS);
         Err("selector limit")
     };
     let mut preflight = |_, _| Ok::<(), &'static str>(());
@@ -1329,7 +1384,7 @@ fn foreign_object_overlay_rejects_universal_selector_overflow_in_controlled_path
 #[test]
 fn foreign_object_overlay_bounds_ordinary_selector_postings() {
     let mut svg = String::from(r#"<svg xmlns="http://www.w3.org/2000/svg"><style>"#);
-    for index in 0..super::cascade::MAX_SELECTOR_POSTINGS {
+    for index in 0..cascade::MAX_SELECTOR_POSTINGS {
         if index > 0 {
             svg.push(',');
         }
@@ -1337,7 +1392,7 @@ fn foreign_object_overlay_bounds_ordinary_selector_postings() {
         svg.push_str(&index.to_string());
     }
     svg.push_str(r#"{font-size:12px}.nodeLabel{font-size:19px}</style><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel posting"#);
-    svg.push_str(&(super::cascade::MAX_SELECTOR_POSTINGS - 1).to_string());
+    svg.push_str(&(cascade::MAX_SELECTOR_POSTINGS - 1).to_string());
     svg.push_str(r#"">Alpha</span></div></foreignObject></svg>"#);
 
     let out = foreign_object_label_fallback_svg_text(&svg);
@@ -1353,8 +1408,8 @@ fn foreign_object_overlay_bounds_ordinary_selector_postings() {
     let measurer = DeterministicTextMeasurer::default();
     let mut checkpoint = || Ok::<(), &'static str>(());
     let mut selector_limit = |actual, maximum| {
-        assert_eq!(actual, super::cascade::MAX_SELECTOR_POSTINGS + 1);
-        assert_eq!(maximum, super::cascade::MAX_SELECTOR_POSTINGS);
+        assert_eq!(actual, cascade::MAX_SELECTOR_POSTINGS + 1);
+        assert_eq!(maximum, cascade::MAX_SELECTOR_POSTINGS);
         Err("selector limit")
     };
     let mut preflight = |_, _| Ok::<(), &'static str>(());
@@ -1375,7 +1430,7 @@ fn foreign_object_overlay_rejects_oversized_selector_stylesheet() {
     let mut svg = String::from(r#"<svg xmlns="http://www.w3.org/2000/svg"><style>"#);
     svg.extend(std::iter::repeat_n(
         ' ',
-        super::cascade::MAX_SELECTOR_STYLESHEET_BYTES + 1,
+        cascade::MAX_SELECTOR_STYLESHEET_BYTES + 1,
     ));
     svg.push_str(
             r#"</style><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span>Alpha</span></div></foreignObject></svg>"#,
@@ -1384,8 +1439,8 @@ fn foreign_object_overlay_rejects_oversized_selector_stylesheet() {
     let measurer = DeterministicTextMeasurer::default();
     let mut checkpoint = || Ok::<(), &'static str>(());
     let mut selector_limit = |actual, maximum| {
-        assert_eq!(actual, super::cascade::MAX_SELECTOR_STYLESHEET_BYTES + 1);
-        assert_eq!(maximum, super::cascade::MAX_SELECTOR_STYLESHEET_BYTES);
+        assert_eq!(actual, cascade::MAX_SELECTOR_STYLESHEET_BYTES + 1);
+        assert_eq!(maximum, cascade::MAX_SELECTOR_STYLESHEET_BYTES);
         Err("selector limit")
     };
     let mut preflight = |_, _| Ok::<(), &'static str>(());
@@ -1406,7 +1461,7 @@ fn foreign_object_overlay_discards_a_rule_over_the_declaration_cap() {
     let mut svg = String::from(
         r#"<svg xmlns="http://www.w3.org/2000/svg"><style>.nodeLabel{font-size:12px;"#,
     );
-    for _ in 1..super::cascade::MAX_SELECTOR_DECLARATIONS_PER_RULE {
+    for _ in 1..cascade::MAX_SELECTOR_DECLARATIONS_PER_RULE {
         svg.push_str("font-weight:400;");
     }
     svg.push_str(
@@ -1428,11 +1483,8 @@ fn foreign_object_overlay_discards_a_rule_over_the_declaration_cap() {
     let measurer = DeterministicTextMeasurer::default();
     let mut checkpoint = || Ok::<(), &'static str>(());
     let mut selector_limit = |actual, maximum| {
-        assert_eq!(
-            actual,
-            super::cascade::MAX_SELECTOR_DECLARATIONS_PER_RULE + 1
-        );
-        assert_eq!(maximum, super::cascade::MAX_SELECTOR_DECLARATIONS_PER_RULE);
+        assert_eq!(actual, cascade::MAX_SELECTOR_DECLARATIONS_PER_RULE + 1);
+        assert_eq!(maximum, cascade::MAX_SELECTOR_DECLARATIONS_PER_RULE);
         Err("selector limit")
     };
     let mut preflight = |_, _| Ok::<(), &'static str>(());
@@ -1450,7 +1502,7 @@ fn foreign_object_overlay_discards_a_rule_over_the_declaration_cap() {
 #[test]
 fn foreign_object_overlay_discards_a_selector_list_over_the_component_cap() {
     let mut svg = String::from(r#"<svg xmlns="http://www.w3.org/2000/svg"><style>.nodeLabel"#);
-    for _ in 0..super::cascade::MAX_SELECTOR_COMPONENTS_PER_BRANCH {
+    for _ in 0..cascade::MAX_SELECTOR_COMPONENTS_PER_BRANCH {
         svg.push_str(".extra");
     }
     svg.push_str(
@@ -1470,11 +1522,8 @@ fn foreign_object_overlay_discards_a_selector_list_over_the_component_cap() {
     let measurer = DeterministicTextMeasurer::default();
     let mut checkpoint = || Ok::<(), &'static str>(());
     let mut selector_limit = |actual, maximum| {
-        assert_eq!(
-            actual,
-            super::cascade::MAX_SELECTOR_COMPONENTS_PER_BRANCH + 1
-        );
-        assert_eq!(maximum, super::cascade::MAX_SELECTOR_COMPONENTS_PER_BRANCH);
+        assert_eq!(actual, cascade::MAX_SELECTOR_COMPONENTS_PER_BRANCH + 1);
+        assert_eq!(maximum, cascade::MAX_SELECTOR_COMPONENTS_PER_BRANCH);
         Err("selector limit")
     };
     let mut preflight = |_, _| Ok::<(), &'static str>(());
@@ -1524,7 +1573,7 @@ fn foreign_object_overlay_accounts_for_source_selector_width_in_match_work() {
     let mut checkpoint = || Ok::<(), &'static str>(());
     let mut selector_limit = |actual, maximum| {
         assert!(actual > maximum);
-        assert_eq!(maximum, super::cascade::MAX_SELECTOR_MATCH_WORK);
+        assert_eq!(maximum, cascade::MAX_SELECTOR_MATCH_WORK);
         Err("selector limit")
     };
     let mut preflight = |_, _| Ok::<(), &'static str>(());
@@ -1543,13 +1592,13 @@ fn foreign_object_overlay_accounts_for_source_selector_width_in_match_work() {
 fn foreign_object_overlay_bounds_source_ancestry_before_building_paths() {
     let mut svg =
         String::from(r#"<svg xmlns="http://www.w3.org/2000/svg"><style>a{font-size:12px}</style>"#);
-    for _ in 0..=super::cascade::MAX_SELECTOR_ANCESTRY_DEPTH {
+    for _ in 0..=super::MAX_SELECTOR_ANCESTRY_DEPTH {
         svg.push_str("<a>");
     }
     svg.push_str(
             r#"<foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml">Alpha</div></foreignObject>"#,
         );
-    for _ in 0..=super::cascade::MAX_SELECTOR_ANCESTRY_DEPTH {
+    for _ in 0..=super::MAX_SELECTOR_ANCESTRY_DEPTH {
         svg.push_str("</a>");
     }
     svg.push_str("</svg>");
@@ -1567,8 +1616,8 @@ fn foreign_object_overlay_bounds_source_ancestry_before_building_paths() {
     let measurer = DeterministicTextMeasurer::default();
     let mut checkpoint = || Ok::<(), &'static str>(());
     let mut selector_limit = |actual, maximum| {
-        assert_eq!(actual, super::cascade::MAX_SELECTOR_ANCESTRY_DEPTH + 1);
-        assert_eq!(maximum, super::cascade::MAX_SELECTOR_ANCESTRY_DEPTH);
+        assert_eq!(actual, super::MAX_SELECTOR_ANCESTRY_DEPTH + 1);
+        assert_eq!(maximum, super::MAX_SELECTOR_ANCESTRY_DEPTH);
         Err("selector limit")
     };
     let mut preflight = |_, _| Ok::<(), &'static str>(());

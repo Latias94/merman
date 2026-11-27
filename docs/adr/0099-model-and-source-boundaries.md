@@ -54,6 +54,10 @@ Introduce `merman-markup` for the existing HTML/URL/sanitizer implementation, sh
 
 Core and Render use the same markup implementation. This avoids putting expensive source/output sanitization into every model consumer, a core-to-renderer dependency, or duplicated security algorithms. Render and export have no production path back to core. They still use the required HTML/XML/CSS, math and font processing for their own outputs.
 
+The literal CSS color parser and its channel conversions live in the model crate so the terminal
+renderer can share named colors, HSL, and alpha handling without taking a markup dependency.
+`merman-markup::theme_color` retains the Khroma theme operations and their source-compatible output.
+
 ### Route painting is independent of diagram families
 
 `merman-render-core` owns layout coordinates, the shared node, edge, cluster, and label types, and

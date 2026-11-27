@@ -7,15 +7,13 @@ use merman_model::families::flowchart::FlowEdge;
 use merman_render_core::{
     svg_edge_parity::markers::{BaseEdgeMarkerKind, hierarchy_edge_marker_body},
     theme_svg::marker::arrow_path,
-    xml::{escape_xml, escape_xml_display},
+    xml::{escape_attr, escape_attr_display},
 };
 use merman_theme_contract::v2::MarkerStyle;
 
 mod plan;
 
-pub use plan::{FlowchartEdgeMarkers, FlowchartMarkerEmissionPlan};
-
-pub const CASING_WIDTH_ADD: f64 = 3.0;
+pub use plan::{FlowchartEdgeMarkers, FlowchartMarkerEmissionPlan, FlowchartMarkerSurface};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FlowchartMarkerBase {
@@ -106,10 +104,10 @@ impl FlowchartMarkerPaint {
         match self {
             Self::None => {}
             Self::Stroke => {
-                let _ = write!(out, r#" stroke="{}""#, escape_xml_display(color));
+                let _ = write!(out, r#" stroke="{}""#, escape_attr_display(color));
             }
             Self::StrokeAndFill => {
-                let color = escape_xml_display(color);
+                let color = escape_attr_display(color);
                 let _ = write!(out, r#" stroke="{color}" fill="{color}""#);
             }
         }
@@ -406,7 +404,6 @@ pub fn flowchart_marker_shape_spec(
 enum FlowchartMarkerVariantMode {
     Source,
     AdaptiveInk,
-    Casing,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -418,19 +415,12 @@ struct FlowchartMarkerVariantKey {
 }
 
 impl FlowchartMarkerVariantKey {
-    fn color_scan_count(&self, marker_style: MarkerStyle) -> usize {
-        self.paint(marker_style).color_scan_count()
+    fn color_scan_count(&self) -> usize {
+        self.paint().color_scan_count()
     }
 
-    fn paint(&self, marker_style: MarkerStyle) -> FlowchartMarkerPaint {
+    fn paint(&self) -> FlowchartMarkerPaint {
         match self.mode {
-            FlowchartMarkerVariantMode::Casing => {
-                if casing_marker_filled(self.base, marker_style) {
-                    FlowchartMarkerPaint::StrokeAndFill
-                } else {
-                    FlowchartMarkerPaint::Stroke
-                }
-            }
             FlowchartMarkerVariantMode::AdaptiveInk
                 if matches!(
                     self.base,
@@ -471,8 +461,8 @@ fn push_base_markers(
     marker_style: MarkerStyle,
     bpmn_markers: bool,
 ) {
-    let id = escape_xml(diagram_id);
-    let ty = escape_xml(diagram_type);
+    let id = escape_attr(diagram_id);
+    let ty = escape_attr(diagram_type);
     for spec in FLOWCHART_MARKER_SHAPE_SPECS {
         let _ = write!(
             out,
@@ -508,11 +498,11 @@ fn push_bpmn_markers(out: &mut impl fmt::Write, diagram_id: &str, diagram_type: 
         let _ = write!(
             out,
             r#"<marker id="{}_{}-{}" class="{} {}"{}/></marker>"#,
-            escape_xml_display(diagram_id),
-            escape_xml_display(diagram_type),
+            escape_attr_display(diagram_id),
+            escape_attr_display(diagram_type),
             spec.base.id_suffix(),
             spec.marker_class,
-            escape_xml_display(diagram_type),
+            escape_attr_display(diagram_type),
             spec.shape,
         );
     }
@@ -527,9 +517,9 @@ fn write_flowchart_marker_id_xml(
     margin: bool,
     color_id: Option<&str>,
 ) {
-    let _ = write!(out, "{}", escape_xml_display(diagram_id));
+    let _ = write!(out, "{}", escape_attr_display(diagram_id));
     let _ = out.write_char('_');
-    let _ = write!(out, "{}", escape_xml_display(diagram_type));
+    let _ = write!(out, "{}", escape_attr_display(diagram_type));
     let _ = out.write_char('-');
     let _ = out.write_str(base.id_suffix());
     if margin {
@@ -541,21 +531,6 @@ fn write_flowchart_marker_id_xml(
     };
     let _ = out.write_char('_');
     let _ = out.write_str(color_id);
-}
-
-fn casing_marker_filled(base: FlowchartMarkerBase, marker_style: MarkerStyle) -> bool {
-    match base {
-        FlowchartMarkerBase::PointStart | FlowchartMarkerBase::PointEnd => {
-            marker_style != MarkerStyle::Open
-        }
-        FlowchartMarkerBase::CircleStart | FlowchartMarkerBase::CircleEnd => true,
-        FlowchartMarkerBase::CrossStart
-        | FlowchartMarkerBase::CrossEnd
-        | FlowchartMarkerBase::OpenArrowStart
-        | FlowchartMarkerBase::OpenArrowEnd
-        | FlowchartMarkerBase::HollowCircleStart
-        | FlowchartMarkerBase::HollowCircleEnd => false,
-    }
 }
 
 /// Writes one complete source or adaptive-ink marker using the caller's admitted paint.
@@ -582,11 +557,11 @@ fn push_colored_marker(
         out,
         r#"" class="{} {}""#,
         spec.marker_class,
-        escape_xml_display(diagram_type)
+        escape_attr_display(diagram_type)
     );
     write_marker_shape(out, spec, marker_style);
     if let Some(color) = color {
-        key.paint(marker_style).push(out, color);
+        key.paint().push(out, color);
     }
     let _ = out.write_str("/></marker>");
 }

@@ -8,7 +8,7 @@ use merman_render_core::{
     root_svg,
     svg_css::{CssSelectorDiagramId, SvgId, escape_css_identifier},
     svg_output::{BoundedSvgOutput, SvgOutput, XmlTextOutput},
-    xml::escape_xml,
+    xml::{escape_attr_display, escape_xml},
 };
 use serde_json::Value;
 
@@ -154,11 +154,11 @@ fn write_quadrantchart_axis_labels(
         let _ = write!(
             out,
             r#"<g class="label"><text x="0" y="0" fill="{fill}" font-size="{font_size}" dominant-baseline="{dom}" text-anchor="{anchor}" transform="{transform}">{text}</text></g>"#,
-            fill = escape_xml(&label.fill),
+            fill = escape_attr_display(&label.fill),
             font_size = fmt(label.font_size),
             dom = quadrantchart_dominant_baseline(&label.horizontal_pos),
             anchor = quadrantchart_text_anchor(&label.vertical_pos),
-            transform = escape_xml(&quadrantchart_transform(label.x, label.y, label.rotation)),
+            transform = quadrantchart_transform(label.x, label.y, label.rotation),
             text = escape_xml(&label.text),
         );
         out.checkpoint()?;
@@ -193,21 +193,18 @@ pub fn write_svg_body(
             y = fmt(quadrant.y),
             w = fmt(quadrant.width),
             h = fmt(quadrant.height),
-            fill = escape_xml(&quadrant.fill),
+            fill = escape_attr_display(&quadrant.fill),
         );
         out.checkpoint()?;
         let _ = write!(
             out,
             r#"<text x="0" y="0" fill="{fill}" font-size="{font_size}" dominant-baseline="{dom}" text-anchor="{anchor}" transform="{transform}">{text}</text>"#,
-            fill = escape_xml(&quadrant.text.fill),
+            fill = escape_attr_display(&quadrant.text.fill),
             font_size = fmt(quadrant.text.font_size),
             dom = quadrantchart_dominant_baseline(&quadrant.text.horizontal_pos),
             anchor = quadrantchart_text_anchor(&quadrant.text.vertical_pos),
-            transform = escape_xml(&quadrantchart_transform(
-                quadrant.text.x,
-                quadrant.text.y,
-                quadrant.text.rotation
-            )),
+            transform =
+                quadrantchart_transform(quadrant.text.x, quadrant.text.y, quadrant.text.rotation),
             text = escape_xml(&quadrant.text.text),
         );
         out.checkpoint()?;
@@ -228,7 +225,7 @@ pub fn write_svg_body(
             y1 = fmt(line.y1),
             x2 = fmt(line.x2),
             y2 = fmt(line.y2),
-            stroke = escape_xml(&line.stroke_fill),
+            stroke = escape_attr_display(&line.stroke_fill),
             w = fmt(line.stroke_width),
         );
         out.checkpoint()?;
@@ -256,9 +253,9 @@ pub fn write_svg_body(
             out,
             r#" r="{r}" fill="{fill}" stroke="{stroke}" stroke-width="{stroke_width}"/>"#,
             r = number_buffer.format(point.radius),
-            fill = escape_xml(&point.fill),
-            stroke = escape_xml(&point.stroke_color),
-            stroke_width = escape_xml(&point.stroke_width),
+            fill = escape_attr_display(&point.fill),
+            stroke = escape_attr_display(&point.stroke_color),
+            stroke_width = escape_attr_display(&point.stroke_width),
         );
         out.checkpoint()?;
         let text_x = if source_point.x.is_nan() {
@@ -271,14 +268,14 @@ pub fn write_svg_body(
         let _ = write!(
             out,
             r#"<text x="0" y="0" fill="{fill}" font-size="{font_size}" dominant-baseline="{dom}" text-anchor="{anchor}" transform="{transform}">{text}</text>"#,
-            fill = escape_xml(&point.text.fill),
+            fill = escape_attr_display(&point.text.fill),
             font_size = fmt(point.text.font_size),
             dom = quadrantchart_dominant_baseline(&point.text.horizontal_pos),
             anchor = quadrantchart_text_anchor(&point.text.vertical_pos),
-            transform = escape_xml(&format!(
+            transform = format_args!(
                 "translate({text_x}, {text_y}) rotate({})",
                 fmt(point.text.rotation)
-            )),
+            ),
             text = escape_xml(&point.text.text),
         );
         out.checkpoint()?;
@@ -302,11 +299,11 @@ pub fn write_svg_body(
         let _ = write!(
             out,
             r#"<text x="0" y="0" fill="{fill}" font-size="{font_size}" dominant-baseline="{dom}" text-anchor="{anchor}" transform="{transform}">{text}</text>"#,
-            fill = escape_xml(&t.fill),
+            fill = escape_attr_display(&t.fill),
             font_size = fmt(t.font_size),
             dom = quadrantchart_dominant_baseline(&t.horizontal_pos),
             anchor = quadrantchart_text_anchor(&t.vertical_pos),
-            transform = escape_xml(&quadrantchart_transform(t.x, t.y, t.rotation)),
+            transform = quadrantchart_transform(t.x, t.y, t.rotation),
             text = escape_xml(&t.text),
         );
         out.checkpoint()?;

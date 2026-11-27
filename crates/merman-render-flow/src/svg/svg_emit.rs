@@ -62,7 +62,8 @@ pub fn render_parity(
             let use_max_width = render_config.use_max_width;
             let title_top_margin = render_config.title_top_margin;
             let mut edge_fills = FlowchartEdgeFillPlan::default();
-            let marker_plan = if FlowchartEdgeFillPlan::applies(ctx) {
+            let adaptive_edges = FlowchartEdgeFillPlan::applies(ctx);
+            let marker_plan = if adaptive_edges {
                 // Route painting consumes stroke widths before fill-aware marker colors are known.
                 for edge in hierarchy_plan.ordered_edges() {
                     bind_marker_path_sources_for(ctx, hierarchy_plan, edge.key)?;
@@ -112,6 +113,18 @@ pub fn render_parity(
                 hierarchy_plan,
             )?;
 
+            let cutout_labels = super::edge_label_cutout::applies(ctx, services);
+            if super::paint::paints_rough_edges_first(ctx, adaptive_edges, cutout_labels) {
+                super::paint::prepare_rough_edge_paths(
+                    ctx,
+                    hierarchy_plan.ordered_edges(),
+                    &mut edge_path_cache,
+                )?;
+            }
+            #[cfg(feature = "layout-shoal")]
+            let source_paint_bounds =
+                super::viewbox::include_sketch_shafts(ctx, source_paint_bounds, &edge_path_cache)?;
+
             let marker_plan = match marker_plan {
                 Some(plan) => plan,
                 None => {
@@ -121,23 +134,10 @@ pub fn render_parity(
                         &edge_path_cache,
                         services,
                     )?;
-                    if let Some(bounds) = edge_fills.casing_bounds() {
-                        bbox_min_x = bbox_min_x.min(bounds.x0);
-                        bbox_min_y = bbox_min_y.min(bounds.y0);
-                        bbox_max_x = bbox_max_x.max(bounds.x1);
-                        bbox_max_y = bbox_max_y.max(bounds.y1);
-                    }
                     prepare_flowchart_markers(ctx, hierarchy_plan, &edge_fills)?
                 }
             };
 
-            if !ctx.hand_drawn_seed.seed().may_use_math_random() {
-                super::paint::prepare_rough_edge_paths(
-                    ctx,
-                    hierarchy_plan.ordered_edges(),
-                    &mut edge_path_cache,
-                )?;
-            }
             let mut edge_labels =
                 super::paint::FlowchartEdgeLabels::prepare(ctx, hierarchy_plan, &edge_path_cache)?;
             let step_badges = super::step::prepare_step_badges(
@@ -190,6 +190,19 @@ pub fn render_parity(
                     allow_deferred_palette: services.defer_palette_stylesheet,
                 },
                 |out| {
+                    edge_fills.write_clips(out, ctx)?;
+                    let label_cutouts = if cutout_labels {
+                        super::edge_label_cutout::write_definitions(
+                            out,
+                            ctx,
+                            &edge_path_cache,
+                            &edge_labels,
+                            kurbo::Rect::new(bbox_min_x, bbox_min_y, bbox_max_x, bbox_max_y)
+                                .inflate(diagram_padding, diagram_padding),
+                        )?
+                    } else {
+                        FxHashSet::default()
+                    };
                     let mut paint = render::FlowchartRootPaint {
                         ctx,
                         timing: render_timing,
@@ -199,6 +212,7 @@ pub fn render_parity(
                         hierarchy_plan,
                         marker_plan: &marker_plan,
                         edge_fills: &edge_fills,
+                        label_cutouts: &label_cutouts,
                         edge_labels: &mut edge_labels,
                         step_badges: &step_badges,
                     };

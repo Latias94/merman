@@ -5,7 +5,7 @@ use merman_model::{
     presentation::PresentationConfig,
 };
 use merman_render_core::{
-    Bounds, LayoutEdge, LayoutNode, LayoutPoint, Result,
+    Bounds, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, Result,
     layout_work::OperationLayoutWorkControl,
     math::MathRenderer,
     text::{TextMeasurer, TextMetrics, TextStyle},
@@ -38,7 +38,8 @@ mod theme;
 pub use elk::prepare as prepare_elk;
 #[cfg(feature = "layout-shoal")]
 pub use marker::UsecaseMarker;
-pub use measure::number as configured_usecase_number;
+#[cfg(any(feature = "layout-elk", feature = "layout-shoal"))]
+pub use measure::spacing as configured_usecase_spacing;
 #[cfg(feature = "layout-shoal")]
 pub use svg::{UsecaseCanonicalSvg, UsecaseEdgePainter, UsecasePaintedEdge};
 pub use svg::{UsecaseSvgContext, render_usecase_diagram_svg_model};
@@ -73,6 +74,33 @@ pub struct UsecaseLabelPlan {
     pub(crate) styles: indexmap::IndexMap<String, String>,
     /// Final HTML terminal shared by measurement and emission, including effective Markdown config.
     pub(crate) html: Option<Arc<measure::UsecasePreparedHtmlLabel>>,
+}
+
+pub fn package_tab_size(label: &UsecaseLabelPlan) -> (f64, f64) {
+    const MIN_WIDTH: f64 = 80.0;
+    const PADDING_X: f64 = 10.0;
+    const PADDING_Y: f64 = 5.0;
+    (
+        MIN_WIDTH.max(label.metrics.width + 2.0 * PADDING_X),
+        label.metrics.height + 2.0 * PADDING_Y,
+    )
+}
+
+/// Left edge, width and height of the drawn tab measured from the boundary's top.
+pub fn package_tab_geometry(
+    left: f64,
+    top: f64,
+    width: f64,
+    label: &UsecaseLabelPlan,
+    placed_title: Option<&LayoutLabel>,
+) -> (f64, f64, f64) {
+    let (tab_width, tab_height) = package_tab_size(label);
+    let tab_width = width.min(placed_title.map_or(tab_width, |title| title.width));
+    let x = placed_title.map_or(left, |title| {
+        (title.x - tab_width / 2.0).clamp(left, (left + width - tab_width).max(left))
+    });
+    let height = placed_title.map_or(tab_height, |title| title.y - top + title.height / 2.0);
+    (x, tab_width, height)
 }
 
 #[derive(Debug, Clone)]
@@ -144,6 +172,35 @@ pub struct UsecaseMeasured {
     pub edges: Vec<UsecaseEdgePlan>,
 }
 
+#[cfg(feature = "layout-shoal")]
+impl UsecaseMeasured {
+    pub fn canonical_route_style(
+        &self,
+        config: &Value,
+    ) -> merman_render_core::route_paint::RouteStyle {
+        let curve = self.css.native_curve().unwrap_or_else(|| {
+            config
+                .pointer("/flowchart/curve")
+                .and_then(Value::as_str)
+                .unwrap_or("basis")
+        });
+        let radius = config
+            .pointer("/flowchart/roundedCornerRadius")
+            .and_then(Value::as_f64)
+            .filter(|radius| radius.is_finite() && *radius >= 0.0)
+            .unwrap_or(8.0);
+        merman_render_core::route_paint::RouteStyle::from_interpolate(curve, radius)
+    }
+
+    pub fn marker_for_edge(&self, plan: &UsecaseEdgePlan, start: bool) -> Option<UsecaseMarker> {
+        UsecaseMarker::for_edge(plan, start, self.css.look == "neo", self.css.marker_style)
+    }
+
+    pub fn connector_width(&self) -> f64 {
+        self.css.connector_width
+    }
+}
+
 /// Measured Usecase inputs paired with the backend's accepted geometry.
 #[derive(Debug)]
 pub struct UsecasePrepared {
@@ -173,14 +230,14 @@ impl UsecasePrepared {
     }
 
     #[cfg(feature = "layout-shoal")]
-    pub fn edges(&self) -> &[UsecaseEdgePlan] {
-        &self.measured.edges
+    pub fn measured(&self) -> &UsecaseMeasured {
+        &self.measured
     }
 
     #[cfg(feature = "layout-shoal")]
-    pub fn hand_drawn_seed(&self) -> Option<f64> {
+    pub fn rough_edge_seed(&self) -> Option<f64> {
         let css = &self.measured.css;
-        (css.look == "handDrawn").then_some(css.hand_drawn_seed)
+        (css.look == "handDrawn" || css.sketches_edges()).then_some(css.hand_drawn_seed)
     }
 
     fn edge_points(&self, edge: &LayoutEdge) -> Vec<LayoutPoint> {
@@ -254,6 +311,23 @@ pub(crate) fn create_text_source(text: &str, kind: UsecaseLabelType) -> std::bor
                 .replace('>', "&gt;"),
         ),
     }
+}
+
+fn sanitize_source_label(
+    text: &str,
+    kind: UsecaseLabelType,
+    config: &PresentationConfig,
+) -> String {
+    let text = merman_markup::sanitize::sanitize_text(text, config.as_config());
+    if cfg!(feature = "layout-shoal")
+        && config.get_str("layout") == Some("shoal")
+        && kind == UsecaseLabelType::Text
+        && let std::borrow::Cow::Owned(decoded) =
+            merman_render_core::entities::decode_svg_text_content_entities(&text)
+    {
+        return decoded;
+    }
+    text
 }
 
 pub fn requires_math(

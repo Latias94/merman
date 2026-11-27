@@ -1,26 +1,13 @@
 use crate::Result;
-use cssparser::{Delimiter, Parser};
+use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessExecution, SvgPostprocessor};
+use cssparser::{Delimiter, ParseError, Parser};
+use merman_render_core::svg_output::{BoundedSvgOutput, SvgOutput};
+use merman_render_core::svg_scan::{
+    CssXmlLocation, SvgTagScanner, XmlCssSource, next_svg_quoted_attr_with_checkpoints,
+    start_tag_name, trim_with_checkpoints,
+};
 use std::borrow::Cow;
 use std::ops::Range;
-
-use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
-use merman_render_core::svg_scan::{escape_xml_attr, find_quoted_attr_value_span, find_tag_end};
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct RootBackgroundEdit {
-    range: Range<usize>,
-    replacement: String,
-}
-
-impl RootBackgroundEdit {
-    fn new(range: Range<usize>, replacement: String) -> Self {
-        Self { range, replacement }
-    }
-
-    pub(crate) fn apply(self, svg: &mut String) {
-        svg.replace_range(self.range, &self.replacement);
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RootBackgroundPostprocessor {
@@ -47,108 +34,113 @@ impl SvgPostprocessor for RootBackgroundPostprocessor {
     fn process<'a>(
         &self,
         svg: Cow<'a, str>,
-        _ctx: &SvgPostprocessContext<'_>,
+        ctx: &SvgPostprocessContext<'_>,
     ) -> Result<Cow<'a, str>> {
-        let background_color = self.background_color.trim();
-        if background_color.is_empty() || !svg.contains("<svg") {
-            return Ok(svg);
-        }
-
-        let Some(edit) = set_root_background_color(svg.as_ref(), background_color) else {
-            return Ok(svg);
-        };
-        let mut out = svg.into_owned();
-        edit.apply(&mut out);
-        Ok(Cow::Owned(out))
+        set_root_background_color(svg, &self.background_color, ctx.execution())
     }
 }
 
-pub(crate) fn set_root_background_color(
-    svg: &str,
+fn set_root_background_color<'a>(
+    svg: Cow<'a, str>,
     background_color: &str,
-) -> Option<RootBackgroundEdit> {
-    let svg_start = svg.find("<svg")?;
-    let svg_end = find_tag_end(svg, svg_start)?;
-
-    let tag = &svg[svg_start..=svg_end];
-    let escaped_color = escape_xml_attr(background_color.trim());
-
-    if let Some((style_value_start, style_value_end)) = find_quoted_attr_value_span(tag, "style") {
-        let style = &tag[style_value_start..style_value_end];
-        let rewritten = set_background_in_style_attr(style, &escaped_color);
-        let absolute_value_start = svg_start + style_value_start;
-        let absolute_value_end = svg_start + style_value_end;
-
-        return Some(RootBackgroundEdit::new(
-            absolute_value_start..absolute_value_end,
-            rewritten,
-        ));
+    execution: SvgPostprocessExecution<'_>,
+) -> Result<Cow<'a, str>> {
+    let mut checkpoint = || execution.checkpoint();
+    let background_color = trim_with_checkpoints(background_color, &mut checkpoint)?;
+    if background_color.is_empty() {
+        return Ok(svg);
     }
-
-    let insert_at = if svg.as_bytes().get(svg_end.saturating_sub(1)) == Some(&b'/') {
-        svg_end - 1
-    } else {
-        svg_end
+    let mut scanner = SvgTagScanner::new(&svg);
+    let root = loop {
+        let Some(tag) = scanner.next_with_checkpoints(&mut checkpoint)? else {
+            return Ok(svg);
+        };
+        if let Some(name) = start_tag_name(tag.raw()) {
+            if name.rsplit(':').next() != Some("svg") {
+                return Ok(svg);
+            }
+            break tag;
+        }
     };
 
-    Some(RootBackgroundEdit::new(
-        insert_at..insert_at,
-        format!(r#" style="background-color: {escaped_color};""#),
-    ))
+    let mut out = BoundedSvgOutput::new(execution.work_meter());
+    let mut attr_cursor = 0;
+    while let Some(attr) =
+        next_svg_quoted_attr_with_checkpoints(root.raw(), attr_cursor, &mut checkpoint)?
+    {
+        attr_cursor = attr.full_end;
+        if !root.raw()[attr.name_start..attr.name_end].eq_ignore_ascii_case("style") {
+            continue;
+        }
+        let start = root.start() + attr.value_start;
+        let end = root.start() + attr.value_end;
+        let Some(css) =
+            XmlCssSource::new(&svg[start..end], CssXmlLocation::Attribute, &mut checkpoint)?
+        else {
+            return Ok(svg);
+        };
+        let declarations = background_declarations(css.logical(), &mut checkpoint)?;
+        if declarations.is_empty() {
+            out.push_str(&svg[..end]);
+            let trimmed = css.logical().trim_end();
+            if !trimmed.is_empty() && !trimmed.ends_with(';') {
+                out.push(';');
+            }
+            out.push(' ');
+            write_background(&mut out, background_color);
+            out.push_str(&svg[end..]);
+        } else {
+            let mut cursor = 0;
+            let mut wrote_background = false;
+            css.visit_source_spans(&declarations, &mut checkpoint, |index, edit| {
+                out.push_str(&svg[cursor..start + edit.start]);
+                if index == 0 && !wrote_background {
+                    write_background(&mut out, background_color);
+                    wrote_background = true;
+                }
+                cursor = start + edit.end;
+            })?;
+            out.push_str(&svg[cursor..]);
+        }
+        return Ok(Cow::Owned(out.finish()?));
+    }
+
+    let insert_at = root.end() - if root.is_self_closing() { 2 } else { 1 };
+    out.push_str(&svg[..insert_at]);
+    out.push_str(" style=\"");
+    write_background(&mut out, background_color);
+    out.push('"');
+    out.push_str(&svg[insert_at..]);
+    Ok(Cow::Owned(out.finish()?))
 }
 
-fn set_background_in_style_attr(style: &str, background_color: &str) -> String {
-    if !style.split(';').any(|declaration| {
-        declaration
-            .split_once(':')
-            .is_some_and(|(property, _)| property.trim().eq_ignore_ascii_case("background-color"))
-    }) {
-        let separator = if style.trim().is_empty() || style.trim_end().ends_with(';') {
-            ""
-        } else {
-            ";"
-        };
-        return format!("{style}{separator} background-color: {background_color};");
-    }
-    let decoded = merman_model::text::decode_html_entities_to_unicode(style);
-    let background_color = merman_model::text::decode_html_entities_to_unicode(background_color);
-    let mut parser = Parser::new(&decoded);
+fn write_background(out: &mut BoundedSvgOutput<'_>, color: &str) {
+    out.push_str("background-color: ");
+    crate::xml::escape_attr_into(out, color);
+    out.push(';');
+}
+
+fn background_declarations(
+    css: &str,
+    checkpoint: &mut impl FnMut() -> Result<()>,
+) -> Result<Vec<Range<usize>>> {
+    let mut parser = Parser::new(css);
     let mut declarations = Vec::new();
-    let mut replaced = false;
-
     while !parser.is_exhausted() {
-        let declaration = parser.parse_until_after(Delimiter::Semicolon, |declaration| {
-            let start = declaration.position();
-            while declaration.next_including_whitespace().is_ok() {}
-            Ok::<_, cssparser::ParseError<()>>(declaration.slice_from(start).trim().to_string())
+        checkpoint()?;
+        let start = parser.parse_until_after(Delimiter::Semicolon, |declaration| {
+            declaration.skip_whitespace();
+            let start = declaration.position().byte_index();
+            declaration.expect_ident_matching("background-color")?;
+            declaration.expect_colon()?;
+            while declaration.next().is_ok() {}
+            Ok::<_, ParseError<()>>(start)
         });
-        let Ok(trimmed) = declaration else {
-            continue;
-        };
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        let Some((property, _value)) = trimmed.split_once(':') else {
-            declarations.push(trimmed);
-            continue;
-        };
-
-        if property.trim().eq_ignore_ascii_case("background-color") {
-            if !replaced {
-                declarations.push(format!("background-color: {background_color}"));
-                replaced = true;
-            }
-        } else {
-            declarations.push(trimmed);
+        if let Ok(start) = start {
+            declarations.push(start..parser.position().byte_index());
         }
     }
-
-    if !replaced {
-        declarations.push(format!("background-color: {background_color}"));
-    }
-
-    escape_xml_attr(&format!("{};", declarations.join("; ")))
+    Ok(declarations)
 }
 
 #[cfg(test)]
@@ -157,11 +149,13 @@ mod tests {
     use crate::svg::pipeline::SvgPipeline;
 
     fn apply_root_background_edit(svg: &str, background_color: &str) -> String {
-        let mut out = svg.to_string();
-        set_root_background_color(&out, background_color)
-            .expect("valid SVG root background edit")
-            .apply(&mut out);
-        out
+        set_root_background_color(
+            Cow::Borrowed(svg),
+            background_color,
+            SvgPostprocessExecution::new(&render_session()),
+        )
+        .unwrap()
+        .into_owned()
     }
 
     fn render_session() -> crate::environment::RenderSession {
@@ -237,6 +231,21 @@ mod tests {
     }
 
     #[test]
+    fn root_background_uses_actual_root_and_css_declaration_boundaries() {
+        let svg = concat!(
+            r#"<?note <svg style='background-color: fake'>?>"#,
+            r#"<!-- <svg/> --><svg title='a > b' "#,
+            r#"style='--note: &quot;A; background-color: fake&quot;; /* canvas */ background-color: white;'>"#,
+            r#"<svg style='background-color: blue;'/></svg>"#,
+        );
+        let out = apply_root_background_edit(svg, "transparent");
+        assert_eq!(
+            out,
+            svg.replace("background-color: white", "background-color: transparent")
+        );
+    }
+
+    #[test]
     fn root_background_rewrites_single_quoted_style_attr() {
         let svg =
             r#"<svg id="diagram" style='max-width: 400px; background-color: white;'><g/></svg>"#;
@@ -250,12 +259,46 @@ mod tests {
     }
 
     #[test]
-    fn root_background_edit_describes_only_the_root_attribute_replacement() {
-        let svg = r#"<svg id="diagram" style="background-color: white;"><g/></svg>"#;
-        let edit =
-            set_root_background_color(svg, "transparent").expect("valid SVG root background edit");
+    fn root_background_removes_duplicate_declarations_without_changing_other_values() {
+        let svg = r#"<svg style="--note: 'A;B'; background-color: white!important; background-color: black; fill: green;"><g/></svg>"#;
+        let out = apply_root_background_edit(svg, "transparent");
+        assert_eq!(out.matches("background-color").count(), 1);
+        assert!(out.contains("background-color: transparent;"));
+        assert!(out.contains("--note: 'A;B';"));
+        assert!(out.contains("fill: green;"));
+    }
 
-        assert_eq!(&svg[edit.range.clone()], "background-color: white;");
-        assert_eq!(edit.replacement, "background-color: transparent;");
+    #[test]
+    fn root_background_obeys_the_serialized_svg_byte_ceiling() {
+        use crate::resources::{RenderResourcePolicy, ResourceLimitId};
+
+        let expected = r#"<svg style="background-color: white;"/>"#;
+        let pipeline =
+            SvgPipeline::parity().with_postprocessor(RootBackgroundPostprocessor::new("white"));
+        let session = |maximum| {
+            crate::environment::RenderEnvironment::deterministic()
+                .with_resource_policy(
+                    RenderResourcePolicy::unbounded_for_trusted_input()
+                        .with_limit(ResourceLimitId::MaxSvgBytes, maximum)
+                        .unwrap(),
+                )
+                .begin_session()
+                .unwrap()
+        };
+        assert_eq!(
+            pipeline
+                .process_to_string("<svg/>", &session(expected.len()))
+                .unwrap(),
+            expected
+        );
+        let error = pipeline
+            .process_to_string("<svg/>", &session(expected.len() - 1))
+            .unwrap_err();
+        let crate::Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected a structured byte limit, got {error:?}");
+        };
+        assert_eq!(error.limit, "max_svg_bytes");
+        assert_eq!(error.actual, expected.len());
+        assert_eq!(error.max, expected.len() - 1);
     }
 }

@@ -156,6 +156,8 @@ fn er_redux_colors_follow_entity_insertion_ids() {
     let context = ErSvgContext {
         diagram_id,
         viewport: root_svg::RootViewportContext::new(DiagramFamilyId::ER, diagram_id),
+        canvas_background: None,
+        canvas_has_texture: false,
         elk_parity: false,
         swimlane: false,
         #[cfg(feature = "layout-shoal")]
@@ -169,7 +171,7 @@ fn er_redux_colors_follow_entity_insertion_ids() {
         layout(),
         &model,
         &entity_theme,
-        config,
+        &effective_config,
         None,
         &measurer,
         &context,

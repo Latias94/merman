@@ -41,6 +41,8 @@ pub struct SvgOutput {
 pub struct RenderedDocument {
     layout_adaptation: Option<merman_render::LayoutAdaptationObservation>,
     svg: merman_render::svg::ResvgCompatibleSvg,
+    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+    theme_matte: Option<crate::theme::Color>,
     theme_outcome: Arc<ThemeOutcome>,
     evidence: Arc<RenderEvidence>,
     portability: DocumentPortabilityReport,
@@ -158,6 +160,9 @@ impl RenderedDocument {
         >,
         required_capabilities: Vec<merman_render::RenderCapability>,
         theme_outcome: ThemeOutcome,
+        #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))] theme_matte: Option<
+            crate::theme::Color,
+        >,
         #[cfg(feature = "native-fonts")] native_fonts: Option<merman_export::NativeFontContext>,
         #[cfg(all(
             feature = "native-fonts",
@@ -175,6 +180,9 @@ impl RenderedDocument {
         Self {
             layout_adaptation,
             svg,
+            #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+            theme_matte: theme_matte
+                .filter(|_| theme_outcome.mode == crate::theme::ThemeMode::MermaidParity),
             theme_outcome: Arc::new(theme_outcome),
             evidence,
             portability,
@@ -227,8 +235,13 @@ impl RenderedDocument {
         control: OperationControl,
     ) -> Result<PreparedPngExport<'_>, RenderError> {
         #[cfg(feature = "native-fonts")]
-        let options = &self.raster_options(options, &control)?;
-        let export = merman_export::prepare_raster_controlled(self.sealed_svg(), options, control)
+        let mut options = self.raster_options(options, &control)?;
+        #[cfg(not(feature = "native-fonts"))]
+        let mut options = options.clone();
+        if options.matte.is_none() {
+            options.matte = self.theme_matte.map(|color| color.to_string());
+        }
+        let export = merman_export::prepare_raster_controlled(self.sealed_svg(), &options, control)
             .map_err(map_export_error)?;
         let report = export.report_for_output(merman_export::RasterOutputKind::Png);
         Ok(PreparedPngExport {
@@ -256,8 +269,17 @@ impl RenderedDocument {
         control: OperationControl,
     ) -> Result<PreparedJpegExport<'_>, RenderError> {
         #[cfg(feature = "native-fonts")]
-        let options = &self.raster_options(options, &control)?;
-        let export = merman_export::prepare_raster_controlled(self.sealed_svg(), options, control)
+        let mut options = self.raster_options(options, &control)?;
+        #[cfg(not(feature = "native-fonts"))]
+        let mut options = options.clone();
+        if options.matte.is_none() {
+            options.matte = self.theme_matte.map(|color| {
+                color
+                    .composite(crate::theme::Color::rgb(255, 255, 255), 1.0)
+                    .to_string()
+            });
+        }
+        let export = merman_export::prepare_raster_controlled(self.sealed_svg(), &options, control)
             .map_err(map_export_error)?;
         let report = export.report_for_output(merman_export::RasterOutputKind::Jpeg);
         Ok(PreparedJpegExport {
@@ -303,8 +325,13 @@ impl RenderedDocument {
         control: OperationControl,
     ) -> Result<PreparedPdfExport<'_>, RenderError> {
         #[cfg(feature = "native-fonts")]
-        let options = &self.pdf_options(options, &control)?;
-        let export = merman_export::prepare_pdf_controlled(self.sealed_svg(), options, control)
+        let mut options = self.pdf_options(options, &control)?;
+        #[cfg(not(feature = "native-fonts"))]
+        let mut options = options.clone();
+        if options.page_paint.is_none() {
+            options.page_paint = self.theme_matte.map(|color| color.to_string());
+        }
+        let export = merman_export::prepare_pdf_controlled(self.sealed_svg(), &options, control)
             .map_err(map_export_error)?;
         let report = export.report();
         Ok(PreparedPdfExport {

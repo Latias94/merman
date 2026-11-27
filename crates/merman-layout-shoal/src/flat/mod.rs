@@ -489,7 +489,7 @@ fn physical_side(dir: Direction, side: Side) -> Side {
     }
 }
 
-fn to_canonical_port(dir: Direction, hint: PortSideHint) -> PortSideHint {
+pub(super) fn to_canonical_port(dir: Direction, hint: PortSideHint) -> PortSideHint {
     let (side, offset) = match hint {
         PortSideHint::Auto => return hint,
         PortSideHint::Side(s) => (s, None),
@@ -575,7 +575,7 @@ fn draw_with_label_gaps(
     refine::refine(g, c, orientation, graph, options, &mut x, work)?;
     position::straighten_exterior_lanes(g, c, options, &mut x, work)?;
     let (mut drawing, label_gaps) =
-        routing::route_with_label_gaps(g, c, orientation, graph, options, &x, work)?;
+        routing::route_with_label_gaps(g, c, orientation, graph, options, &mut x, None, work)?;
     extras::finish(&mut drawing, g, c, graph, options, work)?;
     routing::decision::dock(&mut drawing, c, g, graph, options, work)?;
     Ok((drawing, label_gaps))

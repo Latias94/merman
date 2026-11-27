@@ -104,10 +104,20 @@ Keep one public Shoal IR, `WorkControl`, DDLT verifier, and `route_paint` contra
   faces can adopt a shared crossbar using surplus work. The grid router requires an unmarked hub,
   compatible hub offsets, distinct leaf tracks, and clearance for every span, corner, and leaf
   marker. It replaces the whole fan together.
-- Grid captions share a drawing-wide obstacle scene. C4 wraps long relationship captions, seats
-  technology rows using measured text extents, and clips the relationship shaft behind its caption
-  when they overlap. Classic Shoal relation markers use the resolved shaft ink, including
-  per-relation overrides. Dark Mermaid palettes supply the default relation and boundary-title ink.
+- Grid captions share a drawing-wide obstacle scene. C4 wraps long relationship captions and seats
+  technology rows using measured text extents. Card gutters budget those extents along both axes.
+  Parallel labeled relations between the same boundaries reserve extra room on the first natural-width
+  solve. Fit-width starts with the narrower gutters. Final checks against painted shafts keep rescued
+  captions closest to their own relation and apply a single clip hole only to that shaft. Classic
+  Shoal relation markers use the resolved shaft ink, including per-relation overrides. Dark Mermaid
+  palettes supply the default relation and boundary-title ink.
+- When all top title anchors intersect automatic compound ports, Shoal reserves shoulder space
+  and solves the group's contacts again. Fixed contacts still have a title halo when a route must
+  pass through the title.
+- The canonical painter tests step crossbars against the placed obstacle inventory after preparing
+  the route sections. A bounded rectilinear detour handles a blocked step while keeping border
+  stitches and marker leads fixed. Card-grid captions use shaft cutouts for crowded gutters, so
+  the painter protects their node and title obstacles independently of relationship captions.
 - Compound crossing comparisons index line and curve bounds before sampling overlapping curves.
   Geometry-only solves skip the statistic when it cannot affect route selection. Orthogonal
   refinement shares projected segments and route bounds, and the visibility router combines

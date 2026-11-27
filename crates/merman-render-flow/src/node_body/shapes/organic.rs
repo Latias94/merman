@@ -60,18 +60,19 @@ fn render_organic_shape(
     {
         let _ = write!(
             out,
-            r#"<g class="basic label-container" style="{}" transform="translate({},{})"><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"#,
-            escape_attr(svg.rough_group_style),
+            r#"<g class="basic label-container" style="{}" transform="translate({},{})">"#,
+            escape_attr(svg.hand_drawn_group_style()),
             fmt(geometry.translate_x),
             fmt(geometry.translate_y),
-            escape_attr(&fill_d),
-            escape_attr(svg.fill_color),
-            fmt(HAND_DRAWN_FILL_WEIGHT as f64),
-            escape_attr(&stroke_d),
-            escape_attr(svg.stroke_color),
-            fmt(svg.geometry.stroke_width as f64),
-            escape_attr(svg.geometry.stroke_dasharray),
         );
+        svg.write_hand_drawn_path_pair(
+            out,
+            &path,
+            &fill_d,
+            &stroke_d,
+            f64::from(HAND_DRAWN_FILL_WEIGHT),
+        );
+        out.push_str("</g>");
         return;
     }
 

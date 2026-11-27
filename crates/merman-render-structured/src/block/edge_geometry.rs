@@ -1,7 +1,10 @@
 use std::collections::HashMap;
 
 use merman_model::families::block::BlockEdge;
-use merman_render_core::{Bounds, LayoutEdge, LayoutPoint};
+use merman_render_core::{
+    Bounds, LayoutEdge, LayoutPoint, route_types::Marker,
+    svg_edge_parity::markers::BaseEdgeMarkerKind,
+};
 use merman_theme_contract::v2::EdgeStyle;
 
 use super::BlockShapeGeometry;
@@ -12,6 +15,37 @@ pub struct BlockOrthogonalRoute {
     pub path: String,
     pub bounds: Bounds,
     pub marker_refs: [LayoutPoint; 2],
+    pub markers: (Marker, Marker),
+}
+
+#[derive(Clone, Copy)]
+pub struct BlockEdgeMarkerGeometry {
+    /// Signed extent from the marker reference toward the attached shape.
+    pub front: f64,
+    pub routing: Marker,
+}
+
+impl BlockEdgeMarkerGeometry {
+    pub fn from_kind(kind: BaseEdgeMarkerKind) -> Option<Self> {
+        use BaseEdgeMarkerKind::*;
+        // Distances from the shared marker's refX/refY in drawing units. Point markers touch
+        // their clipped viewport tip. Circle and cross markers leave a gap.
+        let (front, depth, half_width): (f64, f64, f64) = match kind {
+            PointStart => (3.6, 4.4, 4.0),
+            PointEnd => (4.0, 4.0, 4.0),
+            CircleStart | CircleEnd => (-1.1, 12.1, 5.5),
+            CrossStart | CrossEnd => (-1.0, 12.0, 5.8),
+            _ => return None,
+        };
+        Some(Self {
+            front,
+            routing: Marker {
+                trim: front.max(0.0),
+                depth,
+                width: 2.0 * half_width,
+            },
+        })
+    }
 }
 
 fn block_edge_start_marker_inset(arrow: Option<&str>) -> f64 {

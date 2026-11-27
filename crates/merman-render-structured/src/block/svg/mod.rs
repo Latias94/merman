@@ -19,6 +19,7 @@ pub struct BlockSvgContext<'a> {
     pub work_meter: &'a OperationWorkMeter,
     pub text_measurer: &'a dyn TextMeasurer,
     pub operation: &'a OperationContext,
+    pub shoal: bool,
 }
 
 impl BlockSvgContext<'_> {

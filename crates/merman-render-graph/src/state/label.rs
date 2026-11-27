@@ -2,6 +2,7 @@ use std::borrow::Cow;
 
 use merman_render_core::{
     entities::{decode_mermaid_entities_for_render_text, decode_svg_text_content_entities},
+    mermaid_style::visit_parsed_style_declarations,
     svg_scan::find_tag_end,
     text::{
         self, TextMeasurer, TextMetrics, TextStyle, WrapMode,
@@ -158,22 +159,18 @@ fn parse_img_attributes(tag: &str) -> Vec<(String, String)> {
 }
 
 fn normalized_image_style(existing: Option<&str>, image_only: bool, font_size: f64) -> String {
-    let mut declarations = existing
-        .into_iter()
-        .flat_map(|style| style.split(';'))
-        .filter_map(|declaration| {
-            let declaration = declaration.trim();
-            let (name, value) = declaration.split_once(':')?;
-            let name = name.trim().to_ascii_lowercase();
-            if matches!(
-                name.as_str(),
+    let mut declarations = Vec::new();
+    if let Some(style) = existing {
+        visit_parsed_style_declarations(style, |declaration| {
+            let name = declaration.property();
+            if !matches!(
+                name,
                 "display" | "flex-direction" | "width" | "min-width" | "max-width"
             ) {
-                return None;
+                declarations.push((name.to_owned(), declaration.source_value().to_owned()));
             }
-            Some((name, value.trim().to_string()))
-        })
-        .collect::<Vec<_>>();
+        });
+    }
     declarations.push(("display".to_string(), "flex".to_string()));
     declarations.push(("flex-direction".to_string(), "column".to_string()));
     if image_only {

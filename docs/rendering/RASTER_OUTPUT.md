@@ -86,9 +86,14 @@ output exceeds a limit, Merman reduces it proportionally instead of first alloca
 pixmap. `RasterPlan` exposes both requested and final dimensions. JPEG also has the format's
 65,535-pixel per-side encoder limit.
 
-The matte is an output property, not the diagram's theme canvas. PNG defaults to no matte. JPEG
-defaults to opaque white because the format cannot preserve alpha. `RasterExportReport` records
-the effective matte and whether JPEG supplied that default.
+The matte composites behind the diagram's painted canvas. PNG defaults to transparency and JPEG
+defaults to opaque white. When Mermaid source selects a dark theme, PNG, JPEG, and PDF use the
+resolved `themeVariables.background` if the caller supplies neither a canvas override nor a
+matte or page paint. The same rule applies to `theme: base` with `themeVariables.darkMode: true`
+and a dark background. JPEG composites a translucent theme background over white. Use
+`--background transparent` in the CLI or set `RasterOptions::matte` to `"transparent"` to preserve
+alpha in PNG. `RasterExportReport` records the effective matte and whether JPEG supplied its
+white default.
 
 The default decoded-image budget accepts the byte and intrinsic-pixel limits described above,
 including recursively embedded SVG resources. This budget is separate from the final PNG/JPEG

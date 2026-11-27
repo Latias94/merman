@@ -434,6 +434,9 @@ pub struct GroupSpec {
     pub title_position: TitlePosition,
     pub min_size: Size,
     pub seq: u32,
+    /// On the swimlane grid, retain this root group's edge contacts at a zero-width boundary.
+    /// A boundary-only lane must be untitled and have no items.
+    pub lane_boundary_only: bool,
 }
 
 impl GroupSpec {

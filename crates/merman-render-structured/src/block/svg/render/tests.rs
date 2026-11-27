@@ -150,6 +150,7 @@ fn render_block_direct_with_policy(
         work_meter: &work_meter,
         text_measurer: &measurer,
         operation: &operation,
+        shoal: false,
     };
     let node_bindings = BlockNodeBindings::prepare(model, &layout, &layout_meter)?;
     render_block_diagram_svg_model_with_theme(
@@ -341,6 +342,7 @@ fn diagram_id_terminal_precedes_later_block_model_validation() {
         work_meter: &work_meter,
         text_measurer: &measurer,
         operation: &operation,
+        shoal: false,
     };
     let layout = BlockDiagramLayout {
         nodes: vec![LayoutNode {

@@ -19,7 +19,9 @@ mod theme;
 mod typography;
 
 pub use css_binding::BlockCssThemeBinding;
-pub use edge_geometry::{BlockEdgePoints, BlockOrthogonalRoute, block_render_edge_points};
+pub use edge_geometry::{
+    BlockEdgeMarkerGeometry, BlockEdgePoints, BlockOrthogonalRoute, block_render_edge_points,
+};
 pub use native_theme::BlockNativeStyle;
 pub use node_binding::BlockNodeBindings;
 

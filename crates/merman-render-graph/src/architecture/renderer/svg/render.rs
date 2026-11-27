@@ -5,6 +5,7 @@ use merman_model::families::architecture::{
 };
 use merman_render_core::{
     Bounds, Result, root_svg,
+    svg_css::PreparedLookDefs,
     svg_output::{BoundedSvgOutput, SvgOutput, timing::RenderTimings},
     theme_svg::elevation,
 };
@@ -12,6 +13,8 @@ use merman_render_core::{
 use super::super::labels::{svg_service_title_bounds, wrap_svg_words_to_lines};
 #[cfg(feature = "layout-shoal")]
 use super::ArchitectureCanonicalSvg;
+#[cfg(feature = "layout-shoal")]
+use super::edges::ArchitectureShoalPaint;
 use super::edges::{ArchitectureEdgeRenderContext, push_architecture_edges};
 use super::geometry::{GroupRect, GroupRectComputer, bounds_from_rect, extend_bounds};
 use super::icons::ArchitectureNodeResources;
@@ -294,13 +297,8 @@ pub fn render_architecture_diagram_svg_typed_with_config(
     let checkpoints = ArchitectureEmitCheckpoints::new(options.work_meter);
     checkpoints.checkpoint()?;
     let typography = group_theme.typography_theme();
-    let mut settings = ArchitectureRenderSettings::from_prepared(diagram_id, typography);
     let native = group_theme.native_style();
-    if let Some(native) = native {
-        settings.apply_native(diagram_id, native, typography.css_binding());
-    }
-    checkpoints.checkpoint()?;
-    let css = settings.css.as_str();
+    let settings = ArchitectureRenderSettings::from_prepared(typography, native);
     let icon_size_px = settings.icon_size_px;
     let half_icon = settings.half_icon;
     let padding_px = settings.padding_px;
@@ -342,10 +340,33 @@ pub fn render_architecture_diagram_svg_typed_with_config(
         &mut out,
         root_viewport,
         diagram_id,
-        css,
+        |css| {
+            ArchitectureRenderSettings::write_stylesheet(
+                css,
+                diagram_id,
+                typography.css_binding(),
+                native,
+            )
+        },
         &a11y,
         use_max_width,
     )?;
+    let look_defs = PreparedLookDefs::new(effective_config);
+    let emit_shadow_defs = typography
+        .css_binding()
+        .common
+        .references_builtin_drop_shadow();
+    #[cfg(feature = "layout-shoal")]
+    let emit_shadow_defs = emit_shadow_defs
+        || (shoal_geometry.is_some() && effective_config.get_str("look") == Some("neo"));
+    if emit_shadow_defs {
+        look_defs.write_shadow_defs(&mut out, diagram_id)?;
+    }
+    if look_defs.uses_gradient() {
+        out.push_str("<defs>");
+        look_defs.write_gradient(&mut out, diagram_id)?;
+        out.push_str("</defs>");
+    }
     checkpoints.checkpoint()?;
     let separate_group_surfaces = native.is_some();
     #[cfg(feature = "layout-shoal")]
@@ -411,7 +432,20 @@ pub fn render_architecture_diagram_svg_typed_with_config(
             diagram_id,
             layout,
             #[cfg(feature = "layout-shoal")]
-            shoal: shoal_geometry,
+            shoal: shoal_geometry.map(|geometry| ArchitectureShoalPaint {
+                geometry,
+                operation: options.operation,
+                seed: merman_render_core::config::config_f64(
+                    effective_config.as_value(),
+                    &["handDrawnSeed"],
+                )
+                .unwrap_or(0.0),
+                caption_fill: shoal_caption_fill(
+                    effective_config,
+                    native,
+                    options.canvas_background,
+                ),
+            }),
             model,
             node_xy: &node_xy,
             settings: &settings,
@@ -488,4 +522,37 @@ pub fn render_architecture_diagram_svg_typed_with_config(
     }
 
     Ok(rooted_svg)
+}
+
+#[cfg(feature = "layout-shoal")]
+fn shoal_caption_fill<'a>(
+    config: &'a merman_model::presentation::PresentationConfig,
+    native: Option<&super::super::ArchitectureNativeStyle>,
+    canvas: Option<merman_theme_contract::v2::Color>,
+) -> std::borrow::Cow<'a, str> {
+    use merman_theme_contract::v2::EdgeLabelBackground;
+    use std::borrow::Cow;
+
+    if config.explicit_config_owns_path("themeVariables.edgeLabelBackground")
+        && let Some(fill) = config.get_str("themeVariables.edgeLabelBackground")
+    {
+        return Cow::Borrowed(fill);
+    }
+    if let Some(native) = native {
+        let fill = match native.edge_label_bg {
+            EdgeLabelBackground::Auto | EdgeLabelBackground::Canvas => {
+                canvas.unwrap_or(native.edge_label_fill)
+            }
+            EdgeLabelBackground::Pill | EdgeLabelBackground::Transparent => native.edge_label_fill,
+        };
+        Cow::Owned(fill.to_string())
+    } else if let Some(canvas) = canvas {
+        Cow::Owned(canvas.to_string())
+    } else {
+        Cow::Borrowed(
+            config
+                .get_str("themeVariables.edgeLabelBackground")
+                .unwrap_or("#fff"),
+        )
+    }
 }

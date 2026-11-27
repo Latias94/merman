@@ -658,6 +658,7 @@ fn er_swimlane_title_html_labels_follow_flowchart_and_hand_drawn_lanes_keep_both
                 "  htmlLabels: false\n  flowchart:\n    htmlLabels: {title_html}\n",
                 "  swimlane:\n    lineHops: false\n---\nerDiagram\n",
                 "subgraph Group[**Customer Domain**]\nA\nB\nend\nA ||--|| B : connects\n",
+                "style Group fill:#334455,fill-opacity:0,opacity:1\n",
             ),
             look = look,
             title_html = title_html
@@ -688,6 +689,16 @@ fn er_swimlane_title_html_labels_follow_flowchart_and_hand_drawn_lanes_keep_both
                 .unwrap();
             if look == "handDrawn" {
                 assert!(shell.has_tag_name("g"));
+                assert_eq!(shell.attribute("style"), Some("opacity:1"));
+                let backing = shell.first_element_child().unwrap();
+                assert!(has_class(backing, "merman-rough-backing"));
+                assert_eq!(backing.attribute("fill"), Some("#334455"));
+                assert!(
+                    backing
+                        .attribute("style")
+                        .unwrap()
+                        .contains("fill-opacity:0")
+                );
                 assert!(
                     shell
                         .descendants()
@@ -696,6 +707,68 @@ fn er_swimlane_title_html_labels_follow_flowchart_and_hand_drawn_lanes_keep_both
             } else {
                 assert!(shell.has_tag_name("rect"));
             }
+        }
+    }
+}
+
+#[test]
+fn hand_drawn_er_swimlane_bodies_only_paint_authored_fills() {
+    const SOURCE: &str = concat!(
+        "---\nconfig: {\"layout\":\"swimlane\",\"look\":\"handDrawn\",\"handDrawnSeed\":42,\"htmlLabels\":false}\n---\n",
+        "erDiagram\nsubgraph Plain[Plain lane]\nA\nend\n",
+        "subgraph Painted[Painted lane]\nB\nend\n",
+        "A ||--|| B : connects\nB ||--|| OUTSIDE : reaches\n",
+        "style Plain stroke:#123456,stroke-width:2px\n",
+        "style Painted fill:#ddeeff80\n",
+    );
+    let parsed = parse_er(SOURCE);
+    let svg = prepare_er(&parsed)
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap()
+        .svg()
+        .to_owned();
+    let doc = roxmltree::Document::parse(&svg).unwrap();
+    for id in ["Plain", "Painted", "__swimlane_default__"] {
+        let lane = doc
+            .descendants()
+            .find(|node| has_class(*node, "swimlane") && node.attribute("data-id") == Some(id))
+            .unwrap();
+        let body = lane
+            .children()
+            .find(|node| has_class(*node, "swimlane-body"))
+            .unwrap();
+        let backing = body
+            .children()
+            .find(|node| has_class(*node, "merman-rough-backing"));
+        let mut paths = body.children().filter(|node| node.has_tag_name("path"));
+        if id == "Painted" {
+            let backing = backing.unwrap();
+            assert_eq!(backing.attribute("fill"), Some("#ddeeff80"));
+            assert!(
+                paths.count() > 1,
+                "authored translucent fill still has hachure"
+            );
+        } else {
+            assert!(backing.is_none(), "{id} has no body fill");
+            let outline = paths.next().unwrap();
+            assert_eq!(outline.attribute("fill"), Some("none"));
+            assert!(paths.next().is_none(), "{id} needs only the rough outline");
+            if id == "Plain" {
+                assert_eq!(outline.attribute("stroke"), Some("#123456"));
+                assert_eq!(outline.attribute("stroke-width"), Some("2"));
+            }
+        }
+        if id == "Plain" {
+            let header = lane
+                .children()
+                .find(|node| has_class(*node, "swimlane-title"))
+                .unwrap();
+            assert!(
+                header
+                    .children()
+                    .any(|node| has_class(node, "merman-rough-backing")),
+                "the unstyled title keeps its theme fill"
+            );
         }
     }
 }

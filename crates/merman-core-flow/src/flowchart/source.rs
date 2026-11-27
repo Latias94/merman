@@ -10,8 +10,8 @@ use merman_markup::sanitize::{sanitize_text, sanitize_text_as_html_fragment};
 use merman_model::families::flowchart::FlowchartRenderContext;
 use merman_model::families::flowchart::{
     FlowDroppedSubgraphMember, FlowEdge, FlowEdgeDefaults, FlowNode, FlowNodeProvenance,
-    FlowSubgraph, FlowSubgraphVertexStyle, FlowchartModel, FlowchartRenderLabelSources,
-    FlowchartSubgraphStyles,
+    FlowSubgraph, FlowSubgraphVertexStyle, FlowchartLabelSourceOwner, FlowchartModel,
+    FlowchartRenderLabelSources, FlowchartSubgraphStyles, flowchart_svg_text_source,
 };
 use merman_model::warnings::{DiagramWarningFact, FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID};
 use merman_model::{OperationControl, OperationControlResult, SourceSpan, config::MermaidConfig};
@@ -288,11 +288,15 @@ impl FlowchartSemanticSource {
 
         let mut render_nodes = Vec::with_capacity(nodes.len());
         let mut label_sources = FlowchartRenderLabelSources::default();
+        let preserve_svg_text = matches!(
+            diagram_type,
+            "flowchart" | "flowchart-v2" | "flowchart-elk" | "swimlane"
+        );
         for (index, node) in nodes.into_iter().enumerate() {
             if index % 128 == 0 {
                 control.checkpoint()?;
             }
-            let node = flow_node_to_model(node, config, &mut label_sources);
+            let node = flow_node_to_model(node, config, preserve_svg_text, &mut label_sources);
             render_nodes.push(node);
         }
         let mut render_edges = Vec::with_capacity(edges.len());
@@ -300,7 +304,7 @@ impl FlowchartSemanticSource {
             if index % 128 == 0 {
                 control.checkpoint()?;
             }
-            match flow_edge_to_model(edge, config, index, &mut label_sources) {
+            match flow_edge_to_model(edge, config, index, preserve_svg_text, &mut label_sources) {
                 Ok(edge) => {
                     render_edges.push(edge);
                 }
@@ -312,7 +316,13 @@ impl FlowchartSemanticSource {
             if index % 128 == 0 {
                 control.checkpoint()?;
             }
-            let subgraph = flow_subgraph_to_model(subgraph, config, index, &mut label_sources);
+            let subgraph = flow_subgraph_to_model(
+                subgraph,
+                config,
+                index,
+                preserve_svg_text,
+                &mut label_sources,
+            );
             render_subgraphs.push(subgraph);
         }
         let mut render_tooltips = rustc_hash::FxHashMap::default();
@@ -409,6 +419,7 @@ fn append_missing_subgraph_nodes(
 fn flow_node_to_model(
     n: Node,
     config: &MermaidConfig,
+    preserve_svg_text: bool,
     label_sources: &mut FlowchartRenderLabelSources,
 ) -> FlowNode {
     let layout_shape = layout_shape_for_node(&n);
@@ -419,6 +430,15 @@ fn flow_node_to_model(
         .filter(|source| *source != label)
     {
         label_sources.insert_node(n.id.clone(), source);
+    }
+    if preserve_svg_text
+        && n.label_type != TitleKind::Markdown
+        && let Some(source) = flowchart_svg_text_source(
+            strip_label_quotes(label_raw),
+            label_sources.node_source(&n.id).unwrap_or(&label),
+        )
+    {
+        label_sources.insert_svg_text(FlowchartLabelSourceOwner::Node(&n.id), source);
     }
 
     FlowNode {
@@ -447,6 +467,7 @@ fn flow_edge_to_model(
     e: Edge,
     config: &MermaidConfig,
     semantic_index: usize,
+    preserve_svg_text: bool,
     label_sources: &mut FlowchartRenderLabelSources,
 ) -> Result<FlowEdge> {
     let label = sanitized_optional_label(e.label.as_deref(), config);
@@ -459,6 +480,16 @@ fn flow_edge_to_model(
         && *label != source
     {
         label_sources.insert_edge(semantic_index, source);
+    }
+    if preserve_svg_text
+        && e.label_type != TitleKind::Markdown
+        && let (Some(raw), Some(label)) = (e.label.as_deref(), label.as_deref())
+        && let Some(source) = flowchart_svg_text_source(
+            raw,
+            label_sources.edge_source(semantic_index).unwrap_or(label),
+        )
+    {
+        label_sources.insert_svg_text(FlowchartLabelSourceOwner::Edge(semantic_index), source);
     }
     let id =
         e.id.ok_or_else(|| "flowchart edge id missing".to_string())?;
@@ -528,6 +559,12 @@ fn sanitized_node_render_label_source(n: &Node, config: &MermaidConfig) -> Strin
     label
 }
 
+fn strip_label_quotes(text: &str) -> &str {
+    text.strip_prefix('"')
+        .and_then(|body| body.strip_suffix('"'))
+        .unwrap_or(text)
+}
+
 fn sanitized_optional_label(label: Option<&str>, config: &MermaidConfig) -> Option<String> {
     label.map(|s| sanitized_label(s, config))
 }
@@ -558,6 +595,7 @@ fn flow_subgraph_to_model(
     sg: FlowSubGraph,
     config: &MermaidConfig,
     declaration_ordinal: usize,
+    preserve_svg_text: bool,
     label_sources: &mut FlowchartRenderLabelSources,
 ) -> FlowSubgraph {
     let sanitized_title = sanitize_text(&sg.title, config);
@@ -567,6 +605,20 @@ fn flow_subgraph_to_model(
         .filter(|source| *source != title);
     if let Some(source) = render_title_source {
         label_sources.insert_subgraph(sg.id.clone(), declaration_ordinal, Some(source));
+    }
+    if preserve_svg_text
+        && sg.label_type != "markdown"
+        && let Some(source) = flowchart_svg_text_source(
+            &sg.title,
+            label_sources
+                .subgraph_source(declaration_ordinal, &sg.id)
+                .unwrap_or(&title),
+        )
+    {
+        label_sources.insert_svg_text(
+            FlowchartLabelSourceOwner::Subgraph(declaration_ordinal, &sg.id),
+            source,
+        );
     }
     FlowSubgraph {
         id: sg.id,

@@ -7,9 +7,8 @@ use super::{
 use crate::architecture::ArchitectureDiagramLayout;
 use base64::Engine as _;
 use merman_render_core::xml::escape_attr_into;
-use merman_render_core::{Error, Result};
+use merman_render_core::{Bounds, Error, Result};
 use merman_render_core::{LayoutEdge, LayoutPoint, route_paint::CanonicalPaintScratch};
-use merman_theme_contract::v2::EdgeStyle;
 use std::borrow::Cow;
 
 pub(super) struct Shaft<'a> {
@@ -22,7 +21,6 @@ impl<'a> Shaft<'a> {
         geometry: &dyn ArchitectureCanonicalSvg,
         layout: &'a ArchitectureDiagramLayout,
         ordinal: usize,
-        edge_style: Option<EdgeStyle>,
         work_meter: &merman_render_core::resources::OperationWorkMeter,
         scratch: &'a mut CanonicalPaintScratch,
     ) -> Result<Self> {
@@ -32,7 +30,7 @@ impl<'a> Shaft<'a> {
             .ok_or_else(|| Error::InvalidModel {
                 message: format!("Missing Architecture route edge-{ordinal}"),
             })?;
-        let painted = geometry.paint_edge(edge, edge_style, work_meter, scratch)?;
+        let painted = geometry.paint_edge(edge, work_meter, scratch)?;
         Ok(Self { edge, painted })
     }
 
@@ -43,6 +41,7 @@ impl<'a> Shaft<'a> {
         ordinal: usize,
         points_json: &mut Vec<u8>,
         points_base64: &mut String,
+        clip_id: Option<&str>,
     ) -> Result<()> {
         points_json.clear();
         points_json.reserve(128);
@@ -67,6 +66,9 @@ impl<'a> Shaft<'a> {
         out.push('"');
         super::super::write_geometry_attrs(out, "edge", &self.edge.id);
         let _ = write!(out, r#" data-points="{points_base64}""#);
+        if let Some(id) = clip_id {
+            let _ = write!(out, r#" clip-path="url(#{id})""#);
+        }
         out.push_str("/>");
         Ok(())
     }
@@ -100,13 +102,47 @@ impl<'a> Shaft<'a> {
     ) -> Option<ArchitectureEdgeLabelPlan<'text>> {
         let text = geometry.edge_label(ordinal, self.edge.label.as_ref())?;
         let anchor = text.anchor;
+        let rect = kurbo::Rect::new(
+            text.bounds.min_x,
+            text.bounds.min_y,
+            text.bounds.max_x,
+            text.bounds.max_y,
+        )
+        .inflate(4.0, 2.0);
         Some(ArchitectureEdgeLabelPlan {
             lines: Cow::Borrowed(text.lines),
-            bounds: text.bounds,
+            bounds: bounds_from_rect(rect.x0, rect.y0, rect.width(), rect.height()),
             dominant_baseline: "middle",
             transform: format!("translate({}, {})", fmt(anchor.x), fmt(anchor.y)),
+            backplate: Some(rect - kurbo::Vec2::new(anchor.x, anchor.y)),
         })
     }
+}
+
+pub(super) fn write_caption_cutout(
+    out: &mut impl SvgOutput,
+    diagram_id: SvgDiagramId<'_>,
+    ordinal: usize,
+    shaft: &Bounds,
+    caption: &Bounds,
+) -> String {
+    let id = format!("{diagram_id}-architecture-edge-caption-{ordinal}");
+    // Include both rectangles so the even-odd hole cannot add a second visible region.
+    let x0 = fmt(shaft.min_x.min(caption.min_x) - 1.0);
+    let y0 = fmt(shaft.min_y.min(caption.min_y) - 1.0);
+    let x1 = fmt(shaft.max_x.max(caption.max_x) + 1.0);
+    let y1 = fmt(shaft.max_y.max(caption.max_y) + 1.0);
+    let (l, t, r, b) = (
+        fmt(caption.min_x),
+        fmt(caption.min_y),
+        fmt(caption.max_x),
+        fmt(caption.max_y),
+    );
+    let _ = write!(
+        out,
+        r#"<defs><clipPath id="{id}"><path clip-rule="evenodd" d="M{x0} {y0}H{x1}V{y1}H{x0}ZM{l} {t}H{r}V{b}H{l}Z"/></clipPath></defs>"#
+    );
+    id
 }
 
 fn arrow_at<'a>(

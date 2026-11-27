@@ -8,7 +8,7 @@ use merman_render_core::{
     root_svg::{self, RootViewportContext},
     svg_css::{CssSelectorDiagramId, SvgId},
     svg_output::{BoundedSvgOutput, SvgOutput, XmlTextOutput},
-    xml::{escape_attr_display, escape_xml, escape_xml_into},
+    xml::{escape_attr_display, escape_attr_into, escape_xml, escape_xml_into},
 };
 
 use super::{
@@ -163,7 +163,7 @@ pub fn render_eventmodeling_diagram_svg(
         &mut out,
         r#"<defs><marker id="em-arrowhead-{diagram_id}" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill=""#,
     );
-    escape_xml_into(&mut out, marker_fill);
+    escape_attr_into(&mut out, marker_fill);
     out.push_str(r#""></polygon></marker></defs></svg>"#);
     out.push('\n');
     root_document.complete(out.finish()?)

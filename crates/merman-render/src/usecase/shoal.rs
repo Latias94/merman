@@ -1,23 +1,24 @@
-use super::{UsecaseDiagramLayout, UsecaseEdgePlan, UsecaseLabelPlan, UsecaseNodePlan};
-use crate::graph_layout::canonical::CanonicalRoutes;
+use super::UsecaseDiagramLayout;
+use crate::graph_layout::canonical::{CanonicalRoutes, CaptionClearance};
 use crate::graph_layout::contour::{ShapePortProfile, shoal_contour, usecase_actor};
 use crate::graph_layout::ir::{
-    Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, RoutingStyle,
-    Side, Size, SolvedGroup, TitlePosition,
+    Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, Side, Size,
+    SolvedGroup, TitlePosition,
 };
 use crate::graph_layout::placement;
-use crate::graph_layout::route_paint::RouteStyle;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{Bounds, LayoutLabel, LayoutPoint};
 use crate::{Error, LayoutExecution, Result};
 use kurbo::Insets;
 use merman_model::families::usecase::{UsecaseDiagramModel, UsecaseNodeKind};
+use merman_render_graph::usecase::{
+    UsecaseLabelPlan, UsecaseMeasured, configured_usecase_spacing,
+    layout::{edge as layout_edge, node as layout_node},
+    package_tab_geometry, package_tab_size,
+};
 use rustc_hash::FxHashMap;
 use serde_json::Value;
 use std::collections::HashMap;
-
-mod marker;
-pub(crate) use marker::UsecaseMarker;
 
 const BOUNDARY_PADDING: f64 = 20.0;
 
@@ -25,19 +26,6 @@ const BOUNDARY_PADDING: f64 = 20.0;
 pub(super) struct UsecaseCanonicalLayout {
     pub(super) titles: HashMap<String, LayoutLabel>,
     pub(super) boundary_order: Vec<(usize, usize)>,
-}
-
-pub(crate) fn canonical_route_style(config: &Value) -> RouteStyle {
-    let curve = config
-        .pointer("/flowchart/curve")
-        .and_then(Value::as_str)
-        .unwrap_or("basis");
-    let radius = config
-        .pointer("/flowchart/roundedCornerRadius")
-        .and_then(Value::as_f64)
-        .filter(|radius| radius.is_finite() && *radius >= 0.0)
-        .unwrap_or(8.0);
-    RouteStyle::from_interpolate(curve, radius)
 }
 
 fn dimensions(label: &UsecaseLabelPlan) -> (f64, f64) {
@@ -94,8 +82,7 @@ fn boundary_paint_order(
 pub(super) fn layout(
     model: &UsecaseDiagramModel,
     config: &Value,
-    plans: &[UsecaseNodePlan],
-    edge_plans: &[UsecaseEdgePlan],
+    measured: &UsecaseMeasured,
     execution: Option<&LayoutExecution<'_>>,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<(
@@ -103,6 +90,8 @@ pub(super) fn layout(
     UsecaseCanonicalLayout,
     CanonicalRoutes,
 )> {
+    let plans = &measured.nodes;
+    let edge_plans = &measured.edges;
     work.charge_adapter(work.checked_add(plans.len(), model.nodes.len())?)?;
     let direction = match model.direction.as_str() {
         "LR" => Direction::Right,
@@ -114,16 +103,9 @@ pub(super) fn layout(
         Direction::Up | Direction::Down => (Side::Top, Side::Left),
         Direction::Left | Direction::Right => (Side::Left, Side::Top),
     };
-    let node_spacing = super::measure::number(config, "nodeSpacing", 50.0);
-    let rank_spacing = super::measure::number(config, "rankSpacing", 50.0);
-    let routing = match canonical_route_style(config) {
-        RouteStyle::Rounded(_)
-        | RouteStyle::Step
-        | RouteStyle::StepBefore
-        | RouteStyle::StepAfter => RoutingStyle::Orthogonal,
-        RouteStyle::Linear => RoutingStyle::Polyline,
-        RouteStyle::Curved => RoutingStyle::Curved,
-    };
+    let node_spacing = configured_usecase_spacing(config, "nodeSpacing");
+    let rank_spacing = configured_usecase_spacing(config, "rankSpacing");
+    let routing = measured.canonical_route_style(config).routing_style();
     let mut graph = MeasuredGraph {
         direction,
         routing,
@@ -159,7 +141,12 @@ pub(super) fn layout(
         let endpoint = if plan.is_boundary {
             let group = Endpoint::Group(index(graph.groups.len(), work)?);
             boundary_plans.push(plan_index);
-            let title = label_size(&plan.label);
+            let title = if plan.package {
+                let (width, height) = package_tab_size(&plan.label);
+                Some(Size { width, height })
+            } else {
+                label_size(&plan.label)
+            };
             let title_band = title.map_or(0.0, |title| title.height + title_margin);
             graph.groups.push(MeasuredGroup {
                 seq,
@@ -265,11 +252,11 @@ pub(super) fn layout(
     }
     work.charge_adapter(edge_plans.len())?;
     graph.edges.reserve(edge_plans.len());
-    let neo = config.get("look").and_then(Value::as_str) == Some("neo");
     for plan in edge_plans {
         work.charge_adapter(0)?;
         let marker = |start| {
-            UsecaseMarker::for_edge(plan, start, neo)
+            measured
+                .marker_for_edge(plan, start)
                 .map_or_else(Default::default, |marker| marker.metrics())
         };
         graph.edges.push(MeasuredEdge {
@@ -289,18 +276,12 @@ pub(super) fn layout(
         node_ids.iter().copied(),
         boundary_plans.iter().map(|&index| plans[index].id.as_str()),
         execution,
-        Default::default(),
+        placement::Constraints {
+            flush_top_left_titles: true,
+            ..Default::default()
+        },
         work,
     )?;
-    let mut routes = CanonicalRoutes::from_solved(
-        &graph,
-        &solved,
-        &profiles,
-        |_| 0.0,
-        edge_plans.iter().map(|plan| plan.id.as_str()),
-        work,
-    )?;
-    routes.placement = placement;
     let boundary_order = boundary_paint_order(&solved.groups, &boundary_plans, work)?;
     work.charge_adapter(work.checked_add(plans.len(), edge_plans.len())?)?;
     let mut nodes = Vec::with_capacity(plans.len());
@@ -311,14 +292,30 @@ pub(super) fn layout(
             Endpoint::Node(node) => solved.nodes[node as usize],
             Endpoint::Group(group) => {
                 let group = &mut solved.groups[group as usize];
-                if let Some(title) = group.title.take() {
-                    titles.insert(plan.id.clone(), title);
+                if let Some(title) = &mut group.title {
+                    titles.insert(plan.id.clone(), title.clone());
+                    if plan.package {
+                        // The drawn tab reaches the outer border above the placed title.
+                        let (left, width, height) = package_tab_geometry(
+                            group.rect.x,
+                            group.rect.y,
+                            group.rect.width,
+                            &plan.label,
+                            Some(title),
+                        );
+                        *title = LayoutLabel {
+                            x: left + width / 2.0,
+                            y: group.rect.y + height / 2.0,
+                            width,
+                            height,
+                        };
+                    }
                 }
                 group.rect
             }
         };
         let center = rect.center();
-        nodes.push(super::layout::node(
+        nodes.push(layout_node(
             plan,
             center.x,
             center.y,
@@ -326,6 +323,16 @@ pub(super) fn layout(
             rect.height,
         ));
     }
+    let mut routes = CanonicalRoutes::from_solved(
+        &graph,
+        &solved,
+        &profiles,
+        |_| 0.0,
+        edge_plans.iter().map(|plan| plan.id.as_str()),
+        CaptionClearance::Avoid,
+        work,
+    )?;
+    routes.placement = placement;
     let mut edges = Vec::with_capacity(edge_plans.len());
     for (plan, edge) in edge_plans.iter().zip(solved.edges) {
         let strings = work.checked_add(
@@ -333,7 +340,7 @@ pub(super) fn layout(
             work.checked_add(plan.source.len(), plan.target.len())?,
         )?;
         work.charge_adapter(work.checked_add(strings, edge.points.len())?)?;
-        let mut projected = super::layout::edge(
+        let mut projected = layout_edge(
             plan,
             edge.points
                 .into_iter()

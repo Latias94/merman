@@ -6,8 +6,8 @@ use std::fmt::Write as _;
 use crate::style::compiled::{FlowchartCompiledStyles, flowchart_label_div_style_prefix};
 use crate::svg::label::{append_native_label_color, flowchart_label_html_with_prepared_label};
 use crate::svg::types::{FlowchartRenderCtx, FlowchartRenderDetails};
-use crate::svg::util::{HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR, OptionalStyleXmlAttr};
-use crate::svg::{escape_xml_display, fmt_display};
+use crate::svg::util::{HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR, OptionalStyleAttr};
+use crate::svg::{escape_attr_display, fmt_display};
 use crate::svg::{
     write_flowchart_svg_label_plan_with_style, write_flowchart_svg_text_markdown_wrapped_with_style,
 };
@@ -80,7 +80,7 @@ impl<'a> FlowchartNodeLabelEmissionPlan<'a> {
             sidecar.node_owner(common.node_id, ctx.swimlane_direction.is_some())
         });
         let final_style = self.final_style();
-        let span_style_attr = OptionalStyleXmlAttr(final_style.as_ref());
+        let span_style_attr = OptionalStyleAttr(final_style.trim());
         let prepared_label = ctx
             .svg_label_sidecar
             .zip(owner)
@@ -104,13 +104,13 @@ impl<'a> FlowchartNodeLabelEmissionPlan<'a> {
         let _ = write!(
             out,
             r#"<g class="label" style="{}" transform="translate({},{})"><rect/><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="{}"{}>{}</span></div></foreignObject></g>"#,
-            escape_xml_display(&final_style),
+            escape_attr_display(&final_style),
             fmt_display(x),
             fmt_display(y),
             fmt_display(width),
             fmt_display(height),
             HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
-            escape_xml_display(&div_style),
+            escape_attr_display(&div_style),
             super::helpers::flowchart_node_label_span_class(label.label_type),
             span_style_attr,
             label_html,
@@ -272,7 +272,7 @@ fn render_flowchart_node_label_with_wrapper(
             out,
             r#"<g class="{}" style="{}" transform="translate({},{})"><rect/><g><rect class="background" style="stroke: none"/>"#,
             label_group_class,
-            escape_xml_display(&label_group_style),
+            escape_attr_display(&label_group_style),
             fmt_display(label.dx),
             fmt_display(-metrics.height / 2.0 + label_dy)
         );
@@ -314,7 +314,7 @@ fn render_flowchart_node_label_with_wrapper(
             )
         });
         let final_style = common.label_emission.final_style();
-        let span_style_attr = OptionalStyleXmlAttr(final_style.as_ref());
+        let span_style_attr = OptionalStyleAttr(final_style.trim());
         let is_math_html_label = ctx.node_wrap_mode == merman_render_core::text::WrapMode::HtmlLike
             && label.text.contains("$$")
             && (matches!(
@@ -413,7 +413,7 @@ fn render_flowchart_node_label_with_wrapper(
             out,
             r#"<g class="{}" style="{}" transform="translate({},{})"><rect/>"#,
             label_group_class,
-            escape_xml_display(&final_style),
+            escape_attr_display(&final_style),
             fmt_display(-metrics.width / 2.0 + label.dx),
             fmt_display(-metrics.height / 2.0 + label_dy),
         );
@@ -427,7 +427,7 @@ fn render_flowchart_node_label_with_wrapper(
             } else {
                 HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR
             },
-            escape_xml_display(div_style),
+            escape_attr_display(div_style),
             super::helpers::flowchart_node_label_span_class(label.label_type),
             span_style_attr,
             label_html

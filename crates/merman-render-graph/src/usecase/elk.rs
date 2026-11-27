@@ -110,8 +110,8 @@ fn layout(
             })
             .collect(),
         spacing: elk::Spacing {
-            node_node: measure::number(config, "nodeSpacing", 50.0),
-            layer_layer: measure::number(config, "rankSpacing", 50.0),
+            node_node: measure::spacing(config, "nodeSpacing"),
+            layer_layer: measure::spacing(config, "rankSpacing"),
             ..Default::default()
         },
         options: layout_options(config, algorithm),

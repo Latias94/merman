@@ -182,9 +182,11 @@ impl Hierarchy {
             parent.push(owner);
             Ok(())
         };
+        let mut has_hints = false;
         for node in &graph.nodes {
             work.visit(1)?;
             validate::node(node)?;
+            has_hints |= node.order_hint.is_some();
             add(node.parent)?;
         }
         for group in &graph.groups {
@@ -219,6 +221,8 @@ impl Hierarchy {
         let mut seq = reserved(item_count)?;
         seq.extend(graph.nodes.iter().map(|node| node.seq));
         seq.extend(graph.groups.iter().map(|group| group.seq));
+        let mut hinted_slots = Vec::new();
+        let mut survivors = Vec::new();
         for &scope in order.iter().rev() {
             let items = &mut scopes[scope].items;
             work.charge_sort(items.len())?;
@@ -227,6 +231,51 @@ impl Hierarchy {
                 && let Some(&first) = items.first()
             {
                 seq[node_count + scope] = seq[first];
+            }
+            if !has_hints {
+                continue;
+            }
+            let direction = graph
+                .groups
+                .get(scope)
+                .and_then(|group| group.direction)
+                .unwrap_or(graph.direction);
+            let hint = |item: usize| {
+                graph
+                    .nodes
+                    .get(item)
+                    .and_then(|node| node.order_hint_in(direction))
+            };
+            hinted_slots.clear();
+            survivors.clear();
+            for (slot, &item) in items.iter().enumerate() {
+                work.visit(1)?;
+                if let Some(hint) = hint(item) {
+                    let rank = f64::from(hint.rank);
+                    let key = if direction.axis() == Axis::Vertical {
+                        [rank, hint.cross_key]
+                    } else {
+                        [hint.cross_key, rank]
+                    };
+                    push(&mut hinted_slots, slot)?;
+                    push(&mut survivors, (item, key))?;
+                }
+            }
+            if survivors.len() > 1 {
+                // Reorder the surviving nodes in their current slots. New nodes and nested
+                // groups keep their authored slots, and hard alignments still drive grid links.
+                work.charge_sort(survivors.len())?;
+                survivors.sort_unstable_by(|(a, ak), (b, bk)| {
+                    ak[0]
+                        .total_cmp(&bk[0])
+                        .then_with(|| ak[1].total_cmp(&bk[1]))
+                        .then_with(|| seq[*a].cmp(&seq[*b]))
+                        .then_with(|| a.cmp(b))
+                });
+                work.visit(survivors.len())?;
+                for (&slot, &(item, _)) in hinted_slots.iter().zip(&survivors) {
+                    items[slot] = item;
+                }
             }
         }
         Ok(Self {

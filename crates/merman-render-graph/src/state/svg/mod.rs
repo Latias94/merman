@@ -17,7 +17,7 @@ use merman_render_core::{
     svg_css::{CssSelectorDiagramId, SvgDiagramIdValue, SvgId as SvgDiagramId, scoped_drop_shadow},
     svg_output::{BoundedSvgOutput, SvgOutput, timing},
     text::{TextMeasurer, WrapMode},
-    xml::{escape_attr, escape_attr_display, escape_xml, escape_xml_display},
+    xml::{escape_attr, escape_attr_display, escape_xml_display},
 };
 use merman_theme_contract::v2::{Elevation, FamilyTheme};
 use rustc_hash::FxHashMap;

@@ -63,11 +63,8 @@ impl FlowchartSteps {
     ) -> Result<&'a str> {
         let source = style_plan
             .edge_for(key)?
-            .edge_marker_color(compatibility.look.is_hand_drawn());
-        Ok(source
-            .unwrap_or(&compatibility.line_color)
-            .trim_start_matches("stroke:")
-            .trim())
+            .source_edge_stroke(compatibility.look.is_hand_drawn());
+        Ok(source.unwrap_or(&compatibility.line_color))
     }
 
     pub fn emitted(&self) -> bool {

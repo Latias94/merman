@@ -2,6 +2,12 @@ use crate::environment::RenderSession;
 use crate::layout_backend::{self, GraphLayoutBackend};
 use crate::{Error, LayoutAdaptation, LayoutOptions, RenderCapability, Result};
 use merman_model::OperationPhase;
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-mindmap",
+    feature = "diagram-sequence",
+    feature = "diagram-swimlane"
+))]
 use merman_model::families as diagrams;
 use merman_model::family::DiagramFamilyId;
 use merman_model::presentation::{PresentationDiagram, RenderSemanticModel};

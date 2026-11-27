@@ -19,8 +19,7 @@ pub enum OuterPathTranslation {
     Xy(f64, f64),
 }
 
-// Join literals so each branch keeps its original SVG append boundaries for byte admission
-// and cancellation. The translated hand-drawn fallback can have different comma spacing.
+// Join the group prefix and tail in one write. The hand-drawn fallback retains its comma spacing.
 macro_rules! write_outer_path_group {
     ($out:expr, $translation:expr, $xy_separator:literal, $tail:literal $(, $arg:expr)* $(,)?) => {
         match $translation {
@@ -60,15 +59,11 @@ impl OuterPathTranslation {
                 out,
                 self,
                 ",",
-                r#" style="{}"><path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"#,
-                escape_attr(body.rough_group_style),
-                escape_attr(&fill_d),
-                escape_attr(body.fill_color),
-                escape_attr(&stroke_d),
-                escape_attr(body.stroke_color),
-                fmt(body.geometry.stroke_width as f64),
-                escape_attr(body.geometry.stroke_dasharray),
+                r#" style="{}">"#,
+                escape_attr(body.hand_drawn_group_style()),
             );
+            body.write_hand_drawn_path_pair(out, path, &fill_d, &stroke_d, 4.0);
+            out.push_str("</g>");
         } else {
             let _ = write_outer_path_group!(out, self, ", ", ">");
             write_raw_filled_stroked_path(out, path, body);

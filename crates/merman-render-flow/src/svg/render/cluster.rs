@@ -1,13 +1,98 @@
 //! Flowchart cluster renderer.
 
+use std::borrow::Cow;
+
+use merman_model::presentation::PresentationConfig;
+use merman_render_core::theme_svg::edge_label_background::{adaptive_text_ink, literal_fill};
+use merman_theme_contract::v2::Paint;
+
 use super::super::*;
-use crate::svg::cluster_geometry::painted_cluster_frame;
 
 use crate::cluster_shell::{
     ClusterHandDrawn, FlowchartClusterShape, FlowchartClusterSvg, FlowchartClusterTitle,
 };
 
 use crate::graph::FlowchartClusterPass;
+use crate::style::compiled::FlowchartCompiledStyles;
+use crate::svg::cluster_geometry::painted_cluster_frame;
+
+pub(in crate::svg) fn resolve_canvas_color(
+    config: &PresentationConfig,
+    services: &FlowchartSvgServices<'_>,
+) -> Option<Color> {
+    if let Some(color) = services.canvas_background {
+        return Some(color);
+    }
+    if let Some(theme) = services.native_family_theme {
+        return match &theme.roles.canvas {
+            Paint::Solid(color) => Some(*color),
+            Paint::LinearGradient(_) => None,
+        };
+    }
+    config.get_str("themeVariables.background").map_or_else(
+        || Some(FlowchartClusterSvg::compat_theme_canvas_fallback(config)),
+        literal_fill,
+    )
+}
+
+pub(in crate::svg) fn lane_color_slot(ctx: &FlowchartRenderCtx<'_>, id: &str) -> Option<usize> {
+    crate::cluster_shell::swimlane::swimlane_color_slot(
+        ctx.model,
+        &ctx.palette,
+        ctx.diagram_type,
+        id,
+        !ctx.subgraphs_by_id.contains_key(id),
+    )
+}
+
+pub(in crate::svg) fn swimlane_label_ink(
+    ctx: &FlowchartRenderCtx<'_>,
+    id: &str,
+    style: &FlowchartCompiledStyles,
+    default_fill: Option<Color>,
+    default_ink: &str,
+    text_style: &TextStyle,
+) -> Result<Option<Cow<'static, str>>> {
+    if !ctx.layout.route_contract.is_canonical_axis() {
+        return Ok(None);
+    }
+    if style.has_source_label_foreground() {
+        let ink = style
+            .effective_edge_label_text_style_with_provenance(text_style)
+            .terminal_foreground;
+        return Ok(ink.map(|ink| Cow::Owned(ink.value().to_owned())));
+    }
+    let fill = match style.fill.as_deref() {
+        Some(fill) => literal_fill(fill),
+        None => default_fill,
+    };
+    let Some((fill, default_ink)) = fill.zip(literal_fill(default_ink)) else {
+        return Ok(None);
+    };
+    let mut backdrop = fill.composite(Color::TRANSPARENT, style.fill_opacity);
+    let mut parent = ctx.parent.get(id).copied();
+    while backdrop.channels()[3] != u8::MAX {
+        let Some(id) = parent else { break };
+        ctx.work_meter.charge_emit_work(1)?;
+        let terminal = ctx.prepared_nodes.cluster(id)?;
+        let fill = match terminal.compiled.fill.as_deref() {
+            Some(fill) => literal_fill(fill),
+            None => lane_color_slot(ctx, id)
+                .and_then(|slot| ctx.palette.background_color(slot))
+                .and_then(literal_fill)
+                .or_else(|| ctx.native.map(|native| native.container))
+                .or_else(|| literal_fill(&terminal.fill)),
+        };
+        let Some(fill) = fill else { return Ok(None) };
+        let layer = fill.composite(Color::TRANSPARENT, terminal.compiled.fill_opacity);
+        backdrop = backdrop.composite(layer, 1.0);
+        parent = ctx.parent.get(id).copied();
+    }
+    let backdrop = ctx
+        .canvas
+        .map_or(backdrop, |canvas| backdrop.composite(canvas, 1.0));
+    Ok(adaptive_text_ink(backdrop, default_ink).map(Cow::Borrowed))
+}
 
 pub fn advance_rough_geometry(
     ctx: &FlowchartRenderCtx<'_>,
@@ -19,6 +104,7 @@ pub fn advance_rough_geometry(
         .checkpoint(merman_model::OperationPhase::Layout)
         .map_err(merman_render_core::Error::from)?;
     if ctx.compatibility.look.as_str() != "handDrawn"
+        || ctx.native.is_some()
         || ctx
             .swimlane_lanes_by_id
             .get(cluster.id.as_str())
@@ -54,13 +140,6 @@ pub(in crate::svg) fn cluster_base_fill<'a>(
         );
     }
     &terminal.fill
-}
-
-#[cfg(feature = "layout-shoal")]
-pub(in crate::svg) fn compat_theme_canvas_fallback(
-    ctx: &FlowchartRenderCtx<'_>,
-) -> merman_theme_contract::v2::Color {
-    FlowchartClusterSvg::compat_theme_canvas_fallback(ctx.config)
 }
 
 #[cfg(feature = "test-support")]
@@ -202,5 +281,7 @@ pub(in crate::svg) fn render_flowchart_cluster_pass(
         config: ctx.config,
         math_renderer: ctx.math_renderer,
     };
-    svg.write(out, pass, shape, title)
+    let solid_backing =
+        svg.canonical_axis && (ctx.diagram_type == "agentflow" || ctx.swimlane_direction.is_none());
+    svg.write(out, pass, shape, title, ctx.canvas, solid_backing)
 }

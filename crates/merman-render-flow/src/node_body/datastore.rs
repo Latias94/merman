@@ -49,10 +49,14 @@ pub fn write_datastore(out: &mut impl SvgOutput, mut body: NodeBodySvg<'_>) {
         if let Some((fill_d, top_d, bottom_d)) = rough_paths {
             let _ = write!(
                 out,
-                r#"<g class="basic label-container" style="{}"><path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"#,
-                escape_attr(body.rough_group_style),
-                escape_attr(&fill_d),
-                escape_attr(body.fill_color),
+                r#"<g class="basic label-container" style="{}">"#,
+                escape_attr(body.hand_drawn_group_style()),
+            );
+            let outline = super::rectangle_backing(&body, w, h);
+            body.write_hachure(out, &outline, &fill_d, 4.0);
+            let _ = write!(
+                out,
+                r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"#,
                 escape_attr(&top_d),
                 escape_attr(body.stroke_color),
                 body.geometry.stroke_width,

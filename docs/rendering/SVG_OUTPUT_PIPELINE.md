@@ -111,6 +111,9 @@ let svg = Renderer::new().render_svg_with(
     `elk.lineHops: false`. The producer reuses clipped, straight edges from two-point ELK sections.
   - With `layout-shoal`, select `layout: shoal` and set `flowchart.curve: linear`. The compact
     writer consumes the canonical shaft commands, including bends and marker setback.
+- Both producers support Theme v2 arrow styles for their admitted edges and hard shadow layers
+  on rectangular nodes. A fully transparent canvas suppresses theme canvas textures. A visible
+  textured canvas or a blurred elevation still requires the parity producer.
 
 The compact writer emits native SVG without Mermaid compatibility styles or `<foreignObject>`
 labels. Unsupported families, constructs, or transforms return an explicit error. The profile is
@@ -479,7 +482,8 @@ do not implicitly paint the canvas. Set `SvgOutputPolicy.root_background_color` 
 `RootBackgroundPostprocessor`) when the host needs an explicit white, transparent, or custom
 canvas. Native CLI `render` follows the same default and accepts `--background`; the
 `mmdc` compatibility command keeps its explicit white default and accepts `--backgroundColor`.
-PNG/PDF canvas compositing is independently controlled by export options, not SVG root CSS.
+[Raster export options](RASTER_OUTPUT.md#png-and-jpeg) control PNG compositing. PDF uses its own
+export options for page paint.
 
 Binding consumers can opt into generic duplicate-fallback cleanup without writing a Rust
 postprocessor:

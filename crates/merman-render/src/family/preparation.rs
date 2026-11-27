@@ -1038,6 +1038,10 @@ pub(super) fn prepare_non_class_render<'parsed>(
     parsed: &'parsed PresentationDiagram,
     options: &LayoutOptions,
     context: FamilyRenderContext,
+    #[allow(
+        unused_variables,
+        reason = "Only Flowchart-derived families use the preparation mode."
+    )]
     preparation: FamilyPreparation,
 ) -> Result<FamilyRenderArtifact<'parsed>> {
     let meta = context.render_metadata(parsed.metadata());

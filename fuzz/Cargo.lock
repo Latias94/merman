@@ -1044,6 +1044,7 @@ dependencies = [
  "image",
  "merman-krilla",
  "merman-krilla-svg",
+ "merman-markup",
  "merman-model",
  "merman-render",
  "merman-resvg",

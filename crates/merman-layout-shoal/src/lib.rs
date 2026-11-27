@@ -31,7 +31,7 @@ mod work;
 
 pub use model::*;
 pub use options::*;
-pub use ortho::{OrthogonalSpan, route_orthogonal_spans};
+pub use ortho::{OrthogonalSpan, route_fixed_spans, route_orthogonal_spans};
 pub use scratch::LayoutScratch;
 pub use work::{LayoutError, NoopWorkControl, WorkControl, WorkError};
 

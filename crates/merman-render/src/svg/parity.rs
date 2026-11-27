@@ -66,16 +66,6 @@ mod gantt;
 mod info;
 #[cfg(feature = "diagram-journey")]
 mod journey;
-#[cfg(all(
-    feature = "layout-shoal",
-    any(
-        feature = "diagram-class",
-        feature = "diagram-er",
-        feature = "diagram-state",
-        feature = "diagram-usecase"
-    )
-))]
-use merman_render_core::rough_svg as canonical_rough;
 #[cfg(feature = "diagram-mindmap")]
 mod mindmap;
 #[cfg(test)]
@@ -657,6 +647,17 @@ pub(crate) fn with_test_svg_execution<T>(
     run(&execution)
 }
 
+#[cfg_attr(
+    not(any(
+        feature = "diagram-agentflow",
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane"
+    )),
+    allow(
+        unused_variables,
+        reason = "Only Flowchart-derived families supply edge paint geometry."
+    )
+)]
 pub(crate) fn edge_geometry_family_artifact(
     family: &crate::family::BuiltinFamilyArtifact,
     metadata: &merman_model::presentation::PresentationMetadata,
@@ -789,10 +790,15 @@ fn finish_family_svg(
         let roles = &resolved.family(rooted_svg.family().as_str()).roles;
         let background = background.map(Paint::Solid);
         let paint = background.as_ref().unwrap_or(&roles.canvas);
+        let textures = if matches!(paint, Paint::Solid(color) if color.channels()[3] == 0) {
+            &[][..]
+        } else {
+            &resolved.canvas().textures
+        };
         apply_root_canvas(
             rooted_svg,
             paint,
-            &resolved.canvas().textures,
+            textures,
             &roles.stroke_guide,
             diagram_id,
             meter,

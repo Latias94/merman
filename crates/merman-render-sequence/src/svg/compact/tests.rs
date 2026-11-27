@@ -156,6 +156,42 @@ fn first_tag<'tree, 'input: 'tree>(
 }
 
 #[test]
+fn parity_sequence_preserves_tabs_in_actor_and_paint_attributes() {
+    let source = "sequenceDiagram\n\
+        box rgb(10\t20 30) Group\n\
+        participant User\tInterface\n\
+        end\n\
+        actor Build\tBot\n\
+        rect rgb(40\t50 60)\n\
+        User\tInterface->>Build\tBot: Start\n\
+        end\n";
+    let meter = Arc::new(OperationWorkMeter::new(RenderResourcePolicy::interactive()));
+    with_pair(source, meter, None, None, |request, _| {
+        let svg = render_parity(request)
+            .unwrap()
+            .into_string_for(DiagramFamilyId::SEQUENCE)
+            .unwrap();
+        let doc = Document::parse(&svg).unwrap();
+        for id in ["User\tInterface", "Build\tBot"] {
+            let lifeline = doc.descendants().find(|node| {
+                node.attribute("data-et") == Some("life-line")
+                    && node.attribute("data-id") == Some(id)
+            });
+            assert_eq!(lifeline.and_then(|node| node.attribute("name")), Some(id));
+        }
+        assert!(doc.descendants().any(|node| {
+            node.has_tag_name("rect") && node.attribute("name") == Some("User\tInterface")
+        }));
+        let frame_fills: Vec<_> = doc
+            .descendants()
+            .filter(|node| node.has_tag_name("rect") && node.attribute("class") == Some("rect"))
+            .filter_map(|node| node.attribute("fill"))
+            .collect();
+        assert_eq!(frame_fills, ["rgb(10\t20 30)", "rgb(40\t50 60)"]);
+    });
+}
+
+#[test]
 fn compact_keeps_prepared_sequence_geometry_and_order() {
     let meter = Arc::new(OperationWorkMeter::new(RenderResourcePolicy::interactive()));
     with_pair(

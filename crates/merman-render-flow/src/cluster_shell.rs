@@ -4,6 +4,7 @@ use std::fmt::{self, Write as _};
 
 use kurbo::{Point, Rect, Size, Vec2};
 use merman_render_core::{
+    mermaid_style::{ParsedStyleDeclaration, visit_parsed_style_declarations},
     number_format::canonical_number as number,
     resources::OperationWorkMeter,
     rough_svg::paths::{
@@ -12,7 +13,7 @@ use merman_render_core::{
         roughjs_prepare_hand_drawn_stroke_path_for_svg_path,
     },
     svg_output::SvgOutput,
-    xml::{escape_attr_display, escape_xml_display},
+    xml::escape_attr_display,
 };
 use roughr::core::RoughRandomness;
 
@@ -58,6 +59,7 @@ pub enum ClusterShellForm<'a> {
 pub struct ClusterHandDrawn<'a> {
     pub stroke_width: Option<&'a str>,
     pub stroke_dasharray: Option<&'a str>,
+    pub solid_backing: bool,
     pub work_meter: &'a OperationWorkMeter,
     pub randomness: &'a RoughRandomness,
 }
@@ -130,16 +132,15 @@ fn write_cluster_shell(
                 escape_attr_display(paint.stroke),
                 number(stroke_width),
             );
-            // Native colors are CSS tokens. Source declarations need Mermaid entity recovery.
             if !paint.style.is_empty() {
-                let _ = write!(out, ";{}", escape_xml_display(paint.style));
+                let _ = write!(out, ";{}", escape_attr_display(paint.style));
             }
             out.push_str(r#""/>"#);
         }
         ClusterShellForm::Agentflow {
             stroke,
             canonical_fill,
-        } => write_agentflow_shell(out, origin, size, stroke, canonical_fill, rough),
+        } => write_agentflow_shell(out, origin, size, paint, stroke, canonical_fill, rough),
         ClusterShellForm::Flowchart { inline_fill } => {
             write_flowchart_shell(out, origin, size, paint, inline_fill, rough);
         }
@@ -150,6 +151,7 @@ fn write_agentflow_shell(
     out: &mut impl SvgOutput,
     origin: Point,
     size: Size,
+    paint: ClusterShellPaint<'_>,
     stroke: &str,
     canonical_fill: Option<(&str, f64)>,
     rough: Option<ClusterHandDrawn<'_>>,
@@ -162,12 +164,34 @@ fn write_agentflow_shell(
             rough.work_meter,
             rough.randomness,
         ) {
+            out.push_str("<g>");
+            if rough.solid_backing {
+                let _ = write!(
+                    out,
+                    r#"<rect class="merman-rough-backing" x="{}" y="{}" width="{}" height="{}" rx="10" style=""#,
+                    number(origin.x),
+                    number(origin.y),
+                    number(size.width),
+                    number(size.height),
+                );
+                if let Some((fill, opacity)) = canonical_fill {
+                    let _ = write!(
+                        out,
+                        "fill:{};fill-opacity:{};",
+                        escape_attr_display(fill),
+                        number(opacity)
+                    );
+                } else {
+                    let _ = write!(out, "fill:{};", escape_attr_display(paint.fill));
+                }
+                write_backing_style(out, paint.style);
+            }
             let _ = write!(
                 out,
-                r#"<g><path d="{}" stroke="{}" stroke-width="0.75" fill="none" stroke-dasharray="{}"/></g>"#,
-                escape_xml_display(&stroke_d),
-                escape_xml_display(stroke),
-                escape_xml_display(rough.dash()),
+                r#"<path d="{}" stroke="{}" stroke-width="0.75" fill="none" stroke-dasharray="{}"/></g>"#,
+                escape_attr_display(&stroke_d),
+                escape_attr_display(stroke),
+                escape_attr_display(rough.dash()),
             );
             return;
         }
@@ -179,7 +203,7 @@ fn write_agentflow_shell(
         number(origin.y),
         number(size.width),
         number(size.height),
-        escape_xml_display(stroke),
+        escape_attr_display(stroke),
     );
     if let Some((fill, opacity)) = canonical_fill {
         let _ = write!(
@@ -214,19 +238,38 @@ fn write_flowchart_shell(
             rough.work_meter,
             rough.randomness,
         ) {
-            let background_style = rough_background_style(paint.style);
+            out.push_str("<g>");
+            if rough.solid_backing {
+                // The fill is the surface used by the contrast pass before emission.
+                let _ = write!(
+                    out,
+                    r#"<rect class="merman-rough-backing" x="{}" y="{}" width="{}" height="{}" style="fill:{};"#,
+                    number(origin.x),
+                    number(origin.y),
+                    number(size.width),
+                    number(size.height),
+                    escape_attr_display(paint.fill),
+                );
+                write_backing_style(out, paint.style);
+            } else {
+                let background_style = rough_background_style(paint.style);
+                let _ = write!(
+                    out,
+                    r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{} />"#,
+                    escape_attr_display(&fill_d),
+                    escape_attr_display(paint.fill),
+                    number(FILL_WEIGHT as f64),
+                    rough_style_attr(&background_style),
+                );
+            }
             let border_style = rough_border_style(paint.style);
             let _ = write!(
                 out,
-                r#"<g><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{} /><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"{} /></g>"#,
-                escape_xml_display(&fill_d),
-                escape_xml_display(paint.fill),
-                number(FILL_WEIGHT as f64),
-                rough_style_attr(&background_style),
-                escape_xml_display(&stroke_d),
-                escape_xml_display(paint.stroke),
+                r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"{} /></g>"#,
+                escape_attr_display(&stroke_d),
+                escape_attr_display(paint.stroke),
                 number(stroke_width as f64),
-                escape_xml_display(stroke_dasharray),
+                escape_attr_display(stroke_dasharray),
                 rough_style_attr(&border_style),
             );
             return;
@@ -241,7 +284,7 @@ fn write_flowchart_shell(
     let _ = write!(
         out,
         r#"{}" x="{}" y="{}" width="{}" height="{}"/>"#,
-        escape_xml_display(paint.style),
+        escape_attr_display(paint.style),
         number(origin.x),
         number(origin.y),
         number(size.width),
@@ -302,14 +345,26 @@ fn write_swimlane_rect(
             rough.work_meter,
             rough.randomness,
         ) {
-            let _ = write!(out, r#"<g class="{}">"#, escape_xml_display(class_name));
-            if let Some(fill) = fill {
+            let _ = write!(out, r#"<g class="{}">"#, escape_attr_display(class_name));
+            if rough.solid_backing {
+                let _ = write!(
+                    out,
+                    r#"<rect class="{} merman-rough-backing" x="{}" y="{}" width="{}" height="{}" fill="{}" style=""#,
+                    escape_attr_display(class_name),
+                    number(origin.x),
+                    number(origin.y),
+                    number(size.width),
+                    number(size.height),
+                    escape_attr_display(fill.unwrap_or("none")),
+                );
+                write_backing_style(out, paint.style);
+            } else if let Some(fill) = fill {
                 let background_style = rough_background_style(paint.style);
                 let _ = write!(
                     out,
                     r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{} />"#,
-                    escape_xml_display(&fill_d),
-                    escape_xml_display(fill),
+                    escape_attr_display(&fill_d),
+                    escape_attr_display(fill),
                     number(FILL_WEIGHT as f64),
                     rough_style_attr(&background_style),
                 );
@@ -318,10 +373,10 @@ fn write_swimlane_rect(
             let _ = write!(
                 out,
                 r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"{} /></g>"#,
-                escape_xml_display(&stroke_d),
-                escape_xml_display(paint.stroke),
+                escape_attr_display(&stroke_d),
+                escape_attr_display(paint.stroke),
                 number(stroke_width as f64),
-                escape_xml_display(stroke_dasharray),
+                escape_attr_display(stroke_dasharray),
                 rough_style_attr(&border_style),
             );
             return;
@@ -331,15 +386,23 @@ fn write_swimlane_rect(
     let _ = write!(
         out,
         r#"<rect class="{}" style="{}" x="{}" y="{}" width="{}" height="{}" fill="{}" stroke="{}"/>"#,
-        escape_xml_display(class_name),
-        escape_xml_display(paint.style),
+        escape_attr_display(class_name),
+        escape_attr_display(paint.style),
         number(origin.x),
         number(origin.y),
         number(size.width),
         number(size.height),
-        escape_xml_display(fill.unwrap_or("none")),
-        escape_xml_display(paint.stroke),
+        escape_attr_display(fill.unwrap_or("none")),
+        escape_attr_display(paint.stroke),
     );
+}
+
+fn write_backing_style(out: &mut impl SvgOutput, style: &str) {
+    let style = style.trim_matches(|ch: char| ch == ';' || ch.is_ascii_whitespace());
+    if !style.is_empty() {
+        let _ = write!(out, "{};", escape_attr_display(style));
+    }
+    out.push_str(r#"stroke:none !important"/>"#);
 }
 
 fn rounded_rect_path_d(
@@ -381,28 +444,36 @@ fn rounded_rect_path_d(
 }
 
 fn rough_background_style(style: &str) -> String {
-    rough_style_from_node_style(style, |key| key == "fill").replace("fill", "stroke")
+    rough_style_from_node_style(style, |declaration| {
+        (declaration.property() == "fill").then_some("stroke")
+    })
 }
 
 fn rough_border_style(style: &str) -> String {
-    rough_style_from_node_style(style, |key| key.contains("stroke"))
+    rough_style_from_node_style(style, |declaration| {
+        declaration
+            .property()
+            .starts_with("stroke")
+            .then(|| declaration.property_css())
+    })
 }
 
-fn rough_style_from_node_style(style: &str, mut keep: impl FnMut(&str) -> bool) -> String {
+fn rough_style_from_node_style<'a>(
+    style: &'a str,
+    mut property: impl FnMut(&ParsedStyleDeclaration<'a>) -> Option<&'a str>,
+) -> String {
     let mut out = String::new();
-    for decl in style.split(';') {
-        let decl = decl.trim();
-        let Some((key, _)) = decl.split_once(':') else {
-            continue;
+    visit_parsed_style_declarations(style, |declaration| {
+        let Some(property) = property(&declaration) else {
+            return;
         };
-        if !keep(key.trim()) {
-            continue;
-        }
         if !out.is_empty() {
             out.push(';');
         }
-        out.push_str(decl);
-    }
+        out.push_str(property);
+        out.push(':');
+        out.push_str(declaration.source_value());
+    });
     out
 }
 
@@ -412,6 +483,20 @@ fn rough_style_attr(style: &str) -> impl fmt::Display + '_ {
         if style.is_empty() {
             return Ok(());
         }
-        write!(f, r#" style="{}""#, escape_xml_display(style))
+        write!(f, r#" style="{}""#, escape_attr_display(style))
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::rough_background_style;
+
+    #[test]
+    fn rough_title_style_rewrites_only_the_property_and_keeps_quoted_css_intact() {
+        let style = r#"fill:"R&amp;D;fill" !important;stroke:#123456"#;
+        assert_eq!(
+            rough_background_style(style),
+            r#"stroke:"R&amp;D;fill" !important"#
+        );
+    }
 }

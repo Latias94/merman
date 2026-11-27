@@ -488,3 +488,44 @@ fn measured_batch_keeps_holes_and_accounts_for_earlier_spans() {
         Err(LayoutError::Work(WorkError::Interrupted))
     );
 }
+
+#[test]
+fn fixed_polyline_spans_take_a_clear_diagonal_and_keep_blocked_detours() {
+    let start = RoutePoint::gap_boundary(0.0, 0.0, Axis::Horizontal);
+    let end = RoutePoint::gap_boundary(40.0, 40.0, Axis::Horizontal);
+    let bounds = rect(-10.0, -10.0, 60.0, 60.0);
+    let span = OrthogonalSpan {
+        start: (start, Side::Right),
+        end: (end, Side::Left),
+    };
+    let route = |wall| {
+        route_fixed_spans(
+            &[wall],
+            Some(bounds),
+            4.0,
+            &[span],
+            RoutingStyle::Polyline,
+            &mut NoopWorkControl,
+        )
+        .unwrap()
+        .pop()
+        .flatten()
+        .unwrap()
+    };
+    assert_eq!(route(rect(5.0, 30.0, 5.0, 5.0)), [start, end]);
+    let blocker = rect(16.0, 19.0, 1.0, 4.0);
+    let detour = route(blocker);
+    assert!(detour.len() > 2);
+    assert_clear(
+        &detour,
+        OrthoRequest {
+            start,
+            end,
+            start_side: Some(Side::Right),
+            end_side: Some(Side::Left),
+            bounds: Some(bounds),
+        },
+        &[blocker],
+        2.0,
+    );
+}

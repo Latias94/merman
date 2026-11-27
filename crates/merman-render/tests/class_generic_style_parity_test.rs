@@ -57,6 +57,58 @@ fn outer_fill_path<'a, 'input>(node: roxmltree::Node<'a, 'input>) -> roxmltree::
 }
 
 #[test]
+fn class_member_signatures_keep_nested_generic_types_in_both_label_modes() {
+    for &layout in LAYOUTS
+        .iter()
+        .chain(cfg!(feature = "layout-shoal").then_some(&"shoal"))
+    {
+        for html_labels in [false, true] {
+            let (measured, svg) = render_class(
+                "namespace Platform {\n  class A~Map~String, List~Int~~~ {\n    +Map~String, List~Int~~ cache\n    +test ~Array~Array~string[]~~~ values\n    +Tuple~(int, string)~ pair\n    +record(Event~Map~String, String~~ ev) List~List~Int~~\n    +**Vec~Map~K, V~~** marked\n  }\n}\nclass B {\n  +Map cache\n  +record(ev) List\n}\n",
+                layout,
+                html_labels,
+            );
+            let doc = roxmltree::Document::parse(&svg).unwrap();
+            let node = class_node(&doc, "A");
+            let visible = node
+                .descendants()
+                .filter(|child| child.is_text())
+                .filter_map(|child| child.text())
+                .collect::<String>();
+            for expected in [
+                "A<Map<String, List<Int>>>",
+                "+Map<String, List<Int>> cache",
+                "+test <Array<Array<string[]>>> values",
+                "+Tuple<(int, string)> pair",
+                "+record(Event<Map<String, String>> ev) : List<List<Int>>",
+                "Vec<Map<K, V>> marked",
+            ] {
+                assert!(
+                    visible.contains(expected),
+                    "{layout}, {html_labels}: {visible}"
+                );
+            }
+            assert!(
+                node.descendants().any(|child| {
+                    (child.has_tag_name("strong") || child.attribute("font-weight") == Some("bold"))
+                        && child.text().is_some_and(|text| text.contains("Vec<Map"))
+                }),
+                "{layout}, {html_labels}: {visible}"
+            );
+            let width = |id| {
+                measured
+                    .nodes
+                    .iter()
+                    .find(|node| node.id == id)
+                    .unwrap()
+                    .width
+            };
+            assert!(width("A") > width("B"), "{layout}: {measured:?}");
+        }
+    }
+}
+
+#[test]
 fn class_group_generic_matches_same_text_control_in_leaves_and_namespaces() {
     for layout in LAYOUTS {
         for html_labels in [false, true] {
@@ -185,5 +237,29 @@ fn class_cssclass_raw_targets_reach_only_the_matching_svg_nodes() {
                 }
             }
         }
+    }
+}
+
+#[test]
+fn class_namespace_ids_do_not_conflict_with_defs_or_edges_after_rebasing() {
+    for &layout in LAYOUTS {
+        let (_, svg) = render_class(
+            "namespace drop-shadow {\n  class A\n}\nnamespace id_A_B_1 {\n  class B\n}\nA --> B\n",
+            layout,
+            false,
+        );
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let rebased = merman_render::svg::rebase_svg_ids(&svg, "rebased", &session)
+            .unwrap_or_else(|error| panic!("{layout}: {error}"));
+        let doc = roxmltree::Document::parse(&rebased).unwrap();
+        let mut ids = std::collections::HashSet::new();
+        for id in doc.descendants().filter_map(|node| node.attribute("id")) {
+            assert!(ids.insert(id), "{layout}: duplicate {id}");
+        }
+        assert!(
+            doc.descendants()
+                .any(|node| node.attribute("data-id") == Some("drop-shadow"))
+        );
+        assert!(doc.descendants().any(|node| node.has_tag_name("filter")));
     }
 }

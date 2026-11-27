@@ -19,7 +19,7 @@ use merman_render_core::{
         measure_markdown_with_inline_styles, trim_html_collapsible_ascii_whitespace,
     },
     theme_svg::edge_label_background,
-    xml::{escape_attr_display, escape_xml_display},
+    xml::escape_attr_display,
 };
 use merman_theme_contract::v2::Color;
 
@@ -200,7 +200,7 @@ pub fn write_ordinary_edge_label<'a>(
                 r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({},{})">"#,
                 fmt_display(x),
                 fmt_display(y),
-                escape_xml_display(&edge.id),
+                escape_attr_display(&edge.id),
                 fmt_display(-width / 2.0),
                 fmt_display(-height / 2.0),
             );
@@ -262,7 +262,7 @@ pub fn write_ordinary_edge_label<'a>(
                 r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({},{})"><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"{}>{}</span></div></foreignObject></g></g>"#,
                 fmt_display(x),
                 fmt_display(y),
-                escape_xml_display(&edge.id),
+                escape_attr_display(&edge.id),
                 fmt_display(-width / 2.0),
                 fmt_display(-height / 2.0),
                 fmt_display(width),
@@ -280,7 +280,7 @@ pub fn write_ordinary_edge_label<'a>(
     let _ = write!(
         out,
         r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0,0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"{}></span></div></foreignObject></g></g>"#,
-        escape_xml_display(&edge.id),
+        escape_attr_display(&edge.id),
         escape_attr_display(&div_style_prefix),
         span_style_attr
     );

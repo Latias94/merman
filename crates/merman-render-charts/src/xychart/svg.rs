@@ -13,7 +13,7 @@ use merman_render_core::{
     svg_css::SvgId,
     svg_output::{BoundedSvgOutput, SvgOutput, XmlTextOutput},
     theme_svg::{data_pattern, elevation as elevation_svg},
-    xml::escape_xml,
+    xml::{escape_attr_display, escape_xml},
 };
 use merman_theme_contract::v2::{Elevation, FamilyTheme};
 use rustc_hash::FxHashMap;
@@ -192,7 +192,7 @@ fn render_node(out: &mut impl SvgOutput, arena: &[Node], id: usize) -> Result<()
     let _ = write!(out, "<{}", n.tag);
     out.checkpoint()?;
     for (k, v) in &n.attrs {
-        let _ = write!(out, r#" {k}="{v}""#);
+        let _ = write!(out, r#" {k}="{}""#, escape_attr_display(v));
         out.checkpoint()?;
     }
     if n.children.is_empty() && n.text.as_deref().unwrap_or("").is_empty() {
@@ -299,7 +299,7 @@ pub fn render_xychart_svg(
     bg.attr("width", fmt_xy(layout.width));
     bg.attr("height", fmt_xy(layout.height));
     bg.attr("class", "background");
-    bg.attr("fill", escape_xml(&layout.background_color));
+    bg.attr("fill", &layout.background_color);
     push_child(&mut arena, 0, bg);
 
     let mut groups_by_path: FxHashMap<(usize, &str), usize> = FxHashMap::with_capacity_and_hasher(
@@ -349,16 +349,12 @@ pub fn render_xychart_svg(
                     });
                     let pattern =
                         series.filter(|_| native.is_some_and(|theme| theme.data.pattern_encoding));
-                    n.attr(
-                        "fill",
-                        match pattern {
-                            Some(plot) => {
-                                escape_xml(&format!("url(#{diagram_id}-xy-series-{plot})"))
-                            }
-                            None => escape_xml(&r.fill),
-                        },
-                    );
-                    n.attr("stroke", escape_xml(&r.stroke_fill));
+                    if let Some(plot) = pattern {
+                        n.attr("fill", format!("url(#{diagram_id}-xy-series-{plot})"));
+                    } else {
+                        n.attr("fill", &r.fill);
+                    }
+                    n.attr("stroke", &r.stroke_fill);
                     n.attr("stroke-width", fmt_xy(r.stroke_width));
                     if let Some(theme) = native.filter(|_| series.is_some()) {
                         if bar_plot_index.is_none() {
@@ -414,7 +410,7 @@ pub fn render_xychart_svg(
                                     },
                                 );
                                 t.attr("dominant-baseline", "middle");
-                                t.attr("fill", escape_xml(data_label_color));
+                                t.attr("fill", data_label_color);
                                 t.attr("font-size", format!("{}px", fmt_xy(uniform)));
                                 t.text = Some(escape_xml(item.label));
                                 push_child(&mut arena, parent, t);
@@ -439,7 +435,7 @@ pub fn render_xychart_svg(
                                         "hanging"
                                     },
                                 );
-                                t.attr("fill", escape_xml(data_label_color));
+                                t.attr("fill", data_label_color);
                                 t.attr("font-size", format!("{}px", fmt_xy(uniform)));
                                 t.text = Some(escape_xml(item.label));
                                 push_child(&mut arena, parent, t);
@@ -457,19 +453,19 @@ pub fn render_xychart_svg(
                     let mut n = node("text");
                     n.attr("x", "0");
                     n.attr("y", "0");
-                    n.attr("fill", escape_xml(&t.fill));
+                    n.attr("fill", &t.fill);
                     let role = XyChartTextRole::from_groups(group_texts, &layout.chart_orientation);
                     let raw_size = role
                         .map(|role| typography_theme.svg_font_size(role).to_owned())
                         .unwrap_or_else(|| canonical_number(t.font_size).to_string());
-                    n.attr("font-size", escape_xml(&raw_size));
+                    n.attr("font-size", raw_size);
                     if let Some(weight) = role.and_then(|role| typography_theme.font_weight(role)) {
                         n.attr("font-weight", weight);
                     }
                     if role == Some(XyChartTextRole::Title)
                         && let Some(font) = typography_theme.native_title_family_css()
                     {
-                        n.attr("font-family", escape_xml(font));
+                        n.attr("font-family", font);
                     }
                     n.attr("dominant-baseline", dominant_baseline(&t.vertical_pos));
                     n.attr("text-anchor", text_anchor(&t.horizontal_pos));
@@ -505,15 +501,15 @@ pub fn render_xychart_svg(
                         marker.attr("cy", fmt_xy(cy));
                         marker.attr("r", "3.2");
                         marker.attr("fill", fill);
-                        marker.attr("stroke", escape_xml(p.fill.as_deref().unwrap_or("none")));
+                        marker.attr("stroke", p.fill.as_deref().unwrap_or("none"));
                         marker.attr("stroke-width", "1.8");
                         push_child(&mut arena, parent, marker);
                         continue;
                     }
                     let mut n = node("path");
-                    n.attr("d", escape_xml(&p.path));
-                    n.attr("fill", escape_xml(p.fill.as_deref().unwrap_or("none")));
-                    n.attr("stroke", escape_xml(&p.stroke_fill));
+                    n.attr("d", &p.path);
+                    n.attr("fill", p.fill.as_deref().unwrap_or("none"));
+                    n.attr("stroke", &p.stroke_fill);
                     if gridlines {
                         n.attr("stroke-width", "0.8");
                         n.attr("stroke-dasharray", "3 3");

@@ -43,18 +43,19 @@ pub fn write_lean(
         }) {
             let _ = write!(
                 out,
-                r#"<g transform="translate({},{})" style="{}"><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"#,
+                r#"<g transform="translate({},{})" style="{}">"#,
                 fmt_display(tx),
                 fmt_display(ty),
-                escape_attr(body.rough_group_style),
-                escape_attr(&fill_d),
-                escape_attr(body.fill_color),
-                fmt_display(FLOWCHART_POLYGON_HAND_DRAWN_FILL_WEIGHT as f64),
-                escape_attr(&stroke_d),
-                escape_attr(body.stroke_color),
-                fmt_display(body.geometry.stroke_width as f64),
-                escape_attr(body.geometry.stroke_dasharray),
+                escape_attr(body.hand_drawn_group_style()),
             );
+            body.write_hand_drawn_path_pair(
+                out,
+                &path_data,
+                &fill_d,
+                &stroke_d,
+                f64::from(FLOWCHART_POLYGON_HAND_DRAWN_FILL_WEIGHT),
+            );
+            out.push_str("</g>");
             return;
         }
     }

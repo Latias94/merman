@@ -1,9 +1,8 @@
 use crate::resources::OperationWorkMeter;
-use crate::route_paint::LEAD;
-use crate::route_types::Marker;
+use crate::route_types::{MIN_MARKER_LEAD, Marker};
 use kurbo::Point;
 use roughr::PathSegment;
-use roughr::core::{Op, OpType, OptionsBuilder, RoughRandomness};
+use roughr::core::{Op, OpSet, OpType, OptionsBuilder, RoughRandomness};
 use roughr::work::WorkError;
 
 use super::{controlled, ops_to_svg_path_d};
@@ -14,7 +13,62 @@ pub fn constrained_rough_edge_path(
     meter: &OperationWorkMeter,
     randomness: &RoughRandomness,
 ) -> crate::Result<String> {
-    let stroke = controlled::generate(meter, merman_model::OperationPhase::Emit, |control| {
+    let stroke = constrained_rough_edge_stroke(path, markers, meter, randomness)?;
+    Ok(ops_to_svg_path_d(&stroke))
+}
+
+/// Produce the SVG shaft and the same centerlines for caption ownership and bounds checks.
+#[cfg(feature = "layout-shoal")]
+pub fn constrained_rough_edge_with_geometry(
+    path: &str,
+    markers: (Marker, Marker),
+    meter: &OperationWorkMeter,
+    randomness: &RoughRandomness,
+) -> crate::Result<(String, kurbo::BezPath)> {
+    use crate::number_format::canonicalize_number;
+    use kurbo::PathEl;
+
+    let mut stroke = constrained_rough_edge_stroke(path, markers, meter, randomness)?;
+    meter.charge_emit_work(stroke.ops.len())?;
+    let invalid = || crate::Error::InvalidModel {
+        message: "invalid rough edge geometry".into(),
+    };
+    let mut elements = Vec::new();
+    elements
+        .try_reserve_exact(stroke.ops.len())
+        .map_err(|_| crate::Error::InvalidModel {
+            message: "could not allocate rough edge geometry".into(),
+        })?;
+    for op in &mut stroke.ops {
+        for coordinate in &mut op.data {
+            if !coordinate.is_finite() {
+                return Err(invalid());
+            }
+            *coordinate = canonicalize_number(*coordinate);
+        }
+        let item = match (&op.op, op.data.as_slice()) {
+            (OpType::Move, &[x, y]) => PathEl::MoveTo(Point::new(x, y)),
+            (OpType::LineTo, &[x, y]) => PathEl::LineTo(Point::new(x, y)),
+            (OpType::BCurveTo, &[x1, y1, x2, y2, x3, y3]) => {
+                PathEl::CurveTo(Point::new(x1, y1), Point::new(x2, y2), Point::new(x3, y3))
+            }
+            _ => return Err(invalid()),
+        };
+        elements.push(item);
+    }
+    Ok((
+        ops_to_svg_path_d(&stroke),
+        kurbo::BezPath::from_vec(elements),
+    ))
+}
+
+fn constrained_rough_edge_stroke(
+    path: &str,
+    markers: (Marker, Marker),
+    meter: &OperationWorkMeter,
+    randomness: &RoughRandomness,
+) -> crate::Result<OpSet<f64>> {
+    controlled::generate(meter, merman_model::OperationPhase::Emit, |control| {
         let mut segments = roughr::points_on_path::normalized_path_with_control(path, control)?;
         split_direct_shaft(&mut segments, markers);
         let mut options = OptionsBuilder::default()
@@ -56,8 +110,7 @@ pub fn constrained_rough_edge_path(
             _ => {}
         }
         Ok(stroke)
-    })?;
-    Ok(ops_to_svg_path_d(&stroke))
+    })
 }
 
 fn split_direct_shaft(segments: &mut Vec<PathSegment>, markers: (Marker, Marker)) {
@@ -78,8 +131,8 @@ fn split_direct_shaft(segments: &mut Vec<PathSegment>, markers: (Marker, Marker)
     let end = Point::new(*to_x, *to_y);
     let delta = end - start;
     let length = delta.hypot();
-    let start_lead = LEAD.max(markers.0.depth);
-    let end_lead = LEAD.max(markers.1.depth);
+    let start_lead = MIN_MARKER_LEAD.max(markers.0.depth);
+    let end_lead = MIN_MARKER_LEAD.max(markers.1.depth);
     if length <= start_lead + end_lead {
         return;
     }

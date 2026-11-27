@@ -71,11 +71,7 @@ impl SvgPostprocessor for ScopedCssPostprocessor {
 
         let base = match self.override_policy {
             CssOverridePolicy::Preserve => svg,
-            CssOverridePolicy::StripExistingImportant => {
-                let stripped = strip_css_important(svg.as_ref());
-                execution.checkpoint()?;
-                Cow::Owned(stripped)
-            }
+            CssOverridePolicy::StripExistingImportant => strip_css_important(svg, execution)?,
         };
         let css = decode_mermaid_css_hash_placeholders(&self.css, execution)?;
         let scope = css_scope(ctx.svg_id(), execution)?;

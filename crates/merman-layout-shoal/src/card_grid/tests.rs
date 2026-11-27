@@ -1,8 +1,8 @@
 use super::layout_with_control;
 use crate::{
     EdgeId, EdgeSpec, Graph, GroupId, GroupSpec, LayoutError, MarkerMetrics, NodeId, NodeSpec,
-    NoopWorkControl, Options, Point, Rect, RoutePoint, Side, Size, WidthPolicy, WorkControl,
-    WorkError,
+    NoopWorkControl, Options, Point, PortSideHint, Rect, RoutePoint, Side, Size, WidthPolicy,
+    WorkControl, WorkError,
 };
 
 fn cards(count: u32) -> Graph {
@@ -21,6 +21,54 @@ fn cards(count: u32) -> Graph {
 
 fn edge(from: u32, to: u32) -> EdgeSpec {
     EdgeSpec::new(NodeId(from).into(), NodeId(to).into())
+}
+
+#[test]
+fn a_local_caption_does_not_add_an_empty_boundary_row() {
+    let mut graph = cards(2);
+    graph.groups.push(GroupSpec::new(0));
+    for node in &mut graph.nodes {
+        node.parent = Some(GroupId(0));
+    }
+    graph.edges.push(edge(0, 1));
+    let options = Options::default();
+    let without = layout_with_control(&graph, &options, &mut NoopWorkControl).unwrap();
+    graph.edges[0].label = Some(Size {
+        width: 38.0,
+        height: 20.0,
+    });
+    let with = layout_with_control(&graph, &options, &mut NoopWorkControl).unwrap();
+    assert!(with.edges[0].label_center.is_some());
+    assert_eq!(with.groups[0].rect.height, without.groups[0].rect.height);
+}
+
+#[test]
+fn automatic_marker_leaves_room_for_a_fixed_contact_at_the_adjacent_corner() {
+    let mut graph = cards(3);
+    graph.nodes[0].anchor_y = Some(1.0);
+    graph.nodes[0].perpendicular_port_span = Some(40.0);
+    let marker = MarkerMetrics {
+        length: 11.0,
+        width: 10.0,
+    };
+    let mut right = edge(1, 0);
+    right.end_marker = marker;
+    right.target_port = PortSideHint::Side(Side::Right);
+    let mut top = edge(2, 0);
+    top.end_marker = marker;
+    top.target_port = PortSideHint::FixedOffset {
+        side: Side::Top,
+        offset: 39.0,
+    };
+    graph.edges.extend([right, top]);
+
+    let options = Options::default();
+    let drawing = layout_with_control(&graph, &options, &mut NoopWorkControl).unwrap();
+    let right = drawing.edges[0].points.last().unwrap();
+    let top = drawing.edges[1].points.last().unwrap();
+    assert_eq!(top.x - drawing.nodes[0].center().x, 39.0);
+    assert!(on_face(drawing.nodes[0], *right, Side::Right));
+    assert!((right.x - top.x).hypot(right.y - top.y) >= options.spacing.port_pitch);
 }
 
 #[test]

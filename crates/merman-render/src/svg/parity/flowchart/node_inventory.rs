@@ -18,6 +18,7 @@ impl FlowchartLayout {
             solved_parents: self.route_contract.group_parents(),
             uses_elk_adapter_dom: self.route_contract.is_elk_parity(),
             uses_projected_edges: self.route_contract.uses_projected_edges(),
+            canonical: super::svg_layout(self).route_contract.is_canonical_axis(),
         }
     }
 }

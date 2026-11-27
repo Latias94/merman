@@ -66,6 +66,22 @@ fn relation_label<'a, 'input>(doc: &'a Document<'input>, id: &str) -> Node<'a, '
         .unwrap()
 }
 
+fn relation_label_center(label: Node<'_, '_>) -> Point {
+    let at: svgtypes::Transform = label.attribute("transform").unwrap().parse().unwrap();
+    let mut rows = label.children().filter(|node| node.has_tag_name("text"));
+    let baseline =
+        |row: Node<'_, '_>| number(row, "y") + number(row.first_element_child().unwrap(), "dy");
+    let first = baseline(rows.next().unwrap());
+    let last = rows.next_back().map_or(first, baseline);
+    Point::new(at.e, at.f + first.midpoint(last))
+}
+
+fn shaft_distance(path: &BezPath, center: Point) -> f64 {
+    path.segments()
+        .map(|segment| segment.nearest(center, 1e-3).distance_sq.sqrt())
+        .fold(f64::INFINITY, f64::min)
+}
+
 fn number(node: Node<'_, '_>, attr: &str) -> f64 {
     node.attribute(attr).unwrap().parse().unwrap()
 }
@@ -427,13 +443,15 @@ config:
   layout: shoal
   c4:
     c4ShapeMargin: 90
+  themeVariables:
+    useGradient: true
 ---
 C4Context
 System_Boundary(app, "Application") {
-  System(a, "API")
-  System(b, "Database")
+  System(c4-rel-0-label-cutout, "API")
+  System(gradient, "Database")
 }
-BiRel(a, b, "Reads widely distributed state", "TLS")
+BiRel(c4-rel-0-label-cutout, gradient, "Reads widely distributed state", "TLS")
 "#;
     let options = LayoutOptions::headless_svg_defaults()
         .with_container_size(310.0, 600.0)
@@ -441,6 +459,14 @@ BiRel(a, b, "Reads widely distributed state", "TLS")
     let (_, svg) = render(source, &options);
     let verify = |svg: &str| {
         let doc = Document::parse(svg).unwrap();
+        let root_id = doc.root_element().attribute("id").unwrap();
+        let gradient = format!("{root_id}-gradient");
+        let mut definitions = doc
+            .descendants()
+            .filter(|node| node.attribute("id") == Some(gradient.as_str()));
+        assert!(definitions.next().unwrap().has_tag_name("linearGradient"));
+        assert!(definitions.next().is_none());
+        assert!(svg.contains(&format!("url(#{gradient})")));
         let shaft = element(&doc, "edge", "c4-rel-0");
         let reference = shaft
             .attribute("clip-path")
@@ -455,6 +481,8 @@ BiRel(a, b, "Reads widely distributed state", "TLS")
             .find(|node| node.attribute("id") == Some(id))
             .unwrap();
         assert!(clip.has_tag_name("clipPath"));
+        let alias = element(&doc, "node", "c4-rel-0-label-cutout");
+        assert_ne!(alias.attribute("id"), Some(id));
         let cutout = clip.first_element_child().unwrap();
         assert_eq!(cutout.attribute("clip-rule"), Some("evenodd"));
         let cutout = BezPath::from_svg(cutout.attribute("d").unwrap()).unwrap();
@@ -665,7 +693,7 @@ Rel(db, q, "Publishes<br/>replicated change capture events across regional zones
 }
 
 #[test]
-fn c4_shoal_knocks_out_foreign_wires_and_keeps_congested_dynamic_captions_local() {
+fn c4_shoal_keeps_dynamic_captions_local_and_clips_only_their_own_shafts() {
     let source = r#"---
 config:
   layout: shoal
@@ -688,9 +716,6 @@ Rel(bff, shopper, "Display order confirmation screen", "HTTPS/JSON")
 "#;
     let (_, svg) = render(source, &LayoutOptions::headless_svg_defaults());
     let doc = Document::parse(svg.svg()).unwrap();
-    // Every relation caption must stay near its own edge (no 400-600px bottom-row teleport)
-    // and any relation shaft passing behind any placed caption must get a clipPath cutout.
-    let mut label_boxes = Vec::new();
     for idx in 0..7 {
         let id = format!("c4-rel-{idx}");
         let edge = element(&doc, "edge", &id);
@@ -704,26 +729,129 @@ Rel(bff, shopper, "Display order confirmation screen", "HTTPS/JSON")
             .fold(f64::INFINITY, f64::min);
         assert!(
             min_dist <= 260.0,
-            "{id} caption teleported {min_dist:.1}px away from its own edge"
+            "{id} caption is {min_dist:.1}px away from its own edge"
         );
-        label_boxes.push((id, edge, edge_path, center));
-    }
-    // Check that whenever a label sits on top of a parallel foreign wire, that wire carries a cutout.
-    for (label_id, _, _, center) in &label_boxes {
-        let probe = Rect::from_center_size(*center, (24.0, 12.0));
-        for (edge_id, edge, edge_path, _) in &label_boxes {
-            if edge_id == label_id {
-                continue;
-            }
-            let crosses = edge_path
-                .segments()
-                .any(|seg| seg.bounding_box().intersect(probe).area() > 0.0);
-            if crosses {
-                assert!(
-                    edge.attribute("clip-path").is_some(),
-                    "{edge_id} crosses behind {label_id} caption without a label cutout clip-path"
-                );
-            }
+        if let Some(reference) = edge.attribute("clip-path") {
+            let clip_id = reference
+                .strip_prefix("url(#")
+                .unwrap()
+                .strip_suffix(')')
+                .unwrap();
+            let clip = doc
+                .descendants()
+                .find(|node| node.attribute("id") == Some(clip_id))
+                .unwrap();
+            let cutout = path(clip.first_element_child().unwrap());
+            let contours = cutout
+                .elements()
+                .iter()
+                .filter(|element| matches!(element, kurbo::PathEl::MoveTo(_)))
+                .count();
+            assert_eq!(
+                contours, 2,
+                "{id} must have an outer contour and one caption hole"
+            );
+            assert!(
+                !cutout.contains(center),
+                "{id} hole must belong to its own caption"
+            );
         }
     }
+}
+
+#[test]
+fn c4_shoal_dense_captions_are_closest_to_their_own_shaft() {
+    let source = r#"---
+config:
+  layout: shoal
+---
+C4Context
+System(a, "Left Top", "Source")
+System(b, "Mid Top", "Relay")
+System(c, "Right Top", "Target")
+System(d, "Left Bot", "Peer 1")
+System(e, "Mid Bot", "Peer 2")
+System(f, "Right Bot", "Peer 3")
+Rel(a, c, "Long top span edge across center", "HTTPS")
+Rel(a, f, "Long cross diagonal alpha alpha alpha", "gRPC")
+Rel(c, d, "Long cross diagonal beta beta beta", "gRPC")
+Rel(b, e, "Center vertical edge with wide caption text", "SQL")
+Rel(a, e, "Offset crossover one with wide caption", "REST")
+Rel(c, e, "Offset crossover two with wide caption", "REST")
+Rel(d, f, "Bottom span edge across center", "Kafka")
+UpdateRelStyle(a, f, $offsetX="-10", $offsetY="-5")
+UpdateRelStyle(c, d, $offsetX="10", $offsetY="5")
+"#;
+    let (_, svg) = render(source, &LayoutOptions::default());
+    let doc = Document::parse(svg.svg()).unwrap();
+    let paths: Vec<_> = (0..7)
+        .map(|idx| path(element(&doc, "edge", &format!("c4-rel-{idx}"))))
+        .collect();
+    for (idx, own) in paths.iter().enumerate() {
+        let label = relation_label(&doc, &format!("c4-rel-{idx}"));
+        let center = relation_label_center(label);
+        let own_distance = shaft_distance(own, center);
+        assert!(
+            own_distance < 100.0,
+            "caption {idx} is {own_distance}px away"
+        );
+        for (other, route) in paths.iter().enumerate() {
+            let other_distance = shaft_distance(route, center);
+            assert!(
+                other == idx || own_distance < other_distance,
+                "caption {idx} is closer to shaft {other} ({other_distance:.1}px) than to its own ({own_distance:.1}px)",
+            );
+        }
+    }
+}
+
+#[test]
+fn c4_shoal_view_box_contains_the_wide_title() {
+    let title = "An exceptionally wide title for a one-card diagram ".repeat(8);
+    let source = format!(
+        "---\nconfig:\n  layout: shoal\n  c4:\n    diagramMarginX: 0\n---\nC4Context\ntitle {title}\nSystem(a, \"A\")\n"
+    );
+    let (_, svg) = render(&source, &LayoutOptions::default());
+    let doc = Document::parse(svg.svg()).unwrap();
+    let view_box: svgtypes::ViewBox = doc
+        .root_element()
+        .attribute("viewBox")
+        .unwrap()
+        .parse()
+        .unwrap();
+    let title = doc
+        .root_element()
+        .children()
+        .find(|node| node.has_tag_name("text"))
+        .unwrap();
+    let center = number(title, "x");
+    let minimum_width = 5.0 * title.text().unwrap().len() as f64;
+    assert!(view_box.x <= center - minimum_width / 2.0);
+    assert!(view_box.x + view_box.w >= center + minimum_width / 2.0);
+}
+
+#[test]
+fn c4_shoal_replays_saved_order_by_alias_after_reordering_cards() {
+    let render_order = |source, previous| {
+        render(
+            source,
+            &LayoutOptions::default().with_shoal_layout_frame(previous),
+        )
+    };
+    let before =
+        "---\nconfig:\n  layout: shoal\n---\nC4Context\nSystem(a, \"A\")\nSystem(b, \"B\")\n";
+    let after = "---\nconfig:\n  layout: shoal\n---\nC4Context\nSystem(b, \"B\")\nSystem(a, \"Updated A\")\n";
+    let (_, first) = render_order(before, None);
+    let mut previous = serde_json::to_value(first.shoal_layout_frame().unwrap().as_ref()).unwrap();
+    let saved = std::sync::Arc::new(serde_json::from_value(previous.clone()).unwrap());
+    previous["family"] = "architecture".into();
+    let foreign_frame = std::sync::Arc::new(serde_json::from_value(previous).unwrap());
+    let (default, _) = render_order(after, None);
+    let (replayed, _) = render_order(after, Some(saved));
+    let (foreign, _) = render_order(after, Some(foreign_frame));
+    let position = |shape: &crate::model::C4ShapeLayout| (shape.y, shape.x);
+    assert!(position(&default.shapes[0]) < position(&default.shapes[1]));
+    assert!(position(&replayed.shapes[1]) < position(&replayed.shapes[0]));
+    assert_eq!(position(&foreign.shapes[0]), position(&default.shapes[0]));
+    assert_eq!(position(&foreign.shapes[1]), position(&default.shapes[1]));
 }

@@ -115,6 +115,18 @@ mod declaration_scan {
         )
     }
 
+    #[cfg(any(
+        feature = "diagram-agentflow",
+        feature = "diagram-class",
+        feature = "diagram-er",
+        feature = "diagram-flowchart",
+        feature = "diagram-mindmap",
+        feature = "diagram-swimlane",
+        feature = "diagram-block",
+        feature = "diagram-state",
+        feature = "diagram-treemap",
+        feature = "diagram-usecase"
+    ))]
     pub(super) fn style_lists<'a>(
         lists: impl IntoIterator<Item = &'a [String]>,
         control: &OperationControl,

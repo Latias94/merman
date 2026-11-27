@@ -260,3 +260,26 @@ The raw ceiling provides 1,204,009 bytes of staging headroom for the remaining v
 crate moves. The recorded job exceeded its raw ceiling and stopped before package validation
 and real Typst smoke. The publish workflow checks all four sizes and then runs the package and
 runtime checks on the updated source.
+
+## Shoal audit follow-up, 2026-11-28
+
+[PR 384's initial Linux Typst job](https://github.com/Latias94/merman/actions/runs/46041992692/job/140652327103)
+measured 4,490,588 gzip bytes at `47366d365`, 5,588 bytes above the publish budget.
+The Typst producer now runs Binaryen `-Oz --converge`, which repeats the size passes while the
+module shrinks. The package keeps its existing Wasm feature set, inline-size guard, compression
+settings, and all four ceilings.
+
+The M4 Pro control used Rust 1.100.0, Binaryen 133, and wasm-tools 1.263.0. Both measurements
+started from the same compiled module, SHA-256
+`20688b62076b8bd956745e5a59e886b60669522e1926efd6e492871e09b79b7f`.
+
+| Metric | `-Oz` | `-Oz --converge` | Ceiling |
+| --- | ---: | ---: | ---: |
+| Raw bytes | 23,239,831 | 23,239,831 | 24,000,000 |
+| Stripped bytes | 11,519,837 | 11,510,790 | 11,676,000 |
+| Gzip bytes | 4,487,793 | 4,471,229 | 4,485,000 |
+| Brotli bytes | 3,273,140 | 3,259,588 | 3,318,000 |
+
+The optimized artifact passed package validation. Typst 0.15.1 compiled all 25 smoke fixtures
+and produced the nine expected failure diagnostics. Linux CI verifies the same recipe on its
+own module. The measurements cover artifact size only.

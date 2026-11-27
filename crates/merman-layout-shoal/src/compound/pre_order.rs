@@ -15,6 +15,7 @@ pub(super) struct Hints {
 struct Leaves {
     count: usize,
     mean: f64,
+    first_rank: u32,
     last_rank: u32,
 }
 
@@ -34,37 +35,44 @@ impl Leaves {
         } else {
             self.mean * (1.0 - fraction) + other.mean * fraction
         };
+        self.first_rank = self.first_rank.min(other.first_rank);
         self.last_rank = self.last_rank.max(other.last_rank);
         self.count = total;
     }
 }
 
-fn far_hint(
+fn flow_hint(
     chain: &[u32],
     ranks: &[u32],
     across: &[f64],
-    last_rank: u32,
-    source: usize,
+    boundary_rank: u32,
+    first_face: bool,
+    near: usize,
     work: &mut Work<'_>,
-) -> LayoutResult<f64> {
+) -> LayoutResult<Option<f64>> {
     work.visit(chain.len().max(1).ilog2() as usize + 2)?;
-    let mut at = chain.partition_point(|&vertex| ranks[vertex as usize] < last_rank);
-    let mut inside = across[source];
-    if let Some(&vertex) = chain.get(at)
-        && ranks[vertex as usize] == last_rank
-    {
-        inside = across[vertex as usize];
-        at += 1;
-    }
-    if let Some(&vertex) = chain.get(at)
-        && Some(ranks[vertex as usize]) == last_rank.checked_add(1)
+    let at = chain.partition_point(|&vertex| ranks[vertex as usize] < boundary_rank);
+    let on_face = chain
+        .get(at)
+        .filter(|&&v| ranks[v as usize] == boundary_rank);
+    let inside = on_face.map_or(across[near], |&v| across[v as usize]);
+    let (outside, outside_rank) = if first_face {
+        (at.checked_sub(1), boundary_rank.checked_sub(1))
+    } else {
+        (
+            Some(at + usize::from(on_face.is_some())),
+            boundary_rank.checked_add(1),
+        )
+    };
+    if let Some(&vertex) = outside.and_then(|index| chain.get(index))
+        && Some(ranks[vertex as usize]) == outside_rank
     {
         let key = inside + across[vertex as usize] * 1e-6;
         if key.is_finite() {
-            return Ok(key);
+            return Ok(Some(key));
         }
     }
-    Ok(inside)
+    Ok(None)
 }
 
 pub(super) fn ordered(
@@ -170,6 +178,7 @@ pub(super) fn ordered(
                     Leaves {
                         count: 1,
                         mean,
+                        first_rank: ranks[index],
                         last_rank: ranks[index],
                     }
                 }
@@ -198,18 +207,26 @@ pub(super) fn ordered(
             far
         };
         let mut hint = keys[super::item_index(graph, peer)];
-        if border.outgoing
-            && side == flow_sides(hierarchy.levels[border.level].direction).1
-            && let (Some(index), Endpoint::Node(from)) = (proxy_edge[border.edge], near)
+        let (first, last) = flow_sides(hierarchy.levels[border.level].direction);
+        if (side == first || side == last)
+            && let (Some(index), Endpoint::Node(near)) = (proxy_edge[border.edge], near)
         {
-            hint = Some(far_hint(
+            let first_face = side == first;
+            let group = leaves[border.level];
+            hint = flow_hint(
                 &chains[index],
                 ranks,
                 &across,
-                leaves[border.level].last_rank,
-                from.0 as usize,
+                if first_face {
+                    group.first_rank
+                } else {
+                    group.last_rank
+                },
+                first_face,
+                near.0 as usize,
                 work,
-            )?);
+            )?
+            .or(hint);
         }
         ports.push(hint);
     }
@@ -336,7 +353,7 @@ mod tests {
     }
 
     #[test]
-    fn far_hints_use_each_proxy_edge_at_the_groups_last_rank_and_the_next_rank() {
+    fn flow_face_hints_use_each_proxy_edge_at_the_groups_boundary_rank() {
         let mut graph = Graph {
             groups: vec![GroupSpec::new(0)],
             ..Default::default()
@@ -419,6 +436,79 @@ mod tests {
             .unwrap();
         assert_eq!(changed.ports[border], result.items[3]);
         assert_ne!(changed.ports[border], result.ports[border]);
+    }
+
+    #[test]
+    fn incoming_parallel_chains_use_the_first_rank_and_the_preceding_rank() {
+        let mut graph = Graph {
+            groups: vec![GroupSpec::new(0)],
+            ..Default::default()
+        };
+        for index in 0..4 {
+            let mut node = NodeSpec::new(
+                Size {
+                    width: 50.,
+                    height: 24.,
+                },
+                index,
+            );
+            node.parent = matches!(index, 1 | 2).then_some(GroupId(0));
+            graph.nodes.push(node);
+        }
+        for (source, target) in [(0, 1), (1, 2), (2, 3), (0, 2), (0, 2)] {
+            graph
+                .edges
+                .push(EdgeSpec::new(NodeId(source).into(), NodeId(target).into()));
+        }
+        let options = Options::default();
+        let mut control = NoopWorkControl;
+        let mut work = Work::new(&mut control);
+        let hierarchy = build(&graph, &options, &mut work).unwrap();
+        let sides = sides::assign(&graph, &hierarchy, &options, &mut work).unwrap();
+        let mut expanded = Expanded::default();
+        let hints = ordered(
+            &graph,
+            &hierarchy,
+            &options,
+            &sides,
+            &mut expanded,
+            &mut work,
+        )
+        .unwrap()
+        .unwrap();
+        let groups: Vec<_> = graph.nodes.iter().map(|node| node.parent).collect();
+        let mut proxy = graph.clone();
+        proxy.groups.clear();
+        for node in &mut proxy.nodes {
+            node.parent = None;
+        }
+        let (across, _) =
+            flat::compound_order(&proxy, &groups, &[None], &options, &mut expanded, &mut work)
+                .unwrap();
+        let ranks = expanded.order_ranks();
+        let first = ranks[1];
+        assert_eq!(ranks[0] + 1, first);
+        let mut keys = Vec::new();
+        for edge in [3, 4] {
+            let (id, _) = hierarchy
+                .borders
+                .iter()
+                .enumerate()
+                .find(|(_, port)| port.edge == edge)
+                .unwrap();
+            assert_eq!(sides[id], Side::Top);
+            let chain = &expanded.order_chains()[edge];
+            let inner = chain
+                .iter()
+                .map(|&vertex| vertex as usize)
+                .find(|&vertex| ranks[vertex] == first)
+                .unwrap();
+            assert!(inner >= graph.nodes.len());
+            let key = across[inner] + across[0] * 1e-6;
+            assert_eq!(hints.ports[id], Some(key));
+            keys.push(key);
+        }
+        assert_ne!(keys[0], keys[1]);
     }
 
     #[test]

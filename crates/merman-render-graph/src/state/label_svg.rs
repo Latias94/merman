@@ -5,9 +5,10 @@ use std::fmt::Write as _;
 use merman_model::families::state::StateDiagramRenderNode;
 use merman_render_core::{
     entities::{decode_mermaid_entities_for_render_text, decode_svg_text_content_entities},
+    mermaid_style::visit_parsed_style_declarations,
     number_format::canonical_number,
     text::inline_html::MermaidMarkdownWordType,
-    xml::{escape_attr, escape_xml_display, normalize_html_entities_for_xml},
+    xml::{escape_attr, escape_attr_display, escape_xml_display, normalize_html_entities_for_xml},
 };
 
 use super::label::{state_node_label_xhtml, state_svg_plain_lines, state_value_to_label_text};
@@ -28,7 +29,7 @@ pub fn state_node_label_html_with_style(
 ) -> String {
     let style_attr = span_style
         .filter(|s| !s.is_empty())
-        .map(|s| format!(r#" style="{}""#, escape_xml_display(s)))
+        .map(|s| format!(r#" style="{}""#, escape_attr_display(s)))
         .unwrap_or_default();
     format!(
         r#"<span{} class="nodeLabel markdown-node-label">{}</span>"#,
@@ -120,29 +121,17 @@ pub fn state_node_label_plain_html(raw: &str) -> String {
 
 fn state_svg_text_style_attr(style_attr: &str) -> String {
     let mut out = String::with_capacity(style_attr.len());
-    for declaration in style_attr.split(';') {
-        let declaration = declaration.trim();
-        if declaration.is_empty() {
-            continue;
-        }
-        let Some((property, value)) = declaration.split_once(':') else {
-            continue;
-        };
-        let property = property.trim();
-        let value = value.trim();
-        if property.is_empty() || value.is_empty() {
-            continue;
-        }
+    visit_parsed_style_declarations(style_attr, |declaration| {
         if !out.is_empty() {
             out.push(';');
         }
-        let property = if property.eq_ignore_ascii_case("color") {
+        let property = if declaration.property() == "color" {
             "fill"
         } else {
-            property
+            declaration.property_css()
         };
-        let _ = write!(&mut out, "{property}:{value}");
-    }
+        let _ = write!(&mut out, "{property}:{}", declaration.source_value());
+    });
     out
 }
 

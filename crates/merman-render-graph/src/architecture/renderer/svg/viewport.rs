@@ -138,6 +138,21 @@ mod tests {
     }
 
     #[test]
+    fn architecture_root_bbox_skips_empty_and_nonrendered_definitions() {
+        let content = bounds(1.0, 2.0, 3.0, 4.0);
+        let svg = concat!(
+            r#"<svg><defs/><defs><clipPath id="clip"/>"#,
+            r#"<rect x="-1000" y="-1000" width="2000" height="2000"/></defs>"#,
+            r#"<rect x="-10" y="-20" width="30" height="40"/></svg>"#,
+        );
+        let visible = architecture_root_bbox_from_svg(svg, Some(content), 80.0, false);
+        assert_eq!(visible.min_x, -10.0);
+        assert_eq!(visible.min_y, -20.0);
+        assert_eq!(visible.max_x, 20.0);
+        assert_eq!(visible.max_y, 20.0);
+    }
+
+    #[test]
     fn architecture_root_viewport_preserves_f64_bbox_and_padding() {
         let diagram_id = "architecture-f64-root";
         let root_viewport = root_svg::RootViewportContext::new(

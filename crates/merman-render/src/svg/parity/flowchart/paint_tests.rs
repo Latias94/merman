@@ -413,7 +413,8 @@ fn geometry_frontier_preserves_the_actual_rough_paths_after_nested_prefixes() {
                         ctx,
                         hierarchy,
                         &mut routes,
-                        &labels
+                        &labels,
+                        &svg_services(execution),
                     )?);
                     let mut compared = 0;
                     for edge in edges {
@@ -455,7 +456,8 @@ fn geometry_without_positioned_labels_does_not_prepare_rough_paths() {
                     ctx,
                     hierarchy,
                     &mut routes,
-                    &labels
+                    &labels,
+                    &svg_services(execution),
                 )?);
                 assert_eq!(before, ctx.work_meter.used());
                 assert!(

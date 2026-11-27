@@ -227,6 +227,13 @@ impl FlowchartCompiledStyles {
         self.has_source_label_foreground
     }
 
+    pub(crate) fn source_label_color(&self) -> Option<&str> {
+        self.label_sources
+            .iter()
+            .find(|declaration| declaration.prepared.property() == "color")
+            .map(|declaration| declaration.prepared.value())
+    }
+
     pub fn emitted_edge_class_declarations(&self) -> &[Arc<FlowchartStyleDeclaration>] {
         &self.edge_class_declarations
     }
@@ -248,15 +255,27 @@ impl FlowchartCompiledStyles {
         })
     }
 
+    pub fn source_edge_stroke(&self, hand_drawn: bool) -> Option<&str> {
+        let source = if hand_drawn {
+            self.inline_stroke_source.as_ref()?
+        } else {
+            self.stroke_source.as_ref()?
+        };
+        Some(source.value())
+    }
+
     pub(crate) fn projected_edge_source_style_bytes(
         &self,
         default_edge_style: &[String],
         edge_style: &[String],
         hand_drawn: bool,
-    ) -> Option<usize> {
+    ) -> Option<FlowchartEdgeSourceStyleBytes> {
         let joined_inline = projected_joined_style_bytes(default_edge_style, edge_style)?;
         if hand_drawn {
-            return Some(joined_inline);
+            return Some(FlowchartEdgeSourceStyleBytes {
+                native: joined_inline,
+                parity: joined_inline,
+            });
         }
 
         let class_bytes = self.edge_class_declarations.iter().enumerate().try_fold(
@@ -270,14 +289,16 @@ impl FlowchartCompiledStyles {
             },
         )?;
         let class_separator = usize::from(!self.edge_class_declarations.is_empty());
-        let inline_bytes = if default_edge_style.is_empty() && edge_style.is_empty() {
+        let repeated_inline = if default_edge_style.is_empty() && edge_style.is_empty() {
             1
         } else {
             joined_inline.checked_mul(2)?.checked_add(3)?
         };
-        class_bytes
-            .checked_add(class_separator)?
-            .checked_add(inline_bytes)
+        let class_bytes = class_bytes.checked_add(class_separator)?;
+        Some(FlowchartEdgeSourceStyleBytes {
+            native: class_bytes.checked_add(joined_inline)?,
+            parity: class_bytes.checked_add(repeated_inline)?,
+        })
     }
 
     /// Drop node-only data after projecting the path's serialized size.
@@ -385,6 +406,12 @@ impl FlowchartCompiledStyles {
     pub fn has_source_radius(&self) -> bool {
         self.radius_sources.iter().any(Option::is_some)
     }
+}
+
+#[derive(Debug)]
+pub(crate) struct FlowchartEdgeSourceStyleBytes {
+    pub(crate) native: usize,
+    pub(crate) parity: usize,
 }
 
 fn marker_source_value(declaration: &FlowchartStyleDeclaration) -> &str {
@@ -804,7 +831,8 @@ fn flowchart_compile_prepared_styles_for_class_names<'a>(
             let decl = &decl.prepared;
             let property = decl.property();
             match property {
-                "stroke" | "stroke-width" => true,
+                "stroke" | "stroke-width" | "stroke-dasharray" | "stroke-dashoffset"
+                | "stroke-linecap" | "stroke-linejoin" | "stroke-miterlimit" => true,
                 // Mermaid adds `fill:none` to indexed link styles, including width-only styles.
                 "fill" => decl.value().eq_ignore_ascii_case("none"),
                 "opacity" | "stroke-opacity" => literal_opacity(decl.value()) == Some(1.0),

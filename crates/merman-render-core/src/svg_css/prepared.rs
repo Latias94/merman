@@ -270,6 +270,11 @@ impl PreparedCommonCss {
         &self.line_color
     }
 
+    /// Reports whether the emitted stylesheet references the diagram's built-in shadow filter.
+    pub fn references_builtin_drop_shadow(&self) -> bool {
+        self.neo.drop_shadow.contains(super::id::DROP_SHADOW_URL)
+    }
+
     pub fn with_text_color(mut self, text_color: &str) -> Self {
         self.text_color = text_color.to_owned();
         self

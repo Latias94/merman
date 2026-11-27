@@ -10,7 +10,7 @@ use merman_model::{
     presentation::PresentationConfig,
 };
 use merman_render_core::{
-    Error, LayoutEdge, LayoutNode,
+    Bounds, Error, LayoutEdge, LayoutNode,
     config::config_diagram_look,
     entities::decode_mermaid_entities_for_render_text,
     paint_scene::{
@@ -26,6 +26,7 @@ use merman_render_core::{
         FontStyle, ParsedCssFontStack, TextMeasurer, line_break::split_mermaid_common_br_lines,
         parse_css_font_stack,
     },
+    theme_svg::elevation::HardShadows,
 };
 use merman_theme_contract::v2::{Color, Elevation, MarkerStyle, Paint, Texture};
 use rustc_hash::FxHashMap;
@@ -444,6 +445,12 @@ fn compact_canvas(
     policy: SequenceCompactPolicy<'_>,
     meter: &OperationWorkMeter,
 ) -> Result<Option<SceneColor>> {
+    let background = background.map(Paint::Solid);
+    let paint = background.as_ref().or(policy.canvas);
+    // A fully transparent canvas suppresses the theme's texture overlays.
+    if matches!(paint, Some(Paint::Solid(color)) if color.channels()[3] == 0) {
+        return Ok(None);
+    }
     if policy
         .textures
         .iter()
@@ -451,10 +458,7 @@ fn compact_canvas(
     {
         return Err(unsupported(meter, "canvas-texture"));
     }
-    if let Some(background) = background {
-        return Ok(Some(solid(background)));
-    }
-    match policy.canvas {
+    match paint {
         None => Ok(None),
         Some(Paint::Solid(color)) => Ok(Some(solid(*color))),
         Some(_) => Err(unsupported(meter, "canvas-paint")),
@@ -469,6 +473,49 @@ fn bounds(node: &LayoutNode) -> SceneBox {
         width: node.width,
         height: node.height,
     }
+}
+
+fn project_actor_shadows(
+    projected: &mut Projected<'_>,
+    shadows: HardShadows<'_>,
+    actor_order: &[String],
+    nodes: &FxHashMap<&str, &LayoutNode>,
+    mirror: bool,
+    radius: f64,
+) -> Result<Option<Bounds>> {
+    if shadows.layer_count() == 0 {
+        return Ok(None);
+    }
+    let start = projected.items.len();
+    let checks = SequenceEmitCheckpoints::for_emit(projected.meter);
+    let placements = if mirror {
+        &["top", "bottom"][..]
+    } else {
+        &["top"][..]
+    };
+    let mut depth_bounds: Option<kurbo::Rect> = None;
+    for (index, id) in actor_order.iter().enumerate() {
+        checks.checkpoint_loop(index)?;
+        for placement in placements {
+            let node = nodes
+                .get(format!("actor-{placement}-{id}").as_str())
+                .ok_or_else(|| invalid("Sequence compact actor is missing prepared placement"))?;
+            let surface = bounds(node);
+            for shadow in shadows.rectangles(surface, radius) {
+                projected.item(Item::Rect(shadow))?;
+            }
+            let shadow_bounds = shadows.bounds(surface);
+            depth_bounds =
+                Some(depth_bounds.map_or(shadow_bounds, |bounds| bounds.union(shadow_bounds)));
+        }
+    }
+    projected.group(SceneRole::Depth, start)?;
+    Ok(depth_bounds.map(|bounds| Bounds {
+        min_x: bounds.x0,
+        min_y: bounds.y0,
+        max_x: bounds.x1,
+        max_y: bounds.y1,
+    }))
 }
 
 fn stroke(color: SceneColor, width: f64) -> SceneStroke {
@@ -693,9 +740,9 @@ fn prepare_sequence_compact<'a>(
     if compat.actor_palette.enabled() || config_diagram_look(config).as_str() != "classic" {
         return Err(unsupported(meter, "sequence-look-or-palette"));
     }
-    if native.is_some_and(|theme| !matches!(theme.elevation, Elevation::Flat)) {
-        return Err(unsupported(meter, "sequence-elevation"));
-    }
+    let elevation = native.map_or(&Elevation::Flat, |theme| &theme.elevation);
+    let shadows =
+        HardShadows::resolve(elevation).ok_or_else(|| unsupported(meter, "sequence-elevation"))?;
     if config.get_bool("sequence.showSequenceNumbers") == Some(true) {
         return Err(unsupported(meter, "sequence-numbers"));
     }
@@ -800,6 +847,14 @@ fn prepare_sequence_compact<'a>(
         uses_arrow: false,
         keyword_boxes: Vec::new(),
     };
+    let actor_shadow_bounds = project_actor_shadows(
+        &mut projected,
+        shadows,
+        &model.actor_order,
+        &nodes,
+        settings.mirror_actors,
+        header_radius,
+    )?;
     let mut lifeline_bounds = None;
     for placement in if settings.mirror_actors {
         &["bottom", "top"][..]
@@ -1008,6 +1063,7 @@ fn prepare_sequence_compact<'a>(
             frame_projection
                 .as_ref()
                 .and_then(|projection| projection.bounds.as_ref()),
+            actor_shadow_bounds.as_ref(),
         ],
     );
     let view_box = request
@@ -1025,6 +1081,7 @@ fn prepare_sequence_compact<'a>(
         height: ARROWHEAD_SIZE[1],
         units: SceneMarkerUnits::UserSpaceOnUse,
         orient: SceneMarkerOrient::AutoStartReverse,
+        round_stroke: false,
         commands: arrowhead.commands,
         paint: ScenePaint {
             fill: arrowhead.has_fill.then_some(signal_color),
@@ -1046,7 +1103,7 @@ fn prepare_sequence_compact<'a>(
             },
             width: view_box.width,
             height: view_box.height,
-            canvas: canvas.filter(|color| color.alpha != 0.0),
+            canvas,
         },
         title,
         description,

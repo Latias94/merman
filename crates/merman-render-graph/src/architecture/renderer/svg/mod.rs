@@ -43,6 +43,10 @@ pub struct ArchitectureSvgContext<'a> {
     pub icon_registry: Option<&'a IconRegistry>,
     pub timing: RenderTiming,
     #[cfg(feature = "layout-shoal")]
+    pub operation: &'a merman_model::runtime::OperationContext,
+    #[cfg(feature = "layout-shoal")]
+    pub canvas_background: Option<merman_theme_contract::v2::Color>,
+    #[cfg(feature = "layout-shoal")]
     pub canonical: Option<&'a dyn ArchitectureCanonicalSvg>,
 }
 

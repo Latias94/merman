@@ -14,7 +14,7 @@ use serde_json::Value;
 
 use crate::theme::FlowchartCompatibilityBinding;
 
-use super::{NodeBodyGeometry, NodeBodySvg, escape_attr};
+use super::{NodeBodyGeometry, NodeBodySvg, escape_attr, rectangle_backing};
 
 const HAND_DRAWN_ROUGHNESS: f32 = 0.7;
 const HAND_DRAWN_FILL_WEIGHT: f32 = 1.5;
@@ -125,18 +125,8 @@ fn write_process(
     };
 
     if let Some((fill_d, stroke_d)) = rough_paths {
-        let _ = write!(
-            out,
-            r#"<g class="basic label-container" style="{}"><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"#,
-            escape_attr(body.rough_group_style),
-            escape_attr(&fill_d),
-            escape_attr(body.fill_color),
-            fmt(HAND_DRAWN_FILL_WEIGHT as f64),
-            escape_attr(&stroke_d),
-            escape_attr(body.stroke_color),
-            body.geometry.stroke_width,
-            escape_attr(body.geometry.stroke_dasharray),
-        );
+        let outline = rectangle_backing(&body, width, height);
+        write_rough_rectangle(out, &body, &outline, &fill_d, &stroke_d);
         return;
     }
 
@@ -168,7 +158,7 @@ fn write_rounded(
     let rough_paths = if body.geometry.hand_drawn {
         // Preserve the source SVG arcs, including radii larger than half the box.
         let path_data = rounded_rect_path_data(w, h, &compatibility.rounded_rect_radius);
-        body.timed_rough(|geometry| {
+        let paths = body.timed_rough(|geometry| {
             roughjs_hachure_paths_for_svg_path(
                 &path_data,
                 geometry.stroke_width,
@@ -179,33 +169,14 @@ fn write_rounded(
                 geometry.work_meter,
                 geometry.randomness,
             )
-        })
+        });
+        paths.map(|(fill, stroke)| (path_data, fill, stroke))
     } else {
         None
     };
 
-    if let Some((fill_d, stroke_d)) = rough_paths {
-        let _ = write!(
-            out,
-            r#"<g class="basic label-container" style="{}">"#,
-            escape_attr(body.rough_group_style)
-        );
-        let _ = write!(
-            out,
-            r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"/>"#,
-            escape_attr(&fill_d),
-            escape_attr(body.fill_color),
-            fmt(HAND_DRAWN_FILL_WEIGHT as f64),
-        );
-        let _ = write!(
-            out,
-            r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/>"#,
-            escape_attr(&stroke_d),
-            escape_attr(body.stroke_color),
-            body.geometry.stroke_width,
-            escape_attr(body.geometry.stroke_dasharray),
-        );
-        out.push_str("</g>");
+    if let Some((outline, fill_d, stroke_d)) = rough_paths {
+        write_rough_rectangle(out, &body, &outline, &fill_d, &stroke_d);
     } else {
         let numeric_radius = style
             .native_radius
@@ -224,6 +195,29 @@ fn write_rounded(
         }
         out.push_str("/>");
     }
+}
+
+fn write_rough_rectangle(
+    out: &mut impl SvgOutput,
+    body: &NodeBodySvg<'_>,
+    outline: &str,
+    hatch: &str,
+    stroke: &str,
+) {
+    let _ = write!(
+        out,
+        r#"<g class="basic label-container" style="{}">"#,
+        escape_attr(body.hand_drawn_group_style()),
+    );
+    body.write_hachure(out, outline, hatch, f64::from(HAND_DRAWN_FILL_WEIGHT));
+    let _ = write!(
+        out,
+        r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"#,
+        escape_attr(stroke),
+        escape_attr(body.stroke_color),
+        body.geometry.stroke_width,
+        escape_attr(body.geometry.stroke_dasharray),
+    );
 }
 
 impl RectangleStyle<'_> {

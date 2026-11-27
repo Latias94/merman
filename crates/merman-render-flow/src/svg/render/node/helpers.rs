@@ -1,15 +1,21 @@
 //! Node-level helpers (link sanitization, class building, placeholders).
 
+use std::borrow::Cow;
+
+use merman_render_core::{
+    icon_registry::{IconIdScopePrefix, IconRenderRequest, mermaid_unknown_icon_svg, render_icon},
+    mermaid_style::visit_parsed_style_declarations,
+    svg_security::{
+        MermaidNavigationSecurity, SerializedMermaidNavigationHref, prepare_mermaid_navigation_href,
+    },
+    theme_svg::edge_label_background::literal_opacity,
+    xml::escape_attr_into,
+};
+
+use crate::node_body;
 use crate::svg::document_ids::FlowchartDocumentId;
 use crate::svg::types::{FlowchartRenderCtx, FlowchartRenderDetails};
-use crate::svg::util::escape_attr_display;
-use crate::svg::{escape_xml_display, escape_xml_into, fmt_display};
-use merman_render_core::icon_registry::{
-    IconIdScopePrefix, IconRenderRequest, mermaid_unknown_icon_svg, render_icon,
-};
-use merman_render_core::svg_security::{
-    MermaidNavigationSecurity, SerializedMermaidNavigationHref, prepare_mermaid_navigation_href,
-};
+use crate::svg::{escape_attr_display, fmt_display};
 
 pub(in crate::svg::render::node) fn icon_svg_or_placeholder(
     ctx: &FlowchartRenderCtx<'_>,
@@ -74,7 +80,7 @@ pub(super) fn try_render_self_loop_label_placeholder(
         out,
         r#"<g class="label edgeLabel" id="{}" data-id="{}" data-et="edge-label" transform="translate({},{})"><rect width="0.1" height="0.1"/><g class="label" style="" transform="translate(0,0)"><rect/>"#,
         dom_id,
-        escape_xml_display(node_id),
+        escape_attr_display(node_id),
         fmt_display(x),
         fmt_display(y)
     );
@@ -113,18 +119,18 @@ impl<'a> NodeWrapperClasses<'a> {
     }
 
     fn write(self, out: &mut impl crate::svg::SvgOutput) {
-        escape_xml_into(out, self.base);
+        escape_attr_into(out, self.base);
         for c in self.assigned {
             let t = c.trim();
             if t.is_empty() {
                 continue;
             }
             out.push(' ');
-            escape_xml_into(out, t);
+            escape_attr_into(out, t);
         }
         if let Some(extra) = self.extra {
             out.push(' ');
-            escape_xml_into(out, extra);
+            escape_attr_into(out, extra);
         }
     }
 }
@@ -173,7 +179,7 @@ pub(super) fn open_node_wrapper(out: &mut impl crate::svg::SvgOutput, attrs: Nod
             out.push('"');
             if let Some(target) = target {
                 out.push_str(r#" target=""#);
-                escape_xml_into(out, target);
+                escape_attr_into(out, target);
                 out.push('"');
             }
             out.push_str(r#" transform="translate("#);
@@ -181,7 +187,7 @@ pub(super) fn open_node_wrapper(out: &mut impl crate::svg::SvgOutput, attrs: Nod
             out.push(',');
             crate::svg::util::fmt_into(out, y);
             out.push_str(r#")" data-look=""#);
-            escape_xml_into(out, look);
+            escape_attr_into(out, look);
             out.push_str(r#"">"#);
         } else {
             out.push_str(r#"<a transform="translate("#);
@@ -189,7 +195,7 @@ pub(super) fn open_node_wrapper(out: &mut impl crate::svg::SvgOutput, attrs: Nod
             out.push(',');
             crate::svg::util::fmt_into(out, y);
             out.push_str(r#")" data-look=""#);
-            escape_xml_into(out, look);
+            escape_attr_into(out, look);
             out.push_str(r#"">"#);
         }
         out.push_str(r#"<g class=""#);
@@ -197,7 +203,7 @@ pub(super) fn open_node_wrapper(out: &mut impl crate::svg::SvgOutput, attrs: Nod
         out.push_str(r#"" id=""#);
         let _ = write!(out, "{dom_id}");
         out.push_str(r#"" data-id=""#);
-        escape_xml_into(out, data_id);
+        escape_attr_into(out, data_id);
         out.push_str(r#"" data-et="node""#);
     } else {
         out.push_str(r#"<g class=""#);
@@ -209,9 +215,9 @@ pub(super) fn open_node_wrapper(out: &mut impl crate::svg::SvgOutput, attrs: Nod
         out.push(',');
         crate::svg::util::fmt_into(out, y);
         out.push_str(r#")" data-look=""#);
-        escape_xml_into(out, look);
+        escape_attr_into(out, look);
         out.push_str(r#"" data-id=""#);
-        escape_xml_into(out, data_id);
+        escape_attr_into(out, data_id);
         out.push_str(r#"" data-et="node""#);
     }
     if tooltip_enabled {
@@ -325,39 +331,70 @@ pub(super) fn hand_drawn_path_pair_with_stroke(
 pub(super) fn write_hand_drawn_path_pair(
     out: &mut impl crate::svg::SvgOutput,
     common: &super::FlowchartNodeRenderCommon<'_>,
+    outline: &str,
     fill_d: &str,
     stroke_d: &str,
 ) {
-    write_hand_drawn_path_pair_with_colors(
+    write_hand_drawn_hachure(out, common, outline, fill_d, 4.0);
+    let _ = write!(
         out,
-        fill_d,
-        stroke_d,
-        common.fill_color,
-        common.stroke_color,
-        common.stroke_width,
-        common.stroke_dasharray,
+        r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/>"#,
+        escape_attr_display(stroke_d),
+        escape_attr_display(common.stroke_color),
+        fmt_display(common.stroke_width as f64),
+        escape_attr_display(common.stroke_dasharray),
     );
 }
 
-pub(super) fn write_hand_drawn_path_pair_with_colors(
+pub(super) fn hand_drawn_group_style<'a>(common: &super::FlowchartNodeRenderCommon<'a>) -> &'a str {
+    if common.solid_rough_fill {
+        common.style
+    } else {
+        common.rough_group_style
+    }
+}
+
+pub(super) fn grouped_shape_child_style<'a>(
+    common: &super::FlowchartNodeRenderCommon<'a>,
+) -> Cow<'a, str> {
+    if common.solid_rough_fill {
+        node_body::grouped_shape_child_style(common.style)
+    } else {
+        Cow::Borrowed(common.style)
+    }
+}
+
+pub(super) fn write_hand_drawn_hachure(
     out: &mut impl crate::svg::SvgOutput,
-    fill_d: &str,
-    stroke_d: &str,
-    fill_color: &str,
-    stroke_color: &str,
-    stroke_width: f32,
-    stroke_dasharray: &str,
+    common: &super::FlowchartNodeRenderCommon<'_>,
+    outline: &str,
+    hatch: &str,
+    width: f64,
 ) {
-    let _ = write!(
+    node_body::write_hand_drawn_hachure(
         out,
-        r#"<path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/>"#,
-        crate::svg::escape_attr(fill_d),
-        crate::svg::escape_attr(fill_color),
-        crate::svg::escape_attr(stroke_d),
-        crate::svg::escape_attr(stroke_color),
-        crate::svg::util::fmt_display(stroke_width as f64),
-        crate::svg::escape_attr(stroke_dasharray),
+        outline,
+        hatch,
+        width,
+        (common.fill_color, common.stroke_color),
+        rough_fill_opacity(common),
     );
+}
+
+pub(super) fn rough_fill_opacity(common: &super::FlowchartNodeRenderCommon<'_>) -> Option<f64> {
+    if !common.solid_rough_fill {
+        return None;
+    }
+    // The group composites its opacity once over both the fill and the outline.
+    let mut fill_opacity = 1.0;
+    if common.fill_opacity != 1.0 {
+        visit_parsed_style_declarations(common.style, |decl| {
+            if decl.property() == "fill-opacity" {
+                fill_opacity = literal_opacity(decl.value()).unwrap_or(1.0);
+            }
+        });
+    }
+    Some(fill_opacity)
 }
 
 pub(super) fn timed_node_label_html<T>(

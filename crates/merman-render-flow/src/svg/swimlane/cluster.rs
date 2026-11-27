@@ -1,10 +1,11 @@
 use super::super::*;
 use crate::cluster_shell::{
     FlowchartClusterShape,
-    swimlane::{SwimlaneClusterSvg, write_swimlane_cluster},
+    swimlane::{SwimlaneClusterSvg, write_swimlane_cluster_with_label_ink},
 };
 use crate::graph::FlowchartClusterPass;
-use merman_render_core::SwimlaneLaneLayout;
+use crate::svg::render::cluster::{lane_color_slot, swimlane_label_ink};
+use merman_render_core::{SwimlaneLaneLayout, theme_svg::edge_label_background::literal_fill};
 
 pub(in crate::svg) fn render_swimlane_cluster(
     out: &mut impl crate::svg::SvgOutput,
@@ -38,7 +39,37 @@ pub(in crate::svg) fn render_swimlane_cluster(
             })?;
     let canonical = ctx.layout.route_contract.group_parents().is_some();
     let is_pool = super::uses_pool_shell(ctx, lane.id.as_str());
-    write_swimlane_cluster(
+    let color_slot = lane_color_slot(ctx, &lane.id);
+    let label_ink = if canonical {
+        let title_text_style = ctx
+            .svg_label_sidecar
+            .and_then(|sidecar| {
+                sidecar
+                    .swimlane_group_title_owner(cluster_id)
+                    .and_then(|owner| sidecar.node_source_style(owner))
+            })
+            .unwrap_or(&terminal.title_text_style)
+            .as_ref();
+        let default_ink = ctx.native.map(|native| native.on_emphasis.to_string());
+        let fill = color_slot
+            .and_then(|slot| ctx.palette.background_color(slot))
+            .and_then(literal_fill)
+            .or_else(|| ctx.native.map(|native| native.emphasis))
+            .or_else(|| literal_fill(&terminal.fill));
+        swimlane_label_ink(
+            ctx,
+            &lane.id,
+            &terminal.compiled,
+            fill,
+            default_ink
+                .as_deref()
+                .unwrap_or(&ctx.compatibility.title_color),
+            title_text_style,
+        )?
+    } else {
+        None
+    };
+    write_swimlane_cluster_with_label_ink(
         out,
         SwimlaneClusterSvg {
             lane,
@@ -66,5 +97,7 @@ pub(in crate::svg) fn render_swimlane_cluster(
             measurer: ctx.measurer,
             math_renderer: ctx.math_renderer,
         },
+        color_slot,
+        label_ink.as_deref(),
     )
 }
