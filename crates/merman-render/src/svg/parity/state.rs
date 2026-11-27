@@ -251,7 +251,8 @@ mod tests {
                     .collect();
                 assert_eq!(mask.len(), 4, "{style}");
                 assert_eq!((mask[0], mask[1], mask[3]), (0.0, 0.0, 2.0));
-                let length = crate::svg::parity::svg_path_length_from_d(d).unwrap();
+                let length =
+                    merman_render_core::svg_edge_parity::svg_path_length_from_d(d).unwrap();
                 assert!(
                     (mask[2] + 2.0 - length).abs() < 1e-6,
                     "{style}: length={length}"

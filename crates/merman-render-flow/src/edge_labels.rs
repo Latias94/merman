@@ -25,6 +25,8 @@ mod swimlane;
 pub use ordinary::{FlowchartEdgeLabelPlacement, OrdinaryEdgeLabel, write_ordinary_edge_label};
 pub use swimlane::{SwimlaneEdgeLabel, SwimlaneEdgeLabelPaint};
 
+pub const HTML_EDGE_LABEL_INSET_PX: f64 = 4.0;
+
 /// Text services and prepared occurrences from the active Flow render operation.
 pub struct FlowchartEdgeLabelText<'a> {
     pub edge_style_plan: &'a FlowchartEdgeStylePlan,

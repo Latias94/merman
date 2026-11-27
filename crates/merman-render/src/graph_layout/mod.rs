@@ -65,30 +65,6 @@ pub(crate) use merman_render_flow::graph::FlowchartSvgEdgeGeometry;
 ))]
 pub(crate) use merman_render_flow::graph::{AxisRoutes, RouteTopology};
 
-#[cfg(any(feature = "layout-shoal", test))]
-#[cfg(any(
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-agentflow",
-    all(
-        feature = "layout-shoal",
-        any(
-            feature = "diagram-architecture",
-            feature = "diagram-c4",
-            feature = "diagram-class",
-            feature = "diagram-er",
-            feature = "diagram-requirement",
-            feature = "diagram-state",
-            feature = "diagram-usecase"
-        )
-    )
-))]
-pub(crate) fn edge_paint_error(edge_id: &str, error: route_paint::RoutePaintError) -> crate::Error {
-    crate::Error::InvalidModel {
-        message: format!("Could not paint canonical edge `{edge_id}`: {error}"),
-    }
-}
-
 #[derive(Clone, Debug, Default)]
 #[cfg(any(
     feature = "diagram-agentflow",

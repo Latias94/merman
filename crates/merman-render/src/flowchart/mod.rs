@@ -14,9 +14,7 @@ use merman_render_flow::measured;
 #[cfg(feature = "layout-shoal")]
 pub(crate) mod shoal;
 
-pub(crate) use merman_model::families::flowchart::{
-    FlowEdge, FlowNode, FlowSubgraph, FlowchartModel, FlowchartRenderContext,
-};
+pub(crate) use merman_model::families::flowchart::{FlowchartModel, FlowchartRenderContext};
 
 pub(crate) use class_style::{FlowchartClassDefinitions, FlowchartLabelDom};
 pub(crate) use merman_render_flow::lane_title::zero_width_lane_title_rows;
@@ -24,7 +22,7 @@ pub(crate) use merman_render_flow::projection::{
     FlowchartEdgeKey, FlowchartEdgeOwners, FlowchartEdgeTransportPlan, FlowchartRenderModelRef,
     ProjectedFlowchartEdge, project_flowchart_edge,
 };
-pub(crate) use native_theme::{FlowchartCompatibilityBinding, FlowchartPreparedTheme};
+pub(crate) use native_theme::FlowchartPreparedTheme;
 
 #[cfg(any(
     feature = "diagram-flowchart",
@@ -33,10 +31,10 @@ pub(crate) use native_theme::{FlowchartCompatibilityBinding, FlowchartPreparedTh
 ))]
 pub(crate) use config::FlowchartLayoutSettings;
 pub(crate) use config::{FlowchartBaseTypographyPlan, FlowchartConfigView};
+#[cfg(test)]
+pub(crate) use label::flowchart_label_metrics_for_layout;
 pub(crate) use label::{
     FlowchartLabelMetricsRequest, FlowchartSvgWidthMode, flowchart_label_is_empty_for_render,
-    flowchart_label_metrics_for_layout, flowchart_label_plain_text_for_layout,
-    flowchart_label_text_is_empty_for_mode,
 };
 #[cfg(test)]
 pub(crate) use merman_render_core::text::{
@@ -52,17 +50,16 @@ pub(crate) use merman_render_flow::node_geometry::NodeLayoutDimensionsRequest;
 ))]
 pub(crate) use merman_render_flow::node_geometry::validate_flowchart_node_asset_dimensions;
 pub(crate) use merman_render_flow::node_geometry::{
-    CROSSED_CIRCLE_RADIUS, DelayGeometry, DisplayGeometry, FlowchartRectangleGeometry,
-    ImageSquareGeometry, ImageSquareSizing, LeanGeometry, LeanKind, StadiumGeometry,
-    flowchart_brace_content_dimensions, flowchart_node_label_min_width,
-    flowchart_node_render_dimensions, flowchart_node_svg_width_mode,
-    flowchart_stacked_document_geometry, resolve_flowchart_shape,
+    flowchart_node_label_min_width, flowchart_node_render_dimensions,
+    flowchart_node_svg_width_mode, resolve_flowchart_shape,
 };
-pub(crate) use merman_render_flow::projection::flowchart_dagre_merges_self_loop_segments;
-pub(crate) use merman_render_flow::shapes::{FlowchartShape, bang_geometry, cloud_geometry};
+pub(crate) use merman_render_flow::shapes::FlowchartShape;
+#[cfg(test)]
 pub(crate) use merman_render_flow::svg_label::{
-    FlowchartPreparedLabelResolution, FlowchartSvgLabelOwner, FlowchartSvgLabelRenderPlan,
-    FlowchartSvgLabelSidecar, FlowchartSvgLabelSidecarBuilder,
+    FlowchartPreparedLabelResolution, FlowchartSvgLabelRenderPlan,
+};
+pub(crate) use merman_render_flow::svg_label::{
+    FlowchartSvgLabelOwner, FlowchartSvgLabelSidecar, FlowchartSvgLabelSidecarBuilder,
     measure_flowchart_svg_label_for_layout_with_source_style,
 };
 #[cfg(all(

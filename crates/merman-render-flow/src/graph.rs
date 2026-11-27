@@ -10,7 +10,7 @@ mod step_badges;
 pub use axis_routes::FlowchartSvgEdgeGeometry;
 #[cfg(feature = "canonical-edge-paint")]
 pub use axis_routes::{AxisRoutes, RouteTopology};
-pub use emit::{FlowchartClusterPass, FlowchartGraph, FlowchartGraphPaint, FlowchartGraphTimings};
+pub(crate) use emit::{FlowchartClusterPass, FlowchartGraph, FlowchartGraphTimings};
 pub use plan::{
     FlowchartHierarchyInputs, FlowchartHierarchyPlan, FlowchartNodeRootOrder,
     FlowchartNodeRootSchedule, FlowchartRootOffsets, flowchart_checked_sort_work,

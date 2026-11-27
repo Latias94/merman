@@ -6,7 +6,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Layout configuration, shape vocabulary, and geometry for Merman's flow diagram renderers."
+description = "Layout and SVG rendering for Merman's Flowchart, Swimlane, and Agentflow diagrams."
 documentation = "https://docs.rs/merman-render-flow"
 readme = "README.md"
 keywords = ["mermaid", "diagrams", "layout", "geometry", "flowchart"]
@@ -37,6 +37,7 @@ diagram-agentflow = [
     "merman-render-core/svg-edge-parity",
     "merman-model/diagram-agentflow",
     "merman-render-core/css-style",
+    "merman-render-core/graph-layout",
     "merman-render-core/icon-svg",
     "merman-render-core/inline-raster-size",
     "merman-render-core/markdown-labels",
@@ -68,6 +69,7 @@ diagram-flowchart = [
     "merman-render-core/svg-edge-parity",
     "merman-model/diagram-flowchart",
     "merman-render-core/css-style",
+    "merman-render-core/graph-layout",
     "merman-render-core/icon-svg",
     "merman-render-core/inline-raster-size",
     "merman-render-core/markdown-labels",
@@ -99,6 +101,7 @@ diagram-swimlane = [
     "merman-render-core/svg-edge-parity",
     "merman-model/diagram-swimlane",
     "merman-render-core/css-style",
+    "merman-render-core/graph-layout",
     "merman-render-core/icon-svg",
     "merman-render-core/inline-raster-size",
     "merman-render-core/markdown-labels",
@@ -113,7 +116,7 @@ diagram-swimlane = [
 ]
 layout-dagre = ["dep:dugong", "dep:serde_json", "merman-render-core/euclid-geometry", "merman-render-core/layout-dagre"]
 layout-elk = ["dep:merman-layout-elk", "merman-render-core/layout-elk"]
-layout-shoal = ["canonical-edge-paint"]
+layout-shoal = ["canonical-edge-paint", "merman-render-core/layout-shoal"]
 layout-swimlane = [
     "dep:indexmap",
     "dep:merman-model",
@@ -121,6 +124,7 @@ layout-swimlane = [
     "merman-render-core/css-style",
     "merman-render-core/resources",
 ]
+native-compact = ["merman-render-core/paint-scene"]
 test-support = []
 
 [dependencies]

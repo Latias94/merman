@@ -118,7 +118,7 @@ pub struct FlowchartClusterSvg<'a> {
 
 impl FlowchartClusterSvg<'_> {
     /// Write the selected layer after the caller's terminal admission and title measurement.
-    pub fn write(
+    pub(crate) fn write(
         self,
         out: &mut impl SvgOutput,
         pass: FlowchartClusterPass,

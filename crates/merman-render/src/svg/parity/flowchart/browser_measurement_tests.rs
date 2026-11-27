@@ -1,7 +1,7 @@
 //! Controlled browser measurements isolate the endpoint renderer from font/layout drift.
 //! The companion integration test runs the provider; xtask binds this matrix to source hashes.
 
-use super::svg_emit::{FlowchartSvgModelRequest, render_flowchart_svg_model};
+use super::svg_emit::test_support::{FlowchartSvgModelRequest, render_flowchart_svg_model};
 use crate::environment::RenderEnvironment;
 use crate::model::{FlowchartLayout, LayoutPoint};
 use crate::svg::{SvgDebugOptions, SvgExecution, SvgRenderOptions};

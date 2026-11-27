@@ -16,6 +16,8 @@ pub mod shoal;
 #[cfg(feature = "shoal-bridge")]
 use merman_layout_shoal::ShapeContourHint;
 #[cfg(feature = "layout-shoal")]
+pub use merman_layout_shoal::geom as spatial;
+#[cfg(feature = "layout-shoal")]
 pub use merman_layout_shoal::{Direction, Point, Rect, RoutingStyle, Size, TitlePosition};
 
 pub use crate::route_types::{Axis, BorderStitch, Endpoint, KnotKind, Marker, RoutePoint, Side};

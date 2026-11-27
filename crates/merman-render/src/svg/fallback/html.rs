@@ -78,10 +78,10 @@ pub(super) fn standalone_node_label_box<E>(
 #[cfg(test)]
 mod tests {
     use super::foreign_object_html_wrapping;
-    use crate::text::html_wrap::{
+    use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextStyle};
+    use merman_render_core::text::html_wrap::{
         HtmlWhiteSpace, NormalizedHtmlText, PlannedHtmlLine, plan_html_lines_with_measurer,
     };
-    use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextStyle};
     use std::convert::Infallible;
 
     fn wrap_html_text<E>(

@@ -1,9 +1,9 @@
+use super::Marker;
 use super::contour::ShapePortProfile;
 use super::ir::{
     Axis, BorderStitch, Endpoint, KnotKind, MeasuredGraph, Rect, RoutePoint, Side, SolvedGraph,
 };
 use super::route_paint::{self, ObstacleOwner, PaintedRoute, RouteStyle};
-use super::{Marker, edge_paint_error};
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{LayoutLabel, LayoutPoint};
 use crate::resources::OperationWorkMeter;
@@ -397,7 +397,9 @@ impl CanonicalRoutes {
             clearance,
             &mut scratch.route,
         )
-        .map_err(|error| edge_paint_error(edge_id, error))?;
+        .map_err(|error| Error::InvalidModel {
+            message: format!("Could not paint canonical edge `{edge_id}`: {error}"),
+        })?;
         Ok(CanonicalPaintedEdge {
             path,
             marker_points: [start_ref, start_lead, end_lead, end_ref],

@@ -25,17 +25,9 @@ pub mod block;
 pub mod c4;
 #[cfg(feature = "diagram-class")]
 pub mod class;
-use merman_render_core::{config, mermaid_style, number_format};
+use merman_render_core::{config, mermaid_style};
 #[cfg(feature = "diagram-cynefin")]
 pub mod cynefin;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
-    )
-)]
-use merman_render_core::elk_edge_geometry;
 #[cfg(all(test, feature = "layout-elk"))]
 #[cfg_attr(
     not(feature = "all-diagrams"),
@@ -46,12 +38,6 @@ use merman_render_core::elk_edge_geometry;
     )
 )]
 mod elk_options;
-#[cfg(any(
-    feature = "diagram-agentflow",
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane"
-))]
-use merman_render_core::graph_layout::elk_terminal_jogs;
 pub mod environment;
 #[cfg(feature = "diagram-er")]
 pub mod er;

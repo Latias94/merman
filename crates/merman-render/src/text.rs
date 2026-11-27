@@ -3,7 +3,6 @@ mod metrics;
 pub use line_break::split_html_br_lines;
 pub use merman_render_core::text::flowchart_html_line_height_px;
 pub use merman_render_core::text::html_label_layout::flowchart_html_has_inline_style_tags;
-pub(crate) use merman_render_core::text::html_wrap::{self, HtmlWhiteSpace};
 #[cfg(test)]
 use merman_render_core::text::inline_html::MermaidMarkdownWordType;
 #[cfg(any(
@@ -17,7 +16,13 @@ pub use merman_render_core::text::inline_html::measure_html_with_inline_styles;
 use merman_render_core::text::line_break;
 #[cfg(feature = "markdown-labels")]
 pub use merman_render_core::text::measure_markdown_with_inline_styles;
-#[cfg(feature = "markdown-labels")]
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
+pub(crate) use merman_render_core::text::measure_svg_markdown_word_lines;
+#[cfg(all(test, feature = "markdown-labels"))]
 pub(crate) use merman_render_core::text::measure_wrapped_markdown_with_inline_styles;
 #[cfg(any(feature = "diagram-er", feature = "diagram-requirement"))]
 pub(crate) use merman_render_core::text::mermaid_markdown_to_xhtml_label_fragment;
@@ -25,18 +30,6 @@ pub use merman_render_core::text::replace_fontawesome_icons;
 pub use merman_render_core::text::{
     DeterministicTextMeasurer, TextMeasurer, WrappedTextLayout, try_measure_wrapped_text,
     try_measure_wrapped_text_with_line_metrics,
-};
-#[cfg(feature = "markdown-labels")]
-pub(crate) use merman_render_core::text::{
-    analyze_mermaid_markdown, mermaid_markdown_is_plain_text,
-};
-#[cfg(any(
-    feature = "diagram-agentflow",
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane"
-))]
-pub(crate) use merman_render_core::text::{
-    measure_svg_markdown_word_lines, mermaid_markdown_to_lines,
 };
 #[cfg(all(
     test,
@@ -70,7 +63,6 @@ pub use metrics::unsupported_html_label_style;
 ))]
 pub(crate) use merman_render_core::text::parse_css_font_stack;
 
-pub(crate) use merman_render_core::text::trim_html_collapsible_ascii_whitespace;
 pub use merman_render_core::text::{
     FontCatalog, FontCatalogFingerprint, FontSource, FontSourcePolicy, FontSourcePolicyError,
     FontStack, FontStackError, FontStyle, GenericFontFamily, TextMetrics, TextStyle, WrapMode,
@@ -83,10 +75,6 @@ pub use merman_render_core::text::{
 pub(crate) use merman_render_core::text::{
     is_html_collapsible_ascii_whitespace, resolve_css_font_weight,
 };
-pub(crate) use merman_render_core::text::{
-    svg_text_vertical_extents_px, svg_title_bbox_vertical_extents_px,
-};
-
 #[cfg(all(
     test,
     any(

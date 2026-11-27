@@ -22,11 +22,10 @@ use crate::model::{Bounds, FlowchartLayout, LayoutEdge, LayoutLabel, LayoutNode,
 use crate::{Error, LayoutAdaptation, LayoutExecution, Result};
 use merman_model::families::flowchart::{FlowchartModel, FlowchartRenderContext};
 use merman_model::presentation::PresentationConfig;
+use merman_render_flow::edge_labels::HTML_EDGE_LABEL_INSET_PX;
 use merman_render_flow::node_geometry::contour as flow_contour;
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
-
-pub(crate) const HTML_EDGE_LABEL_INSET_PX: f64 = 4.0;
 
 fn admit_paint_clearance(
     nodes: usize,

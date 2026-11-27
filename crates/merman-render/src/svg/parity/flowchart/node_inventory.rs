@@ -1,9 +1,8 @@
 //! Project facade layout contracts into the Flow node inventory.
 
-pub(super) use merman_render_flow::node_inventory::FlowchartPreparedCluster;
-pub(crate) use merman_render_flow::node_inventory::{
-    FlowchartNodeLayoutView, FlowchartPreparedNodes,
-};
+use merman_render_flow::node_inventory::FlowchartNodeLayoutView;
+#[cfg(test)]
+pub(super) use merman_render_flow::node_inventory::FlowchartPreparedNodes;
 
 use crate::model::FlowchartLayout;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -38,7 +37,7 @@ impl SwimlaneLayout {
 
 #[cfg(all(test, feature = "diagram-flowchart", feature = "layout-dagre"))]
 mod source_typography_tests {
-    use super::*;
+    use super::FlowchartPreparedNodes;
 
     #[test]
     fn cluster_terminal_uses_first_source_owner_and_releases_retained_paint() {

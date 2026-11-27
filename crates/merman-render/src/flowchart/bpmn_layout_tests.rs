@@ -3,8 +3,8 @@ use crate::model::LayoutPoint;
 
 #[test]
 fn bpmn_elk_caption_projection_matches_the_pinned_twenty_step_oracle() {
-    use crate::elk_edge_geometry::{Outline, Shape, sanitize};
     use crate::model::LayoutNode;
+    use merman_render_core::elk_edge_geometry::{Outline, Shape, sanitize};
 
     let center = LayoutPoint {
         x: 128.1328125,

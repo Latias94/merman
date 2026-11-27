@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use merman_model::{OperationPhase, families::flowchart::FlowSubgraph, runtime::OperationTimer};
 use merman_render_core::{
-    LayoutCluster, Result,
+    Result,
     number_format::canonical_number as fmt,
     resources::OperationWorkMeter,
     svg_output::{SvgOutput, timing::RenderTiming},
@@ -14,9 +14,10 @@ use super::step_badges::StepBadges;
 use crate::edge_labels::{write_edge_labels, write_elk_edge_labels};
 use crate::markers::FlowchartMarkerEmissionPlan;
 use crate::projection::{FlowchartRenderEdgeRef, FlowchartRenderModelRef};
+use crate::svg::{FlowchartEdgeDataPointsScratch, FlowchartRootPaint};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum FlowchartClusterPass {
+pub(crate) enum FlowchartClusterPass {
     Complete,
     Background,
     Label,
@@ -24,7 +25,7 @@ pub enum FlowchartClusterPass {
 
 /// Root traversal timings. The caller holds its separate node, label, and viewport counters.
 #[derive(Debug, Default)]
-pub struct FlowchartGraphTimings {
+pub(crate) struct FlowchartGraphTimings {
     pub root_calls: u32,
     pub clusters: Duration,
     pub edges_select: Duration,
@@ -35,50 +36,10 @@ pub struct FlowchartGraphTimings {
     pub nested_roots: Duration,
 }
 
-/// Complete paint fragments supplied by the prepared Flow renderer on the operation's sink.
-///
-/// The graph owns traversal, group boundaries, and Emit checkpoints. The fragment producer
-/// retains its own resource checks, resolved paint, and host text, math, and asset services.
-/// It must retain the existing label and asset admission when appending to the supplied sink.
-pub trait FlowchartGraphPaint<S: SvgOutput> {
-    type EdgeScratch: Default;
-
-    fn write_cluster(
-        &self,
-        out: &mut S,
-        cluster: &LayoutCluster,
-        origin: (f64, f64),
-        pass: FlowchartClusterPass,
-    ) -> Result<()>;
-    fn prepare_edges(&mut self, edges: &[FlowchartRenderEdgeRef<'_>]) -> Result<()>;
-    fn write_edge_casings(&self, out: &mut S, edges: &[FlowchartRenderEdgeRef<'_>]) -> Result<()>;
-    fn write_edge(
-        &self,
-        out: &mut S,
-        edge: FlowchartRenderEdgeRef<'_>,
-        origin: (f64, f64),
-        scratch: &mut Self::EdgeScratch,
-    ) -> Result<()>;
-    fn write_edge_label(
-        &self,
-        out: &mut S,
-        edge: FlowchartRenderEdgeRef<'_>,
-        origin: (f64, f64),
-    ) -> Result<()>;
-    fn write_swimlane_edge_label(
-        &self,
-        out: &mut S,
-        id: &str,
-        edge: FlowchartRenderEdgeRef<'_>,
-        origin: (f64, f64),
-    ) -> Result<()>;
-    fn write_node(&mut self, out: &mut S, id: &str, origin: (f64, f64), depth: bool) -> Result<()>;
-}
-
 /// The admitted Flow graph and borrowed render facts used by its parity traversal.
 ///
 /// Use the model, hierarchy facts, and work meter from the same prepared operation.
-pub struct FlowchartGraph<'plan, 'data> {
+pub(crate) struct FlowchartGraph<'plan, 'data> {
     pub hierarchy: &'plan FlowchartHierarchyPlan<'data>,
     pub model: &'plan FlowchartRenderModelRef<'data>,
     pub work_meter: &'plan OperationWorkMeter,
@@ -95,8 +56,8 @@ pub struct FlowchartGraph<'plan, 'data> {
     pub dagre_merges_self_loop_segments: bool,
 }
 
-struct GraphEmission<'a, P> {
-    paint: &'a mut P,
+struct GraphEmission<'a, 'plan, 'data> {
+    paint: &'a mut FlowchartRootPaint<'plan, 'data>,
     timing: RenderTiming,
     details: &'a mut FlowchartGraphTimings,
 }
@@ -141,7 +102,7 @@ impl<'plan, 'data> FlowchartGraph<'plan, 'data> {
     pub fn write<S: SvgOutput>(
         &self,
         out: &mut S,
-        paint: &mut impl FlowchartGraphPaint<S>,
+        paint: &mut FlowchartRootPaint<'_, '_>,
         timing: RenderTiming,
         details: &mut FlowchartGraphTimings,
     ) -> Result<()> {
@@ -175,7 +136,7 @@ impl<'plan, 'data> FlowchartGraph<'plan, 'data> {
     fn write_root_pass<S: SvgOutput>(
         &self,
         out: &mut S,
-        emission: &mut GraphEmission<'_, impl FlowchartGraphPaint<S>>,
+        emission: &mut GraphEmission<'_, '_, '_>,
         pass: RootPass,
     ) -> Result<()> {
         self.checkpoint_emit()?;
@@ -260,7 +221,7 @@ impl<'plan, 'data> FlowchartGraph<'plan, 'data> {
     fn initialize_root_frame<S: SvgOutput>(
         &self,
         out: &mut S,
-        emission: &mut GraphEmission<'_, impl FlowchartGraphPaint<S>>,
+        emission: &mut GraphEmission<'_, '_, '_>,
         frame: &mut FlowchartRootFrame<'data, 'plan>,
         pass: RootPass,
     ) -> Result<()> {
@@ -378,10 +339,10 @@ impl<'plan, 'data> FlowchartGraph<'plan, 'data> {
             .is_empty()
     }
 
-    fn write_edge_paths<S: SvgOutput, P: FlowchartGraphPaint<S>>(
+    fn write_edge_paths<S: SvgOutput>(
         &self,
         out: &mut S,
-        emission: &mut GraphEmission<'_, P>,
+        emission: &mut GraphEmission<'_, '_, '_>,
         edges: &[FlowchartRenderEdgeRef<'_>],
         origin: (f64, f64),
     ) -> Result<()> {
@@ -411,7 +372,7 @@ impl<'plan, 'data> FlowchartGraph<'plan, 'data> {
             let _ = write!(out, r#"<g class="{}">"#, class);
         }
 
-        let mut scratch = P::EdgeScratch::default();
+        let mut scratch = FlowchartEdgeDataPointsScratch::default();
         for &edge in edges {
             self.checkpoint_emit()?;
             emission.paint.write_edge(out, edge, origin, &mut scratch)?;
@@ -428,7 +389,7 @@ impl<'plan, 'data> FlowchartGraph<'plan, 'data> {
     fn write_elk<S: SvgOutput>(
         &self,
         out: &mut S,
-        emission: &mut GraphEmission<'_, impl FlowchartGraphPaint<S>>,
+        emission: &mut GraphEmission<'_, '_, '_>,
     ) -> Result<()> {
         self.checkpoint_emit()?;
         emission.details.root_calls += 1;
@@ -482,7 +443,7 @@ impl<'plan, 'data> FlowchartGraph<'plan, 'data> {
     fn write_elk_subgraphs<S: SvgOutput>(
         &self,
         out: &mut S,
-        emission: &mut GraphEmission<'_, impl FlowchartGraphPaint<S>>,
+        emission: &mut GraphEmission<'_, '_, '_>,
         pass: FlowchartClusterPass,
     ) -> Result<()> {
         self.checkpoint_emit()?;
@@ -508,7 +469,7 @@ impl<'plan, 'data> FlowchartGraph<'plan, 'data> {
     fn write_elk_nodes<S: SvgOutput>(
         &self,
         out: &mut S,
-        emission: &mut GraphEmission<'_, impl FlowchartGraphPaint<S>>,
+        emission: &mut GraphEmission<'_, '_, '_>,
     ) -> Result<()> {
         self.checkpoint_emit()?;
         out.push_str(r#"<g class="nodes">"#);

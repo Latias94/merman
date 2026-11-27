@@ -1,17 +1,8 @@
 pub(super) use merman_render_core::svg_bounds::{SvgPathBounds, svg_path_bounds_from_d};
 
-#[cfg(any(
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-agentflow"
-))]
-pub(super) use merman_render_core::rough_svg::paths::svg_path_bounds_from_rough_ops;
-
-pub(super) use merman_render_core::svg_edge_parity::svg_path_length_from_d;
-
 #[cfg(test)]
 mod tests {
-    use super::svg_path_length_from_d;
+    use merman_render_core::svg_edge_parity::svg_path_length_from_d;
 
     #[cfg(any(
         feature = "diagram-flowchart",
@@ -20,8 +11,10 @@ mod tests {
     ))]
     #[test]
     fn rough_operation_bounds_match_serialized_path_bounds() {
-        use super::{svg_path_bounds_from_d, svg_path_bounds_from_rough_ops};
-        use merman_render_core::rough_svg::ops_to_svg_path_d;
+        use super::svg_path_bounds_from_d;
+        use merman_render_core::rough_svg::{
+            ops_to_svg_path_d, paths::svg_path_bounds_from_rough_ops,
+        };
         use roughr::core::{Op, OpSet, OpSetType, OpType};
 
         let opset = OpSet {
@@ -71,7 +64,7 @@ mod tests {
         let length = svg_path_length_from_d(d).unwrap();
         assert_eq!(length, 166.18093872070312);
         let mut style = String::new();
-        super::super::edge_path::write_neo_edge_mask(
+        merman_render_core::svg_edge_parity::edge_path::write_neo_edge_mask(
             &mut style,
             length,
             None,

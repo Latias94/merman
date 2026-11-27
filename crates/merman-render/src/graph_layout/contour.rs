@@ -7,13 +7,6 @@
     feature = "diagram-swimlane"
 ))]
 pub(crate) use merman_render_core::graph_layout::contour::ShapePortProfile;
-#[cfg(any(
-    feature = "diagram-agentflow",
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane"
-))]
-pub(crate) use merman_render_core::graph_layout::contour::inset_endpoints;
-
 #[cfg(all(feature = "diagram-c4", feature = "layout-shoal"))]
 #[path = "../c4/contour.rs"]
 mod c4;

@@ -9,8 +9,15 @@ use crate::model::{Bounds, LayoutEdge, LayoutNode};
         feature = "diagram-mindmap"
     )
 ))]
-use crate::text::{TextMeasurer, TextMetrics, TextStyle};
-use crate::text::{WrapMode, trim_html_collapsible_ascii_whitespace};
+use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
+#[cfg(all(
+    test,
+    any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-mindmap"
+    )
+))]
 use merman_model::presentation::PresentationConfig;
 #[cfg(feature = "markdown-labels")]
 pub(crate) use merman_render_core::text::create_text_html::{
@@ -25,23 +32,12 @@ pub(crate) use merman_render_core::text::create_text_html::{
     )
 ))]
 pub(crate) use merman_render_core::text::flowchart_wrap_svg_source_word_lines;
-pub(crate) use merman_render_core::text::html_label_layout::flowchart_html_label_box;
-#[cfg(feature = "markdown-labels")]
+#[cfg(all(test, feature = "markdown-labels"))]
 pub(crate) use merman_render_core::text::html_label_layout::flowchart_label_plain_text_for_layout;
 pub(crate) use merman_render_core::text::literal_label::FlowchartSvgWidthMode;
 
 #[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
 use merman_render_flow::node_geometry::flowchart_node_label_min_width;
-
-// Mermaid 11.16 inserts decoded labels through `addHtmlSpan(...).html(...)`. HTML collapses the
-// ASCII whitespace set at a boundary, but U+00A0 remains visible and contributes to the line box.
-pub(crate) fn flowchart_trim_html_collapsible_whitespace(input: &str) -> &str {
-    trim_html_collapsible_ascii_whitespace(input)
-}
-
-pub(crate) fn flowchart_label_text_is_empty_for_mode(text: &str, _html_labels: bool) -> bool {
-    flowchart_trim_html_collapsible_whitespace(text).is_empty()
-}
 
 pub(crate) fn flowchart_label_is_empty_for_render(label: &str) -> bool {
     // Mermaid admits an edge label whenever FlowDB's already-trimmed label string is non-empty.
@@ -74,23 +70,10 @@ pub(crate) fn flowchart_html_label_metrics_for_layout(
     request: FlowchartLabelMetricsRequest<'_>,
     xhtml: &str,
 ) -> crate::text::TextMetrics {
-    flowchart_html_label_metrics_with_geometry(
-        request,
-        xhtml,
-        HtmlTextGeometryDeclarations::default(),
-    )
-}
-
-#[cfg(feature = "markdown-labels")]
-pub(crate) fn flowchart_html_label_metrics_with_geometry(
-    request: FlowchartLabelMetricsRequest<'_>,
-    xhtml: &str,
-    geometry: HtmlTextGeometryDeclarations,
-) -> crate::text::TextMetrics {
     merman_render_core::text::html_label_layout::measure_flowchart_html_label(
         request,
         xhtml,
-        geometry,
+        HtmlTextGeometryDeclarations::default(),
         cfg!(any(
             feature = "diagram-flowchart",
             feature = "diagram-swimlane",
