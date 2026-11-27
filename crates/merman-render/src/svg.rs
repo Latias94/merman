@@ -7,8 +7,6 @@
 
 #![forbid(unsafe_code)]
 
-mod fallback;
-mod foreign_objects;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -35,12 +33,12 @@ pub(crate) use parity::state_canonical_marker;
 pub(crate) use parity::{FlowchartRenderConfig, prepare_flowchart_render_config};
 mod pipeline;
 
-pub use fallback::foreign_object_label_fallback_svg_text;
 pub use icon_registry::{
     IconPack, IconRegistry, IconRegistryBuildError, IconRegistryBuildErrorKind,
     IconRegistryBuilder, IconRegistryResourceLimitDescriptor, IconRegistryResourceLimitId,
     icon_registry_resource_limit_descriptors,
 };
+pub use merman_render_core::svg_fallback::foreign_object_label_fallback_svg_text;
 pub use merman_render_core::svg_output::SvgOutputProfile;
 #[cfg(all(
     feature = "diagram-architecture",

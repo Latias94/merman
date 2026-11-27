@@ -1,23 +1,14 @@
+#[cfg(feature = "svg")]
+use super::options::parse_options_value;
+use super::options::{parse_request_overlay, resolve_request_options};
+use super::options_wire::ResourceOptionsJson;
+use super::resources::{effective_resource_limits, tighten_resource_options};
 use super::*;
+use crate::artifact_contract::DEFAULT_ARTIFACT_SNAPSHOT;
+use crate::resource_contract::{
+    BINDING_OPTIONS_JSON_LIMIT_ID, BINDING_OPTIONS_JSON_MAX_BYTES, BindingResourceScope,
+};
 use serde_json::Value;
-
-fn resolve_request_options(
-    base: &[u8],
-    request: &[u8],
-    scope: BindingResourceScope,
-) -> Result<BindingOptions, BindingError> {
-    let (_, base) = parse_base_options(base)?;
-    Ok(match parse_request_overlay(request, scope)? {
-        BindingRequestOverlay::Unchanged => {
-            base.validate_unchanged_request(&DEFAULT_ARTIFACT_SNAPSHOT)?;
-            parse_options_value_for_contract(
-                base.normalized_wire.view(),
-                &DEFAULT_ARTIFACT_SNAPSHOT,
-            )?
-        }
-        overlay => base.apply_overlay(overlay, &DEFAULT_ARTIFACT_SNAPSHOT)?,
-    })
-}
 
 #[test]
 fn error_payload_json_uses_public_code_names() {

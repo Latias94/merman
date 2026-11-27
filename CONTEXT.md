@@ -21,8 +21,9 @@ Primary capability areas:
 - `merman-core`: detection, preprocessing, configuration merge, parsing,
   sanitization, compatibility semantic JSON, parser-backed editor facts, and typed render model
   projection.
-- `merman-render`: layout models, SVG parity renderers, root viewport handling,
-  theme/config projection, text measurement, and render pipeline internals.
+- `merman-render`: typed family dispatch, render sessions, SVG pipeline selection, and sealed
+  output. Family render crates own layout and SVG emission. `merman-render-core` owns shared
+  viewport, text, paint, and document validation contracts.
 - `merman-ascii`: terminal rendering adapters and ASCII-specific layout/routing.
 - `merman`: public Rust facade for parse/layout/render/raster operations.
 - `merman-cli`, FFI, UniFFI, WASM, and platform wrappers: adapters over the
@@ -49,6 +50,10 @@ suffixes are not an authority for current behavior.
 
 ## Architecture Boundaries
 
+The v0.11 decisions cover [vertical crate ownership](docs/adr/0103-vertical-workspace-crate-boundaries.md),
+[paint scenes and SVG profiles](docs/adr/0104-paint-scene-ir-and-dual-output-profiles.md), and
+[the typed facade and feature tiers](docs/adr/0105-ergonomic-feature-tiers-and-safe-facade-api.md).
+
 Current contract:
 
 - The **Headless Render Operation** is the canonical Mermaid-source render flow: family semantic
@@ -72,10 +77,9 @@ Current contract:
 - `RenderEnvironment` selects text-measurement phases, math/icons, time, randomness, and resource
   limits once per operation. Family renderers do not construct hidden production services or read
   process-global render policy.
-- Every built-in SVG root uses the operation-owned Root Viewport protocol for dimension
-  normalization, sizing, accessibility chrome, escaping, attribute order, and deferred
-  finalization. Families supply source-backed content bounds and family root semantics; they do not
-  own root emission or consult fixture-derived root data.
+- Mermaid parity SVG uses the operation-owned Root Viewport protocol for sizing, accessibility,
+  and finalization. The opt-in NativeCompact path passes an admitted viewport and scene to a
+  bounded SVG writer. Both paths use family-prepared geometry and the operation's resource meter.
 - Editor body semantics are parser-complete, parser-recovered, or unavailable. Generic TextScan
   semantics are deleted; legal source-start headers remain catalog-backed.
 - Analysis diagnostics and parser-backed facts use independent schemas. Current development uses

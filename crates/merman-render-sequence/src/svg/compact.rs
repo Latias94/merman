@@ -49,6 +49,8 @@ use crate::preparation::{
 };
 use crate::rect_paint::include_rect_stroke_bounds;
 
+mod frames;
+
 const MAX_OPAQUE_TOKEN_BYTES: usize = 8 * 1024;
 
 #[derive(Debug)]
@@ -124,6 +126,8 @@ enum TextRole {
     Actor = 0,
     Message = 1,
     Note = 2,
+    ControlKeyword = 3,
+    ControlTitle = 4,
 }
 
 struct TerminalFont {
@@ -214,7 +218,10 @@ impl<'a> Label<'a> {
         decode: impl FnOnce(&'a str) -> Cow<'a, str>,
     ) -> Result<Self> {
         admit_token(raw, meter)?;
-        let text = decode(raw);
+        Self::retain(decode(raw), meter)
+    }
+
+    fn retain(text: Cow<'a, str>, meter: &Arc<OperationWorkMeter>) -> Result<Self> {
         meter.checkpoint(OperationPhase::Emit)?;
         let retained = match &text {
             Cow::Borrowed(_) => None,
@@ -242,6 +249,10 @@ enum Item<'a> {
         start: Option<SceneMarkerRef>,
         end: Option<SceneMarkerRef>,
     },
+    KeywordBox {
+        command_index: usize,
+        paint: ScenePaint,
+    },
     Text {
         label: Label<'a>,
         role: TextRole,
@@ -253,8 +264,12 @@ enum Item<'a> {
 }
 
 impl Item<'_> {
-    fn view<'a>(&'a self, styles: &[SceneTextStyle<'a>; 3]) -> SceneItem<'a> {
-        match self {
+    fn view<'a>(
+        &'a self,
+        styles: &[Option<SceneTextStyle<'a>>; 5],
+        keyword_boxes: &'a [[ScenePathCommand; 6]],
+    ) -> Result<SceneItem<'a>> {
+        Ok(match self {
             Self::Rect(rect) => SceneItem::Rect(*rect),
             Self::Line {
                 points,
@@ -270,6 +285,17 @@ impl Item<'_> {
                 start_marker: *start,
                 end_marker: *end,
             }),
+            Self::KeywordBox {
+                command_index,
+                paint,
+            } => SceneItem::Path(ScenePath {
+                commands: keyword_boxes
+                    .get(*command_index)
+                    .ok_or_else(|| invalid("Sequence compact keyword box lacks a path"))?,
+                paint: *paint,
+                start_marker: None,
+                end_marker: None,
+            }),
             Self::Text {
                 label,
                 role,
@@ -283,9 +309,10 @@ impl Item<'_> {
                 dy: *dy,
                 anchor: *anchor,
                 baseline: *baseline,
-                style: styles[*role as usize],
+                style: styles[*role as usize]
+                    .ok_or_else(|| invalid("Sequence compact text lacks a resolved style"))?,
             }),
-        }
+        })
     }
 }
 
@@ -294,14 +321,19 @@ struct Projected<'a> {
     items: Vec<Item<'a>>,
     groups: Vec<(SceneRole, Range<usize>)>,
     uses_arrow: bool,
+    keyword_boxes: Vec<[ScenePathCommand; 6]>,
 }
 
 impl<'a> Projected<'a> {
-    fn item(&mut self, item: Item<'a>) -> Result<()> {
+    fn reserve_item(&mut self) -> Result<()> {
         self.meter.charge_emit_work(1)?;
         self.items
             .try_reserve(1)
-            .map_err(|_| invalid("unable to allocate Sequence compact items"))?;
+            .map_err(|_| invalid("unable to allocate Sequence compact items"))
+    }
+
+    fn item(&mut self, item: Item<'a>) -> Result<()> {
+        self.reserve_item()?;
         self.items.push(item);
         Ok(())
     }
@@ -333,9 +365,29 @@ impl<'a> Projected<'a> {
         })
     }
 
+    fn keyword_box(&mut self, [a, b, c, d, e]: [[f64; 2]; 5], paint: ScenePaint) -> Result<()> {
+        self.meter.charge_emit_work(1)?;
+        self.keyword_boxes
+            .try_reserve(1)
+            .map_err(|_| invalid("unable to allocate Sequence compact keyword paths"))?;
+        let command_index = self.keyword_boxes.len();
+        self.keyword_boxes.push([
+            ScenePathCommand::MoveTo(a),
+            ScenePathCommand::LineTo(b),
+            ScenePathCommand::LineTo(c),
+            ScenePathCommand::LineTo(d),
+            ScenePathCommand::LineTo(e),
+            ScenePathCommand::Close,
+        ]);
+        self.item(Item::KeywordBox {
+            command_index,
+            paint,
+        })
+    }
+
     fn views<'view>(
         &'view self,
-        styles: &[SceneTextStyle<'view>; 3],
+        styles: &[Option<SceneTextStyle<'view>>; 5],
     ) -> Result<Vec<SceneItem<'view>>> {
         self.meter.charge_emit_work(self.items.len())?;
         let mut views = Vec::new();
@@ -345,7 +397,7 @@ impl<'a> Projected<'a> {
         let checks = SequenceEmitCheckpoints::for_emit(self.meter);
         for (index, item) in self.items.iter().enumerate() {
             checks.checkpoint_loop(index)?;
-            views.push(item.view(styles));
+            views.push(item.view(styles, &self.keyword_boxes)?);
         }
         Ok(views)
     }
@@ -627,7 +679,7 @@ struct SequenceCompactPrepared<'a> {
     title: Option<Label<'a>>,
     description: Option<Label<'a>>,
     marker: SceneMarker<'static>,
-    fonts: [TerminalFont; 3],
+    fonts: [Option<TerminalFont>; 5],
     projected: Projected<'a>,
 }
 
@@ -635,14 +687,16 @@ impl SequenceCompactPrepared<'_> {
     fn write_svg(&self, diagram_id: SvgId<'_>) -> Result<String> {
         let meter = self.projected.meter;
         meter.checkpoint(OperationPhase::Emit)?;
-        let families = self.fonts.each_ref().map(TerminalFont::families);
-        let [actor_families, message_families, note_families] = &families;
-        let [actor_font, message_font, note_font] = &self.fonts;
-        let styles = [
-            actor_font.scene_style(actor_families),
-            message_font.scene_style(message_families),
-            note_font.scene_style(note_families),
-        ];
+        let families = self
+            .fonts
+            .each_ref()
+            .map(|font| font.as_ref().map(TerminalFont::families));
+        let styles = std::array::from_fn(|index| {
+            self.fonts[index]
+                .as_ref()
+                .zip(families[index].as_deref())
+                .map(|(font, families)| font.scene_style(families))
+        });
         let items = self.projected.views(&styles)?;
         let groups = self.projected.groups(&items)?;
         let scene = PaintScene {
@@ -692,8 +746,11 @@ fn prepare_sequence_compact<'a>(
     if config.get_bool("sequence.showSequenceNumbers") == Some(true) {
         return Err(unsupported(meter, "sequence-numbers"));
     }
-    if !model.boxes.is_empty() || !layout.frames.is_empty() || layout.title.is_some() {
+    if !model.boxes.is_empty() || layout.title.is_some() {
         return Err(unsupported(meter, "box-frame-or-title"));
+    }
+    if native.is_some() && !layout.frames.is_empty() {
+        return Err(unsupported(meter, "sequence-native-frame"));
     }
     for (index, actor_id) in model.actor_order.iter().enumerate() {
         checks.checkpoint_loop(index)?;
@@ -711,11 +768,7 @@ fn prepare_sequence_compact<'a>(
         }
         admit_text(&actor.description, actor.wrap, meter)?;
     }
-    for (index, message) in model.messages.iter().enumerate() {
-        checks.checkpoint_loop(index)?;
-        admit_token(&message.id, meter)?;
-        allow_message(message, meter)?;
-    }
+    frames::admit_messages(model, prepared, meter)?;
 
     let canvas = compact_canvas(request.canvas_background, policy, meter)?;
     let has_root_canvas = native.is_some() || request.canvas_background.is_some();
@@ -748,20 +801,23 @@ fn prepare_sequence_compact<'a>(
         resolved_color(&compat.actor_line, meter)?,
         css::lifeline_effective_stroke_width(native_width),
     );
-    let surfaces = [
-        SequenceTextSurface::ParticipantLabel,
-        SequenceTextSurface::MessageLabel,
-        SequenceTextSurface::NoteLabel,
+    let resolve_font = |surface| {
+        TerminalFont::resolve(prepared.typography().terminal_text_style(surface), meter).map(Some)
+    };
+    let mut fonts = [
+        resolve_font(SequenceTextSurface::ParticipantLabel)?,
+        resolve_font(SequenceTextSurface::MessageLabel)?,
+        resolve_font(SequenceTextSurface::NoteLabel)?,
+        None,
+        None,
     ];
-    let [actor_font, message_font, note_font] = surfaces;
-    let fonts = [
-        TerminalFont::resolve(prepared.typography().terminal_text_style(actor_font), meter)?,
-        TerminalFont::resolve(
-            prepared.typography().terminal_text_style(message_font),
-            meter,
-        )?,
-        TerminalFont::resolve(prepared.typography().terminal_text_style(note_font), meter)?,
-    ];
+    let framed = !layout.frames.is_empty();
+    if framed {
+        fonts[TextRole::ControlKeyword as usize] =
+            resolve_font(SequenceTextSurface::ControlKeyword)?;
+        fonts[TextRole::ControlTitle as usize] =
+            resolve_font(SequenceTextSurface::ControlPrimaryTitle)?;
+    }
 
     let mut nodes: FxHashMap<&str, &LayoutNode> = FxHashMap::default();
     meter.charge_emit_work(layout.nodes.len())?;
@@ -789,6 +845,7 @@ fn prepare_sequence_compact<'a>(
         items: Vec::new(),
         groups: Vec::new(),
         uses_arrow: false,
+        keyword_boxes: Vec::new(),
     };
     let actor_shadow_bounds = project_actor_shadows(
         &mut projected,
@@ -843,6 +900,9 @@ fn prepare_sequence_compact<'a>(
         }
     }
 
+    let mut frame_projection = framed
+        .then(|| frames::FrameProjection::prepare(request, model, &settings, &nodes))
+        .transpose()?;
     let geometry = prepared.activation_geometry();
     let mut activation_bounds = None;
     let mut note_bounds = None;
@@ -918,6 +978,11 @@ fn prepare_sequence_compact<'a>(
                 request.measurer,
             )?;
             projected.group(SceneRole::Note, start)?;
+        }
+        if let Some(projection) = &mut frame_projection
+            && let Some(frame) = frames::placed_frame(prepared, index)
+        {
+            projection.project(&mut projected, frame)?;
         }
     }
 
@@ -995,6 +1060,9 @@ fn prepare_sequence_compact<'a>(
             note_bounds.as_ref(),
             activation_bounds.as_ref(),
             lifeline_bounds.as_ref(),
+            frame_projection
+                .as_ref()
+                .and_then(|projection| projection.bounds.as_ref()),
             actor_shadow_bounds.as_ref(),
         ],
     );

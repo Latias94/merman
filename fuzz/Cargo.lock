@@ -1178,12 +1178,10 @@ dependencies = [
  "pulldown-cmark",
  "quick-xml",
  "roughr-merman",
- "roxmltree 0.21.2",
  "rustc-hash",
  "ryu-js",
  "serde",
  "serde_json",
- "sha2",
  "svgtypes",
  "thiserror 2.0.21",
 ]

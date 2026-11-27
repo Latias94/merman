@@ -116,7 +116,7 @@ fn sanitize_relationship(
         control.clone(),
     );
     let parse_work = std::cell::Cell::new(0);
-    let sink = crate::html::HtmlSanitizeSink::new(
+    let sink = merman_render_core::html::HtmlSanitizeSink::new(
         usize::MAX,
         &work,
         &parse_work,
@@ -125,7 +125,7 @@ fn sanitize_relationship(
     match merman_markup::sanitize::sanitize_xhtml_with_sink(source, config.as_config(), &sink) {
         Ok(html) => Ok(Some(html)),
         Err(merman_markup::sanitize::SanitizeFailure::Output(
-            crate::html::HtmlOutputError::Operation(
+            merman_render_core::html::HtmlOutputError::Operation(
                 crate::resources::OperationWorkError::Cancelled(error),
             ),
         )) => Err(error),

@@ -1,17 +1,19 @@
-use merman_render_core::svg_scan::{
+use super::{MAX_SELECTOR_ANCESTRY_DEPTH, selector_index_limit};
+use crate::resources::{OperationWorkMeter, ResourceLimitPhase};
+use crate::svg_scan::{
     SvgTagScanner, end_tag_name, find_with_checkpoints, is_non_rendering_container,
     next_svg_quoted_attr_with_checkpoints, start_tag_name,
 };
-use rustc_hash::FxHashSet;
+use merman_model::OperationPhase;
+use std::{borrow::Cow, collections::HashSet};
 
-pub(super) const FALLBACK_SOURCE_ATTRIBUTE: &str = "data-merman-foreignobject-source";
-pub(super) const SWITCH_NATIVE_FALLBACK: &str = "switch-native-fallback";
-pub(super) const MAX_SELECTOR_ANCESTRY_DEPTH: usize = crate::resources::MAX_RESVG_TREE_DEPTH;
+const FALLBACK_SOURCE_ATTRIBUTE: &str = "data-merman-foreignobject-source";
+const SWITCH_NATIVE_FALLBACK: &str = "switch-native-fallback";
 
 #[derive(Default)]
 pub(super) struct ForeignObjectSwitches {
-    pub(super) wrappers: FxHashSet<usize>,
-    pub(super) native_objects: FxHashSet<usize>,
+    wrappers: HashSet<usize>,
+    pub(super) native_objects: HashSet<usize>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -191,7 +193,7 @@ fn switch_has_conditions<E>(
     Ok(false)
 }
 
-pub(super) fn attribute_is<E>(
+fn attribute_is<E>(
     tag: &str,
     name: &str,
     value: &str,
@@ -207,10 +209,198 @@ pub(super) fn attribute_is<E>(
     Ok(false)
 }
 
+/// Removes HTML branches and replaces proven, unconditional switch wrappers with groups.
+pub fn strip_foreign_objects<'a>(
+    svg: Cow<'a, str>,
+    meter: &OperationWorkMeter,
+) -> crate::Result<Cow<'a, str>> {
+    let mut checkpoint = || {
+        meter
+            .checkpoint(OperationPhase::Postprocess)
+            .map_err(crate::Error::from)
+    };
+    if find_with_checkpoints(&svg, "<foreignObject", &mut checkpoint)?.is_none() {
+        return Ok(svg);
+    }
+    let mut out = String::new();
+    let changed = strip_foreign_objects_with_checkpoints(
+        &svg,
+        |fragment| append_postprocess(&mut out, fragment, meter),
+        &mut checkpoint,
+        |depth| {
+            Err(selector_index_limit(
+                meter,
+                depth,
+                MAX_SELECTOR_ANCESTRY_DEPTH,
+            ))
+        },
+    )?;
+    if changed {
+        checkpoint()?;
+        Ok(Cow::Owned(out))
+    } else {
+        Ok(svg)
+    }
+}
+
+/// Removes generated fallback groups whose switch already carries native text.
+pub fn drop_switch_native_fallbacks<'a>(
+    svg: Cow<'a, str>,
+    meter: &OperationWorkMeter,
+) -> crate::Result<Cow<'a, str>> {
+    let mut checkpoint = || {
+        meter
+            .checkpoint(OperationPhase::Postprocess)
+            .map_err(crate::Error::from)
+    };
+    if find_with_checkpoints(&svg, SWITCH_NATIVE_FALLBACK, &mut checkpoint)?.is_none() {
+        return Ok(svg);
+    }
+    let mut scanner = SvgTagScanner::new(&svg);
+    let mut out = String::new();
+    let mut cursor = 0;
+    while let Some(tag) = scanner.next_with_checkpoints(&mut checkpoint)? {
+        if start_tag_name(tag.raw()) != Some("g")
+            || !attribute_is(
+                tag.raw(),
+                FALLBACK_SOURCE_ATTRIBUTE,
+                SWITCH_NATIVE_FALLBACK,
+                &mut checkpoint,
+            )?
+        {
+            continue;
+        }
+        let Some(close) = scanner.matching_end_with_checkpoints(tag, &mut checkpoint)? else {
+            break;
+        };
+        append_postprocess(&mut out, &svg[cursor..tag.start()], meter)?;
+        cursor = close.end();
+    }
+    if cursor == 0 {
+        return Ok(svg);
+    }
+    append_postprocess(&mut out, &svg[cursor..], meter)?;
+    checkpoint()?;
+    Ok(Cow::Owned(out))
+}
+
+fn strip_foreign_objects_with_checkpoints<E>(
+    svg: &str,
+    mut append: impl FnMut(&str) -> Result<(), E>,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+    depth_limit: impl FnMut(usize) -> Result<(), E>,
+) -> Result<bool, E> {
+    let switches = ForeignObjectSwitches::scan(svg, checkpoint, depth_limit)?;
+    let mut scanner = SvgTagScanner::new(svg);
+    let mut cursor = 0;
+    while let Some(tag) = scanner.next_with_checkpoints(checkpoint)? {
+        let name = start_tag_name(tag.raw());
+        if name == Some("foreignObject") {
+            let Some(close) = scanner.matching_end_with_checkpoints(tag, checkpoint)? else {
+                break;
+            };
+            append(&svg[cursor..tag.start()])?;
+            cursor = close.end();
+        } else if switches.wrappers.contains(&tag.start()) {
+            append(&svg[cursor..tag.start()])?;
+            // A neutral group retains presentation and transforms without branch selection.
+            if name == Some("switch") {
+                append("<g")?;
+                append(&tag.raw()["<switch".len()..])?;
+            } else {
+                append("</g")?;
+                append(&tag.raw()["</switch".len()..])?;
+            }
+            cursor = tag.end();
+        }
+    }
+    checkpoint()?;
+    if cursor == 0 {
+        return Ok(false);
+    }
+    append(&svg[cursor..])?;
+    Ok(true)
+}
+
+fn append_postprocess(
+    out: &mut String,
+    fragment: &str,
+    meter: &OperationWorkMeter,
+) -> crate::Result<()> {
+    // The document emission sink observes Emit. Keep capacity admission and cancellation in
+    // Postprocess for these rewrites, and leave the projected-byte ledger untouched.
+    let required = out.len().checked_add(fragment.len()).ok_or_else(|| {
+        meter.terminate_svg_byte_count_overflow(
+            ResourceLimitPhase::SvgPostprocess,
+            OperationPhase::Postprocess,
+        )
+    })?;
+    meter.preflight_svg_byte_count(
+        required,
+        ResourceLimitPhase::SvgPostprocess,
+        OperationPhase::Postprocess,
+    )?;
+    if required > out.capacity() {
+        let target = meter.svg_byte_budget().reservation_capacity(
+            out.len(),
+            out.capacity(),
+            fragment.len(),
+        )?;
+        out.try_reserve_exact(target - out.len())
+            .map_err(|_| crate::Error::InvalidModel {
+                message: "failed to reserve bounded SVG output".to_owned(),
+            })?;
+    }
+    out.push_str(fragment);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::resources::RenderResourcePolicy;
+    use merman_model::OperationControl;
     use std::convert::Infallible;
+
+    #[test]
+    fn strip_foreign_object_stage_stops_during_a_long_structural_scan() {
+        let control = OperationControl::new().for_phase(OperationPhase::Postprocess);
+        let svg = format!(
+            "<svg>{}<foreignObject width=\"1\" height=\"1\"/></svg>",
+            "x".repeat(16 * 1024)
+        );
+        let mut checkpoints = 0usize;
+
+        let error = strip_foreign_objects_with_checkpoints(
+            &svg,
+            |_| Ok(()),
+            &mut || {
+                checkpoints = checkpoints.saturating_add(1);
+                if checkpoints == 5 {
+                    control.cancel();
+                }
+                control.checkpoint().map_err(crate::Error::from)
+            },
+            |_| Ok(()),
+        )
+        .unwrap_err();
+
+        let crate::Error::Cancelled(cancelled) = error else {
+            panic!("expected structured cancellation");
+        };
+        assert_eq!(cancelled.phase, OperationPhase::Postprocess);
+        assert_eq!(checkpoints, 5);
+    }
+
+    #[test]
+    fn unchanged_lexical_hits_keep_the_borrowed_document() {
+        let svg = "<svg><!-- <foreignObject/> switch-native-fallback --><text>Label</text></svg>";
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::default());
+        for process in [strip_foreign_objects, drop_switch_native_fallbacks] {
+            let result = process(Cow::Borrowed(svg), &meter).unwrap();
+            assert!(matches!(result, Cow::Borrowed(source) if source == svg));
+        }
+    }
 
     #[test]
     fn text_inside_non_rendering_containers_does_not_replace_html() {

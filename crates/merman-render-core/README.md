@@ -22,6 +22,11 @@ paint. The writer does not select an output profile or replace terminal SVG admi
 `svg-parse` provides lexical scanning, XML stylesheet decoding, and SVG structure
 validation for postprocessing. `svg-safety` provides the bounded CSS and attribute sanitizers
 and the inline raster URL policy used by terminal SVG validation.
+`svg-validation` checks native and known-host inline SVG and rebases document IDs using the
+operation's resource meter.
+`svg-fallback` uses the shared text measurement and CSS rules to draw SVG text overlays for
+HTML labels, using the same operation meter as the caller's standalone pipeline.
+The facade selects the pipeline and seals the selected bytes.
 `svg-animation` validates and removes Mermaid Step animations for static SVG output.
 `svg-bounds` measures emitted SVG shape and path bounds for parity viewports.
 `svg-identity` rewrites Mermaid marker selectors for the native SVG CSS engine.
@@ -32,9 +37,10 @@ operation. `theme-svg` writes resolved canvas paint, markers, and categorical pa
 `xhtml-labels` provides XHTML label font measurement and plain-paragraph projection.
 `markdown-labels` adds Markdown source words, bounded HTML projection, and shared wrapping for
 HTML and SVG label terminals.
-`math-labels` provides shared label measurement and prepared math projections. The optional `math`
-feature adds the RaTeX backend and embedded math fonts. Family renderers share the bounded HTML
-sink and SVG navigation policy from `html`. The facade owns whole-document math reference checks.
+`math-labels` provides shared label measurement and prepares native math geometry. The optional
+`math` feature adds the RaTeX backend and embedded math fonts. `prepared-math-svg` projects that
+geometry into standalone SVG and checks the final document against the renderer-owned evidence.
+Family renderers share the bounded HTML sink and SVG navigation policy from `html`.
 `theme-elevation` and `theme-label-background` add shadow silhouettes and measured label
 backplates, respectively, for the families that use them.
 `icon-registry` admits and stores Iconify packs under fixed resource limits. The renderer

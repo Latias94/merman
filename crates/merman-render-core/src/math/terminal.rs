@@ -1,28 +1,31 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use roxmltree::{Document, Node};
 use sha2::{Digest as _, Sha256};
 
 use super::PreparedMathProjectionFingerprint;
+use super::evidence::update_len_prefixed;
 use super::{PREPARED_MATH_NATIVE_CLASS, PreparedMathEvidenceLease, PreparedMathExpectation};
 
 #[cfg(test)]
 const PREPARED_MATH_NATIVE_CLASS_ATTRIBUTE: &str = r#"class="merman-prepared-math-native""#;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PreparedMathTerminalOccurrenceReceipt {
+struct PreparedMathTerminalOccurrenceReceipt {
     expectation: PreparedMathExpectation,
     emitted: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PreparedMathTerminalReceipt {
+pub struct PreparedMathTerminalReceipt {
     artifact_digest: [u8; 32],
     occurrences: Arc<[PreparedMathTerminalOccurrenceReceipt]>,
 }
 
 impl PreparedMathTerminalReceipt {
-    pub(crate) fn from_terminal_svg(
+    /// Checks that the final SVG still contains the prepared math geometry and its instances.
+    pub fn from_terminal_svg(
         svg: &str,
         evidence: &PreparedMathEvidenceLease,
     ) -> Result<Option<Self>, String> {
@@ -38,7 +41,7 @@ impl PreparedMathTerminalReceipt {
             return Err("prepared-math occurrence is marked native-unavailable".to_owned());
         }
 
-        let document = crate::xml_dom::Document::parse(svg)
+        let document = Document::parse(svg)
             .map_err(|error| format!("prepared-math terminal SVG is malformed: {error}"))?;
         let root = document.root_element();
         if !native_svg_element(root, "svg") {
@@ -48,7 +51,7 @@ impl PreparedMathTerminalReceipt {
             .namespaces()
             .map(|namespace| (namespace.name(), namespace.uri()))
             .collect::<HashMap<_, _>>();
-        let owned_element = |node: crate::xml_dom::Node<'_, '_>, name: &str| {
+        let owned_element = |node: Node<'_, '_>, name: &str| {
             node.tag_name().name() == name
                 && node.tag_name().namespace() == root.tag_name().namespace()
         };
@@ -195,7 +198,7 @@ impl PreparedMathTerminalReceipt {
             ));
         }
 
-        let plan = crate::svg::SvgReferencePlan::for_occurrence_receipt(svg)
+        let plan = crate::svg_validation::plan_svg_occurrences_for_receipt(svg)
             .map_err(|error| format!("prepared-math reference expansion is invalid: {error}"))?;
         if instance_indices
             .into_iter()
@@ -222,16 +225,16 @@ impl PreparedMathTerminalReceipt {
         }))
     }
 
-    pub(crate) fn occurrence_count(&self) -> usize {
+    pub fn occurrence_count(&self) -> usize {
         self.occurrences.len()
     }
 
-    pub(crate) fn artifact_digest(&self) -> [u8; 32] {
+    pub fn artifact_digest(&self) -> [u8; 32] {
         self.artifact_digest
     }
 }
 
-fn native_svg_element(node: crate::xml_dom::Node<'_, '_>, name: &str) -> bool {
+fn native_svg_element(node: Node<'_, '_>, name: &str) -> bool {
     node.is_element()
         && node.tag_name().name() == name
         && node
@@ -240,23 +243,20 @@ fn native_svg_element(node: crate::xml_dom::Node<'_, '_>, name: &str) -> bool {
             .is_none_or(|uri| uri == "http://www.w3.org/2000/svg")
 }
 
-fn use_target<'a>(node: crate::xml_dom::Node<'a, '_>) -> Option<&'a str> {
+fn use_target<'a>(node: Node<'a, '_>) -> Option<&'a str> {
     // Match usvg and the terminal reference plan: SVG 2 href takes precedence over XLink.
     let href = unqualified_attribute(node, "href")
         .or_else(|| node.attribute(("http://www.w3.org/1999/xlink", "href")))?;
     svgtypes::IRI::from_str(href).ok().map(|iri| iri.0)
 }
 
-fn unqualified_attribute<'a>(node: crate::xml_dom::Node<'a, '_>, name: &str) -> Option<&'a str> {
+fn unqualified_attribute<'a>(node: Node<'a, '_>, name: &str) -> Option<&'a str> {
     node.attributes()
         .find(|attribute| attribute.namespace().is_none() && attribute.name() == name)
         .map(|attribute| attribute.value())
 }
 
-fn same_namespace_context(
-    node: crate::xml_dom::Node<'_, '_>,
-    expected: &HashMap<Option<&str>, &str>,
-) -> bool {
+fn same_namespace_context(node: Node<'_, '_>, expected: &HashMap<Option<&str>, &str>) -> bool {
     node.namespaces().len() == expected.len()
         && node
             .namespaces()
@@ -270,16 +270,11 @@ fn artifact_digest(svg: &str) -> [u8; 32] {
     hasher.finalize().into()
 }
 
-fn update_len_prefixed(hasher: &mut Sha256, bytes: &[u8]) {
-    hasher.update((bytes.len() as u64).to_le_bytes());
-    hasher.update(bytes);
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::DiagramFamilyId;
     use crate::math::PreparedMathOccurrenceId;
+    use merman_model::family::DiagramFamilyId;
 
     fn available_evidence(
         occurrence_id: PreparedMathOccurrenceId,

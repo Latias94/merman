@@ -3,6 +3,7 @@
 - Status: accepted
 - Date: 2026-08-06
 - Baseline: Mermaid `11.16.0`
+- [ADR 0104](0104-paint-scene-ir-and-dual-output-profiles.md) applies these admission boundaries to both SVG output profiles.
 
 ## Context
 

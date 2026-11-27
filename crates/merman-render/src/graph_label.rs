@@ -1,4 +1,3 @@
-use crate::mermaid_style::HtmlTextGeometryDeclarations;
 #[cfg(test)]
 use crate::model::{Bounds, LayoutEdge, LayoutNode};
 #[cfg(all(
@@ -19,6 +18,7 @@ use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
     )
 ))]
 use merman_model::presentation::PresentationConfig;
+use merman_render_core::mermaid_style::HtmlTextGeometryDeclarations;
 #[cfg(feature = "markdown-labels")]
 pub(crate) use merman_render_core::text::create_text_html::{
     FlowchartLabelMetricsRequest, flowchart_label_html_source,

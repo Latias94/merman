@@ -25,7 +25,7 @@ pub mod block;
 pub mod c4;
 #[cfg(feature = "diagram-class")]
 pub mod class;
-use merman_render_core::{config, mermaid_style};
+use merman_render_core::config;
 #[cfg(feature = "diagram-cynefin")]
 pub mod cynefin;
 #[cfg(all(test, feature = "layout-elk"))]
@@ -88,14 +88,6 @@ mod graph_label;
     )
 ))]
 mod graph_layout;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        reason = "Shared HTML controls have different callers in each diagram selection."
-    )
-)]
-mod html;
 #[cfg(feature = "diagram-info")]
 use merman_render_structured::info;
 #[cfg(feature = "diagram-ishikawa")]
@@ -188,6 +180,7 @@ pub mod venn;
 #[cfg(feature = "diagram-wardley")]
 pub mod wardley;
 use merman_render_core::xml;
+#[cfg(test)]
 use roxmltree as xml_dom;
 #[cfg(feature = "diagram-xychart")]
 pub mod xychart;

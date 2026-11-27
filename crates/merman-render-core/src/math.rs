@@ -10,6 +10,10 @@ mod evidence;
 #[cfg(feature = "math")]
 mod glyph_svg;
 mod prepared;
+#[cfg(feature = "prepared-math-svg")]
+mod projection;
+#[cfg(feature = "prepared-math-svg")]
+mod terminal;
 
 pub use evidence::{
     PREPARED_MATH_NATIVE_CLASS, PreparedMathEvidenceLease, PreparedMathExpectation,
@@ -21,6 +25,10 @@ pub use prepared::{
     PREPARED_MATH_TERMINAL_SWITCH_ATTRIBUTE, PrepareMathLabelRequest, PreparedMathLabel,
     PreparedMathNativeProjection,
 };
+#[cfg(feature = "prepared-math-svg")]
+pub use projection::project_prepared_math_with_checkpoints;
+#[cfg(feature = "prepared-math-svg")]
+pub use terminal::PreparedMathTerminalReceipt;
 
 #[cfg(feature = "math")]
 use crate::text::split_mermaid_common_br_lines;

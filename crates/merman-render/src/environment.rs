@@ -436,11 +436,6 @@ impl RenderSession {
         self.resource_policy
     }
 
-    /// Borrows the immutable operation policy for internal validation without copying it.
-    pub(crate) const fn resource_policy_ref(&self) -> &RenderResourcePolicy {
-        &self.resource_policy
-    }
-
     pub const fn font_catalog(&self) -> &FontCatalog {
         &self.font_catalog
     }

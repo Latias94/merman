@@ -221,11 +221,13 @@ pub(super) fn write_section_title_lines(
 }
 
 fn block_text_dy(index: usize, margin: f64, font_size: f64) -> String {
-    if margin == 0.0 && index != 0 {
-        format!(r#" dy="{}""#, fmt(index as f64 * font_size))
-    } else {
-        String::new()
-    }
+    block_row_dy(index, margin, font_size)
+        .map(|dy| format!(r#" dy="{}""#, fmt(dy)))
+        .unwrap_or_default()
+}
+
+pub(super) fn block_row_dy(index: usize, margin: f64, font_size: f64) -> Option<f64> {
+    (margin == 0.0 && index != 0).then_some(index as f64 * font_size)
 }
 
 #[cfg(test)]

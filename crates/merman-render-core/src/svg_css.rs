@@ -12,14 +12,14 @@ mod id_suffix;
 mod palette;
 #[cfg(feature = "css-style")]
 mod prepared;
-#[cfg(feature = "svg-identity")]
+#[cfg(any(feature = "svg-identity", feature = "svg-validation"))]
 mod resource_urls;
 
 #[cfg(feature = "css-style")]
 pub use id::available_local_svg_id;
 pub use id::{
-    CssSelectorDiagramId, FragmentDiagramId, SvgDiagramIdProjection, SvgId, scoped_drop_shadow,
-    scoped_svg_id, scoped_svg_url,
+    CssSelectorDiagramId, FragmentDiagramId, SvgDiagramIdProjection, SvgId, sanitize_svg_id,
+    scoped_drop_shadow, scoped_svg_id, scoped_svg_url,
 };
 #[cfg(feature = "svg-identity")]
 pub use id_suffix::lower_id_suffix_selectors;
@@ -32,7 +32,7 @@ pub use look_defs::PreparedLookDefs;
 
 #[cfg(feature = "css-style")]
 pub use prepared::{PreparedCommonCss, PreparedCommonNeoCss};
-#[cfg(feature = "svg-identity")]
+#[cfg(any(feature = "svg-identity", feature = "svg-validation"))]
 pub use resource_urls::{CssResourceScanError, CssResourceUrl, visit_css_resource_urls};
 
 /// Emits alternating literal pieces and ordinary `Display` values, in format order.

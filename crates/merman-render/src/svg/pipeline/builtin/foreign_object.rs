@@ -1,21 +1,12 @@
 use crate::Result;
 use crate::environment::TextMeasurementPhase;
-use crate::svg::fallback::foreign_object_label_fallback_svg_text_controlled;
-use crate::svg::foreign_objects::{
-    FALLBACK_SOURCE_ATTRIBUTE, ForeignObjectSwitches, MAX_SELECTOR_ANCESTRY_DEPTH,
-    SWITCH_NATIVE_FALLBACK, attribute_is,
+use crate::svg::pipeline::{
+    SvgPostprocessContext, SvgPostprocessExecution, SvgPostprocessor, SvgStructureMetrics,
 };
 use crate::text::TextMeasurer;
+use merman_render_core::svg_fallback;
+use merman_render_core::svg_scan::find_with_checkpoints;
 use std::borrow::Cow;
-#[cfg(test)]
-use std::convert::Infallible;
-
-use crate::svg::pipeline::final_validation::SvgStructureMetrics;
-use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessExecution, SvgPostprocessor};
-use merman_render_core::svg_output::{BoundedSvgOutput, SvgOutput};
-#[cfg(test)]
-use merman_render_core::svg_scan::extract_quoted_attr;
-use merman_render_core::svg_scan::{SvgTagScanner, find_with_checkpoints, start_tag_name};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ForeignObjectFallbackPostprocessor;
@@ -31,11 +22,7 @@ impl SvgPostprocessor for ForeignObjectFallbackPostprocessor {
         ctx: &SvgPostprocessContext<'_>,
     ) -> Result<Cow<'a, str>> {
         let measurer = ctx.controlled_text_measurer(TextMeasurementPhase::Wrap);
-        let structure =
-            crate::svg::pipeline::final_validation::validate_well_formed_svg_with_execution(
-                &svg,
-                ctx.execution(),
-            )?;
+        let structure = ctx.execution().validation().validate_xml(&svg)?;
         apply_foreign_object_fallback(svg, &measurer, ctx.execution(), structure)
     }
 }
@@ -60,8 +47,13 @@ pub(crate) fn apply_foreign_object_fallback_with_outcome<'a>(
     if find_with_checkpoints(&svg, "<foreignObject", &mut || execution.checkpoint())?.is_none() {
         return Ok((svg, false));
     }
-    foreign_object_label_fallback_svg_text_controlled(&svg, text_measurer, execution, structure)
-        .map(|svg| (Cow::Owned(svg), true))
+    svg_fallback::foreign_object_label_fallback_svg_text_controlled(
+        &svg,
+        text_measurer,
+        execution.work_meter(),
+        structure,
+    )
+    .map(|svg| (Cow::Owned(svg), true))
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -85,93 +77,14 @@ pub(crate) fn apply_strip_foreign_objects<'a>(
     svg: Cow<'a, str>,
     execution: SvgPostprocessExecution<'_>,
 ) -> Result<Cow<'a, str>> {
-    let mut checkpoint = || execution.checkpoint();
-    if find_with_checkpoints(&svg, "<foreignObject", &mut checkpoint)?.is_none() {
-        return Ok(svg);
-    }
-    let mut out = BoundedSvgOutput::new(execution.work_meter());
-    let changed =
-        strip_foreign_objects_with_checkpoints(&svg, &mut out, &mut checkpoint, |depth| {
-            Err(execution.selector_index_limit(depth, MAX_SELECTOR_ANCESTRY_DEPTH))
-        })?;
-    if changed {
-        Ok(Cow::Owned(out.finish()?))
-    } else {
-        Ok(svg)
-    }
+    svg_fallback::strip_foreign_objects(svg, execution.work_meter())
 }
 
 pub(crate) fn apply_drop_switch_native_fallbacks<'a>(
     svg: Cow<'a, str>,
     execution: SvgPostprocessExecution<'_>,
 ) -> Result<Cow<'a, str>> {
-    let mut checkpoint = || execution.checkpoint();
-    if find_with_checkpoints(&svg, SWITCH_NATIVE_FALLBACK, &mut checkpoint)?.is_none() {
-        return Ok(svg);
-    }
-    let mut scanner = SvgTagScanner::new(&svg);
-    let mut out = BoundedSvgOutput::new(execution.work_meter());
-    let mut cursor = 0;
-    while let Some(tag) = scanner.next_with_checkpoints(&mut checkpoint)? {
-        if start_tag_name(tag.raw()) != Some("g")
-            || !attribute_is(
-                tag.raw(),
-                FALLBACK_SOURCE_ATTRIBUTE,
-                SWITCH_NATIVE_FALLBACK,
-                &mut checkpoint,
-            )?
-        {
-            continue;
-        }
-        let Some(close) = scanner.matching_end_with_checkpoints(tag, &mut checkpoint)? else {
-            break;
-        };
-        out.push_str(&svg[cursor..tag.start()]);
-        cursor = close.end();
-    }
-    if cursor == 0 {
-        return Ok(svg);
-    }
-    out.push_str(&svg[cursor..]);
-    Ok(Cow::Owned(out.finish()?))
-}
-
-fn strip_foreign_objects_with_checkpoints<E>(
-    svg: &str,
-    out: &mut impl SvgOutput,
-    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
-    depth_limit: impl FnMut(usize) -> std::result::Result<(), E>,
-) -> std::result::Result<bool, E> {
-    let switches = ForeignObjectSwitches::scan(svg, checkpoint, depth_limit)?;
-    let mut scanner = SvgTagScanner::new(svg);
-    let mut cursor = 0;
-    while let Some(tag) = scanner.next_with_checkpoints(checkpoint)? {
-        let name = start_tag_name(tag.raw());
-        if name == Some("foreignObject") {
-            let Some(close) = scanner.matching_end_with_checkpoints(tag, checkpoint)? else {
-                break;
-            };
-            out.push_str(&svg[cursor..tag.start()]);
-            cursor = close.end();
-        } else if switches.wrappers.contains(&tag.start()) {
-            out.push_str(&svg[cursor..tag.start()]);
-            // A neutral group retains presentation and transforms without branch selection.
-            if name == Some("switch") {
-                out.push_str("<g");
-                out.push_str(&tag.raw()["<switch".len()..]);
-            } else {
-                out.push_str("</g");
-                out.push_str(&tag.raw()["</switch".len()..]);
-            }
-            cursor = tag.end();
-        }
-    }
-    checkpoint()?;
-    if cursor == 0 {
-        return Ok(false);
-    }
-    out.push_str(&svg[cursor..]);
-    Ok(true)
+    svg_fallback::drop_switch_native_fallbacks(svg, execution.work_meter())
 }
 
 #[cfg(test)]
@@ -194,15 +107,12 @@ pub(crate) fn drop_switch_native_fallbacks(svg: &str) -> String {
 
 #[cfg(test)]
 pub(crate) fn strip_foreign_objects(svg: &str) -> String {
-    let mut out = String::new();
-    let changed = strip_foreign_objects_with_checkpoints(
-        svg,
-        &mut out,
-        &mut || Ok::<(), Infallible>(()),
-        |_| Ok(()),
-    )
-    .unwrap();
-    if changed { out } else { svg.to_owned() }
+    let session = crate::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
+    apply_strip_foreign_objects(Cow::Borrowed(svg), SvgPostprocessExecution::new(&session))
+        .unwrap()
+        .into_owned()
 }
 
 #[cfg(test)]
@@ -212,7 +122,7 @@ pub(crate) fn drop_native_duplicate_fallbacks(svg: &str) -> String {
 
 #[cfg(test)]
 fn text_tag_is_fallback(tag: &str) -> bool {
-    extract_quoted_attr(tag, "class").is_some_and(|classes| {
+    merman_render_core::svg_scan::extract_quoted_attr(tag, "class").is_some_and(|classes| {
         classes
             .split_whitespace()
             .any(|class| class == "merman-foreignobject-fallback-text")
@@ -237,6 +147,32 @@ mod tests {
 
     fn render_session() -> crate::environment::RenderSession {
         RenderEnvironment::deterministic().begin_session().unwrap()
+    }
+
+    #[test]
+    fn svg_pipeline_preserves_the_fallback_selector_stylesheet_limit() {
+        use crate::resources::{RenderResourcePolicy, ResourceLimitCause, ResourceLimitPhase};
+        use merman_render_core::text::styled_html::cascade::MAX_SELECTOR_STYLESHEET_BYTES;
+
+        let stylesheet = " ".repeat(MAX_SELECTOR_STYLESHEET_BYTES + 1);
+        let svg = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg"><style>{stylesheet}</style><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span>Alpha</span></div></foreignObject></svg>"#,
+        );
+        let session = RenderEnvironment::deterministic()
+            .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
+            .begin_session()
+            .unwrap();
+        let error = SvgPipeline::resvg_safe()
+            .process_to_string(&svg, &session)
+            .expect_err("the public pipeline must preserve the selector resource error");
+        let crate::Error::ResourceLimitExceeded(limit) = error else {
+            panic!("expected a resource limit error");
+        };
+        assert_eq!(limit.phase, ResourceLimitPhase::SvgPostprocess);
+        assert_eq!(limit.limit, "svg_fallback_selector_index");
+        assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
+        assert_eq!(limit.actual, MAX_SELECTOR_STYLESHEET_BYTES + 1);
+        assert_eq!(limit.max, MAX_SELECTOR_STYLESHEET_BYTES);
     }
 
     struct CancellingMissingHost {
@@ -307,36 +243,6 @@ mod tests {
         assert_eq!(cancelled.phase, OperationPhase::Postprocess);
         assert_eq!(host_calls.load(Ordering::Relaxed), 1);
         assert_eq!(fallback_calls.load(Ordering::Relaxed), 0);
-    }
-
-    #[test]
-    fn strip_foreign_object_stage_stops_during_a_long_structural_scan() {
-        let control = OperationControl::new().for_phase(OperationPhase::Postprocess);
-        let svg = format!(
-            "<svg>{}<foreignObject width=\"1\" height=\"1\"/></svg>",
-            "x".repeat(16 * 1024)
-        );
-        let mut checkpoints = 0usize;
-
-        let error = strip_foreign_objects_with_checkpoints(
-            &svg,
-            &mut String::new(),
-            &mut || {
-                checkpoints = checkpoints.saturating_add(1);
-                if checkpoints == 5 {
-                    control.cancel();
-                }
-                control.checkpoint().map_err(Into::into)
-            },
-            |_| Ok(()),
-        )
-        .unwrap_err();
-
-        let crate::Error::Cancelled(cancelled) = error else {
-            panic!("expected structured cancellation");
-        };
-        assert_eq!(cancelled.phase, OperationPhase::Postprocess);
-        assert_eq!(checkpoints, 5);
     }
 
     #[test]

@@ -32,7 +32,19 @@ pub(crate) mod shoal_bridge;
 #[cfg(test)]
 pub(crate) mod validate;
 
-#[cfg(any(feature = "layout-shoal", test))]
+#[cfg(all(
+    feature = "layout-shoal",
+    any(
+        feature = "diagram-architecture",
+        feature = "diagram-block",
+        feature = "diagram-c4",
+        feature = "diagram-class",
+        feature = "diagram-er",
+        feature = "diagram-requirement",
+        feature = "diagram-state",
+        feature = "diagram-usecase"
+    )
+))]
 pub(crate) use ir::Marker;
 #[cfg(any(
     feature = "layout-shoal",

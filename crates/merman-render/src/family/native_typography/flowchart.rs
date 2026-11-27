@@ -4,12 +4,12 @@ use crate::flowchart::{
     flowchart_effective_node_class_names, flowchart_insert_style_by_spelling,
     flowchart_label_is_empty_for_render, flowchart_split_mermaid_style_decls,
 };
-use crate::mermaid_style::{
-    HtmlTextGeometryDeclarations, HtmlTextProperty, parse_style_declaration,
-};
 use indexmap::IndexMap;
 use merman_model::presentation::PresentationConfig;
 use merman_model::{OperationControl, OperationControlResult};
+use merman_render_core::mermaid_style::{
+    HtmlTextGeometryDeclarations, HtmlTextProperty, parse_style_declaration,
+};
 use quick_xml::{Reader, XmlVersion, events::Event};
 use rustc_hash::FxHashMap;
 

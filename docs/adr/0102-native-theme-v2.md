@@ -2,6 +2,7 @@
 
 - Accepted for the Theme v2 development branch.
 - Supersedes [ADR 0095](0095-general-theme-authoring-and-retained-bindings.md) for native theme authoring.
+- [ADR 0104](0104-paint-scene-ir-and-dual-output-profiles.md) defines how resolved paint is used by the opt-in compact SVG profile.
 
 ## Decision
 

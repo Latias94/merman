@@ -915,17 +915,16 @@ fn inline_raster_inventory_records_the_selected_href_for_each_element() {
     assert_eq!(
         validated
             .inline_raster_sources
-            .iter()
-            .map(|(element, href)| (*element, href.as_str(svg)))
+            .iter(svg)
             .collect::<Vec<_>>(),
         [1, 2, 5, 6].map(|element| (element, "data:image/png;base64,BBBB"))
     );
     assert!(matches!(
-        validated.inline_raster_sources[0].1,
+        validated.inline_raster_sources.0[0].1,
         InlineRasterHref::Source(_)
     ));
     assert!(matches!(
-        validated.inline_raster_sources[3].1,
+        validated.inline_raster_sources.0[3].1,
         InlineRasterHref::Normalized(_)
     ));
 }
@@ -1209,16 +1208,19 @@ fn xml_character_bytes_observe_postprocess_cancellation_before_error_and_during_
         (format!("{}\0", "普通🙂".repeat(4_096)), 3),
     ] {
         let control = OperationControl::new();
-        let session = crate::environment::RenderEnvironment::deterministic()
-            .begin_session_with_control(control.clone())
-            .unwrap();
+        let meter = crate::resources::OperationWorkMeter::new_with_control(
+            RenderResourcePolicy::default(),
+            control.clone(),
+        );
         let mut checkpoints = 0;
         let error = validate_xml_characters(&text, &mut || {
             checkpoints += 1;
             if checkpoints == cancel_at {
                 control.cancel();
             }
-            session.checkpoint(OperationPhase::Postprocess)
+            meter
+                .checkpoint(OperationPhase::Postprocess)
+                .map_err(Into::into)
         })
         .unwrap_err();
         assert!(matches!(
@@ -1232,7 +1234,7 @@ fn xml_character_bytes_observe_postprocess_cancellation_before_error_and_during_
         assert_eq!(
             format!(
                 "{:?}",
-                session.checkpoint(OperationPhase::Emit).unwrap_err()
+                Error::from(meter.checkpoint(OperationPhase::Emit).unwrap_err())
             ),
             format!("{error:?}")
         );
@@ -1460,15 +1462,13 @@ fn native_coordinate_limits_cover_root_and_canvas_values_without_limiting_raw_sv
 fn native_coordinate_limit_errors_remain_sticky_in_execution() {
     let beyond = crate::resources::MAX_SVG_BACKEND_COORDINATE_MAGNITUDE + 1;
     let control = merman_model::OperationControl::new();
-    let session = crate::environment::RenderEnvironment::deterministic()
-        .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
-        .begin_session_with_control(control.clone())
-        .unwrap();
-    let error = validate_resvg_compatible_svg_with_execution(
-        &format!(r#"<svg viewBox="0 0 {beyond} 1"/>"#),
-        SvgPostprocessExecution::new(&session),
-    )
-    .unwrap_err();
+    let meter = crate::resources::OperationWorkMeter::new_with_control(
+        RenderResourcePolicy::unbounded_for_trusted_input(),
+        control.clone(),
+    );
+    let error = SvgValidation::new(&meter)
+        .validate_native(&format!(r#"<svg viewBox="0 0 {beyond} 1"/>"#))
+        .unwrap_err();
     assert!(matches!(error, Error::ResourceLimitExceeded(_)));
     let terminal = control
         .terminal_checkpoint_at(merman_model::OperationPhase::Export)
@@ -1729,14 +1729,8 @@ fn raw_svg_budget_preserves_sticky_expansion_limit_errors() {
         .with_limit(ResourceLimitId::MaxSvgElements, 100)
         .unwrap();
     let control = merman_model::OperationControl::new();
-    let session = crate::environment::RenderEnvironment::deterministic()
-        .with_resource_policy(policy)
-        .begin_session_with_control(control.clone())
-        .unwrap();
-    let result = check_svg_resource_budget_with_execution(
-        &branching_use_svg(8),
-        SvgPostprocessExecution::new(&session),
-    );
+    let meter = crate::resources::OperationWorkMeter::new_with_control(policy, control.clone());
+    let result = SvgValidation::new(&meter).check_resource_budget(&branching_use_svg(8));
     assert!(matches!(result, Err(Error::ResourceLimitExceeded(_))));
     let terminal = control
         .terminal_checkpoint_at(merman_model::OperationPhase::Export)
@@ -1751,15 +1745,13 @@ fn raw_svg_budget_preserves_sticky_expansion_limit_errors() {
 #[test]
 fn raw_svg_budget_observes_cancellation_before_xml_work() {
     let control = merman_model::OperationControl::new();
-    let session = crate::environment::RenderEnvironment::deterministic()
-        .begin_session_with_control(control.clone())
-        .unwrap();
+    let meter = crate::resources::OperationWorkMeter::new_with_control(
+        RenderResourcePolicy::default(),
+        control.clone(),
+    );
     control.cancel();
     let (result, work) = measure_reference_analysis_work(|| {
-        check_svg_resource_budget_with_execution(
-            &branching_use_svg(8),
-            SvgPostprocessExecution::new(&session),
-        )
+        SvgValidation::new(&meter).check_resource_budget(&branching_use_svg(8))
     });
     assert!(matches!(result, Err(Error::Cancelled(_))));
     assert_eq!(work, ReferenceAnalysisWork::default());

@@ -115,4 +115,14 @@ impl<'a> LegacyEdgeCurve<'a> {
     pub fn into_linear_points(self) -> Option<Vec<LayoutPoint>> {
         (self.interpolate == "linear").then_some(self.line_data)
     }
+
+    /// The rounded generator emits only MoveTo and LineTo when it has no interior point.
+    #[cfg(all(
+        feature = "diagram-flowchart",
+        feature = "layout-elk",
+        feature = "native-compact"
+    ))]
+    pub(crate) fn into_straight_rounded_points(self) -> Option<Vec<LayoutPoint>> {
+        (self.interpolate == "rounded" && self.line_data.len() == 2).then_some(self.line_data)
+    }
 }

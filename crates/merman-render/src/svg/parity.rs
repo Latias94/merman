@@ -10,9 +10,6 @@ use merman_model::OperationPhase;
 use merman_render_core::root_svg;
 use merman_render_core::svg_css::{SvgDiagramIdProjection, SvgId};
 
-pub(crate) const C4_PERSON_IMG: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAACD0lEQVR4Xu2YoU4EMRCGT+4j8Ai8AhaH4QHgAUjQuFMECUgMIUgwJAgMhgQsAYUiJCiQIBBY+EITsjfTdme6V24v4c8vyGbb+ZjOtN0bNcvjQXmkH83WvYBWto6PLm6v7p7uH1/w2fXD+PBycX1Pv2l3IdDm/vn7x+dXQiAubRzoURa7gRZWd0iGRIiJbOnhnfYBQZNJjNbuyY2eJG8fkDE3bbG4ep6MHUAsgYxmE3nVs6VsBWJSGccsOlFPmLIViMzLOB7pCVO2AtHJMohH7Fh6zqitQK7m0rJvAVYgGcEpe//PLdDz65sM4pF9N7ICcXDKIB5Nv6j7tD0NoSdM2QrU9Gg0ewE1LqBhHR3BBdvj2vapnidjHxD/q6vd7Pvhr31AwcY8eXMTXAKECZZJFXuEq27aLgQK5uLMohCenGGuGewOxSjBvYBqeG6B+Nqiblggdjnc+ZXDy+FNFpFzw76O3UBAROuXh6FoiAcf5g9eTvUgzy0nWg6I8cXHRUpg5bOVBCo+KDpFajOf23GgPme7RSQ+lacIENUgJ6gg1k6HjgOlqnLqip4tEuhv0hNEMXUD0clyXE3p6pZA0S2nnvTlXwLJEZWlb7cTQH1+USgTN4VhAenm/wea1OCAOmqo6fE1WCb9WSKBah+rbUWPWAmE2Rvk0ApiB45eOyNAzU8xcTvj8KvkKEoOaIYeHNA3ZuygAvFMUO0AAAAASUVORK5CYII=";
-pub(crate) const C4_EXTERNAL_PERSON_IMG: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAAB6ElEQVR4Xu2YLY+EMBCG9+dWr0aj0Wg0Go1Go0+j8Xdv2uTCvv1gpt0ebHKPuhDaeW4605Z9mJvx4AdXUyTUdd08z+u6flmWZRnHsWkafk9DptAwDPu+f0eAYtu2PEaGWuj5fCIZrBAC2eLBAnRCsEkkxmeaJp7iDJ2QMDdHsLg8SxKFEJaAo8lAXnmuOFIhTMpxxKATebo4UiFknuNo4OniSIXQyRxEA3YsnjGCVEjVXD7yLUAqxBGUyPv/Y4W2beMgGuS7kVQIBycH0fD+oi5pezQETxdHKmQKGk1eQEYldK+jw5GxPfZ9z7Mk0Qnhf1W1m3w//EUn5BDmSZsbR44QQLBEqrBHqOrmSKaQAxdnLArCrxZcM7A7ZKs4ioRq8LFC+NpC3WCBJsvpVw5edm9iEXFuyNfxXAgSwfrFQ1c0iNda8AdejvUgnktOtJQQxmcfFzGglc5WVCj7oDgFqU18boeFSs52CUh8LE8BIVQDT1ABrB0HtgSEYlX5doJnCwv9TXocKCaKbnwhdDKPq4lf3SwU3HLq4V/+WYhHVMa/3b4IlfyikAduCkcBc7mQ3/z/Qq/cTuikhkzB12Ae/mcJC9U+Vo8Ej1gWAtgbeGgFsAMHr50BIWOLCbezvhpBFUdY6EJuJ/QDW0XoMX60zZ0AAAAASUVORK5CYII=";
-
 #[cfg(all(
     feature = "diagram-architecture",
     any(feature = "layout-cytoscape", feature = "layout-shoal")
@@ -127,67 +124,7 @@ mod zenuml;
 pub use merman_render_core::svg_bounds::{
     SvgEmittedBoundsContributor, SvgEmittedBoundsDebug, debug_svg_emitted_bounds,
 };
-/// Converts arbitrary host input into the conservative SVG/CSS identifier grammar used by every
-/// family renderer.
-///
-/// The result is safe to interpolate directly after `#` in generated stylesheets without CSS
-/// escaping changing its selector meaning.
-pub fn sanitize_svg_id(raw: &str) -> String {
-    let raw = raw.trim();
-    if raw.is_empty() {
-        return "m-untitled".to_string();
-    }
-
-    let mut iter = raw.chars();
-    let Some(first_raw) = iter.next() else {
-        return "m-untitled".to_string();
-    };
-
-    let sanitize_char = |ch: char| {
-        if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_') {
-            ch
-        } else {
-            '-'
-        }
-    };
-    let first = sanitize_char(first_raw);
-    let mut out = String::with_capacity(raw.len() + 2);
-    let mut previous_was_dash = false;
-
-    if !first.is_ascii_alphabetic() {
-        out.push('m');
-        if first != '-' {
-            out.push('-');
-            previous_was_dash = true;
-        }
-    }
-
-    let push = |ch: char, out: &mut String, previous_was_dash: &mut bool| {
-        if ch == '-' {
-            if *previous_was_dash {
-                return;
-            }
-            *previous_was_dash = true;
-        } else {
-            *previous_was_dash = false;
-        }
-        out.push(ch);
-    };
-
-    push(first, &mut out, &mut previous_was_dash);
-    for ch in iter {
-        push(sanitize_char(ch), &mut out, &mut previous_was_dash);
-    }
-    while out.ends_with('-') {
-        out.pop();
-    }
-
-    if out.is_empty() || out == "m" {
-        "m-untitled".to_string()
-    } else {
-        out
-    }
-}
+pub use merman_render_core::svg_css::sanitize_svg_id;
 
 #[derive(Debug, Clone)]
 pub struct SvgRenderOptions {
@@ -789,7 +726,14 @@ pub(crate) fn render_native_compact_family_artifact(
                 },
             })
         }
-        #[cfg(all(feature = "diagram-flowchart", feature = "layout-dagre"))]
+        #[cfg(all(
+            feature = "diagram-flowchart",
+            any(
+                feature = "layout-dagre",
+                feature = "layout-elk",
+                feature = "layout-shoal"
+            )
+        ))]
         crate::family::BuiltinFamilyArtifact::Flowchart(artifact) => {
             flowchart::render_native_compact_flowchart_artifact(artifact, metadata, &execution)
         }

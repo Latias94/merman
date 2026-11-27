@@ -1,6 +1,6 @@
 /// An asset-free SVG is font-independent only when no authored text may use fonts.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SvgFontSeal {
+pub struct SvgFontSeal {
     text_element_count: usize,
 }
 
@@ -9,7 +9,7 @@ impl SvgFontSeal {
         Self { text_element_count }
     }
 
-    pub(crate) const fn is_complete(&self) -> bool {
+    pub const fn is_complete(&self) -> bool {
         self.text_element_count == 0
     }
 }

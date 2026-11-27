@@ -6,20 +6,20 @@ use std::collections::BTreeMap;
 
 use crate::artifact_contract::{DEFAULT_ARTIFACT_SNAPSHOT, ValidatedArtifactContract};
 use crate::resource_contract::{
-    BINDING_OPTIONS_JSON_LIMIT_ID, BINDING_OPTIONS_JSON_MAX_BYTES, BindingResourceScope,
-    binding_resource_contract, resource_limit_descriptor, resource_profile_value,
+    BINDING_OPTIONS_JSON_LIMIT_ID, BINDING_OPTIONS_JSON_MAX_BYTES, BindingResourceLimitDescriptor,
+    BindingResourceScope, binding_resource_contract, resource_limit_descriptor,
+    resource_profile_value,
 };
 
 #[cfg(feature = "analysis")]
 use super::artifact_analysis_options;
-use super::{
-    BINDING_OPTIONS_SCHEMA_VERSION, BaseBindingOptions, BindingError, BindingOptions,
-    BindingStatus, ResourceOptionsJson, base_options_from_wire, internal_json_error, options_value,
-    options_value::OptionsValue, parse_options_value, parse_options_with_theme,
-    reject_unavailable_option_groups, validate_artifact_resource_options,
-    validate_compiled_resource_options, validate_output_options_for_scope,
-    validate_resource_limits_for_scope,
+use super::options::{
+    BaseBindingOptions, base_options_from_wire, parse_options_value, parse_options_with_theme,
+    reject_unavailable_option_groups, validate_output_options_for_scope,
 };
+use super::options_value::{self, OptionsValue, OptionsValueRef};
+use super::options_wire::{BindingOptions, ResourceOptionsJson};
+use super::{BINDING_OPTIONS_SCHEMA_VERSION, BindingError, BindingStatus, internal_json_error};
 
 pub(crate) fn binding_input_resource_policy(
     resources: Option<&ResourceOptionsJson>,
@@ -533,6 +533,120 @@ fn options_value_with_resource_ceiling(
     );
 
     Ok(value)
+}
+
+pub(super) fn validate_artifact_resource_options(
+    resources: Option<&ResourceOptionsJson>,
+    artifact_contract: &ValidatedArtifactContract,
+) -> Result<(), BindingError> {
+    let Some(resources) = resources else {
+        return Ok(());
+    };
+    for (id, value) in &resources.limits {
+        let descriptor = compiled_resource_limit_descriptor(id)?;
+        if !artifact_contract.exposes_resource_limit(&descriptor) {
+            return Err(BindingError::new(
+                BindingStatus::InvalidArgument,
+                format!(
+                    "resource limit id `{id}` is not exposed by target `{}`",
+                    artifact_contract.target().id()
+                ),
+            ));
+        }
+        validate_resource_limit_override(id, *value, descriptor)?;
+    }
+    Ok(())
+}
+
+fn validate_compiled_resource_options(
+    resources: Option<&ResourceOptionsJson>,
+) -> Result<(), BindingError> {
+    let Some(resources) = resources else {
+        return Ok(());
+    };
+    for (id, value) in &resources.limits {
+        let descriptor = compiled_resource_limit_descriptor(id)?;
+        validate_resource_limit_override(id, *value, descriptor)?;
+    }
+    Ok(())
+}
+
+fn compiled_resource_limit_descriptor(
+    id: &str,
+) -> Result<BindingResourceLimitDescriptor, BindingError> {
+    resource_limit_descriptor(id).ok_or_else(|| {
+        BindingError::new(
+            BindingStatus::InvalidArgument,
+            format!(
+                "resource limit id `{id}` is not part of resource contract schema {BINDING_OPTIONS_SCHEMA_VERSION}"
+            ),
+        )
+    })
+}
+
+fn validate_resource_limit_override(
+    id: &str,
+    value: usize,
+    descriptor: BindingResourceLimitDescriptor,
+) -> Result<(), BindingError> {
+    if !descriptor.overridable {
+        return Err(BindingError::new(
+            BindingStatus::InvalidArgument,
+            format!("resource limit id `{id}` is not overridable"),
+        ));
+    }
+    if value < descriptor.minimum_value {
+        return Err(BindingError::new(
+            BindingStatus::InvalidArgument,
+            format!(
+                "resources.limits.{id} must be at least {}",
+                descriptor.minimum_value
+            ),
+        ));
+    }
+    Ok(())
+}
+
+pub(super) fn parse_request_resource_options(
+    resources: Option<OptionsValueRef<'_>>,
+    resource_scope: BindingResourceScope,
+) -> Result<Option<ResourceOptionsJson>, BindingError> {
+    let Some(resources) = resources else {
+        return Ok(None);
+    };
+    if resources.value.is_null() {
+        return Err(BindingError::new(
+            BindingStatus::OptionsJsonError,
+            "request options_json cannot clear the engine resource ceiling",
+        ));
+    }
+    let resources = ResourceOptionsJson::deserialize(resources).map_err(|error| {
+        BindingError::new(
+            BindingStatus::OptionsJsonError,
+            format!("invalid request options_json resources: {error}"),
+        )
+    })?;
+    validate_resource_limits_for_scope(&resources, resource_scope)?;
+    Ok(Some(resources))
+}
+
+fn validate_resource_limits_for_scope(
+    resources: &ResourceOptionsJson,
+    resource_scope: BindingResourceScope,
+) -> Result<(), BindingError> {
+    for id in resources.limits.keys() {
+        if resource_limit_descriptor(id).is_none() || resource_scope.accepts(id) {
+            continue;
+        }
+        return Err(BindingError::new(
+            BindingStatus::InvalidArgument,
+            format!(
+                "resource limit id `{id}` is not available for the {} operation",
+                resource_scope.description()
+            ),
+        ));
+    }
+    Ok(())
 }
 
 pub(super) fn options_json_value(options_json: &[u8]) -> Result<OptionsValue, BindingError> {

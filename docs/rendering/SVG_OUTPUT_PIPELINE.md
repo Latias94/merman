@@ -100,10 +100,17 @@ let svg = Renderer::new().render_svg_with(
 ```
 
 - With `diagram-sequence`, the producer uses the prepared layout for classic rectangular
-  participants, plain notes, activation bars, and supported straight messages.
-- With `diagram-flowchart` and `layout-dagre`, the producer reuses clipped linear routes for
-  classic, ungrouped diagrams with plain, single-row rectangular node labels and unlabeled edges.
-  Select `layout: dagre`, set `flowchart.curve: linear`, and disable `htmlLabels`.
+  participants, plain notes, activation bars, and supported straight messages. Classic Mermaid
+  diagrams can also use `loop` and `alt`/`else` frames with prepared bounds and plain headings.
+- With `diagram-flowchart`, the producer supports classic, ungrouped diagrams with rectangular
+  nodes and unlabeled edges. Plain node labels may wrap between whole words. Set `htmlLabels`
+  to `false`.
+  - With `layout-dagre`, select `layout: dagre` and set `flowchart.curve: linear` to reuse clipped
+    linear routes.
+  - With `layout-elk`, select `layout: elk`, keep the default `rounded` curve, and set
+    `elk.lineHops: false`. The producer reuses clipped, straight edges from two-point ELK sections.
+  - With `layout-shoal`, select `layout: shoal` and set `flowchart.curve: linear`. The compact
+    writer consumes the canonical shaft commands, including bends and marker setback.
 - Both producers support Theme v2 arrow styles for their admitted edges and hard shadow layers
   on rectangular nodes. A fully transparent canvas suppresses theme canvas textures. A visible
   textured canvas or a blurred elevation still requires the parity producer.

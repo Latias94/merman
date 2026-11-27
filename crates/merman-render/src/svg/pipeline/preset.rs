@@ -1,3 +1,4 @@
+use super::SvgStructureMetrics;
 use super::builtin::{
     css_sanitize::apply_sanitize_style_elements,
     foreign_object::{
@@ -5,15 +6,13 @@ use super::builtin::{
         apply_strip_foreign_objects,
     },
     id_suffix::apply_lower_id_suffix_selectors,
-    prepared_math::project_prepared_math_with_checkpoints,
     quadrant_resvg_fallback::resolve_quadrant_resvg_fallbacks_with_checkpoints,
     timeline_marker::resolve_timeline_marker_references,
 };
 use super::context::{SvgPostprocessExecution, SvgPostprocessMetadata};
-use super::final_validation::SvgStructureMetrics;
 use crate::Result;
 use crate::environment::TextMeasurementPhase;
-use crate::math::PreparedMathEvidenceLease;
+use crate::math::{PreparedMathEvidenceLease, project_prepared_math_with_checkpoints};
 use merman_render_core::svg_safety::sanitize_element_attributes_cow_with_checkpoints;
 use std::borrow::Cow;
 
@@ -235,9 +234,7 @@ mod tests {
         let execution = SvgPostprocessExecution::new(&session);
 
         let output = super::super::finalize_resvg_svg(svg, &session).unwrap();
-        let structure =
-            super::super::final_validation::validate_well_formed_svg_with_execution(svg, execution)
-                .unwrap();
+        let structure = execution.validation().validate_xml(svg).unwrap();
         let (expected, _) = apply_preset_cow(
             SvgPipelinePreset::ResvgSafe,
             Cow::Borrowed(svg),
@@ -301,10 +298,7 @@ mod tests {
         let execution = SvgPostprocessExecution::new(&session);
         let metadata = SvgPostprocessMetadata::from_svg(&svg)
             .with_family_id(crate::DiagramFamilyId::FLOWCHART);
-        let structure = super::super::final_validation::validate_well_formed_svg_with_execution(
-            &svg, execution,
-        )
-        .unwrap();
+        let structure = execution.validation().validate_xml(&svg).unwrap();
 
         let error = apply_preset_cow(
             SvgPipelinePreset::ResvgSafe,
@@ -358,9 +352,7 @@ mod tests {
             .unwrap();
         let execution = SvgPostprocessExecution::new(&session);
         let metadata = SvgPostprocessMetadata::from_svg(svg);
-        let structure =
-            super::super::final_validation::validate_well_formed_svg_with_execution(svg, execution)
-                .unwrap();
+        let structure = execution.validation().validate_xml(svg).unwrap();
 
         let (output, _) = apply_preset_cow(
             SvgPipelinePreset::ResvgSafe,
@@ -407,9 +399,7 @@ mod tests {
         let execution = SvgPostprocessExecution::new(&session);
         let metadata = SvgPostprocessMetadata::from_svg(svg)
             .with_family_id(crate::DiagramFamilyId::QUADRANT_CHART);
-        let structure =
-            super::super::final_validation::validate_well_formed_svg_with_execution(svg, execution)
-                .unwrap();
+        let structure = execution.validation().validate_xml(svg).unwrap();
 
         let (out, _) = apply_preset_cow(
             SvgPipelinePreset::ResvgSafe,

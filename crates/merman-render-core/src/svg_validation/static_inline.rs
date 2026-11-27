@@ -7,19 +7,17 @@ use cssparser::{
 use std::collections::{BTreeSet, HashMap, HashSet};
 use svgtypes::{Length, LengthUnit, NumberListParser};
 
-use super::final_validation::{
+use super::terminal::{
     ReferenceDependencyGraph, ReferencePlanningError,
-    summarize_svg_reference_dependencies_with_checkpoints, validate_well_formed_svg_with_execution,
+    summarize_svg_reference_dependencies_with_checkpoints,
 };
-use super::{
-    SvgPostprocessExecution, checkpoint_loop, is_css_value_attribute, is_svg_idref_attribute,
-};
-use crate::svg::parity::{C4_EXTERNAL_PERSON_IMG, C4_PERSON_IMG};
-use merman_render_core::svg_safety::{
+use super::{SvgValidation, is_css_value_attribute, is_svg_idref_attribute};
+use crate::svg_safety::{
     CssValidationError, is_safe_data_image_url, matches_active_svg_element,
     matches_external_image_function, validate_resvg_css_declaration_list_with_checkpoints,
     validate_resvg_css_stylesheet_with_checkpoints,
 };
+use crate::svg_scan::checkpoint_loop;
 use std::cell::{Cell, RefCell};
 
 const STATIC_VALIDATION_PASS: &str = "validate-static-inline-svg";
@@ -30,32 +28,31 @@ const CSS_NESTING_HARD_LIMIT: u8 = 64;
 const ROOT_DIMENSION_HARD_LIMIT_PX: f64 = 1_000_000.0;
 const SVG_BYTES_PER_ROOT_PIXEL: usize = 16;
 
-pub(super) fn validate_rustdoc_static_svg(
-    svg: &str,
-    execution: SvgPostprocessExecution<'_>,
-) -> Result<()> {
-    admit_svg_bytes(svg, execution)?;
-    validate_well_formed_svg_with_execution(svg, execution)?;
-    validate(svg, ForeignObjectPolicy::Reject, CssStage::Final, execution)
-}
+// Built-in raster assets allowed in browser-inline documents.
+const C4_PERSON_IMG: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAACD0lEQVR4Xu2YoU4EMRCGT+4j8Ai8AhaH4QHgAUjQuFMECUgMIUgwJAgMhgQsAYUiJCiQIBBY+EITsjfTdme6V24v4c8vyGbb+ZjOtN0bNcvjQXmkH83WvYBWto6PLm6v7p7uH1/w2fXD+PBycX1Pv2l3IdDm/vn7x+dXQiAubRzoURa7gRZWd0iGRIiJbOnhnfYBQZNJjNbuyY2eJG8fkDE3bbG4ep6MHUAsgYxmE3nVs6VsBWJSGccsOlFPmLIViMzLOB7pCVO2AtHJMohH7Fh6zqitQK7m0rJvAVYgGcEpe//PLdDz65sM4pF9N7ICcXDKIB5Nv6j7tD0NoSdM2QrU9Gg0ewE1LqBhHR3BBdvj2vapnidjHxD/q6vd7Pvhr31AwcY8eXMTXAKECZZJFXuEq27aLgQK5uLMohCenGGuGewOxSjBvYBqeG6B+Nqiblggdjnc+ZXDy+FNFpFzw76O3UBAROuXh6FoiAcf5g9eTvUgzy0nWg6I8cXHRUpg5bOVBCo+KDpFajOf23GgPme7RSQ+lacIENUgJ6gg1k6HjgOlqnLqip4tEuhv0hNEMXUD0clyXE3p6pZA0S2nnvTlXwLJEZWlb7cTQH1+USgTN4VhAenm/wea1OCAOmqo6fE1WCb9WSKBah+rbUWPWAmE2Rvk0ApiB45eOyNAzU8xcTvj8KvkKEoOaIYeHNA3ZuygAvFMUO0AAAAASUVORK5CYII=";
+const C4_EXTERNAL_PERSON_IMG: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAAB6ElEQVR4Xu2YLY+EMBCG9+dWr0aj0Wg0Go1Go0+j8Xdv2uTCvv1gpt0ebHKPuhDaeW4605Z9mJvx4AdXUyTUdd08z+u6flmWZRnHsWkafk9DptAwDPu+f0eAYtu2PEaGWuj5fCIZrBAC2eLBAnRCsEkkxmeaJp7iDJ2QMDdHsLg8SxKFEJaAo8lAXnmuOFIhTMpxxKATebo4UiFknuNo4OniSIXQyRxEA3YsnjGCVEjVXD7yLUAqxBGUyPv/Y4W2beMgGuS7kVQIBycH0fD+oi5pezQETxdHKmQKGk1eQEYldK+jw5GxPfZ9z7Mk0Qnhf1W1m3w//EUn5BDmSZsbR44QQLBEqrBHqOrmSKaQAxdnLArCrxZcM7A7ZKs4ioRq8LFC+NpC3WCBJsvpVw5edm9iEXFuyNfxXAgSwfrFQ1c0iNda8AdejvUgnktOtJQQxmcfFzGglc5WVCj7oDgFqU18boeFSs52CUh8LE8BIVQDT1ABrB0HtgSEYlX5doJnCwv9TXocKCaKbnwhdDKPq4lf3SwU3HLq4V/+WYhHVMa/3b4IlfyikAduCkcBc7mQ3/z/Qq/cTuikhkzB12Ae/mcJC9U+Vo8Ej1gWAtgbeGgFsAMHr50BIWOLCbezvhpBFUdY6EJuJ/QDW0XoMX60zZ0AAAAASUVORK5CYII=";
 
-pub(super) fn validate_rustdoc_admission_svg(
-    svg: &str,
-    execution: SvgPostprocessExecution<'_>,
-) -> Result<()> {
-    admit_svg_bytes(svg, execution)?;
-    validate_well_formed_svg_with_execution(svg, execution)?;
-    validate(
-        svg,
-        ForeignObjectPolicy::AllowSafeXhtml,
-        CssStage::Admission,
-        execution,
-    )
-}
+impl SvgValidation<'_> {
+    /// Validates a finished SVG for Merman's known-host static-inline policy.
+    pub fn validate_static_inline(self, svg: &str) -> Result<()> {
+        self.checkpoint()?;
+        self.preflight_svg_byte_count(svg.len())?;
+        self.validate_xml(svg)?;
+        validate(svg, ForeignObjectPolicy::Reject, CssStage::Final, self)
+    }
 
-fn admit_svg_bytes(svg: &str, execution: SvgPostprocessExecution<'_>) -> Result<()> {
-    execution.checkpoint()?;
-    execution.preflight_svg_byte_count(svg.len())
+    /// Validates SVG before Merman's browser-inline compatibility transforms.
+    pub fn validate_static_inline_admission(self, svg: &str) -> Result<()> {
+        self.checkpoint()?;
+        self.preflight_svg_byte_count(svg.len())?;
+        self.validate_xml(svg)?;
+        validate(
+            svg,
+            ForeignObjectPolicy::AllowSafeXhtml,
+            CssStage::Admission,
+            self,
+        )
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -74,12 +71,12 @@ fn validate(
     svg: &str,
     foreign_objects: ForeignObjectPolicy,
     css_stage: CssStage,
-    execution: SvgPostprocessExecution<'_>,
+    execution: SvgValidation<'_>,
 ) -> Result<()> {
     let limits = execution.resource_policy();
     let mut checkpoint = || execution.checkpoint();
     checkpoint()?;
-    let document = crate::xml_dom::Document::parse(svg).map_err(|error| {
+    let document = roxmltree::Document::parse(svg).map_err(|error| {
         static_validation_error(format!("rendered SVG is not valid XML: {error}"))
     })?;
     checkpoint()?;
@@ -92,7 +89,7 @@ fn validate(
     let root_id = unnamespaced_attribute(root, "id");
     let root_dimension_limit = root_dimension_limit(limits);
     let step_elements = if css_stage == CssStage::Admission && svg.contains("edge-step-") {
-        super::step_animation::validate(&document, execution)?
+        crate::step_animation::validate(&document, &mut checkpoint)?
     } else {
         HashSet::new()
     };
@@ -101,7 +98,7 @@ fn validate(
     let mut inside_foreign_objects = vec![false; document.descendants().len()];
     for (iteration, node) in document
         .descendants()
-        .filter(crate::xml_dom::Node::is_element)
+        .filter(roxmltree::Node::is_element)
         .enumerate()
     {
         checkpoint_loop(iteration, &mut checkpoint)?;
@@ -129,7 +126,7 @@ fn validate(
     let mut attribute_iteration = 0usize;
     for (node_iteration, node) in document
         .descendants()
-        .filter(crate::xml_dom::Node::is_element)
+        .filter(roxmltree::Node::is_element)
         .enumerate()
     {
         checkpoint_loop(node_iteration, &mut checkpoint)?;
@@ -291,15 +288,15 @@ fn validate(
 }
 
 fn validate_browser_reference_expansion(
-    document: &crate::xml_dom::Document<'_>,
-    execution: SvgPostprocessExecution<'_>,
+    document: &roxmltree::Document<'_>,
+    execution: SvgValidation<'_>,
 ) -> Result<()> {
     let mut checkpoint = || execution.checkpoint();
     checkpoint()?;
     let mut elements = Vec::new();
     for (iteration, node) in document
         .descendants()
-        .filter(crate::xml_dom::Node::is_element)
+        .filter(roxmltree::Node::is_element)
         .enumerate()
     {
         checkpoint_loop(iteration, &mut checkpoint)?;
@@ -362,7 +359,7 @@ fn validate_browser_reference_expansion(
 }
 
 fn unnamespaced_attribute<'a, 'input>(
-    node: crate::xml_dom::Node<'a, 'input>,
+    node: roxmltree::Node<'a, 'input>,
     name: &str,
 ) -> Option<&'a str> {
     node.attributes()
@@ -553,7 +550,7 @@ fn validate_href(
     element: &str,
     value: &str,
     ids: &BTreeSet<String>,
-    execution: SvgPostprocessExecution<'_>,
+    execution: SvgValidation<'_>,
 ) -> Result<()> {
     let mut checkpoint = || execution.checkpoint();
     checkpoint()?;
@@ -628,7 +625,7 @@ fn validate_idrefs(
     attribute: &str,
     value: &str,
     ids: &BTreeSet<String>,
-    execution: SvgPostprocessExecution<'_>,
+    execution: SvgValidation<'_>,
 ) -> Result<()> {
     let mut checkpoint = || execution.checkpoint();
     checkpoint()?;
@@ -649,7 +646,7 @@ fn validate_css(
     css: &str,
     ids: &BTreeSet<String>,
     stylesheet: bool,
-    execution: SvgPostprocessExecution<'_>,
+    execution: SvgValidation<'_>,
 ) -> Result<()> {
     run_css_validation(execution, |control| {
         let mut parser = Parser::new(css);
@@ -662,7 +659,7 @@ fn validate_stylesheet_scope(
     root_id: &str,
     allow_discardable_animation: bool,
     root_dimension_limit: f64,
-    execution: SvgPostprocessExecution<'_>,
+    execution: SvgValidation<'_>,
 ) -> Result<()> {
     run_css_validation(execution, |control| {
         let mut input = Parser::new(css);
@@ -684,13 +681,13 @@ fn validate_stylesheet_scope(
 }
 
 struct StaticCssControl<'a> {
-    execution: SvgPostprocessExecution<'a>,
+    execution: SvgValidation<'a>,
     iterations: Cell<usize>,
     error: RefCell<Option<Error>>,
 }
 
 impl<'a> StaticCssControl<'a> {
-    fn new(execution: SvgPostprocessExecution<'a>) -> Self {
+    fn new(execution: SvgValidation<'a>) -> Self {
         Self {
             execution,
             iterations: Cell::new(0),
@@ -722,7 +719,7 @@ impl<'a> StaticCssControl<'a> {
 }
 
 fn run_css_validation<T>(
-    execution: SvgPostprocessExecution<'_>,
+    execution: SvgValidation<'_>,
     validate: impl FnOnce(&StaticCssControl<'_>) -> std::result::Result<T, String>,
 ) -> Result<T> {
     execution.checkpoint()?;
@@ -969,7 +966,7 @@ fn validate_selector_list_scope(
 fn validate_root_layout_declaration_text(
     css: &str,
     root_dimension_limit: f64,
-    execution: SvgPostprocessExecution<'_>,
+    execution: SvgValidation<'_>,
 ) -> Result<()> {
     run_css_validation(execution, |control| {
         let mut input = Parser::new(css);
@@ -1419,19 +1416,13 @@ mod tests {
     use merman_model::{CancelReason, OperationControl, OperationPhase};
 
     fn validate_static_with_limits(svg: &str, limits: RenderResourcePolicy) -> Result<()> {
-        let session = crate::environment::RenderEnvironment::deterministic()
-            .with_resource_policy(limits)
-            .begin_session_with_control(OperationControl::new())
-            .unwrap();
-        validate_rustdoc_static_svg(svg, SvgPostprocessExecution::new(&session))
+        let meter = crate::resources::OperationWorkMeter::new(limits);
+        SvgValidation::new(&meter).validate_static_inline(svg)
     }
 
     fn validate_admission_with_limits(svg: &str, limits: RenderResourcePolicy) -> Result<()> {
-        let session = crate::environment::RenderEnvironment::deterministic()
-            .with_resource_policy(limits)
-            .begin_session_with_control(OperationControl::new())
-            .unwrap();
-        validate_rustdoc_admission_svg(svg, SvgPostprocessExecution::new(&session))
+        let meter = crate::resources::OperationWorkMeter::new(limits);
+        SvgValidation::new(&meter).validate_static_inline_admission(svg)
     }
 
     fn validate(svg: &str) -> Result<()> {
@@ -1441,11 +1432,11 @@ mod tests {
     #[test]
     fn static_css_control_preserves_cancellation_at_token_cadence() {
         let control = OperationControl::new();
-        let session = crate::environment::RenderEnvironment::deterministic()
-            .with_resource_policy(RenderResourcePolicy::trusted_native())
-            .begin_session_with_control(control.clone())
-            .unwrap();
-        let css_control = StaticCssControl::new(SvgPostprocessExecution::new(&session));
+        let meter = crate::resources::OperationWorkMeter::new_with_control(
+            RenderResourcePolicy::trusted_native(),
+            control.clone(),
+        );
+        let css_control = StaticCssControl::new(SvgValidation::new(&meter));
 
         assert!(css_control.observe());
         control.cancel();

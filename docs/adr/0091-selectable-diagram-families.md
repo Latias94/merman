@@ -12,6 +12,10 @@ default and complete-aggregate clauses below. Current facade defaults use
 `complete-svg-elk` remain output/layout conveniences without math or diagram selection.
 Family selection and catalog ownership remain in force.
 
+[ADR 0103](0103-vertical-workspace-crate-boundaries.md) defines the internal family crate owners.
+[ADR 0105](0105-ergonomic-feature-tiers-and-safe-facade-api.md) adds convenience aggregates over
+the existing positive selectors.
+
 Accepted for the current development source and the next release after `0.8.0-alpha.6`.
 
 ## Date

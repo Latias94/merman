@@ -1,11 +1,14 @@
-use crate::math::{
-    PREPARED_MATH_NATIVE_CLASS, PREPARED_MATH_OCCURRENCE_ATTRIBUTE, PreparedMathEvidenceLease,
-};
-use crate::xml_dom::Node;
-use crate::{DiagramFamilyId, Error, Result};
 use std::collections::HashSet;
 
-use merman_render_core::svg_scan::{checkpoint_loop, find_tag_end_with_checkpoints};
+use merman_model::family::DiagramFamilyId;
+use roxmltree::{Document, Node};
+
+use super::{
+    PREPARED_MATH_NATIVE_CLASS, PREPARED_MATH_OCCURRENCE_ATTRIBUTE, PreparedMathEvidenceLease,
+};
+use crate::svg_css::sanitize_svg_id;
+use crate::svg_scan::{checkpoint_loop, find_tag_end_with_checkpoints};
+use crate::{Error, Result};
 
 const NATIVE_ATTRIBUTE: &str = "data-merman-prepared-math-native";
 const LEGACY_NATIVE_ATTRIBUTE: &str = "data-merman-math-native";
@@ -20,14 +23,15 @@ fn project_prepared_math(
     project_prepared_math_with_checkpoints(svg, family_id, evidence, &mut || Ok(()))
 }
 
-pub(crate) fn project_prepared_math_with_checkpoints(
+/// Replaces browser math with its prepared native geometry for the selected SVG pipeline.
+pub fn project_prepared_math_with_checkpoints(
     svg: &str,
     family_id: Option<DiagramFamilyId>,
     evidence: Option<&PreparedMathEvidenceLease>,
     checkpoint: &mut impl FnMut() -> Result<()>,
 ) -> Result<String> {
     checkpoint()?;
-    let document = crate::xml_dom::Document::parse(svg)
+    let document = Document::parse(svg)
         .map_err(|error| projection_error(format!("malformed math SVG: {error}")))?;
     checkpoint()?;
     let mut identifiers = HashSet::new();
@@ -117,7 +121,7 @@ pub(crate) fn project_prepared_math_with_checkpoints(
             "prepared math requires the root SVG default namespace",
         ));
     }
-    let namespace = crate::svg::parity::sanitize_svg_id(attribute(root, "id").unwrap_or("merman"));
+    let namespace = sanitize_svg_id(attribute(root, "id").unwrap_or("merman"));
     let root_open_end = find_tag_end_with_checkpoints(svg, root.range().start, checkpoint)?
         .ok_or_else(|| projection_error("missing root SVG start tag"))?;
     let mut definitions = String::new();
@@ -358,7 +362,7 @@ mod tests {
     ) {
         let occurrence_id = crate::math::PreparedMathOccurrenceId::indexed(family_id, role, index);
         let native_projection = projection.map(|projection| {
-            let document = crate::xml_dom::Document::parse(projection).unwrap();
+            let document = Document::parse(projection).unwrap();
             let root = document.root_element();
             Arc::new(PreparedMathNativeProjection::new(
                 projection.to_owned(),
@@ -661,7 +665,7 @@ mod tests {
             },
         )
         .unwrap();
-        let document = crate::xml_dom::Document::parse(&output).unwrap();
+        let document = Document::parse(&output).unwrap();
         let ids = document
             .descendants()
             .filter_map(|node| attribute(node, "id"))

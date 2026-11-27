@@ -630,6 +630,11 @@ jobs:
           cargo nextest run --locked -p merman --no-default-features \
             --features diagram-flowchart,diagram-sequence,layout-dagre,native-compact \
             --test native_compact_sequence --test native_compact_flowchart --cargo-quiet
+          for layout in elk shoal; do
+            cargo nextest run --locked -p merman --no-default-features \
+              --features "diagram-flowchart,layout-$layout,native-compact" \
+              --test native_compact_flowchart --cargo-quiet
+          done
 
       - name: Test isolated consumers without diagram families
         run: |

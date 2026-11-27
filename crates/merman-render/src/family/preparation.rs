@@ -1,8 +1,8 @@
 use super::*;
 
 #[cfg(any(
-    feature = "diagram-sequence",
     feature = "diagram-kanban",
+    feature = "diagram-sequence",
     feature = "diagram-usecase"
 ))]
 #[inline(never)]

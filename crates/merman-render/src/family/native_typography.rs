@@ -66,7 +66,7 @@ mod declaration_scan {
             control.checkpoint()?;
         }
         let mut unsupported = None;
-        crate::mermaid_style::visit_style_declaration_boundaries_with_checkpoints(
+        merman_render_core::mermaid_style::visit_style_declaration_boundaries_with_checkpoints(
             raw,
             &mut || control.checkpoint(),
             |boundary| {
@@ -110,7 +110,7 @@ mod declaration_scan {
         control: &OperationControl,
     ) -> OperationControlResult<Option<String>> {
         Ok(
-            crate::mermaid_style::root_dependent_font_size(styles, control)?
+            merman_render_core::mermaid_style::root_dependent_font_size(styles, control)?
                 .map(|_| "font-size (rem requires a document-root font size)".to_owned()),
         )
     }
@@ -232,24 +232,27 @@ mod declaration_scan {
 
         #[test]
         fn rem_ownership_is_unverified_without_changing_compatibility_resolution() {
-            use crate::mermaid_style::{CssFontSizeContext, CssFontSizeOwnership};
+            use merman_render_core::mermaid_style::{CssFontSizeContext, CssFontSizeOwnership};
 
-            let rem = crate::mermaid_style::parse_style_declaration("font-size:2rem").unwrap();
+            let rem = merman_render_core::mermaid_style::parse_style_declaration("font-size:2rem")
+                .unwrap();
             assert!(rem.analysis().depends_on_root_font_size());
             assert_eq!(
                 rem.resolve_font_size_px(CssFontSizeContext::uniform(18.0)),
                 Some(36.0)
             );
             assert_eq!(
-                crate::mermaid_style::css_font_size_override("font-size:2rem")
+                merman_render_core::mermaid_style::css_font_size_override("font-size:2rem")
                     .unwrap()
                     .ownership(),
                 CssFontSizeOwnership::Unverified,
             );
             assert_eq!(
-                crate::mermaid_style::css_font_size_override("font-size:2rem;font-size:24px")
-                    .unwrap()
-                    .ownership(),
+                merman_render_core::mermaid_style::css_font_size_override(
+                    "font-size:2rem;font-size:24px"
+                )
+                .unwrap()
+                .ownership(),
                 CssFontSizeOwnership::SourceOwned,
             );
         }

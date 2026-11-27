@@ -32,7 +32,7 @@ pub(crate) fn flowchart_label_xhtml_for_typography_admission(
         control.clone(),
     );
     let parse_work = std::cell::Cell::new(0);
-    let sink = crate::html::HtmlSanitizeSink::new(
+    let sink = merman_render_core::html::HtmlSanitizeSink::new(
         usize::MAX,
         &work_meter,
         &parse_work,
@@ -43,7 +43,7 @@ pub(crate) fn flowchart_label_xhtml_for_typography_admission(
     {
         Ok(html) => Ok(html),
         Err(merman_markup::sanitize::SanitizeFailure::Output(
-            crate::html::HtmlOutputError::Operation(
+            merman_render_core::html::HtmlOutputError::Operation(
                 crate::resources::OperationWorkError::Cancelled(error),
             ),
         )) => Err(error),

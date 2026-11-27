@@ -1,12 +1,14 @@
-//! NativeCompact projection of an admitted, ungrouped Dagre Flowchart.
+//! NativeCompact projection of an admitted, ungrouped Flowchart.
 
 use merman_markup::theme_color::ThemeColor;
 use merman_model::{
     OperationPhase,
     families::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility},
 };
+#[cfg(feature = "layout-shoal")]
+use merman_render_core::route_paint::RouteCommand;
 use merman_render_core::{
-    Error, Result,
+    Bounds, Error, Result,
     math::contains_delimited_math,
     paint_scene::{
         self, PaintScene, SceneBox, SceneColor, SceneFontFamily, SceneGroup, SceneItem,
@@ -17,6 +19,7 @@ use merman_render_core::{
     resources::OperationWorkMeter,
     root_svg::{self, RootViewportContext},
     svg_output::SvgOutputProfile,
+    text::svg_label::SVG_SOURCE_WORD_LINE_HEIGHT_EM,
     text::{FontStyle, parse_css_font_stack},
     theme_svg::{elevation::HardShadows, marker::arrow_commands},
 };
@@ -34,13 +37,21 @@ use crate::{
     svg_label::FlowchartSvgLabelRenderPlan,
 };
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
+use super::edge_geom::LinearPaintedRoute;
+#[cfg(feature = "layout-dagre")]
+use super::paint::prepare_dagre_linear_edge_route;
 use super::{
     FlowchartSvgModelRequest, FlowchartSvgRoute, FlowchartSvgServices,
     defs::compact_classic_point_end,
-    paint::{prepare_dagre_linear_edge_route, with_flowchart_paint_context},
+    paint::with_flowchart_paint_context,
     types::{FlowchartEdgeDataPointsScratch, FlowchartRenderCtx},
     viewbox::{FlowchartRenderedBoundsRequest, prepare_flowchart_rendered_bounds},
 };
+#[cfg(feature = "layout-elk")]
+use super::{edge_geom::elk_straight_painted_route, paint::prepare_elk_clipped_routes};
+#[cfg(feature = "layout-shoal")]
+use super::{edge_geom::paint_canonical_edge_commands, paint::charged_edge_route_request};
 
 const MAX_TOKEN_BYTES: usize = 8 * 1024;
 
@@ -148,18 +159,40 @@ fn admit_request(
     }
     let model = request.model;
     let config = request.render_config;
-    if !matches!(
-        request.layout.route_contract,
-        FlowchartSvgRoute::DagreParity
-    ) || request.prepared_theme.compatibility.look.as_str() != "classic"
-        || config.default_edge_interpolate != "linear"
+    let route = request.layout.route_contract;
+    let (curve, reason) = match route {
+        #[cfg(feature = "layout-dagre")]
+        FlowchartSvgRoute::DagreParity => (
+            "linear",
+            "flowchart-requires-classic-dagre-linear-svg-labels",
+        ),
+        #[cfg(feature = "layout-elk")]
+        FlowchartSvgRoute::ElkParity => (
+            "rounded",
+            "flowchart-requires-classic-elk-rounded-svg-labels",
+        ),
+        #[cfg(feature = "layout-shoal")]
+        FlowchartSvgRoute::CanonicalAxis(_) => (
+            "linear",
+            "flowchart-requires-classic-shoal-linear-svg-labels",
+        ),
+        _ => {
+            return Err(unsupported(
+                meter,
+                "flowchart-requires-classic-dagre-linear-svg-labels",
+            ));
+        }
+    };
+    if request.prepared_theme.compatibility.look.as_str() != "classic"
+        || config.default_edge_interpolate != curve
         || config.node_html_labels
         || config.edge_html_labels
     {
-        return Err(unsupported(
-            meter,
-            "flowchart-requires-classic-dagre-linear-svg-labels",
-        ));
+        return Err(unsupported(meter, reason));
+    }
+    #[cfg(feature = "layout-elk")]
+    if route.is_elk_parity() && request.effective_config.get_bool("elk.lineHops") != Some(false) {
+        return Err(unsupported(meter, "flowchart-elk-line-hops"));
     }
     if request.swimlane_layout.is_some()
         || !model.subgraphs.is_empty()
@@ -234,32 +267,42 @@ fn admit_edge(
     let layout = ctx
         .layout_edges_by_key
         .get(&render_edge.key)
-        .and_then(|edge| edge.materialized())
+        .copied()
         .ok_or_else(|| invalid("missing Flowchart layout edge"))?;
+    let materialized = layout.materialized();
+    let canonical_axis = ctx.layout.route_contract.is_canonical_axis();
+    if materialized.is_none() && !canonical_axis {
+        return Err(invalid("missing Flowchart layout edge"));
+    }
     if style.edge_marker_color(false).is_some()
         || ctx
             .edge_style_plan
             .animation_for(render_edge.key)?
             .is_active()
-        || layout.start_label_left.is_some()
-        || layout.start_label_right.is_some()
-        || layout.end_label_left.is_some()
-        || layout.end_label_right.is_some()
-        || layout.start_marker.is_some()
-        || layout.end_marker.is_some()
-        || layout.stroke_dasharray.is_some()
+        || (canonical_axis && layout.label().is_some())
+        || materialized.is_some_and(|layout| {
+            layout.start_label_left.is_some()
+                || layout.start_label_right.is_some()
+                || layout.end_label_left.is_some()
+                || layout.end_label_right.is_some()
+                || layout.start_marker.is_some()
+                || layout.end_marker.is_some()
+                || layout.stroke_dasharray.is_some()
+        })
     {
         return Err(unsupported(meter, "flowchart-edge-style"));
     }
     Ok(end.is_some())
 }
 
-fn plain_node_paint<'a>(
+fn append_plain_node_items<'a>(
     ctx: &'a FlowchartRenderCtx<'_>,
     id: &str,
     font: SceneTextStyle<'a>,
     width: f64,
-) -> Result<(SceneRect, SceneText<'a>)> {
+    items: &mut Vec<SceneItem<'a>>,
+    element_count: &mut usize,
+) -> Result<SceneRect> {
     let meter = ctx.work_meter;
     meter.checkpoint(OperationPhase::Emit)?;
     let node = ctx
@@ -328,12 +371,16 @@ fn plain_node_paint<'a>(
     );
     let wrapped = plan.wrapped_lines();
     meter.checkpoint(OperationPhase::Emit)?;
-    let [line] = wrapped.as_ref() else {
-        return Err(unsupported(meter, "flowchart-single-row-label"));
-    };
-    // The parity writer emits one space between the measured words. Borrow the
-    // authored label if its sole row has exactly that representation.
-    if !line.iter().map(String::as_str).eq(label.split(' ')) {
+    // A literal label can lend its row text when the prepared wrapping only moved
+    // whole words between rows and the parity writer separates them with one space.
+    if wrapped.is_empty()
+        || wrapped.iter().any(Vec::is_empty)
+        || !wrapped
+            .iter()
+            .flatten()
+            .map(String::as_str)
+            .eq(label.split(' '))
+    {
         return Err(unsupported(meter, "flowchart-literal-label"));
     }
     let coordinates = [
@@ -372,27 +419,46 @@ fn plain_node_paint<'a>(
         Some(color) => resolved_color(color, meter)?,
         None => font.fill,
     };
-    Ok((
-        SceneRect {
-            bounds: SceneBox {
-                x: x + rect.x0,
-                y: y + rect.y0,
-                width: rect.width(),
-                height: rect.height(),
-            },
-            radius,
-            paint: ScenePaint {
-                fill: Some(fill),
-                stroke: Some(SceneStroke {
-                    color: border,
-                    width,
-                    dash: None,
-                }),
-            },
+    let extra_rows = wrapped.len() - 1;
+    if extra_rows != 0 {
+        *element_count = element_count
+            .checked_add(extra_rows)
+            .ok_or_else(|| meter.arithmetic_overflow())?;
+        meter.preflight_svg_element_count(*element_count, OperationPhase::Emit)?;
+        meter.charge_emit_work(extra_rows)?;
+    }
+    reserve(items, 1 + wrapped.len())?;
+    let surface = SceneRect {
+        bounds: SceneBox {
+            x: x + rect.x0,
+            y: y + rect.y0,
+            width: rect.width(),
+            height: rect.height(),
         },
-        SceneText {
-            text: label,
-            position: [x, y - height / 2.0],
+        radius,
+        paint: ScenePaint {
+            fill: Some(fill),
+            stroke: Some(SceneStroke {
+                color: border,
+                width,
+                dash: None,
+            }),
+        },
+    };
+    items.push(SceneItem::Rect(surface));
+    let label_top = y - height / 2.0;
+    let line_step = font.size * SVG_SOURCE_WORD_LINE_HEIGHT_EM;
+    let mut start = 0;
+    for (index, words) in wrapped.iter().enumerate() {
+        let end = start + words.iter().map(|word| word.len() + 1).sum::<usize>() - 1;
+        let row_y = if index == 0 {
+            label_top
+        } else {
+            label_top + index as f64 * line_step
+        };
+        items.push(SceneItem::Text(SceneText {
+            text: &label[start..end],
+            position: [x, row_y],
             dy: font.size,
             anchor: SceneTextAnchor::Middle,
             baseline: SceneTextBaseline::Alphabetic,
@@ -400,14 +466,59 @@ fn plain_node_paint<'a>(
                 fill: text_fill,
                 ..font
             },
-        },
-    ))
+        }));
+        start = end + 1;
+    }
+    Ok(surface)
 }
 
 fn reserve(items: &mut Vec<impl Sized>, additional: usize) -> Result<()> {
     items
         .try_reserve(additional)
         .map_err(|_| invalid("Flowchart compact scene capacity"))
+}
+
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
+fn append_linear_route(
+    route: LinearPaintedRoute,
+    commands: &mut Vec<ScenePathCommand>,
+    meter: &OperationWorkMeter,
+) -> Result<Bounds> {
+    meter.charge_emit_work(route.points.len())?;
+    reserve(commands, route.points.len())?;
+    for (index, point) in route.points.into_iter().enumerate() {
+        let point = [point.x, point.y];
+        commands.push(if index == 0 {
+            ScenePathCommand::MoveTo(point)
+        } else {
+            ScenePathCommand::LineTo(point)
+        });
+    }
+    Ok(Bounds {
+        min_x: route.bounds.min_x,
+        min_y: route.bounds.min_y,
+        max_x: route.bounds.max_x,
+        max_y: route.bounds.max_y,
+    })
+}
+
+#[cfg(feature = "layout-shoal")]
+fn append_shoal_command(
+    command: RouteCommand,
+    commands: &mut Vec<ScenePathCommand>,
+    meter: &OperationWorkMeter,
+) -> Result<()> {
+    let command = match command {
+        RouteCommand::MoveTo(point) => ScenePathCommand::MoveTo([point.x, point.y]),
+        RouteCommand::LineTo(point) => ScenePathCommand::LineTo([point.x, point.y]),
+        RouteCommand::CubicTo { .. } | RouteCommand::QuarterArcTo { .. } => {
+            return Err(unsupported(meter, "flowchart-shoal-linear-painted-route"));
+        }
+    };
+    meter.charge_emit_work(1)?;
+    reserve(commands, 1)?;
+    commands.push(command);
+    Ok(())
 }
 
 fn render_scene(
@@ -425,6 +536,7 @@ fn render_scene(
         return Err(unsupported(meter, "flowchart-nested-or-hidden-geometry"));
     }
     let mut marked = false;
+    let theme_sketch = super::paint::uses_theme_sketch(ctx);
     for (edge, ordered) in edges.iter().zip(root.edges()) {
         if edge.key != ordered.key {
             return Err(invalid(
@@ -432,6 +544,9 @@ fn render_scene(
             ));
         }
         marked |= admit_edge(ctx, edge.as_ref())?;
+        if theme_sketch && !super::paint::has_authored_curve(ctx, edge.key) {
+            return Err(unsupported(meter, "flowchart-shoal-sketch-painted-route"));
+        }
     }
     let foreground_count = nodes
         .len()
@@ -445,7 +560,7 @@ fn render_scene(
     let item_count = foreground_count
         .checked_add(shadow_count)
         .ok_or_else(|| meter.arithmetic_overflow())?;
-    let element_count = item_count
+    let mut element_count = item_count
         .checked_add(
             2 + usize::from(!edges.is_empty())
                 + usize::from(canvas.is_some())
@@ -487,7 +602,14 @@ fn render_scene(
     reserve(&mut depth_items, shadow_count)?;
     let mut depth_bounds: Option<kurbo::Rect> = None;
     for id in nodes {
-        let (rect, label) = plain_node_paint(ctx, id, text_style, node_width)?;
+        let rect = append_plain_node_items(
+            ctx,
+            id,
+            text_style,
+            node_width,
+            &mut items,
+            &mut element_count,
+        )?;
         if shadow_count != 0 {
             depth_items.extend(
                 shadows
@@ -498,7 +620,6 @@ fn render_scene(
             depth_bounds =
                 Some(depth_bounds.map_or(shadow_bounds, |bounds| bounds.union(shadow_bounds)));
         }
-        items.extend([SceneItem::Rect(rect), SceneItem::Text(label)]);
     }
     let edge_layer_start = items.len();
     let bounds = prepare_flowchart_rendered_bounds(
@@ -523,25 +644,58 @@ fn render_scene(
     meter.charge(edges.len())?;
     reserve(&mut ranges, edges.len())?;
     let mut scratch = FlowchartEdgeDataPointsScratch::default();
+    #[cfg(feature = "layout-elk")]
+    let mut elk_routes = if ctx.uses_elk_adapter_dom {
+        Some(prepare_elk_clipped_routes(
+            ctx,
+            edges,
+            hierarchy,
+            &mut scratch,
+        )?)
+    } else {
+        None
+    };
     for edge in edges {
         let edge = edge.as_ref();
-        let route = prepare_dagre_linear_edge_route(ctx, edge, hierarchy, &mut scratch)?
-            .ok_or_else(|| unsupported(meter, "flowchart-linear-painted-route"))?;
-        min_x = min_x.min(route.bounds.min_x);
-        min_y = min_y.min(route.bounds.min_y);
-        max_x = max_x.max(route.bounds.max_x);
-        max_y = max_y.max(route.bounds.max_y);
-        meter.charge_emit_work(route.points.len())?;
-        reserve(&mut commands, route.points.len())?;
         let start = commands.len();
-        for (index, point) in route.points.into_iter().enumerate() {
-            let point = [point.x, point.y];
-            commands.push(if index == 0 {
-                ScenePathCommand::MoveTo(point)
-            } else {
-                ScenePathCommand::LineTo(point)
-            });
-        }
+        let route_bounds: Bounds = match ctx.layout.route_contract {
+            #[cfg(feature = "layout-dagre")]
+            FlowchartSvgRoute::DagreParity => {
+                let route = prepare_dagre_linear_edge_route(ctx, edge, hierarchy, &mut scratch)?
+                    .ok_or_else(|| unsupported(meter, "flowchart-linear-painted-route"))?;
+                append_linear_route(route, &mut commands, meter)?
+            }
+            #[cfg(feature = "layout-elk")]
+            FlowchartSvgRoute::ElkParity => {
+                let route = elk_routes
+                    .as_mut()
+                    .and_then(Iterator::next)
+                    .filter(|(request, _, _)| request.key == edge.key)
+                    .and_then(|(request, _, route)| {
+                        elk_straight_painted_route(request, route, &mut scratch)
+                    })
+                    .ok_or_else(|| unsupported(meter, "flowchart-elk-straight-painted-route"))?;
+                append_linear_route(route, &mut commands, meter)?
+            }
+            #[cfg(feature = "layout-shoal")]
+            FlowchartSvgRoute::CanonicalAxis(axis) => {
+                let (request, _) = charged_edge_route_request(ctx, edge, hierarchy)?;
+                let bounds =
+                    paint_canonical_edge_commands(request, axis, &mut scratch, |command| {
+                        append_shoal_command(command, &mut commands, meter)
+                    })?
+                    .ok_or_else(|| invalid("missing Flowchart canonical route"))?;
+                if commands.len() - start < 2 {
+                    return Err(unsupported(meter, "flowchart-shoal-linear-painted-route"));
+                }
+                bounds
+            }
+            _ => return Err(invalid("unadmitted Flowchart compact route contract")),
+        };
+        min_x = min_x.min(route_bounds.min_x);
+        min_y = min_y.min(route_bounds.min_y);
+        max_x = max_x.max(route_bounds.max_x);
+        max_y = max_y.max(route_bounds.max_y);
         ranges.push((
             start..commands.len(),
             flowchart_edge_marker_end_base(edge.edge).is_some(),
@@ -558,6 +712,7 @@ fn render_scene(
         )?
         .view_box()
         .ok_or_else(|| invalid("Flowchart compact viewport has no viewBox"))?;
+    reserve(&mut items, ranges.len())?;
     for (span, marker) in ranges {
         items.push(SceneItem::Path(ScenePath {
             commands: &commands[span],
@@ -645,4 +800,81 @@ pub fn render_native_compact(
             &services.root_viewport,
         )
     })
+}
+
+#[cfg(all(test, feature = "layout-shoal"))]
+mod tests {
+    use super::*;
+    use merman_model::OperationLedgerError;
+    use merman_render_core::{
+        resources::{RenderResourcePolicy, ResourceLimitId},
+        route_paint::{CurveTerminals, RouteCommandError, RoutePaintRequest, RouteStyle},
+        route_types::{Axis, RoutePoint, Side},
+    };
+
+    #[test]
+    fn shoal_compact_command_sink_keeps_the_admitted_work_prefix_and_phase() {
+        let points = [
+            RoutePoint::new(0.0, 0.0, Axis::Horizontal),
+            RoutePoint::new(64.0, 0.0, Axis::Horizontal),
+        ];
+        let route = || RoutePaintRequest {
+            points: &points,
+            sides: (Side::Right, Side::Left),
+            style: RouteStyle::Linear,
+            markers: Default::default(),
+            curve_terminals: CurveTerminals::Smooth,
+            stitches: &[],
+            clearance: None,
+        };
+        let render = |meter: &OperationWorkMeter, cancel: bool| {
+            let mut commands = Vec::new();
+            let result = route().paint_commands(&mut Default::default(), |command| {
+                append_shoal_command(command, &mut commands, meter)?;
+                if cancel {
+                    meter.control().cancel();
+                }
+                Ok::<_, Error>(())
+            });
+            (result, commands.len())
+        };
+        let meter = |maximum| {
+            OperationWorkMeter::new(
+                RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(ResourceLimitId::MaxLayoutWorkUnits, maximum)
+                    .unwrap(),
+            )
+        };
+
+        let exact = meter(2);
+        let (result, commands) = render(&exact, false);
+        assert!(result.is_ok());
+        assert_eq!((commands, exact.used()), (2, 2));
+
+        let limited = meter(1);
+        let (result, commands) = render(&limited, false);
+        assert!(matches!(
+            result,
+            Err(RouteCommandError::Sink(Error::ResourceLimitExceeded(limit)))
+                if limit.limit == "max_layout_work_units" && limit.actual == 2 && limit.max == 1
+        ));
+        assert_eq!((commands, limited.used()), (1, 1));
+        assert!(matches!(
+            limited.control().terminal_checkpoint_at(OperationPhase::Layout),
+            Err(OperationLedgerError::ResourceLimitExceeded(error))
+                if error.phase == OperationPhase::Emit
+        ));
+
+        let cancelled = meter(2);
+        let (result, commands) = render(&cancelled, true);
+        assert!(matches!(
+            result,
+            Err(RouteCommandError::Sink(Error::Cancelled(error))) if error.phase == OperationPhase::Emit
+        ));
+        assert_eq!((commands, cancelled.used()), (1, 1));
+        assert!(matches!(
+            cancelled.control().terminal_checkpoint_at(OperationPhase::Layout),
+            Err(OperationLedgerError::Cancelled(error)) if error.phase == OperationPhase::Emit
+        ));
+    }
 }

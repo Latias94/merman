@@ -1,7 +1,7 @@
 //! SVG coordinate mappings used to validate readable label geometry.
 
 use super::context::attribute;
-use crate::svg::pipeline::checkpoint_loop;
+use crate::svg_scan::checkpoint_loop;
 use svgtypes::{
     Align, AspectRatio, Length, LengthUnit, TransformListParser, TransformListToken, ViewBox,
 };

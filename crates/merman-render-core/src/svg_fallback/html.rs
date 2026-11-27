@@ -1,7 +1,8 @@
 use super::css::{extract_style_property_with_checkpoints, parse_css_px_value};
-use crate::svg::pipeline::{
+use crate::svg_scan::{
     SvgTagScanner, extract_exact_double_quoted_attr_with_checkpoints, start_tag_name,
 };
+use crate::text::html_label_box::HtmlLabelBox;
 
 pub(super) fn extract_inline_html_style_property<E>(
     html: &str,
@@ -39,7 +40,7 @@ pub(super) fn foreign_object_html_wrapping<E>(
 pub(super) fn standalone_node_label_box<E>(
     html: &str,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
-) -> Result<Option<crate::html::label_box::HtmlLabelBox>, E> {
+) -> Result<Option<HtmlLabelBox>, E> {
     let Some(content) = html.strip_suffix("</span></div>") else {
         return Ok(None);
     };
@@ -72,16 +73,16 @@ pub(super) fn standalone_node_label_box<E>(
     }) {
         return Ok(None);
     }
-    crate::html::label_box::HtmlLabelBox::from_xhtml(&content[scanner.cursor()..], checkpoint)
+    HtmlLabelBox::from_xhtml(&content[scanner.cursor()..], checkpoint)
 }
 
 #[cfg(test)]
 mod tests {
     use super::foreign_object_html_wrapping;
-    use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextStyle};
-    use merman_render_core::text::html_wrap::{
+    use crate::text::html_wrap::{
         HtmlWhiteSpace, NormalizedHtmlText, PlannedHtmlLine, plan_html_lines_with_measurer,
     };
+    use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextStyle};
     use std::convert::Infallible;
 
     fn wrap_html_text<E>(

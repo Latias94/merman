@@ -26,10 +26,33 @@ mod terminal_jogs;
 mod trace;
 #[cfg(all(
     feature = "diagram-flowchart",
+    feature = "layout-shoal",
+    feature = "native-compact"
+))]
+pub(super) use canonical::paint_commands as paint_canonical_edge_commands;
+#[cfg(all(
+    feature = "diagram-flowchart",
+    any(
+        all(
+            feature = "layout-dagre",
+            any(feature = "native-compact", feature = "test-support")
+        ),
+        all(feature = "layout-elk", feature = "native-compact")
+    )
+))]
+pub(super) use compute::LinearPaintedRoute;
+#[cfg(all(
+    feature = "diagram-flowchart",
     feature = "layout-dagre",
     any(feature = "native-compact", feature = "test-support")
 ))]
-pub(super) use compute::{DagreLinearPaintedRoute, dagre_linear_painted_route};
+pub(super) use compute::dagre_linear_painted_route;
+#[cfg(all(
+    feature = "diagram-flowchart",
+    feature = "layout-elk",
+    feature = "native-compact"
+))]
+pub(super) use compute::elk_straight_painted_route;
 pub(super) use compute::{finish_edge_route, prepare_edge_route};
 pub(super) use terminal_jogs::{separate_edge_labels, straighten_edge_terminals};
 
@@ -66,24 +89,7 @@ pub(in crate::svg) fn flowchart_compute_edge_path_geom(
 ) -> Result<Option<FlowchartEdgePathGeom>> {
     #[cfg(feature = "canonical-edge-paint")]
     if let FlowchartSvgRoute::CanonicalAxis(axis) = request.ctx.layout.route_contract {
-        let occurrence = request.key.semantic_index();
-        let first = axis
-            .border_stitches
-            .partition_point(|stitch| stitch.edge < occurrence);
-        let tail = &axis.border_stitches[first..];
-        let count = tail.partition_point(|stitch| stitch.edge == occurrence);
-        let Some(route) = axis.routes.get(occurrence).and_then(Option::as_ref) else {
-            return Ok(None);
-        };
-        return canonical::paint(
-            request,
-            &axis.nodes,
-            route,
-            &tail[..count],
-            &axis.clearance,
-            scratch,
-        )
-        .map(Some);
+        return canonical::paint(request, axis, scratch);
     }
     Ok(prepare_edge_route(request, scratch)
         .and_then(|route| finish_edge_route(request, route, scratch, measure_neo_length)))

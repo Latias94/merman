@@ -1,14 +1,12 @@
 #[cfg(test)]
 use crate::resources::{RenderResourcePolicy, ResourceLimitId};
-use crate::{Error, Result};
-pub(crate) use merman_render_core::svg_xml::SvgStructureMetrics;
-use merman_render_core::svg_xml::{
+use crate::svg_xml::SvgStructureMetrics;
+use crate::svg_xml::{
     SVG_NAMESPACE, SvgXmlVisitor, is_svg_element_namespace, resolve_xml_reference_value,
 };
 #[cfg(test)]
-use merman_render_core::svg_xml::{
-    XML_VALIDATION_PASS, validate_xml_characters, xml_validation_error,
-};
+use crate::svg_xml::{XML_VALIDATION_PASS, validate_xml_characters, xml_validation_error};
+use crate::{Error, Result};
 use quick_xml::XmlVersion;
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::name::{NamespaceResolver, ResolveResult};
@@ -18,86 +16,19 @@ use std::collections::HashMap;
 use std::ops::Range;
 use svgtypes::{FuncIRI, IRI, Length, SimplePathSegment, SimplifyingPathParser};
 
+use super::SvgValidation;
 use super::resource_closure::{SvgResourceClosure, SvgResourceClosureBuilder};
 use super::text_tracking::{SvgFontSeal, SvgTextContentTracker};
-use super::{SvgPostprocessExecution, SvgReferencePlan, checkpoint_loop};
-use merman_render_core::svg_safety::{
+use crate::svg_safety::{
     CssValidationError, is_data_url, matches_active_svg_element,
     parsed_attribute_violates_resvg_contract, validate_resvg_css_declaration_list_with_checkpoints,
     validate_resvg_css_stylesheet_with_checkpoints,
 };
+use crate::svg_scan::checkpoint_loop;
 
 const XLINK_NAMESPACE: &str = "http://www.w3.org/1999/xlink";
 const XML_NAMESPACE: &str = "http://www.w3.org/XML/1998/namespace";
 const VALIDATION_PASS: &str = "validate-resvg-compatible-svg";
-
-#[cfg(test)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(super) struct TerminalValidationWork {
-    pub calls: usize,
-    pub svg_bytes: usize,
-    pub xml_walks: usize,
-    pub xml_bytes: usize,
-}
-
-#[cfg(test)]
-thread_local! {
-    static TERMINAL_VALIDATION_WORK: std::cell::Cell<Option<TerminalValidationWork>> = const {
-        std::cell::Cell::new(None)
-    };
-}
-
-#[cfg(test)]
-pub(super) fn measure_terminal_validation_work<T>(
-    operation: impl FnOnce() -> T,
-) -> (T, TerminalValidationWork) {
-    struct Restore(Option<TerminalValidationWork>);
-    impl Drop for Restore {
-        fn drop(&mut self) {
-            TERMINAL_VALIDATION_WORK.set(self.0);
-        }
-    }
-
-    let _restore = Restore(TERMINAL_VALIDATION_WORK.replace(Some(Default::default())));
-    let output = operation();
-    let work = TERMINAL_VALIDATION_WORK
-        .get()
-        .expect("terminal validation scope is active");
-    (output, work)
-}
-
-#[cfg(test)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(super) struct XmlValidationWork {
-    pub calls: usize,
-    pub svg_bytes: usize,
-}
-
-#[cfg(test)]
-thread_local! {
-    static XML_VALIDATION_WORK: std::cell::Cell<Option<XmlValidationWork>> = const {
-        std::cell::Cell::new(None)
-    };
-}
-
-#[cfg(test)]
-pub(super) fn measure_xml_validation_work<T>(
-    operation: impl FnOnce() -> T,
-) -> (T, XmlValidationWork) {
-    struct Restore(Option<XmlValidationWork>);
-    impl Drop for Restore {
-        fn drop(&mut self) {
-            XML_VALIDATION_WORK.set(self.0);
-        }
-    }
-
-    let _restore = Restore(XML_VALIDATION_WORK.replace(Some(Default::default())));
-    let output = operation();
-    let work = XML_VALIDATION_WORK
-        .get()
-        .expect("XML validation scope is active");
-    (output, work)
-}
 
 #[cfg(test)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -148,22 +79,6 @@ fn validate_well_formed_svg(svg: &str, limits: RenderResourcePolicy) -> Result<(
     validate_well_formed_svg_with_checkpoint(svg, limits, &mut checkpoint)
 }
 
-pub(crate) fn validate_well_formed_svg_with_execution(
-    svg: &str,
-    execution: SvgPostprocessExecution<'_>,
-) -> Result<SvgStructureMetrics> {
-    validate_well_formed_svg_with_controls(
-        svg,
-        &mut || execution.checkpoint(),
-        &mut |elements, _tree_depth| {
-            execution
-                .resource_policy()
-                .check_svg_element_count(elements)
-                .map_err(|error| execution.terminate_resource_error(error))
-        },
-    )
-}
-
 #[cfg(test)]
 pub(crate) fn validate_well_formed_svg_with_checkpoint(
     svg: &str,
@@ -176,18 +91,14 @@ pub(crate) fn validate_well_formed_svg_with_checkpoint(
     .map(|_| ())
 }
 
-pub(crate) fn validate_well_formed_svg_with_controls(
+pub(super) fn validate_well_formed_svg_with_controls(
     svg: &str,
     checkpoint: &mut impl FnMut() -> Result<()>,
     check_structure: &mut impl FnMut(usize, usize) -> Result<()>,
 ) -> Result<SvgStructureMetrics> {
-    #[cfg(test)]
-    record_xml_walk(svg);
-    merman_render_core::svg_xml::validate_well_formed_svg_with_controls(
-        svg,
-        checkpoint,
-        check_structure,
-    )
+    #[cfg(any(test, feature = "test-support"))]
+    super::test_support::record_xml_walk(svg);
+    crate::svg_xml::validate_well_formed_svg_with_controls(svg, checkpoint, check_structure)
 }
 
 fn visit_svg_references(
@@ -196,9 +107,9 @@ fn visit_svg_references(
     check_structure: &mut dyn FnMut(usize, usize) -> Result<()>,
     observe_element: &mut dyn FnMut(ValidatedElement, usize) -> Result<()>,
 ) -> Result<SvgStructureMetrics> {
-    #[cfg(test)]
-    record_xml_walk(svg);
-    merman_render_core::svg_xml::visit_well_formed_svg_with_controls(
+    #[cfg(any(test, feature = "test-support"))]
+    super::test_support::record_xml_walk(svg);
+    crate::svg_xml::visit_well_formed_svg_with_controls(
         svg,
         checkpoint,
         check_structure,
@@ -249,24 +160,6 @@ impl SvgXmlVisitor for ReferenceVisitor<'_> {
     }
 }
 
-#[cfg(test)]
-fn record_xml_walk(svg: &str) {
-    TERMINAL_VALIDATION_WORK.with(|counter| {
-        counter.set(counter.get().map(|mut work| {
-            work.xml_walks += 1;
-            work.xml_bytes += svg.len();
-            work
-        }));
-    });
-    XML_VALIDATION_WORK.with(|counter| {
-        counter.set(counter.get().map(|mut work| {
-            work.calls += 1;
-            work.svg_bytes += svg.len();
-            work
-        }));
-    });
-}
-
 /// Validates the terminal XML contract consumed by usvg/resvg.
 ///
 /// This check deliberately does not claim that an SVG is safe to insert into a browser DOM. DOM
@@ -307,33 +200,47 @@ fn validate_resvg_compatible_svg_inner(
     )
 }
 
-pub(crate) fn validate_resvg_compatible_svg_with_execution(
-    svg: &str,
-    execution: SvgPostprocessExecution<'_>,
-) -> Result<TerminalSvgValidation> {
-    validate_resvg_svg_for_consumer(svg, execution, true)
-}
+impl SvgValidation<'_> {
+    /// Validates XML structure and the operation's element allowance.
+    pub fn validate_xml(self, svg: &str) -> Result<SvgStructureMetrics> {
+        validate_well_formed_svg_with_controls(
+            svg,
+            &mut || self.checkpoint(),
+            &mut |elements, _tree_depth| {
+                self.resource_policy()
+                    .check_svg_element_count(elements)
+                    .map_err(|error| self.terminate_resource_error(error))
+            },
+        )
+    }
 
-pub(super) fn observe_resvg_compatibility_with_execution(
-    svg: &str,
-    execution: SvgPostprocessExecution<'_>,
-) -> Result<TerminalSvgValidation> {
-    validate_resvg_svg_for_consumer(svg, execution, false)
+    /// Validates and accounts for an SVG before native consumption.
+    pub fn validate_native(self, svg: &str) -> Result<TerminalSvgValidation> {
+        validate_resvg_svg_for_consumer(svg, self, true)
+    }
+
+    /// Observes native compatibility without terminating on backend-only constraints.
+    pub fn observe_native_compatibility(self, svg: &str) -> Result<TerminalSvgValidation> {
+        validate_resvg_svg_for_consumer(svg, self, false)
+    }
+
+    /// Checks the explicit budgets of an opaque SVG without granting native compatibility.
+    pub fn check_resource_budget(self, svg: &str) -> Result<()> {
+        check_svg_resource_budget_with_controls(
+            svg,
+            &mut || self.checkpoint(),
+            &mut |elements, _| self.preflight_svg_element_count(elements),
+        )
+    }
 }
 
 fn validate_resvg_svg_for_consumer(
     svg: &str,
-    execution: SvgPostprocessExecution<'_>,
+    execution: SvgValidation<'_>,
     native_required: bool,
 ) -> Result<TerminalSvgValidation> {
-    #[cfg(test)]
-    TERMINAL_VALIDATION_WORK.with(|counter| {
-        counter.set(counter.get().map(|mut work| {
-            work.calls += 1;
-            work.svg_bytes += svg.len();
-            work
-        }));
-    });
+    #[cfg(any(test, feature = "test-support"))]
+    super::test_support::record_terminal_validation(svg);
     let mut checkpoint = || execution.checkpoint();
     let mut check_structure = |elements, tree_depth| {
         if native_required {
@@ -368,18 +275,6 @@ fn validate_resvg_svg_for_consumer(
     )
 }
 
-/// Checks the explicit budgets of an opaque SVG without granting native compatibility.
-pub(super) fn check_svg_resource_budget_with_execution(
-    svg: &str,
-    execution: SvgPostprocessExecution<'_>,
-) -> Result<()> {
-    check_svg_resource_budget_with_controls(
-        svg,
-        &mut || execution.checkpoint(),
-        &mut |elements, _| execution.preflight_svg_element_count(elements),
-    )
-}
-
 fn check_svg_resource_budget_with_controls(
     svg: &str,
     checkpoint: &mut impl FnMut() -> Result<()>,
@@ -409,33 +304,58 @@ fn check_svg_resource_budget_with_controls(
     check_structure(summary.structure.elements, summary.structure.max_tree_depth)
 }
 
+/// Reuses the ordinary XML reference collector for occurrence validation. This does not
+/// certify native compatibility or replace the finalizer's resource-policy checks.
+#[cfg(feature = "prepared-math-svg")]
+pub(crate) fn plan_svg_occurrences_for_receipt(svg: &str) -> Result<SvgReferencePlan> {
+    let mut facts = SvgReferenceFacts::default();
+    let mut stack = Vec::new();
+    let mut checkpoint = || Ok(());
+    let structure = visit_svg_references(
+        svg,
+        &mut checkpoint,
+        &mut |_, _| Ok(()),
+        &mut |element, depth| {
+            stack.truncate(depth);
+            let index = facts.append(stack.last().copied(), element);
+            stack.push(index);
+            Ok(())
+        },
+    )?;
+    match analyze_svg_reference_facts_with_checkpoints::<true, _>(facts, structure, &mut checkpoint)
+    {
+        Ok(analysis) => Ok(analysis.into_detailed_plan()),
+        Err(ReferencePlanningError::Invalid(error)) => Err(validation_error(error)),
+        Err(ReferencePlanningError::Checkpoint(error)) => Err(error),
+    }
+}
+
+/// Reference-expansion work retained by a sealed resvg-compatible SVG.
+///
+/// The occurrence slice is ordered by source-document element encounter order. Exporters use it
+/// to charge each inline resource once for every `<use>`-expanded instance before asking usvg to
+/// decode that resource.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SvgReferencePlan {
+    expanded_elements: usize,
+    max_tree_depth: usize,
+    raw_element_occurrences: Box<[usize]>,
+}
+
 impl SvgReferencePlan {
-    /// Reuses the ordinary XML reference collector for occurrence validation. This does not
-    /// certify native compatibility or replace the finalizer's resource-policy checks.
-    pub(crate) fn for_occurrence_receipt(svg: &str) -> Result<Self> {
-        let mut facts = SvgReferenceFacts::default();
-        let mut stack = Vec::new();
-        let mut checkpoint = || Ok(());
-        let structure = visit_svg_references(
-            svg,
-            &mut checkpoint,
-            &mut |_, _| Ok(()),
-            &mut |element, depth| {
-                stack.truncate(depth);
-                let index = facts.append(stack.last().copied(), element);
-                stack.push(index);
-                Ok(())
-            },
-        )?;
-        match analyze_svg_reference_facts_with_checkpoints::<true, _>(
-            facts,
-            structure,
-            &mut checkpoint,
-        ) {
-            Ok(analysis) => Ok(analysis.into_detailed_plan()),
-            Err(ReferencePlanningError::Invalid(error)) => Err(validation_error(error)),
-            Err(ReferencePlanningError::Checkpoint(error)) => Err(error),
-        }
+    /// Returns the element count after same-document `<use>` expansion.
+    pub const fn expanded_elements(&self) -> usize {
+        self.expanded_elements
+    }
+
+    /// Returns the maximum resolved XML-tree depth after `<use>` expansion.
+    pub const fn max_tree_depth(&self) -> usize {
+        self.max_tree_depth
+    }
+
+    /// Returns expanded instance counts for source elements in document encounter order.
+    pub fn raw_element_occurrences(&self) -> &[usize] {
+        &self.raw_element_occurrences
     }
 }
 
@@ -447,14 +367,8 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
     check_structure: &mut dyn FnMut(usize, usize) -> Result<()>,
     check_coordinate: &mut dyn FnMut(f64) -> Result<()>,
 ) -> Result<TerminalSvgValidation> {
-    #[cfg(test)]
-    TERMINAL_VALIDATION_WORK.with(|counter| {
-        counter.set(counter.get().map(|mut work| {
-            work.xml_walks += 1;
-            work.xml_bytes += svg.len();
-            work
-        }));
-    });
+    #[cfg(any(test, feature = "test-support"))]
+    super::test_support::record_terminal_xml_walk(svg);
     let mut reader = NsReader::from_str(svg);
     let mut depth = 0usize;
     let mut root_seen = false;
@@ -638,7 +552,7 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
     Ok(TerminalSvgValidation {
         reference_plan,
         resource_closure,
-        inline_raster_sources: inline_raster_sources.into_boxed_slice(),
+        inline_raster_sources: InlineRasterSources(inline_raster_sources.into_boxed_slice()),
         text_elements,
         font_seal,
         fallback_css_residual,
@@ -651,7 +565,7 @@ struct OpenStyle {
 
 /// A normalized href usually borrows the SVG input. Keep only its range in the sealed artifact.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) enum InlineRasterHref {
+enum InlineRasterHref {
     Source(Range<usize>),
     Normalized(Box<str>),
 }
@@ -667,7 +581,7 @@ impl InlineRasterHref {
         Self::Normalized(value.into())
     }
 
-    pub(super) fn as_str<'a>(&'a self, source: &'a str) -> &'a str {
+    fn as_str<'a>(&'a self, source: &'a str) -> &'a str {
         match self {
             Self::Source(range) => &source[range.clone()],
             Self::Normalized(value) => value,
@@ -675,16 +589,31 @@ impl InlineRasterHref {
     }
 }
 
-#[derive(Debug)]
-pub(crate) struct TerminalSvgValidation {
-    pub(super) reference_plan: SvgReferencePlan,
-    pub(super) resource_closure: SvgResourceClosure,
-    pub(super) inline_raster_sources: Box<[(usize, InlineRasterHref)]>,
-    pub(super) text_elements: usize,
-    pub(super) font_seal: SvgFontSeal,
-    pub(super) fallback_css_residual: bool,
+/// Inline raster references collected from the validated document.
+#[derive(Debug, Clone, Default)]
+pub struct InlineRasterSources(Box<[(usize, InlineRasterHref)]>);
+
+impl InlineRasterSources {
+    /// Iterates resource occurrences in the same SVG bytes that were validated.
+    pub fn iter<'a>(&'a self, svg: &'a str) -> impl Iterator<Item = (usize, &'a str)> + 'a {
+        self.0
+            .iter()
+            .map(move |(index, href)| (*index, href.as_str(svg)))
+    }
 }
 
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct TerminalSvgValidation {
+    pub reference_plan: SvgReferencePlan,
+    pub resource_closure: SvgResourceClosure,
+    pub inline_raster_sources: InlineRasterSources,
+    pub text_elements: usize,
+    pub font_seal: SvgFontSeal,
+    pub fallback_css_residual: bool,
+}
+
+#[cfg(test)]
 impl std::ops::Deref for TerminalSvgValidation {
     type Target = SvgReferencePlan;
 

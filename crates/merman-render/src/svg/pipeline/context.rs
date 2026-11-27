@@ -1,13 +1,12 @@
 use super::preset::SvgPipelinePreset;
 use crate::DiagramFamilyId;
 use crate::environment::{RenderSession, RoutedTextMeasurer, TextMeasurementPhase};
-use crate::resources::{
-    OperationWorkMeter, RenderResourcePolicy, ResourceLimitExceeded, ResourceLimitPhase,
-};
+use crate::resources::{OperationWorkMeter, ResourceLimitExceeded, ResourceLimitPhase};
 use merman_model::OperationPhase;
 use merman_render_core::svg_scan::{
     SvgTagScanner, checkpoint_loop, next_svg_quoted_attr_with_checkpoints, start_tag_name,
 };
+use merman_render_core::svg_validation::SvgValidation;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SvgPostprocessMetadata {
@@ -191,10 +190,6 @@ impl<'a> SvgPostprocessExecution<'a> {
         self.session.work_meter()
     }
 
-    pub(crate) const fn resource_policy(self) -> &'a RenderResourcePolicy {
-        self.session.resource_policy_ref()
-    }
-
     pub(crate) fn preflight_svg_byte_count(self, actual: usize) -> crate::Result<()> {
         self.session
             .work_meter()
@@ -206,33 +201,8 @@ impl<'a> SvgPostprocessExecution<'a> {
             .map_err(Into::into)
     }
 
-    pub(crate) fn preflight_svg_structure(
-        self,
-        elements: usize,
-        tree_depth: usize,
-    ) -> crate::Result<()> {
-        self.session
-            .work_meter()
-            .preflight_svg_structure(elements, tree_depth, OperationPhase::Postprocess)
-            .map_err(Into::into)
-    }
-
-    pub(crate) fn preflight_svg_element_count(self, elements: usize) -> crate::Result<()> {
-        self.session
-            .work_meter()
-            .preflight_svg_element_count(elements, OperationPhase::Postprocess)
-            .map_err(Into::into)
-    }
-
-    pub(crate) fn selector_index_limit(self, actual: usize, maximum: usize) -> crate::Error {
-        self.resource_policy()
-            .ceiling_error(
-                ResourceLimitPhase::SvgPostprocess,
-                "svg_fallback_selector_index",
-                actual,
-                maximum,
-            )
-            .into()
+    pub(crate) fn validation(self) -> SvgValidation<'a> {
+        SvgValidation::new(self.work_meter())
     }
 
     pub(crate) fn svg_byte_count_overflow(self) -> crate::Error {

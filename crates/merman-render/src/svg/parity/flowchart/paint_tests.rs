@@ -328,6 +328,60 @@ fn dagre_linear_typed_route_keeps_layout_cancellation_and_refuses_labeled_edges(
     );
 }
 
+#[cfg(all(feature = "layout-elk", feature = "native-compact"))]
+#[test]
+fn elk_compact_refuses_a_missing_section_even_when_parity_can_paint_it() {
+    let mut layout: FlowchartLayout = serde_json::from_value(serde_json::json!({
+        "nodes": [
+            {"id":"A", "x":0, "y":0, "width":40, "height":24, "is_cluster":false},
+            {"id":"B", "x":100, "y":0, "width":40, "height":24, "is_cluster":false}
+        ],
+        "edges": [{"id":"L_A_B_0", "from":"A", "to":"B", "points":[]}],
+        "clusters": []
+    }))
+    .unwrap();
+    for node in &mut layout.nodes {
+        node.label_width = Some(24.0);
+        node.label_height = Some(14.0);
+    }
+    layout.edge_owners = crate::flowchart::FlowchartEdgeOwners::from_semantic_indices([0]);
+    layout.route_contract = crate::graph_layout::RouteContract::ElkParity;
+    layout.uses_elk_adapter_dom = true;
+    layout.dom_node_order_by_root = [(String::new(), vec!["A".into(), "B".into()])].into();
+    let source = "---\nconfig:\n  layout: elk\n  look: classic\n  htmlLabels: false\n  flowchart:\n    htmlLabels: false\n  elk:\n    lineHops: false\n---\nflowchart LR\nA[Plan] --> B[Ship]";
+    with_layout(source, Some(layout), true, |request, execution| {
+        let request = request.into();
+        let services = svg_services(execution);
+        with_flowchart_paint_context(request, &services, |ctx, edges, hierarchy| {
+            assert_eq!(edges.len(), 1);
+            let parity = prepare_edge_routes(ctx, edges, hierarchy, false)?;
+            let geom = &parity[&edges[0].key].geom;
+            assert!(geom.d.starts_with('M') && geom.d.contains('L'));
+            Ok(())
+        })?;
+
+        let work = execution.work_meter();
+        let before_bytes = work.projected_svg_bytes();
+        assert!(matches!(
+            flow_svg::render_native_compact(request, &services, true, false),
+            Err(crate::Error::UnsupportedSvgOutputProfile {
+                profile: crate::svg::SvgOutputProfile::NativeCompact,
+                reason: "flowchart-elk-straight-painted-route",
+            })
+        ));
+        assert_eq!(work.projected_svg_bytes(), before_bytes);
+
+        let before_cancel = work.used();
+        work.control().cancel();
+        assert!(matches!(
+            flow_svg::render_native_compact(request, &services, true, false),
+            Err(crate::Error::Cancelled(error)) if error.phase == merman_model::OperationPhase::Emit
+        ));
+        assert_eq!(work.used(), before_cancel);
+        Ok(())
+    });
+}
+
 #[test]
 fn geometry_frontier_preserves_the_actual_rough_paths_after_nested_prefixes() {
     for seed in [-1_i64, 4_294_967_296, 7] {

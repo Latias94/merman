@@ -1,11 +1,10 @@
+mod admission;
+
 use super::IconIdScope;
 use super::error::{IconRegistryBuildError, IconRegistryBuildErrorKind};
 use super::limits::{IconRegistryBuildLimits, IconRegistryResourceLimitId};
-use quick_xml::XmlVersion;
-use quick_xml::events::{BytesRef, BytesStart, Event};
-use quick_xml::name::{NamespaceResolver, ResolveResult};
-use quick_xml::reader::NsReader;
-use std::collections::{HashMap, HashSet};
+use admission::validate_wrapped_fragment;
+use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::mem::size_of;
 use std::ops::Range;
@@ -427,376 +426,6 @@ impl DefsRange {
     }
 }
 
-#[derive(Debug, Default)]
-struct XmlStats {
-    element_count: usize,
-    uses_xlink: bool,
-}
-
-fn validate_wrapped_fragment(
-    wrapped: &str,
-    pack_index: usize,
-    limits: &IconRegistryBuildLimits,
-) -> Result<XmlStats, IconRegistryBuildError> {
-    let mut reader = NsReader::from_str(wrapped);
-    reader.config_mut().enable_all_checks(true);
-
-    let mut stats = XmlStats::default();
-    let mut depth = 0usize;
-    let mut root_seen = false;
-    let mut root_closed = false;
-
-    loop {
-        let event = reader
-            .read_event()
-            .map_err(|_| invalid_xml_error(pack_index, "icon body is not well-formed XML"))?;
-        match event {
-            Event::Start(element) => {
-                let (namespace, local_name) = reader.resolver().resolve_element(element.name());
-                if !root_seen {
-                    if depth != 0 || root_closed {
-                        return Err(invalid_xml_error(
-                            pack_index,
-                            "icon XML wrapper has an invalid root structure",
-                        ));
-                    }
-                    let _ =
-                        validate_element(&element, namespace, reader.resolver(), true, pack_index)?;
-                    if local_name.as_ref() != "svg" {
-                        return Err(invalid_xml_error(
-                            pack_index,
-                            "icon XML wrapper root is not SVG",
-                        ));
-                    }
-                    root_seen = true;
-                    depth = 1;
-                    continue;
-                }
-
-                ensure_inside_wrapper(depth, root_closed, pack_index)?;
-                stats.uses_xlink |=
-                    validate_element(&element, namespace, reader.resolver(), false, pack_index)?;
-                record_element(&mut stats, depth, pack_index, limits)?;
-                depth = depth.checked_add(1).ok_or_else(|| {
-                    arithmetic_error(pack_index, "icon XML nesting depth overflowed")
-                })?;
-            }
-            Event::Empty(element) => {
-                if !root_seen {
-                    return Err(invalid_xml_error(
-                        pack_index,
-                        "icon XML wrapper root is unexpectedly empty",
-                    ));
-                }
-                ensure_inside_wrapper(depth, root_closed, pack_index)?;
-                let (namespace, _) = reader.resolver().resolve_element(element.name());
-                stats.uses_xlink |=
-                    validate_element(&element, namespace, reader.resolver(), false, pack_index)?;
-                record_element(&mut stats, depth, pack_index, limits)?;
-            }
-            Event::End(_) => {
-                if !root_seen || root_closed {
-                    return Err(invalid_xml_error(
-                        pack_index,
-                        "icon body closes an element outside its XML wrapper",
-                    ));
-                }
-                depth = depth.checked_sub(1).ok_or_else(|| {
-                    invalid_xml_error(pack_index, "icon body contains an unmatched end tag")
-                })?;
-                if depth == 0 {
-                    root_closed = true;
-                }
-            }
-            Event::Text(text) => {
-                ensure_inside_wrapper(depth, root_closed, pack_index)?;
-                if text.contains("]]>") {
-                    return Err(invalid_xml_error(
-                        pack_index,
-                        "icon body contains a forbidden XML text terminator",
-                    ));
-                }
-                let content = text.xml10_content();
-                validate_xml_chars(&content, pack_index, "icon body contains invalid XML text")?;
-            }
-            Event::CData(text) => {
-                ensure_inside_wrapper(depth, root_closed, pack_index)?;
-                let content = text.xml10_content();
-                validate_xml_chars(&content, pack_index, "icon body contains invalid CDATA")?;
-            }
-            Event::GeneralRef(reference) => {
-                ensure_inside_wrapper(depth, root_closed, pack_index)?;
-                validate_general_reference(&reference, pack_index)?;
-            }
-            Event::Comment(comment) => {
-                ensure_inside_wrapper(depth, root_closed, pack_index)?;
-                let content = comment.xml10_content();
-                validate_xml_chars(
-                    &content,
-                    pack_index,
-                    "icon body contains an invalid XML comment",
-                )?;
-            }
-            Event::Decl(_) => {
-                return Err(invalid_xml_error(
-                    pack_index,
-                    "XML declarations are not allowed in icon bodies",
-                ));
-            }
-            Event::PI(_) => {
-                return Err(invalid_xml_error(
-                    pack_index,
-                    "processing instructions are not allowed in icon bodies",
-                ));
-            }
-            Event::DocType(_) => {
-                return Err(invalid_xml_error(
-                    pack_index,
-                    "document type and entity declarations are not allowed in icon bodies",
-                ));
-            }
-            Event::Eof => break,
-        }
-    }
-
-    if !root_seen || !root_closed || depth != 0 {
-        return Err(invalid_xml_error(
-            pack_index,
-            "icon XML wrapper is not completely closed",
-        ));
-    }
-    Ok(stats)
-}
-
-fn validate_element(
-    element: &BytesStart<'_>,
-    namespace: ResolveResult<'_>,
-    resolver: &NamespaceResolver,
-    is_wrapper: bool,
-    pack_index: usize,
-) -> Result<bool, IconRegistryBuildError> {
-    let mut uses_xlink = matches!(
-        &namespace,
-        ResolveResult::Bound(namespace) if namespace.as_ref() == XLINK_NAMESPACE
-    ) && !is_wrapper;
-    match namespace {
-        ResolveResult::Unknown(_) => {
-            return Err(invalid_xml_error(
-                pack_index,
-                "icon body uses an undeclared namespace prefix",
-            ));
-        }
-        ResolveResult::Bound(namespace) if is_wrapper && namespace.as_ref() != SVG_NAMESPACE => {
-            return Err(invalid_xml_error(
-                pack_index,
-                "icon XML wrapper uses a non-SVG namespace",
-            ));
-        }
-        ResolveResult::Unbound if is_wrapper => {
-            return Err(invalid_xml_error(
-                pack_index,
-                "icon XML wrapper is missing the SVG namespace",
-            ));
-        }
-        ResolveResult::Unbound | ResolveResult::Bound(_) => {}
-    }
-
-    validate_xml_qname(element.name().as_ref(), pack_index)?;
-    let mut expanded_attributes = HashSet::new();
-
-    for attribute in element.attributes() {
-        let attribute = attribute.map_err(|_| {
-            invalid_xml_error(pack_index, "icon body contains an invalid XML attribute")
-        })?;
-        validate_xml_qname(attribute.key.as_ref(), pack_index)?;
-        if attribute.value.contains('<') {
-            return Err(invalid_xml_error(
-                pack_index,
-                "icon body contains an invalid XML attribute value",
-            ));
-        }
-        let normalized = attribute
-            .normalized_value(XmlVersion::Implicit1_0)
-            .map_err(|_| {
-                invalid_xml_error(
-                    pack_index,
-                    "icon body contains an invalid XML attribute value",
-                )
-            })?;
-        validate_xml_chars(
-            &normalized,
-            pack_index,
-            "icon body contains an invalid XML attribute value",
-        )?;
-
-        if attribute.key.as_namespace_binding().is_some() {
-            continue;
-        }
-
-        let (attribute_namespace, local_name) = resolver.resolve_attribute(attribute.key);
-        let attribute_namespace = match attribute_namespace {
-            ResolveResult::Unknown(_) => {
-                return Err(invalid_xml_error(
-                    pack_index,
-                    "icon body uses an undeclared attribute namespace prefix",
-                ));
-            }
-            ResolveResult::Bound(namespace) => {
-                uses_xlink |= namespace.as_ref() == XLINK_NAMESPACE;
-                Some(namespace.into_inner())
-            }
-            ResolveResult::Unbound => None,
-        };
-        if !expanded_attributes.insert((attribute_namespace, local_name.into_inner())) {
-            return Err(invalid_xml_error(
-                pack_index,
-                "icon body contains duplicate expanded XML attributes",
-            ));
-        }
-    }
-
-    Ok(uses_xlink)
-}
-
-fn record_element(
-    stats: &mut XmlStats,
-    fragment_depth: usize,
-    pack_index: usize,
-    limits: &IconRegistryBuildLimits,
-) -> Result<(), IconRegistryBuildError> {
-    let elements = stats
-        .element_count
-        .checked_add(1)
-        .ok_or_else(|| arithmetic_error(pack_index, "icon XML element count overflowed"))?;
-    if elements > limits.max_xml_elements_per_body {
-        return Err(limit_error(
-            pack_index,
-            IconRegistryResourceLimitId::MaxXmlElementsPerBody,
-            elements,
-            limits.max_xml_elements_per_body,
-            "icon body exceeds the XML element limit",
-        ));
-    }
-    if fragment_depth > limits.max_xml_depth_per_body {
-        return Err(limit_error(
-            pack_index,
-            IconRegistryResourceLimitId::MaxXmlDepthPerBody,
-            fragment_depth,
-            limits.max_xml_depth_per_body,
-            "icon body exceeds the XML nesting-depth limit",
-        ));
-    }
-
-    stats.element_count = elements;
-    Ok(())
-}
-
-fn ensure_inside_wrapper(
-    depth: usize,
-    root_closed: bool,
-    pack_index: usize,
-) -> Result<(), IconRegistryBuildError> {
-    if depth == 0 || root_closed {
-        return Err(invalid_xml_error(
-            pack_index,
-            "icon body contains XML outside its fragment wrapper",
-        ));
-    }
-    Ok(())
-}
-
-fn validate_xml_chars(
-    content: &str,
-    pack_index: usize,
-    message: &'static str,
-) -> Result<(), IconRegistryBuildError> {
-    if content.chars().all(crate::xml_chars::is_xml_1_0_char) {
-        Ok(())
-    } else {
-        Err(invalid_xml_error(pack_index, message))
-    }
-}
-
-fn validate_general_reference(
-    reference: &BytesRef<'_>,
-    pack_index: usize,
-) -> Result<(), IconRegistryBuildError> {
-    if let Some(value) = reference.resolve_char_ref().map_err(|_| {
-        invalid_xml_error(
-            pack_index,
-            "icon body contains an invalid XML character reference",
-        )
-    })? {
-        if crate::xml_chars::is_xml_1_0_char(value) {
-            return Ok(());
-        }
-        return Err(invalid_xml_error(
-            pack_index,
-            "icon body contains an XML 1.0-forbidden character reference",
-        ));
-    }
-
-    if matches!(reference.as_ref(), "amp" | "apos" | "gt" | "lt" | "quot") {
-        Ok(())
-    } else {
-        Err(invalid_xml_error(
-            pack_index,
-            "icon body contains an undeclared XML entity reference",
-        ))
-    }
-}
-
-fn validate_xml_qname(name: &str, pack_index: usize) -> Result<(), IconRegistryBuildError> {
-    let mut components = name.split(':');
-    let first = components.next().unwrap_or_default();
-    let second = components.next();
-    if components.next().is_some()
-        || !is_valid_xml_ncname(first)
-        || second.is_some_and(|component| !is_valid_xml_ncname(component))
-    {
-        return Err(invalid_xml_error(
-            pack_index,
-            "icon body contains an invalid XML qualified name",
-        ));
-    }
-    Ok(())
-}
-
-fn is_valid_xml_ncname(name: &str) -> bool {
-    let mut chars = name.chars();
-    chars.next().is_some_and(is_xml_name_start_char)
-        && chars.all(|character| character != ':' && is_xml_name_char(character))
-}
-
-fn is_xml_name_start_char(character: char) -> bool {
-    matches!(
-        character,
-        'A'..='Z'
-            | '_'
-            | 'a'..='z'
-            | '\u{c0}'..='\u{d6}'
-            | '\u{d8}'..='\u{f6}'
-            | '\u{f8}'..='\u{2ff}'
-            | '\u{370}'..='\u{37d}'
-            | '\u{37f}'..='\u{1fff}'
-            | '\u{200c}'..='\u{200d}'
-            | '\u{2070}'..='\u{218f}'
-            | '\u{2c00}'..='\u{2fef}'
-            | '\u{3001}'..='\u{d7ff}'
-            | '\u{f900}'..='\u{fdcf}'
-            | '\u{fdf0}'..='\u{fffd}'
-            | '\u{10000}'..='\u{effff}'
-    )
-}
-
-fn is_xml_name_char(character: char) -> bool {
-    is_xml_name_start_char(character)
-        || matches!(
-            character,
-            '-' | '.' | '0'..='9' | '\u{b7}' | '\u{300}'..='\u{36f}' | '\u{203f}'..='\u{2040}'
-        )
-}
-
 fn plan_xml_rewrites(
     body: &str,
     wrapped: &str,
@@ -811,9 +440,80 @@ fn plan_xml_rewrites(
             "icon body could not be represented as strict XML",
         )
     })?;
+    let defs = document
+        .descendants()
+        .filter(|node| is_svg_defs(*node) && !node.ancestors().skip(1).any(is_svg_defs))
+        .map(|node| node.range());
+    let attributes = document
+        .descendants()
+        .filter(roxmltree::Node::is_element)
+        .flat_map(|node| node.attributes())
+        .map(|attribute| RewriteAttribute {
+            namespace: attribute.namespace(),
+            name: attribute.name(),
+            value: attribute.value(),
+            value_range: attribute.range_value(),
+        });
+    let style_text = document
+        .descendants()
+        .filter(|node| {
+            node.is_text()
+                && node.parent().is_some_and(|parent| {
+                    parent.is_element()
+                        && parent.tag_name().namespace() == Some(SVG_NAMESPACE)
+                        && parent.tag_name().name() == "style"
+                })
+        })
+        .map(|node| (node.range(), node.text().unwrap_or_default()));
+    plan_rewrites(
+        body,
+        defs,
+        attributes,
+        style_text,
+        pack_index,
+        limits,
+        XmlAdmissionUsage {
+            retained_plan_bytes: retained_plan_bytes_used,
+            build_work_units: build_work_units_used,
+        },
+    )
+}
+
+fn is_svg_defs(node: roxmltree::Node<'_, '_>) -> bool {
+    node.is_element()
+        && node.tag_name().namespace() == Some(SVG_NAMESPACE)
+        && node.tag_name().name() == "defs"
+}
+
+struct RewriteAttribute<'xml> {
+    namespace: Option<&'xml str>,
+    name: &'xml str,
+    value: &'xml str,
+    value_range: Range<usize>,
+}
+
+impl RewriteAttribute<'_> {
+    fn is_id(&self) -> bool {
+        self.namespace.is_none() && self.name == "id"
+    }
+}
+
+fn plan_rewrites<'xml>(
+    body: &str,
+    defs_ranges: impl Iterator<Item = Range<usize>>,
+    attributes: impl Iterator<Item = RewriteAttribute<'xml>> + Clone,
+    style_text: impl Iterator<Item = (Range<usize>, &'xml str)>,
+    pack_index: usize,
+    limits: &IconRegistryBuildLimits,
+    prior_usage: XmlAdmissionUsage,
+) -> Result<(Vec<IdEdit>, Vec<DefsRange>), IconRegistryBuildError> {
+    let XmlAdmissionUsage {
+        retained_plan_bytes: retained_plan_bytes_used,
+        build_work_units: build_work_units_used,
+    } = prior_usage;
     let defs = plan_defs_ranges(
         body,
-        &document,
+        defs_ranges,
         pack_index,
         limits,
         retained_plan_bytes_used,
@@ -821,17 +521,12 @@ fn plan_xml_rewrites(
     let mut id_indexes = HashMap::<String, usize>::new();
     let mut edits = Vec::new();
 
-    for attribute in document
-        .descendants()
-        .filter(roxmltree::Node::is_element)
-        .flat_map(|node| node.attributes())
-        .filter(|attribute| attribute.namespace().is_none() && attribute.name() == "id")
-    {
-        let Some(value_range) = body_source_range(attribute.range_value(), body.len(), pack_index)?
+    for attribute in attributes.clone().filter(RewriteAttribute::is_id) {
+        let Some(value_range) = body_source_range(attribute.value_range, body.len(), pack_index)?
         else {
             continue;
         };
-        let id = attribute.value();
+        let id = attribute.value;
         let next_index = id_indexes.len();
         if id_indexes.insert(id.to_owned(), next_index).is_some() {
             return Err(invalid_xml_error(
@@ -865,21 +560,14 @@ fn plan_xml_rewrites(
     }
 
     if !id_indexes.is_empty() {
-        for attribute in document
-            .descendants()
-            .filter(roxmltree::Node::is_element)
-            .flat_map(|node| node.attributes())
-        {
-            if attribute.namespace().is_none() && attribute.name() == "id" {
-                continue;
-            }
+        for attribute in attributes.filter(|attribute| !attribute.is_id()) {
             let Some(value_range) =
-                body_source_range(attribute.range_value(), body.len(), pack_index)?
+                body_source_range(attribute.value_range.clone(), body.len(), pack_index)?
             else {
                 continue;
             };
             let semantic_edits = attribute_reference_edits(
-                attribute,
+                &attribute,
                 &id_indexes,
                 edits.len(),
                 limits.max_id_rewrite_edits_per_body,
@@ -891,7 +579,7 @@ fn plan_xml_rewrites(
             let raw_value = &body[value_range.clone()];
             let mapped = decoded_ranges_to_raw(
                 raw_value,
-                attribute.value(),
+                attribute.value,
                 &semantic_edits,
                 DecodeMode::Attribute,
             )
@@ -916,20 +604,12 @@ fn plan_xml_rewrites(
             }
         }
 
-        for node in document.descendants().filter(|node| {
-            node.is_text()
-                && node.parent().is_some_and(|parent| {
-                    parent.is_element()
-                        && parent.tag_name().namespace() == Some(SVG_NAMESPACE)
-                        && parent.tag_name().name() == "style"
-                })
-        }) {
-            let Some(node_range) = body_source_range(node.range(), body.len(), pack_index)? else {
+        for (node_range, text) in style_text {
+            let Some(node_range) = body_source_range(node_range, body.len(), pack_index)? else {
                 continue;
             };
             let (content_range, mode) = style_text_content_range(body, node_range, pack_index)?;
             let raw_text = &body[content_range.clone()];
-            let text = node.text().unwrap_or_default();
             let semantic_edits = url_reference_edits(
                 text,
                 &id_indexes,
@@ -1036,23 +716,14 @@ fn push_id_edit(
 
 fn plan_defs_ranges(
     body: &str,
-    document: &roxmltree::Document<'_>,
+    ranges: impl Iterator<Item = Range<usize>>,
     pack_index: usize,
     limits: &IconRegistryBuildLimits,
     retained_plan_bytes_used: usize,
 ) -> Result<Vec<DefsRange>, IconRegistryBuildError> {
     let mut source_ranges = Vec::<(Range<usize>, Range<usize>)>::new();
-    for node in document.descendants().filter(|node| {
-        node.is_element()
-            && node.tag_name().namespace() == Some(SVG_NAMESPACE)
-            && node.tag_name().name() == "defs"
-            && !node.ancestors().skip(1).any(|ancestor| {
-                ancestor.is_element()
-                    && ancestor.tag_name().namespace() == Some(SVG_NAMESPACE)
-                    && ancestor.tag_name().name() == "defs"
-            })
-    }) {
-        let Some(full) = body_source_range(node.range(), body.len(), pack_index)? else {
+    for range in ranges {
+        let Some(full) = body_source_range(range, body.len(), pack_index)? else {
             continue;
         };
         let content = defs_content_range(body, full.clone(), pack_index)?;
@@ -1251,16 +922,16 @@ struct SemanticEdit {
 }
 
 fn attribute_reference_edits(
-    attribute: roxmltree::Attribute<'_, '_>,
+    attribute: &RewriteAttribute<'_>,
     id_indexes: &HashMap<String, usize>,
     base_count: usize,
     maximum: usize,
     pack_index: usize,
 ) -> Result<Vec<SemanticEdit>, IconRegistryBuildError> {
-    if let Some(namespace) = attribute.namespace() {
-        if namespace == XLINK_NAMESPACE && attribute.name() == "href" {
+    if let Some(namespace) = attribute.namespace {
+        if namespace == XLINK_NAMESPACE && attribute.name == "href" {
             return fragment_reference_edits(
-                attribute.value(),
+                attribute.value,
                 id_indexes,
                 base_count,
                 maximum,
@@ -1270,21 +941,13 @@ fn attribute_reference_edits(
         return Ok(Vec::new());
     }
 
-    match attribute.name() {
-        "href" => fragment_reference_edits(
-            attribute.value(),
-            id_indexes,
-            base_count,
-            maximum,
-            pack_index,
-        ),
-        "begin" | "end" => smil_reference_edits(
-            attribute.value(),
-            id_indexes,
-            base_count,
-            maximum,
-            pack_index,
-        ),
+    match attribute.name {
+        "href" => {
+            fragment_reference_edits(attribute.value, id_indexes, base_count, maximum, pack_index)
+        }
+        "begin" | "end" => {
+            smil_reference_edits(attribute.value, id_indexes, base_count, maximum, pack_index)
+        }
         "aria-activedescendant"
         | "aria-controls"
         | "aria-describedby"
@@ -1292,21 +955,13 @@ fn attribute_reference_edits(
         | "aria-errormessage"
         | "aria-flowto"
         | "aria-labelledby"
-        | "aria-owns" => idref_list_edits(
-            attribute.value(),
-            id_indexes,
-            base_count,
-            maximum,
-            pack_index,
-        ),
+        | "aria-owns" => {
+            idref_list_edits(attribute.value, id_indexes, base_count, maximum, pack_index)
+        }
         "clip-path" | "color-profile" | "cursor" | "fill" | "filter" | "marker" | "marker-end"
-        | "marker-mid" | "marker-start" | "mask" | "stroke" | "style" => url_reference_edits(
-            attribute.value(),
-            id_indexes,
-            base_count,
-            maximum,
-            pack_index,
-        ),
+        | "marker-mid" | "marker-start" | "mask" | "stroke" | "style" => {
+            url_reference_edits(attribute.value, id_indexes, base_count, maximum, pack_index)
+        }
         _ => Ok(Vec::new()),
     }
 }
@@ -2047,6 +1702,40 @@ mod tests {
     }
 
     #[test]
+    fn namespaced_ids_and_literal_markup_are_preserved() {
+        let source = concat!(
+            r#"<g xmlns:meta="urn:meta" meta:id="example">"#,
+            r#"<!-- <defs id="comment"/> --><![CDATA[<defs id="text"/>]]>"#,
+            "</g>"
+        );
+        let limits = IconRegistryBuildLimits::fixed();
+        let (body, usage) = ParsedIconBody::parse_with_usage(source, 7, &limits, 0, 0).unwrap();
+        assert_eq!(usage.retained_plan_bytes, 0);
+        assert_eq!(usage.build_work_units, 2);
+        for placement in [IconDefsPlacement::Inline, IconDefsPlacement::Hoisted] {
+            let output = body.rewrite_ids(scope("diagram-a"), placement).unwrap();
+            assert_eq!(output.untrusted_xml_parts(), ("", source));
+        }
+    }
+
+    #[test]
+    fn defs_without_ids_use_strict_namespace_resolution() {
+        let foreign = r#"<g xmlns:m="urn:metadata" m:xmlns="urn:other"><defs><rect/></defs></g>"#;
+        let source = format!(
+            r#"<s:defs xmlns:s="http://www.w3.org/2000/sv&#x67;"><path/></s:defs>{foreign}"#
+        );
+        let body = parse(&source).unwrap();
+        let output = body
+            .rewrite_ids(scope("diagram-a"), IconDefsPlacement::Hoisted)
+            .unwrap();
+        assert_eq!(
+            output.untrusted_xml_parts(),
+            ("<defs><path/></defs>", foreign)
+        );
+        assert_eq!(body.edit_count(), 0);
+    }
+
+    #[test]
     fn many_defs_are_assembled_from_one_bounded_xml_plan() {
         let limits = IconRegistryBuildLimits::fixed();
         let defs_count = limits.max_xml_elements_per_body / 2;
@@ -2199,6 +1888,49 @@ mod tests {
     }
 
     #[test]
+    fn strict_xml_admission_follows_streaming_errors_and_structure_work() {
+        let aliases = r#"<g xmlns:x="urn:a" xmlns:y="urn:&#97;" x:title="1" y:title="2"/>"#;
+        let mut limits = IconRegistryBuildLimits::fixed();
+        for source in [
+            r#"<path first="1"second="2"/>"#,
+            aliases,
+            r#"<g xmlns="http://www.w3.org/XML/1998/namespac&#101;"/>"#,
+        ] {
+            limits.max_build_work_units = 1;
+            let error = ParsedIconBody::parse(source, 7, &limits).unwrap_err();
+            assert_eq!(
+                error.limit(),
+                Some(IconRegistryResourceLimitId::MaxBuildWorkUnits)
+            );
+            assert_eq!(error.actual(), Some(2));
+            assert_eq!(error.maximum(), Some(1));
+
+            limits.max_build_work_units = 2;
+            let error = ParsedIconBody::parse(source, 7, &limits).unwrap_err();
+            assert_eq!(
+                error,
+                invalid_xml_error(7, "icon body could not be represented as strict XML")
+            );
+        }
+
+        let source = format!("{aliases}<missing:circle/>");
+        let error = ParsedIconBody::parse(&source, 7, &limits).unwrap_err();
+        assert_eq!(
+            error,
+            invalid_xml_error(7, "icon body uses an undeclared namespace prefix")
+        );
+
+        let source = format!(r#"<defs><path id="p"/></defs>{aliases}"#);
+        limits.max_build_work_units = 4;
+        limits.max_retained_xml_plan_bytes = 0;
+        let error = ParsedIconBody::parse(&source, 7, &limits).unwrap_err();
+        assert_eq!(
+            error,
+            invalid_xml_error(7, "icon body could not be represented as strict XML")
+        );
+    }
+
+    #[test]
     fn predefined_and_numeric_character_references_are_accepted_and_mapped() {
         let body = parse(
             r##"<path id="sh&#x61;pe" aria-labelledby="sh&#97;pe"/><use href="#sh&#x61;pe"/><text>A&amp;&#x20;&#32;&apos;&quot;&lt;&gt;</text>"##,
@@ -2218,6 +1950,31 @@ mod tests {
             scoped.contains("A&amp;&#x20;&#32;&apos;&quot;&lt;&gt;"),
             "{scoped}"
         );
+    }
+
+    #[test]
+    fn id_rewrites_keep_the_strict_attribute_range_boundary() {
+        let source = format!("<path id{}='p'/>", " ".repeat(254));
+        let body = parse(&source).unwrap();
+        assert_eq!(body.edit_count(), 1);
+        assert_eq!(&source[body.edits[0].range()], "p");
+
+        let source = format!("<path id{}='p'/>", " ".repeat(255));
+        assert_eq!(
+            parse(&source).unwrap_err(),
+            invalid_xml_error(7, "icon body contains an unmappable XML id attribute")
+        );
+    }
+
+    #[test]
+    fn style_rewrites_reject_unmappable_strict_text_spans() {
+        for text in ["<![CDATA[]]>.a{fill:url(#p)}", ".a{fill:url(#p)}&#97;\r"] {
+            let source = format!("<path id='p'/><style>{text}</style>");
+            assert_eq!(
+                parse(&source).unwrap_err(),
+                invalid_xml_error(7, "icon body contains unmappable SVG style text")
+            );
+        }
     }
 
     #[test]
@@ -2257,5 +2014,22 @@ mod tests {
         let linked = parse(r##"<use xlink:href="#target"/><path id="target"/>"##)
             .expect("wrapper supplies the standard xlink namespace");
         assert!(linked.uses_xlink());
+    }
+
+    #[test]
+    fn normalized_xlink_reference_uses_the_strict_namespace() {
+        let body = parse(
+            r##"<use xmlns:x="http://www.w3.org/1999/xlin&#x6b;" x:href="#p"/><path id="p"/>"##,
+        )
+        .unwrap();
+        assert!(!body.uses_xlink());
+        let scoped = scoped_id("diagram-a", 0);
+        let expected = format!(
+            r##"<use xmlns:x="http://www.w3.org/1999/xlin&#x6b;" x:href="#{scoped}"/><path id="{scoped}"/>"##
+        );
+        assert_eq!(
+            rewrite_inline(&body, "diagram-a").untrusted_xml_parts(),
+            ("", expected.as_str())
+        );
     }
 }

@@ -13,6 +13,10 @@ source mapping, and output lifecycle decisions remain in force.
 ownership for independent model, terminal, graphical and diagnostic consumers. It preserves this
 decision's execution boundary and distinguishes implementation from platform qualification.
 
+[ADR 0103](0103-vertical-workspace-crate-boundaries.md) defines the internal family crate owners.
+[ADR 0105](0105-ergonomic-feature-tiers-and-safe-facade-api.md) adds typed convenience methods
+over the same rendering control plane.
+
 ## Context
 
 Semantic inspection, terminal output, and language tooling need canonical meaning without
