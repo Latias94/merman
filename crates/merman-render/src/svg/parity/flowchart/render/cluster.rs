@@ -34,16 +34,12 @@ pub(in crate::svg::parity::flowchart) fn advance_rough_geometry(
         return Ok(());
     }
     let terminal = ctx.prepared_nodes.cluster(cluster.id.as_str())?;
-    let frame = painted_cluster_frame(ctx, cluster);
-    let origin = kurbo::Point::new(
-        frame.origin.x + ctx.tx - origin_x,
-        frame.origin.y + ctx.ty - origin_y,
+    let frame = painted_cluster_frame(ctx, cluster).in_root(
+        kurbo::Vec2::new(ctx.tx, ctx.ty),
+        kurbo::Point::new(origin_x, origin_y),
     );
-    cluster_hand_drawn(ctx, &terminal.compiled).advance_cluster(
-        origin,
-        frame.size,
-        ctx.diagram_type == "agentflow",
-    );
+    cluster_hand_drawn(ctx, &terminal.compiled)
+        .advance_cluster(frame, ctx.diagram_type == "agentflow");
     ctx.work_meter
         .checkpoint(merman_model::OperationPhase::Layout)
         .map_err(crate::Error::from)
@@ -155,8 +151,7 @@ fn write_flowchart_cluster_shape(
     };
     write_cluster_shell(
         out,
-        frame.origin,
-        frame.size,
+        frame,
         ClusterShellPaint {
             style: &terminal.rect_style,
             fill,
@@ -275,9 +270,10 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
     let classes = ctx.model.effective_subgraph_css(subgraph_index, sg).0;
 
     let elk_geometry = ctx.elk_cluster_geometry.get(cluster.id.as_str());
-    let mut frame = painted_cluster_frame(ctx, cluster);
-    frame.origin.x = frame.origin.x + ctx.tx - origin_x;
-    frame.origin.y = frame.origin.y + ctx.ty - origin_y;
+    let frame = painted_cluster_frame(ctx, cluster).in_root(
+        kurbo::Vec2::new(ctx.tx, ctx.ty),
+        kurbo::Point::new(origin_x, origin_y),
+    );
     let Some(cluster_dom_id) = ctx.document_ids().cluster(cluster.id.as_str()) else {
         return Err(crate::Error::InvalidModel {
             message: format!(

@@ -16,6 +16,12 @@ use merman_render_core::{
 };
 use roughr::core::RoughRandomness;
 
+mod geometry;
+pub use geometry::{
+    PaintedClusterFrame, SwimlaneTerminalGeometry, cluster_container_radius,
+    swimlane_terminal_geometry,
+};
+
 const ROUGHNESS: f32 = 0.7;
 const FILL_WEIGHT: f32 = 3.0;
 const HACHURE_GAP: f32 = 1.5;
@@ -65,7 +71,8 @@ impl ClusterHandDrawn<'_> {
 
     /// Advance the ordinary container's Rough state for a geometry-only query.
     /// The caller owns eligibility, frame resolution, and its surrounding Layout checkpoints.
-    pub fn advance_cluster(&self, origin: Point, size: Size, agentflow: bool) {
+    pub fn advance_cluster(&self, frame: PaintedClusterFrame, agentflow: bool) {
+        let PaintedClusterFrame { origin, size } = frame;
         if agentflow {
             let path = rounded_rect_path_d(origin, size, 10.0);
             let _ = roughjs_prepare_hand_drawn_stroke_path_for_svg_path(
@@ -96,12 +103,12 @@ impl ClusterHandDrawn<'_> {
 /// The caller owns the outer group, title, and end-of-layer checkpoint.
 pub fn write_cluster_shell(
     out: &mut impl SvgOutput,
-    origin: Point,
-    size: Size,
+    frame: PaintedClusterFrame,
     paint: ClusterShellPaint<'_>,
     form: ClusterShellForm<'_>,
     rough: Option<ClusterHandDrawn<'_>>,
 ) {
+    let PaintedClusterFrame { origin, size } = frame;
     match form {
         ClusterShellForm::Native {
             radius,
