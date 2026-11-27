@@ -425,6 +425,14 @@ enum WorkloadMode {
     HeapProfile(std::path::PathBuf),
 }
 
+fn end_of_bench_args(mut args: impl Iterator<Item = OsString>) -> bool {
+    // Cargo appends this flag after user arguments even for harness-free benches.
+    match args.next() {
+        None => true,
+        Some(flag) => flag == "--bench" && args.next().is_none(),
+    }
+}
+
 #[cfg(all(
     feature = "diagram-flowchart",
     feature = "diagram-sequence",
@@ -433,14 +441,17 @@ enum WorkloadMode {
 fn workload_command(mut args: impl Iterator<Item = OsString>) -> Result<Command, String> {
     match args.next() {
         None => Ok(Command::Workload(WorkloadMode::Counters)),
-        Some(flag) if flag == "--stage-memory" && args.next().is_none() => {
+        Some(flag) if flag == "--bench" && args.next().is_none() => {
+            Ok(Command::Workload(WorkloadMode::Counters))
+        }
+        Some(flag) if flag == "--stage-memory" && end_of_bench_args(&mut args) => {
             Ok(Command::Workload(WorkloadMode::Stages))
         }
         Some(flag) if flag == "--heap-profile" => {
             #[cfg(all(feature = "dhat-heap", not(target_arch = "wasm32")))]
             {
                 let path = args.next().ok_or(USAGE)?;
-                if args.next().is_some() {
+                if !end_of_bench_args(args) {
                     return Err(USAGE.to_owned());
                 }
                 Ok(Command::Workload(WorkloadMode::HeapProfile(path.into())))
@@ -483,14 +494,10 @@ fn command() -> Result<Command, String> {
                 feature = "diagram-flowchart",
                 feature = "layout-dagre"
             ))]
-            Some("fonts") => match args.next() {
-                None => Ok(Command::Fonts),
-                Some(flag) if flag == "--bench" && args.next().is_none() => Ok(Command::Fonts),
-                _ => Err(USAGE.to_owned()),
-            },
+            Some("fonts") if end_of_bench_args(&mut args) => Ok(Command::Fonts),
             Some("scale-curve") if args.next().as_deref() == Some(OsStr::new("--lane")) => {
                 let id = args.next().ok_or(USAGE)?;
-                if args.next().is_some() {
+                if !end_of_bench_args(args) {
                     return Err(USAGE.to_owned());
                 }
                 let lane = Lane::from_id(id.to_str().ok_or(USAGE)?).map_err(|error| error.0)?;
