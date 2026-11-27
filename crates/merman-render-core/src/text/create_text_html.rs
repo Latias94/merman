@@ -160,3 +160,14 @@ pub fn flowchart_label_html_source(
         }
     }
 }
+
+pub fn flowchart_label_sanitize_config(
+    config: &PresentationConfig,
+) -> std::borrow::Cow<'_, merman_model::MermaidConfig> {
+    if config.get_str("securityLevel").is_some() {
+        return std::borrow::Cow::Borrowed(config.as_config());
+    }
+    let mut config = config.as_config().clone();
+    config.set_value("securityLevel", serde_json::Value::String("strict".into()));
+    std::borrow::Cow::Owned(config)
+}

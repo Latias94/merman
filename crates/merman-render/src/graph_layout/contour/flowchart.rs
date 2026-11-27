@@ -342,7 +342,7 @@ fn lean(kind: LeanKind, w: f64, h: f64) -> ShapePortProfile {
     )
 }
 
-fn organic(g: flowchart::OrganicShapeGeometry) -> Outline {
+fn organic(g: merman_render_flow::shapes::OrganicShapeGeometry) -> Outline {
     let start = Point::new(g.translate_x, g.translate_y);
     let mut at = start;
     let mut edges = Vec::with_capacity(g.arcs.len());

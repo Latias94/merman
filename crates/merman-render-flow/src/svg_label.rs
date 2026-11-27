@@ -1,5 +1,21 @@
 //! Prepared SVG label rows for the Flow families.
 
+mod occurrence;
+mod terminal;
+
+pub use occurrence::{
+    FLOWCHART_RENDER_ID_RECORD_BYTES, FlowchartPreparedLabelResolution, FlowchartSvgLabelOwner,
+    FlowchartSvgLabelRenderPlan, FlowchartSvgLabelSidecar, PendingFlowchartSvgLabels,
+    PreparedFlowchartHtmlLabel, PreparedFlowchartMathLabel,
+};
+pub use terminal::{
+    OptionalStyleAttr, append_native_label_color, flowchart_label_html_with_prepared_label,
+    write_flowchart_svg_label_plan, write_flowchart_svg_label_plan_with_style,
+    write_flowchart_svg_source_word_lines, write_flowchart_svg_text_markdown,
+    write_flowchart_svg_text_markdown_wrapped,
+    write_flowchart_svg_text_markdown_wrapped_with_style,
+};
+
 use std::{borrow::Cow, sync::Arc};
 
 use merman_render_core::resources::{

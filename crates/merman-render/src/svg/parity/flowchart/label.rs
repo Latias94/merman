@@ -1,58 +1,17 @@
 //! Flowchart label rendering helpers (HTML/SVG text).
 
-use std::fmt::Write as _;
-
-pub(in crate::svg::parity::flowchart) fn append_native_label_color(style: &mut String, fill: &str) {
-    if !style.is_empty() {
-        style.push(';');
-    }
-    let _ = write!(
-        style,
-        "fill:{fill} !important;color:{} !important",
-        if fill == "none" { "transparent" } else { fill }
-    );
-}
+#[cfg(test)]
+use merman_render_flow::svg_label::write_flowchart_svg_source_word_lines;
+pub(crate) use merman_render_flow::svg_label::{
+    append_native_label_color, flowchart_label_html_with_prepared_label,
+    write_flowchart_svg_label_plan, write_flowchart_svg_label_plan_with_style,
+    write_flowchart_svg_text_markdown, write_flowchart_svg_text_markdown_wrapped_with_style,
+};
 
 #[cfg(test)]
 use crate::graph_label::{
     is_single_img_label, normalize_flowchart_img_tags, starts_with_ascii_case_insensitive,
 };
-
-pub(in crate::svg::parity) fn flowchart_label_html_with_prepared_label<'a>(
-    label: &'a str,
-    label_type: &str,
-    config: &merman_model::presentation::PresentationConfig,
-    math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
-    prepared_label: crate::flowchart::FlowchartPreparedLabelResolution<'a>,
-) -> std::borrow::Cow<'a, str> {
-    match prepared_label {
-        crate::flowchart::FlowchartPreparedLabelResolution::PreparedMath(prepared) => {
-            std::borrow::Cow::Borrowed(prepared.browser_xhtml())
-        }
-        crate::flowchart::FlowchartPreparedLabelResolution::PreparedHtml(xhtml) => {
-            std::borrow::Cow::Borrowed(xhtml)
-        }
-        crate::flowchart::FlowchartPreparedLabelResolution::Unavailable(_reason) => {
-            std::borrow::Cow::Owned(flowchart_label_html_impl(label, label_type, config, None))
-        }
-        crate::flowchart::FlowchartPreparedLabelResolution::NotPrepared => std::borrow::Cow::Owned(
-            flowchart_label_html_impl(label, label_type, config, math_renderer),
-        ),
-    }
-}
-
-fn flowchart_label_html_impl(
-    label: &str,
-    label_type: &str,
-    config: &merman_model::presentation::PresentationConfig,
-    math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
-) -> String {
-    if let Some(html) = crate::math::render_math_html_label(label, config, math_renderer) {
-        return html;
-    }
-    let html = crate::graph_label::flowchart_label_html_source(label, label_type, config);
-    merman_markup::sanitize::sanitize_xhtml(&html, config.as_config())
-}
 
 pub(in crate::svg::parity) fn flowchart_label_plain_text(
     label: &str,
@@ -60,42 +19,6 @@ pub(in crate::svg::parity) fn flowchart_label_plain_text(
     html_labels: bool,
 ) -> String {
     crate::flowchart::flowchart_label_plain_text_for_layout(label, label_type, html_labels)
-}
-
-pub(in crate::svg::parity) fn write_flowchart_svg_source_word_lines(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    lines: &[Vec<String>],
-    include_style: bool,
-) {
-    crate::svg::parity::label::write_svg_text_source_word_lines(out, lines, include_style, false);
-}
-
-pub(crate) fn write_flowchart_svg_label_plan(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    plan: &crate::flowchart::FlowchartSvgLabelRenderPlan<'_>,
-    include_style: bool,
-) {
-    write_flowchart_svg_label_plan_with_style(out, plan, include_style, None);
-}
-
-pub(crate) fn write_flowchart_svg_label_plan_with_style(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    plan: &crate::flowchart::FlowchartSvgLabelRenderPlan<'_>,
-    include_style: bool,
-    extra_style: Option<&str>,
-) {
-    let lines = plan.wrapped_lines();
-    if let Some(extra_style) = extra_style.filter(|style| !style.is_empty()) {
-        crate::svg::parity::label::write_svg_text_source_word_lines_with_style(
-            out,
-            &lines,
-            extra_style,
-            false,
-            None,
-        );
-    } else {
-        write_flowchart_svg_source_word_lines(out, &lines, include_style);
-    }
 }
 
 #[cfg(test)]
@@ -115,63 +38,30 @@ pub(in crate::svg::parity) fn wrap_flowchart_svg_source_word_lines(
     )
 }
 
-pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    markdown: &str,
-    include_style: bool,
-) {
-    crate::svg::parity::label::write_svg_text_markdown_from_create_text_source(
-        out,
-        markdown,
-        include_style,
-    );
-}
-
-pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    markdown: &str,
-    include_style: bool,
-    measurer: &dyn crate::text::TextMeasurer,
-    style: &crate::text::TextStyle,
-    max_width_px: Option<f64>,
-) {
-    crate::svg::parity::label::write_svg_text_markdown_wrapped_from_create_text_source(
-        out,
-        markdown,
-        include_style,
-        measurer,
-        style,
-        max_width_px,
-    );
-}
-
-pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped_with_style(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    markdown: &str,
-    style: &str,
-    measurer: &dyn crate::text::TextMeasurer,
-    text_style: &crate::text::TextStyle,
-    max_width_px: Option<f64>,
-) {
-    crate::svg::parity::label::write_svg_text_markdown_wrapped_from_create_text_source_with_style(
-        out,
-        markdown,
-        style,
-        measurer,
-        text_style,
-        max_width_px,
-        false,
-    );
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
-        flowchart_label_html_impl, flowchart_label_html_with_prepared_label, is_single_img_label,
+        flowchart_label_html_with_prepared_label, is_single_img_label,
         normalize_flowchart_img_tags, starts_with_ascii_case_insensitive,
         wrap_flowchart_svg_source_word_lines, write_flowchart_svg_source_word_lines,
     };
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    fn flowchart_label_html_impl(
+        label: &str,
+        label_type: &str,
+        config: &merman_model::presentation::PresentationConfig,
+        math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
+    ) -> String {
+        flowchart_label_html_with_prepared_label(
+            label,
+            label_type,
+            config,
+            math_renderer,
+            Default::default(),
+        )
+        .into_owned()
+    }
 
     #[derive(Debug)]
     struct ReentryProbe<'a>(&'a AtomicUsize);

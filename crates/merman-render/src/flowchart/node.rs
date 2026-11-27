@@ -1395,45 +1395,6 @@ pub(crate) struct NodeLayoutDimensionsRequest<'a> {
     pub(crate) node_asset_height: Option<f64>,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum PreparedFlowchartNodeGeometry {
-    Rectangle(FlowchartRectangleGeometry),
-    ImageSquare(super::ImageSquareGeometry),
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct FlowchartRectangleGeometry {
-    pub(crate) shape: kurbo::Rect,
-    pub(crate) group: kurbo::Rect,
-}
-
-impl FlowchartRectangleGeometry {
-    fn from_style(
-        (width, height): (f64, f64),
-        label: crate::text::TextMetrics,
-        [css_width, css_height]: [Option<f64>; 2],
-    ) -> Self {
-        // Mermaid positions the rect using its label-derived size and measures the whole
-        // node group after CSS has resized the shape at that original position.
-        let shape = kurbo::Rect::from_origin_size(
-            (-width / 2.0, -height / 2.0),
-            (css_width.unwrap_or(width), css_height.unwrap_or(height)),
-        );
-        let label = kurbo::Rect::from_center_size(
-            kurbo::Point::ORIGIN,
-            (label.width.max(0.0), label.height.max(0.0)),
-        );
-        let group = if shape.width() == 0.0 || shape.height() == 0.0 {
-            label
-        } else if label.width() == 0.0 || label.height() == 0.0 {
-            shape
-        } else {
-            shape.union(label)
-        };
-        Self { shape, group }
-    }
-}
-
 impl NodeLayoutDimensionsRequest<'_> {
     pub(crate) fn measure(
         self,
@@ -1444,8 +1405,8 @@ impl NodeLayoutDimensionsRequest<'_> {
             super::FlowchartSvgLabelOwner,
         )>,
         charge_work: impl FnMut(usize) -> crate::Result<()>,
-    ) -> crate::Result<((f64, f64), Option<PreparedFlowchartNodeGeometry>)> {
-        use super::FlowchartShape;
+    ) -> crate::Result<((f64, f64), Option<super::PreparedFlowchartNodeGeometry>)> {
+        use super::{FlowchartRectangleGeometry, FlowchartShape, PreparedFlowchartNodeGeometry};
 
         let shape = super::resolve_flowchart_shape(self.layout_shape.unwrap_or("squareRect"))?;
         let (geometry, size) = if shape == FlowchartShape::ImageSquare

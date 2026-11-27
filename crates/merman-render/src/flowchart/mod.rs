@@ -10,7 +10,6 @@ mod edge_occurrence;
 #[cfg(feature = "layout-elk")]
 pub mod elk;
 use crate::graph_label as label;
-mod image;
 #[cfg(any(feature = "layout-elk", feature = "layout-shoal"))]
 mod measured;
 mod node;
@@ -44,7 +43,6 @@ pub(crate) use config::FlowchartLayoutSettings;
 pub(crate) use config::{
     FLOWCHART_FIXED_LABEL_WRAP_WIDTH, FlowchartBaseTypographyPlan, FlowchartConfigView,
 };
-pub(crate) use image::{ImageSquareGeometry, ImageSquareSizing};
 #[cfg(not(test))]
 pub(crate) use label::flowchart_non_markdown_svg_source_word_lines;
 pub(crate) use label::{
@@ -64,10 +62,17 @@ pub(crate) use label::{
 pub(crate) use label::{
     flowchart_non_markdown_svg_source_word_lines, flowchart_wrap_svg_source_word_lines,
 };
-pub(crate) use merman_render_flow::shapes::{
-    FlowchartShape, OrganicShapeGeometry, bang_geometry, cloud_geometry, is_flowchart_process_shape,
+pub(crate) use merman_render_flow::node_geometry::{
+    FlowchartRectangleGeometry, ImageSquareGeometry, ImageSquareSizing,
+    PreparedFlowchartNodeGeometry,
 };
-pub(crate) use merman_render_flow::svg_label::FlowchartNodeSourceTypography;
+pub(crate) use merman_render_flow::shapes::{
+    FlowchartShape, bang_geometry, cloud_geometry, is_flowchart_process_shape,
+};
+pub(crate) use merman_render_flow::svg_label::{
+    FlowchartNodeSourceTypography, FlowchartPreparedLabelResolution, FlowchartSvgLabelOwner,
+    FlowchartSvgLabelRenderPlan, FlowchartSvgLabelSidecar,
+};
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) use node::NodeLayoutDimensionsRequest;
 pub(crate) use node::{
@@ -75,7 +80,6 @@ pub(crate) use node::{
     LeanGeometry, LeanKind, OddGeometry, StadiumGeometry, flowchart_brace_content_dimensions,
     flowchart_node_render_dimensions, flowchart_stacked_document_geometry,
 };
-pub(crate) use node::{FlowchartRectangleGeometry, PreparedFlowchartNodeGeometry};
 pub(crate) use self_loop::{
     flowchart_dagre_merges_self_loop_segments, flowchart_self_loop_helper_edges,
 };
@@ -109,7 +113,5 @@ pub(crate) use style::{
 ))]
 pub(crate) use svg_label_artifact::measure_flowchart_svg_label_for_layout_with_metrics_and_source_style;
 pub(crate) use svg_label_artifact::{
-    FlowchartPreparedLabelResolution, FlowchartSvgLabelOwner, FlowchartSvgLabelRenderPlan,
-    FlowchartSvgLabelSidecar, FlowchartSvgLabelSidecarBuilder,
-    measure_flowchart_svg_label_for_layout_with_source_style,
+    FlowchartSvgLabelSidecarBuilder, measure_flowchart_svg_label_for_layout_with_source_style,
 };

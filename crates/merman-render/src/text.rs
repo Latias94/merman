@@ -5,6 +5,8 @@ pub use flowchart_parity::flowchart_html_has_inline_style_tags;
 pub use line_break::split_html_br_lines;
 pub use merman_render_core::text::flowchart_html_line_height_px;
 pub(crate) use merman_render_core::text::html_wrap::{self, HtmlWhiteSpace};
+#[cfg(test)]
+use merman_render_core::text::inline_html::MermaidMarkdownWordType;
 #[cfg(any(
     feature = "diagram-agentflow",
     feature = "diagram-flowchart",
@@ -12,10 +14,8 @@ pub(crate) use merman_render_core::text::html_wrap::{self, HtmlWhiteSpace};
     all(test, feature = "diagram-mindmap")
 ))]
 pub(crate) use merman_render_core::text::inline_html::SvgTextEntityMode;
+pub(crate) use merman_render_core::text::inline_html::measure_html_with_authored_width;
 pub use merman_render_core::text::inline_html::measure_html_with_inline_styles;
-pub(crate) use merman_render_core::text::inline_html::{
-    MermaidMarkdownWordType, measure_html_with_authored_width,
-};
 use merman_render_core::text::line_break;
 #[cfg(feature = "markdown-labels")]
 pub use merman_render_core::text::measure_markdown_with_inline_styles;

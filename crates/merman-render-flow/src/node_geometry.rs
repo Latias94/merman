@@ -1,27 +1,29 @@
-use kurbo::Size;
+//! Flow node outlines shared by layout, route clipping, and SVG terminals.
 
-use crate::model::LayoutPoint;
-use crate::text::TextMetrics;
+use kurbo::Size;
+use merman_render_core::{
+    Error, LayoutPoint, Result, svg_safety::inline_raster_url, text::TextMetrics,
+};
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ImageSquareGeometry {
-    pub(crate) image: Size,
-    pub(crate) label: Size,
-    pub(crate) outer: Size,
-    pub(crate) label_padding: f64,
-    pub(crate) top_label: bool,
+pub struct ImageSquareGeometry {
+    pub image: Size,
+    pub label: Size,
+    pub outer: Size,
+    pub label_padding: f64,
+    pub top_label: bool,
 }
 
-pub(crate) struct ImageSquareSizing<'a> {
-    pub(crate) href: &'a str,
-    pub(crate) width: Option<f64>,
-    pub(crate) height: Option<f64>,
-    pub(crate) constraint_on: bool,
+pub struct ImageSquareSizing<'a> {
+    pub href: &'a str,
+    pub width: Option<f64>,
+    pub height: Option<f64>,
+    pub constraint_on: bool,
 }
 
 impl ImageSquareSizing<'_> {
     fn resolve(self, min_width: f64) -> Size {
-        if let Some(natural) = crate::raster_data_url::intrinsic_raster_size(self.href) {
+        if let Some(natural) = intrinsic_raster_size(self.href) {
             // Mermaid imageSquare.ts gives a nonzero height priority under the constraint.
             let raw_width = self.width.unwrap_or(natural.width).max(min_width);
             let ratio = natural.width / natural.height;
@@ -49,14 +51,14 @@ impl ImageSquareSizing<'_> {
 }
 
 impl ImageSquareGeometry {
-    pub(crate) fn resolve(
+    pub fn resolve(
         sizing: ImageSquareSizing<'_>,
         metrics: TextMetrics,
         has_label: bool,
         wrapping_width: f64,
         top_label: bool,
-        mut charge_work: impl FnMut(usize) -> crate::Result<()>,
-    ) -> crate::Result<Self> {
+        mut charge_work: impl FnMut(usize) -> Result<()>,
+    ) -> Result<Self> {
         // URL decoding and header inspection are linear in the authored URL size. Pixel decode
         // stays in the export stage under its existing byte and pixel limits.
         charge_work(1 + sizing.href.len() / 64)?;
@@ -79,7 +81,7 @@ impl ImageSquareGeometry {
             image.height + label.height + label_padding,
         );
         if !outer.width.is_finite() || !outer.height.is_finite() {
-            return Err(crate::Error::InvalidModel {
+            return Err(Error::InvalidModel {
                 message: "Flowchart image has non-finite dimensions".into(),
             });
         }
@@ -92,7 +94,7 @@ impl ImageSquareGeometry {
         })
     }
 
-    pub(crate) fn image_top(self) -> f64 {
+    pub fn image_top(self) -> f64 {
         if self.top_label {
             self.outer.height / 2.0 - self.image.height
         } else {
@@ -100,7 +102,7 @@ impl ImageSquareGeometry {
         }
     }
 
-    pub(crate) fn labeled_outline(self) -> Option<[LayoutPoint; 8]> {
+    pub fn labeled_outline(self) -> Option<[LayoutPoint; 8]> {
         if self.label_padding == 0.0 {
             return None;
         }
@@ -135,5 +137,66 @@ impl ImageSquareGeometry {
             ]
         };
         Some(points.map(|(x, y)| LayoutPoint { x, y }))
+    }
+}
+
+pub fn intrinsic_raster_size(href: &str) -> Option<Size> {
+    let url = inline_raster_url(href)?;
+    let (bytes, _) = url.decode_to_vec().ok()?;
+    let mut reader = std::io::Cursor::new(bytes);
+    let format = imagesize::reader_type(&mut reader).ok()?;
+    let mime = url.mime_type();
+    let matching_format = match format {
+        imagesize::ImageType::Png => mime.matches("image", "png"),
+        imagesize::ImageType::Jpeg => mime.matches("image", "jpeg") || mime.matches("image", "jpg"),
+        imagesize::ImageType::Gif => mime.matches("image", "gif"),
+        imagesize::ImageType::Webp => mime.matches("image", "webp"),
+        // Export dependencies can enable additional formats on the same package.
+        #[allow(unreachable_patterns)]
+        _ => false,
+    };
+    if !matching_format {
+        return None;
+    }
+    let size = format.reader_size(&mut reader).ok()?;
+    (size.width > 0 && size.height > 0).then_some(Size::new(size.width as f64, size.height as f64))
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum PreparedFlowchartNodeGeometry {
+    Rectangle(FlowchartRectangleGeometry),
+    ImageSquare(ImageSquareGeometry),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct FlowchartRectangleGeometry {
+    pub shape: kurbo::Rect,
+    pub group: kurbo::Rect,
+}
+
+impl FlowchartRectangleGeometry {
+    pub fn from_style(
+        (width, height): (f64, f64),
+        label: TextMetrics,
+        [css_width, css_height]: [Option<f64>; 2],
+    ) -> Self {
+        // Mermaid positions the rect using its label-derived size and measures the whole
+        // node group after CSS has resized the shape at that original position.
+        let shape = kurbo::Rect::from_origin_size(
+            (-width / 2.0, -height / 2.0),
+            (css_width.unwrap_or(width), css_height.unwrap_or(height)),
+        );
+        let label = kurbo::Rect::from_center_size(
+            kurbo::Point::ORIGIN,
+            (label.width.max(0.0), label.height.max(0.0)),
+        );
+        let group = if shape.width() == 0.0 || shape.height() == 0.0 {
+            label
+        } else if label.width() == 0.0 || label.height() == 0.0 {
+            shape
+        } else {
+            shape.union(label)
+        };
+        Self { shape, group }
     }
 }

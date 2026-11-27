@@ -229,16 +229,8 @@ fn flowchart_math_label_metrics_for_layout(
     })
 }
 
-pub(crate) fn flowchart_label_sanitize_config(
-    config: &PresentationConfig,
-) -> std::borrow::Cow<'_, merman_model::MermaidConfig> {
-    if config.get_str("securityLevel").is_some() {
-        return std::borrow::Cow::Borrowed(config.as_config());
-    }
-    let mut config = config.as_config().clone();
-    config.set_value("securityLevel", serde_json::Value::String("strict".into()));
-    std::borrow::Cow::Owned(config)
-}
+#[cfg(feature = "markdown-labels")]
+pub(crate) use merman_render_core::text::create_text_html::flowchart_label_sanitize_config;
 
 /// Measures the exact sanitized XHTML retained for the corresponding HTML-label terminal.
 #[cfg(all(test, feature = "markdown-labels"))]
@@ -692,7 +684,7 @@ fn intrinsic_label_image_size(src: &str) -> Option<kurbo::Size> {
         feature = "diagram-agentflow"
     ))]
     {
-        crate::raster_data_url::intrinsic_raster_size(src)
+        merman_render_flow::node_geometry::intrinsic_raster_size(src)
     }
     #[cfg(not(any(
         feature = "diagram-flowchart",
