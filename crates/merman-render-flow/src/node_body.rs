@@ -16,6 +16,7 @@ use roughr::core::RoughRandomness;
 
 mod cylinders;
 mod datastore;
+mod depth;
 pub mod document_shapes;
 mod label_container;
 mod lean_trapezoids;
@@ -26,6 +27,7 @@ mod subroutine;
 
 pub use cylinders::CylinderBody;
 pub use datastore::{advance_datastore, write_datastore};
+pub use depth::{native_node_silhouette, write_native_node_depth};
 pub use label_container::{advance_hourglass, write_hourglass, write_notched_rectangle};
 pub use lean_trapezoids::{advance_lean_hand_drawn, write_lean};
 pub use outer_path::{OuterPathBody, OuterPathTranslation};

@@ -2,7 +2,9 @@
 
 use kurbo::Size;
 pub use merman_render_core::svg_safety::intrinsic_raster_size;
-use merman_render_core::{Error, LayoutPoint, Result, text::TextMetrics};
+use merman_render_core::{Error, LayoutNode, LayoutPoint, Result, text::TextMetrics};
+
+use crate::svg_label::FlowchartSvgLabelSidecar;
 
 #[derive(Debug, Clone, Copy)]
 pub struct ImageSquareGeometry {
@@ -152,6 +154,28 @@ pub struct FlowchartRectangleGeometry {
 }
 
 impl FlowchartRectangleGeometry {
+    pub fn from_sidecar(
+        labels: &FlowchartSvgLabelSidecar,
+        node_id: &str,
+        swimlane: bool,
+    ) -> Option<Self> {
+        match labels.node_geometry(node_id, swimlane)? {
+            PreparedFlowchartNodeGeometry::Rectangle(rectangle) => Some(rectangle),
+            PreparedFlowchartNodeGeometry::ImageSquare(_) => None,
+        }
+    }
+
+    pub fn from_layout_node(node: &LayoutNode) -> Self {
+        let shape = kurbo::Rect::from_center_size(
+            kurbo::Point::ORIGIN,
+            (node.width.max(1.0), node.height.max(1.0)),
+        );
+        Self {
+            shape,
+            group: shape,
+        }
+    }
+
     pub fn from_style(
         (width, height): (f64, f64),
         label: TextMetrics,

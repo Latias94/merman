@@ -45,6 +45,7 @@ diagram-agentflow = [
     "merman-render-core/rough-svg",
     "merman-render-core/styled-html-labels",
     "merman-render-core/svg-safety",
+    "merman-render-core/theme-elevation",
     "merman-render-core/theme-label-background",
     "merman-render-core/theme-svg",
 ]
@@ -75,6 +76,7 @@ diagram-flowchart = [
     "merman-render-core/rough-svg",
     "merman-render-core/styled-html-labels",
     "merman-render-core/svg-safety",
+    "merman-render-core/theme-elevation",
     "merman-render-core/theme-label-background",
     "merman-render-core/theme-svg",
 ]
@@ -105,6 +107,7 @@ diagram-swimlane = [
     "merman-render-core/rough-svg",
     "merman-render-core/styled-html-labels",
     "merman-render-core/svg-safety",
+    "merman-render-core/theme-elevation",
     "merman-render-core/theme-label-background",
     "merman-render-core/theme-svg",
 ]

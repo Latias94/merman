@@ -164,12 +164,11 @@ impl<'a> FlowchartRenderCtx<'a> {
         &self,
         id: &str,
     ) -> Option<crate::flowchart::FlowchartRectangleGeometry> {
-        match self.node_geometry(id)? {
-            crate::flowchart::PreparedFlowchartNodeGeometry::Rectangle(rectangle) => {
-                Some(rectangle)
-            }
-            _ => None,
-        }
+        crate::flowchart::FlowchartRectangleGeometry::from_sidecar(
+            self.svg_label_sidecar?,
+            id,
+            self.swimlane_layout.is_some(),
+        )
     }
 
     pub(in crate::svg::parity::flowchart) fn node_image(
@@ -191,16 +190,8 @@ impl<'a> FlowchartRenderCtx<'a> {
         &self,
         node: &LayoutNode,
     ) -> crate::flowchart::FlowchartRectangleGeometry {
-        self.node_rectangle(&node.id).unwrap_or_else(|| {
-            let shape = kurbo::Rect::from_center_size(
-                kurbo::Point::ORIGIN,
-                (node.width.max(1.0), node.height.max(1.0)),
-            );
-            crate::flowchart::FlowchartRectangleGeometry {
-                shape,
-                group: shape,
-            }
-        })
+        self.node_rectangle(&node.id)
+            .unwrap_or_else(|| crate::flowchart::FlowchartRectangleGeometry::from_layout_node(node))
     }
 
     pub(in crate::svg::parity::flowchart) fn document_ids(
