@@ -153,6 +153,8 @@ impl BoundaryRoutes {
             label_center,
             start_label_center: None,
             end_label_center: None,
+            shared_bus: false,
+            corridor_clearance: 0.0,
             reversed_for_ranking: false,
         };
         let loop_via;

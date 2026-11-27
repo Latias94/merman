@@ -220,12 +220,6 @@ fn c4_write_text_by_tspan(out: &mut impl SvgOutput, text: C4TspanText<'_>) -> Re
         shoal,
     } = text;
     let x = x + width / 2.0;
-    let mut style = String::new();
-    let _ = write!(
-        &mut style,
-        "text-anchor: middle; font-size: {}px; font-weight: {}; font-family: {};",
-        font_size, font_weight, font_family
-    );
 
     out.checkpoint()?;
     let lines = crate::text::split_mermaid_common_br_lines(content);
@@ -252,15 +246,17 @@ fn c4_write_text_by_tspan(out: &mut impl SvgOutput, text: C4TspanText<'_>) -> Re
         );
         out.checkpoint()?;
         for (k, v) in attrs {
-            let _ = write!(out, r#" {k}="{}""#, escape_attr(v));
+            let _ = write!(out, r#" {k}="{}""#, escape_attr_display(v));
             out.checkpoint()?;
         }
         let _ = write!(
             out,
-            r#" style="{}"><tspan dy="{}"{alignment}>{}</tspan></text>"#,
-            escape_attr(&style),
+            r#" style="text-anchor: middle; font-size: {}px; font-weight: {}; font-family: {};"><tspan dy="{}"{alignment}>{}</tspan></text>"#,
+            font_size,
+            escape_attr_display(font_weight),
+            escape_attr_display(font_family),
             dy_s,
-            escape_xml(line)
+            escape_xml_display(line)
         );
         out.checkpoint()?;
     }
@@ -292,19 +288,36 @@ fn write_c4_base_defs(out: &mut impl SvgOutput, diagram_id: SvgDiagramId<'_>) ->
     out.checkpoint()
 }
 
-fn write_c4_relation_defs(out: &mut impl SvgOutput, diagram_id: SvgDiagramId<'_>) -> Result<()> {
-    let _ = write!(
-        out,
-        r#"<defs><marker id="{}" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z"/></marker></defs>"#,
-        escape_attr_display(scoped_svg_id(diagram_id, "arrowhead"))
-    );
-    out.checkpoint()?;
-    let _ = write!(
-        out,
-        r#"<defs><marker id="{}" refX="1" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 10 0 L 0 5 L 10 10 z"/></marker></defs>"#,
-        escape_attr_display(scoped_svg_id(diagram_id, "arrowend"))
-    );
-    out.checkpoint()?;
+fn write_c4_relation_arrows(
+    out: &mut impl SvgOutput,
+    diagram_id: SvgDiagramId<'_>,
+    [head, end]: [&str; 2],
+    fill: Option<&str>,
+) -> Result<()> {
+    for (id, ref_x, path) in [
+        (head, 9, "M 0 0 L 10 5 L 0 10 z"),
+        (end, 1, "M 10 0 L 0 5 L 10 10 z"),
+    ] {
+        let _ = write!(
+            out,
+            r#"<defs><marker id="{}" refX="{ref_x}" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="{path}""#,
+            escape_attr_display(scoped_svg_id(diagram_id, id))
+        );
+        if let Some(fill) = fill {
+            let _ = write!(out, r#" fill="{}""#, escape_attr_display(fill));
+        }
+        out.push_str("/></marker></defs>");
+        out.checkpoint()?;
+    }
+    Ok(())
+}
+
+fn write_c4_relation_defs(
+    out: &mut impl SvgOutput,
+    diagram_id: SvgDiagramId<'_>,
+    fill: Option<&str>,
+) -> Result<()> {
+    write_c4_relation_arrows(out, diagram_id, ["arrowhead", "arrowend"], fill)?;
     let _ = write!(
         out,
         r##"<defs><marker id="{}" markerWidth="15" markerHeight="8" orient="auto" refX="16" refY="4"><path fill="black" stroke="#000000" stroke-width="1px" d="M 9,2 V 6 L16,4 Z" style="stroke-dasharray: 0, 0;"/><path fill="none" stroke="#000000" stroke-width="1px" d="M 0,1 L 6,7 M 6,1 L 0,7" style="stroke-dasharray: 0, 0;"/></marker></defs>"##,
@@ -593,22 +606,24 @@ fn c4_write_unified_shape(
                 let rx = width / 2.0;
                 let ry = c4_cap_radius(width);
                 let body_height = (height - 2.0 * ry).max(1.0);
-                let path = format!(
-                    "M0,{}a{},{} 0,0,0 {},0a{},{} 0,0,0 {},0l0,{}a{},{} 0,0,0 {},0l0,{}",
-                    fmt(ry),
-                    fmt(rx),
-                    fmt(ry),
-                    fmt(width),
-                    fmt(rx),
-                    fmt(ry),
-                    fmt(-width),
-                    fmt(body_height),
-                    fmt(rx),
-                    fmt(ry),
-                    fmt(width),
-                    fmt(-body_height)
+                // Split the closed cylinder silhouette from the open interior rim arc so RoughJS
+                // hatching does not self-intersect across the top cap.
+                let body_path = format!(
+                    "M0,{ry} a{rx},{ry} 0,0,1 {w},0 v{h} a{rx},{ry} 0,0,1 {mw},0 Z",
+                    ry = fmt(ry),
+                    rx = fmt(rx),
+                    w = fmt(width),
+                    h = fmt(body_height),
+                    mw = fmt(-width),
                 );
-                let pair = c4_hand_drawn_paths(&path, stroke_width, work_meter, randomness)?;
+                let rim_path = format!(
+                    "M0,{ry} a{rx},{ry} 0,0,0 {w},0",
+                    ry = fmt(ry),
+                    rx = fmt(rx),
+                    w = fmt(width),
+                );
+                let pair = c4_hand_drawn_paths(&body_path, stroke_width, work_meter, randomness)?;
+                let rim = c4_hand_drawn_stroke(&rim_path, work_meter, randomness)?;
                 out.push_str(r#"<g class="basic label-container" transform="translate("#);
                 let _ = write!(
                     out,
@@ -618,6 +633,15 @@ fn c4_write_unified_shape(
                 );
                 out.checkpoint()?;
                 c4_write_hand_drawn_pair(out, &pair, fill, stroke, stroke_width)?;
+                let _ = write!(
+                    out,
+                    r#"<path class="rough-stroke" d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="fill:none !important;stroke:{} !important;stroke-width:{}px !important"/>"#,
+                    escape_attr(&rim),
+                    escape_attr(stroke),
+                    fmt(stroke_width as f64),
+                    escape_attr(stroke),
+                    fmt(stroke_width as f64),
+                );
                 out.push_str("</g>");
                 return out.checkpoint();
             }
@@ -625,27 +649,37 @@ fn c4_write_unified_shape(
                 let h = height.max(1.0);
                 let ry = h / 2.0;
                 let rx = c4_cap_radius(h);
-                let path = format!(
-                    "M0,0 a{},{} 0,0,1 0,-{} l{},0 a{},{} 0,0,1 0,{} M{},-{} a{},{} 0,0,0 0,{} l-{},0",
-                    fmt(rx),
-                    fmt(ry),
-                    fmt(h),
-                    fmt(width),
-                    fmt(rx),
-                    fmt(ry),
-                    fmt(h),
-                    fmt(width),
-                    fmt(h),
-                    fmt(rx),
-                    fmt(ry),
-                    fmt(h),
-                    fmt(width),
+                let body_path = format!(
+                    "M0,0 a{rx},{ry} 0,0,1 0,{mh} h{w} a{rx},{ry} 0,0,1 0,{h} Z",
+                    rx = fmt(rx),
+                    ry = fmt(ry),
+                    mh = fmt(-h),
+                    w = fmt(width),
+                    h = fmt(h),
                 );
-                let pair = c4_hand_drawn_paths(&path, stroke_width, work_meter, randomness)?;
+                let rim_path = format!(
+                    "M{w},{mh} a{rx},{ry} 0,0,0 0,{h}",
+                    w = fmt(width),
+                    mh = fmt(-h),
+                    rx = fmt(rx),
+                    ry = fmt(ry),
+                    h = fmt(h),
+                );
+                let pair = c4_hand_drawn_paths(&body_path, stroke_width, work_meter, randomness)?;
+                let rim = c4_hand_drawn_stroke(&rim_path, work_meter, randomness)?;
                 out.push_str(r#"<g class="basic label-container" transform="translate("#);
                 let _ = write!(out, "{}, {})\">", fmt(-width / 2.0), fmt(h / 2.0));
                 out.checkpoint()?;
                 c4_write_hand_drawn_pair(out, &pair, fill, stroke, stroke_width)?;
+                let _ = write!(
+                    out,
+                    r#"<path class="rough-stroke" d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="fill:none !important;stroke:{} !important;stroke-width:{}px !important"/>"#,
+                    escape_attr(&rim),
+                    escape_attr(stroke),
+                    fmt(stroke_width as f64),
+                    escape_attr(stroke),
+                    fmt(stroke_width as f64),
+                );
                 out.push_str("</g>");
                 return out.checkpoint();
             }
@@ -1235,31 +1269,34 @@ pub(crate) fn render_c4_diagram_svg_typed(
             }
         }
     }
-    write_c4_relation_defs(&mut out, diagram_id)?;
+    let classic_shoal = is_shoal && native.is_none();
+    let relationship_line = text_paint.relationship_line();
+    write_c4_relation_defs(
+        &mut out,
+        diagram_id,
+        classic_shoal.then_some(relationship_line),
+    )?;
 
     out.push_str("<g>");
     out.checkpoint()?;
+    #[cfg(feature = "layout-shoal")]
+    let mut relation_points = Vec::new();
     for (idx, rel) in layout.rels.iter().enumerate() {
-        let paint = text_paint
-            .relation_paint(idx)
-            .ok_or_else(|| crate::Error::InvalidModel {
-                message: format!(
-                    "c4: missing prepared relation paint {} -> {}",
-                    rel.from, rel.to
-                ),
-            })?;
-        let text_color = paint.text.as_str();
-        let stroke_color = paint.line.as_str();
-        let arrowhead = if native.is_some() {
-            format!("arrowhead-{idx}")
-        } else {
-            "arrowhead".to_owned()
-        };
-        let arrowend = if native.is_some() {
-            format!("arrowend-{idx}")
-        } else {
-            "arrowend".to_owned()
-        };
+        let (text_color, stroke_color) =
+            text_paint
+                .relation_paint(idx)
+                .ok_or_else(|| crate::Error::InvalidModel {
+                    message: format!(
+                        "c4: missing prepared relation paint {} -> {}",
+                        rel.from, rel.to
+                    ),
+                })?;
+        let custom_classic_color = classic_shoal && stroke_color != relationship_line;
+        let indexed = (native.is_some() || custom_classic_color)
+            .then(|| [format!("arrowhead-{idx}"), format!("arrowend-{idx}")]);
+        let [arrowhead, arrowend] = indexed.as_ref().map_or(["arrowhead", "arrowend"], |ids| {
+            ids.each_ref().map(String::as_str)
+        });
         if let Some(native) = native {
             let (head, end, fill) = match native.marker_style {
                 MarkerStyle::Stealth => (
@@ -1292,17 +1329,24 @@ pub(crate) fn render_c4_diagram_svg_typed(
             let _ = write!(
                 out,
                 r#"<defs><marker id="{}" refX="{end_ref}" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"{marker_geometry}><path d="{head}" fill="{}" stroke="{}"{stroke_geometry}/></marker><marker id="{}" refX="{start_ref}" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"{marker_geometry}><path d="{end}" fill="{}" stroke="{}"{stroke_geometry}/></marker></defs>"#,
-                escape_attr_display(scoped_svg_id(diagram_id, &arrowhead)),
+                escape_attr_display(scoped_svg_id(diagram_id, arrowhead)),
                 escape_attr(fill),
                 escape_attr(stroke_color),
-                escape_attr_display(scoped_svg_id(diagram_id, &arrowend)),
+                escape_attr_display(scoped_svg_id(diagram_id, arrowend)),
                 escape_attr(fill),
                 escape_attr(stroke_color)
             );
             out.checkpoint()?;
+        } else if custom_classic_color {
+            write_c4_relation_arrows(
+                &mut out,
+                diagram_id,
+                [arrowhead, arrowend],
+                Some(stroke_color),
+            )?;
         }
-        let arrowhead_url = scoped_svg_url(diagram_id, &arrowhead);
-        let arrowend_url = scoped_svg_url(diagram_id, &arrowend);
+        let arrowhead_url = scoped_svg_url(diagram_id, arrowhead);
+        let arrowend_url = scoped_svg_url(diagram_id, arrowend);
         let offset_x = c4_relation_offset(rel.offset_x.as_ref());
         let offset_y = c4_relation_offset(rel.offset_y.as_ref());
         let connector_width = native.map_or(1.0, |theme| theme.connector_width);
@@ -1327,7 +1371,15 @@ pub(crate) fn render_c4_diagram_svg_typed(
             .transpose()?;
         #[cfg(feature = "layout-shoal")]
         if let Some(route) = canonical {
-            super::shoal::open_shaft(&mut out, route, stroke_color, connector_width)?;
+            super::shoal::open_shaft(
+                &mut out,
+                route,
+                stroke_color,
+                connector_width,
+                diagram_id,
+                root_bounds,
+                &mut relation_points,
+            )?;
         }
         if straight {
             let _ = write!(
@@ -1402,15 +1454,15 @@ pub(crate) fn render_c4_diagram_svg_typed(
 
         #[cfg(feature = "layout-shoal")]
         if let Some(route) = canonical {
-            let Some(origin) = &route.label_origin else {
+            let Some(label) = &route.label else {
                 continue;
             };
             let _ = write!(
                 out,
                 r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate({}, {})">"#,
                 escape_attr(&route.id),
-                fmt(origin.x),
-                fmt(origin.y)
+                fmt(label.origin.x),
+                fmt(label.origin.y)
             );
             out.checkpoint()?;
         }
@@ -1422,7 +1474,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 + offset_x
         };
         let midy = if is_shoal {
-            0.0
+            rel.label.y
         } else {
             rel.start_point.y.min(rel.end_point.y)
                 + (rel.end_point.y - rel.start_point.y).abs() / 2.0
@@ -1460,7 +1512,11 @@ pub(crate) fn render_c4_diagram_svg_typed(
                     content: &techn_text,
                     line_count: techn.line_count,
                     x: if is_shoal { -width / 2.0 } else { midx },
-                    y: midy + message_size + C4_TECHNOLOGY_GAP,
+                    y: if is_shoal {
+                        techn.y
+                    } else {
+                        midy + message_size + C4_TECHNOLOGY_GAP
+                    },
                     width,
                     font_family: message_family,
                     font_size: message_size,

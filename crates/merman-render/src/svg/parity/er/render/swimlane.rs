@@ -144,9 +144,10 @@ pub(super) fn render_cluster(
         });
         let _ = write!(
             out,
-            r#"<foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel" {}>{}</span></div></foreignObject>"#,
+            r#"<foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel" {}>{}</span></div></foreignObject>"#,
             fmt(width),
             fmt(height),
+            html_label_overflow_attr(context.allow_html_label_overflow, width, height),
             fmt(geometry.width),
             text_attr,
             prepared.fragment(),
@@ -312,9 +313,10 @@ pub(super) fn render_relationship_label(
     if let Some((fragment, wrapper_style)) = prepared.html() {
         let _ = write!(
             out,
-            r#"<foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel">{}</span></div></foreignObject>"#,
+            r#"<foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel">{}</span></div></foreignObject>"#,
             fmt(label.width),
             fmt(label.height),
+            html_label_overflow_attr(context.allow_html_label_overflow, label.width, label.height),
             escape_attr(wrapper_style),
             fragment,
         );

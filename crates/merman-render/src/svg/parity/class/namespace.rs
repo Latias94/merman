@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 use super::super::SvgDiagramId;
 use super::super::timing::RenderTiming;
+use super::super::util::html_label_overflow_attr;
 use super::super::{SvgOutput, escape_attr_display, escape_xml_display, fmt};
 use super::bounds::include_xywh;
 use super::context::ClassEmitCheckpoint;
@@ -17,7 +18,7 @@ pub(super) struct ClassNamespaceClusterGroupContext<'a> {
     pub content_ty: f64,
     pub bounds_dx: f64,
     pub bounds_dy: f64,
-    pub use_layout_title_anchor: bool,
+    pub uses_canonical_routes: bool,
     pub use_html_labels: bool,
     pub look: &'a str,
     pub mermaid_config: Option<&'a merman_model::presentation::PresentationConfig>,
@@ -82,7 +83,7 @@ fn render_class_namespace_cluster_at(
 
     let label_w = cluster.title_label.width.max(0.0);
     let label_h = cluster.title_label.height.max(0.0);
-    let (label_x, label_y) = if ctx.use_layout_title_anchor {
+    let (label_x, label_y) = if ctx.uses_canonical_routes {
         (
             left + (w - label_w) / 2.0 + (cluster.title_label.x - cluster.x),
             top + (h - label_h) / 2.0 + (cluster.title_label.y - cluster.y),
@@ -117,9 +118,10 @@ fn render_class_namespace_cluster_at(
         let title_html = class_namespace_title_html(&cluster.title, ctx);
         let _ = write!(
             out,
-            r#"<foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel">{title_html}</span></div></foreignObject>"#,
+            r#"<foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel">{title_html}</span></div></foreignObject>"#,
             fmt(label_w),
             fmt(label_h),
+            html_label_overflow_attr(ctx.uses_canonical_routes, label_w, label_h),
             MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX
         );
     } else {
@@ -166,7 +168,7 @@ pub(super) fn render_class_namespace_clusters_in_root(
 
         let w = c.width.max(1.0);
         let h = c.height.max(1.0);
-        let (left, top) = if *ns_id == root_ns_id && !ctx.use_layout_title_anchor {
+        let (left, top) = if *ns_id == root_ns_id && !ctx.uses_canonical_routes {
             (8.0, 8.0)
         } else {
             (

@@ -22,12 +22,30 @@ pub trait WorkControl {
     fn check(&mut self) -> Result<(), WorkError>;
     fn charge(&mut self, units: usize) -> Result<(), WorkError>;
 
+    /// Admits work and polls cancellation. A meter whose charge already polls may fuse the calls.
+    #[doc(hidden)]
+    fn charge_with_checkpoint(&mut self, units: usize) -> Result<(), WorkError> {
+        self.check()?;
+        self.charge(units)
+    }
+
     /// Attempts to charge optional work while leaving `headroom` units for required work.
     /// Declining with `Ok(false)` leaves the operation active and consumes no units.
     /// The default checks for cancellation and declines.
     fn try_charge_optional(&mut self, _units: usize, _headroom: usize) -> Result<bool, WorkError> {
         self.check()?;
         Ok(false)
+    }
+
+    /// Polls cancellation before trying optional work, including when the charge is declined.
+    #[doc(hidden)]
+    fn try_charge_optional_with_checkpoint(
+        &mut self,
+        units: usize,
+        headroom: usize,
+    ) -> Result<bool, WorkError> {
+        self.check()?;
+        self.try_charge_optional(units, headroom)
     }
 }
 
@@ -138,14 +156,20 @@ impl<'a> Work<'a> {
                 .total
                 .checked_add(units)
                 .ok_or(WorkError::ArithmeticOverflow)?;
-            self.check()?;
             if let Some(limit) = self.optional_limit {
-                if total > limit || !self.control.try_charge_optional(units, limit)? {
+                let admitted = if total > limit {
+                    self.check()?;
+                    false
+                } else {
+                    self.control
+                        .try_charge_optional_with_checkpoint(units, limit)?
+                };
+                if !admitted {
                     self.optional_declined = true;
                     return Err(WorkError::Interrupted.into());
                 }
             } else {
-                self.control.charge(units)?;
+                self.control.charge_with_checkpoint(units)?;
             }
             self.total = total;
             self.pending = 0;
@@ -153,12 +177,13 @@ impl<'a> Work<'a> {
         Ok(())
     }
 
+    #[inline]
     pub(crate) fn visit(&mut self, units: usize) -> LayoutResult<()> {
         self.pending = self
             .pending
             .checked_add(units)
             .ok_or(WorkError::ArithmeticOverflow)?;
-        if self.pending >= 128 {
+        if self.pending >= 512 {
             self.charge(0)?;
         }
         Ok(())
@@ -195,24 +220,43 @@ impl<'a> Work<'a> {
         result.map(Some)
     }
 
+    pub(crate) fn charge_sort(&mut self, len: usize) -> LayoutResult<()> {
+        if len > 1 {
+            self.charge(
+                len.checked_mul(len.ilog2() as usize + 1)
+                    .ok_or(WorkError::ArithmeticOverflow)?,
+            )?;
+        }
+        Ok(())
+    }
+
     /// Admit the full comparison budget before entering the standard library sort.
     pub(crate) fn sort(
         &mut self,
-        ids: &mut [usize],
+        values: &mut [usize],
         cmp: impl Fn(&usize, &usize) -> Ordering,
     ) -> LayoutResult<()> {
-        if ids.len() > 1 {
-            let levels = ids.len().ilog2() as usize + 1;
-            self.charge(
-                ids.len()
-                    .checked_mul(levels)
-                    .ok_or(WorkError::ArithmeticOverflow)?,
-            )?;
-            ids.sort_unstable_by(cmp);
+        self.sort_dyn(values, &cmp)
+    }
+
+    fn sort_dyn(
+        &mut self,
+        values: &mut [usize],
+        cmp: &dyn Fn(&usize, &usize) -> Ordering,
+    ) -> LayoutResult<()> {
+        if values.len() > 1 {
+            self.charge_sort(values.len())?;
+            sort_indices(values, cmp);
             self.check()?;
         }
         Ok(())
     }
+}
+
+/// Single compiled `usize` unstable sort shared across all `Work::sort` and index-sort callers
+/// so `core::slice::sort::unstable` is not monomorphized per comparator closure.
+pub(crate) fn sort_indices(values: &mut [usize], cmp: &dyn Fn(&usize, &usize) -> Ordering) {
+    values.sort_unstable_by(|a, b| cmp(a, b));
 }
 
 #[cfg(test)]
@@ -265,5 +309,42 @@ mod tests {
             Err(LayoutError::Work(WorkError::ArithmeticOverflow))
         );
         assert_eq!(ids, [1, 3, 2, 0]);
+    }
+
+    #[test]
+    fn traversal_batches_exactly_and_still_polls_controls_that_only_check() {
+        #[derive(Default)]
+        struct Control {
+            charged: usize,
+            interrupted: bool,
+        }
+        impl WorkControl for Control {
+            fn check(&mut self) -> Result<(), WorkError> {
+                if self.interrupted {
+                    Err(WorkError::Interrupted)
+                } else {
+                    Ok(())
+                }
+            }
+            fn charge(&mut self, units: usize) -> Result<(), WorkError> {
+                self.charged += units;
+                Ok(())
+            }
+        }
+        let mut control = Control::default();
+        let mut work = Work::new(&mut control);
+        work.visit(511).unwrap();
+        assert_eq!(work.total, 0);
+        work.visit(3).unwrap();
+        assert_eq!(work.total, 514);
+        work.visit(9).unwrap();
+        work.finish().unwrap();
+        assert_eq!(control.charged, 523);
+        control.interrupted = true;
+        assert_eq!(
+            Work::new(&mut control).visit(512),
+            Err(WorkError::Interrupted.into())
+        );
+        assert_eq!(control.charged, 523);
     }
 }

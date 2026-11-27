@@ -57,12 +57,20 @@ fn recomputing_an_edited_level_matches_a_fresh_solve_and_reuses_unchanged_levels
     };
     let mut frames = Frames::new(hierarchy.levels.len()).unwrap();
     let mut scratch = Expanded::default();
-    frames.draw(&first, None, &mut scratch, &mut work).unwrap();
+    frames
+        .draw(&first, None, &mut scratch, Some(u64::MAX), &mut work)
+        .unwrap();
     let measure = |frames: &mut Frames, previous: Option<&Pass<'_>>| {
         let mut meter = Meter::default();
         let mut work = Work::new(&mut meter);
         let result = frames
-            .draw(&edited, previous, &mut Expanded::default(), &mut work)
+            .draw(
+                &edited,
+                previous,
+                &mut Expanded::default(),
+                Some(u64::MAX),
+                &mut work,
+            )
             .unwrap();
         work.finish().unwrap();
         (result, meter.0)
@@ -73,4 +81,45 @@ fn recomputing_an_edited_level_matches_a_fresh_solve_and_reuses_unchanged_levels
     assert_eq!(candidate, reference);
     assert_eq!(repeated, reference);
     assert!(unchanged_work < changed_work && changed_work < cold_work);
+}
+
+#[test]
+fn geometry_omits_crossing_work_when_compound_ports_cannot_be_reordered() {
+    let mut graph = Graph::default();
+    graph.groups.push(GroupSpec::new(0));
+    for index in 0..16 {
+        let mut node = NodeSpec::new(
+            Size {
+                width: 48.,
+                height: 26.,
+            },
+            index,
+        );
+        node.parent = (index < 8).then_some(GroupId(0));
+        graph.nodes.push(node);
+    }
+    for index in 0..8 {
+        for target in [8 + index, 15 - index] {
+            graph
+                .edges
+                .push(EdgeSpec::new(NodeId(index).into(), NodeId(target).into()));
+        }
+    }
+    let mut options = Options::default();
+    options.caps.max_ordered_compound_ports = 0;
+    let mut full_work = Meter::default();
+    let full =
+        crate::layout_with_control(&graph, &options, &mut Default::default(), &mut full_work)
+            .unwrap();
+    let mut geometry_work = Meter::default();
+    let geometry = crate::layout_geometry_with_control(
+        &graph,
+        &options,
+        &mut Default::default(),
+        &mut geometry_work,
+    )
+    .unwrap();
+    assert!(!full.border_stitches.is_empty());
+    assert_eq!(geometry, crate::LayoutGeometry::from(full));
+    assert!(geometry_work.0 < full_work.0);
 }

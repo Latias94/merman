@@ -14,7 +14,7 @@ use crate::text::TextMeasurer;
 use crate::{Error, Result};
 use kurbo::Insets;
 use merman_model::families::er::ErDiagramModel;
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
 const GROUP_PADDING: f64 = 8.0;
@@ -96,7 +96,7 @@ fn measure<'a>(
         groups: Vec::with_capacity(group_count),
         edges: Vec::with_capacity(edge_count),
     };
-    let mut endpoints = HashMap::with_capacity(endpoint_count);
+    let mut endpoints = FxHashMap::with_capacity_and_hasher(endpoint_count, Default::default());
     let groups: Vec<_> = model.subgraphs.iter().rev().collect();
     for (ordinal, subgraph) in groups.iter().enumerate() {
         work.charge_adapter(subgraph.title.len())?;
@@ -141,7 +141,7 @@ fn measure<'a>(
 
     let mut entity_ids = Vec::with_capacity(entity_count);
     let mut profiles = Vec::with_capacity(entity_count);
-    let mut entity_by_name = HashMap::with_capacity(entity_count);
+    let mut entity_by_name = FxHashMap::with_capacity_and_hasher(entity_count, Default::default());
     let (face, perpendicular) = match settings.direction {
         Direction::Down | Direction::Up => (Side::Top, Side::Left),
         Direction::Right | Direction::Left => (Side::Left, Side::Top),
@@ -173,6 +173,7 @@ fn measure<'a>(
         let seq = index(work.checked_add(group_count, graph.nodes.len())?, work)?;
         graph.nodes.push(MeasuredNode {
             size,
+            contour: profile.shoal_contour(size),
             seq,
             parent: None,
             port_span: Some(profile.port_span(face)),

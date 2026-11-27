@@ -9,6 +9,7 @@ use crate::svg::parity::flowchart::{
 const FLOWCHART_CLUSTER_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
 const FLOWCHART_CLUSTER_HAND_DRAWN_FILL_WEIGHT: f32 = 3.0;
 const FLOWCHART_CLUSTER_HAND_DRAWN_HACHURE_GAP: f32 = 1.5;
+const TITLE_HALO_WIDTH: u8 = 5;
 
 pub(in crate::svg::parity::flowchart) fn advance_rough_geometry(
     ctx: &FlowchartRenderCtx<'_>,
@@ -133,26 +134,84 @@ fn parse_css_px_f32(v: Option<&String>, fallback: f32) -> f32 {
         .unwrap_or(fallback)
 }
 
+fn cluster_svg_text_style(label_style: &str) -> String {
+    if label_style.is_empty() {
+        return String::new();
+    }
+    let mut out = String::with_capacity(label_style.len());
+    let mut color_value: Option<&str> = None;
+    let mut has_fill = false;
+    crate::mermaid_style::visit_parsed_style_declarations(label_style, |decl| {
+        if decl.property() == "fill" {
+            has_fill = true;
+        } else if decl.property() == "color" {
+            let val = decl.source_value().trim();
+            if !val.is_empty() {
+                color_value = Some(val);
+            }
+        }
+        if !out.is_empty() {
+            out.push(';');
+        }
+        out.push_str(decl.property_css());
+        out.push(':');
+        out.push_str(decl.source_value());
+    });
+    if !has_fill && let Some(val) = color_value {
+        if !out.is_empty() {
+            out.push(';');
+        }
+        out.push_str("fill:");
+        out.push_str(val);
+    }
+    out
+}
+
+pub(in crate::svg::parity::flowchart) fn cluster_base_fill<'a>(
+    ctx: &'a FlowchartRenderCtx<'_>,
+    terminal: &'a super::super::node_inventory::FlowchartPreparedCluster,
+    id: &str,
+) -> &'a str {
+    if ctx.diagram_type == "agentflow"
+        && let Some(slot) = super::super::agentflow::container_color_slot(ctx, id)
+        && let Some(background) = ctx.palette.background_color(slot)
+    {
+        return background;
+    }
+    &terminal.fill
+}
+
+pub(in crate::svg::parity::flowchart) fn compat_theme_canvas_fallback(
+    ctx: &FlowchartRenderCtx<'_>,
+) -> crate::theme::Color {
+    match ctx.config.get_str("theme") {
+        Some("dark" | "redux-dark" | "redux-dark-color" | "neo-dark") => {
+            crate::theme::Color::rgb(0x1F, 0x20, 0x20)
+        }
+        _ => crate::theme::Color::rgb(255, 255, 255),
+    }
+}
+
 fn write_flowchart_cluster_shape(
     out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &FlowchartRenderCtx<'_>,
     terminal: &super::super::node_inventory::FlowchartPreparedCluster,
-    left: f64,
-    top: f64,
-    rect_w: f64,
-    rect_h: f64,
+    id: &str,
+    frame: super::super::cluster_geometry::PaintedClusterFrame,
 ) {
+    let kurbo::Point { x: left, y: top } = frame.origin;
+    let kurbo::Size {
+        width: rect_w,
+        height: rect_h,
+    } = frame.size;
     let compiled_styles = &terminal.compiled;
     let rect_style = terminal.rect_style.as_str();
-    let fill = terminal.fill.as_str();
+    let fill = cluster_base_fill(ctx, terminal, id);
     let stroke = terminal.stroke.as_str();
     let agentflow = ctx.diagram_type == "agentflow";
+    let canonical = ctx.layout.route_contract.is_canonical_axis();
     if let Some(native) = ctx.native {
-        let radius = native
-            .form
-            .container_radius
-            .min(rect_w.min(rect_h) / 2.0)
-            .max(0.0);
+        let radius = super::super::cluster_geometry::cluster_container_radius(ctx, rect_w, rect_h);
         let _ = write!(
             out,
             r#"<rect x="{}" y="{}" width="{}" height="{}" rx="{}" style="fill:{};stroke:{};stroke-width:{}px"#,
@@ -198,13 +257,23 @@ fn write_flowchart_cluster_shape(
         }
         let _ = write!(
             out,
-            r#"<rect rx="10" ry="10" x="{}" y="{}" width="{}" height="{}" fill="none" stroke="{}" stroke-width="0.75px"/>"#,
+            r#"<rect rx="10" ry="10" x="{}" y="{}" width="{}" height="{}" fill="none" stroke="{}" stroke-width="0.75px""#,
             fmt_display(left),
             fmt_display(top),
             fmt_display(rect_w),
             fmt_display(rect_h),
             escape_xml_display(stroke),
         );
+        if canonical {
+            let fill = compiled_styles.fill.as_deref().unwrap_or(fill);
+            let _ = write!(
+                out,
+                r#" style="fill:{};fill-opacity:{}""#,
+                escape_attr(fill),
+                fmt_display(compiled_styles.fill_opacity),
+            );
+        }
+        out.push_str("/>");
         return;
     }
 
@@ -247,15 +316,60 @@ fn write_flowchart_cluster_shape(
         }
     }
 
+    out.push_str(r#"<rect style=""#);
+    if canonical && ctx.palette.color_count() > 0 {
+        // The compatibility surface must agree in browsers and raster exports. The browser's
+        // palette selector can otherwise override the clusterBkg fill used during export.
+        let _ = write!(out, "fill:{};", escape_attr(fill));
+    }
     let _ = write!(
         out,
-        r#"<rect style="{}" x="{}" y="{}" width="{}" height="{}"/>"#,
+        r#"{}" x="{}" y="{}" width="{}" height="{}"/>"#,
         escape_xml_display(rect_style),
         fmt_display(left),
         fmt_display(top),
         fmt_display(rect_w),
         fmt_display(rect_h)
     );
+}
+
+fn title_halo_color(
+    ctx: &FlowchartRenderCtx<'_>,
+    id: &str,
+) -> crate::Result<Option<crate::theme::Color>> {
+    use crate::theme::{Color, edge_label_bg::literal_fill};
+
+    let canvas = ctx.native.map(|native| native.canvas).or_else(|| {
+        ctx.config
+            .get_str("themeVariables.background")
+            .and_then(literal_fill)
+    });
+    let mut surface = Color::TRANSPARENT;
+    let mut current = Some(id);
+    while let Some(id) = current {
+        ctx.work_meter.charge(1)?;
+        let terminal = ctx.prepared_nodes.cluster(id)?;
+        let fill = terminal
+            .compiled
+            .fill
+            .as_deref()
+            .and_then(literal_fill)
+            .or_else(|| literal_fill(cluster_base_fill(ctx, terminal, id)))
+            .unwrap_or(Color::TRANSPARENT);
+        let layer = fill.composite(Color::TRANSPARENT, terminal.compiled.fill_opacity);
+        surface = surface.composite(layer, 1.0);
+        if surface.channels()[3] == u8::MAX {
+            return Ok(Some(surface));
+        }
+        current = ctx.parent.get(id).copied();
+    }
+    match canvas {
+        Some(canvas) if canvas.channels()[3] == u8::MAX => Ok(Some(surface.composite(canvas, 1.0))),
+        Some(_) => Ok(None),
+        None => Ok(Some(
+            surface.composite(compat_theme_canvas_fallback(ctx), 1.0),
+        )),
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -330,11 +444,9 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
     let classes = ctx.model.effective_subgraph_css(subgraph_index, sg).0;
 
     let elk_geometry = ctx.elk_cluster_geometry.get(cluster.id.as_str());
-    let frame = painted_cluster_frame(ctx, cluster);
-    let rect_w = frame.size.width;
-    let rect_h = frame.size.height;
-    let left = frame.origin.x + ctx.tx - origin_x;
-    let top = frame.origin.y + ctx.ty - origin_y;
+    let mut frame = painted_cluster_frame(ctx, cluster);
+    frame.origin.x = frame.origin.x + ctx.tx - origin_x;
+    frame.origin.y = frame.origin.y + ctx.ty - origin_y;
     let Some(cluster_dom_id) = ctx.document_ids().cluster(cluster.id.as_str()) else {
         return Err(crate::Error::InvalidModel {
             message: format!(
@@ -388,7 +500,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
     } else {
         (
             cluster.x + ctx.tx - origin_x - label_w / 2.0,
-            top + cluster.title_margin_top.max(0.0),
+            frame.origin.y + cluster.title_margin_top.max(0.0),
         )
     };
 
@@ -414,48 +526,151 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
         .map(|slot| format!(r#" data-color-id="color-{slot}""#))
         .unwrap_or_default();
     let data_look = ctx.compatibility.look.as_str();
+    let struck = ctx.layout.route_contract.group_title_is_struck(&cluster.id);
 
     if pass == FlowchartClusterPass::Background {
         let _ = write!(
             out,
-            r#"<g class="{}" data-merman-theme-depth="container" data-look="{}"{color_attr}>"#,
+            r#"<g class="{}" data-merman-theme-depth="container" data-look="{}"{color_attr}"#,
             escape_attr(&class_attr),
             escape_attr(data_look),
         );
-        write_flowchart_cluster_shape(out, ctx, terminal, left, top, rect_w, rect_h);
+        if struck {
+            let _ = write!(
+                out,
+                r#" id="{cluster_dom_id}" data-id="{}" data-et="cluster""#,
+                escape_xml_display(&cluster.id),
+            );
+        }
+        out.push('>');
+        write_flowchart_cluster_shape(out, ctx, terminal, &cluster.id, frame);
         out.push_str("</g>");
         return out.checkpoint();
     }
 
-    // Mermaid renders subgraph titles using the same `flowchart.htmlLabels` toggle as edge labels.
-    if !ctx.edge_html_labels {
+    let halo = struck
+        .then(|| title_halo_color(ctx, &cluster.id))
+        .transpose()?
+        .flatten();
+    let overlay = struck && pass == FlowchartClusterPass::Label;
+    let _ = write!(out, r#"<g class="{}""#, escape_xml_display(&class_attr));
+    if !overlay {
         let _ = write!(
             out,
-            r#"<g class="{}" id="{}" data-id="{}" data-et="cluster" data-look="{}"{color_attr}>"#,
-            escape_xml_display(&class_attr),
-            cluster_dom_id,
+            r#" id="{cluster_dom_id}" data-id="{}" data-et="cluster""#,
             escape_xml_display(&cluster.id),
-            escape_xml_display(data_look),
         );
-        if pass == FlowchartClusterPass::Complete {
-            write_flowchart_cluster_shape(out, ctx, terminal, left, top, rect_w, rect_h);
-        }
+    }
+    let _ = write!(
+        out,
+        r#" data-look="{}"{color_attr}>"#,
+        escape_xml_display(data_look),
+    );
+    if pass == FlowchartClusterPass::Complete {
+        write_flowchart_cluster_shape(out, ctx, terminal, &cluster.id, frame);
+    }
+    let _ = write!(
+        out,
+        r#"<g class="cluster-label" transform="translate({},{})""#,
+        fmt_display(label_left),
+        fmt_display(label_top),
+    );
+    if overlay {
+        let _ = write!(out, r#" data-merman-cluster-title-for="{cluster_dom_id}""#);
+    }
+    if let Some(color) = halo {
         let _ = write!(
             out,
-            r#"<g class="cluster-label" transform="translate({},{})"><g><rect class="background" style="stroke: none"/>"#,
-            fmt_display(label_left),
-            fmt_display(label_top)
+            r#" data-merman-title-struck="true" stroke="{color}" stroke-width="{TITLE_HALO_WIDTH}" stroke-linejoin="round" paint-order="stroke""#,
         );
+    }
+    out.push('>');
+    // A native text branch keeps the title and its outline when raster export strips HTML.
+    let mut svg_fallback = false;
+    if ctx.edge_html_labels {
+        let prepared_label = ctx
+            .svg_label_sidecar
+            .zip(title_owner)
+            .map_or(Default::default(), |(sidecar, owner)| {
+                sidecar.prepared_label_for_terminal(owner, render_title)
+            });
+        let title_html = flowchart_label_html_with_prepared_label(
+            render_title,
+            label_type,
+            ctx.config,
+            ctx.math_renderer,
+            prepared_label,
+        );
+        svg_fallback = halo.is_some()
+            && !matches!(
+                prepared_label,
+                crate::flowchart::FlowchartPreparedLabelResolution::PreparedMath(_)
+            );
+        if svg_fallback {
+            out.push_str("<switch>");
+        }
+        let halo_style = halo.map(|color| {
+            if label_style.is_empty() {
+                format!("-webkit-text-stroke:{TITLE_HALO_WIDTH}px {color};paint-order:stroke fill")
+            } else {
+                format!(
+                    "{label_style};-webkit-text-stroke:{TITLE_HALO_WIDTH}px {color};paint-order:stroke fill"
+                )
+            }
+        });
+        // CSS color hex tokens like `#1F2335;` must not run through Mermaid `#entity;` text
+        // decoding (which turns `#1F2335;` into `&amp;1F2335;` and drops the browser halo).
+        let span_style_attr = OptionalStyleAttr(halo_style.as_deref().unwrap_or(label_style));
+        // Min-content expansion does not undo the wrap selected by the first measurement.
+        let markdown_uses_wrapped_box = label_w >= markdown_wrap_width - 1e-3;
+        let div_style = if label_type != "markdown" {
+            "display: table-cell; white-space: nowrap; line-height: 1.5;".to_string()
+        } else if markdown_uses_wrapped_box {
+            format!(
+                "display: table; white-space: break-spaces; line-height: 1.5; max-width: {mw}px; text-align: center; width: {mw}px;",
+                mw = fmt_display(markdown_wrap_width)
+            )
+        } else {
+            format!(
+                "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {mw}px; text-align: center;",
+                mw = fmt_display(markdown_wrap_width)
+            )
+        };
+        let _ = write!(
+            out,
+            r#"<foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"{}>{}</span></div></foreignObject>"#,
+            fmt_display(label_w),
+            fmt_display(label_h),
+            HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
+            escape_xml_display(&div_style),
+            span_style_attr,
+            title_html
+        );
+    }
+    if !ctx.edge_html_labels || svg_fallback {
+        let svg_text_style = cluster_svg_text_style(label_style);
+        out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
         if label_type == "markdown" {
-            if ctx.uses_elk_adapter_dom {
-                write_flowchart_svg_text_markdown_wrapped(
-                    out,
-                    render_title,
-                    true,
-                    ctx.measurer,
-                    title_text_style,
-                    Some(markdown_wrap_width),
-                );
+            if ctx.uses_elk_adapter_dom || svg_fallback {
+                if !svg_text_style.is_empty() {
+                    write_flowchart_svg_text_markdown_wrapped_with_style(
+                        out,
+                        render_title,
+                        &svg_text_style,
+                        ctx.measurer,
+                        title_text_style,
+                        Some(markdown_wrap_width),
+                    );
+                } else {
+                    write_flowchart_svg_text_markdown_wrapped(
+                        out,
+                        render_title,
+                        true,
+                        ctx.measurer,
+                        title_text_style,
+                        Some(markdown_wrap_width),
+                    );
+                }
             } else {
                 write_flowchart_svg_text_markdown(out, render_title, true);
             }
@@ -476,71 +691,43 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
                 crate::svg::parity::label::write_measured_svg_title(
                     out,
                     &prepared.wrapped_lines(),
-                    "",
+                    &svg_text_style,
                     None,
                     cluster.title_label.width,
                 );
             } else {
-                write_flowchart_svg_label_plan(out, &prepared, true);
+                write_flowchart_svg_label_plan_with_style(
+                    out,
+                    &prepared,
+                    true,
+                    (!svg_text_style.is_empty()).then_some(svg_text_style.as_str()),
+                );
             }
         }
-        out.push_str("</g></g></g>");
-        return Ok(());
+        out.push_str("</g>");
+        if svg_fallback {
+            out.push_str("</switch>");
+        }
     }
-
-    let prepared_label = ctx
-        .svg_label_sidecar
-        .zip(title_owner)
-        .map_or(Default::default(), |(sidecar, owner)| {
-            sidecar.prepared_label_for_terminal(owner, render_title)
-        });
-    let title_html = flowchart_label_html_with_prepared_label(
-        render_title,
-        label_type,
-        ctx.config,
-        ctx.math_renderer,
-        prepared_label,
-    );
-    let span_style_attr = OptionalStyleXmlAttr(label_style);
-    // The first constrained measurement selected wrapping. A later min-content
-    // expansion must not restore nowrap merely because its width exceeds the cap.
-    let markdown_uses_wrapped_box = label_w >= markdown_wrap_width - 1e-3;
-    let div_style = if label_type != "markdown" {
-        "display: table-cell; white-space: nowrap; line-height: 1.5;".to_string()
-    } else if markdown_uses_wrapped_box {
-        format!(
-            "display: table; white-space: break-spaces; line-height: 1.5; max-width: {mw}px; text-align: center; width: {mw}px;",
-            mw = fmt_display(markdown_wrap_width)
-        )
-    } else {
-        format!(
-            "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {mw}px; text-align: center;",
-            mw = fmt_display(markdown_wrap_width)
-        )
-    };
-
-    let _ = write!(
-        out,
-        r#"<g class="{}" id="{}" data-id="{}" data-et="cluster" data-look="{}"{color_attr}>"#,
-        escape_xml_display(&class_attr),
-        cluster_dom_id,
-        escape_xml_display(&cluster.id),
-        escape_xml_display(data_look),
-    );
-    if pass == FlowchartClusterPass::Complete {
-        write_flowchart_cluster_shape(out, ctx, terminal, left, top, rect_w, rect_h);
-    }
-    let _ = write!(
-        out,
-        r#"<g class="cluster-label" transform="translate({},{})"><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"{}>{}</span></div></foreignObject></g></g>"#,
-        fmt_display(label_left),
-        fmt_display(label_top),
-        fmt_display(label_w),
-        fmt_display(label_h),
-        HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
-        escape_xml_display(&div_style),
-        span_style_attr,
-        title_html
-    );
+    out.push_str("</g></g>");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cluster_svg_text_style;
+
+    #[test]
+    fn cluster_svg_text_style_preserves_quoted_semicolons_and_mirrors_color() {
+        assert_eq!(
+            cluster_svg_text_style(
+                r#"font-family:"Foo;color:red" !important;COLOR:#fff !important"#
+            ),
+            r#"font-family:"Foo;color:red" !important;COLOR:#fff !important;fill:#fff !important"#
+        );
+        assert_eq!(
+            cluster_svg_text_style(r#"font-family:"Foo;color:red" !important"#),
+            r#"font-family:"Foo;color:red" !important"#
+        );
+    }
 }

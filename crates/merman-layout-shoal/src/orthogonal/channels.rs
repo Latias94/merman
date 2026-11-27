@@ -29,7 +29,7 @@ impl Scene<'_> {
     pub(super) fn nudge(
         &self,
         edges: &[usize],
-        changes: &mut Changes,
+        routes: &mut Routes<'_>,
         work: &mut Work<'_>,
     ) -> LayoutResult<u64> {
         if self.spacing <= 0.0 || edges.len() < 2 {
@@ -37,12 +37,20 @@ impl Scene<'_> {
         }
         let mut legs = Vec::new();
         for &edge in edges {
-            for (from, joint) in self.points(edge, changes).windows(4).enumerate() {
+            for (from, joint) in routes.projections[edge]
+                .legs
+                .as_slice()
+                .windows(3)
+                .enumerate()
+            {
                 work.visit(1)?;
-                let [before, a, b, after] = [joint[0], joint[1], joint[2], joint[3]];
-                if let Some(line) = OrthoSegment::between(a, b)
-                    && OrthoSegment::between(before, a).is_some_and(|s| s.axis != line.axis)
-                    && OrthoSegment::between(b, after).is_some_and(|s| s.axis != line.axis)
+                if let [
+                    ProjectedLeg::Orthogonal(before),
+                    ProjectedLeg::Orthogonal(line),
+                    ProjectedLeg::Orthogonal(after),
+                ] = *joint
+                    && before.axis != line.axis
+                    && after.axis != line.axis
                 {
                     push(
                         &mut legs,
@@ -55,7 +63,7 @@ impl Scene<'_> {
                 }
             }
         }
-        charge_sort(legs.len(), work)?;
+        work.charge_sort(legs.len())?;
         legs.sort_unstable_by(|a, b| {
             (a.line.axis == Axis::Vertical)
                 .cmp(&(b.line.axis == Axis::Vertical))
@@ -64,6 +72,7 @@ impl Scene<'_> {
                 .then_with(|| a.edge.cmp(&b.edge))
                 .then_with(|| a.at.cmp(&b.at))
         });
+        work.check()?;
         let mut removed = 0;
         for track in
             legs.chunk_by(|a, b| a.line.axis == b.line.axis && a.line.fixed == b.line.fixed)
@@ -78,7 +87,7 @@ impl Scene<'_> {
                     end += 1;
                 }
                 if (2..=MAX_CHANNEL_ROUTES).contains(&(end - first)) {
-                    removed += self.spread(&track[first..end], changes, work)?;
+                    removed += self.spread(&track[first..end], routes, work)?;
                 }
                 first = end;
             }
@@ -86,16 +95,10 @@ impl Scene<'_> {
         Ok(removed)
     }
 
-    fn points<'a>(&'a self, edge: usize, changes: &'a Changes) -> &'a [RoutePoint] {
-        changes[edge]
-            .as_deref()
-            .unwrap_or(&self.drawing.edges[edge].points)
-    }
-
     fn spread(
         &self,
         legs: &[Leg],
-        changes: &mut Changes,
+        routes: &mut Routes<'_>,
         work: &mut Work<'_>,
     ) -> LayoutResult<u64> {
         let mut lanes = reserved(legs.len())?;
@@ -105,7 +108,7 @@ impl Scene<'_> {
             if lanes.iter().any(|lane: &Lane| lane.leg.edge == leg.edge) {
                 return Ok(0);
             }
-            let Some(lane) = self.lane(leg, changes, work)? else {
+            let Some(lane) = self.lane(leg, routes, work)? else {
                 return Ok(0);
             };
             common[0] = common[0].max(lane.room[0]);
@@ -132,36 +135,43 @@ impl Scene<'_> {
                 return Ok(0);
             }
             last = target;
-            let Some(points) = self.shift(lane, target, changes, work)? else {
+            let Some(points) = self.shift(lane, target, routes, work)? else {
                 return Ok(0);
             };
-            proposed.push((lane.leg.edge, points));
+            proposed.push((lane.leg.edge, Candidate::new(points, work)?));
         }
-        charge_sort(proposed.len(), work)?;
+        work.charge_sort(proposed.len())?;
         proposed.sort_unstable_by_key(|(edge, _)| *edge);
-        let (before, after) = self.conflicts(&proposed, changes, work)?;
+        work.check()?;
+        let (before, after) = self.conflicts(&proposed, routes, work)?;
         if after.0 <= before.0 && after.1 < before.1 {
-            for (edge, points) in proposed {
-                changes[edge] = Some(points);
+            for (edge, candidate) in proposed {
+                routes.replace(edge, candidate);
             }
             return Ok(before.0 - after.0);
         }
         Ok(0)
     }
 
-    fn lane(&self, leg: Leg, changes: &Changes, work: &mut Work<'_>) -> LayoutResult<Option<Lane>> {
-        let route = self.points(leg.edge, changes);
-        let [before, a, b, after] = [
-            route[leg.at - 1],
-            route[leg.at],
-            route[leg.at + 1],
-            route[leg.at + 2],
-        ];
+    fn lane(
+        &self,
+        leg: Leg,
+        routes: &Routes<'_>,
+        work: &mut Work<'_>,
+    ) -> LayoutResult<Option<Lane>> {
+        let route = routes.points(leg.edge);
+        let before = route[leg.at - 1];
+        let after = route[leg.at + 2];
         // A neighboring channel may have changed one of these corners in a previous trial.
-        if OrthoSegment::between(a, b) != Some(leg.line)
-            || OrthoSegment::between(before, a).is_none_or(|s| s.axis == leg.line.axis)
-            || OrthoSegment::between(b, after).is_none_or(|s| s.axis == leg.line.axis)
-        {
+        let [
+            ProjectedLeg::Orthogonal(incoming),
+            ProjectedLeg::Orthogonal(line),
+            ProjectedLeg::Orthogonal(outgoing),
+        ] = routes.projections[leg.edge].legs.as_slice()[leg.at - 1..leg.at + 2]
+        else {
+            return Ok(None);
+        };
+        if line != leg.line || incoming.axis == line.axis || outgoing.axis == line.axis {
             return Ok(None);
         }
         let Some(mut room) = self.router.channel(leg.line, Some(self.bounds), work)? else {
@@ -172,7 +182,7 @@ impl Scene<'_> {
         let last = (leg.at + 3 == route.len()).then_some(spec.end_marker);
         for (joint, terminal) in [(before, first), (after, last)] {
             let at = across(leg.line.axis, joint);
-            let lead = terminal.map_or(0.0, |marker| marker.length.max(MIN_LEAD));
+            let lead = terminal.map_or(0.0, |marker| marker.length.max(MIN_MARKER_LEAD));
             if at < leg.line.fixed {
                 room[0] = room[0].max((at + lead).max(at.next_up()));
             } else {
@@ -190,11 +200,11 @@ impl Scene<'_> {
         &self,
         lane: &Lane,
         target: f64,
-        changes: &Changes,
+        routes: &Routes<'_>,
         work: &mut Work<'_>,
     ) -> LayoutResult<Option<Vec<RoutePoint>>> {
         let Leg { edge, at, line } = lane.leg;
-        let route = self.points(edge, changes);
+        let route = routes.points(edge);
         for (i, approach) in (at..at + 2).zip(lane.approach) {
             let old = route[i];
             let new = shifted(line.axis, old, target);
@@ -220,43 +230,40 @@ impl Scene<'_> {
 
     fn conflicts(
         &self,
-        proposed: &[(usize, Vec<RoutePoint>)],
-        changes: &Changes,
+        proposed: &[(usize, Candidate)],
+        routes: &Routes<'_>,
         work: &mut Work<'_>,
     ) -> LayoutResult<((u64, usize), (u64, usize))> {
         let mut before = (0, 0);
         let mut after = (0, 0);
-        let lookup = proposed.len().ilog2() as usize + 1;
         for (edge, candidate) in proposed {
-            let original = self.points(*edge, changes);
-            for other in 0..self.drawing.edges.len() {
-                work.visit(lookup)?;
-                let prior = self.points(other, changes);
-                let next = match proposed.binary_search_by_key(&other, |(edge, _)| *edge) {
-                    Ok(_) if other <= *edge => continue,
-                    Ok(index) => &proposed[index].1,
-                    Err(_) => prior,
-                };
-                let a = intersections(original, prior, work)?;
-                let b = intersections(candidate, next, work)?;
-                before.0 += a.0;
-                before.1 += a.1;
-                after.0 += b.0;
-                after.1 += b.1;
+            let original = routes.view(*edge);
+            let current_bounds = routes.edge_bounds[*edge];
+            let mut pending = proposed.iter().peekable();
+            work.visit(routes.edge_bounds.len())?;
+            for (other, &prior_bounds) in routes.edge_bounds.iter().enumerate() {
+                let replacement = pending.next_if(|(index, _)| *index == other);
+                // Compare each pair of simultaneously moved routes once.
+                if replacement.is_some() && other <= *edge {
+                    continue;
+                }
+                if current_bounds.overlaps(prior_bounds) {
+                    let (crossings, overlaps) = intersections(original, routes.view(other), work)?;
+                    before.0 += crossings;
+                    before.1 += overlaps;
+                }
+                let next_bounds = replacement.map_or(prior_bounds, |(_, route)| route.bounds);
+                if candidate.bounds.overlaps(next_bounds) {
+                    let next =
+                        replacement.map_or_else(|| routes.view(other), |(_, route)| route.view());
+                    let (crossings, overlaps) = intersections(candidate.view(), next, work)?;
+                    after.0 += crossings;
+                    after.1 += overlaps;
+                }
             }
         }
         Ok((before, after))
     }
-}
-
-fn charge_sort(len: usize, work: &mut Work<'_>) -> LayoutResult<()> {
-    if len > 1 {
-        work.charge(
-            len.checked_mul(len.ilog2() as usize + 1)
-                .ok_or(crate::WorkError::ArithmeticOverflow)?,
-        )?;
-    }
-    Ok(())
 }
 
 fn across(axis: Axis, point: RoutePoint) -> f64 {

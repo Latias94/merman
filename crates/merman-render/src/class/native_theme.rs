@@ -13,6 +13,8 @@ pub(crate) struct ClassNativeStyle {
     pub(crate) guide: String,
     pub(crate) width: String,
     pub(crate) radius: f64,
+    pub(crate) edge_label_bg: EdgeLabelBackground,
+    pub(crate) container: Color,
 }
 
 impl ClassNativeStyle {
@@ -45,6 +47,8 @@ impl ClassNativeStyle {
             guide: roles.stroke_guide.first_color().to_string(),
             width: theme.form.stroke_width.to_string(),
             radius: theme.form.radius,
+            edge_label_bg: theme.form.edge_label_bg,
+            container: roles.surface_container.first_color(),
         }
     }
 }

@@ -1,16 +1,32 @@
 //! Standalone layout of measured directed graphs. Coordinates use the caller's drawing units.
+//!
+//! Layout stages resolve aesthetic conflicts in priority order.
+//!
+//! | Priority | Owner | Rule |
+//! | --- | --- | --- |
+//! | P0 | Placement, routing, and clearance | Keep shapes, labels, and marker footprints clear. |
+//! | P1 | Orientation and ordering | Minimize crossings, keep spines straight, and route feedback outside. |
+//! | P2 | Routing and paint | Prefer straight shafts, then a single monotone sweep. |
+//! | P3 | Ports and label placement | Align sibling turns and balance labels on the visible shaft. |
+//! | P4 | Spacing and group fitting | Maintain spatial rhythm and let titles yield to routes. |
+//! | P5 | Ordering and anchoring | Preserve authored order and stable positions when crossing-neutral. |
+//! | P6 | Compaction and packing | Use available space without reducing clearance. |
 
 #![forbid(unsafe_code)]
 
 mod adaptive;
+pub mod card_grid;
 mod compound;
 mod flat;
-mod geom;
+#[doc(hidden)]
+pub mod geom;
+pub mod grid;
 mod model;
 mod options;
 mod ortho;
 mod orthogonal;
 mod scratch;
+mod validate;
 mod work;
 
 pub use model::*;
@@ -41,9 +57,8 @@ pub fn layout_with_control(
 
 /// Lays out a graph in input order and returns its geometry without statistics.
 ///
-/// The solver can omit routed crossing counts for flat, natural-width layouts without
-/// editor hints, rank capture, component reuse or orthogonal routing. It still computes
-/// counts when needed to select geometry. Work limits and cancellation apply throughout.
+/// The solver can omit routed crossing counts when no layout decision uses them.
+/// Work limits and cancellation apply throughout.
 pub fn layout_geometry_with_control(
     graph: &Graph,
     options: &Options,
@@ -53,9 +68,33 @@ pub fn layout_geometry_with_control(
     layout_impl(graph, options, scratch, control, LayoutDetail::Geometry).map(LayoutGeometry::from)
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum LayoutDetail {
     Full,
     Geometry,
+}
+
+impl LayoutDetail {
+    fn flat(self, options: &Options) -> Self {
+        if self == Self::Full {
+            return self;
+        }
+        let natural_ranks = options.width_policy == WidthPolicy::Natural
+            && (options.capture_node_ranks
+                || matches!(options.packing, PackingPolicy::FitWidth { .. }));
+        if natural_ranks
+            || options.reuse_unchanged_components
+            || options.global_orthogonal
+            || !matches!(
+                options.routing,
+                RoutingStyle::Curved | RoutingStyle::Polyline
+            )
+        {
+            Self::Full
+        } else {
+            self
+        }
+    }
 }
 
 fn layout_impl(
@@ -79,27 +118,13 @@ fn layout_impl(
     }
     let mut keep_components = reuse_components && options.capture_node_ranks;
     let (output, width_trial) = match options.width_policy {
-        WidthPolicy::Natural
-            if matches!(detail, LayoutDetail::Geometry)
-                && graph.groups.is_empty()
-                && graph.lane_order.is_empty()
-                && !options.capture_node_ranks
-                && !options.reuse_unchanged_components
-                && !options.global_orthogonal
-                && matches!(
-                    options.routing,
-                    RoutingStyle::Curved | RoutingStyle::Polyline
-                )
-                && !matches!(options.packing, PackingPolicy::FitWidth { .. }) =>
-        {
-            (
-                flat::run_geometry(graph, options, frame.expanded, &mut work)?,
-                None,
-            )
-        }
-        WidthPolicy::Natural => (solve(graph, options, frame.expanded, &mut work)?, None),
+        WidthPolicy::Natural => (
+            solve(graph, options, frame.expanded, detail, &mut work)?,
+            None,
+        ),
         WidthPolicy::FitWidth { .. } => {
-            let (drawing, trial) = adaptive::run(graph, options, frame.expanded, &mut work)?;
+            let (drawing, trial) =
+                adaptive::run(graph, options, frame.expanded, detail, &mut work)?;
             (drawing, Some(trial))
         }
     };
@@ -119,7 +144,14 @@ fn layout_impl(
             }
             match width_trial {
                 Some(trial) => trial.replay(&mut reference, frame.expanded, work),
-                None => solve(&reference, options, frame.expanded, work).map(Some),
+                None => solve(
+                    &reference,
+                    options,
+                    frame.expanded,
+                    LayoutDetail::Full,
+                    work,
+                )
+                .map(Some),
             }
         });
         match comparison {
@@ -159,11 +191,12 @@ fn solve(
     graph: &Graph,
     options: &Options,
     expanded: &mut flat::Expanded,
+    detail: LayoutDetail,
     work: &mut work::Work<'_>,
 ) -> Result<LayoutOutput, LayoutError> {
     if graph.groups.is_empty() && graph.lane_order.is_empty() {
-        flat::run(graph, options, expanded, work)
+        flat::run_with_detail(graph, options, expanded, detail.flat(options), work)
     } else {
-        compound::run(graph, options, expanded, work)
+        compound::run(graph, options, expanded, detail, work)
     }
 }

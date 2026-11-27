@@ -2215,3 +2215,33 @@ style Login fill:#abcdef
         }
     }
 }
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn usecase_shoal_centers_non_html_ellipse_labels() {
+    let source = "usecase-beta\nA(Run Real-Time AML Screening)\n";
+    let (_, svg) = render_config(
+        source,
+        json!({"layout": "shoal", "look": "classic", "htmlLabels": false}),
+    );
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let node = document
+        .descendants()
+        .find(|node| node.attribute("data-usecase-id") == Some("A"))
+        .unwrap();
+    let label = node
+        .descendants()
+        .find(|label| label.attribute("class") == Some("label"))
+        .unwrap();
+    let transform = label
+        .attribute("transform")
+        .expect("label transform")
+        .strip_prefix("translate(")
+        .and_then(|rest| rest.strip_suffix(')'))
+        .expect("translate(...)");
+    let tx: f64 = transform.split(',').next().unwrap().trim().parse().unwrap();
+    assert!(
+        tx < -40.0,
+        "Shoal non-HTML ellipse label must be horizontally centered (-width/2), got translate({tx}, _)"
+    );
+}

@@ -117,6 +117,8 @@ pub enum KnotKind {
     Free,
     /// A curve turning onto a track must stay inside this end of the available gap.
     GapBoundary,
+    /// A terminal sweep can lean outward from its analytically measured contour.
+    ContourDeparture,
 }
 
 /// `axis` is the travel axis of the incoming leg, or of the departing leg at the first
@@ -148,10 +150,10 @@ impl RoutePoint {
     }
 }
 
-/// The fraction of each along-axis leg used by the two handles of an offset cubic.
+/// Along-axis handle fraction for an offset cubic. Keeping it below half orders the controls.
 pub fn sweep_handle_fraction(across: f64, along: f64) -> f64 {
-    let (across, along) = (across.abs(), along.abs());
-    (0.45 + 0.12 * across.min(along) / across.max(along).max(1.0)).clamp(0.42, 0.56)
+    let ratio = across.abs() / along.abs().max(1.0);
+    (4.0 / (1.15 * ratio + 6.4)).clamp(0.25, 0.46)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -173,8 +175,101 @@ pub struct PositionHint {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct MarkerMetrics {
+    /// Distance from the contour contact to the back of the marker along its port normal.
     pub length: f64,
     pub width: f64,
+}
+
+/// Minimum straight shaft beyond a marker's reference point, in drawing units.
+pub const MIN_MARKER_LEAD: f64 = 6.0;
+
+impl MarkerMetrics {
+    pub(crate) fn runway_bound(self) -> f64 {
+        self.length + self.length.max(MIN_MARKER_LEAD)
+    }
+}
+
+/// Analytic outline centered in a measured node box.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum ShapeContourHint {
+    #[default]
+    Rectangle,
+    Rounded {
+        rx: f64,
+        ry: f64,
+    },
+    Stadium,
+    Diamond,
+    /// The center of a translated diamond in box-local coordinates.
+    OffsetDiamond {
+        x: f64,
+        y: f64,
+    },
+    Ellipse,
+}
+
+impl ShapeContourHint {
+    /// Distance inward from a box face to the outline at a transverse port offset.
+    /// Returns zero when the transverse line misses the outline.
+    pub fn inset_at(self, size: Size, side: Side, across_offset: f64) -> f64 {
+        let (width, height) = (size.width * 0.5, size.height * 0.5);
+        let (across, along) = match side.axis() {
+            Axis::Vertical => (width, height),
+            Axis::Horizontal => (height, width),
+        };
+        if !across.is_finite()
+            || !along.is_finite()
+            || !across_offset.is_finite()
+            || across <= 0.0
+            || along <= 0.0
+        {
+            return 0.0;
+        }
+        let (cross_shift, along_shift) = match (self, side) {
+            (Self::OffsetDiamond { x, y }, Side::Top) => (x, y),
+            (Self::OffsetDiamond { x, y }, Side::Bottom) => (x, -y),
+            (Self::OffsetDiamond { x, y }, Side::Left) => (y, x),
+            (Self::OffsetDiamond { x, y }, Side::Right) => (y, -x),
+            _ => (0.0, 0.0),
+        };
+        if !cross_shift.is_finite() || !along_shift.is_finite() {
+            return 0.0;
+        }
+        let offset = (across_offset - cross_shift).abs();
+        if !offset.is_finite() || offset > across {
+            return 0.0;
+        }
+        let (radius, depth) = match self {
+            Self::Rectangle => return 0.0,
+            Self::Diamond | Self::OffsetDiamond { .. } => {
+                let inset = (offset / across) * along + along_shift;
+                return if inset.is_finite() {
+                    inset.clamp(-along, 2.0 * along)
+                } else {
+                    0.0
+                };
+            }
+            Self::Ellipse => (across, along),
+            Self::Stadium => (width.min(height), width.min(height)),
+            Self::Rounded { rx, ry } => match side.axis() {
+                Axis::Vertical => (rx.min(across), ry.min(along)),
+                Axis::Horizontal => (ry.min(across), rx.min(along)),
+            },
+        };
+        let corner = offset - (across - radius);
+        if !radius.is_finite()
+            || !depth.is_finite()
+            || radius <= 0.0
+            || depth <= 0.0
+            || corner <= 0.0
+        {
+            0.0
+        } else {
+            let ratio = (corner / radius).min(1.0);
+            // Rationalizing the subtraction preserves small offsets near the flat run.
+            depth * (ratio * ratio / (1.0 + ((1.0 - ratio) * (1.0 + ratio)).sqrt()))
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -191,6 +286,7 @@ pub enum PortSideHint {
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum TitlePosition {
+    TopAuto,
     TopLeft,
     #[default]
     TopCenter,
@@ -205,6 +301,8 @@ pub enum TitlePosition {
 pub struct NodeSpec {
     pub size: Size,
     pub parent: Option<GroupId>,
+    /// Outline geometry used for route and label placement inside the measured box.
+    pub contour: ShapeContourHint,
     /// Usable length centered on the face. Zero pins ports to the center.
     pub port_span: Option<f64>,
     /// Usable face length when a child flows perpendicular to the root direction.
@@ -212,6 +310,9 @@ pub struct NodeSpec {
     pub perpendicular_port_span: Option<f64>,
     /// Position of a left/right anchor measured from the top of the box.
     pub anchor_y: Option<f64>,
+    /// Allows automatic incoming ports on a compact circular terminal to use the top and
+    /// bottom faces in horizontal layouts.
+    pub split_incoming_ports: bool,
     /// Flow axis for which this rotatable box and its centered faces were measured.
     /// Responsive trials can transpose the box and its face spans for another local axis.
     pub flow_relative_axis: Option<Axis>,
@@ -233,9 +334,11 @@ impl NodeSpec {
         Self {
             size,
             parent: None,
+            contour: ShapeContourHint::Rectangle,
             port_span: None,
             perpendicular_port_span: None,
             anchor_y: None,
+            split_incoming_ports: false,
             flow_relative_axis: None,
             seq,
             order_hint: None,
@@ -288,7 +391,7 @@ impl NodeSpec {
             || u32::try_from(self.editor_order_hint()?.rank).ok()? != rank
             || !hint.center.x.is_finite()
             || !hint.center.y.is_finite()
-            || !crate::flat::measured(hint.size)
+            || !crate::validate::measured(hint.size)
         {
             return None;
         }
@@ -310,6 +413,12 @@ impl NodeSpec {
         {
             std::mem::swap(&mut self.size.width, &mut self.size.height);
             std::mem::swap(&mut self.port_span, &mut self.perpendicular_port_span);
+            if let ShapeContourHint::Rounded { rx, ry } = &mut self.contour {
+                std::mem::swap(rx, ry);
+            }
+            if let ShapeContourHint::OffsetDiamond { x, y } = &mut self.contour {
+                std::mem::swap(x, y);
+            }
             self.flow_relative_axis = Some(axis);
         }
     }
@@ -350,6 +459,7 @@ pub struct EdgeSpec {
     pub end_marker: MarkerMetrics,
     pub source_port: PortSideHint,
     pub target_port: PortSideHint,
+    marker_runways: [f64; 2],
 }
 
 impl EdgeSpec {
@@ -366,7 +476,43 @@ impl EdgeSpec {
             end_marker: MarkerMetrics::default(),
             source_port: PortSideHint::Auto,
             target_port: PortSideHint::Auto,
+            marker_runways: [0.0; 2],
         }
+    }
+
+    /// Records the measured contact-to-turn distances for both marker footprints.
+    /// Set this after assigning the marker metrics. Values must be finite and nonnegative;
+    /// zero (or any value below the marker's minimum lead) derives a fallback from the footprint.
+    pub fn set_marker_runways(&mut self, runways: [f64; 2]) {
+        self.marker_runways = runways;
+    }
+
+    pub(crate) fn raw_marker_runways(&self) -> [f64; 2] {
+        self.marker_runways
+    }
+
+    pub(crate) fn marker_runways(&self) -> [f64; 2] {
+        self.resolve_marker_runways(MarkerMetrics::runway_bound)
+    }
+
+    pub(crate) fn sweep_runways(&self) -> [f64; 2] {
+        self.resolve_marker_runways(|marker| marker.length + MIN_MARKER_LEAD)
+    }
+
+    fn resolve_marker_runways(&self, fallback: impl Fn(MarkerMetrics) -> f64) -> [f64; 2] {
+        let resolve = |marker: MarkerMetrics, measured: f64| {
+            if marker == MarkerMetrics::default() {
+                0.0
+            } else if measured.is_finite() && measured >= marker.length.max(MIN_MARKER_LEAD) {
+                measured
+            } else {
+                fallback(marker)
+            }
+        };
+        [
+            resolve(self.start_marker, self.marker_runways[0]),
+            resolve(self.end_marker, self.marker_runways[1]),
+        ]
     }
 }
 
@@ -398,6 +544,10 @@ pub struct EdgeGeometry {
     pub label_center: Option<Point>,
     pub start_label_center: Option<Point>,
     pub end_label_center: Option<Point>,
+    /// Stroke radius certified clear for the canonical cubic in a flat rank corridor.
+    /// Zero asks the painter to check obstacles. Applies to unchanged box contacts.
+    pub corridor_clearance: f64,
+    pub(crate) shared_bus: bool,
     pub reversed_for_ranking: bool,
 }
 
@@ -408,6 +558,8 @@ pub struct GroupGeometry {
     pub parent: Option<GroupId>,
     pub rect: Rect,
     pub title_center: Option<Point>,
+    /// A route still passes through the title's footprint after automatic placement.
+    pub title_struck: bool,
     pub effective_direction: Direction,
 }
 

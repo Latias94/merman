@@ -1,17 +1,17 @@
 //! Finish unlabelled directed fans in the clearance left by node and port placement.
 
-use super::{Component, Csr, Drawing, canonical_size, physical_side, validate};
-use crate::geom::Bounds;
+use super::{Component, Csr, Drawing, canonical_size, contour_inset, physical_side};
+use crate::geom::{Bounds, Bvh, BvhEntry};
+use crate::ortho::comb::{Comb, MIN_DEGREE, corner_guard};
 use crate::work::{LayoutResult, Work, filled, push, reserved};
 use crate::{
-    Axis, Graph, LayoutError, MarkerMetrics, NodeSpec, Options, Point, PortSideHint, Rect,
-    RoutePoint, RoutingStyle, Side,
+    Axis, Graph, LayoutError, MIN_MARKER_LEAD, MarkerMetrics, NodeSpec, Options, Point,
+    PortSideHint, Rect, RoutePoint, RoutingStyle, Side,
 };
+use std::ops::ControlFlow::{self, Break, Continue};
 
-const MIN_DEGREE: usize = 6;
 const MAX_SHAFTS: usize = 3;
-const MAX_CLEARANCE_CHECKS: usize = 256 * 1024;
-const MIN_LEAD: f64 = 6.0;
+const INVALID_BOUNDS: LayoutError = LayoutError::InvalidInput("invalid bus clearance bounds");
 
 #[derive(Clone, Copy, PartialEq)]
 struct Contact {
@@ -19,33 +19,77 @@ struct Contact {
     node: u32,
     side: Side,
     marker: MarkerMetrics,
+    inset: f64,
 }
 
 impl Contact {
-    fn marker_box(self) -> Option<Bounds> {
-        let MarkerMetrics { length, width } = self.marker;
-        if length == 0.0 || width == 0.0 {
-            return None;
+    fn offset(self, distance: f64) -> Point {
+        let Point { x, y } = self.at;
+        match self.side {
+            Side::Top => Point { x, y: y - distance },
+            Side::Right => Point { x: x + distance, y },
+            Side::Bottom => Point { x, y: y + distance },
+            Side::Left => Point { x: x - distance, y },
         }
-        Some(Bounds::marker(self.at, self.side, self.marker))
+    }
+
+    fn marker_box(self) -> Option<Bounds> {
+        // Retain both the measured and contour-adjusted footprints. The painter can
+        // refine the contact independently while the solved route keeps its box endpoint.
+        Bounds::marker_footprint(self.at, self.side, self.marker).map(|bounds| {
+            bounds.union(Bounds::marker(
+                self.offset(-self.inset),
+                self.side,
+                self.marker,
+            ))
+        })
     }
 }
 
-fn overlaps(a: [f64; 2], b: [f64; 2]) -> bool {
-    a[0].max(b[0]) < a[1].min(b[1])
+#[derive(Clone, Copy)]
+struct Face {
+    reach: f64,
+    min_inset: f64,
 }
 
-fn expand([lo, hi]: [f64; 2], gap: f64) -> [f64; 2] {
-    [lo - gap, hi + gap]
+impl Face {
+    fn include(&mut self, tip: Contact, runway: f64) {
+        self.reach = self.reach.max(runway.max(MIN_MARKER_LEAD));
+        self.min_inset = self.min_inset.min(tip.inset);
+    }
+
+    fn lead(self, corner: f64) -> f64 {
+        (self.reach - self.min_inset).max(0.0) + corner
+    }
 }
 
-fn between([lo, hi]: [f64; 2], at: f64) -> bool {
-    lo < at && at < hi
+enum Owner {
+    Body(u32),
+    Label,
+    Marker { edge: usize, end: usize },
+}
+
+struct Wall {
+    bounds: Bounds,
+    owner: Owner,
+}
+
+impl Wall {
+    fn add(walls: &mut Vec<Self>, bounds: Bounds, owner: Owner) -> LayoutResult<()> {
+        if !bounds.finite() {
+            return Err(INVALID_BOUNDS);
+        }
+        if bounds.has_area() {
+            push(walls, Self { bounds, owner })?;
+        }
+        Ok(())
+    }
 }
 
 struct Scene {
-    walls: Vec<Bounds>,
+    walls: Bvh<Wall>,
     ends: Vec<[Contact; 2]>,
+    faces: Vec<[Face; 4]>,
 }
 
 impl Scene {
@@ -56,10 +100,47 @@ impl Scene {
         work: &mut Work<'_>,
     ) -> LayoutResult<Self> {
         work.charge(drawing.nodes.len())?;
+        let mut faces = filled(
+            drawing.nodes.len(),
+            [Face {
+                reach: 0.0,
+                min_inset: f64::INFINITY,
+            }; 4],
+        )?;
         let mut walls = reserved(drawing.nodes.len())?;
-        walls.extend(drawing.nodes.iter().copied().map(Bounds::of));
+        for (node, &rect) in drawing.nodes.iter().enumerate() {
+            work.visit(1)?;
+            let mut bounds = Bounds::of(rect);
+            if let Some(Point { x, y }) =
+                super::diamond_offset(c.nodes[node].contour, graph.direction)
+                && (x != 0.0 || y != 0.0)
+            {
+                bounds = bounds.union(Bounds::of(Rect {
+                    x: rect.x + x,
+                    y: rect.y + y,
+                    ..rect
+                }));
+            }
+            Wall::add(&mut walls, bounds, Owner::Body(node as u32))?;
+        }
         work.charge(drawing.edges.len())?;
         let mut ends = reserved(drawing.edges.len())?;
+        let contact = |knot: RoutePoint, node: u32, side: Side, marker| {
+            let at = Point {
+                x: knot.x,
+                y: knot.y,
+            };
+            let center = drawing.nodes[node as usize].center();
+            let offset = across(side, at) - across(side, center);
+            let inset = contour_inset(c.nodes[node as usize], graph.direction, side, offset);
+            Contact {
+                at,
+                node,
+                side,
+                marker,
+                inset,
+            }
+        };
         for (index, (id, route)) in drawing.edges.iter().enumerate() {
             work.visit(1)?;
             let nodes = if let Some(link) = c.links.get(index) {
@@ -71,40 +152,44 @@ impl Scene {
             let [first, .., last] = route.points.as_slice() else {
                 return Err(LayoutError::InvalidInput("missing bus route contacts"));
             };
-            ends.push([
-                Contact {
-                    at: Point {
-                        x: first.x,
-                        y: first.y,
-                    },
-                    node: nodes[0],
-                    side: route.ports.0,
-                    marker: spec.start_marker,
-                },
-                Contact {
-                    at: Point {
-                        x: last.x,
-                        y: last.y,
-                    },
-                    node: nodes[1],
-                    side: route.ports.1,
-                    marker: spec.end_marker,
-                },
-            ]);
+            let contacts = [
+                contact(*first, nodes[0], route.ports.0, spec.start_marker),
+                contact(*last, nodes[1], route.ports.1, spec.end_marker),
+            ];
+            for (end, (tip, runway)) in contacts.into_iter().zip(spec.marker_runways()).enumerate()
+            {
+                if ![tip.at.x, tip.at.y, tip.inset]
+                    .into_iter()
+                    .all(f64::is_finite)
+                {
+                    return Err(INVALID_BOUNDS);
+                }
+                faces[tip.node as usize][tip.side as usize].include(tip, runway);
+                if let Some(bounds) = tip.marker_box() {
+                    Wall::add(&mut walls, bounds, Owner::Marker { edge: index, end })?;
+                }
+            }
+            ends.push(contacts);
             for (center, size) in [
                 (route.label_center, spec.label),
                 (route.start_label_center, spec.start_label),
                 (route.end_label_center, spec.end_label),
             ] {
                 if let (Some(p), Some(s)) = (center, size) {
-                    push(
+                    Wall::add(
                         &mut walls,
                         Bounds::centered(p, canonical_size(graph.direction, s)),
+                        Owner::Label,
                     )?;
                 }
             }
         }
-        Ok(Self { walls, ends })
+        let walls = Bvh::build_with_work(walls, |wall| wall.bounds, work)?;
+        Ok(Self { walls, ends, faces })
+    }
+
+    fn lead(&self, tip: Contact, corner: f64) -> f64 {
+        self.faces[tip.node as usize][tip.side as usize].lead(corner)
     }
 }
 
@@ -115,8 +200,8 @@ struct Runway {
 }
 
 impl Runway {
-    fn lead(self, marker: MarkerMetrics) -> f64 {
-        marker.length.max(MIN_LEAD) + self.corner * 2.0
+    fn depth(self, y: f64) -> f64 {
+        self.sign * y
     }
 
     fn depths(self, [top, bottom]: [f64; 2]) -> [f64; 2] {
@@ -132,25 +217,19 @@ struct Shaft {
     tip: Contact,
     knee: Point,
     x: [f64; 2],
-    marker: Option<Bounds>,
 }
 
 impl Shaft {
-    fn new(tip: Contact, runway: Runway) -> Self {
-        let lateral = match tip.side {
-            Side::Left => -runway.lead(tip.marker),
-            Side::Right => runway.lead(tip.marker),
-            _ => 0.0,
-        };
-        let knee = Point {
-            x: tip.at.x + lateral,
-            y: tip.at.y,
+    fn new(tip: Contact, scene: &Scene, corner: f64) -> Self {
+        let knee = if tip.side.axis() == Axis::Horizontal {
+            tip.offset(scene.lead(tip, corner))
+        } else {
+            tip.at
         };
         Self {
             tip,
             knee,
             x: [knee.x; 2],
-            marker: tip.marker_box(),
         }
     }
 }
@@ -176,6 +255,7 @@ fn shafts(
     node: &NodeSpec,
     corner: f64,
     runway: Runway,
+    scene: &Scene,
     work: &mut Work<'_>,
 ) -> LayoutResult<Option<Vec<Shaft>>> {
     let center = rect.center();
@@ -183,52 +263,55 @@ fn shafts(
     let usable = |tip: Contact| {
         let (len, span) = match tip.side.axis() {
             Axis::Vertical => (rect.width, node.port_span),
-            Axis::Horizontal => (rect.height, node.perpendicular_port_span),
+            Axis::Horizontal => (rect.height, node.perpendicular_port_span.or(node.port_span)),
         };
         let inset = corner.min(len * 0.5).max(tip.marker.width * 0.5);
         distance(tip) <= (len * 0.5 - inset).min(span.unwrap_or(len) * 0.5)
     };
-    let mut preferred: [Option<Contact>; 4] = [None; 4];
-    for branch in branches.iter() {
-        work.visit(1)?;
-        let tip = branch.hub;
-        let current = &mut preferred[tip.side as usize];
-        if !branch.fixed && usable(tip) && current.is_none_or(|old| distance(tip) < distance(old)) {
-            *current = Some(tip);
-        }
-    }
     let mut shafts: Vec<Shaft> = reserved(MAX_SHAFTS)?;
     // Every shaft reuses an existing contact and marker footprint. Later fans can only
     // remove marker walls from the set that previously checked routes had to clear.
     // Register fixed offsets first, so free contacts can use them when they fit.
-    for branch in branches.iter_mut().filter(|b| b.fixed) {
+    for branch in branches.iter_mut() {
         work.visit(1)?;
+        if !branch.fixed {
+            continue;
+        }
         let tip = branch.hub;
         branch.shaft = if let Some(index) = shafts.iter().position(|s| s.tip == tip) {
             index
         } else if shafts.len() < MAX_SHAFTS {
-            shafts.push(Shaft::new(tip, runway));
+            shafts.push(Shaft::new(tip, scene, runway.corner));
             shafts.len() - 1
         } else {
             return Ok(None);
         };
     }
-    for branch in branches.iter_mut().filter(|b| !b.fixed) {
+    for index in 0..branches.len() {
         work.visit(1)?;
-        let hub = branch.hub;
-        let existing = shafts
-            .iter()
-            .position(|s| s.tip.side == hub.side && s.tip.marker == hub.marker && usable(s.tip));
-        branch.shaft = if let Some(index) = existing {
-            index
-        } else if let Some(tip) = preferred[hub.side as usize]
-            && hub.marker == tip.marker
-            && shafts.len() < MAX_SHAFTS
-        {
-            shafts.push(Shaft::new(tip, runway));
-            shafts.len() - 1
+        if branches[index].fixed {
+            continue;
+        }
+        let hub = branches[index].hub;
+        let matches =
+            |tip: Contact| tip.side == hub.side && tip.marker == hub.marker && usable(tip);
+        branches[index].shaft = if let Some(shaft) = shafts.iter().position(|s| matches(s.tip)) {
+            shaft
         } else {
-            return Ok(None);
+            if shafts.len() == MAX_SHAFTS {
+                return Ok(None);
+            }
+            work.visit(branches.len())?;
+            let Some(tip) = branches
+                .iter()
+                .map(|b| b.hub)
+                .filter(|&tip| matches(tip))
+                .min_by(|&a, &b| distance(a).total_cmp(&distance(b)))
+            else {
+                return Ok(None);
+            };
+            shafts.push(Shaft::new(tip, scene, runway.corner));
+            shafts.len() - 1
         };
     }
     work.visit(branches.len())?;
@@ -240,9 +323,65 @@ fn shafts(
     Ok(Some(shafts))
 }
 
-/// Project the obstacles onto the bus axis. A vertical leg can only grow towards the bus, so
-/// its first obstruction tightens one end of the available interval. Horizontal obstructions
-/// remove intervals from that range. The additional pad contains the guarded corner turns.
+struct Obstacles<'a> {
+    scene: &'a Scene,
+    hub: u32,
+    shafts: &'a [Shaft],
+}
+
+impl Obstacles<'_> {
+    /// Visit only obstacles inside a swept leg or shelf. The index keeps its original
+    /// bounds because each successful fan reuses a subset of its original marker boxes.
+    fn visit(
+        &self,
+        query: Bounds,
+        terminal: Option<Contact>,
+        work: &mut Work<'_>,
+        mut hit: impl FnMut(Bounds) -> LayoutResult<ControlFlow<()>>,
+    ) -> LayoutResult<ControlFlow<()>> {
+        if !query.finite() {
+            return Err(INVALID_BOUNDS);
+        }
+        self.scene.walls.visit(|entry| {
+            work.visit(1)?;
+            let wall = match entry {
+                BvhEntry::Node(bounds) => return Ok(Continue(bounds.overlaps(query))),
+                BvhEntry::Item(wall) => wall,
+            };
+            if !wall.bounds.overlaps_strictly(query) {
+                return Ok(Continue(true));
+            }
+            let ignore = match wall.owner {
+                Owner::Body(node) => terminal.is_some_and(|tip| tip.node == node),
+                Owner::Label => false,
+                Owner::Marker { edge, end } => {
+                    let tip = self.scene.ends[edge][end];
+                    terminal == Some(tip)
+                        || tip.marker_box() != Some(wall.bounds)
+                        || (tip.node == self.hub && !self.shafts.iter().any(|s| s.tip == tip))
+                }
+            };
+            if !ignore && hit(wall.bounds)?.is_break() {
+                return Ok(Break(()));
+            }
+            Ok(Continue(true))
+        })
+    }
+
+    fn clear(
+        &self,
+        query: Bounds,
+        terminal: Option<Contact>,
+        work: &mut Work<'_>,
+    ) -> LayoutResult<bool> {
+        Ok(self
+            .visit(query, terminal, work, |_| Ok(Break(())))?
+            .is_continue())
+    }
+}
+
+/// Vertical obstructions tighten a shelf limit. Horizontal obstructions remove intervals
+/// from the remaining range, including the area swept by the guarded rounded corners.
 fn shelf(
     scene: &Scene,
     hub: u32,
@@ -252,24 +391,24 @@ fn shelf(
     runway: Runway,
     work: &mut Work<'_>,
 ) -> LayoutResult<Option<f64>> {
-    let depth = |y| runway.sign * y;
-    let pad = 2.0 * runway.corner;
-    let mut low = depth(face) + pad;
+    let depth = |y| runway.depth(y);
+    let corner = runway.corner;
+    let mut low = depth(face) + corner;
     let mut high = f64::INFINITY;
     for shaft in shafts {
         let lead = if shaft.tip.side.axis() == Axis::Vertical {
-            runway.lead(shaft.tip.marker)
+            scene.lead(shaft.tip, corner)
         } else {
-            pad
+            2.0 * corner
         };
         low = low.max(depth(shaft.knee.y) + lead);
-        if !shaft.knee.x.is_finite() || shaft.marker.is_some_and(|b| !b.finite()) {
+        if !shaft.knee.x.is_finite() {
             return Ok(None);
         }
     }
     work.visit(branches.len())?;
     for branch in branches {
-        high = high.min(depth(branch.leaf.at.y) - runway.lead(branch.leaf.marker));
+        high = high.min(depth(branch.leaf.at.y) - scene.lead(branch.leaf, corner));
     }
     if !low.is_finite()
         || !high.is_finite()
@@ -279,73 +418,77 @@ fn shelf(
         return Ok(None);
     }
     let preferred = low.midpoint(high);
-    work.visit(2 * scene.ends.len())?;
-    let markers = scene
-        .ends
-        .iter()
-        .flatten()
-        .copied()
-        .filter(|p| p.node != hub)
-        .chain(shafts.iter().map(|s| s.tip));
-    let mut blocked = Vec::new();
-    let mut consider = |wall: Bounds, owner: Option<Contact>| -> LayoutResult<bool> {
-        work.visit(shafts.len() + 1)?;
-        if !wall.finite() {
-            return Ok(false);
-        }
-        let cross = expand(wall.x, pad);
-        let [top, bottom] = runway.depths(wall.y);
-        let avoid = expand([top, bottom], pad);
-        let mut blocks_shelf = false;
-        for shaft in shafts {
-            if owner != Some(shaft.tip) {
-                if shaft
-                    .marker
-                    .is_some_and(|m| overlaps(wall.x, m.x) && overlaps(wall.y, m.y))
-                {
-                    return Ok(false);
-                }
-                if shaft.tip.side.axis() == Axis::Horizontal {
-                    let [a, b] = [shaft.tip.at.x, shaft.knee.x];
-                    if overlaps(wall.x, [a.min(b), a.max(b)]) && between(avoid, depth(shaft.knee.y))
-                    {
-                        return Ok(false);
-                    }
-                }
-                if between(cross, shaft.knee.x) && bottom > depth(shaft.knee.y) {
-                    high = high.min(avoid[0]);
-                }
-            }
-            blocks_shelf |= overlaps(cross, shaft.x);
-        }
-        if avoid[1] > low {
-            work.visit(branches.len())?;
-            for branch in branches {
-                let tip = branch.leaf;
-                if owner != Some(tip) && between(cross, tip.at.x) && top < depth(tip.at.y) {
-                    low = low.max(avoid[1]);
-                    break;
-                }
-            }
-        }
-        if blocks_shelf && overlaps(avoid, [low, high]) {
-            push(&mut blocked, avoid)?;
-        }
-        Ok(low < high)
-    };
-    for &wall in &scene.walls {
-        if !consider(wall, None)? {
-            return Ok(None);
-        }
-    }
-    for tip in markers {
-        if let Some(wall) = tip.marker_box()
-            && !consider(wall, Some(tip))?
+    let obstacles = Obstacles { scene, hub, shafts };
+    for shaft in shafts {
+        let Shaft { tip, knee, .. } = *shaft;
+        if let Some(marker) = tip.marker_box()
+            && !obstacles.clear(marker, Some(tip), work)?
         {
             return Ok(None);
         }
+        let contour = tip.offset(-tip.inset);
+        let side = tip.side.axis() == Axis::Horizontal;
+        if side {
+            let terminal = Bounds::between(tip.at, contour).union(Bounds::between(tip.at, knee));
+            let corner_start = corner_guard(knee, tip.at, Axis::Horizontal, corner);
+            let rounded = Bounds::between(
+                corner_start,
+                Point {
+                    y: knee.y + runway.sign * corner,
+                    ..knee
+                },
+            );
+            if !obstacles.clear(terminal, Some(tip), work)?
+                || !obstacles.clear(rounded, None, work)?
+            {
+                return Ok(None);
+            }
+        }
+        let start = if side {
+            depth(knee.y)
+        } else {
+            depth(knee.y).min(depth(contour.y))
+        };
+        let query = Bounds {
+            x: [knee.x; 2],
+            y: runway.depths([start, high]),
+        };
+        let _ = obstacles.visit(query, (!side).then_some(tip), work, |wall| {
+            high = high.min(runway.depths(wall.y)[0] - corner);
+            Ok(Continue(()))
+        })?;
+        if low >= high {
+            return Ok(None);
+        }
     }
-    validate::charge_sort(blocked.len(), work)?;
+    for branch in branches {
+        let tip = branch.leaf;
+        let end = depth(tip.at.y).max(depth(tip.offset(-tip.inset).y));
+        let query = Bounds {
+            x: [tip.at.x; 2],
+            y: runway.depths([low, end]),
+        };
+        let _ = obstacles.visit(query, Some(tip), work, |wall| {
+            low = low.max(runway.depths(wall.y)[1] + corner);
+            Ok(Continue(()))
+        })?;
+        if low >= high {
+            return Ok(None);
+        }
+    }
+    let mut blocked = Vec::new();
+    for shaft in shafts.iter().filter(|s| s.x[0] < s.x[1]) {
+        let query = Bounds {
+            x: shaft.x,
+            y: runway.depths([low - corner, high + corner]),
+        };
+        let _ = obstacles.visit(query, None, work, |wall| {
+            let [start, end] = runway.depths(wall.y);
+            push(&mut blocked, [start - corner, end + corner])?;
+            Ok(Continue(()))
+        })?;
+    }
+    work.charge_sort(blocked.len())?;
     blocked.sort_unstable_by(|a, b| a[0].total_cmp(&b[0]));
     let mut best: Option<f64> = None;
     for [start, end] in blocked.into_iter().chain([[high, high]]) {
@@ -364,116 +507,6 @@ fn shelf(
     Ok(best.map(depth))
 }
 
-fn point(at: Point, axis: Axis) -> RoutePoint {
-    RoutePoint::new(at.x, at.y, axis)
-}
-
-fn axis(a: Point, b: Point) -> Axis {
-    if a.x == b.x {
-        Axis::Vertical
-    } else {
-        Axis::Horizontal
-    }
-}
-
-fn guard(a: Point, b: Point, axis: Axis, corner: f64) -> Point {
-    let toward = |a: f64, b: f64| {
-        if (b - a).abs() <= 2.0 * corner {
-            a.midpoint(b)
-        } else {
-            a + (b - a).signum() * corner
-        }
-    };
-    match axis {
-        Axis::Vertical => Point {
-            y: toward(a.y, b.y),
-            ..a
-        },
-        Axis::Horizontal => Point {
-            x: toward(a.x, b.x),
-            ..a
-        },
-    }
-}
-
-fn route(
-    shaft: &Shaft,
-    leaf: Contact,
-    level: f64,
-    runway: Runway,
-    work: &mut Work<'_>,
-) -> LayoutResult<Option<Vec<RoutePoint>>> {
-    let hub_room = if shaft.tip.side.axis() == Axis::Vertical {
-        (level - shaft.tip.at.y).abs()
-    } else {
-        (shaft.knee.x - shaft.tip.at.x).abs()
-    };
-    if hub_room <= shaft.tip.marker.length.max(MIN_LEAD) + runway.corner
-        || (level - leaf.at.y).abs() <= leaf.marker.length.max(MIN_LEAD) + runway.corner
-    {
-        return Ok(None);
-    }
-    let mut turns = [Point::default(); 5];
-    let mut count = 0;
-    for at in [
-        shaft.tip.at,
-        shaft.knee,
-        Point {
-            x: shaft.knee.x,
-            y: level,
-        },
-        Point {
-            x: leaf.at.x,
-            y: level,
-        },
-        leaf.at,
-    ] {
-        if count > 0 && turns[count - 1] == at {
-            continue;
-        }
-        if count > 1 && axis(turns[count - 2], turns[count - 1]) == axis(turns[count - 1], at) {
-            count -= 1;
-        }
-        turns[count] = at;
-        count += 1;
-    }
-    let turns = &mut turns[..count];
-    if runway.sign < 0.0 {
-        turns.reverse();
-    }
-    let [first, second, ..] = turns else {
-        return Ok(None);
-    };
-    let first = point(*first, axis(*first, *second));
-    let capacity = 1 + 3 * (turns.len() - 1);
-    work.charge(capacity)?;
-    let mut points = reserved(capacity)?;
-    points.push(first);
-    for (index, leg) in turns.windows(2).enumerate() {
-        let [a, b] = [leg[0], leg[1]];
-        let axis = axis(a, b);
-        // Preserve straight guard knots so curved painters cannot consume the shared shaft
-        // or cut past the corner clearance checked around the orthogonal centerline.
-        for g in [
-            (index > 0).then(|| guard(a, b, axis, runway.corner)),
-            (index + 2 < turns.len()).then(|| guard(b, a, axis, runway.corner)),
-        ]
-        .into_iter()
-        .flatten()
-        {
-            if g == a || g == b {
-                return Ok(None);
-            }
-            let knot = RoutePoint::gap_boundary(g.x, g.y, axis);
-            if points.last() != Some(&knot) {
-                points.push(knot);
-            }
-        }
-        points.push(point(b, axis));
-    }
-    Ok(Some(points))
-}
-
 struct Edit {
     edge: usize,
     points: Vec<RoutePoint>,
@@ -487,11 +520,6 @@ fn plan(
     work: &mut Work<'_>,
 ) -> LayoutResult<Vec<Edit>> {
     let count = c.nodes.len();
-    let walls = count.saturating_add(drawing.edges.len().saturating_mul(5));
-    let mut allowance = MAX_CLEARANCE_CHECKS;
-    if walls.saturating_mul(MIN_DEGREE) > allowance {
-        return Ok(Vec::new());
-    }
     // Loops are both incoming and outgoing, so they disqualify their hub automatically.
     let loops = || c.loops.iter().map(|l| l.node);
     let incoming = Csr::new(count, c.links.iter().map(|e| e.to).chain(loops()), work)?;
@@ -506,10 +534,6 @@ fn plan(
             (ids, []) if ids.len() >= MIN_DEGREE => (ids, 1, Side::Top, Side::Bottom, -1.0),
             ([], ids) if ids.len() >= MIN_DEGREE => (ids, 0, Side::Bottom, Side::Top, 1.0),
             _ => continue,
-        };
-        let cost = (walls + MAX_SHAFTS).saturating_mul(ids.len() + MAX_SHAFTS + 1);
-        let Some(left) = allowance.checked_sub(cost) else {
-            continue;
         };
         let mut eligible = true;
         for &id in ids {
@@ -526,7 +550,6 @@ fn plan(
         if !eligible {
             continue;
         }
-        allowance = left;
         let scene = match &mut scene {
             Some(scene) => scene,
             slot => slot.insert(Scene::new(drawing, c, graph, work)?),
@@ -534,7 +557,9 @@ fn plan(
         let node = &c.nodes[hub as usize];
         let rect = drawing.nodes[hub as usize];
         let runway = Runway {
-            corner: options.spacing.edge.max(2.0),
+            // Guard half of the configured separation, with room for the painter's
+            // minimum straight lead when the caller requests very tight spacing.
+            corner: options.spacing.edge.max(MIN_MARKER_LEAD) * 0.5,
             sign,
         };
         let mut branches = reserved(ids.len())?;
@@ -572,6 +597,7 @@ fn plan(
             node,
             options.spacing.corner_clearance,
             runway,
+            scene,
             work,
         )?
         else {
@@ -585,9 +611,24 @@ fn plan(
         let Some(level) = shelf(scene, hub, face, &branches, &shafts, runway, work)? else {
             continue;
         };
+        let comb = Comb {
+            travel: Axis::Vertical,
+            shelf: level,
+            corner: runway.corner,
+        };
         let start = edits.len();
         for branch in &branches {
-            let Some(points) = route(&shafts[branch.shaft], branch.leaf, level, runway, work)?
+            let shaft = &shafts[branch.shaft];
+            if shaft.tip.side.axis() == Axis::Horizontal && shaft.tip.at == shaft.knee {
+                break;
+            }
+            let Some(points) = comb.branch(
+                shaft.tip.at,
+                shaft.knee,
+                branch.leaf.at,
+                runway.sign < 0.0,
+                work,
+            )?
             else {
                 break;
             };
@@ -612,9 +653,8 @@ fn plan(
     Ok(edits)
 }
 
-/// Bundle final canonical Down links when orthogonal bus routing is enabled. The caller
-/// establishes paint compatibility for the whole fan. A true result requests shared-segment
-/// crossing compression.
+/// Bundle final canonical Down links for orthogonal geometry, including rounded paint.
+/// A true result requests shared-segment crossing compression.
 pub(super) fn bundle(
     drawing: &mut Drawing,
     c: &Component,
@@ -633,12 +673,17 @@ pub(super) fn bundle(
     }
     let edits = match work.compare(|trial| plan(drawing, c, graph, options, trial)) {
         Ok(Some(edits)) => edits,
-        Ok(None) | Err(LayoutError::AllocationLimit) => return Ok(false),
+        Ok(None) | Err(LayoutError::AllocationLimit | LayoutError::InvalidInput(_)) => {
+            return Ok(false);
+        }
         Err(error) => return Err(error),
     };
     let shared = !edits.is_empty();
     for edit in edits {
-        drawing.edges[edit.edge].1.points = edit.points;
+        let route = &mut drawing.edges[edit.edge].1;
+        route.points = edit.points;
+        route.corridor_clearance = 0.0;
+        route.shared_bus = true;
     }
     Ok(shared)
 }

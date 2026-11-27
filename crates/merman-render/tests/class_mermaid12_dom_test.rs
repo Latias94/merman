@@ -173,6 +173,104 @@ fn class_namespace_html_keeps_safe_markup_without_executable_attributes() {
     }));
 }
 
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn class_html_label_overflow_is_visible_only_in_shoal() {
+    for layout in [
+        Some("shoal"),
+        cfg!(feature = "layout-dagre").then_some("dagre"),
+        cfg!(feature = "layout-elk").then_some("elk"),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        let svg = render_class(&format!(
+            r#"---
+config:
+  layout: {layout}
+  htmlLabels: true
+---
+classDiagram
+namespace Domain["<b>Domain</b><br/>Core"] {{
+  class OrderAggregate~OrderItem~ {{
+    <<service>>
+    +UUID customer_account_id
+    +applyDiscountCode(String promo) void
+  }}
+}}
+class Audit["<i>Audit</i>"]
+OrderAggregate "1" --> "1..*" Audit : settles via
+OrderAggregate --() CheckoutPort
+note for OrderAggregate "Invariant<br/>second line"
+"#,
+        ));
+        let document = roxmltree::Document::parse(&svg).expect("valid Class SVG");
+        let mut labels = Vec::new();
+        let mut empty_labels = 0;
+        for foreign_object in document
+            .descendants()
+            .filter(|node| node.has_tag_name("foreignObject"))
+        {
+            let width = foreign_object.attribute("width").unwrap();
+            let height = foreign_object.attribute("height").unwrap();
+            let has_area =
+                width.parse::<f64>().unwrap() > 0.0 && height.parse::<f64>().unwrap() > 0.0;
+            let style = foreign_object.attribute("style").unwrap_or_default();
+            let text = foreign_object
+                .descendants()
+                .filter(|node| node.is_text())
+                .filter_map(|node| node.text())
+                .collect::<String>();
+            assert_eq!(
+                style.contains("overflow: visible;"),
+                layout == "shoal" && has_area,
+                "{layout}: {text:?} ({width} × {height}): {style:?}"
+            );
+            if !has_area {
+                empty_labels += 1;
+                continue;
+            }
+            if foreign_object
+                .ancestors()
+                .any(|node| node.attribute("class") == Some("edgeTerminals"))
+            {
+                assert!(style.starts_with("width: "), "{layout}: {style}");
+                assert!(style.contains(&format!("height: {height}px;")));
+            }
+            labels.push(text);
+        }
+        if layout == "shoal" {
+            assert!(empty_labels > 0);
+        }
+        for expected in [
+            "DomainCore",
+            "«service»",
+            "OrderAggregate<OrderItem>",
+            "+UUID customer_account_id",
+            "+applyDiscountCode(String promo) : void",
+            "Audit",
+            "settles via",
+            "1",
+            "1..*",
+            "CheckoutPort",
+            "Invariantsecond line",
+        ] {
+            assert!(
+                labels.iter().any(|text| text == expected),
+                "{layout}: missing positive-size label {expected:?} in {labels:?}"
+            );
+        }
+        for (tag, text) in [("b", "Domain"), ("i", "Audit")] {
+            assert!(
+                document
+                    .descendants()
+                    .any(|node| node.has_tag_name(tag) && node.text() == Some(text)),
+                "{layout}: missing {tag} markup for {text:?}"
+            );
+        }
+    }
+}
+
 #[test]
 fn class_spaced_generics_and_bare_names_preserve_the_rendered_graph() {
     let layouts = if cfg!(feature = "layout-elk") {
@@ -255,6 +353,52 @@ fn class_neo_dividers_and_marker_references_follow_look_and_gradient() {
                     polygon.attribute("style"),
                     Some("stroke-width: 2; stroke-dasharray: 0;")
                 );
+            }
+        }
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn class_shoal_neo_dividers_keep_solid_guides_with_gradients() {
+    for (theme, guide) in [("dark", "#ccc"), ("forest", "#13540c")] {
+        for html_labels in [false, true] {
+            let svg = render_class(&format!(
+                "---\nconfig:\n  layout: shoal\n  look: neo\n  theme: {theme}\n  htmlLabels: {html_labels}\n  themeVariables:\n    useGradient: true\n---\nclassDiagram\nclass Order\nclass Invoice\nOrder --> Invoice\nstyle Invoice stroke:#123456,stroke-width:3px\n"
+            ));
+            let document = roxmltree::Document::parse(&svg).expect("valid Class SVG");
+            let css = document
+                .descendants()
+                .find(|node| node.has_tag_name("style"))
+                .and_then(|node| node.text())
+                .unwrap();
+            assert!(css.contains(r#"[data-look="neo"].node path{stroke:url(#merman-gradient)"#));
+            assert!(css.contains(&format!(
+                r#"[data-look="neo"].node .neo-line path{{stroke:{guide};filter:none;}}"#
+            )));
+            for (id, source_style) in [
+                ("merman-classId-Order-0", ""),
+                (
+                    "merman-classId-Invoice-1",
+                    "stroke:#123456;stroke-width:3px",
+                ),
+            ] {
+                let node = document
+                    .descendants()
+                    .find(|node| node.attribute("id") == Some(id))
+                    .expect("class node");
+                assert_eq!(node.attribute("data-look"), Some("neo"));
+                let dividers = node.children().filter(|child| {
+                    child.attribute("class").is_some_and(|classes| {
+                        classes.split_whitespace().any(|class| class == "divider")
+                    })
+                });
+                assert_eq!(dividers.clone().count(), 2, "{theme}/{html_labels}: {id}");
+                for divider in dividers {
+                    assert_eq!(divider.attribute("class"), Some("divider neo-line"));
+                    let path = divider.first_element_child().expect("divider path");
+                    assert_eq!(path.attribute("style"), Some(source_style));
+                }
             }
         }
     }

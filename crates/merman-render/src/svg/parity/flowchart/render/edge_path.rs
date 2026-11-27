@@ -41,6 +41,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &FlowchartRenderCtx<'_>,
     marker_plan: &FlowchartMarkerEmissionPlan,
+    adaptive_ink: Option<&'static str>,
     edge_ref: super::super::render_input::FlowchartRenderEdgeRef<'_>,
     origin_x: f64,
     origin_y: f64,
@@ -72,7 +73,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     // must still consume the post-processed cache. Enabling diagnostics must not alter rendering.
     let owned_geom = if cached_geom.is_none() || trace_enabled {
         if let Some(layout_edge) = ctx.layout_edges_by_key.get(&key) {
-            ctx.work_meter.charge(layout_edge.points.len().max(2))?;
+            ctx.work_meter.charge(layout_edge.points().len().max(2))?;
         }
         flowchart_compute_edge_path_geom(
             FlowchartEdgePathGeomRequest {
@@ -142,6 +143,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         class_attr: &scratch.edge_class_attr,
         marker_attrs: &scratch.edge_marker_attrs,
         default_edge_style: ctx.default_edge_style,
+        adaptive_ink,
         neo_edge_mask,
         line_hop_applied: geom.line_hop_applied,
     };
@@ -162,6 +164,7 @@ struct FlowchartEdgeSvgEmission<'a> {
     class_attr: &'a str,
     marker_attrs: &'a str,
     default_edge_style: &'a [String],
+    adaptive_ink: Option<&'static str>,
     neo_edge_mask: Option<FlowchartNeoEdgeMaskPlan>,
     line_hop_applied: bool,
 }
@@ -176,9 +179,13 @@ impl FlowchartEdgeSvgEmission<'_> {
         let neo_mask_svg_bytes = self
             .neo_edge_mask
             .map_or(0, FlowchartNeoEdgeMaskPlan::serialized_bytes);
-        // Marker attributes are already owned by `FlowchartMarkerEmissionPlan`; only the repeated
-        // source-style payload and the Neo mask remain disjoint producer contributions here.
-        let Some(projected_contribution) = source_style_svg_bytes.checked_add(neo_mask_svg_bytes)
+        let ink_svg_bytes = self
+            .adaptive_ink
+            .map_or(0, |ink| "stroke:;".len() + ink.len());
+        // Marker attributes are already owned by `FlowchartMarkerEmissionPlan`.
+        let Some(projected_contribution) = source_style_svg_bytes
+            .checked_add(neo_mask_svg_bytes)
+            .and_then(|bytes| bytes.checked_add(ink_svg_bytes))
         else {
             work_meter.check_svg_append(usize::MAX, 1)?;
             unreachable!("overflowing Flowchart edge contribution must be rejected")
@@ -297,6 +304,9 @@ impl FlowchartEdgeSvgEmission<'_> {
     }
 
     fn write_source_style(&self, out: &mut impl fmt::Write) -> fmt::Result {
+        if let Some(ink) = self.adaptive_ink {
+            write!(out, "stroke:{ink};")?;
+        }
         if self.hand_drawn {
             return write_style_joined(out, self.default_edge_style, &self.edge.style);
         }
@@ -313,8 +323,8 @@ impl FlowchartEdgeSvgEmission<'_> {
             write!(
                 out,
                 "{}:{}",
-                escape_xml_display(declaration.property_css()),
-                escape_xml_display(declaration.source_value())
+                escape_attr_display(declaration.property_css()),
+                escape_attr_display(declaration.source_value())
             )?;
         }
         if !self
@@ -343,7 +353,7 @@ fn write_style_joined(
         if index != 0 {
             out.write_char(';')?;
         }
-        write!(out, "{}", escape_xml_display(part))?;
+        write!(out, "{}", escape_attr_display(part))?;
     }
     Ok(())
 }
@@ -355,11 +365,13 @@ fn flowchart_neo_edge_path_length(
     if geom.line_hop_applied && flowchart_neo_mask_uses_dash_pairs(edge) {
         geom.pre_hop_dash_mask_length
     } else {
-        svg_path_length_from_d(&geom.d)
+        geom.centerline_length()
     }
 }
 
-fn flowchart_neo_marker_mask_offset(arrow_type: Option<&str>) -> f64 {
+pub(in crate::svg::parity::flowchart) fn flowchart_neo_marker_mask_offset(
+    arrow_type: Option<&str>,
+) -> f64 {
     match arrow_type {
         Some("arrow_point" | "arrow_open_head") => 4.0,
         Some("arrow_hollow_circle") => 8.0,
@@ -627,6 +639,7 @@ mod tests {
             class_attr: "edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link",
             marker_attrs: r#" marker-start="url(#diagram-flowchart-v2-circleStart)" marker-end="url(#diagram-flowchart-v2-pointEnd)""#,
             default_edge_style: &default_edge_style,
+            adaptive_ink: None,
             neo_edge_mask: Some(neo_edge_mask),
             line_hop_applied: false,
         };

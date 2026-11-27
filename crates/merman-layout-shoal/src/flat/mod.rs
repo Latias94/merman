@@ -22,12 +22,9 @@ mod validate;
 
 use crate::scratch::capacity_bytes;
 use crate::work::{LayoutResult, Work, filled};
-use crate::{Direction, Graph, LayoutError, NodeSpec, Options, Size, WorkError};
+use crate::{Axis, Direction, Graph, LayoutError, NodeSpec, Options, Size, WorkError};
 
 pub(crate) use extras::route_corridor as corridor;
-pub(crate) use validate::{
-    length, measured, validate_edge, validate_node, validate_options, validate_port,
-};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum BoundaryRank {
@@ -159,12 +156,16 @@ pub(crate) struct Expanded {
     label_vertex: Vec<Option<u32>>,
     inline_labels: Vec<label_place::InlineLabel>,
     direct: Vec<bool>,
+    has_parallel_links: bool,
     exterior_lanes: Vec<order::ExteriorLane>,
     separated_proxies: Vec<(u32, u32)>,
     pred: Csr,
     succ: Csr,
     order_scratch: order::OrderScratch,
     position_scratch: position::PositionScratch,
+    refine_scratch: refine::RefineScratch,
+    routing_scratch: routing::RoutingScratch,
+    hub_scratch: hub::HubScratch,
     pub(crate) component_cache: component_cache::ComponentCache,
 }
 
@@ -199,11 +200,55 @@ fn canonical_size(dir: Direction, size: Size) -> Size {
     }
 }
 
+fn contour_inset(node: NodeSpec, dir: Direction, side: Side, offset: f64) -> f64 {
+    let flip = side.axis() == Axis::Horizontal && matches!(dir, Direction::Up | Direction::Left);
+    node.contour.inset_at(
+        node.size,
+        physical_side(dir, side),
+        if flip { -offset } else { offset },
+    )
+}
+
+fn diamond_offset(contour: crate::ShapeContourHint, direction: Direction) -> Option<crate::Point> {
+    use crate::ShapeContourHint;
+
+    let (x, y) = match contour {
+        ShapeContourHint::Diamond => return Some(crate::Point::default()),
+        ShapeContourHint::OffsetDiamond { x, y } => (x, y),
+        _ => return None,
+    };
+    // Invert the drawing transform on the physical displacement vector.
+    let (x, y) = match direction {
+        Direction::Down => (x, y),
+        Direction::Up => (x, -y),
+        Direction::Right => (y, x),
+        Direction::Left => (y, -x),
+    };
+    Some(crate::Point { x, y })
+}
+
 #[cfg(test)]
 mod tests;
 
 /// Footprint of owned allocations, including the individual paths and ranks.
 impl Expanded {
+    pub(crate) fn empty_rank_slots(
+        &self,
+        a: u32,
+        b: u32,
+        work: &mut Work<'_>,
+    ) -> LayoutResult<u64> {
+        let (lo, hi) = (a.min(b), a.max(b));
+        let logical_distance = self.logical_rank[hi as usize] - self.logical_rank[lo as usize];
+        if logical_distance <= 1 || self.inserted_ranks.is_empty() {
+            return Ok(logical_distance.saturating_sub(1));
+        }
+        work.visit(2 * (self.inserted_ranks.len().ilog2() as usize + 1))?;
+        let first = self.inserted_ranks.partition_point(|&rank| rank <= lo);
+        let last = self.inserted_ranks.partition_point(|&rank| rank < hi);
+        Ok(logical_distance - 1 - (last - first) as u64)
+    }
+
     fn separate_ports(&self, ends: (u32, u32), work: &mut Work<'_>) -> LayoutResult<bool> {
         if self.separated_proxies.is_empty() {
             return Ok(false);
@@ -244,6 +289,16 @@ impl Expanded {
         };
     }
 
+    pub(super) fn discard_stage_scratch(&mut self) -> usize {
+        let bytes = self.refine_scratch.retained_bytes()
+            + self.routing_scratch.retained_bytes()
+            + self.hub_scratch.retained_bytes();
+        self.refine_scratch = refine::RefineScratch::default();
+        self.routing_scratch = routing::RoutingScratch::default();
+        self.hub_scratch = hub::HubScratch::default();
+        bytes
+    }
+
     pub(super) fn retained_bytes(&self) -> usize {
         fn bytes<T>(v: &Vec<T>) -> usize {
             v.capacity() * size_of::<T>()
@@ -274,6 +329,9 @@ impl Expanded {
             + csr(&self.succ)
             + self.order_scratch.retained_bytes()
             + self.position_scratch.retained_bytes()
+            + self.refine_scratch.retained_bytes()
+            + self.routing_scratch.retained_bytes()
+            + self.hub_scratch.retained_bytes()
     }
 }
 
@@ -459,29 +517,24 @@ fn to_canonical_port(dir: Direction, hint: PortSideHint) -> PortSideHint {
     }
 }
 
-#[derive(Clone, Copy)]
-enum SolveMode {
-    Full,
-    Geometry,
-    Fold(f64),
-}
-
+#[cfg(test)]
 pub(crate) fn run(
     graph: &Graph,
     options: &Options,
     g: &mut Expanded,
     work: &mut Work<'_>,
 ) -> LayoutResult<LayoutOutput> {
-    run_packed(graph, options, g, SolveMode::Full, work).map(|(drawing, _)| drawing)
+    run_with_detail(graph, options, g, crate::LayoutDetail::Full, work)
 }
 
-pub(crate) fn run_geometry(
+pub(crate) fn run_with_detail(
     graph: &Graph,
     options: &Options,
     g: &mut Expanded,
+    detail: crate::LayoutDetail,
     work: &mut Work<'_>,
 ) -> LayoutResult<LayoutOutput> {
-    run_packed(graph, options, g, SolveMode::Geometry, work).map(|(drawing, _)| drawing)
+    run_packed(graph, options, g, detail, None, work).map(|(drawing, _)| drawing)
 }
 
 pub(crate) fn fold(
@@ -489,12 +542,13 @@ pub(crate) fn fold(
     options: &Options,
     g: &mut Expanded,
     max_width: f64,
+    detail: crate::LayoutDetail,
     work: &mut Work<'_>,
 ) -> LayoutResult<Option<LayoutOutput>> {
     if !graph.groups.is_empty() || !matches!(graph.direction, Direction::Down | Direction::Up) {
         return Ok(None);
     }
-    run_packed(graph, options, g, SolveMode::Fold(max_width), work)
+    run_packed(graph, options, g, detail, Some(max_width), work)
         .map(|(drawing, folded)| folded.then_some(drawing))
 }
 
@@ -523,24 +577,30 @@ fn draw_with_label_gaps(
     let (mut drawing, label_gaps) =
         routing::route_with_label_gaps(g, c, orientation, graph, options, &x, work)?;
     extras::finish(&mut drawing, g, c, graph, options, work)?;
+    routing::decision::dock(&mut drawing, c, g, graph, options, work)?;
     Ok((drawing, label_gaps))
+}
+
+#[derive(Clone, Copy)]
+struct SolveMode {
+    fold_at: Option<f64>,
+    measure_crossings: bool,
 }
 
 fn run_packed(
     graph: &Graph,
     options: &Options,
     g: &mut Expanded,
-    mode: SolveMode,
+    detail: crate::LayoutDetail,
+    fold_at: Option<f64>,
     work: &mut Work<'_>,
 ) -> LayoutResult<(LayoutOutput, bool)> {
     let (components, has_editor_hints) = validate::partition(graph, options, false, work)?;
     // A hint in a later component can trigger a comparison of the entire drawing.
-    let mode = if matches!(mode, SolveMode::Geometry) && has_editor_hints {
-        SolveMode::Full
-    } else {
-        mode
+    let mode = SolveMode {
+        fold_at,
+        measure_crossings: detail == crate::LayoutDetail::Full || has_editor_hints,
     };
-    let folding = matches!(mode, SolveMode::Fold(_));
     let mut stats = LayoutStats {
         components: components.len(),
         ..Default::default()
@@ -550,8 +610,8 @@ fn run_packed(
     for c in components {
         let mut local = *options;
         local.caps.max_dummies -= stats.dummy_nodes;
-        local.inline_labels &= !folding;
-        let cache = !folding && g.component_cache.active_for(&c);
+        local.inline_labels &= fold_at.is_none();
+        let cache = fold_at.is_none() && g.component_cache.active_for(&c);
         let previous_choice = work.editor_choice;
         let cached = if cache {
             work.editor_choice = false;
@@ -629,9 +689,10 @@ fn solve_component(
         } else {
             Vec::new()
         };
-        let candidate = match mode {
-            SolveMode::Fold(max_width) => fan::fold(g, c, graph, &local, max_width, work)?,
-            _ => None,
+        let candidate = if let Some(max_width) = mode.fold_at {
+            fan::fold(g, c, graph, &local, max_width, work)?
+        } else {
+            None
         };
         let folded_component = candidate.is_some();
         let (mut drawing, label_gaps, dummies, fallbacks, reversed) = match candidate {
@@ -649,7 +710,7 @@ fn solve_component(
             }
         };
         if !folded_component {
-            hub::spread(&mut drawing, c, graph, options, work)?;
+            hub::spread_with_scratch(&mut drawing, c, graph, options, &mut g.hub_scratch, work)?;
         }
         let compress_shared =
             folded_component || bus::bundle(&mut drawing, c, graph, options, work)?;
@@ -659,6 +720,7 @@ fn solve_component(
                 &g.inline_labels,
                 &label_gaps,
                 graph,
+                c,
                 options,
                 work,
             )?;
@@ -680,16 +742,19 @@ fn solve_component(
         if options.compact_ranks && !folded_component {
             routing::compact_ranks(&mut drawing, c, g, graph, options, work)?;
         }
+        if !folded_component && g.routing_scratch.needs_label_clearance {
+            routing::certify_final_clearance(&mut drawing, graph, work)?;
+        }
         let stats = LayoutStats {
             scc_cyclic_count: orientation.cyclic_sccs,
             dummy_nodes: dummies,
             direct_fallback_edges: fallbacks,
             reversed_edges: reversed,
             topological_crossings: crossings,
-            routed_crossings: if matches!(mode, SolveMode::Geometry) {
-                0
-            } else {
+            routed_crossings: if mode.measure_crossings {
                 crossings::pairs(&drawing.edges, compress_shared, work)?
+            } else {
+                0
             },
             ..LayoutStats::default()
         };

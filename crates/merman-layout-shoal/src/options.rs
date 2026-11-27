@@ -17,9 +17,9 @@ pub struct Spacing {
 impl Default for Spacing {
     fn default() -> Self {
         Self {
-            node: 50.0,
-            rank: 50.0,
-            edge: 4.0,
+            node: 44.0,
+            rank: 48.0,
+            edge: 14.0,
             component: 50.0,
             port_sep: 20.0,
             port_pitch: 16.0,
@@ -127,7 +127,7 @@ impl Default for BudgetCaps {
         Self {
             max_dummies: 20_000,
             max_sweeps: 24,
-            max_transpose_nodes: 1500,
+            max_transpose_nodes: 600,
             max_weighed_gap_pieces: 400,
             max_border_ports: 40_000,
             max_ordered_compound_ports: 400,
@@ -138,7 +138,7 @@ impl Default for BudgetCaps {
 }
 
 #[non_exhaustive]
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Options {
     pub spacing: Spacing,
     pub routing: RoutingStyle,
@@ -161,4 +161,26 @@ pub struct Options {
     pub grid_quantum: Option<f64>,
     /// Include each node's local layered rank in the result for editor sessions.
     pub capture_node_ranks: bool,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Self {
+            spacing: Spacing::default(),
+            routing: RoutingStyle::default(),
+            bus_routing: true,
+            global_orthogonal: false,
+            inline_labels: true,
+            compact_ranks: true,
+            reuse_unchanged_components: false,
+            cycle_policy: CyclePolicy::default(),
+            rank_policy: RankPolicy::default(),
+            group_policy: GroupPolicy::default(),
+            packing: PackingPolicy::default(),
+            width_policy: WidthPolicy::default(),
+            caps: BudgetCaps::default(),
+            grid_quantum: None,
+            capture_node_ranks: false,
+        }
+    }
 }

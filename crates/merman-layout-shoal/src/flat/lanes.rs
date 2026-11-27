@@ -161,12 +161,9 @@ pub(crate) fn run(
         routing::route_with_label_gaps(g, &c, &orientation, graph, options, &x, work)?;
     debug_assert!(inline.is_empty());
     extras::finish(&mut drawing, g, &c, graph, options, work)?;
-    hub::spread(&mut drawing, &c, graph, options, work)?;
+    hub::spread_with_scratch(&mut drawing, &c, graph, options, &mut g.hub_scratch, work)?;
     // Compound assembly measures crossings once the lane contacts and nested legs are stitched.
     bus::bundle(&mut drawing, &c, graph, options, work)?;
-    if options.compact_ranks {
-        routing::compact_ranks(&mut drawing, &c, g, graph, options, work)?;
-    }
     let stats = LayoutStats {
         components: 1,
         scc_cyclic_count: orientation.cyclic_sccs,

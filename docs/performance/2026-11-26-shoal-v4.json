@@ -1,0 +1,2735 @@
+{
+  "measurement_date": "2026-11-26",
+  "base_revision": "24e2572e4ad955aa5634866f2fb6854026fd5820",
+  "candidate_revision": "48a3961cf6fe93018a08065c1effd14f3adfca8f",
+  "host": {
+    "cpu": "Apple M4 Pro",
+    "arch": "arm64",
+    "macos": "27.2.1",
+    "rustc": "1.100.0",
+    "node": "v26.11.0"
+  },
+  "cargo_lock_sha256": "9e56b709f0f2d3396b500672887ff50dd81ed2dbd1d54a7c7127a04eba0998ca",
+  "native": {
+    "operation": "svg",
+    "resource_profile": "interactive",
+    "release_profile": "release",
+    "warmups": 2,
+    "samples_per_round": 6,
+    "suites": {
+      "plan": {
+        "plan_sha256": "01bd5018ebaf80a123e87a5e55ba12b8cabea670db91bda2b0fe4407d2c90fad",
+        "harness_sha256": "7779d3ce0c14170604f6c87022c96ee2d5a443b501dbde203724bbaa866e0b91",
+        "rounds": [
+          {
+            "name": "base-a",
+            "runner_sha256": "05916d92ae54c4e263199cc7e1d5b192a0dc6e4ff0c8f4f745132f65cc08d798",
+            "revision": "24e2572e4",
+            "rows": {
+              "small-svg": {
+                "samples_ns": [
+                  84708,
+                  90584,
+                  89084,
+                  93042,
+                  94166,
+                  83833
+                ],
+                "svg_sha256": "ad8ee8eca1d5fa55a067729affbba393c046872e2dfb32b61b114beee5b34541",
+                "svg_bytes": 32423,
+                "source_sha256": "227f716d89bd48e9d874bfad1e34014629ee4363594702d7ef842aa35fcd523d",
+                "layout_work_units": 458
+              },
+              "flowchart-nested-layout": {
+                "samples_ns": [
+                  440208,
+                  394209,
+                  451500,
+                  407708,
+                  437542,
+                  400791
+                ],
+                "svg_sha256": "f2e314e890112492b85b95ae98e6c4b8dba0f307208055696f6075af5e34b9e4",
+                "svg_bytes": 67470,
+                "source_sha256": "29e4a3e13446e123a77064cbc07fbe3ae6b8dbfdcc7fe842649b050909d4e2f1",
+                "layout_work_units": 36865
+              },
+              "chain-500": {
+                "samples_ns": [
+                  3133667,
+                  3152416,
+                  3734333,
+                  3442625,
+                  3238542,
+                  3425791
+                ],
+                "svg_sha256": "b65b4b2a2e5b4e68dd0f5c33a7a3850b9f6b4daff0593fda6487482a944d7bef",
+                "svg_bytes": 747357,
+                "source_sha256": "95cb401c1318676dc78124047b2152fb367cc7c1264c2b1c016f8552d66a3937",
+                "layout_work_units": 144510
+              },
+              "scc-75": {
+                "samples_ns": [
+                  1130083,
+                  1377416,
+                  1223291,
+                  1135417,
+                  1145417,
+                  1139375
+                ],
+                "svg_sha256": "50840fa1fb9925023a7f0a3ef9f81a73e5bdc988a33bdc4ef5a2542fc18ae55b",
+                "svg_bytes": 245853,
+                "source_sha256": "ea425eed9c11de57531b0d5dfb49f429d7e2c12c85a1bb8b8934895ecbd15af2",
+                "layout_work_units": 107431
+              },
+              "scc-100": {
+                "samples_ns": [
+                  1485666,
+                  1484084,
+                  1509917,
+                  1623292,
+                  1513541,
+                  1569958
+                ],
+                "svg_sha256": "5a94fc8153dad922d373db11b36012ed6a2917d02fc5fcbddff067051ccba757",
+                "svg_bytes": 323581,
+                "source_sha256": "a9fe244ef8e0a59ea577b14ab373f09ea407f38153144dd4f397c6a512b774af",
+                "layout_work_units": 143976
+              },
+              "scc-100-edges-reverse": {
+                "samples_ns": [
+                  1506334,
+                  1525917,
+                  1646167,
+                  1530667,
+                  1461708,
+                  1475750
+                ],
+                "svg_sha256": "06f1c388f110f5fd2f76ed4244ae496b7c4af8bd6594a6a2ab185246dbf8f16e",
+                "svg_bytes": 334431,
+                "source_sha256": "f6afd337713173ebb3543c02a8813c6d796f9ceb2b186ed28801e0db24085d62",
+                "layout_work_units": 145472
+              },
+              "fan-in-500": {
+                "samples_ns": [
+                  3868208,
+                  3931334,
+                  3898375,
+                  4023416,
+                  4061542,
+                  4163625
+                ],
+                "svg_sha256": "c2a371dc7a53ed4be02b3f0b81135ea899368b05629da47548cb5463efd6d018",
+                "svg_bytes": 825426,
+                "source_sha256": "adc87685ed263eedf33fd76875d88ac79c37051cccb1067ca343896ddf373b1a",
+                "layout_work_units": 181395
+              },
+              "fan-out-500": {
+                "samples_ns": [
+                  3993416,
+                  4167708,
+                  4280875,
+                  3872792,
+                  3760458,
+                  3841000
+                ],
+                "svg_sha256": "f3404a8b0a4257f411a555d77401ae363fe51d3e801e21c305fb1389a1367bb5",
+                "svg_bytes": 827655,
+                "source_sha256": "006cb38fbb9b408aad840e7c35c9a062c7b738ec9dfec9e74fdb692b841d1fb8",
+                "layout_work_units": 177414
+              }
+            }
+          },
+          {
+            "name": "base-control",
+            "runner_sha256": "05916d92ae54c4e263199cc7e1d5b192a0dc6e4ff0c8f4f745132f65cc08d798",
+            "revision": "24e2572e4",
+            "rows": {
+              "small-svg": {
+                "samples_ns": [
+                  92792,
+                  93417,
+                  102333,
+                  76458,
+                  83292,
+                  92750
+                ],
+                "svg_sha256": "ad8ee8eca1d5fa55a067729affbba393c046872e2dfb32b61b114beee5b34541",
+                "svg_bytes": 32423,
+                "source_sha256": "227f716d89bd48e9d874bfad1e34014629ee4363594702d7ef842aa35fcd523d",
+                "layout_work_units": 458
+              },
+              "flowchart-nested-layout": {
+                "samples_ns": [
+                  595500,
+                  412333,
+                  429542,
+                  404917,
+                  404084,
+                  587791
+                ],
+                "svg_sha256": "f2e314e890112492b85b95ae98e6c4b8dba0f307208055696f6075af5e34b9e4",
+                "svg_bytes": 67470,
+                "source_sha256": "29e4a3e13446e123a77064cbc07fbe3ae6b8dbfdcc7fe842649b050909d4e2f1",
+                "layout_work_units": 36865
+              },
+              "chain-500": {
+                "samples_ns": [
+                  3278375,
+                  3222500,
+                  3216917,
+                  3410000,
+                  3128292,
+                  3143542
+                ],
+                "svg_sha256": "b65b4b2a2e5b4e68dd0f5c33a7a3850b9f6b4daff0593fda6487482a944d7bef",
+                "svg_bytes": 747357,
+                "source_sha256": "95cb401c1318676dc78124047b2152fb367cc7c1264c2b1c016f8552d66a3937",
+                "layout_work_units": 144510
+              },
+              "scc-75": {
+                "samples_ns": [
+                  1139292,
+                  1215959,
+                  1130416,
+                  1122625,
+                  1246458,
+                  1123250
+                ],
+                "svg_sha256": "50840fa1fb9925023a7f0a3ef9f81a73e5bdc988a33bdc4ef5a2542fc18ae55b",
+                "svg_bytes": 245853,
+                "source_sha256": "ea425eed9c11de57531b0d5dfb49f429d7e2c12c85a1bb8b8934895ecbd15af2",
+                "layout_work_units": 107431
+              },
+              "scc-100": {
+                "samples_ns": [
+                  1479167,
+                  1503917,
+                  1468875,
+                  1476750,
+                  1486125,
+                  1544875
+                ],
+                "svg_sha256": "5a94fc8153dad922d373db11b36012ed6a2917d02fc5fcbddff067051ccba757",
+                "svg_bytes": 323581,
+                "source_sha256": "a9fe244ef8e0a59ea577b14ab373f09ea407f38153144dd4f397c6a512b774af",
+                "layout_work_units": 143976
+              },
+              "scc-100-edges-reverse": {
+                "samples_ns": [
+                  1518334,
+                  1493125,
+                  1945125,
+                  1458292,
+                  1492084,
+                  1496917
+                ],
+                "svg_sha256": "06f1c388f110f5fd2f76ed4244ae496b7c4af8bd6594a6a2ab185246dbf8f16e",
+                "svg_bytes": 334431,
+                "source_sha256": "f6afd337713173ebb3543c02a8813c6d796f9ceb2b186ed28801e0db24085d62",
+                "layout_work_units": 145472
+              },
+              "fan-in-500": {
+                "samples_ns": [
+                  3951667,
+                  3932958,
+                  4134667,
+                  4334792,
+                  3854792,
+                  3860542
+                ],
+                "svg_sha256": "c2a371dc7a53ed4be02b3f0b81135ea899368b05629da47548cb5463efd6d018",
+                "svg_bytes": 825426,
+                "source_sha256": "adc87685ed263eedf33fd76875d88ac79c37051cccb1067ca343896ddf373b1a",
+                "layout_work_units": 181395
+              },
+              "fan-out-500": {
+                "samples_ns": [
+                  3817417,
+                  3801542,
+                  3773417,
+                  3806208,
+                  4028084,
+                  4009042
+                ],
+                "svg_sha256": "f3404a8b0a4257f411a555d77401ae363fe51d3e801e21c305fb1389a1367bb5",
+                "svg_bytes": 827655,
+                "source_sha256": "006cb38fbb9b408aad840e7c35c9a062c7b738ec9dfec9e74fdb692b841d1fb8",
+                "layout_work_units": 177414
+              }
+            }
+          },
+          {
+            "name": "final-a",
+            "runner_sha256": "cd33a51d78a9b9c8f960a6573069fb3acdf132ddeacc00634bb6f4f9ddaea7cf",
+            "revision": "48a3961cf6fe93018a08065c1effd14f3adfca8f",
+            "rows": {
+              "small-svg": {
+                "samples_ns": [
+                  95666,
+                  84167,
+                  118291,
+                  84416,
+                  86292,
+                  81750
+                ],
+                "svg_sha256": "f3634410afb726d6db9095aff10e785d6fbc1f1bf58a0bbd3a2ed6b9f5e96024",
+                "svg_bytes": 32423,
+                "source_sha256": "227f716d89bd48e9d874bfad1e34014629ee4363594702d7ef842aa35fcd523d",
+                "layout_work_units": 474
+              },
+              "flowchart-nested-layout": {
+                "samples_ns": [
+                  416708,
+                  413000,
+                  401542,
+                  537833,
+                  426375,
+                  405958
+                ],
+                "svg_sha256": "2ecc09ecd6abe53b587278f2e52f379baec61aecd6d7677288ff648ea1517e55",
+                "svg_bytes": 68254,
+                "source_sha256": "29e4a3e13446e123a77064cbc07fbe3ae6b8dbfdcc7fe842649b050909d4e2f1",
+                "layout_work_units": 37897
+              },
+              "chain-500": {
+                "samples_ns": [
+                  3502083,
+                  3153042,
+                  3118416,
+                  3116042,
+                  3335584,
+                  3681125
+                ],
+                "svg_sha256": "ff3d6ecee0d41cf5692c747f8ad7e79bb0872c47dfe24008fa429b3e094c9615",
+                "svg_bytes": 747350,
+                "source_sha256": "95cb401c1318676dc78124047b2152fb367cc7c1264c2b1c016f8552d66a3937",
+                "layout_work_units": 149503
+              },
+              "scc-75": {
+                "samples_ns": [
+                  1172750,
+                  1175041,
+                  1119291,
+                  1110291,
+                  1102083,
+                  1107708
+                ],
+                "svg_sha256": "904f5fdaeb857f9fc704cccfd32ca89a38821e36419156be90a43401fe5edafb",
+                "svg_bytes": 239339,
+                "source_sha256": "ea425eed9c11de57531b0d5dfb49f429d7e2c12c85a1bb8b8934895ecbd15af2",
+                "layout_work_units": 106719
+              },
+              "scc-100": {
+                "samples_ns": [
+                  1600125,
+                  1455416,
+                  1484375,
+                  1451125,
+                  1428750,
+                  1643375
+                ],
+                "svg_sha256": "49d4a912860ee66c6b24e3c0e529173268163047f7f116944a83c253c5176457",
+                "svg_bytes": 315414,
+                "source_sha256": "a9fe244ef8e0a59ea577b14ab373f09ea407f38153144dd4f397c6a512b774af",
+                "layout_work_units": 143286
+              },
+              "scc-100-edges-reverse": {
+                "samples_ns": [
+                  1576833,
+                  1464250,
+                  1454709,
+                  1453250,
+                  1674958,
+                  1477208
+                ],
+                "svg_sha256": "673d25644787c338659b7feb9dc5b9711b7fbba4c67145174bf8ccdc4aa773ca",
+                "svg_bytes": 326264,
+                "source_sha256": "f6afd337713173ebb3543c02a8813c6d796f9ceb2b186ed28801e0db24085d62",
+                "layout_work_units": 144452
+              },
+              "fan-in-500": {
+                "samples_ns": [
+                  3718917,
+                  3742833,
+                  3950625,
+                  3808334,
+                  3964625,
+                  3738958
+                ],
+                "svg_sha256": "18ee87fd600e8ae6390340d45faf406681037c5e11ff9fd89d2079ef7e8fd14f",
+                "svg_bytes": 833110,
+                "source_sha256": "adc87685ed263eedf33fd76875d88ac79c37051cccb1067ca343896ddf373b1a",
+                "layout_work_units": 170948
+              },
+              "fan-out-500": {
+                "samples_ns": [
+                  4209917,
+                  3791542,
+                  3739292,
+                  3794667,
+                  4032500,
+                  3766625
+                ],
+                "svg_sha256": "a9441c0cdf32f0aa183cadb08b93b8a15e1695aee9edfabd61080f6cb5839ccf",
+                "svg_bytes": 835391,
+                "source_sha256": "006cb38fbb9b408aad840e7c35c9a062c7b738ec9dfec9e74fdb692b841d1fb8",
+                "layout_work_units": 175438
+              }
+            }
+          },
+          {
+            "name": "final-b",
+            "runner_sha256": "cd33a51d78a9b9c8f960a6573069fb3acdf132ddeacc00634bb6f4f9ddaea7cf",
+            "revision": "48a3961cf6fe93018a08065c1effd14f3adfca8f",
+            "rows": {
+              "small-svg": {
+                "samples_ns": [
+                  94208,
+                  82708,
+                  93500,
+                  90583,
+                  96833,
+                  87667
+                ],
+                "svg_sha256": "f3634410afb726d6db9095aff10e785d6fbc1f1bf58a0bbd3a2ed6b9f5e96024",
+                "svg_bytes": 32423,
+                "source_sha256": "227f716d89bd48e9d874bfad1e34014629ee4363594702d7ef842aa35fcd523d",
+                "layout_work_units": 474
+              },
+              "flowchart-nested-layout": {
+                "samples_ns": [
+                  402916,
+                  403416,
+                  398000,
+                  667625,
+                  415750,
+                  398625
+                ],
+                "svg_sha256": "2ecc09ecd6abe53b587278f2e52f379baec61aecd6d7677288ff648ea1517e55",
+                "svg_bytes": 68254,
+                "source_sha256": "29e4a3e13446e123a77064cbc07fbe3ae6b8dbfdcc7fe842649b050909d4e2f1",
+                "layout_work_units": 37897
+              },
+              "chain-500": {
+                "samples_ns": [
+                  3345292,
+                  3119125,
+                  3146375,
+                  3237958,
+                  3228667,
+                  3388500
+                ],
+                "svg_sha256": "ff3d6ecee0d41cf5692c747f8ad7e79bb0872c47dfe24008fa429b3e094c9615",
+                "svg_bytes": 747350,
+                "source_sha256": "95cb401c1318676dc78124047b2152fb367cc7c1264c2b1c016f8552d66a3937",
+                "layout_work_units": 149503
+              },
+              "scc-75": {
+                "samples_ns": [
+                  1195875,
+                  1127125,
+                  1131791,
+                  1230375,
+                  1150834,
+                  1121500
+                ],
+                "svg_sha256": "904f5fdaeb857f9fc704cccfd32ca89a38821e36419156be90a43401fe5edafb",
+                "svg_bytes": 239339,
+                "source_sha256": "ea425eed9c11de57531b0d5dfb49f429d7e2c12c85a1bb8b8934895ecbd15af2",
+                "layout_work_units": 106719
+              },
+              "scc-100": {
+                "samples_ns": [
+                  1768667,
+                  1619792,
+                  1430542,
+                  1480417,
+                  1448875,
+                  1874625
+                ],
+                "svg_sha256": "49d4a912860ee66c6b24e3c0e529173268163047f7f116944a83c253c5176457",
+                "svg_bytes": 315414,
+                "source_sha256": "a9fe244ef8e0a59ea577b14ab373f09ea407f38153144dd4f397c6a512b774af",
+                "layout_work_units": 143286
+              },
+              "scc-100-edges-reverse": {
+                "samples_ns": [
+                  1550500,
+                  1435542,
+                  1568917,
+                  1457542,
+                  1475000,
+                  1465583
+                ],
+                "svg_sha256": "673d25644787c338659b7feb9dc5b9711b7fbba4c67145174bf8ccdc4aa773ca",
+                "svg_bytes": 326264,
+                "source_sha256": "f6afd337713173ebb3543c02a8813c6d796f9ceb2b186ed28801e0db24085d62",
+                "layout_work_units": 144452
+              },
+              "fan-in-500": {
+                "samples_ns": [
+                  3922208,
+                  3954708,
+                  3872791,
+                  3957791,
+                  3745666,
+                  3755667
+                ],
+                "svg_sha256": "18ee87fd600e8ae6390340d45faf406681037c5e11ff9fd89d2079ef7e8fd14f",
+                "svg_bytes": 833110,
+                "source_sha256": "adc87685ed263eedf33fd76875d88ac79c37051cccb1067ca343896ddf373b1a",
+                "layout_work_units": 170948
+              },
+              "fan-out-500": {
+                "samples_ns": [
+                  3807333,
+                  3738041,
+                  3870000,
+                  3942208,
+                  4025541,
+                  4017875
+                ],
+                "svg_sha256": "a9441c0cdf32f0aa183cadb08b93b8a15e1695aee9edfabd61080f6cb5839ccf",
+                "svg_bytes": 835391,
+                "source_sha256": "006cb38fbb9b408aad840e7c35c9a062c7b738ec9dfec9e74fdb692b841d1fb8",
+                "layout_work_units": 175438
+              }
+            }
+          },
+          {
+            "name": "base-b",
+            "runner_sha256": "05916d92ae54c4e263199cc7e1d5b192a0dc6e4ff0c8f4f745132f65cc08d798",
+            "revision": "24e2572e4",
+            "rows": {
+              "small-svg": {
+                "samples_ns": [
+                  82083,
+                  88875,
+                  96000,
+                  81417,
+                  92583,
+                  78250
+                ],
+                "svg_sha256": "ad8ee8eca1d5fa55a067729affbba393c046872e2dfb32b61b114beee5b34541",
+                "svg_bytes": 32423,
+                "source_sha256": "227f716d89bd48e9d874bfad1e34014629ee4363594702d7ef842aa35fcd523d",
+                "layout_work_units": 458
+              },
+              "flowchart-nested-layout": {
+                "samples_ns": [
+                  398584,
+                  393542,
+                  394334,
+                  410750,
+                  416208,
+                  460125
+                ],
+                "svg_sha256": "f2e314e890112492b85b95ae98e6c4b8dba0f307208055696f6075af5e34b9e4",
+                "svg_bytes": 67470,
+                "source_sha256": "29e4a3e13446e123a77064cbc07fbe3ae6b8dbfdcc7fe842649b050909d4e2f1",
+                "layout_work_units": 36865
+              },
+              "chain-500": {
+                "samples_ns": [
+                  3182041,
+                  3242667,
+                  3159125,
+                  3472250,
+                  3165875,
+                  3166625
+                ],
+                "svg_sha256": "b65b4b2a2e5b4e68dd0f5c33a7a3850b9f6b4daff0593fda6487482a944d7bef",
+                "svg_bytes": 747357,
+                "source_sha256": "95cb401c1318676dc78124047b2152fb367cc7c1264c2b1c016f8552d66a3937",
+                "layout_work_units": 144510
+              },
+              "scc-75": {
+                "samples_ns": [
+                  1119250,
+                  1178041,
+                  1209666,
+                  1167541,
+                  1203583,
+                  1134458
+                ],
+                "svg_sha256": "50840fa1fb9925023a7f0a3ef9f81a73e5bdc988a33bdc4ef5a2542fc18ae55b",
+                "svg_bytes": 245853,
+                "source_sha256": "ea425eed9c11de57531b0d5dfb49f429d7e2c12c85a1bb8b8934895ecbd15af2",
+                "layout_work_units": 107431
+              },
+              "scc-100": {
+                "samples_ns": [
+                  1472333,
+                  1621000,
+                  1477875,
+                  1492167,
+                  1591500,
+                  1477708
+                ],
+                "svg_sha256": "5a94fc8153dad922d373db11b36012ed6a2917d02fc5fcbddff067051ccba757",
+                "svg_bytes": 323581,
+                "source_sha256": "a9fe244ef8e0a59ea577b14ab373f09ea407f38153144dd4f397c6a512b774af",
+                "layout_work_units": 143976
+              },
+              "scc-100-edges-reverse": {
+                "samples_ns": [
+                  1495875,
+                  1479875,
+                  1506833,
+                  1601333,
+                  1490875,
+                  1591667
+                ],
+                "svg_sha256": "06f1c388f110f5fd2f76ed4244ae496b7c4af8bd6594a6a2ab185246dbf8f16e",
+                "svg_bytes": 334431,
+                "source_sha256": "f6afd337713173ebb3543c02a8813c6d796f9ceb2b186ed28801e0db24085d62",
+                "layout_work_units": 145472
+              },
+              "fan-in-500": {
+                "samples_ns": [
+                  3900875,
+                  4029916,
+                  3980500,
+                  3861083,
+                  3857416,
+                  3838916
+                ],
+                "svg_sha256": "c2a371dc7a53ed4be02b3f0b81135ea899368b05629da47548cb5463efd6d018",
+                "svg_bytes": 825426,
+                "source_sha256": "adc87685ed263eedf33fd76875d88ac79c37051cccb1067ca343896ddf373b1a",
+                "layout_work_units": 181395
+              },
+              "fan-out-500": {
+                "samples_ns": [
+                  3870084,
+                  3791917,
+                  3772333,
+                  3958291,
+                  3997625,
+                  4049667
+                ],
+                "svg_sha256": "f3404a8b0a4257f411a555d77401ae363fe51d3e801e21c305fb1389a1367bb5",
+                "svg_bytes": 827655,
+                "source_sha256": "006cb38fbb9b408aad840e7c35c9a062c7b738ec9dfec9e74fdb692b841d1fb8",
+                "layout_work_units": 177414
+              }
+            }
+          }
+        ]
+      },
+      "family-plan": {
+        "plan_sha256": "5411cbea6c8b9676eaf627014c06cfa878da50ee790f67f3cca393577cba8182",
+        "harness_sha256": "7779d3ce0c14170604f6c87022c96ee2d5a443b501dbde203724bbaa866e0b91",
+        "rounds": [
+          {
+            "name": "base-a",
+            "runner_sha256": "05916d92ae54c4e263199cc7e1d5b192a0dc6e4ff0c8f4f745132f65cc08d798",
+            "revision": "24e2572e4",
+            "rows": {
+              "family-architecture": {
+                "samples_ns": [
+                  92458,
+                  140375,
+                  77125,
+                  86834,
+                  101167,
+                  81583
+                ],
+                "svg_sha256": "eb7b64e0e412b1ae8f70e0d24e35bb7de57c388c169adb569ecabfebb7aa257b",
+                "svg_bytes": 13953,
+                "source_sha256": "1706e135fcc827553a22a1038c75b10bcbf194ebe31aa3c59fc62388e4b1c40c",
+                "layout_work_units": 3572
+              },
+              "family-c4": {
+                "samples_ns": [
+                  156708,
+                  106917,
+                  103375,
+                  102750,
+                  106709,
+                  115500
+                ],
+                "svg_sha256": "3426f0fff9cf274336f27302561665d363669c5cb6236684cca1cc4d7b538ccb",
+                "svg_bytes": 24304,
+                "source_sha256": "8265e632cdb04653a2754cab44798673e296930868f7f690023de83f394e6de7",
+                "layout_work_units": 752
+              },
+              "family-swimlane": {
+                "samples_ns": [
+                  227833,
+                  219375,
+                  240000,
+                  213959,
+                  234959,
+                  333334
+                ],
+                "svg_sha256": "6452cc67f8ef62cff2880d55fecbe6b90692552e8043eb820d268dab5f9a6797",
+                "svg_bytes": 44857,
+                "source_sha256": "867cca281590bce55e2203afaa79899f556b2af97075e5b4da927b463ceaa584",
+                "layout_work_units": 3999
+              }
+            }
+          },
+          {
+            "name": "base-control",
+            "runner_sha256": "05916d92ae54c4e263199cc7e1d5b192a0dc6e4ff0c8f4f745132f65cc08d798",
+            "revision": "24e2572e4",
+            "rows": {
+              "family-architecture": {
+                "samples_ns": [
+                  83875,
+                  78542,
+                  81917,
+                  88458,
+                  77750,
+                  80209
+                ],
+                "svg_sha256": "eb7b64e0e412b1ae8f70e0d24e35bb7de57c388c169adb569ecabfebb7aa257b",
+                "svg_bytes": 13953,
+                "source_sha256": "1706e135fcc827553a22a1038c75b10bcbf194ebe31aa3c59fc62388e4b1c40c",
+                "layout_work_units": 3572
+              },
+              "family-c4": {
+                "samples_ns": [
+                  114417,
+                  99459,
+                  96541,
+                  114500,
+                  105417,
+                  111000
+                ],
+                "svg_sha256": "3426f0fff9cf274336f27302561665d363669c5cb6236684cca1cc4d7b538ccb",
+                "svg_bytes": 24304,
+                "source_sha256": "8265e632cdb04653a2754cab44798673e296930868f7f690023de83f394e6de7",
+                "layout_work_units": 752
+              },
+              "family-swimlane": {
+                "samples_ns": [
+                  210792,
+                  227750,
+                  216500,
+                  295083,
+                  208208,
+                  222000
+                ],
+                "svg_sha256": "6452cc67f8ef62cff2880d55fecbe6b90692552e8043eb820d268dab5f9a6797",
+                "svg_bytes": 44857,
+                "source_sha256": "867cca281590bce55e2203afaa79899f556b2af97075e5b4da927b463ceaa584",
+                "layout_work_units": 3999
+              }
+            }
+          },
+          {
+            "name": "final-a",
+            "runner_sha256": "cd33a51d78a9b9c8f960a6573069fb3acdf132ddeacc00634bb6f4f9ddaea7cf",
+            "revision": "48a3961cf6fe93018a08065c1effd14f3adfca8f",
+            "rows": {
+              "family-architecture": {
+                "samples_ns": [
+                  67750,
+                  68208,
+                  66125,
+                  65333,
+                  73083,
+                  64291
+                ],
+                "svg_sha256": "307249874c0bc797b195e305c7e49a0cff92c0ee72f71604f1fd3adb2fdeea01",
+                "svg_bytes": 13750,
+                "source_sha256": "1706e135fcc827553a22a1038c75b10bcbf194ebe31aa3c59fc62388e4b1c40c",
+                "layout_work_units": 836
+              },
+              "family-c4": {
+                "samples_ns": [
+                  103708,
+                  108833,
+                  115333,
+                  111791,
+                  102917,
+                  108417
+                ],
+                "svg_sha256": "621606e253207d0ad44cad5e94394e4070ad6f7f20099870e8dd2aea80e1eadb",
+                "svg_bytes": 24290,
+                "source_sha256": "8265e632cdb04653a2754cab44798673e296930868f7f690023de83f394e6de7",
+                "layout_work_units": 336
+              },
+              "family-swimlane": {
+                "samples_ns": [
+                  244542,
+                  224750,
+                  221333,
+                  215875,
+                  201750,
+                  242208
+                ],
+                "svg_sha256": "61c0bfac6ca1933e2f73fde360c441eb34f412996353e270fa6838058afa34f9",
+                "svg_bytes": 43769,
+                "source_sha256": "867cca281590bce55e2203afaa79899f556b2af97075e5b4da927b463ceaa584",
+                "layout_work_units": 4571
+              }
+            }
+          },
+          {
+            "name": "final-b",
+            "runner_sha256": "cd33a51d78a9b9c8f960a6573069fb3acdf132ddeacc00634bb6f4f9ddaea7cf",
+            "revision": "48a3961cf6fe93018a08065c1effd14f3adfca8f",
+            "rows": {
+              "family-architecture": {
+                "samples_ns": [
+                  73208,
+                  66083,
+                  88791,
+                  68875,
+                  60542,
+                  73750
+                ],
+                "svg_sha256": "307249874c0bc797b195e305c7e49a0cff92c0ee72f71604f1fd3adb2fdeea01",
+                "svg_bytes": 13750,
+                "source_sha256": "1706e135fcc827553a22a1038c75b10bcbf194ebe31aa3c59fc62388e4b1c40c",
+                "layout_work_units": 836
+              },
+              "family-c4": {
+                "samples_ns": [
+                  111250,
+                  108041,
+                  144500,
+                  106084,
+                  108167,
+                  103791
+                ],
+                "svg_sha256": "621606e253207d0ad44cad5e94394e4070ad6f7f20099870e8dd2aea80e1eadb",
+                "svg_bytes": 24290,
+                "source_sha256": "8265e632cdb04653a2754cab44798673e296930868f7f690023de83f394e6de7",
+                "layout_work_units": 336
+              },
+              "family-swimlane": {
+                "samples_ns": [
+                  224875,
+                  201625,
+                  235417,
+                  226000,
+                  221541,
+                  216708
+                ],
+                "svg_sha256": "61c0bfac6ca1933e2f73fde360c441eb34f412996353e270fa6838058afa34f9",
+                "svg_bytes": 43769,
+                "source_sha256": "867cca281590bce55e2203afaa79899f556b2af97075e5b4da927b463ceaa584",
+                "layout_work_units": 4571
+              }
+            }
+          },
+          {
+            "name": "base-b",
+            "runner_sha256": "05916d92ae54c4e263199cc7e1d5b192a0dc6e4ff0c8f4f745132f65cc08d798",
+            "revision": "24e2572e4",
+            "rows": {
+              "family-architecture": {
+                "samples_ns": [
+                  81458,
+                  82709,
+                  83000,
+                  78042,
+                  79416,
+                  151708
+                ],
+                "svg_sha256": "eb7b64e0e412b1ae8f70e0d24e35bb7de57c388c169adb569ecabfebb7aa257b",
+                "svg_bytes": 13953,
+                "source_sha256": "1706e135fcc827553a22a1038c75b10bcbf194ebe31aa3c59fc62388e4b1c40c",
+                "layout_work_units": 3572
+              },
+              "family-c4": {
+                "samples_ns": [
+                  104583,
+                  107625,
+                  100708,
+                  104167,
+                  124417,
+                  112666
+                ],
+                "svg_sha256": "3426f0fff9cf274336f27302561665d363669c5cb6236684cca1cc4d7b538ccb",
+                "svg_bytes": 24304,
+                "source_sha256": "8265e632cdb04653a2754cab44798673e296930868f7f690023de83f394e6de7",
+                "layout_work_units": 752
+              },
+              "family-swimlane": {
+                "samples_ns": [
+                  224667,
+                  219750,
+                  348417,
+                  206791,
+                  226083,
+                  222709
+                ],
+                "svg_sha256": "6452cc67f8ef62cff2880d55fecbe6b90692552e8043eb820d268dab5f9a6797",
+                "svg_bytes": 44857,
+                "source_sha256": "867cca281590bce55e2203afaa79899f556b2af97075e5b4da927b463ceaa584",
+                "layout_work_units": 3999
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "stages": {
+    "operation": "svg-data",
+    "warmups": 2,
+    "runs": {
+      "stages": {
+        "runner_sha256": "d0b40241a4e355e5fcd80e452649b23cf5df5d60e6840b21fde434c242510e38",
+        "rows": {
+          "small-svg": [
+            {
+              "css_emit": 25833,
+              "end_to_end": 99875,
+              "layout_prepare": 20583,
+              "layout_solve": 11541,
+              "measure": 1876,
+              "parse": 12292,
+              "postprocess": 250,
+              "preprocess": 2125,
+              "svg_emit": 16042,
+              "theme_prepare": 2958
+            },
+            {
+              "css_emit": 26125,
+              "end_to_end": 87667,
+              "layout_prepare": 13874,
+              "layout_solve": 9250,
+              "measure": 2000,
+              "parse": 8458,
+              "postprocess": 292,
+              "preprocess": 2333,
+              "svg_emit": 15751,
+              "theme_prepare": 3042
+            },
+            {
+              "css_emit": 27041,
+              "end_to_end": 88625,
+              "layout_prepare": 12459,
+              "layout_solve": 8417,
+              "measure": 1916,
+              "parse": 6958,
+              "postprocess": 250,
+              "preprocess": 3042,
+              "svg_emit": 18251,
+              "theme_prepare": 2750
+            },
+            {
+              "css_emit": 26667,
+              "end_to_end": 93750,
+              "layout_prepare": 13000,
+              "layout_solve": 10000,
+              "measure": 2083,
+              "parse": 9417,
+              "postprocess": 291,
+              "preprocess": 3208,
+              "svg_emit": 19542,
+              "theme_prepare": 2834
+            },
+            {
+              "css_emit": 25417,
+              "end_to_end": 91083,
+              "layout_prepare": 14666,
+              "layout_solve": 8834,
+              "measure": 1833,
+              "parse": 9333,
+              "postprocess": 292,
+              "preprocess": 2208,
+              "svg_emit": 18833,
+              "theme_prepare": 3292
+            },
+            {
+              "css_emit": 25333,
+              "end_to_end": 100375,
+              "layout_prepare": 14291,
+              "layout_solve": 11750,
+              "measure": 1959,
+              "parse": 13875,
+              "postprocess": 250,
+              "preprocess": 3125,
+              "svg_emit": 20043,
+              "theme_prepare": 3000
+            }
+          ],
+          "flowchart-nested-layout": [
+            {
+              "css_emit": 27083,
+              "end_to_end": 396792,
+              "layout_prepare": 49125,
+              "layout_solve": 146750,
+              "measure": 10334,
+              "parse": 64791,
+              "postprocess": 375,
+              "preprocess": 2833,
+              "svg_emit": 77292,
+              "theme_prepare": 3000
+            },
+            {
+              "css_emit": 26458,
+              "end_to_end": 400042,
+              "layout_prepare": 53629,
+              "layout_solve": 144625,
+              "measure": 10826,
+              "parse": 55041,
+              "postprocess": 333,
+              "preprocess": 2916,
+              "svg_emit": 88336,
+              "theme_prepare": 2959
+            },
+            {
+              "css_emit": 26875,
+              "end_to_end": 416542,
+              "layout_prepare": 56666,
+              "layout_solve": 156625,
+              "measure": 11292,
+              "parse": 57208,
+              "postprocess": 250,
+              "preprocess": 2709,
+              "svg_emit": 86709,
+              "theme_prepare": 3000
+            },
+            {
+              "css_emit": 26459,
+              "end_to_end": 409917,
+              "layout_prepare": 52040,
+              "layout_solve": 146167,
+              "measure": 10376,
+              "parse": 62667,
+              "postprocess": 333,
+              "preprocess": 2667,
+              "svg_emit": 91083,
+              "theme_prepare": 3042
+            },
+            {
+              "css_emit": 25625,
+              "end_to_end": 391750,
+              "layout_prepare": 49750,
+              "layout_solve": 143875,
+              "measure": 10378,
+              "parse": 56250,
+              "postprocess": 291,
+              "preprocess": 2667,
+              "svg_emit": 85164,
+              "theme_prepare": 2875
+            },
+            {
+              "css_emit": 41417,
+              "end_to_end": 576458,
+              "layout_prepare": 70915,
+              "layout_solve": 223459,
+              "measure": 11877,
+              "parse": 76459,
+              "postprocess": 458,
+              "preprocess": 6000,
+              "svg_emit": 119624,
+              "theme_prepare": 5250
+            }
+          ],
+          "chain-500": [
+            {
+              "css_emit": 27125,
+              "end_to_end": 3288417,
+              "layout_prepare": 572378,
+              "layout_solve": 268083,
+              "measure": 247916,
+              "parse": 754000,
+              "postprocess": 458,
+              "preprocess": 8375,
+              "svg_emit": 1259040,
+              "theme_prepare": 4708
+            },
+            {
+              "css_emit": 39167,
+              "end_to_end": 3586000,
+              "layout_prepare": 651046,
+              "layout_solve": 298000,
+              "measure": 268713,
+              "parse": 804583,
+              "postprocess": 917,
+              "preprocess": 15375,
+              "svg_emit": 1337116,
+              "theme_prepare": 8458
+            },
+            {
+              "css_emit": 27000,
+              "end_to_end": 3287083,
+              "layout_prepare": 568911,
+              "layout_solve": 306667,
+              "measure": 244003,
+              "parse": 744542,
+              "postprocess": 292,
+              "preprocess": 7334,
+              "svg_emit": 1234960,
+              "theme_prepare": 3167
+            },
+            {
+              "css_emit": 34084,
+              "end_to_end": 3469459,
+              "layout_prepare": 627793,
+              "layout_solve": 292541,
+              "measure": 245334,
+              "parse": 766166,
+              "postprocess": 1375,
+              "preprocess": 12541,
+              "svg_emit": 1297998,
+              "theme_prepare": 6541
+            },
+            {
+              "css_emit": 27125,
+              "end_to_end": 3224541,
+              "layout_prepare": 558418,
+              "layout_solve": 260458,
+              "measure": 253577,
+              "parse": 733083,
+              "postprocess": 333,
+              "preprocess": 7709,
+              "svg_emit": 1229296,
+              "theme_prepare": 4209
+            },
+            {
+              "css_emit": 39875,
+              "end_to_end": 3551208,
+              "layout_prepare": 581288,
+              "layout_solve": 277709,
+              "measure": 264796,
+              "parse": 774083,
+              "postprocess": 667,
+              "preprocess": 6000,
+              "svg_emit": 1435415,
+              "theme_prepare": 3833
+            }
+          ],
+          "fan-in-500": [
+            {
+              "css_emit": 26708,
+              "end_to_end": 3971500,
+              "layout_prepare": 576458,
+              "layout_solve": 241708,
+              "measure": 245200,
+              "parse": 728500,
+              "postprocess": 250,
+              "preprocess": 5542,
+              "svg_emit": 1996008,
+              "theme_prepare": 3334
+            },
+            {
+              "css_emit": 40208,
+              "end_to_end": 4417125,
+              "layout_prepare": 634506,
+              "layout_solve": 313334,
+              "measure": 264861,
+              "parse": 781292,
+              "postprocess": 1625,
+              "preprocess": 13875,
+              "svg_emit": 2187217,
+              "theme_prepare": 6917
+            },
+            {
+              "css_emit": 28041,
+              "end_to_end": 4075042,
+              "layout_prepare": 583780,
+              "layout_solve": 276333,
+              "measure": 277720,
+              "parse": 735959,
+              "postprocess": 500,
+              "preprocess": 6417,
+              "svg_emit": 2005127,
+              "theme_prepare": 4000
+            },
+            {
+              "css_emit": 31375,
+              "end_to_end": 3994708,
+              "layout_prepare": 581402,
+              "layout_solve": 251291,
+              "measure": 248179,
+              "parse": 732000,
+              "postprocess": 334,
+              "preprocess": 8750,
+              "svg_emit": 1978503,
+              "theme_prepare": 5125
+            },
+            {
+              "css_emit": 25917,
+              "end_to_end": 3873333,
+              "layout_prepare": 552967,
+              "layout_solve": 244458,
+              "measure": 239823,
+              "parse": 706959,
+              "postprocess": 292,
+              "preprocess": 4834,
+              "svg_emit": 1949043,
+              "theme_prepare": 3041
+            },
+            {
+              "css_emit": 26541,
+              "end_to_end": 3956709,
+              "layout_prepare": 559914,
+              "layout_solve": 238375,
+              "measure": 240835,
+              "parse": 758875,
+              "postprocess": 333,
+              "preprocess": 7166,
+              "svg_emit": 1972252,
+              "theme_prepare": 3375
+            }
+          ],
+          "fan-out-500": [
+            {
+              "css_emit": 26416,
+              "end_to_end": 3888083,
+              "layout_prepare": 567509,
+              "layout_solve": 241458,
+              "measure": 250488,
+              "parse": 721375,
+              "postprocess": 375,
+              "preprocess": 7625,
+              "svg_emit": 1923879,
+              "theme_prepare": 4083
+            },
+            {
+              "css_emit": 25208,
+              "end_to_end": 3846250,
+              "layout_prepare": 561463,
+              "layout_solve": 234500,
+              "measure": 251866,
+              "parse": 720500,
+              "postprocess": 375,
+              "preprocess": 5666,
+              "svg_emit": 1893838,
+              "theme_prepare": 3000
+            },
+            {
+              "css_emit": 25833,
+              "end_to_end": 3834666,
+              "layout_prepare": 551004,
+              "layout_solve": 237750,
+              "measure": 247586,
+              "parse": 708417,
+              "postprocess": 500,
+              "preprocess": 6250,
+              "svg_emit": 1899493,
+              "theme_prepare": 3334
+            },
+            {
+              "css_emit": 25750,
+              "end_to_end": 3842750,
+              "layout_prepare": 546622,
+              "layout_solve": 232792,
+              "measure": 244720,
+              "parse": 739750,
+              "postprocess": 250,
+              "preprocess": 5458,
+              "svg_emit": 1900365,
+              "theme_prepare": 3167
+            },
+            {
+              "css_emit": 27500,
+              "end_to_end": 3929583,
+              "layout_prepare": 577790,
+              "layout_solve": 244625,
+              "measure": 244842,
+              "parse": 732625,
+              "postprocess": 625,
+              "preprocess": 11375,
+              "svg_emit": 1923702,
+              "theme_prepare": 6166
+            },
+            {
+              "css_emit": 26542,
+              "end_to_end": 3888500,
+              "layout_prepare": 553666,
+              "layout_solve": 233292,
+              "measure": 247625,
+              "parse": 719375,
+              "postprocess": 708,
+              "preprocess": 4542,
+              "svg_emit": 1950916,
+              "theme_prepare": 3250
+            }
+          ]
+        }
+      },
+      "stages-final": {
+        "runner_sha256": "1ec2f3bc64443d611bc7b764deb37d1a0b572e6016c15037d30b1e61ad4f402a",
+        "rows": {
+          "small-svg": [
+            {
+              "css_emit": 26084,
+              "end_to_end": 92042,
+              "layout_prepare": 14584,
+              "layout_solve": 9833,
+              "measure": 3084,
+              "parse": 7333,
+              "postprocess": 416,
+              "preprocess": 3292,
+              "svg_emit": 17374,
+              "theme_prepare": 2583
+            },
+            {
+              "css_emit": 26167,
+              "end_to_end": 91875,
+              "layout_prepare": 16165,
+              "layout_solve": 9500,
+              "measure": 2960,
+              "parse": 6584,
+              "postprocess": 250,
+              "preprocess": 2084,
+              "svg_emit": 18874,
+              "theme_prepare": 2792
+            },
+            {
+              "css_emit": 24708,
+              "end_to_end": 89875,
+              "layout_prepare": 16875,
+              "layout_solve": 8541,
+              "measure": 1918,
+              "parse": 6209,
+              "postprocess": 375,
+              "preprocess": 2208,
+              "svg_emit": 18959,
+              "theme_prepare": 2583
+            },
+            {
+              "css_emit": 24875,
+              "end_to_end": 87125,
+              "layout_prepare": 15708,
+              "layout_solve": 10458,
+              "measure": 2041,
+              "parse": 7167,
+              "postprocess": 333,
+              "preprocess": 1709,
+              "svg_emit": 16042,
+              "theme_prepare": 2542
+            },
+            {
+              "css_emit": 22500,
+              "end_to_end": 82792,
+              "layout_prepare": 15874,
+              "layout_solve": 7625,
+              "measure": 1875,
+              "parse": 5750,
+              "postprocess": 333,
+              "preprocess": 1875,
+              "svg_emit": 17667,
+              "theme_prepare": 2292
+            },
+            {
+              "css_emit": 24542,
+              "end_to_end": 117625,
+              "layout_prepare": 13709,
+              "layout_solve": 9125,
+              "measure": 4166,
+              "parse": 8250,
+              "postprocess": 334,
+              "preprocess": 2125,
+              "svg_emit": 46417,
+              "theme_prepare": 2750
+            }
+          ],
+          "flowchart-nested-layout": [
+            {
+              "css_emit": 26500,
+              "end_to_end": 437792,
+              "layout_prepare": 55373,
+              "layout_solve": 164209,
+              "measure": 11043,
+              "parse": 64166,
+              "postprocess": 291,
+              "preprocess": 2958,
+              "svg_emit": 93750,
+              "theme_prepare": 3541
+            },
+            {
+              "css_emit": 25625,
+              "end_to_end": 422000,
+              "layout_prepare": 55580,
+              "layout_solve": 150250,
+              "measure": 10961,
+              "parse": 61500,
+              "postprocess": 375,
+              "preprocess": 3792,
+              "svg_emit": 94459,
+              "theme_prepare": 3209
+            },
+            {
+              "css_emit": 25708,
+              "end_to_end": 413167,
+              "layout_prepare": 54586,
+              "layout_solve": 149542,
+              "measure": 10833,
+              "parse": 60042,
+              "postprocess": 292,
+              "preprocess": 2875,
+              "svg_emit": 90832,
+              "theme_prepare": 3041
+            },
+            {
+              "css_emit": 26292,
+              "end_to_end": 410833,
+              "layout_prepare": 56043,
+              "layout_solve": 148084,
+              "measure": 9790,
+              "parse": 54916,
+              "postprocess": 333,
+              "preprocess": 2417,
+              "svg_emit": 95041,
+              "theme_prepare": 3917
+            },
+            {
+              "css_emit": 26125,
+              "end_to_end": 402042,
+              "layout_prepare": 50582,
+              "layout_solve": 151042,
+              "measure": 11292,
+              "parse": 52500,
+              "postprocess": 292,
+              "preprocess": 3292,
+              "svg_emit": 89750,
+              "theme_prepare": 2750
+            },
+            {
+              "css_emit": 25750,
+              "end_to_end": 410250,
+              "layout_prepare": 53045,
+              "layout_solve": 137958,
+              "measure": 12120,
+              "parse": 65750,
+              "postprocess": 292,
+              "preprocess": 2667,
+              "svg_emit": 90793,
+              "theme_prepare": 4083
+            }
+          ],
+          "chain-500": [
+            {
+              "css_emit": 35250,
+              "end_to_end": 3418000,
+              "layout_prepare": 570673,
+              "layout_solve": 278000,
+              "measure": 234704,
+              "parse": 933833,
+              "postprocess": 1000,
+              "preprocess": 6625,
+              "svg_emit": 1206164,
+              "theme_prepare": 7458
+            },
+            {
+              "css_emit": 33500,
+              "end_to_end": 3153750,
+              "layout_prepare": 523357,
+              "layout_solve": 273708,
+              "measure": 252689,
+              "parse": 732084,
+              "postprocess": 375,
+              "preprocess": 6459,
+              "svg_emit": 1192704,
+              "theme_prepare": 3417
+            },
+            {
+              "css_emit": 30584,
+              "end_to_end": 3315667,
+              "layout_prepare": 545294,
+              "layout_solve": 272250,
+              "measure": 258081,
+              "parse": 747500,
+              "postprocess": 584,
+              "preprocess": 6792,
+              "svg_emit": 1304790,
+              "theme_prepare": 4209
+            },
+            {
+              "css_emit": 26666,
+              "end_to_end": 3154416,
+              "layout_prepare": 522291,
+              "layout_solve": 257250,
+              "measure": 244011,
+              "parse": 720666,
+              "postprocess": 291,
+              "preprocess": 5291,
+              "svg_emit": 1243573,
+              "theme_prepare": 2833
+            },
+            {
+              "css_emit": 25292,
+              "end_to_end": 3091875,
+              "layout_prepare": 521289,
+              "layout_solve": 259167,
+              "measure": 250468,
+              "parse": 721875,
+              "postprocess": 334,
+              "preprocess": 6583,
+              "svg_emit": 1173118,
+              "theme_prepare": 3166
+            },
+            {
+              "css_emit": 28583,
+              "end_to_end": 3150041,
+              "layout_prepare": 528925,
+              "layout_solve": 265042,
+              "measure": 257571,
+              "parse": 725583,
+              "postprocess": 417,
+              "preprocess": 11125,
+              "svg_emit": 1187087,
+              "theme_prepare": 4125
+            }
+          ],
+          "fan-in-500": [
+            {
+              "css_emit": 36542,
+              "end_to_end": 4097625,
+              "layout_prepare": 585194,
+              "layout_solve": 259667,
+              "measure": 283648,
+              "parse": 817500,
+              "postprocess": 1583,
+              "preprocess": 7959,
+              "svg_emit": 1940908,
+              "theme_prepare": 6333
+            },
+            {
+              "css_emit": 28333,
+              "end_to_end": 3753459,
+              "layout_prepare": 514079,
+              "layout_solve": 248125,
+              "measure": 244000,
+              "parse": 712208,
+              "postprocess": 334,
+              "preprocess": 5458,
+              "svg_emit": 1865379,
+              "theme_prepare": 3292
+            },
+            {
+              "css_emit": 31333,
+              "end_to_end": 4054833,
+              "layout_prepare": 616459,
+              "layout_solve": 270167,
+              "measure": 299092,
+              "parse": 718042,
+              "postprocess": 792,
+              "preprocess": 4416,
+              "svg_emit": 1960699,
+              "theme_prepare": 3625
+            },
+            {
+              "css_emit": 29125,
+              "end_to_end": 3779750,
+              "layout_prepare": 526711,
+              "layout_solve": 252500,
+              "measure": 243923,
+              "parse": 704000,
+              "postprocess": 375,
+              "preprocess": 8375,
+              "svg_emit": 1873158,
+              "theme_prepare": 3875
+            },
+            {
+              "css_emit": 38709,
+              "end_to_end": 4279000,
+              "layout_prepare": 728036,
+              "layout_solve": 264916,
+              "measure": 299174,
+              "parse": 716417,
+              "postprocess": 1084,
+              "preprocess": 4750,
+              "svg_emit": 2074581,
+              "theme_prepare": 3333
+            },
+            {
+              "css_emit": 28292,
+              "end_to_end": 3766000,
+              "layout_prepare": 533531,
+              "layout_solve": 255125,
+              "measure": 248427,
+              "parse": 702167,
+              "postprocess": 333,
+              "preprocess": 6042,
+              "svg_emit": 1850458,
+              "theme_prepare": 4083
+            }
+          ],
+          "fan-out-500": [
+            {
+              "css_emit": 32917,
+              "end_to_end": 3965542,
+              "layout_prepare": 548986,
+              "layout_solve": 302833,
+              "measure": 244099,
+              "parse": 801083,
+              "postprocess": 875,
+              "preprocess": 9500,
+              "svg_emit": 1873582,
+              "theme_prepare": 6791
+            },
+            {
+              "css_emit": 26500,
+              "end_to_end": 3722084,
+              "layout_prepare": 514420,
+              "layout_solve": 250667,
+              "measure": 245325,
+              "parse": 700875,
+              "postprocess": 334,
+              "preprocess": 6042,
+              "svg_emit": 1840130,
+              "theme_prepare": 3083
+            },
+            {
+              "css_emit": 36667,
+              "end_to_end": 3889000,
+              "layout_prepare": 539095,
+              "layout_solve": 279042,
+              "measure": 244199,
+              "parse": 739833,
+              "postprocess": 750,
+              "preprocess": 7958,
+              "svg_emit": 1877372,
+              "theme_prepare": 8042
+            },
+            {
+              "css_emit": 25291,
+              "end_to_end": 3749583,
+              "layout_prepare": 510294,
+              "layout_solve": 251875,
+              "measure": 247954,
+              "parse": 705125,
+              "postprocess": 292,
+              "preprocess": 4417,
+              "svg_emit": 1869461,
+              "theme_prepare": 2958
+            },
+            {
+              "css_emit": 25708,
+              "end_to_end": 3764084,
+              "layout_prepare": 527197,
+              "layout_solve": 250917,
+              "measure": 248482,
+              "parse": 699208,
+              "postprocess": 334,
+              "preprocess": 5583,
+              "svg_emit": 1863946,
+              "theme_prepare": 3333
+            },
+            {
+              "css_emit": 26041,
+              "end_to_end": 3794250,
+              "layout_prepare": 513288,
+              "layout_solve": 247958,
+              "measure": 253294,
+              "parse": 713125,
+              "postprocess": 334,
+              "preprocess": 4292,
+              "svg_emit": 1893211,
+              "theme_prepare": 2958
+            }
+          ]
+        }
+      }
+    }
+  },
+  "node_reference": {
+    "engine": "Pele",
+    "version": "1.13.0",
+    "warmups": 2,
+    "rows": {
+      "small-svg": {
+        "samples_ms": [
+          0.22129199999999827,
+          0.269874999999999,
+          0.21504199999999685,
+          0.19324999999999903,
+          0.14841699999999491,
+          0.16179199999999838,
+          0.16979100000000358,
+          0.1298749999999984,
+          0.11820800000000276,
+          0.12904199999999832,
+          0.12533400000000228,
+          0.11566599999999738
+        ],
+        "source_sha256": "227f716d89bd48e9d874bfad1e34014629ee4363594702d7ef842aa35fcd523d"
+      },
+      "flowchart-nested-layout": {
+        "samples_ms": [
+          1.3802090000000007,
+          1.2062080000000037,
+          0.9096249999999984,
+          0.9789159999999981,
+          0.9527080000000012,
+          0.8225830000000016,
+          1.0351659999999967,
+          0.9082909999999984,
+          0.6891670000000047,
+          0.7973750000000024,
+          0.9499169999999992,
+          0.668875000000007
+        ],
+        "source_sha256": "29e4a3e13446e123a77064cbc07fbe3ae6b8dbfdcc7fe842649b050909d4e2f1"
+      },
+      "chain-500": {
+        "samples_ms": [
+          3.739042000000005,
+          4.299166999999997,
+          3.2972090000000094,
+          2.782167000000001,
+          3.7170830000000024,
+          3.9679589999999934,
+          4.206917000000004,
+          3.1923340000000024,
+          3.82866700000001,
+          2.7851249999999936,
+          2.5846250000000026,
+          2.2277500000000003
+        ],
+        "source_sha256": "95cb401c1318676dc78124047b2152fb367cc7c1264c2b1c016f8552d66a3937"
+      },
+      "scc-75": {
+        "samples_ms": [
+          3.4975409999999982,
+          2.5890839999999997,
+          2.263959000000007,
+          2.052250000000001,
+          2.1417080000000084,
+          2.175332999999995,
+          2.137874999999994,
+          1.6750830000000008,
+          1.6784159999999986,
+          1.188416999999987,
+          1.4013330000000082,
+          1.1736659999999972
+        ],
+        "source_sha256": "ea425eed9c11de57531b0d5dfb49f429d7e2c12c85a1bb8b8934895ecbd15af2"
+      },
+      "scc-100": {
+        "samples_ms": [
+          3.196208999999996,
+          3.2565410000000057,
+          2.8767500000000013,
+          2.948166999999998,
+          2.8014579999999967,
+          1.8548749999999927,
+          1.8115829999999988,
+          1.5254169999999903,
+          1.582250000000002,
+          1.6482500000000044,
+          1.617874999999998,
+          1.5531249999999943
+        ],
+        "source_sha256": "a9fe244ef8e0a59ea577b14ab373f09ea407f38153144dd4f397c6a512b774af"
+      },
+      "scc-100-edges-reverse": {
+        "samples_ms": [
+          3.2811670000000035,
+          2.994416000000001,
+          2.614457999999999,
+          3.3941249999999954,
+          2.677374999999998,
+          2.6130840000000006,
+          2.602041,
+          2.1161659999999927,
+          1.5554580000000016,
+          1.657749999999993,
+          1.9901669999999996,
+          1.6609160000000003
+        ],
+        "source_sha256": "f6afd337713173ebb3543c02a8813c6d796f9ceb2b186ed28801e0db24085d62"
+      },
+      "fan-in-500": {
+        "samples_ms": [
+          3.9596660000000057,
+          3.494665999999995,
+          3.0247079999999897,
+          3.9506659999999982,
+          3.8470839999999953,
+          4.1935,
+          4.183665999999988,
+          3.7767079999999993,
+          3.3847920000000045,
+          3.3096670000000046,
+          2.545792000000006,
+          2.7759590000000003
+        ],
+        "source_sha256": "adc87685ed263eedf33fd76875d88ac79c37051cccb1067ca343896ddf373b1a"
+      },
+      "fan-out-500": {
+        "samples_ms": [
+          4.267582999999995,
+          3.9302920000000086,
+          3.1198750000000075,
+          4.484916999999996,
+          4.090166999999994,
+          4.458875000000006,
+          4.148415999999997,
+          3.80041700000001,
+          4.277084000000002,
+          3.2778749999999945,
+          3.092665999999994,
+          2.6823750000000075
+        ],
+        "source_sha256": "006cb38fbb9b408aad840e7c35c9a062c7b738ec9dfec9e74fdb692b841d1fb8"
+      }
+    }
+  },
+  "quality": {
+    "nextest_passed": 4559,
+    "compound_fixtures_passed": 339,
+    "stress_drawn": 31,
+    "stress_expected_max_edges_rejections": 1,
+    "painted_aesthetics": [
+      {
+        "case": "decision",
+        "direction": "TD",
+        "edges": 3,
+        "cubic_count": 2,
+        "label_optical_balance_ratio": 1.3870240678721997,
+        "max_s_curve_handle_ratio": 0.42102577096457916,
+        "large_fan_cubic_ratio": null
+      },
+      {
+        "case": "decision",
+        "direction": "BT",
+        "edges": 3,
+        "cubic_count": 2,
+        "label_optical_balance_ratio": 1.3870240678722006,
+        "max_s_curve_handle_ratio": 0.42102577096457916,
+        "large_fan_cubic_ratio": null
+      },
+      {
+        "case": "decision",
+        "direction": "LR",
+        "edges": 3,
+        "cubic_count": 0,
+        "label_optical_balance_ratio": 1.3283582089552217,
+        "max_s_curve_handle_ratio": null,
+        "large_fan_cubic_ratio": null
+      },
+      {
+        "case": "decision",
+        "direction": "RL",
+        "edges": 3,
+        "cubic_count": 0,
+        "label_optical_balance_ratio": 1.3283582089552235,
+        "max_s_curve_handle_ratio": null,
+        "large_fan_cubic_ratio": null
+      },
+      {
+        "case": "decision-bypass",
+        "direction": "TD",
+        "edges": 4,
+        "cubic_count": 2,
+        "label_optical_balance_ratio": 1.2850166832638104,
+        "max_s_curve_handle_ratio": 0.4600000000000005,
+        "large_fan_cubic_ratio": null
+      },
+      {
+        "case": "release",
+        "direction": "TB",
+        "edges": 8,
+        "cubic_count": 6,
+        "label_optical_balance_ratio": 1.382442493702767,
+        "max_s_curve_handle_ratio": 0.41789783239337047,
+        "large_fan_cubic_ratio": null
+      },
+      {
+        "case": "release-lr",
+        "direction": "LR",
+        "edges": 8,
+        "cubic_count": 6,
+        "label_optical_balance_ratio": 1.2625987455903744,
+        "max_s_curve_handle_ratio": 0.4600000000000005,
+        "large_fan_cubic_ratio": null
+      },
+      {
+        "case": "release-bt",
+        "direction": "BT",
+        "edges": 8,
+        "cubic_count": 6,
+        "label_optical_balance_ratio": 1.382442493702767,
+        "max_s_curve_handle_ratio": 0.41789783239337047,
+        "large_fan_cubic_ratio": null
+      },
+      {
+        "case": "release-rl",
+        "direction": "RL",
+        "edges": 8,
+        "cubic_count": 6,
+        "label_optical_balance_ratio": 1.26259874559037,
+        "max_s_curve_handle_ratio": 0.4600000000000005,
+        "large_fan_cubic_ratio": null
+      },
+      {
+        "case": "fan-in-250",
+        "direction": "TB",
+        "edges": 249,
+        "cubic_count": 248,
+        "label_optical_balance_ratio": null,
+        "max_s_curve_handle_ratio": 0.2499999999999999,
+        "large_fan_cubic_ratio": 0.9959839357429718
+      },
+      {
+        "case": "fan-out-250",
+        "direction": "TB",
+        "edges": 249,
+        "cubic_count": 248,
+        "label_optical_balance_ratio": null,
+        "max_s_curve_handle_ratio": 0.2499999999999999,
+        "large_fan_cubic_ratio": 0.9959839357429718
+      },
+      {
+        "case": "fan-in-500",
+        "direction": "TB",
+        "edges": 499,
+        "cubic_count": 498,
+        "label_optical_balance_ratio": null,
+        "max_s_curve_handle_ratio": 0.2499999999999999,
+        "large_fan_cubic_ratio": 0.9979959919839679
+      },
+      {
+        "case": "fan-out-500",
+        "direction": "TB",
+        "edges": 499,
+        "cubic_count": 498,
+        "label_optical_balance_ratio": null,
+        "max_s_curve_handle_ratio": 0.2499999999999999,
+        "large_fan_cubic_ratio": 0.9979959919839679
+      }
+    ]
+  },
+  "wasm": {
+    "profile": "wasm-size",
+    "wasm_tools": "1.253.0",
+    "features": [
+      "diagram-flowchart",
+      "diagram-agentflow",
+      "diagram-architecture",
+      "diagram-c4",
+      "diagram-swimlane",
+      "layout-shoal"
+    ],
+    "artifacts": {
+      "base": {
+        "stripped_bytes": 8017099,
+        "gzip_bytes": 2571628,
+        "stripped_sha256": "467d95b6e507b9f328a21ade9f5ea933505d26836d34d4c2ce612507d1ef2784"
+      },
+      "final": {
+        "stripped_bytes": 8199856,
+        "gzip_bytes": 2627634,
+        "stripped_sha256": "01ce02c72f7d552995cbc308483861b949438c06e9b0e67ad196e792210f83ac"
+      }
+    }
+  },
+  "shoal_source_lines": {
+    "base": 36145,
+    "final": 42798
+  },
+  "compiled_routing_followup": {
+    "revision": "ec23edf1ac0a44702937bbcbaf3a6c68b24b6df5",
+    "svg_reference_revision": "48a3961cf6fe93018a08065c1effd14f3adfca8f",
+    "wasm": {
+      "stripped_bytes": 8185936,
+      "gzip_bytes": 2624282,
+      "stripped_sha256": "dd9b2b8ccc6fb600797d7270aeb0a7e2e822c8616d18a9f9c093b55e5405883a"
+    },
+    "shoal_source_lines": 42804,
+    "svg_equivalence": {
+      "workloads": 11,
+      "harness_sha256": "7779d3ce0c14170604f6c87022c96ee2d5a443b501dbde203724bbaa866e0b91",
+      "flowchart_plan_sha256": "01bd5018ebaf80a123e87a5e55ba12b8cabea670db91bda2b0fe4407d2c90fad",
+      "family_plan_sha256": "5411cbea6c8b9676eaf627014c06cfa878da50ee790f67f3cca393577cba8182",
+      "equal_svg_and_work": {
+        "small-svg": {
+          "svg_sha256": "f3634410afb726d6db9095aff10e785d6fbc1f1bf58a0bbd3a2ed6b9f5e96024",
+          "svg_bytes": 32423,
+          "layout_work_units": 474
+        },
+        "flowchart-nested-layout": {
+          "svg_sha256": "2ecc09ecd6abe53b587278f2e52f379baec61aecd6d7677288ff648ea1517e55",
+          "svg_bytes": 68254,
+          "layout_work_units": 37897
+        },
+        "chain-500": {
+          "svg_sha256": "ff3d6ecee0d41cf5692c747f8ad7e79bb0872c47dfe24008fa429b3e094c9615",
+          "svg_bytes": 747350,
+          "layout_work_units": 149503
+        },
+        "scc-75": {
+          "svg_sha256": "904f5fdaeb857f9fc704cccfd32ca89a38821e36419156be90a43401fe5edafb",
+          "svg_bytes": 239339,
+          "layout_work_units": 106719
+        },
+        "scc-100": {
+          "svg_sha256": "49d4a912860ee66c6b24e3c0e529173268163047f7f116944a83c253c5176457",
+          "svg_bytes": 315414,
+          "layout_work_units": 143286
+        },
+        "scc-100-edges-reverse": {
+          "svg_sha256": "673d25644787c338659b7feb9dc5b9711b7fbba4c67145174bf8ccdc4aa773ca",
+          "svg_bytes": 326264,
+          "layout_work_units": 144452
+        },
+        "fan-in-500": {
+          "svg_sha256": "18ee87fd600e8ae6390340d45faf406681037c5e11ff9fd89d2079ef7e8fd14f",
+          "svg_bytes": 833110,
+          "layout_work_units": 170948
+        },
+        "fan-out-500": {
+          "svg_sha256": "a9441c0cdf32f0aa183cadb08b93b8a15e1695aee9edfabd61080f6cb5839ccf",
+          "svg_bytes": 835391,
+          "layout_work_units": 175438
+        },
+        "family-architecture": {
+          "svg_sha256": "307249874c0bc797b195e305c7e49a0cff92c0ee72f71604f1fd3adb2fdeea01",
+          "svg_bytes": 13750,
+          "layout_work_units": 836
+        },
+        "family-c4": {
+          "svg_sha256": "621606e253207d0ad44cad5e94394e4070ad6f7f20099870e8dd2aea80e1eadb",
+          "svg_bytes": 24290,
+          "layout_work_units": 336
+        },
+        "family-swimlane": {
+          "svg_sha256": "61c0bfac6ca1933e2f73fde360c441eb34f412996353e270fa6838058afa34f9",
+          "svg_bytes": 43769,
+          "layout_work_units": 4571
+        }
+      },
+      "topologies": {
+        "plan_sha256": "810c6f81516f24ebc31e6709232634f1f2270be3786e8c3830433e427d73dccb",
+        "rows": 32,
+        "identical_draws": 31,
+        "identical_max_edges_refusals": 1
+      }
+    },
+    "kernel_equivalence": {
+      "reference_revision": "01e47fcd76a4604335aeed0e2ee0a858df331ff8",
+      "cases": 432,
+      "geometry_errors_and_work_sha256": "1cd895916ccf78fe205a1e51889f629856e5df1dc91515bddfaa1beee83c9828"
+    },
+    "native_diagnostic": {
+      "warmups_per_process": 2,
+      "samples_per_round": 6,
+      "rounds": [
+        {
+          "revision": "48a3961cf",
+          "runner_sha256": "cd33a51d78a9b9c8f960a6573069fb3acdf132ddeacc00634bb6f4f9ddaea7cf",
+          "samples_ns": {
+            "fan-in-500": [
+              3583500,
+              3662375,
+              3925208,
+              3622667,
+              3651500,
+              3620000
+            ],
+            "fan-out-500": [
+              3699250,
+              3935750,
+              3879417,
+              3596000,
+              3454167,
+              3530708
+            ]
+          }
+        },
+        {
+          "revision": "ec23edf1a",
+          "runner_sha256": "a10a60b9f81a44ca0b9e1dcd12f9be35963427d60b761c15d542933d14938e25",
+          "samples_ns": {
+            "fan-in-500": [
+              3726792,
+              3613083,
+              3800292,
+              3641084,
+              3569292,
+              3757583
+            ],
+            "fan-out-500": [
+              3610000,
+              3743000,
+              3640208,
+              3717792,
+              3568625,
+              3968334
+            ]
+          }
+        },
+        {
+          "revision": "ec23edf1a",
+          "runner_sha256": "a10a60b9f81a44ca0b9e1dcd12f9be35963427d60b761c15d542933d14938e25",
+          "samples_ns": {
+            "fan-in-500": [
+              3522375,
+              3804000,
+              3605333,
+              3584458,
+              3767542,
+              3794375
+            ],
+            "fan-out-500": [
+              3562375,
+              3621583,
+              4130250,
+              3838333,
+              3688792,
+              3856125
+            ]
+          }
+        },
+        {
+          "revision": "48a3961cf",
+          "runner_sha256": "cd33a51d78a9b9c8f960a6573069fb3acdf132ddeacc00634bb6f4f9ddaea7cf",
+          "samples_ns": {
+            "fan-in-500": [
+              3482709,
+              3651792,
+              3679333,
+              3633084,
+              3677625,
+              3989125
+            ],
+            "fan-out-500": [
+              3670791,
+              3784625,
+              3615458,
+              3636583,
+              3642750,
+              3720375
+            ]
+          }
+        }
+      ],
+      "median_ns": {
+        "48a3961cf6fe93018a08065c1effd14f3adfca8f": {
+          "fan-in-500": 3651646.0,
+          "fan-out-500": 3656770.5
+        },
+        "ec23edf1ac0a44702937bbcbaf3a6c68b24b6df5": {
+          "fan-in-500": 3683938.0,
+          "fan-out-500": 3703292.0
+        }
+      }
+    },
+    "isolated_neo_marker_probe": {
+      "svg_revision": "48a3961cf6fe93018a08065c1effd14f3adfca8f",
+      "fixture_job_sha256": "aebd1295a5a8d0e72b0a1071b622d036365a9205ece6c579f4d9d2b6bb0a6467",
+      "samples": {
+        "fan-in-500": {
+          "strict_cubics": 498,
+          "with_reuse": 249,
+          "median_uncached_us": 337.38,
+          "median_candidate_us": 178.1
+        },
+        "fan-out-500": {
+          "strict_cubics": 498,
+          "with_reuse": 249,
+          "median_uncached_us": 340.3,
+          "median_candidate_us": 180.14
+        }
+      }
+    }
+  },
+  "review_followup": {
+    "reference_revision": "ec23edf1ac0a44702937bbcbaf3a6c68b24b6df5",
+    "revision": "5f4de6f744659108bb66cc735e8685913fc41f61",
+    "shoal_source_lines": 43926,
+    "wasm": {
+      "stripped_bytes": 8205391,
+      "gzip_bytes": 2631715,
+      "stripped_sha256": "97996c87c5f559dbad7f1f01474f3907944e63a3f02213b5b39193ce4a316e19"
+    },
+    "native": {
+      "warmups_per_process": 2,
+      "samples_per_round": 6,
+      "suites": {
+        "plan": {
+          "plan_sha256": "01bd5018ebaf80a123e87a5e55ba12b8cabea670db91bda2b0fe4407d2c90fad",
+          "rounds": [
+            {
+              "name": "prior-a",
+              "revision": "ec23edf1a",
+              "runner_sha256": "a10a60b9f81a44ca0b9e1dcd12f9be35963427d60b761c15d542933d14938e25",
+              "samples_ns": {
+                "small-svg": [
+                  90542,
+                  79209,
+                  87333,
+                  77208,
+                  77042,
+                  88417
+                ],
+                "flowchart-nested-layout": [
+                  438000,
+                  401167,
+                  402792,
+                  412334,
+                  388000,
+                  403791
+                ],
+                "chain-500": [
+                  3163833,
+                  3094375,
+                  3367042,
+                  3250625,
+                  3105958,
+                  3179500
+                ],
+                "scc-75": [
+                  1113417,
+                  1104375,
+                  1167958,
+                  1119459,
+                  1110083,
+                  1344875
+                ],
+                "scc-100": [
+                  1563167,
+                  1446709,
+                  1443416,
+                  1415167,
+                  1457459,
+                  1590459
+                ],
+                "scc-100-edges-reverse": [
+                  1454125,
+                  1572208,
+                  1575625,
+                  1715208,
+                  1612583,
+                  1561000
+                ],
+                "fan-in-500": [
+                  3924167,
+                  3776709,
+                  3769459,
+                  3790542,
+                  4251958,
+                  3828625
+                ],
+                "fan-out-500": [
+                  3945417,
+                  3990166,
+                  3795041,
+                  3904041,
+                  3920625,
+                  4377917
+                ]
+              }
+            },
+            {
+              "name": "candidate-a",
+              "revision": "5f4de6f74",
+              "runner_sha256": "fe4b8f72dda2ba7dfff10f18a89c274a3f657315ddc16e58d805ba9d408843a5",
+              "samples_ns": {
+                "small-svg": [
+                  79958,
+                  89750,
+                  79084,
+                  82792,
+                  85666,
+                  167875
+                ],
+                "flowchart-nested-layout": [
+                  394000,
+                  406208,
+                  404917,
+                  389250,
+                  400417,
+                  415708
+                ],
+                "chain-500": [
+                  3175791,
+                  3092625,
+                  3117625,
+                  3069750,
+                  3278834,
+                  3394875
+                ],
+                "scc-75": [
+                  1072125,
+                  1075584,
+                  1067167,
+                  1064916,
+                  1097458,
+                  1062375
+                ],
+                "scc-100": [
+                  1392459,
+                  1383209,
+                  1418875,
+                  1589916,
+                  1368334,
+                  1400333
+                ],
+                "scc-100-edges-reverse": [
+                  1540208,
+                  1374709,
+                  1388375,
+                  1539292,
+                  1553167,
+                  1617167
+                ],
+                "fan-in-500": [
+                  3666375,
+                  3799292,
+                  3707166,
+                  3703416,
+                  3650167,
+                  3778000
+                ],
+                "fan-out-500": [
+                  3824416,
+                  3705708,
+                  3782167,
+                  3813416,
+                  3674375,
+                  3814375
+                ]
+              }
+            },
+            {
+              "name": "candidate-b",
+              "revision": "5f4de6f74",
+              "runner_sha256": "fe4b8f72dda2ba7dfff10f18a89c274a3f657315ddc16e58d805ba9d408843a5",
+              "samples_ns": {
+                "small-svg": [
+                  81875,
+                  78333,
+                  77667,
+                  79541,
+                  91208,
+                  83041
+                ],
+                "flowchart-nested-layout": [
+                  406500,
+                  427250,
+                  413000,
+                  393125,
+                  390334,
+                  401542
+                ],
+                "chain-500": [
+                  3042833,
+                  3035708,
+                  3331666,
+                  3489667,
+                  3071416,
+                  3094833
+                ],
+                "scc-75": [
+                  1055834,
+                  1028958,
+                  1184125,
+                  1059959,
+                  1048375,
+                  1250250
+                ],
+                "scc-100": [
+                  1440042,
+                  1368708,
+                  1523250,
+                  1374125,
+                  1357083,
+                  1503208
+                ],
+                "scc-100-edges-reverse": [
+                  1523667,
+                  1411416,
+                  1371500,
+                  1408583,
+                  1524209,
+                  1482875
+                ],
+                "fan-in-500": [
+                  3655708,
+                  3827167,
+                  3689417,
+                  3867375,
+                  3600292,
+                  3634125
+                ],
+                "fan-out-500": [
+                  3698000,
+                  3804125,
+                  3720042,
+                  3968375,
+                  3649333,
+                  3644083
+                ]
+              }
+            },
+            {
+              "name": "prior-b",
+              "revision": "ec23edf1a",
+              "runner_sha256": "a10a60b9f81a44ca0b9e1dcd12f9be35963427d60b761c15d542933d14938e25",
+              "samples_ns": {
+                "small-svg": [
+                  88417,
+                  93917,
+                  88459,
+                  88625,
+                  90667,
+                  90542
+                ],
+                "flowchart-nested-layout": [
+                  416833,
+                  419750,
+                  386334,
+                  377708,
+                  475875,
+                  407375
+                ],
+                "chain-500": [
+                  3200959,
+                  3090584,
+                  3256042,
+                  3220500,
+                  3226500,
+                  3124750
+                ],
+                "scc-75": [
+                  1098958,
+                  1204000,
+                  1120333,
+                  1084541,
+                  1116375,
+                  1080666
+                ],
+                "scc-100": [
+                  1455458,
+                  1575917,
+                  1453042,
+                  1390958,
+                  1453167,
+                  1468875
+                ],
+                "scc-100-edges-reverse": [
+                  1481667,
+                  1483292,
+                  1432125,
+                  1457125,
+                  1501708,
+                  1417584
+                ],
+                "fan-in-500": [
+                  4010542,
+                  3704875,
+                  3728292,
+                  3745209,
+                  3950041,
+                  3844625
+                ],
+                "fan-out-500": [
+                  3823500,
+                  4188209,
+                  3862167,
+                  3754125,
+                  3698750,
+                  3837500
+                ]
+              }
+            }
+          ],
+          "summary": {
+            "small-svg": {
+              "prior": {
+                "svg_sha256": "f3634410afb726d6db9095aff10e785d6fbc1f1bf58a0bbd3a2ed6b9f5e96024",
+                "svg_bytes": 32423,
+                "layout_work_units": 474,
+                "median_ns": 88438.0
+              },
+              "candidate": {
+                "svg_sha256": "f3634410afb726d6db9095aff10e785d6fbc1f1bf58a0bbd3a2ed6b9f5e96024",
+                "svg_bytes": 32423,
+                "layout_work_units": 476,
+                "median_ns": 82333.5
+              },
+              "svg_unchanged": true
+            },
+            "flowchart-nested-layout": {
+              "prior": {
+                "svg_sha256": "2ecc09ecd6abe53b587278f2e52f379baec61aecd6d7677288ff648ea1517e55",
+                "svg_bytes": 68254,
+                "layout_work_units": 37897,
+                "median_ns": 405583.0
+              },
+              "candidate": {
+                "svg_sha256": "d8318e8c43095b79942613aac010cec2cdb19e54de9050c3820375aa6f2e0d3e",
+                "svg_bytes": 68151,
+                "layout_work_units": 37953,
+                "median_ns": 403229.5
+              },
+              "svg_unchanged": false
+            },
+            "chain-500": {
+              "prior": {
+                "svg_sha256": "ff3d6ecee0d41cf5692c747f8ad7e79bb0872c47dfe24008fa429b3e094c9615",
+                "svg_bytes": 747350,
+                "layout_work_units": 149503,
+                "median_ns": 3190229.5
+              },
+              "candidate": {
+                "svg_sha256": "ff3d6ecee0d41cf5692c747f8ad7e79bb0872c47dfe24008fa429b3e094c9615",
+                "svg_bytes": 747350,
+                "layout_work_units": 151002,
+                "median_ns": 3106229.0
+              },
+              "svg_unchanged": true
+            },
+            "scc-75": {
+              "prior": {
+                "svg_sha256": "904f5fdaeb857f9fc704cccfd32ca89a38821e36419156be90a43401fe5edafb",
+                "svg_bytes": 239339,
+                "layout_work_units": 106719,
+                "median_ns": 1114896.0
+              },
+              "candidate": {
+                "svg_sha256": "f4722da8996ef19c1d5139381c4a55af6d2626ffc4b540d897d28f1d6fb9e993",
+                "svg_bytes": 239258,
+                "layout_work_units": 106108,
+                "median_ns": 1066041.5
+              },
+              "svg_unchanged": false
+            },
+            "scc-100": {
+              "prior": {
+                "svg_sha256": "49d4a912860ee66c6b24e3c0e529173268163047f7f116944a83c253c5176457",
+                "svg_bytes": 315414,
+                "layout_work_units": 143286,
+                "median_ns": 1454312.5
+              },
+              "candidate": {
+                "svg_sha256": "041b0f1ae9d3834de67918a665ed6ffa791ea7fdf8e12dd2cd7461c8a594cd97",
+                "svg_bytes": 315872,
+                "layout_work_units": 141627,
+                "median_ns": 1396396.0
+              },
+              "svg_unchanged": false
+            },
+            "scc-100-edges-reverse": {
+              "prior": {
+                "svg_sha256": "673d25644787c338659b7feb9dc5b9711b7fbba4c67145174bf8ccdc4aa773ca",
+                "svg_bytes": 326264,
+                "layout_work_units": 144452,
+                "median_ns": 1492500.0
+              },
+              "candidate": {
+                "svg_sha256": "1e30ce4f5a2a0bc6b8dc4d618e345cc1e20fd7a03594791b4f1809e8dd15e50e",
+                "svg_bytes": 326722,
+                "layout_work_units": 142831,
+                "median_ns": 1503271.0
+              },
+              "svg_unchanged": false
+            },
+            "fan-in-500": {
+              "prior": {
+                "svg_sha256": "18ee87fd600e8ae6390340d45faf406681037c5e11ff9fd89d2079ef7e8fd14f",
+                "svg_bytes": 833110,
+                "layout_work_units": 170948,
+                "median_ns": 3809583.5
+              },
+              "candidate": {
+                "svg_sha256": "54d0a4cd1033facca5bb3a1d20eb89e7a47a859ed387257bf74a68a7b8aa9837",
+                "svg_bytes": 833006,
+                "layout_work_units": 170950,
+                "median_ns": 3696416.5
+              },
+              "svg_unchanged": false
+            },
+            "fan-out-500": {
+              "prior": {
+                "svg_sha256": "a9441c0cdf32f0aa183cadb08b93b8a15e1695aee9edfabd61080f6cb5839ccf",
+                "svg_bytes": 835391,
+                "layout_work_units": 175438,
+                "median_ns": 3883104.0
+              },
+              "candidate": {
+                "svg_sha256": "32a3ea07bcc7061def3cff5937f9ac21451f456faf7f33b07e6ce3a7b56d2b4d",
+                "svg_bytes": 835287,
+                "layout_work_units": 175440,
+                "median_ns": 3751104.5
+              },
+              "svg_unchanged": false
+            }
+          }
+        },
+        "family-plan": {
+          "plan_sha256": "5411cbea6c8b9676eaf627014c06cfa878da50ee790f67f3cca393577cba8182",
+          "rounds": [
+            {
+              "name": "prior-a",
+              "revision": "ec23edf1a",
+              "runner_sha256": "a10a60b9f81a44ca0b9e1dcd12f9be35963427d60b761c15d542933d14938e25",
+              "samples_ns": {
+                "family-architecture": [
+                  68666,
+                  75500,
+                  62625,
+                  61208,
+                  66292,
+                  63875
+                ],
+                "family-c4": [
+                  102250,
+                  108667,
+                  103000,
+                  99125,
+                  107250,
+                  99000
+                ],
+                "family-swimlane": [
+                  219750,
+                  219667,
+                  211583,
+                  212875,
+                  236083,
+                  233708
+                ]
+              }
+            },
+            {
+              "name": "candidate-a",
+              "revision": "5f4de6f74",
+              "runner_sha256": "fe4b8f72dda2ba7dfff10f18a89c274a3f657315ddc16e58d805ba9d408843a5",
+              "samples_ns": {
+                "family-architecture": [
+                  67041,
+                  69916,
+                  74584,
+                  64292,
+                  60000,
+                  62625
+                ],
+                "family-c4": [
+                  96542,
+                  99166,
+                  91791,
+                  99416,
+                  93542,
+                  99500
+                ],
+                "family-swimlane": [
+                  233458,
+                  206750,
+                  208625,
+                  216958,
+                  199125,
+                  218791
+                ]
+              }
+            },
+            {
+              "name": "candidate-b",
+              "revision": "5f4de6f74",
+              "runner_sha256": "fe4b8f72dda2ba7dfff10f18a89c274a3f657315ddc16e58d805ba9d408843a5",
+              "samples_ns": {
+                "family-architecture": [
+                  65417,
+                  65000,
+                  68459,
+                  71250,
+                  70750,
+                  67958
+                ],
+                "family-c4": [
+                  97334,
+                  93250,
+                  112750,
+                  105209,
+                  95625,
+                  261083
+                ],
+                "family-swimlane": [
+                  222125,
+                  218500,
+                  228792,
+                  435334,
+                  199958,
+                  205291
+                ]
+              }
+            },
+            {
+              "name": "prior-b",
+              "revision": "ec23edf1a",
+              "runner_sha256": "a10a60b9f81a44ca0b9e1dcd12f9be35963427d60b761c15d542933d14938e25",
+              "samples_ns": {
+                "family-architecture": [
+                  76916,
+                  56958,
+                  80000,
+                  65209,
+                  61167,
+                  69333
+                ],
+                "family-c4": [
+                  97750,
+                  114083,
+                  146042,
+                  101083,
+                  119458,
+                  101833
+                ],
+                "family-swimlane": [
+                  218209,
+                  209666,
+                  233458,
+                  228625,
+                  221875,
+                  203125
+                ]
+              }
+            }
+          ],
+          "summary": {
+            "family-architecture": {
+              "prior": {
+                "svg_sha256": "307249874c0bc797b195e305c7e49a0cff92c0ee72f71604f1fd3adb2fdeea01",
+                "svg_bytes": 13750,
+                "layout_work_units": 836,
+                "median_ns": 65750.5
+              },
+              "candidate": {
+                "svg_sha256": "307249874c0bc797b195e305c7e49a0cff92c0ee72f71604f1fd3adb2fdeea01",
+                "svg_bytes": 13750,
+                "layout_work_units": 836,
+                "median_ns": 67499.5
+              },
+              "svg_unchanged": true
+            },
+            "family-c4": {
+              "prior": {
+                "svg_sha256": "621606e253207d0ad44cad5e94394e4070ad6f7f20099870e8dd2aea80e1eadb",
+                "svg_bytes": 24290,
+                "layout_work_units": 336,
+                "median_ns": 102625.0
+              },
+              "candidate": {
+                "svg_sha256": "621606e253207d0ad44cad5e94394e4070ad6f7f20099870e8dd2aea80e1eadb",
+                "svg_bytes": 24290,
+                "layout_work_units": 336,
+                "median_ns": 98250.0
+              },
+              "svg_unchanged": true
+            },
+            "family-swimlane": {
+              "prior": {
+                "svg_sha256": "61c0bfac6ca1933e2f73fde360c441eb34f412996353e270fa6838058afa34f9",
+                "svg_bytes": 43769,
+                "layout_work_units": 4571,
+                "median_ns": 219708.5
+              },
+              "candidate": {
+                "svg_sha256": "b46c1adbbfe1bf3acda7a8e102434b8f5be47222ea17287092490372464340c0",
+                "svg_bytes": 43767,
+                "layout_work_units": 4571,
+                "median_ns": 217729.0
+              },
+              "svg_unchanged": false
+            }
+          }
+        }
+      }
+    }
+  }
+}

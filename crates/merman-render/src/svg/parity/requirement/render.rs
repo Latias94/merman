@@ -37,7 +37,7 @@ fn paint_canonical_edge(
         Some(EdgeStyle::Straight | EdgeStyle::Sketch) => RouteStyle::Linear,
         _ => RouteStyle::Curved,
     };
-    let geometry = routes.paint(edge, Vec2::ZERO, stroke_outset, style)?;
+    let geometry = routes.paint(edge, Vec2::ZERO, stroke_outset, style, options.work_meter())?;
     let shaft = geometry.path.bounds;
     let outset = stroke_outset * std::f64::consts::SQRT_2;
     let mut bounds =

@@ -80,14 +80,21 @@ fn sublayers(
     };
     work.charge(add(occupied.len(), arcs.len())?)?;
     let mut split = filled(occupied.len(), false)?;
-    if let Some(policy) = &inline {
+    let mut label_counts = Vec::new();
+    if let Some(policy) = &inline
+        && !policy.restored.is_empty()
+    {
+        work.charge(occupied.len())?;
+        label_counts = filled(occupied.len(), 0_u8)?;
         for &rank in policy.restored {
             work.visit(1)?;
-            split[rank as usize] = true;
+            // A long edge's fallback can use an existing rank. Only a short edge
+            // needs to insert a tier when inline placement in this gap fails.
+            label_counts[rank as usize] = label_place::MAX_LABELS_IN_GAP;
         }
     }
     g.inline_labels.clear();
-    let mut label_counts = Vec::new();
+    g.has_parallel_links = false;
     let mut pairs = HashSet::new();
     pairs
         .try_reserve(arcs.len())
@@ -102,18 +109,20 @@ fn sublayers(
         if b <= a {
             return Err(LayoutError::InvalidInput("edge opposes its ranking order"));
         }
-        let gap = a as usize;
-        if b - a != 1 || split[gap] {
-            continue;
-        }
+        let adjacent = b - a == 1;
+        let gap = (a + (b - a - 1) / 2) as usize;
+        let ends = (edge.from, edge.to);
+        let repeated = !pairs.insert(ends);
+        g.has_parallel_links |= repeated;
         if let Some(size) = spec.label {
-            if !inline
-                .as_ref()
-                .is_some_and(|policy| policy.admits(size, spec, graph.direction))
+            if split[gap]
+                || !inline.as_ref().is_some_and(|policy| {
+                    policy.admits(size, spec, graph.direction, index, edge.from)
+                })
                 || occupied[gap + 1] - occupied[gap] != 1
                 || g.inline_labels.len() == label_place::MAX_LABELS
             {
-                split[gap] = true;
+                split[gap] |= adjacent;
                 continue;
             }
             if label_counts.is_empty() {
@@ -121,7 +130,7 @@ fn sublayers(
                 label_counts = filled(occupied.len(), 0_u8)?;
             }
             if label_counts[gap] == label_place::MAX_LABELS_IN_GAP {
-                split[gap] = true;
+                split[gap] |= adjacent;
                 continue;
             }
             label_counts[gap] += 1;
@@ -130,22 +139,16 @@ fn sublayers(
                 &mut g.inline_labels,
                 label_place::InlineLabel {
                     edge: index,
-                    gap: a,
+                    gap: gap as u32,
                 },
             )?;
         }
-        let ends = (edge.from, edge.to);
-        split[gap] = !pairs.insert(ends) && !g.separate_ports(ends, work)?;
+        if adjacent && !split[gap] {
+            split[gap] = repeated && !g.separate_ports(ends, work)?;
+        }
     }
     if !g.inline_labels.is_empty() {
         work.charge(g.inline_labels.len())?;
-        if g.inline_labels
-            .iter()
-            .any(|label| !split[label.gap as usize])
-        {
-            label_place::protect_transit_faces(&g.inline_labels, arcs, &g.rank, &mut split, work)?;
-            work.charge(g.inline_labels.len())?;
-        }
         g.inline_labels.retain(|label| !split[label.gap as usize]);
     }
     let splits = split.iter().filter(|&&yes| yes).count();
@@ -234,7 +237,7 @@ fn prepare_layers(
     work.charge(len.checked_mul(3).ok_or(WorkError::ArithmeticOverflow)?)?;
     let mut delta = filled(len, 0_i64)?;
     let mut members = filled(len, 0_usize)?;
-    let mut dense = filled(len, 0_u32)?;
+    let mut dense = filled(len, u32::MAX)?;
     for &r in &g.rank {
         work.visit(1)?;
         members[r as usize] += 1;
@@ -269,6 +272,7 @@ fn prepare_layers(
         *rank = dense[*rank as usize];
         *rank != u32::MAX
     });
+    debug_assert!(g.inserted_ranks.windows(2).all(|pair| pair[0] < pair[1]));
     rows(&mut g.layers, used)?;
     for (layer, size) in g.layers.iter_mut().zip(members) {
         clear_reserve(layer, size)?;
@@ -276,6 +280,7 @@ fn prepare_layers(
     for r in g.rank.iter_mut().chain(real) {
         work.visit(1)?;
         *r = dense[*r as usize];
+        debug_assert_ne!(*r, u32::MAX);
     }
     Ok(())
 }
@@ -373,11 +378,16 @@ pub(super) fn build(
         inline.then_some(label_place::GapPolicy {
             spacing: options.spacing,
             restored: restored_labels,
+            nodes,
+            reversed: &orientation.reversed,
+            routing: options.routing,
         }),
         g,
         work,
     )?;
     let (dummies, segments) = dummy_budget(&arcs, g, options.caps.max_dummies, work)?;
+    work.visit(g.inline_labels.len())?;
+    g.inline_labels.retain(|label| !g.direct[label.edge]);
     let vertices = add(n, dummies)?;
     count(vertices)?;
     count(segments)?;
@@ -641,12 +651,16 @@ mod tests {
         graph.edges[6].start_marker.length = 18.0;
         graph.edges[7].end_marker.length = 18.0;
         let mut g = Expanded::default();
+        let options = Options {
+            inline_labels: false,
+            ..Options::default()
+        };
         build(
             &graph.nodes,
             &links,
             &order,
             &graph,
-            &Options::default(),
+            &options,
             &mut Work::new(&mut NoopWorkControl),
             &mut g,
         )
@@ -656,6 +670,35 @@ mod tests {
             let label = g.label_vertex[edge].unwrap();
             assert_eq!(g.rank[label as usize], expected);
             assert_eq!(g.chains[edge][expected as usize], label);
+        }
+    }
+
+    #[test]
+    fn labeled_long_links_set_and_reset_parallel_detection() {
+        let (mut graph, links, mut order) =
+            input(4, &[(0, 1, 1), (1, 2, 1), (2, 3, 1), (0, 3, 1), (3, 0, 1)]);
+        for spec in &mut graph.edges[3..] {
+            spec.label = Some(shape(8.0, 4.0));
+        }
+        let options = Options {
+            inline_labels: false,
+            ..Options::default()
+        };
+        let mut g = Expanded::default();
+        for (links, expected) in [(links.as_slice(), true), (&links[..4], false)] {
+            order.reversed.truncate(links.len());
+            build(
+                &graph.nodes,
+                links,
+                &order,
+                &graph,
+                &options,
+                &mut Work::new(&mut NoopWorkControl),
+                &mut g,
+            )
+            .unwrap();
+            assert_eq!(g.has_parallel_links, expected);
+            assert_eq!(g.logical_rank, [0, 1, 2, 3]);
         }
     }
 
@@ -675,7 +718,10 @@ mod tests {
         );
         graph.edges[5].label = Some(shape(9.0, 4.0));
         graph.edges[6].label = Some(shape(6.0, 3.0));
-        let mut options = Options::default();
+        let mut options = Options {
+            inline_labels: false,
+            ..Options::default()
+        };
         options.caps.max_dummies = 2;
         let mut g = Expanded::default();
         build(
@@ -744,6 +790,7 @@ mod tests {
         }
         run(&mut g, 0, usize::MAX).unwrap();
         assert_eq!(g.logical_rank, [0, 2, 3]);
+        assert!(g.inserted_ranks.is_empty());
         assert!(g.layers.iter().all(|r| !r.is_empty()));
         assert_eq!(g.rank, [0, 1, 2]);
         assert_eq!(g.direct, [true, true, false]);

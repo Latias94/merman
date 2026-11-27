@@ -31,6 +31,8 @@ fn seed_edge(a: Rect, b: Rect) -> EdgeGeometry {
         label_center: None,
         start_label_center: None,
         end_label_center: None,
+        shared_bus: false,
+        corridor_clearance: 0.0,
         reversed_for_ranking: false,
     }
 }
@@ -514,4 +516,26 @@ fn point_node_loops_have_area_and_named_top_ports_carry_their_label() {
             );
         }
     }
+}
+
+#[test]
+fn port_stub_tolerates_ulp_rounding_at_marker_length_boundary() {
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    let port = Port {
+        at: p(1000.0, 0.0),
+        side: Side::Right,
+    };
+    let marker = MarkerMetrics {
+        length: 12.0,
+        width: 8.0,
+    };
+    let ulp_wall = RouteWalls(vec![
+        Bounds::checked_rect(rect(1012.0_f64.next_down(), -10.0, 10.0, 20.0)).unwrap(),
+    ]);
+    assert!(port.stub(marker, 0.0, &ulp_wall, &mut work).is_ok());
+    let short_wall = RouteWalls(vec![
+        Bounds::checked_rect(rect(1011.9, -10.0, 10.0, 20.0)).unwrap(),
+    ]);
+    assert!(port.stub(marker, 0.0, &short_wall, &mut work).is_err());
 }

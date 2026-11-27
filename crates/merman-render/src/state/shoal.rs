@@ -25,6 +25,7 @@ use crate::text::TextMeasurer;
 use crate::{Error, LayoutExecution, Result};
 use kurbo::Insets;
 use merman_model::families::state::StateDiagramRenderEdge;
+use rustc_hash::FxHashMap;
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -40,6 +41,7 @@ struct MeasuredState<'a> {
     groups: Vec<StateGroup<'a>>,
     edges: Vec<&'a StateDiagramRenderEdge>,
     profiles: Vec<ShapePortProfile>,
+    terminal_nodes: Vec<usize>,
 }
 
 pub(super) fn layout_state_diagram_shoal(
@@ -64,7 +66,10 @@ pub(super) fn layout_state_diagram_shoal(
         input.leaves.iter().map(|(_, node)| node.id.as_str()),
         input.groups.iter().map(|group| group.node.id.as_str()),
         Some(execution),
-        Default::default(),
+        placement::Constraints {
+            split_incoming_ports: &input.terminal_nodes,
+            ..Default::default()
+        },
         work,
     )?;
     regions::stretch(&input, &mut solved, work)?;
@@ -116,7 +121,7 @@ fn measure<'a>(
     let index = |index: usize, work: &OperationLayoutWorkControl| {
         u32::try_from(index).map_err(|_| Error::from(work.record_arithmetic_overflow()))
     };
-    let mut endpoints = HashMap::with_capacity(model.nodes.len());
+    let mut endpoints = FxHashMap::with_capacity_and_hasher(model.nodes.len(), Default::default());
     let mut leaves = Vec::new();
     let mut groups = Vec::new();
     for (sequence, node) in model.nodes.iter().enumerate() {
@@ -210,6 +215,7 @@ fn measure<'a>(
     restore_concurrent_directions(&groups, &mut graph.groups, work)?;
     let group_directions = effective_group_directions(&graph, work)?;
     let mut profiles = Vec::with_capacity(leaves.len());
+    let mut terminal_nodes = Vec::new();
     let (face, perpendicular) = match graph.direction {
         Direction::Down | Direction::Up => (Side::Top, Side::Left),
         Direction::Right | Direction::Left => (Side::Left, Side::Top),
@@ -227,8 +233,16 @@ fn measure<'a>(
         };
         let size = Size { width, height };
         let profile = port_profile(node, size, style_plan);
+        if node.shape == "stateEnd" {
+            work.charge_adapter(1)?;
+            terminal_nodes.try_reserve(1).map_err(|_| {
+                work.map_shoal_error(merman_layout_shoal::LayoutError::AllocationLimit)
+            })?;
+            terminal_nodes.push(graph.nodes.len());
+        }
         graph.nodes.push(MeasuredNode {
             size,
+            contour: profile.shoal_contour(size),
             seq,
             parent,
             port_span: Some(profile.port_span(face)),
@@ -245,6 +259,11 @@ fn measure<'a>(
             .ok_or_else(|| Error::InvalidModel {
                 message: format!("missing State endpoint `{id}` for edge `{edge_id}`"),
             })
+    };
+    let html_label_inset = if settings.wrap_mode == crate::text::WrapMode::HtmlLike {
+        style_plan.shoal_html_edge_label_inset()
+    } else {
+        0.0
     };
     let mut edges = Vec::with_capacity(model.edges.len());
     for edge in &model.edges {
@@ -267,6 +286,11 @@ fn measure<'a>(
                 settings.wrap_mode,
                 sidecar,
             );
+            let width = if width > 0.0 && height > 0.0 {
+                width + 2.0 * html_label_inset
+            } else {
+                width
+            };
             Size { width, height }
         });
         graph.edges.push(MeasuredEdge {
@@ -292,6 +316,7 @@ fn measure<'a>(
         groups,
         edges,
         profiles,
+        terminal_nodes,
     })
 }
 
@@ -354,7 +379,7 @@ fn effective_group_directions(
     Ok(directions)
 }
 
-fn note_group_aliases(model: &StateDiagramModel) -> HashMap<&str, &str> {
+fn note_group_aliases(model: &StateDiagramModel) -> FxHashMap<&str, &str> {
     let declared_groups = || {
         model.nodes.iter().filter_map(|node| {
             let id = node.id.as_str();
@@ -363,7 +388,7 @@ fn note_group_aliases(model: &StateDiagramModel) -> HashMap<&str, &str> {
                 .flatten()
         })
     };
-    let last_by_owner: HashMap<_, _> = declared_groups().collect();
+    let last_by_owner: FxHashMap<_, _> = declared_groups().collect();
     declared_groups()
         .map(|(owner, id)| (id, last_by_owner[owner]))
         .collect()

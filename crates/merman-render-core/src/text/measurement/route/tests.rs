@@ -578,3 +578,33 @@ fn builtin_html_line_stream_uses_wrap_canvas_route_and_keeps_opaque_routes_obser
             .is_none()
     );
 }
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_calibrated_streaming_html_line_width_matches_direct_width() {
+    let mut session = TextMeasurementSession::new(TextMeasurementPolicy::deterministic());
+    session.use_shoal_text_widths();
+    let work = OperationWorkMeter::new(
+        crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+    );
+    let measurer = session.routed(&work, TextMeasurementPhase::Wrap, None);
+    let regular = TextStyle::default();
+    let bold = TextStyle {
+        font_weight: Some("bolder".into()),
+        ..regular.clone()
+    };
+    let text = "customer_account_id";
+    let wide = measurer.measure_html_line_width_px(text, &regular);
+    assert!(wide >= 9.58 * regular.font_size);
+    let bold_width = measurer.measure_html_line_width_px(text, &bold);
+    assert!((bold_width / wide - 1.06).abs() < 1e-12);
+
+    let mut stream = measurer
+        .begin_html_line_width(TRUSTED_MEASUREMENT, &bold)
+        .expect("calibrated route streams HTML line widths");
+    for part in ["customer_", "account_", "id"] {
+        stream.push_text(part);
+        let _ = stream.width_px();
+    }
+    assert_eq!(stream.width_px().to_bits(), bold_width.to_bits());
+}

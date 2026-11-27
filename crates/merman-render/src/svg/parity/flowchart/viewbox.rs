@@ -144,17 +144,18 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_rendered_bounds<'data
         }
     }
 
-    for (key, e) in layout.edge_owners.iter().zip(&layout.edges) {
+    for (key, edge) in FlowchartLayoutEdgeRef::in_layout_order(layout) {
+        let materialized = edge.materialized();
         let root = hierarchy_plan.edge_root(key)?;
         let y_off = y_offset_for_root(root);
         let missing_section_label =
-            edge_geom::missing_section_label_position(ctx, key, e, ctx.tx, ctx.ty);
+            edge_geom::missing_section_label_position(ctx, key, edge.points(), ctx.tx, ctx.ty);
         for (label_index, lbl) in [
-            e.label.as_ref(),
-            e.start_label_left.as_ref(),
-            e.start_label_right.as_ref(),
-            e.end_label_left.as_ref(),
-            e.end_label_right.as_ref(),
+            edge.label(),
+            materialized.and_then(|edge| edge.start_label_left.as_ref()),
+            materialized.and_then(|edge| edge.start_label_right.as_ref()),
+            materialized.and_then(|edge| edge.end_label_left.as_ref()),
+            materialized.and_then(|edge| edge.end_label_right.as_ref()),
         ]
         .into_iter()
         .enumerate()
@@ -181,7 +182,10 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_rendered_bounds<'data
     }
 
     Ok(b.unwrap_or({
-        if layout.nodes.is_empty() && layout.edges.is_empty() && layout.clusters.is_empty() {
+        if layout.nodes.is_empty()
+            && ctx.layout_edges_by_key.is_empty()
+            && layout.clusters.is_empty()
+        {
             Bounds {
                 min_x: 0.0,
                 min_y: 0.0,
@@ -254,10 +258,10 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_viewbox_bounds<'data>
         ctx.work_meter.charge(render_edges.len())?;
         for edge in render_edges {
             let key = edge.as_ref().key;
-            let Some(layout_edge) = ctx.layout_edges_by_key.get(&key) else {
+            let Some(&layout_edge) = ctx.layout_edges_by_key.get(&key) else {
                 continue;
             };
-            let Some(label) = layout_edge.label.as_ref() else {
+            let Some(label) = layout_edge.label() else {
                 continue;
             };
             let anchor = render::resolve_flowchart_edge_label_position(

@@ -1,4 +1,5 @@
 use super::*;
+use crate::flat::validate;
 use crate::{EdgeSpec, NodeId, NoopWorkControl, Size, WorkControl};
 
 fn expanded(rows: &[&[u32]], kinds: &[Kind], segments: &[(u32, u32)]) -> Expanded {
@@ -57,9 +58,11 @@ fn spread_uses_all_three_pitch_tiers_and_preserves_a_held_zero() {
         (10.0, [-5.0, 0.0, 0.0, 0.0, 0.0, 5.0]),
     ] {
         let mut offsets = [0.0; 6];
+        let markers = [0.0; 6];
         spread_face(
             &ids,
             &role,
+            &markers,
             &mut offsets,
             span,
             &Spacing::default(),
@@ -67,6 +70,33 @@ fn spread_uses_all_three_pitch_tiers_and_preserves_a_held_zero() {
         )
         .unwrap();
         assert_eq!(offsets, expected);
+    }
+}
+
+#[test]
+fn wide_crows_foot_markers_separate_adjacent_ports_through_full_layout() {
+    use crate::{MarkerMetrics, Options, layout};
+    let mut g = graph(4);
+    g.nodes[0].size = Size {
+        width: 140.0,
+        height: 60.0,
+    };
+    for target in 1..4 {
+        let mut e = edge(0, target);
+        e.start_marker = MarkerMetrics {
+            length: 18.0,
+            width: 24.0,
+        };
+        g.edges.push(e);
+    }
+    let out = layout(&g, &Options::default()).unwrap();
+    let mut xs: Vec<f64> = out.edges.iter().map(|e| e.points[0].x).collect();
+    xs.sort_by(f64::total_cmp);
+    for pair in xs.windows(2) {
+        assert!(
+            pair[1] - pair[0] >= 25.0,
+            "adjacent 24px markers must stay separated beyond default 16px port_pitch: {xs:?}"
+        );
     }
 }
 
@@ -223,9 +253,11 @@ fn reverse_topological_pull_tightens_loose_blocks_and_uses_physical_margins() {
     };
     let g = expanded(&[&[0, 1, 2]], &[Kind::Node, Kind::Node, Kind::Label], &[]);
     let opts = Options::default();
-    assert_eq!(extents(&g, &c, &opts, 0), (30.0, 52.0));
-    assert_eq!(extents(&g, &c, &opts, 1), (42.0, 30.0));
-    assert_eq!(extents(&g, &c, &opts, 2), (7.0, 7.0));
+    let node = 5.0 + opts.spacing.node / 2.0;
+    let label = 5.0 + opts.spacing.edge / 2.0;
+    assert_eq!(extents(&g, &c, &opts, 0), (node, node + 22.0));
+    assert_eq!(extents(&g, &c, &opts, 1), (node + 12.0, node));
+    assert_eq!(extents(&g, &c, &opts, 2), (label, label));
 }
 
 #[test]
@@ -253,7 +285,10 @@ fn four_passes_align_ports_not_centers_in_real_expanded_chains() {
         graph.edges.push(e);
         let mut control = NoopWorkControl;
         let mut work = Work::new(&mut control);
-        let opts = Options::default();
+        let opts = Options {
+            inline_labels: false,
+            ..Options::default()
+        };
         let cs = validate::components(&graph, &opts, &mut work).unwrap();
         let mut g = Expanded::default();
         let (o, _) =
@@ -312,4 +347,48 @@ fn interruption_before_balance_is_published_preserves_both_offset_arrays() {
     assert_eq!(solve(&mut g, &mut Budget(cost)).unwrap(), expected);
     assert_eq!(g.source_offset, [-8.0, 8.0]);
     assert_eq!(g.target_offset, [0.0, 0.0]);
+}
+
+#[test]
+fn extreme_marker_width_with_side_hint_does_not_overflow_or_panic() {
+    use crate::{MarkerMetrics, Options, layout};
+
+    let role = [End::Leaves; 3];
+    let ids = [0, 1, 2];
+    let markers = [1e308; 3];
+    let mut offsets = [0.0; 3];
+    spread_face(
+        &ids,
+        &role,
+        &markers,
+        &mut offsets,
+        100.0,
+        &Spacing::default(),
+        &mut Work::new(&mut NoopWorkControl),
+    )
+    .unwrap();
+    assert!(
+        offsets
+            .iter()
+            .all(|x| x.is_finite() && x.abs() <= 50.0 + 1e-9)
+    );
+
+    let mut g = graph(3);
+    for target in 1..=2 {
+        let mut e = edge(0, target);
+        e.source_port = PortSideHint::Side(Side::Bottom);
+        e.start_marker = MarkerMetrics {
+            length: 0.0,
+            width: 1e308,
+        };
+        g.edges.push(e);
+    }
+    let out = layout(&g, &Options::default()).unwrap();
+    assert!(out.nodes.iter().all(|r| r.x.is_finite() && r.y.is_finite()));
+    assert!(
+        out.edges
+            .iter()
+            .flat_map(|e| &e.points)
+            .all(|p| p.x.is_finite() && p.y.is_finite())
+    );
 }

@@ -6,6 +6,8 @@ use crate::model::Axis;
 use crate::ortho::{OrthoSegment, axis_id, reset, sort, zero};
 use crate::work::{LayoutResult, Work, WorkError, filled, push, reserved};
 
+const MAX_DIRECT_TRACE_RECTS: usize = 16;
+
 #[derive(Clone, Copy, PartialEq)]
 struct Seed {
     along: f64,
@@ -152,6 +154,47 @@ fn trace(
     )?;
     work.charge(seeds.len())?;
     seeds.dedup();
+    if rects.len() <= MAX_DIRECT_TRACE_RECTS {
+        return trace_direct(axis, rects, seeds, work);
+    }
+    trace_swept(axis, rects, seeds, work)
+}
+
+fn trace_direct(
+    axis: Axis,
+    rects: &[Bounds],
+    seeds: &[Seed],
+    work: &mut Work<'_>,
+) -> LayoutResult<Vec<Option<[f64; 2]>>> {
+    work.charge(seeds.len())?;
+    let mut rays = reserved(seeds.len())?;
+    'seed: for seed in seeds {
+        work.visit(rects.len() + 1)?;
+        let mut span = [f64::NEG_INFINITY, f64::INFINITY];
+        for &rect in rects {
+            let ([start, end], [low, high]) = rect.project(axis);
+            if low < seed.fixed && seed.fixed < high {
+                if end <= seed.along {
+                    span[0] = span[0].max(end);
+                } else if start >= seed.along {
+                    span[1] = span[1].min(start);
+                } else {
+                    rays.push(None);
+                    continue 'seed;
+                }
+            }
+        }
+        rays.push(Some(span));
+    }
+    Ok(rays)
+}
+
+fn trace_swept(
+    axis: Axis,
+    rects: &[Bounds],
+    seeds: &[Seed],
+    work: &mut Work<'_>,
+) -> LayoutResult<Vec<Option<[f64; 2]>>> {
     let mut fixed = reserved(seeds.len())?;
     for seed in seeds.iter() {
         work.visit(1)?;
@@ -273,4 +316,49 @@ fn update(tree: &mut [Cell], event: Event, size: usize, work: &mut Work<'_>) -> 
         end /= 2;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::NoopWorkControl;
+
+    #[test]
+    fn small_scopes_match_the_sweep_at_shared_faces_and_inside_overlapping_boxes() {
+        let walls = [
+            Bounds {
+                x: [0.0, 10.0],
+                y: [0.0, 10.0],
+            },
+            Bounds {
+                x: [10.0, 20.0],
+                y: [-5.0, 15.0],
+            },
+            Bounds {
+                x: [5.0, 15.0],
+                y: [8.0, 12.0],
+            },
+        ];
+        let mut control = NoopWorkControl;
+        let mut work = Work::new(&mut control);
+        for axis in [Axis::Horizontal, Axis::Vertical] {
+            let seeds: Vec<_> = [-5., 0., 5., 8., 10., 12., 15., 20.]
+                .into_iter()
+                .flat_map(|along| {
+                    [-5., 0., 5., 8., 10., 12., 15., 20.]
+                        .into_iter()
+                        .map(move |fixed| Seed {
+                            along,
+                            fixed,
+                            corner: true,
+                            outward: 0,
+                        })
+                })
+                .collect();
+            assert_eq!(
+                trace_direct(axis, &walls, &seeds, &mut work).unwrap(),
+                trace_swept(axis, &walls, &seeds, &mut work).unwrap(),
+            );
+        }
+    }
 }

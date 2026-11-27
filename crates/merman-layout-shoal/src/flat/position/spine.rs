@@ -291,6 +291,8 @@ impl Neighbours {
             target,
             starts,
             ends,
+            start_markers: _,
+            end_markers: _,
             spine,
         } = ports;
         for (vertex, node) in component.nodes.iter().enumerate() {

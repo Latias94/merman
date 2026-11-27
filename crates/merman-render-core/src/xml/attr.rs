@@ -47,6 +47,12 @@ pub fn escape_attr_into(out: &mut impl SvgOutput, text: &str) {
     }
 }
 
+pub fn escaped_attr_len(text: &str) -> usize {
+    text.chars().fold(0usize, |len, ch| {
+        len.saturating_add(xml_attr_replacement(ch).map_or(ch.len_utf8(), str::len))
+    })
+}
+
 pub fn escape_attr_display<T: std::fmt::Display>(value: T) -> EscapeAttrDisplay<T> {
     EscapeAttrDisplay(value)
 }

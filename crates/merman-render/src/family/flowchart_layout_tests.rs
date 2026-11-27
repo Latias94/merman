@@ -96,3 +96,54 @@ flowchart LR
         assert_eq!(layout, reference);
     }
 }
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_svg_preparation_defers_layout_edge_materialization() {
+    let source = "\
+---
+config:
+  layout: shoal
+---
+flowchart LR
+subgraph One[Hidden group]
+  A --> B
+end
+C enter@-->|enter| A
+One@{ view: collapsed }
+";
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let session = || {
+        crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .unwrap()
+    };
+    let options = LayoutOptions::default();
+    let render = prepare(&parsed, &options, session()).unwrap();
+    let BuiltinFamilyArtifact::Flowchart(flowchart) = &render.family else {
+        panic!("expected Flowchart family artifact");
+    };
+    let layout = flowchart.pair().layout();
+    assert!(layout.edges.is_empty());
+    assert_eq!(layout.edge_owners.len(), 1);
+
+    let public_layout = prepare_layout(&parsed, &options, session()).unwrap();
+    let mut from_render = Vec::new();
+    let mut from_layout = Vec::new();
+    render
+        .write_layout_geometry_json(&mut from_render, false)
+        .unwrap();
+    public_layout
+        .write_layout_geometry_json(&mut from_layout, false)
+        .unwrap();
+    assert_eq!(from_render, from_layout);
+    let snapshot: serde_json::Value = serde_json::from_slice(&from_render).unwrap();
+    let edge = &snapshot["layout"]["FlowchartV2"]["edges"][0];
+    assert_eq!(edge["id"], "enter");
+    assert_eq!(edge["from"], "C");
+    assert_eq!(edge["to"], "One");
+}

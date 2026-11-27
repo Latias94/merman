@@ -10,6 +10,8 @@ use std::sync::Arc;
 pub(in crate::svg::parity) struct FlowchartCompiledStyles {
     edge_class_declarations: Vec<Arc<FlowchartStyleDeclaration>>,
     edge_animation_active: Option<bool>,
+    #[cfg(feature = "layout-shoal")]
+    simple_edge_paint: bool,
     pub(super) node_style: String,
     pub(super) rectangle_size: [Option<f64>; 2],
     pub(super) label_style: String,
@@ -130,6 +132,11 @@ fn charge_style_work(
 }
 
 impl FlowchartCompiledStyles {
+    #[cfg(feature = "layout-shoal")]
+    pub(super) fn has_simple_edge_paint(&self) -> bool {
+        self.simple_edge_paint
+    }
+
     pub(super) fn has_source_filter(&self) -> bool {
         self.has_source_filter
     }
@@ -174,11 +181,11 @@ impl FlowchartCompiledStyles {
             0usize,
             |bytes, (index, declaration)| {
                 let declaration_bytes = usize::from(index != 0)
-                    .checked_add(super::super::util::escaped_xml_len(
+                    .checked_add(super::super::util::escaped_attr_len(
                         declaration.property_css(),
                     ))?
                     .checked_add(1)?
-                    .checked_add(super::super::util::escaped_xml_len(
+                    .checked_add(super::super::util::escaped_attr_len(
                         declaration.source_value(),
                     ))?;
                 bytes.checked_add(declaration_bytes)
@@ -508,7 +515,7 @@ fn projected_joined_style_bytes(a: &[String], b: &[String]) -> Option<usize> {
         .enumerate()
         .try_fold(0usize, |bytes, (index, part)| {
             bytes.checked_add(
-                usize::from(index != 0).checked_add(super::super::util::escaped_xml_len(part))?,
+                usize::from(index != 0).checked_add(super::super::util::escaped_attr_len(part))?,
             )
         })
 }
@@ -621,12 +628,18 @@ fn flowchart_compile_prepared_styles_for_class_names<'a>(
     let mut class_important_width = None;
     let mut inline_important_width = None;
     let mut has_source_label_foreground = false;
+    #[cfg(feature = "layout-shoal")]
+    let mut parsed_edge_paint = true;
 
     for class in classes {
         let Some(declarations) = class_styles.classes.get(class) else {
             continue;
         };
         has_source_label_foreground |= declarations.has_rejected_color;
+        #[cfg(feature = "layout-shoal")]
+        {
+            parsed_edge_paint &= declarations.declarations.len() == declarations.declaration_count;
+        }
         charge_style_work(work_meter, declarations.declaration_count)?;
         for prepared in &declarations.declarations {
             if !crate::flowchart::flowchart_is_source_spelled_label_style_key(
@@ -654,6 +667,10 @@ fn flowchart_compile_prepared_styles_for_class_names<'a>(
             charge_style_work(work_meter, 1)?;
             let Some(declaration) = FlowchartStyleDeclaration::parse(raw) else {
                 has_source_label_foreground |= is_source_color(raw);
+                #[cfg(feature = "layout-shoal")]
+                {
+                    parsed_edge_paint = false;
+                }
                 continue;
             };
             let prepared = Arc::new(declaration);
@@ -721,6 +738,22 @@ fn flowchart_compile_prepared_styles_for_class_names<'a>(
     let stroke_dasharray = value("stroke-dasharray");
     let radius_sources = [source("rx").cloned(), source("ry").cloned()];
     let has_source_filter = source("filter").is_some();
+    #[cfg(feature = "layout-shoal")]
+    let simple_edge_paint = parsed_edge_paint
+        && semantic.values().all(|decl| {
+            let decl = &decl.prepared;
+            let property = decl.property();
+            match property {
+                "stroke" | "stroke-width" => true,
+                // Mermaid adds `fill:none` to indexed link styles, including width-only styles.
+                "fill" => decl.value().eq_ignore_ascii_case("none"),
+                "opacity" | "stroke-opacity" => {
+                    crate::theme::edge_label_bg::literal_opacity(decl.value()) == Some(1.0)
+                }
+                _ => crate::flowchart::flowchart_is_source_spelled_label_style_key(property),
+            }
+        });
+    has_source_label_foreground |= semantic.contains_key("color");
     let label_sources = semantic
         .into_values()
         .filter(|decl| {
@@ -729,13 +762,12 @@ fn flowchart_compile_prepared_styles_for_class_names<'a>(
             )
         })
         .collect::<Vec<_>>();
-    has_source_label_foreground |= label_sources
-        .iter()
-        .any(|decl| decl.prepared.property() == "color");
 
     Ok(FlowchartCompiledStyles {
         edge_class_declarations,
         edge_animation_active: animation_name.active(),
+        #[cfg(feature = "layout-shoal")]
+        simple_edge_paint,
         node_style,
         rectangle_size: rectangle_size.size,
         label_style,
@@ -758,7 +790,7 @@ fn flowchart_compile_prepared_styles_for_class_names<'a>(
 
 fn is_source_color(raw: &str) -> bool {
     raw.split_once(':')
-        .is_some_and(|(property, _)| property.trim() == "color")
+        .is_some_and(|(property, _)| property.trim().eq_ignore_ascii_case("color"))
 }
 
 pub(super) fn admitted_flowchart_source_stroke_width(value: &str) -> Option<f32> {

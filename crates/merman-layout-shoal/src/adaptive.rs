@@ -1,10 +1,11 @@
 //! Width trials share a work meter and reuse the same component scratch.
 
 use crate::flat::{self, Expanded};
+use crate::validate;
 use crate::work::{LayoutResult, Work, reserved};
 use crate::{
-    Direction, Graph, GroupSpec, LayoutError, LayoutOutput, Options, PackingPolicy, TitlePosition,
-    WidthPolicy,
+    Direction, Graph, GroupSpec, LayoutDetail, LayoutError, LayoutOutput, Options, PackingPolicy,
+    TitlePosition, WidthPolicy,
 };
 
 #[derive(Clone, Copy)]
@@ -29,9 +30,19 @@ impl WidthTrial {
             tighten_groups(&mut graph.groups, work)?;
         }
         if let Some(max_width) = self.fold_at {
-            flat::fold(graph, &self.options, expanded, max_width, work)
+            flat::fold(
+                graph,
+                &self.options,
+                expanded,
+                max_width,
+                LayoutDetail::Full,
+                work,
+            )
         } else {
-            crate::solve(graph, &self.options, expanded, work).map(Some)
+            let mut output =
+                crate::solve(graph, &self.options, expanded, LayoutDetail::Full, work)?;
+            crate::compound::relax_seams(graph, &self.options, &mut output, work)?;
+            Ok(Some(output))
         }
     }
 }
@@ -42,6 +53,22 @@ pub(crate) fn run(
     graph: &Graph,
     options: &Options,
     expanded: &mut Expanded,
+    detail: LayoutDetail,
+    work: &mut Work<'_>,
+) -> LayoutResult<WidthSolution> {
+    let (mut drawing, trial) = candidates(graph, options, expanded, detail, work)?;
+    // Seam edits stay inside the participating groups and their connecting corridor.
+    // Trial-specific geometry is in the drawing. Endpoint ownership and label and marker sizes
+    // come from the original graph and are shared by all trials.
+    crate::compound::relax_seams(graph, &trial.options, &mut drawing, work)?;
+    Ok((drawing, trial))
+}
+
+fn candidates(
+    graph: &Graph,
+    options: &Options,
+    expanded: &mut Expanded,
+    detail: LayoutDetail,
     work: &mut Work<'_>,
 ) -> LayoutResult<WidthSolution> {
     let WidthPolicy::FitWidth {
@@ -53,7 +80,7 @@ pub(crate) fn run(
     else {
         unreachable!()
     };
-    flat::validate_options(options)?;
+    validate::options(options)?;
     let mut wrapped = *options;
     wrapped.packing = PackingPolicy::FitWidth { max_width };
     let original = WidthTrial {
@@ -62,7 +89,10 @@ pub(crate) fn run(
         tight_groups: false,
         fold_at: None,
     };
-    let mut best = (crate::solve(graph, &wrapped, expanded, work)?, original);
+    let solve = |graph: &Graph, options: &Options, expanded: &mut Expanded, work: &mut Work<'_>| {
+        crate::solve(graph, options, expanded, detail, work)
+    };
+    let mut best = (solve(graph, &wrapped, expanded, work)?, original);
     if best.0.bounds.width <= max_width {
         return Ok(best);
     }
@@ -71,11 +101,11 @@ pub(crate) fn run(
     tight.spacing.node *= 0.5;
     tight.spacing.rank *= 0.75;
     let compact = if graph.groups.is_empty() {
-        crate::solve(graph, &tight, expanded, work)
+        solve(graph, &tight, expanded, work)
     } else {
         let mut compact = copy_graph(graph, work)?;
         tighten_groups(&mut compact.groups, work)?;
-        crate::solve(&compact, &tight, expanded, work)
+        solve(&compact, &tight, expanded, work)
     };
     let compact_trial = WidthTrial {
         options: tight,
@@ -102,7 +132,7 @@ pub(crate) fn run(
         };
         let turned_kept = try_narrower(
             &mut best,
-            crate::solve(&turned, &wrapped, expanded, work),
+            solve(&turned, &wrapped, expanded, work),
             turn_trial,
         )?;
         if best.0.bounds.width <= max_width {
@@ -116,7 +146,7 @@ pub(crate) fn run(
         };
         let tight_turn_kept = try_narrower(
             &mut best,
-            crate::solve(&turned, &tight, expanded, work),
+            solve(&turned, &tight, expanded, work),
             tight_turn_trial,
         )?;
         if fold_wide_ranks && best.0.bounds.width > max_width {
@@ -134,6 +164,7 @@ pub(crate) fn run(
                 },
                 expanded,
                 max_width,
+                detail,
                 work,
             )?;
         }
@@ -146,7 +177,7 @@ pub(crate) fn run(
         } else {
             original
         };
-        try_fold(&mut best, graph, trial, expanded, max_width, work)?;
+        try_fold(&mut best, graph, trial, expanded, max_width, detail, work)?;
     }
     Ok(best)
 }
@@ -157,9 +188,17 @@ fn try_fold(
     trial: WidthTrial,
     expanded: &mut Expanded,
     max_width: f64,
+    detail: LayoutDetail,
     work: &mut Work<'_>,
 ) -> LayoutResult<()> {
-    match flat::fold(graph, &trial.options, expanded, max_width, work) {
+    match flat::fold(
+        graph,
+        &trial.options,
+        expanded,
+        max_width,
+        detail.flat(&trial.options),
+        work,
+    ) {
         Ok(Some(candidate)) if candidate.bounds.width < best.0.bounds.width => {
             *best = (
                 candidate,
@@ -232,9 +271,10 @@ fn tighten_groups(groups: &mut [GroupSpec], work: &mut Work<'_>) -> LayoutResult
         work.visit(1)?;
         let title_height = group.title.map_or(0.0, |title| title.height);
         let [top, bottom] = match group.title_position {
-            TitlePosition::TopLeft | TitlePosition::TopCenter | TitlePosition::TopRight => {
-                [title_height, 0.0]
-            }
+            TitlePosition::TopAuto
+            | TitlePosition::TopLeft
+            | TitlePosition::TopCenter
+            | TitlePosition::TopRight => [title_height, 0.0],
             _ => [0.0, title_height],
         };
         let tighten = |padding: f64, title: f64| {

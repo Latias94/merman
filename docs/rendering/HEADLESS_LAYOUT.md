@@ -151,9 +151,11 @@ bytes. Reuse a prepared source to switch widths without reparsing.
 ## Shoal Width Adaptation and Preview Frames
 
 Flowchart, Agentflow, Architecture, C4, Class, State, ER, Requirement, and Usecase support `FitWidth`
-when their effective configuration selects Shoal. The solver wraps disconnected components
-and tries tighter spacing. Flowchart and Agentflow can also turn horizontal flows downward
-for containers narrower than 640 CSS pixels. Opt into folding eligible wide leaf fans with
+when their effective configuration selects Shoal. Layered diagrams wrap disconnected components
+and try tighter spacing. Architecture wraps disconnected root components while preserving their
+four-sided port constraints. C4 wraps rows of cards within its boundaries. Flowchart and Agentflow
+can also turn horizontal flows downward for containers narrower than 640 CSS pixels. Opt into
+folding eligible wide leaf fans with
 `LayoutOptions::with_fold_wide_ranks(true)` or the binding options below.
 
 ```json
@@ -171,8 +173,10 @@ For an interactive preview of Swimlane or a width-fitting Shoal family, call `La
 with the previous successful `ShoalLayoutFrame`, or with `None` to start a session. Read the
 next frame from `SvgOutput::shoal_layout_frame()` after successful rendering. Full binding SVG
 results expose it as `shoal_layout_frame` metadata. Keep the frame with its document and pass
-it back on the next edit. Shoal matches surviving node IDs within their parent and local flow
-direction, then uses the previous rank and cross-axis order as placement hints. Flat diagrams
+it back on the next edit. In layered diagrams and Swimlane, Shoal matches surviving node IDs within
+their parent and local flow direction, then uses the previous rank and cross-axis order as placement
+hints where supported. Architecture and C4 record placements and solve each frame from the current
+port constraints or card inventory. Flat layered diagrams
 also use component-relative coordinates to reduce movement. In-memory Rust frames can pass reusable
 layout storage to the next render when measurements and topology still agree. Constrained renders
 and renders with an equally tight layout work limit release their scratch after solving. Serialized

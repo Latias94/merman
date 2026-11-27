@@ -42,7 +42,18 @@ pub(super) fn with_flowchart_paint_context<T>(
             message: "No such shape: ellipse. Please check your syntax.".to_string(),
         });
     }
-    let owner_occurrences = layout.edge_owners.validate(&layout.edges, &model.edges)?;
+    #[cfg(feature = "layout-shoal")]
+    let svg_edges = layout.route_contract.flowchart_svg_edges();
+    let validate_layout_edges = || layout.edge_owners.validate(&layout.edges, &model.edges);
+    #[cfg(feature = "layout-shoal")]
+    let owner_occurrences = match svg_edges {
+        Some(edges) => layout
+            .edge_owners
+            .validate_projected(edges.len(), &model.edges)?,
+        None => validate_layout_edges()?,
+    };
+    #[cfg(not(feature = "layout-shoal"))]
+    let owner_occurrences = validate_layout_edges()?;
 
     let measurer = options.text_measurer();
 
@@ -191,17 +202,9 @@ pub(super) fn with_flowchart_paint_context<T>(
         layout_nodes_by_id.insert(n.id.as_str(), n);
     }
 
-    let mut layout_edges_by_key: FxHashMap<
-        crate::flowchart::FlowchartEdgeKey,
-        &crate::model::LayoutEdge,
-    > = FxHashMap::with_capacity_and_hasher(layout.edges.len(), Default::default());
-    for (key, edge) in layout.edge_owners.iter().zip(&layout.edges) {
-        if layout_edges_by_key.insert(key, edge).is_some() {
-            return Err(crate::Error::InvalidModel {
-                message: format!("Flowchart layout contains duplicate edge occurrence {key:?}"),
-            });
-        }
-    }
+    let mut layout_edges_by_key =
+        FxHashMap::with_capacity_and_hasher(layout.edge_owners.len(), Default::default());
+    layout_edges_by_key.extend(FlowchartLayoutEdgeRef::in_layout_order(layout));
 
     let mut layout_clusters_by_id: FxHashMap<&str, &LayoutCluster> =
         FxHashMap::with_capacity_and_hasher(layout.clusters.len(), Default::default());
@@ -239,6 +242,7 @@ pub(super) fn with_flowchart_paint_context<T>(
         config: effective_config,
         compatibility: &prepared_theme.compatibility,
         native: prepared_theme.native.as_ref(),
+        container_label_layers: std::cell::OnceCell::new(),
         palette,
         hand_drawn_seed,
         work_meter: options.work_meter(),
@@ -316,7 +320,7 @@ fn charged_edge_route_request<'a>(
         trace_enabled: false,
     };
     if let Some(layout_edge) = ctx.layout_edges_by_key.get(&edge.key) {
-        ctx.work_meter.charge(layout_edge.points.len().max(2))?;
+        ctx.work_meter.charge(layout_edge.points().len().max(2))?;
     }
     Ok((request, offsets))
 }
@@ -532,7 +536,7 @@ impl FlowchartEdgeLabels {
             {
                 continue;
             }
-            let Some(layout_edge) = ctx.layout_edges_by_key.get(&edge.key) else {
+            let Some(&layout_edge) = ctx.layout_edges_by_key.get(&edge.key) else {
                 continue;
             };
             let root = hierarchy.edge_root(edge.key)?.unwrap_or("");
@@ -560,7 +564,7 @@ impl FlowchartEdgeLabels {
             };
             let plain = flowchart_label_plain_text(text, label_type, html);
             let empty = crate::flowchart::flowchart_label_text_is_empty_for_mode(&plain, html);
-            let position = if let Some(label) = layout_edge.label.as_ref() {
+            let position = if let Some(label) = layout_edge.label() {
                 if ctx.swimlane_direction.is_none() && !html && empty && text.is_empty() {
                     continue;
                 }
@@ -578,7 +582,7 @@ impl FlowchartEdgeLabels {
                 if ctx.swimlane_direction.is_some() || empty {
                     continue;
                 }
-                fallback_label_position(ctx, layout_edge, origin_x, origin_y)
+                fallback_label_position(ctx, layout_edge.points(), origin_x, origin_y)
             };
             self.positions.insert(
                 edge.key,
@@ -616,12 +620,11 @@ impl FlowchartEdgeLabels {
 
 fn fallback_label_position(
     ctx: &FlowchartRenderCtx<'_>,
-    edge: &crate::model::LayoutEdge,
+    points: &[crate::model::LayoutPoint],
     origin_x: f64,
     origin_y: f64,
 ) -> crate::model::LayoutPoint {
-    let points: Vec<_> = edge
-        .points
+    let points: Vec<_> = points
         .iter()
         .map(|point| crate::model::LayoutPoint {
             x: point.x + ctx.tx - origin_x,
@@ -917,7 +920,9 @@ mod tests {
                         let expected_work = edges.len()
                             + edges
                                 .iter()
-                                .map(|edge| ctx.layout_edges_by_key[&edge.key].points.len().max(2))
+                                .map(|edge| {
+                                    ctx.layout_edges_by_key[&edge.key].points().len().max(2)
+                                })
                                 .sum::<usize>();
                         let before_parity = ctx.work_meter.used();
                         let parity = prepare_edge_routes(ctx, edges, hierarchy)?;
@@ -1155,13 +1160,17 @@ mod tests {
                     ObstacleOwner::GroupTitle(0),
                 )]),
                 group_parents: Vec::new(),
+                struck_group_titles: Default::default(),
                 border_stitches: Vec::new(),
                 nodes: vec![ShapePortProfile::rectangle(40., 20.); 2],
                 routes: vec![Some(RouteTopology {
                     endpoints: (Endpoint::Node(0), Endpoint::Node(1)),
                     ports: (Side::Right, Side::Left),
                     knots: vec![(Axis::Horizontal, KnotKind::Free); 4],
+                    corridor_clearance: 0.0,
                 })],
+                #[cfg(feature = "layout-shoal")]
+                svg_edges: None,
             }
             .into(),
         );
@@ -1215,6 +1224,7 @@ mod tests {
             AxisRoutes {
                 clearance: Default::default(),
                 group_parents: Vec::new(),
+                struck_group_titles: Default::default(),
                 border_stitches: Vec::new(),
                 nodes: vec![
                     ShapePortProfile::diamond(48.0, 36.0),
@@ -1225,6 +1235,7 @@ mod tests {
                         endpoints: (Endpoint::Node(0), Endpoint::Node(1)),
                         ports: (Side::Right, Side::Left),
                         knots: vec![(Axis::Horizontal, KnotKind::Free); 4],
+                        corridor_clearance: 0.0,
                     }),
                     Some(RouteTopology {
                         endpoints: (Endpoint::Node(0), Endpoint::Node(1)),
@@ -1237,8 +1248,11 @@ mod tests {
                         ]
                         .map(|axis| (axis, KnotKind::Free))
                         .to_vec(),
+                        corridor_clearance: 0.0,
                     }),
                 ],
+                #[cfg(feature = "layout-shoal")]
+                svg_edges: None,
             }
             .into(),
         );

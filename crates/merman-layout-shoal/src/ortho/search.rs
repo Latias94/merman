@@ -66,7 +66,8 @@ impl Quick {
     }
 
     pub(super) fn emit(&self, request: OrthoRequest) -> LayoutResult<Vec<RoutePoint>> {
-        let mut points = reserved(2 + usize::from(self.via.is_some()))?;
+        // Leave room for the physical contacts when the caller supplied marker leads.
+        let mut points = reserved(4 + usize::from(self.via.is_some()))?;
         points.push(request.start);
         points.extend(self.via);
         points.push(request.end);
@@ -273,7 +274,7 @@ impl Search {
             };
             state = parent;
         }
-        let mut points = reserved(2)?;
+        let mut points = reserved(self.chain.len().clamp(2, 8) + 2)?;
         points.push(request.start);
         for triple in self.chain.windows(3).rev() {
             work.visit(1)?;

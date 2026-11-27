@@ -1032,10 +1032,12 @@ mod tests {
     fn mindmap_code_only_html_measures_visible_code_content() {
         let measurer = crate::text::DeterministicTextMeasurer::default();
         let style = super::mindmap_text_style(&serde_json::json!({}));
+        let mut code_style = style.clone();
+        code_style.font_family = Some("monospace".to_owned());
         let expected = crate::text::TextMeasurer::measure_wrapped(
             &measurer,
             "note about mermaid",
-            &style,
+            &code_style,
             Some(200.0),
             crate::text::WrapMode::HtmlLike,
         );

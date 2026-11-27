@@ -15,7 +15,7 @@ pub(in crate::svg::parity::flowchart) fn prepare_edge_route(
         trace_enabled: _,
     } = request;
 
-    let le = ctx.layout_edges_by_key.get(&key)?;
+    let le = ctx.layout_edges_by_key.get(&key)?.materialized()?;
     let mut label = ctx.uses_elk_adapter_dom.then(|| le.label.clone()).flatten();
     if let Some(label) = label.as_mut() {
         label.x += ctx.tx - origin_x;
@@ -26,7 +26,8 @@ pub(in crate::svg::parity::flowchart) fn prepare_edge_route(
         // raw layout empty so a real two-point section still follows the routed-edge path.
         let points = missing_section_points(ctx, edge, origin_x, origin_y)?;
         if let Some(label) = label.as_mut()
-            && let Some(midpoint) = missing_section_label_position(ctx, key, le, origin_x, origin_y)
+            && let Some(midpoint) =
+                missing_section_label_position(ctx, key, &le.points, origin_x, origin_y)
         {
             label.x = midpoint.x;
             label.y = midpoint.y;
@@ -360,7 +361,7 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
     scratch: &mut FlowchartEdgeDataPointsScratch,
 ) -> Option<FlowchartEdgePathGeom> {
     let ctx = request.ctx;
-    let le = ctx.layout_edges_by_key.get(&request.key)?;
+    let le = ctx.layout_edges_by_key.get(&request.key)?.materialized()?;
     let PreparedEdgePaint {
         line_data,
         interpolate,
@@ -378,7 +379,7 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
         record_flowchart_edge_trace(FlowchartEdgeTraceInput {
             ctx,
             edge: request.edge,
-            layout_edge: le,
+            layout_edge: Some(le),
             origin_x: request.origin_x,
             origin_y: request.origin_y,
             base_points: &scratch.tmp_points_a,
@@ -391,6 +392,7 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
     Some(FlowchartEdgePathGeom {
         d: geometry.d,
         pb: geometry.bounds,
+        neo_length: None,
         data_points: points_for_data_points.clone(),
         pre_hop_dash_mask_length: None,
         line_hop_applied: false,
@@ -444,7 +446,7 @@ pub(in crate::svg::parity::flowchart) fn dagre_linear_painted_route(
         return None;
     }
     let route = prepare_edge_route(request, scratch)?;
-    let le = ctx.layout_edges_by_key.get(&request.key)?;
+    let le = ctx.layout_edges_by_key.get(&request.key)?.materialized()?;
     if le.from_cluster.is_some() || le.to_cluster.is_some() {
         return None;
     }

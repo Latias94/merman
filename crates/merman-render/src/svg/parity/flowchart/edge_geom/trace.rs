@@ -14,7 +14,7 @@ pub(in crate::svg::parity::flowchart) fn tp(
 pub(in crate::svg::parity::flowchart) struct FlowchartEdgeTraceInput<'a> {
     pub(in crate::svg::parity::flowchart) ctx: &'a FlowchartRenderCtx<'a>,
     pub(in crate::svg::parity::flowchart) edge: &'a crate::flowchart::FlowEdge,
-    pub(in crate::svg::parity::flowchart) layout_edge: &'a crate::model::LayoutEdge,
+    pub(in crate::svg::parity::flowchart) layout_edge: Option<&'a crate::model::LayoutEdge>,
     pub(in crate::svg::parity::flowchart) origin_x: f64,
     pub(in crate::svg::parity::flowchart) origin_y: f64,
     pub(in crate::svg::parity::flowchart) base_points: &'a [crate::model::LayoutPoint],
@@ -44,10 +44,12 @@ pub(in crate::svg::parity::flowchart) fn record_flowchart_edge_trace(
         edge_id: edge.id.clone(),
         from: edge.from.clone(),
         to: edge.to.clone(),
-        layout_from: layout_edge.from.clone(),
-        layout_to: layout_edge.to.clone(),
-        from_cluster: layout_edge.from_cluster.clone(),
-        to_cluster: layout_edge.to_cluster.clone(),
+        layout_from: layout_edge
+            .map_or(&edge.from, |layout| &layout.from)
+            .clone(),
+        layout_to: layout_edge.map_or(&edge.to, |layout| &layout.to).clone(),
+        from_cluster: layout_edge.and_then(|layout| layout.from_cluster.clone()),
+        to_cluster: layout_edge.and_then(|layout| layout.to_cluster.clone()),
         origin_x,
         origin_y,
         tx: ctx.tx,

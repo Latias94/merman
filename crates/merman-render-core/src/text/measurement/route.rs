@@ -172,6 +172,25 @@ fn deterministic_profile() -> TextMeasurementProfile {
     )
 }
 
+#[cfg(feature = "layout-shoal")]
+fn calibrated_profile() -> &'static TextMeasurementProfile {
+    static PROFILE: std::sync::OnceLock<TextMeasurementProfile> = std::sync::OnceLock::new();
+    PROFILE.get_or_init(|| {
+        let profile = MeasurementProfileId::new("merman.shoal-calibrated-text")
+            .expect("static calibrated profile id is valid");
+        let identity = TextMeasurementProfileIdentity::new(
+            profile,
+            concat!("merman-render@", env!("CARGO_PKG_VERSION")),
+        )
+        .expect("static calibrated profile version is valid");
+        TextMeasurementProfile::new_builtin(
+            identity,
+            Arc::new(super::super::deterministic::CalibratedTextMeasurer),
+            BuiltinTextMeasurementProfile::Calibrated,
+        )
+    })
+}
+
 /// The concrete backend kind that produced one result.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TextMeasurementSource {
@@ -470,6 +489,21 @@ impl TextMeasurementSession {
         Self {
             policy,
             recorder: Box::default(),
+        }
+    }
+
+    #[cfg(feature = "layout-shoal")]
+    pub fn use_shoal_text_widths(&mut self) {
+        for route in &mut self.policy.routes {
+            match route {
+                TextMeasurementRouteConfig::Profile(profile)
+                | TextMeasurementRouteConfig::Host {
+                    fallback: profile, ..
+                } if profile.builtin == Some(BuiltinTextMeasurementProfile::Deterministic) => {
+                    *profile = calibrated_profile().clone();
+                }
+                _ => {}
+            }
         }
     }
 

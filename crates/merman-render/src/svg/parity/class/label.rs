@@ -130,14 +130,31 @@ pub(super) fn open_class_note_label(out: &mut impl SvgOutput, style: &str) {
 }
 
 pub(super) fn class_html_div_style(width: f64, max_width_px: i64) -> String {
+    class_html_div_style_aligned(width, max_width_px, "center")
+}
+
+pub(super) fn class_html_member_div_style(
+    width: f64,
+    max_width_px: i64,
+    uses_canonical_routes: bool,
+) -> String {
+    let align = if uses_canonical_routes {
+        "left"
+    } else {
+        "center"
+    };
+    class_html_div_style_aligned(width, max_width_px, align)
+}
+
+fn class_html_div_style_aligned(width: f64, max_width_px: i64, text_align: &str) -> String {
     let max_width_px = max_width_px.max(0);
     if width >= max_width_px as f64 - 0.01 {
         format!(
-            "display: table; white-space: break-spaces; line-height: 1.5; max-width: {max_width_px}px; text-align: center; width: {max_width_px}px;"
+            "display: table; white-space: break-spaces; line-height: 1.5; max-width: {max_width_px}px; text-align: {text_align}; width: {max_width_px}px;"
         )
     } else {
         format!(
-            "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {max_width_px}px; text-align: center;"
+            "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {max_width_px}px; text-align: {text_align};"
         )
     }
 }

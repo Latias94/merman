@@ -67,7 +67,7 @@ pub(in super::super) fn render_flowchart_shape(
             super::render_curved_trapezoid(out, ctx, common, label, details);
         }
         FlowchartShape::Cylinder => {
-            super::render_cylinder(out, ctx, common, label);
+            super::render_cylinder(out, ctx, common, label, details);
         }
         FlowchartShape::Datastore => {
             super::render_datastore(out, common, details);
@@ -101,7 +101,7 @@ pub(in super::super) fn render_flowchart_shape(
             super::render_hexagon(out, common, details);
         }
         FlowchartShape::HorizontalCylinder => {
-            super::render_horizontal_cylinder(out, ctx, common, label);
+            super::render_horizontal_cylinder(out, ctx, common, label, details);
         }
         FlowchartShape::Hourglass => {
             // Mermaid clears `node.label` but still emits an empty label group.
@@ -140,7 +140,7 @@ pub(in super::super) fn render_flowchart_shape(
             super::render_lean_right(out, common, details);
         }
         FlowchartShape::LinedCylinder => {
-            super::render_lined_cylinder(out, ctx, common, label);
+            super::render_lined_cylinder(out, ctx, common, label, details);
         }
         FlowchartShape::LinedDocument => {
             super::render_lined_wave_document(out, ctx, common, label, details);

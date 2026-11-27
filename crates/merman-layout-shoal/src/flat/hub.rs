@@ -1,18 +1,19 @@
 //! Relieve crowded automatic port rows while the drawing is still in canonical coordinates.
 
-use super::{Component, Drawing, canonical_size, validate};
-use crate::geom::Bounds;
-use crate::work::{LayoutResult, Work, filled, push, reserved};
+use super::{Component, Drawing, canonical_size};
+use crate::geom::{Bounds, Bvh, BvhEntry};
+use crate::work::{LayoutResult, Work, push, reserved};
 use crate::{
-    Axis, EdgeGeometry, EdgeSpec, Graph, KnotKind, MarkerMetrics, Options, Point, PortSideHint,
-    Rect, RoutePoint, RoutingStyle, Side, WorkError,
+    Axis, EdgeGeometry, EdgeSpec, Graph, KnotKind, LayoutError, MarkerMetrics, Options, Point,
+    PortSideHint, Rect, RoutePoint, RoutingStyle, Side, WorkError,
 };
+use std::ops::ControlFlow::{Break, Continue};
 
 const MARKER_PITCH: f64 = 1.15;
 // A component may contain many otherwise independent crowded hubs. Bound the total clearance
-// traversal even when the same walls are in range of all of them.
+// traversal even when the same obstacles are in range of all of them.
 const CLEARANCE_PASSES: usize = 64;
-const WALL_BLOCK_SIZE: usize = 16;
+const DIRECT_PROPOSAL_LIMIT: usize = 8;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum End {
@@ -70,7 +71,7 @@ impl End {
     }
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Debug, Default)]
 struct Face {
     count: usize,
     marked: usize,
@@ -143,7 +144,7 @@ impl Run {
                 .min((size - face.width).max(0.0))
         };
         let main_span = usable_span(rect.width, node.port_span);
-        let side_span = usable_span(rect.height, node.perpendicular_port_span);
+        let side_span = usable_span(rect.height, node.perpendicular_port_span.or(node.port_span));
         let runway = face.depth + spacing.edge;
         if main_span <= 0.0 || side_span <= 0.0 || !runway.is_finite() || runway <= 0.0 {
             return None;
@@ -216,6 +217,7 @@ fn marker(p: Point, side: Side, mark: MarkerMetrics) -> Option<Bounds> {
     ))
 }
 
+#[derive(Debug)]
 struct Tail {
     /// Points from the contact through the beginning of the old fan-in turn, inclusive.
     cut: usize,
@@ -290,6 +292,7 @@ impl Tail {
     }
 }
 
+#[derive(Debug)]
 struct Edit {
     points: Vec<RoutePoint>,
     side: Side,
@@ -303,6 +306,12 @@ impl Edit {
     fn blocked_by(&self, wall: Bounds) -> bool {
         self.body.iter().any(|&body| body.overlaps_strictly(wall))
             || self.mark.is_some_and(|mark| mark.overlaps_strictly(wall))
+    }
+
+    fn blocks_marker(&self, marker: Bounds) -> bool {
+        // The retained envelope also covers corners when the painter coalesces free knots.
+        self.retained.overlaps_strictly(marker)
+            || self.body.iter().any(|part| part.overlaps_strictly(marker))
     }
 
     fn new(
@@ -420,91 +429,86 @@ impl Edit {
     }
 }
 
-#[derive(Default)]
-struct WallIndex {
-    postorder: Vec<Bounds>,
-    indexed_blocks: usize,
-    disabled: bool,
+#[derive(Clone, Copy)]
+struct RouteBounds {
+    stroke: Bounds,
+    markers: [Option<Bounds>; 2],
+    changed: bool,
 }
 
-impl WallIndex {
-    fn new(wall_count: usize) -> Self {
-        Self {
-            disabled: wall_count < 2 * WALL_BLOCK_SIZE,
-            ..Self::default()
+struct IndexedRoute {
+    edge: usize,
+    stroke: Bounds,
+    markers: [Option<Bounds>; 2],
+}
+
+struct RouteIndex {
+    routes: Bvh<IndexedRoute>,
+}
+
+impl RouteIndex {
+    fn new(
+        routes: impl ExactSizeIterator<Item = RouteBounds>,
+        work: &mut Work<'_>,
+    ) -> LayoutResult<Self> {
+        work.charge(routes.len())?;
+        let mut items = reserved(routes.len())?;
+        for (edge, route) in routes.enumerate() {
+            items.push(IndexedRoute {
+                edge,
+                stroke: route.stroke,
+                markers: route.markers,
+            });
         }
+        Ok(Self {
+            routes: Bvh::build_with_work(
+                items,
+                |route| {
+                    let mut bounds = route.stroke;
+                    for marker in route.markers.into_iter().flatten() {
+                        bounds = bounds.union(marker);
+                    }
+                    bounds
+                },
+                work,
+            )?,
+        })
     }
 
-    fn blocks(&mut self, mut walls: &[Bounds], edit: &Edit) -> bool {
-        let mut blocks = self.indexed_blocks;
-        let mut node_end = 0;
-        while blocks != 0 {
-            let complete = 1 << blocks.ilog2();
-            let (tree, tail) = walls.split_at(complete * WALL_BLOCK_SIZE);
-            node_end += 2 * complete - 1;
-            if self.blocks_tree(node_end - 1, tree, edit) {
-                return true;
-            }
-            walls = tail;
-            blocks -= complete;
-        }
-        while !self.disabled && walls.len() >= WALL_BLOCK_SIZE {
-            let (block, tail) = walls.split_at(WALL_BLOCK_SIZE);
-            let mut bounds = block[0];
-            if edit.blocked_by(bounds) {
-                return true;
-            }
-            for &wall in &block[1..] {
-                if edit.blocked_by(wall) {
-                    return true;
-                }
-                bounds = bounds.union(wall);
-            }
-            self.append_block(bounds);
-            walls = tail;
-        }
-        walls.iter().copied().any(|wall| edit.blocked_by(wall))
-    }
-
-    fn blocks_tree(&self, root: usize, walls: &[Bounds], edit: &Edit) -> bool {
-        if !edit.blocked_by(self.postorder[root]) {
-            return false;
-        }
-        let blocks = walls.len() / WALL_BLOCK_SIZE;
-        if blocks == 1 {
-            walls.iter().copied().any(|wall| edit.blocked_by(wall))
-        } else {
-            let (left, right) = walls.split_at(walls.len() / 2);
-            self.blocks_tree(root - blocks, left, edit) || self.blocks_tree(root - 1, right, edit)
-        }
-    }
-
-    fn append_block(&mut self, bounds: Bounds) {
-        let completed = self.indexed_blocks + 1;
-        let joins = completed.trailing_zeros() as usize;
-        if self.postorder.try_reserve(1 + joins).is_err() {
-            *self = Self {
-                disabled: true,
-                ..Self::default()
-            };
-            return;
-        }
-        self.postorder.push(bounds);
-        let mut span = 2;
-        for _ in 0..joins {
-            let root = self.postorder.len();
-            let bounds = self.postorder[root - span].union(self.postorder[root - 1]);
-            self.postorder.push(bounds);
-            span *= 2;
-        }
-        self.indexed_blocks = completed;
+    fn allows(
+        &self,
+        edit: &Edit,
+        remaining: &mut usize,
+        work: &mut Work<'_>,
+        check_marker: impl Fn(usize, End) -> bool,
+        blocks_stroke: impl Fn(usize, Bounds) -> bool,
+    ) -> LayoutResult<bool> {
+        clear_index(
+            &self.routes,
+            remaining,
+            work,
+            |bounds| {
+                edit.blocked_by(bounds)
+                    || edit.mark.is_some_and(|mark| mark.overlaps_strictly(bounds))
+            },
+            |item| {
+                item.markers[End::Source as usize].is_some_and(|bounds| {
+                    edit.blocked_by(bounds) && check_marker(item.edge, End::Source)
+                }) || item.markers[End::Target as usize].is_some_and(|bounds| {
+                    edit.blocked_by(bounds) && check_marker(item.edge, End::Target)
+                }) || edit.mark.is_some_and(|mark| {
+                    mark.overlaps_strictly(item.stroke) && blocks_stroke(item.edge, mark)
+                })
+            },
+        )
     }
 }
 
 struct Clearance {
-    walls: Vec<Bounds>,
-    wall_index: WallIndex,
-    strokes: Vec<Bounds>,
+    walls: Bvh<Bounds>,
+    routes: Vec<RouteBounds>,
+    index: RouteIndex,
+    changed: Vec<usize>,
     remaining: usize,
 }
 
@@ -521,11 +525,22 @@ impl Clearance {
                 .filter(|b| b.has_area()),
         );
         work.charge(drawing.edges.len())?;
-        let mut strokes = reserved(drawing.edges.len())?;
+        let mut routes = reserved(drawing.edges.len())?;
         for (id, edge) in &drawing.edges {
+            let Some((first, rest)) = edge.points.split_first() else {
+                return Err(LayoutError::InvalidInput("missing hub route contacts"));
+            };
+            let last = rest.last().unwrap_or(first);
             work.visit(edge.points.len())?;
-            strokes.push(Bounds::path(&edge.points));
             let spec = &graph.edges[*id as usize];
+            routes.push(RouteBounds {
+                stroke: Bounds::path(&edge.points),
+                markers: [
+                    marker(point(*first), edge.ports.0, spec.start_marker),
+                    marker(point(*last), edge.ports.1, spec.end_marker),
+                ],
+                changed: false,
+            });
             for (center, size) in [
                 (edge.label_center, spec.label),
                 (edge.start_label_center, spec.start_label),
@@ -545,68 +560,167 @@ impl Clearance {
             .len()
             .saturating_add(walls.len())
             .saturating_mul(CLEARANCE_PASSES);
-        let wall_index = WallIndex::new(walls.len());
         Ok(Self {
-            walls,
-            wall_index,
-            strokes,
+            walls: Bvh::from_bounds(walls, work)?,
+            index: RouteIndex::new(routes.iter().copied(), work)?,
+            routes,
+            changed: Vec::new(),
             remaining,
         })
+    }
+
+    fn accept(
+        &mut self,
+        end: End,
+        proposed: &mut Vec<(usize, Edit)>,
+        drawing: &mut Drawing,
+        saved: &mut Vec<SavedRoute>,
+        work: &mut Work<'_>,
+    ) -> LayoutResult<()> {
+        work.charge(proposed.len())?;
+        saved
+            .try_reserve(proposed.len())
+            .map_err(|_| LayoutError::AllocationLimit)?;
+        self.changed
+            .try_reserve(proposed.len())
+            .map_err(|_| LayoutError::AllocationLimit)?;
+        for (i, edit) in proposed.drain(..) {
+            let route = &mut self.routes[i];
+            if !route.changed {
+                self.changed.push(i);
+                route.changed = true;
+            }
+            route.stroke = edit.envelope;
+            route.markers[end as usize] = edit.mark;
+
+            let edge = &mut drawing.edges[i].1;
+            saved.push(SavedRoute {
+                edge: i,
+                points: std::mem::replace(&mut edge.points, edit.points),
+                ports: edge.ports,
+                corridor_clearance: edge.corridor_clearance,
+            });
+            edge.corridor_clearance = 0.0;
+            match end {
+                End::Source => edge.ports.0 = edit.side,
+                End::Target => edge.ports.1 = edit.side,
+            }
+        }
+        Ok(())
+    }
+
+    fn refresh_index(&mut self, work: &mut Work<'_>) -> LayoutResult<()> {
+        // Keep recent edits out of the snapshot until rebuilding can be amortized over
+        // a square root of the edge count. Each route can be changed at both ends.
+        if self.changed.len() > self.routes.len().isqrt() {
+            self.index = RouteIndex::new(self.routes.iter().copied(), work)?;
+            for edge in self.changed.drain(..) {
+                self.routes[edge].changed = false;
+            }
+        }
+        Ok(())
+    }
+
+    fn allows_walls(&mut self, edit: &Edit, work: &mut Work<'_>) -> LayoutResult<bool> {
+        if self.walls.root_bounds().is_none() {
+            return visit_clearance(&mut self.remaining, 1, work);
+        }
+        clear_index(
+            &self.walls,
+            &mut self.remaining,
+            work,
+            |bounds| edit.blocked_by(bounds),
+            |&wall| edit.blocked_by(wall),
+        )
     }
 
     fn allows(
         &mut self,
         end_to_move: End,
         proposed: &[(usize, Edit)],
-        drawing: &Drawing,
-        graph: &Graph,
         work: &mut Work<'_>,
     ) -> LayoutResult<bool> {
-        for &(edge, ref edit) in proposed {
-            if !visit_clearance(&mut self.remaining, self.walls.len(), work)?
-                || self.wall_index.blocks(&self.walls, edit)
-            {
+        let Some((last, _)) = proposed.last() else {
+            return Ok(true);
+        };
+        if !visit_clearance(&mut self.remaining, proposed.len(), work)? {
+            return Ok(false);
+        }
+        if *last >= self.routes.len() || !proposed.is_sorted_by(|a, b| a.0 < b.0) {
+            return Err(LayoutError::InvalidInput("invalid hub proposal edges"));
+        }
+        self.refresh_index(work)?;
+        let patch_index = if proposed.len() > DIRECT_PROPOSAL_LIMIT {
+            Some(RouteIndex::new(
+                proposed.iter().map(|(_, edit)| {
+                    let mut markers = [None; 2];
+                    markers[end_to_move as usize] = edit.mark;
+                    RouteBounds {
+                        stroke: edit.retained.union(edit.body[0]).union(edit.body[1]),
+                        markers,
+                        changed: false,
+                    }
+                }),
+                work,
+            )?)
+        } else {
+            None
+        };
+        // The proposal replaces the moved marker and stroke. The peer marker still comes
+        // from the current route even when this edit is for that same edge.
+        let replaced = |edge| proposed.binary_search_by_key(&edge, |&(i, _)| i).is_ok();
+        for (position, &(edge, ref edit)) in proposed.iter().enumerate() {
+            if !self.allows_walls(edit, work)? {
                 return Ok(false);
             }
-            let blocked = |wall| edit.blocked_by(wall);
-            let mut patches = proposed.iter().peekable();
-            for (i, (id, geom)) in drawing.edges.iter().enumerate() {
+            if !self.index.allows(
+                edit,
+                &mut self.remaining,
+                work,
+                |i, end| !self.routes[i].changed && (end != end_to_move || !replaced(i)),
+                |i, _| !self.routes[i].changed && i != edge && !replaced(i),
+            )? {
+                return Ok(false);
+            }
+            for &i in &self.changed {
                 if !visit_clearance(&mut self.remaining, 1, work)? {
                     return Ok(false);
                 }
-                let other = patches.next_if(|(at, _)| *at == i).map(|(_, edit)| edit);
-                let spec = &graph.edges[*id as usize];
+                let other = &self.routes[i];
+                let replaced = replaced(i);
                 for end in End::BOTH {
-                    if i == edge && end == end_to_move {
-                        continue;
-                    }
-                    let wall = if end == end_to_move
-                        && let Some(other) = other
+                    if (end != end_to_move || !replaced)
+                        && other.markers[end as usize].is_some_and(|mark| edit.blocked_by(mark))
                     {
-                        other.mark
-                    } else {
-                        marker(
-                            point(end.point(&geom.points, 0)),
-                            end.side(geom),
-                            end.marker(spec),
-                        )
-                    };
-                    if wall.is_some_and(blocked) {
                         return Ok(false);
                     }
                 }
                 if i != edge
-                    && let Some(mark) = edit.mark
+                    && !replaced
+                    && edit
+                        .mark
+                        .is_some_and(|mark| other.stroke.overlaps_strictly(mark))
                 {
-                    // The whole retained envelope also covers corners whose surrounding free
-                    // knots are coalesced by the painter before interpolation.
-                    let crosses = if let Some(other) = other {
-                        other.retained.overlaps_strictly(mark)
-                            || other.body.iter().any(|part| part.overlaps_strictly(mark))
-                    } else {
-                        self.strokes[i].overlaps_strictly(mark)
-                    };
-                    if crosses {
+                    return Ok(false);
+                }
+            }
+            if let Some(index) = &patch_index {
+                if !index.allows(
+                    edit,
+                    &mut self.remaining,
+                    work,
+                    |i, _| i != position,
+                    |i, marker| i != position && proposed[i].1.blocks_marker(marker),
+                )? {
+                    return Ok(false);
+                }
+            } else {
+                for (i, other) in proposed {
+                    if !visit_clearance(&mut self.remaining, 1, work)?
+                        || (*i != edge
+                            && (other.mark.is_some_and(|mark| edit.blocked_by(mark))
+                                || edit.mark.is_some_and(|mark| other.blocks_marker(mark))))
+                    {
                         return Ok(false);
                     }
                 }
@@ -614,6 +728,26 @@ impl Clearance {
         }
         Ok(true)
     }
+}
+
+fn clear_index<T>(
+    index: &Bvh<T>,
+    remaining: &mut usize,
+    work: &mut Work<'_>,
+    may_block: impl Fn(Bounds) -> bool,
+    blocks: impl Fn(&T) -> bool,
+) -> LayoutResult<bool> {
+    let result = index.visit(|entry| -> LayoutResult<_> {
+        if !visit_clearance(remaining, 1, work)? {
+            return Ok(Break(()));
+        }
+        Ok(match entry {
+            BvhEntry::Node(bounds) => Continue(may_block(bounds)),
+            BvhEntry::Item(item) if blocks(item) => Break(()),
+            BvhEntry::Item(_) => Continue(true),
+        })
+    })?;
+    Ok(result.is_continue())
 }
 
 fn visit_clearance(remaining: &mut usize, units: usize, work: &mut Work<'_>) -> LayoutResult<bool> {
@@ -681,18 +815,88 @@ fn seats(
     })
 }
 
-pub(super) fn spread(
+#[derive(Debug)]
+struct SavedRoute {
+    edge: usize,
+    points: Vec<RoutePoint>,
+    ports: (Side, Side),
+    corridor_clearance: f64,
+}
+
+#[derive(Debug, Default)]
+pub(super) struct HubScratch {
+    faces: Vec<[Face; 2]>,
+    tails: Vec<Tail>,
+    proposed: Vec<(usize, Edit)>,
+    saved: Vec<SavedRoute>,
+}
+
+impl HubScratch {
+    pub(super) fn retained_bytes(&self) -> usize {
+        use crate::scratch::capacity_bytes;
+        capacity_bytes(&self.faces)
+            + capacity_bytes(&self.tails)
+            + capacity_bytes(&self.proposed)
+            + capacity_bytes(&self.saved)
+    }
+}
+
+#[cfg(test)]
+fn spread(
     drawing: &mut Drawing,
     c: &Component,
     graph: &Graph,
     options: &Options,
     work: &mut Work<'_>,
 ) -> LayoutResult<()> {
+    spread_with_scratch(drawing, c, graph, options, &mut HubScratch::default(), work)
+}
+
+pub(super) fn spread_with_scratch(
+    drawing: &mut Drawing,
+    c: &Component,
+    graph: &Graph,
+    options: &Options,
+    scratch: &mut HubScratch,
+    work: &mut Work<'_>,
+) -> LayoutResult<()> {
+    let result = spread_faces(drawing, c, graph, options, scratch, work);
+    scratch.proposed.clear();
+    if result.is_err() {
+        // Both ends of an edge can move in separate runs, so undo them in reverse order.
+        for saved in scratch.saved.drain(..).rev() {
+            let route = &mut drawing.edges[saved.edge].1;
+            route.points = saved.points;
+            route.ports = saved.ports;
+            route.corridor_clearance = saved.corridor_clearance;
+        }
+    } else {
+        scratch.saved.clear();
+    }
+    result
+}
+
+fn spread_faces(
+    drawing: &mut Drawing,
+    c: &Component,
+    graph: &Graph,
+    options: &Options,
+    scratch: &mut HubScratch,
+    work: &mut Work<'_>,
+) -> LayoutResult<()> {
+    use crate::scratch::clear_reserve;
     if c.links.len() < 2 || c.boundaries || c.pinned || c.group_proxies {
         return Ok(());
     }
+    let HubScratch {
+        faces,
+        tails,
+        proposed,
+        saved,
+    } = scratch;
     work.charge(c.nodes.len())?;
-    let mut faces = filled(c.nodes.len(), [Face::default(); 2])?;
+    clear_reserve(faces, c.nodes.len())?;
+    faces.resize(c.nodes.len(), [Face::default(); 2]);
     for (link, (id, edge)) in c.links.iter().zip(&drawing.edges) {
         work.visit(1)?;
         let spec = &graph.edges[*id as usize];
@@ -755,6 +959,7 @@ pub(super) fn spread(
         work.sort(&mut run.edges, |&a, &b| {
             across(a).total_cmp(&across(b)).then(a.cmp(&b))
         })?;
+        work.visit(run.edges.len())?;
         if !run
             .edges
             .windows(2)
@@ -762,7 +967,7 @@ pub(super) fn spread(
         {
             continue;
         }
-        let mut tails = reserved(run.edges.len())?;
+        clear_reserve(tails, run.edges.len())?;
         for &i in &run.edges {
             let (id, edge) = &drawing.edges[i];
             if run.end.side(edge) != run.end.face()
@@ -779,6 +984,7 @@ pub(super) fn spread(
             continue;
         }
         let rect = drawing.nodes[run.hub];
+        work.visit(run.edges.len())?;
         let left = tails
             .iter()
             .take(run.side_capacity)
@@ -810,7 +1016,7 @@ pub(super) fn spread(
         // An obstructed side can give its overflow to the other side when there is room.
         let splits =
             std::iter::once(preferred).chain((least..=most).filter(|&left| left != preferred));
-        let mut proposed = reserved(run.edges.len())?;
+        clear_reserve(proposed, run.edges.len())?;
         'split: for left in splits {
             if !visit_clearance(&mut proof.remaining, run.edges.len(), work)? {
                 break;
@@ -828,8 +1034,8 @@ pub(super) fn spread(
             for ((&i, tail), seat) in run
                 .edges
                 .iter()
-                .zip(&tails)
-                .zip(seats(&run, &tails, rect, left, options))
+                .zip(tails.iter())
+                .zip(seats(&run, tails, rect, left, options))
             {
                 let (id, edge) = &drawing.edges[i];
                 if seat == (run.end.side(edge), point(run.end.point(&edge.points, 0))) {
@@ -849,21 +1055,13 @@ pub(super) fn spread(
                 };
                 proposed.push((i, edit));
             }
-            validate::charge_sort(proposed.len(), work)?;
+            work.charge_sort(proposed.len())?;
             proposed.sort_unstable_by_key(|(i, _)| *i);
-            if !proof.allows(run.end, &proposed, drawing, graph, work)? {
+            work.check()?;
+            if !proof.allows(run.end, proposed, work)? {
                 continue;
             }
-            work.charge(proposed.len())?;
-            for (i, edit) in proposed.drain(..) {
-                proof.strokes[i] = edit.envelope;
-                let edge = &mut drawing.edges[i].1;
-                edge.points = edit.points;
-                match run.end {
-                    End::Source => edge.ports.0 = edit.side,
-                    End::Target => edge.ports.1 = edit.side,
-                }
-            }
+            proof.accept(run.end, proposed, drawing, saved, work)?;
             break;
         }
     }

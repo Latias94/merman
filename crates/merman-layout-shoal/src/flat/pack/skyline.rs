@@ -106,6 +106,7 @@ fn place(
         let (end, depth) = (right + gap, bottom + gap);
         if !end.is_finite()
             || !depth.is_finite()
+            || end <= x
             || (w > 0.0 && right <= x)
             || (h > 0.0 && bottom <= y)
             || (gap > 0.0 && (end <= right || depth <= bottom))
@@ -124,9 +125,7 @@ fn place(
         across = across.max(right);
         along = along.max(bottom);
         // The trailing gap is reserved in both axes and excluded from the reported extent.
-        if end > x {
-            raise(&mut spans, first, end, depth);
-        }
+        raise(&mut spans, first, end, depth);
     }
     let (width, height) = orient(vertical, across, along);
     Ok(Some((offsets, Size { width, height })))

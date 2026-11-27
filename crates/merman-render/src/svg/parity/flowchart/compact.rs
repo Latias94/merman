@@ -232,6 +232,7 @@ fn admit_edge(
     let layout = ctx
         .layout_edges_by_key
         .get(&render_edge.key)
+        .and_then(|edge| edge.materialized())
         .ok_or_else(|| invalid("missing Flowchart layout edge"))?;
     if style.edge_marker_color(false).is_some()
         || ctx

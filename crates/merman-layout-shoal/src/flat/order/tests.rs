@@ -591,6 +591,27 @@ impl WorkControl for Meter {
 }
 
 #[test]
+fn unchanged_sweeps_age_the_trial_without_recounting_fixed_port_crossings() {
+    let run = |max_sweeps| {
+        let (mut g, nodes) = graph(&[1, 1], &[(0, 1, -5., 5., 1.), (0, 1, 5., -5., 1.)]);
+        let mut options = Options::default();
+        options.caps.max_sweeps = max_sweeps;
+        options.caps.max_transpose_nodes = 0;
+        let mut meter = Meter {
+            remaining: usize::MAX,
+            checks: 0,
+            cancel_at: 0,
+        };
+        let count = reduce(&mut g, &nodes, &options, &mut Work::new(&mut meter)).unwrap();
+        assert_eq!(count, 1);
+        assert_eq!(g.layers, [vec![0], vec![1]]);
+        usize::MAX - meter.remaining
+    };
+    // Each of the four stale rounds visits a singleton rank and leaves its score intact.
+    assert_eq!(run(12) - run(0), 4 * (1 + 1));
+}
+
+#[test]
 fn budget_and_mid_search_cancellation_leave_the_input_reusable() {
     let (mut g, nodes) = graph(
         &[2, 2],
@@ -613,11 +634,19 @@ fn budget_and_mid_search_cancellation_leave_the_input_reusable() {
     let used = usize::MAX - meter.remaining;
     let result = g.layers.clone();
     assert_ne!(original, result);
-    for (remaining, cancel_at) in [
-        (used - 1, 0),
-        (used, meter.checks / 2),
-        (used, meter.checks),
-    ] {
+    // Reused Fenwick storage may batch visits without a separate allocation checkpoint.
+    g.layers.clone_from(&original);
+    let mut warm = Meter {
+        remaining: used,
+        checks: 0,
+        cancel_at: 0,
+    };
+    assert_eq!(
+        reduce(&mut g, &nodes, &options, &mut Work::new(&mut warm)),
+        Ok(count)
+    );
+    assert_eq!(warm.remaining, 0);
+    for (remaining, cancel_at) in [(used - 1, 0), (used, warm.checks / 2), (used, warm.checks)] {
         g.layers.clone_from(&original);
         let mut control = Meter {
             remaining,

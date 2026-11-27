@@ -20,7 +20,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_diamond(
 ) {
     let w = common.layout_node.width.max(1.0);
     let h = common.layout_node.height.max(1.0);
-    let tx = -w / 2.0 + 0.5;
+    let tx = -w / 2.0 + if common.centered_diamond { 0.0 } else { 0.5 };
     let ty = h / 2.0;
 
     let rough_paths = if common.look_is_hand_drawn() {

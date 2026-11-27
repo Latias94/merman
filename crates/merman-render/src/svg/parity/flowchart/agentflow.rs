@@ -61,6 +61,11 @@ impl<'a> ContainerPalette<'a> {
         self.borders.len()
     }
 
+    pub(super) fn background_color(&self, slot: usize) -> Option<&str> {
+        slot.checked_rem(self.backgrounds.len())
+            .and_then(|index| self.backgrounds[index].as_str())
+    }
+
     pub(super) fn without_theme_colors(mut self) -> Self {
         self.borders = &[];
         self.backgrounds = &[];

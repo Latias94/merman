@@ -1,6 +1,8 @@
 //! Deterministic text measurement and wrapping fallback.
 
 use super::html_wrap::{HtmlWhiteSpace, NormalizedHtmlText, plan_html_lines};
+#[cfg(all(feature = "layout-shoal", feature = "resources"))]
+use super::is_monospace_font_family;
 #[cfg(feature = "svg-output")]
 use super::measurement::BuiltinSvgComputedLength;
 use super::measurement::{BuiltinHtmlLineWidth, TrustedMeasurementQuery};
@@ -8,7 +10,7 @@ use super::measurement::{BuiltinHtmlLineWidth, TrustedMeasurementQuery};
 use super::wrap::GraphemeSplitStats as LongWordSplitStats;
 use super::wrap::visit_grapheme_lines_to_width;
 use super::{
-    TextMeasurer, TextMetrics, TextStyle, WrapMode, append_text_width_em,
+    HeuristicTextWidth, TextMeasurer, TextMetrics, TextStyle, WrapMode,
     trim_end_html_collapsible_ascii_whitespace, trim_html_collapsible_ascii_whitespace,
 };
 use std::convert::Infallible;
@@ -30,9 +32,40 @@ struct LineWidthAccumulator {
 
 #[derive(Clone, Copy)]
 enum LineWidthSource<'a> {
-    Heuristic,
+    Heuristic(HeuristicTextWidth, f64),
     UniformAdvanceEm(f64),
     Callback(&'a TextWidthPxFn),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DeterministicMode {
+    Compatibility,
+    #[cfg(all(feature = "layout-shoal", feature = "resources"))]
+    Calibrated,
+}
+
+impl DeterministicMode {
+    pub(crate) fn width_model(self, style: &TextStyle) -> (HeuristicTextWidth, f64) {
+        let size = style.font_size.max(0.0);
+        match self {
+            Self::Compatibility => (HeuristicTextWidth::Compatibility, size),
+            #[cfg(all(feature = "layout-shoal", feature = "resources"))]
+            Self::Calibrated => {
+                if is_monospace_font_family(style.font_family.as_deref()) {
+                    return (HeuristicTextWidth::Monospace, size);
+                }
+                let bold = style
+                    .font_weight
+                    .as_deref()
+                    .and_then(|value| super::resolve_css_font_weight(value, 400))
+                    .is_some_and(|weight| weight >= 600);
+                (
+                    HeuristicTextWidth::Calibrated,
+                    if bold { size * 1.06 } else { size },
+                )
+            }
+        }
+    }
 }
 
 struct LongWordSplitResult<'a> {
@@ -77,7 +110,7 @@ impl LineWidthModel<'_> {
 
     fn append_builtin(self, width: &mut LineWidthAccumulator, text: &str) {
         match self.source {
-            LineWidthSource::Heuristic => append_text_width_em(&mut width.heuristic_em, text),
+            LineWidthSource::Heuristic(model, _) => model.append(&mut width.heuristic_em, text),
             LineWidthSource::UniformAdvanceEm(_) => {
                 width.char_count = width.char_count.saturating_add(
                     text.chars()
@@ -91,7 +124,7 @@ impl LineWidthModel<'_> {
 
     fn finish_builtin(self, width: LineWidthAccumulator) -> f64 {
         match self.source {
-            LineWidthSource::Heuristic => width.heuristic_em * self.font_size,
+            LineWidthSource::Heuristic(_, size) => width.heuristic_em * size,
             LineWidthSource::UniformAdvanceEm(advance_em) => {
                 width.char_count as f64 * self.font_size * advance_em
             }
@@ -148,12 +181,15 @@ impl LineWidthProvider for LineWidthModel<'_> {
     type Error = Infallible;
 
     fn begin_html_line_width(&self) -> Option<BuiltinHtmlLineWidth> {
-        let factor = match self.source {
-            LineWidthSource::Heuristic => 0.0,
-            LineWidthSource::UniformAdvanceEm(factor) => factor,
-            LineWidthSource::Callback(_) => return None,
-        };
-        Some(BuiltinHtmlLineWidth::deterministic(self.style, factor))
+        match self.source {
+            LineWidthSource::Heuristic(model, size) => {
+                Some(BuiltinHtmlLineWidth::heuristic(model, size))
+            }
+            LineWidthSource::UniformAdvanceEm(factor) => {
+                Some(BuiltinHtmlLineWidth::deterministic(self.style, factor))
+            }
+            LineWidthSource::Callback(_) => None,
+        }
     }
 
     fn width_px(&mut self, text: &str) -> Result<f64, Infallible> {
@@ -282,6 +318,51 @@ pub fn try_measure_wrapped_text_with_line_metrics<E, M>(
 pub struct DeterministicTextMeasurer {
     pub char_width_factor: f64,
     pub line_height_factor: f64,
+}
+
+#[derive(Clone, Copy)]
+struct DeterministicSettings {
+    char_width_factor: f64,
+    line_height_factor: f64,
+    mode: DeterministicMode,
+}
+
+impl DeterministicSettings {
+    fn width_source(self, style: &TextStyle) -> LineWidthSource<'static> {
+        if self.char_width_factor != 0.0 {
+            return LineWidthSource::UniformAdvanceEm(self.char_width_factor);
+        }
+        let (model, size) = self.mode.width_model(style);
+        LineWidthSource::Heuristic(model, size)
+    }
+}
+
+trait DeterministicProfile {
+    fn settings(&self) -> DeterministicSettings;
+}
+
+impl DeterministicProfile for DeterministicTextMeasurer {
+    fn settings(&self) -> DeterministicSettings {
+        DeterministicSettings {
+            char_width_factor: self.char_width_factor,
+            line_height_factor: self.line_height_factor,
+            mode: DeterministicMode::Compatibility,
+        }
+    }
+}
+
+#[cfg(all(feature = "layout-shoal", feature = "resources"))]
+pub(crate) struct CalibratedTextMeasurer;
+
+#[cfg(all(feature = "layout-shoal", feature = "resources"))]
+impl DeterministicProfile for CalibratedTextMeasurer {
+    fn settings(&self) -> DeterministicSettings {
+        DeterministicSettings {
+            char_width_factor: 0.0,
+            line_height_factor: 0.0,
+            mode: DeterministicMode::Calibrated,
+        }
+    }
 }
 
 impl DeterministicTextMeasurer {
@@ -521,7 +602,7 @@ impl DeterministicTextMeasurer {
     }
 }
 
-impl TextMeasurer for DeterministicTextMeasurer {
+impl<T: DeterministicProfile> TextMeasurer for T {
     fn measure_svg_preserved_raw_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
         self.measure_svg_preserved_tspan_text_bbox_width_px(text, style)
     }
@@ -547,29 +628,11 @@ impl TextMeasurer for DeterministicTextMeasurer {
     }
 
     fn measure_svg_raw_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
-        literal_svg_text_width_px(
-            text,
-            style,
-            if self.char_width_factor == 0.0 {
-                LineWidthSource::Heuristic
-            } else {
-                LineWidthSource::UniformAdvanceEm(self.char_width_factor)
-            },
-            false,
-        )
+        literal_svg_text_width_px(text, style, self.settings().width_source(style), false)
     }
 
     fn measure_svg_preserved_tspan_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
-        literal_svg_text_width_px(
-            text,
-            style,
-            if self.char_width_factor == 0.0 {
-                LineWidthSource::Heuristic
-            } else {
-                LineWidthSource::UniformAdvanceEm(self.char_width_factor)
-            },
-            true,
-        )
+        literal_svg_text_width_px(text, style, self.settings().width_source(style), true)
     }
 
     fn measure_svg_raw_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
@@ -578,20 +641,13 @@ impl TextMeasurer for DeterministicTextMeasurer {
     }
 
     fn measure_html_line_height_px(&self, _text: &str, style: &TextStyle) -> f64 {
-        let factor = if self.line_height_factor == 0.0 {
-            1.5
-        } else {
-            self.line_height_factor
-        };
+        let factor = self.settings().line_height_factor;
+        let factor = if factor == 0.0 { 1.5 } else { factor };
         style.font_size.max(0.0) * factor
     }
 
     fn measure_html_line_width_px(&self, text: &str, style: &TextStyle) -> f64 {
-        let source = if self.char_width_factor == 0.0 {
-            LineWidthSource::Heuristic
-        } else {
-            LineWidthSource::UniformAdvanceEm(self.char_width_factor)
-        };
+        let source = self.settings().width_source(style);
         let model = LineWidthModel {
             font_size: style.font_size.max(0.0),
             source,
@@ -607,9 +663,11 @@ impl TextMeasurer for DeterministicTextMeasurer {
         _: TrustedMeasurementQuery,
         style: &TextStyle,
     ) -> Option<BuiltinHtmlLineWidth> {
-        Some(BuiltinHtmlLineWidth::deterministic(
+        let settings = self.settings();
+        Some(BuiltinHtmlLineWidth::with_mode(
             style,
-            self.char_width_factor,
+            settings.char_width_factor,
+            settings.mode,
         ))
     }
 
@@ -620,7 +678,9 @@ impl TextMeasurer for DeterministicTextMeasurer {
         _: TrustedMeasurementQuery,
         style: &TextStyle,
     ) -> Option<BuiltinSvgComputedLength> {
-        (self.char_width_factor == 0.0).then(|| BuiltinSvgComputedLength::deterministic(style))
+        let settings = self.settings();
+        (settings.char_width_factor == 0.0)
+            .then(|| BuiltinSvgComputedLength::with_mode(style, settings.mode))
     }
 
     fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
@@ -634,7 +694,8 @@ impl TextMeasurer for DeterministicTextMeasurer {
         max_width: Option<f64>,
         wrap_mode: WrapMode,
     ) -> TextMetrics {
-        self.measure_wrapped_impl(text, style, max_width, wrap_mode)
+        self.settings()
+            .measure_wrapped(text, style, max_width, wrap_mode)
             .0
     }
 
@@ -645,7 +706,8 @@ impl TextMeasurer for DeterministicTextMeasurer {
         max_width: Option<f64>,
         wrap_mode: WrapMode,
     ) -> (TextMetrics, Option<f64>) {
-        self.measure_wrapped_impl(text, style, max_width, wrap_mode)
+        self.settings()
+            .measure_wrapped(text, style, max_width, wrap_mode)
     }
 
     fn measure_mermaid_calculate_text_dimensions(
@@ -653,7 +715,7 @@ impl TextMeasurer for DeterministicTextMeasurer {
         text: &str,
         style: &TextStyle,
     ) -> TextMetrics {
-        let collapsed = Self::collapse_svg_text_whitespace(text);
+        let collapsed = DeterministicTextMeasurer::collapse_svg_text_whitespace(text);
         TextMetrics {
             width: self.measure_svg_simple_text_bbox_width_for_wrap_px(&collapsed, style),
             height: self.measure_svg_simple_text_bbox_height_px(&collapsed, style),
@@ -803,29 +865,26 @@ impl TextMeasurer for WidthCallbackTextMeasurer {
     }
 }
 
-impl DeterministicTextMeasurer {
-    fn measure_wrapped_impl(
+impl DeterministicSettings {
+    fn measure_wrapped(
         &self,
         text: &str,
         style: &TextStyle,
         max_width: Option<f64>,
         wrap_mode: WrapMode,
     ) -> (TextMetrics, Option<f64>) {
-        let width_source = if self.char_width_factor == 0.0 {
-            LineWidthSource::Heuristic
-        } else {
-            LineWidthSource::UniformAdvanceEm(self.char_width_factor)
-        };
-        Self::measure_wrapped_impl_with_width(
+        DeterministicTextMeasurer::measure_wrapped_impl_with_width(
             text,
             style,
             max_width,
             wrap_mode,
-            width_source,
+            self.width_source(style),
             self.line_height_factor,
         )
     }
+}
 
+impl DeterministicTextMeasurer {
     fn measure_wrapped_impl_with_width(
         text: &str,
         style: &TextStyle,
@@ -1076,7 +1135,8 @@ mod tests {
     }
 
     use super::{
-        DeterministicTextMeasurer, LineWidthModel, LineWidthSource, try_measure_wrapped_text,
+        DeterministicTextMeasurer, HeuristicTextWidth, LineWidthModel, LineWidthSource,
+        try_measure_wrapped_text,
     };
     use crate::text::{TextMeasurer, TextStyle, WrapMode};
     use std::sync::{Arc, Mutex};
@@ -1107,7 +1167,7 @@ mod tests {
             8.0,
             &mut LineWidthModel {
                 font_size: 10.0,
-                source: LineWidthSource::Heuristic,
+                source: LineWidthSource::Heuristic(HeuristicTextWidth::Compatibility, 10.0),
                 style: &TextStyle::default(),
                 html_text: false,
             },
@@ -1156,7 +1216,7 @@ mod tests {
         };
         let mut width_model = LineWidthModel {
             font_size: 16.0,
-            source: LineWidthSource::Heuristic,
+            source: LineWidthSource::Heuristic(HeuristicTextWidth::Compatibility, 16.0),
             style: &style,
             html_text: false,
         };
@@ -1191,7 +1251,7 @@ mod tests {
     fn long_word_split_work_is_linear_in_graphemes_and_output_bytes() {
         let mut width_model = LineWidthModel {
             font_size: 10.0,
-            source: LineWidthSource::Heuristic,
+            source: LineWidthSource::Heuristic(HeuristicTextWidth::Compatibility, 10.0),
             style: &TextStyle::default(),
             html_text: false,
         };
@@ -1221,7 +1281,7 @@ mod tests {
     fn long_word_split_work_accounts_for_bytes_inside_one_grapheme() {
         let mut width_model = LineWidthModel {
             font_size: 10.0,
-            source: LineWidthSource::Heuristic,
+            source: LineWidthSource::Heuristic(HeuristicTextWidth::Compatibility, 10.0),
             style: &TextStyle::default(),
             html_text: false,
         };
@@ -1256,7 +1316,7 @@ mod tests {
         };
         let mut width_model = LineWidthModel {
             font_size: 10.0,
-            source: LineWidthSource::Heuristic,
+            source: LineWidthSource::Heuristic(HeuristicTextWidth::Compatibility, 10.0),
             style: &TextStyle::default(),
             html_text: false,
         };
@@ -1275,7 +1335,7 @@ mod tests {
             for mut width_model in [
                 LineWidthModel {
                     font_size: 10.0,
-                    source: LineWidthSource::Heuristic,
+                    source: LineWidthSource::Heuristic(HeuristicTextWidth::Compatibility, 10.0),
                     style: &TextStyle::default(),
                     html_text: false,
                 },

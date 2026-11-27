@@ -466,7 +466,16 @@ impl<'a> BoundedSvgOutput<'a> {
         if let Some(error) = self.state.error() {
             return Err(error);
         }
-        let removed = range.len();
+        if range.start > range.end
+            || range.end > self.out.len()
+            || !self.out.is_char_boundary(range.start)
+            || !self.out.is_char_boundary(range.end)
+        {
+            return Err(self.fail(BoundedSvgOutputFailure::InvalidModel(
+                "bounded SVG replacement range is invalid for the current output",
+            )));
+        }
+        let removed = range.end - range.start;
         let Some(retained_without_range) = self.out.len().checked_sub(removed) else {
             return Err(self.fail(BoundedSvgOutputFailure::InvalidModel(
                 "bounded SVG replacement range exceeds the current output",
@@ -490,6 +499,7 @@ impl<'a> BoundedSvgOutput<'a> {
         Ok(())
     }
 
+    #[inline]
     fn admit_growth(&mut self, additional: usize) -> Result<(), BoundedSvgOutputFailure> {
         // Credit is explicit: an allocator may return more capacity than requested. Fitting the
         // admitted end proves both non-overflow and the exact retained-byte ceiling; excess
@@ -497,6 +507,12 @@ impl<'a> BoundedSvgOutput<'a> {
         if additional <= self.admitted_end - self.out.len() {
             return Ok(());
         }
+        self.admit_growth_cold(additional)
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn admit_growth_cold(&mut self, additional: usize) -> Result<(), BoundedSvgOutputFailure> {
         #[cfg(test)]
         {
             self.capacity_admissions += 1;
@@ -546,6 +562,7 @@ impl<'a> BoundedSvgOutput<'a> {
         preferred
     }
 
+    #[inline]
     fn observe_work(&mut self, bytes: usize) -> Result<(), crate::resources::OperationWorkError> {
         const OBSERVATION_INTERVAL: usize = 2_048;
         if bytes >= self.work_until_observation {
@@ -556,6 +573,7 @@ impl<'a> BoundedSvgOutput<'a> {
         Ok(())
     }
 
+    #[inline]
     fn record_write(&mut self, value: &str, scanned: bool) -> fmt::Result {
         #[cfg(test)]
         {
@@ -577,6 +595,8 @@ impl<'a> BoundedSvgOutput<'a> {
         Ok(())
     }
 
+    #[cold]
+    #[inline(never)]
     fn fail(&mut self, failure: BoundedSvgOutputFailure) -> crate::Error {
         self.state.record_failure(failure);
         self.state
@@ -591,33 +611,40 @@ impl<'a> BoundedSvgOutput<'a> {
 }
 
 impl fmt::Write for BoundedSvgOutput<'_> {
+    #[inline]
     fn write_str(&mut self, value: &str) -> fmt::Result {
         self.record_write(value, false)
     }
 }
 
 impl SvgOutput for BoundedSvgOutput<'_> {
+    #[inline]
     fn push_str(&mut self, value: &str) {
         let _ = self.record_write(value, false);
     }
 
+    #[inline]
     fn push(&mut self, value: char) {
         let mut encoded = [0u8; 4];
         let _ = self.record_write(value.encode_utf8(&mut encoded), false);
     }
 
+    #[inline]
     fn len(&self) -> usize {
         self.out.len()
     }
 
+    #[inline]
     fn as_str(&self) -> &str {
         self.out.as_str()
     }
 
+    #[inline]
     fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()> {
         self.replace_retained_range(range, replacement)
     }
 
+    #[inline]
     fn checkpoint(&mut self) -> crate::Result<()> {
         match self.state.error() {
             Some(error) => Err(error),
@@ -625,6 +652,7 @@ impl SvgOutput for BoundedSvgOutput<'_> {
         }
     }
 
+    #[inline]
     fn hint_additional_capacity(&mut self, additional: usize) {
         self.hinted_end = self
             .out
@@ -633,10 +661,12 @@ impl SvgOutput for BoundedSvgOutput<'_> {
             .min(MAX_HINTED_SVG_CAPACITY);
     }
 
+    #[inline]
     fn write_scanned_text(&mut self, value: &str) -> fmt::Result {
         self.record_write(value, true)
     }
 
+    #[inline]
     fn observe_scanned_work(&mut self, bytes: usize) -> crate::Result<()> {
         if let Some(error) = self.state.error() {
             return Err(error);
@@ -645,6 +675,7 @@ impl SvgOutput for BoundedSvgOutput<'_> {
             .map_err(|error| self.fail(BoundedSvgOutputFailure::Operation(error)))
     }
 
+    #[inline]
     fn observe_operation(&mut self) -> crate::Result<()> {
         if let Some(error) = self.state.error() {
             return Err(error);
@@ -1192,6 +1223,33 @@ mod tests {
             assert_eq!(resource_limit(out.observe_operation().unwrap_err()), first);
             assert_eq!(resource_limit(out.finish().unwrap_err()), first);
             assert_eq!(meter.projected_svg_bytes(), 0);
+        }
+    }
+
+    #[test]
+    fn bounded_svg_output_rejects_invalid_replace_ranges_without_panicking() {
+        for (initial, range) in [
+            ("abcdef", 4..2),
+            ("abcdef", 0..7),
+            ("abcdef", 7..8),
+            ("aéb", 1..2),
+            ("aéb", 2..4),
+        ] {
+            let policy = RenderResourcePolicy::unbounded_for_trusted_input();
+            let meter = OperationWorkMeter::new(policy);
+            let mut out = BoundedSvgOutput::new(&meter);
+            out.push_str(initial);
+            let error = out
+                .replace_range(range.clone(), "x")
+                .expect_err("invalid range must return InvalidModel instead of panicking");
+            assert!(
+                matches!(error, crate::Error::InvalidModel { .. }),
+                "expected InvalidModel for {initial:?} {range:?}, got {error:?}"
+            );
+            assert!(matches!(
+                out.finish().unwrap_err(),
+                crate::Error::InvalidModel { .. }
+            ));
         }
     }
 

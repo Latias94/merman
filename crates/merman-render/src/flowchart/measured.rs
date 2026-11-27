@@ -28,6 +28,15 @@ pub(super) struct MeasuredNode {
     pub geometry: Option<super::PreparedFlowchartNodeGeometry>,
 }
 
+#[cfg(feature = "layout-shoal")]
+impl MeasuredNode {
+    pub(super) fn widen_decision(&mut self, padding: f64) {
+        let (w, h) = (self.label.width + padding, self.label.height + padding);
+        self.width = w + 1.6 * h;
+        self.height = w / 1.6 + h;
+    }
+}
+
 pub(super) struct FlowchartMeasurement<'a> {
     model: FlowchartRenderModelRef<'a>,
     class_defs: &'a FlowchartClassDefinitions<'a>,

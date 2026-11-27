@@ -714,6 +714,7 @@ mod tests {
                 node.set_current_incident_signature(Some(0));
             },
             |g: &mut Graph| g.nodes[3].port_span = Some(1.),
+            |g: &mut Graph| g.nodes[3].split_incoming_ports = true,
             |g: &mut Graph| g.edges[1].label.as_mut().unwrap().height += 1.,
             |g: &mut Graph| g.edges.swap(1, 2),
         ] {

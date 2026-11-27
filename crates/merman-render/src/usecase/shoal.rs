@@ -12,6 +12,7 @@ use crate::model::{Bounds, LayoutLabel, LayoutPoint};
 use crate::{Error, LayoutExecution, Result};
 use kurbo::Insets;
 use merman_model::families::usecase::{UsecaseDiagramModel, UsecaseNodeKind};
+use rustc_hash::FxHashMap;
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -134,7 +135,7 @@ pub(super) fn layout(
         groups: Vec::with_capacity(model.boundaries.len()),
         edges: Vec::new(),
     };
-    let mut endpoints = HashMap::with_capacity(plans.len());
+    let mut endpoints = FxHashMap::with_capacity_and_hasher(plans.len(), Default::default());
     let actors: HashMap<_, _> = model
         .nodes
         .iter()
@@ -213,6 +214,7 @@ pub(super) fn layout(
             };
             graph.nodes.push(MeasuredNode {
                 size,
+                contour: profile.shoal_contour(size),
                 seq,
                 parent: None,
                 port_span: Some(profile.port_span(face)),

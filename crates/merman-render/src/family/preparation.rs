@@ -441,6 +441,7 @@ fn prepare_flowchart_family<'parsed>(
                         execution,
                         svg_label_sidecar,
                         edge_style_plan,
+                        preparation != FamilyPreparation::Layout,
                     )
                 },
             )?,
@@ -516,8 +517,12 @@ fn prepare_c4_family<'parsed>(
     let native = execution.native_family_theme();
     let mut typography_theme =
         crate::c4::C4TypographyThemePlan::resolve(native, &meta.effective_config, model);
-    let cluster_theme =
-        crate::c4::C4ClusterThemePlan::resolve(native, &model.boundaries, &meta.effective_config);
+    let cluster_theme = crate::c4::C4ClusterThemePlan::resolve(
+        native,
+        &model.boundaries,
+        &meta.effective_config,
+        execution.layout_backend() == GraphLayoutBackend::Shoal,
+    );
     let config = meta.effective_config.as_value();
     let grid = || {
         crate::c4::layout_c4_diagram_typed(
@@ -1074,7 +1079,8 @@ pub(super) fn prepare_class_render<'parsed>(
     let RenderSemanticModel::Class(model) = model else {
         unreachable!("Class render dispatch requires a Class semantic model")
     };
-    let execution = LayoutExecution::new(options, context.execution());
+    let execution =
+        LayoutExecution::new(options, context.execution(), Some(&meta.effective_config));
     let family = prepare_class_family(model, meta, &execution)?;
     FamilyRenderArtifact::new(parsed, family, context)
 }
@@ -1094,7 +1100,8 @@ pub(super) fn prepare_architecture_render<'parsed>(
     let RenderSemanticModel::Architecture(model) = model else {
         unreachable!("Architecture render dispatch requires an Architecture semantic model")
     };
-    let execution = LayoutExecution::new(options, context.execution());
+    let execution =
+        LayoutExecution::new(options, context.execution(), Some(&meta.effective_config));
     let family = prepare_architecture_family(model, meta, &execution)?;
     FamilyRenderArtifact::new(parsed, family, context)
 }
@@ -1123,7 +1130,8 @@ pub(super) fn prepare_non_class_render<'parsed>(
         });
     let diagram_type = meta.diagram_type.as_str();
     let title = meta.title.as_deref();
-    let execution = LayoutExecution::new(options, context.execution());
+    let execution =
+        LayoutExecution::new(options, context.execution(), Some(&meta.effective_config));
     let family = match model {
         RenderSemanticModel::Error(model) => prepare_error_family(model, meta, &execution)?,
         #[cfg(feature = "diagram-mindmap")]
@@ -1276,6 +1284,7 @@ pub(super) fn prepare_non_class_render<'parsed>(
                         &execution,
                         sidecar,
                         edge_style_plan,
+                        preparation != FamilyPreparation::Layout,
                     )
                 },
             )?;

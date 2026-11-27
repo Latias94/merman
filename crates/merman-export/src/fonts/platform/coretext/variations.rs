@@ -236,11 +236,9 @@ mod tests {
         let mut data = fixture_fvar().to_vec();
         let offset = usize::from(u16::from_be_bytes(data[4..6].try_into().unwrap()));
         data[offset..offset + 4].copy_from_slice(&WDTH);
-        for (bytes, value) in data[offset + 4..offset + 16]
-            .chunks_exact_mut(4)
-            .zip([50_i32, 50, 150])
-        {
-            bytes.copy_from_slice(&(value << 16).to_be_bytes());
+        let (values, _) = data[offset + 4..offset + 16].as_chunks_mut::<4>();
+        for (bytes, value) in values.iter_mut().zip([50_i32, 50, 150]) {
+            *bytes = (value << 16).to_be_bytes();
         }
         data
     }

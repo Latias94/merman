@@ -276,6 +276,7 @@ fn leaf_geometry(
     (
         MeasuredNode {
             size,
+            contour: profile.shoal_contour(size),
             seq,
             parent,
             port_span: Some(profile.port_span(face)),

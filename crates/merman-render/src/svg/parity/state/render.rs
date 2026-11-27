@@ -363,6 +363,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     let bounds_scan_start = out.len();
     let mut detail = StateRenderDetails::default();
     let mut effect_outsets = EffectOutsets::default();
+    let mut edge_scratch = StateEdgePathScratch::default();
     // Unthemed/Clear output keeps Mermaid's single hierarchy. Body effects split the entire
     // hierarchy, rather than just each local root, to keep nested depth behind outer labels.
     let passes: &[_] = if ctx.has_node_shadows {
@@ -380,9 +381,11 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
             timing,
             &mut detail,
             &mut effect_outsets,
+            &mut edge_scratch,
             pass,
         )?;
     }
+    drop(edge_scratch);
     let bounds_scan_end = out.len();
 
     out.push_str("</g>");
@@ -611,6 +614,7 @@ fn render_state_root(
     timing: super::timing::RenderTiming,
     details: &mut StateRenderDetails,
     effect_outsets: &mut EffectOutsets,
+    edge_scratch: &mut StateEdgePathScratch,
     pass: StateRenderPass,
 ) -> Result<()> {
     details.root_calls += 1;
@@ -796,7 +800,7 @@ fn render_state_root(
                     edge,
                     origin_x,
                     origin_y,
-                    options.work_meter(),
+                    edge_scratch,
                     #[cfg(feature = "layout-shoal")]
                     &mut details.canonical_edge_bounds,
                 )?;
@@ -896,6 +900,7 @@ fn render_state_root(
             timing,
             details,
             effect_outsets,
+            edge_scratch,
             pass,
         )?;
         out.checkpoint()?;
@@ -1201,6 +1206,12 @@ fn render_state_cluster(
                 paint.write_header_fill(out, ctx.diagram_id, ordinal, y, inner_y)
             })
     };
+    let native_theme = ctx
+        .style_plan
+        .compatibility()
+        .native_edge_label_paint
+        .is_some();
+    let fill_override = node_style.and_then(crate::state::StateNodeStylePlan::fill_override);
     let (outer_shape, inner_shape) = if pass == StateRenderPass::Foreground {
         (String::new(), String::new())
     } else if effective_look == "handDrawn" {
@@ -1224,11 +1235,15 @@ fn render_state_cluster(
         let body_stroke_width = compatibility.terminal_stroke_width_value(body_surface);
         let header_fill = header_fill.map_or_else(
             || {
-                compatibility.terminal_paint_css(
-                    header_surface,
-                    crate::state::StateTerminalPaintProperty::Fill,
-                    ctx.diagram_id,
-                )
+                if native_theme && let Some(fill) = fill_override {
+                    std::borrow::Cow::Borrowed(fill)
+                } else {
+                    compatibility.terminal_paint_css(
+                        header_surface,
+                        crate::state::StateTerminalPaintProperty::Fill,
+                        ctx.diagram_id,
+                    )
+                }
             },
             std::borrow::Cow::Owned,
         );
@@ -1287,17 +1302,21 @@ fn render_state_cluster(
             ),
         )
     } else {
-        let header_style = header_fill.map_or_else(String::new, |paint| {
-            // SVG-mode classDef emits fill with importance on all cluster rects.
-            let important = if !ctx.html_labels
-                && node_style.and_then(|style| style.fill_override()).is_some()
-            {
+        // SVG-mode classDef emits fill with importance on all cluster rects; native themes
+        // also promote authored composite fill overrides onto `.outer` (both translucent gradient
+        // headers and opaque fills) so dark/light headers match their authored title color.
+        let header_style = if let Some(paint) = header_fill {
+            let important = if (!ctx.html_labels || native_theme) && fill_override.is_some() {
                 " !important"
             } else {
                 ""
             };
             format!("fill:{paint}{important};")
-        });
+        } else if native_theme && let Some(fill) = fill_override {
+            format!("fill:{fill} !important;")
+        } else {
+            String::new()
+        };
         let header_rect_style = state_rect_style(&header_style, outer_radius_override);
         (
             format!(
@@ -1338,12 +1357,17 @@ fn render_state_cluster(
         );
         let _ = write!(
             out,
-            r#"<g class="cluster-label" style="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g>"#,
+            r#"<g class="cluster-label" style="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g>"#,
             escape_attr(title_style),
             fmt(title_x),
             fmt(title_y),
             fmt(title_width),
             fmt(title_height),
+            super::super::util::html_label_overflow_attr(
+                uses_canonical_routes,
+                title_width,
+                title_height,
+            ),
             escape_attr(&label_div_style),
             state_node_label_plain_html(&title),
         );

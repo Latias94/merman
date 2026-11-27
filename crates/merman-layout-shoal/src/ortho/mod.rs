@@ -1,10 +1,11 @@
 //! Bounded orthogonal routing between fixed lead ends in drawing coordinates.
 
+pub(crate) mod comb;
 mod search;
 mod visibility;
 
 use crate::model::{Axis, Point, Rect, RoutePoint, Side};
-use crate::work::{LayoutError, LayoutResult, Work, WorkControl, WorkError, reserved};
+use crate::work::{LayoutError, LayoutResult, Work, WorkControl, reserved};
 use search::{Search, Trails};
 use std::cmp::Ordering;
 use visibility::{Bounds, Grid, GridQuery, Obstacles};
@@ -283,6 +284,27 @@ impl OrthoRouter {
         work.finish()?;
         Ok(result)
     }
+
+    /// Checks a guarded corner or terminal footprint against the scope's obstacle halos.
+    /// A terminal can pass through the halo of its own body.
+    pub(crate) fn area_is_clear(
+        &self,
+        area: Bounds,
+        frame: Bounds,
+        terminal: Option<Rect>,
+        work: &mut Work<'_>,
+    ) -> LayoutResult<bool> {
+        work.visit(1)?;
+        if !area.finite()
+            || area.x[0] < frame.x[0]
+            || area.x[1] > frame.x[1]
+            || area.y[0] < frame.y[0]
+            || area.y[1] > frame.y[1]
+        {
+            return Ok(false);
+        }
+        self.obstacles.area_is_clear(area, terminal, work)
+    }
 }
 
 fn at(knot: RoutePoint) -> Point {
@@ -320,11 +342,7 @@ fn sort<T>(
     work: &mut Work<'_>,
 ) -> LayoutResult<()> {
     if values.len() > 1 {
-        let units = values
-            .len()
-            .checked_mul(values.len().ilog2() as usize + 1)
-            .ok_or(WorkError::ArithmeticOverflow)?;
-        work.charge(units)?;
+        work.charge_sort(values.len())?;
         values.sort_unstable_by(cmp);
         work.check()?;
     }

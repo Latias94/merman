@@ -28,6 +28,7 @@ mod kernel_bench;
 pub(crate) fn solve(
     measured: &MeasuredGraph,
     placement: Placement<'_>,
+    split_incoming_ports: &[usize],
     scratch: &mut shoal::LayoutScratch,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<super::ir::SolvedGraph> {
@@ -39,7 +40,21 @@ pub(crate) fn solve(
         feature = "layout-elk"
     ))]
     kernel_bench::capture(measured, options);
-    let graph = project_input(measured, &placement, work)?;
+    let mut graph = project_input(measured, &placement, work)?;
+    if !split_incoming_ports.is_empty() {
+        work.charge_adapter(split_incoming_ports.len())?;
+        for &index in split_incoming_ports {
+            work.charge_adapter(0)?;
+            let node = graph
+                .nodes
+                .get_mut(index)
+                .ok_or_else(|| crate::Error::InvalidModel {
+                    message: "Shoal split port hint does not match a measured node occurrence"
+                        .into(),
+                })?;
+            node.split_incoming_ports = true;
+        }
+    }
     let solved = crate::layout_work::measure_layout_solve!(shoal::layout_geometry_with_control(
         &graph, &options, scratch, work
     ))

@@ -1,21 +1,28 @@
 //! Route between occupied bands in canonical Down coordinates.
 
 mod compact;
+pub(super) mod decision;
 mod exterior;
+mod label_clearance;
+mod parallel;
 
 pub(super) use compact::compact_ranks;
 use exterior::SidePort;
 pub(super) use exterior::side_docking_allowed;
+pub(super) use label_clearance::certify_final_clearance;
 
-use super::{Component, Drawing, Expanded, Kind, acyclic::Orientation, canonical_size};
+use super::{
+    Component, Drawing, Expanded, Kind, acyclic::Orientation, canonical_size, contour_inset,
+};
+use crate::scratch::{capacity_bytes, clear_reserve};
 use crate::work::{LayoutResult, Work, filled, push, reserved};
 use crate::{
-    Axis, Direction, EdgeGeometry, Graph, KnotKind, LayoutError, MarkerMetrics, Options, Point,
-    PortSideHint, Rect, RoutePoint, RoutingStyle, Side, Size, WorkError, sweep_handle_fraction,
+    Axis, Direction, EdgeGeometry, Graph, KnotKind, LayoutError, MIN_MARKER_LEAD as LEAD,
+    MarkerMetrics, Options, Point, PortSideHint, Rect, RoutePoint, RoutingStyle, ShapeContourHint,
+    Side, Size, WorkError, sweep_handle_fraction,
 };
 use std::{cmp::Reverse, collections::BinaryHeap};
 
-const LEAD: f64 = 6.0;
 const LEVEL_CLEAR: f64 = 8.0;
 const LEVEL_TOUCH: f64 = 4.0;
 const SAMPLES: usize = 16;
@@ -45,43 +52,45 @@ fn advance(start: f64, distance: f64) -> LayoutResult<f64> {
     }
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct Band {
     logical: u64,
     height: f64,
     top: f64,
     bottom: f64,
     has_node: bool,
+    has_compound_seam: bool,
     leaves: bool,
     arrives: bool,
     label_directions: u8,
     label_count: usize,
     inserted_label_tier: bool,
     optical_shift: f64,
+    face_separation: f64,
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Debug, Default)]
 struct EndRoom {
     marker: f64,
-    marked: f64,
+    runway: f64,
     marker_half_width: f64,
     labels: f64,
     has_label: bool,
+    horizon: Option<usize>,
 }
 
 impl EndRoom {
     fn include(
         &mut self,
         marker: MarkerMetrics,
+        runway: f64,
         label: Option<Size>,
         dir: Direction,
         along: f64,
     ) -> LayoutResult<()> {
         self.marker = self.marker.max(marker.length);
-        if marker.width > 0.0 {
-            self.marked = self.marked.max(marker.length);
-            self.marker_half_width = self.marker_half_width.max(marker.width * 0.5);
-        }
+        self.runway = self.runway.max(runway);
+        self.marker_half_width = self.marker_half_width.max(marker.width * 0.5);
         if let Some(size) = label {
             self.has_label = true;
             self.labels = advance(
@@ -92,12 +101,13 @@ impl EndRoom {
         Ok(())
     }
 
-    fn guard(self, relaxed: bool) -> LayoutResult<f64> {
-        finite(if relaxed && !self.has_label {
-            self.marked
-        } else {
-            self.marker + self.labels
-        })
+    fn reach(self) -> LayoutResult<f64> {
+        finite(self.runway)
+    }
+
+    fn guard(self, curved: bool) -> LayoutResult<f64> {
+        let runway = if curved { self.reach()? } else { self.marker };
+        finite(runway + self.labels)
     }
 }
 
@@ -141,6 +151,8 @@ struct Piece {
     span: Span,
     occupied: Span,
     leads: [f64; 2],
+    horizon: Option<usize>,
+    keep_landing_runway: bool,
     lower: usize,
     track: Option<usize>,
 }
@@ -151,10 +163,11 @@ struct Gap {
     cursor: usize,
     upper_guard: f64,
     lower_guard: f64,
-    curved_guards: [f64; 2],
     marker_half_width: f64,
     has_end_labels: bool,
     allow_local_sweeps: bool,
+    upper_free_band: bool,
+    lower_free_band: bool,
     minimum: f64,
     height: f64,
     tracks: usize,
@@ -162,15 +175,44 @@ struct Gap {
 
 fn track_metrics(style: RoutingStyle, edge_sep: f64) -> (f64, f64, f64) {
     match style {
-        RoutingStyle::Orthogonal => (18.0, edge_sep.max(10.0), edge_sep.max(14.0)),
-        _ => (28.0, edge_sep.max(12.0), edge_sep.max(12.0)),
+        RoutingStyle::Orthogonal => (18.0, edge_sep, edge_sep),
+        _ => (28.0, edge_sep, edge_sep),
     }
 }
 
-fn bands(g: &Expanded, work: &mut Work<'_>) -> LayoutResult<(Vec<Band>, Vec<usize>)> {
+#[derive(Debug, Default)]
+pub(super) struct RoutingScratch {
+    bands: Vec<Band>,
+    index: Vec<usize>,
+    ends: Vec<[EndRoom; 2]>,
+    delta: Vec<i64>,
+    rooms: Vec<Option<(f64, f64)>>,
+    ids: Vec<usize>,
+    pub(super) needs_label_clearance: bool,
+}
+
+impl RoutingScratch {
+    pub(super) fn retained_bytes(&self) -> usize {
+        capacity_bytes(&self.bands)
+            + capacity_bytes(&self.index)
+            + capacity_bytes(&self.ends)
+            + capacity_bytes(&self.delta)
+            + capacity_bytes(&self.rooms)
+            + capacity_bytes(&self.ids)
+    }
+}
+
+fn bands(
+    g: &Expanded,
+    c: &Component,
+    bands: &mut Vec<Band>,
+    index: &mut Vec<usize>,
+    work: &mut Work<'_>,
+) -> LayoutResult<()> {
     work.charge(g.layers.len())?;
-    let mut bands = reserved(g.layers.len())?;
-    let mut index = filled(g.layers.len(), usize::MAX)?;
+    clear_reserve(bands, g.layers.len())?;
+    clear_reserve(index, g.layers.len())?;
+    index.resize(g.layers.len(), usize::MAX);
     let mut inserted = g.inserted_ranks.iter().copied().peekable();
     for (rank, layer) in g.layers.iter().enumerate() {
         let mut band = Band {
@@ -185,6 +227,8 @@ fn bands(g: &Expanded, work: &mut Work<'_>) -> LayoutResult<(Vec<Band>, Vec<usiz
             band.height = band.height.max(g.height[vertex]);
             let kind = g.kind[vertex];
             band.has_node |= kind == Kind::Node;
+            band.has_compound_seam |= matches!(kind, Kind::StartPort | Kind::EndPort)
+                || (kind == Kind::Node && c.nodes.get(vertex).is_some_and(|node| node.group_proxy));
             retained |= kind != Kind::Dummy || g.keep[vertex];
             band.inserted_label_tier |= inserted_between_nodes && kind == Kind::Label;
         }
@@ -193,7 +237,7 @@ fn bands(g: &Expanded, work: &mut Work<'_>) -> LayoutResult<(Vec<Band>, Vec<usiz
             bands.push(band);
         }
     }
-    Ok((bands, index))
+    Ok(())
 }
 
 struct RankedComponent<'a> {
@@ -201,24 +245,33 @@ struct RankedComponent<'a> {
     expanded: &'a Expanded,
     orientation: &'a Orientation,
     side_ports: &'a [[Option<SidePort>; 2]],
+    direct_offsets: &'a [[f64; 2]],
 }
 
 fn collect_pieces(
-    ranked: RankedComponent<'_>,
+    ranked: &RankedComponent<'_>,
     graph: &Graph,
     options: &Options,
     x: &[f64],
-    bands: &mut [Band],
-    index: &[usize],
+    scratch: &mut RoutingScratch,
     work: &mut Work<'_>,
 ) -> LayoutResult<Vec<Gap>> {
+    let RoutingScratch {
+        bands,
+        index,
+        ends,
+        delta,
+        ..
+    } = scratch;
     let g = ranked.expanded;
     let node_count = ranked.component.nodes.len();
     let gap_count = bands.len().saturating_sub(1);
     work.charge(gap_count)?;
     work.charge(node_count)?;
-    let mut ends = filled(node_count, [EndRoom::default(); 2])?;
-    let mut delta = filled(bands.len(), 0i64)?;
+    clear_reserve(ends, node_count)?;
+    ends.resize(node_count, [EndRoom::default(); 2]);
+    clear_reserve(delta, bands.len())?;
+    delta.resize(bands.len(), 0);
     let row = |v: usize| index[g.rank[v] as usize];
     for (edge, chain) in g.chains.iter().enumerate() {
         work.visit(1)?;
@@ -230,12 +283,10 @@ fn collect_pieces(
     let mut gaps = reserved(gap_count)?;
     let mut crossing = 0i64;
     // Flat gap intervals see neither the approach knots of a compound border stitch nor
-    // routes that bypass the expansion. Those paths still use the shared runway.
-    let allow_local_sweeps = options.routing == RoutingStyle::Curved
-        && !ranked.component.boundaries
-        && !ranked.component.group_proxies
-        && !g.direct.contains(&true);
-    for (pair, change) in bands.windows(2).zip(delta) {
+    // routes that bypass the expansion. Apply the shared runway only to gaps adjacent to
+    // compound boundaries or group proxies so interior cluster gaps keep clean local sweeps.
+    let can_local_sweep = options.routing == RoutingStyle::Curved && !g.direct.contains(&true);
+    for (pair, &change) in bands.windows(2).zip(delta.iter()) {
         crossing += change;
         let count = usize::try_from(crossing).map_err(|_| WorkError::ArithmeticOverflow)?;
         work.charge(count)?;
@@ -251,7 +302,11 @@ fn collect_pieces(
         gaps.push(Gap {
             pieces: reserved(count)?,
             height: finite(ranks * options.spacing.rank)?,
-            allow_local_sweeps,
+            allow_local_sweeps: can_local_sweep
+                && !pair[0].has_compound_seam
+                && !pair[1].has_compound_seam,
+            upper_free_band: can_local_sweep && !pair[0].has_compound_seam && !pair[0].has_node,
+            lower_free_band: can_local_sweep && !pair[1].has_compound_seam && !pair[1].has_node,
             ..Gap::default()
         });
     }
@@ -284,44 +339,106 @@ fn collect_pieces(
         bands[row(last)].arrives = true;
         let spec = &graph.edges[link.edge as usize];
         let reversed = ranked.orientation.reversed[edge];
+        let [start_runway, end_runway] = spec.sweep_runways();
         let mut terminals = [
-            (spec.start_marker, spec.start_label),
-            (spec.end_marker, spec.end_label),
+            (spec.start_marker, start_runway, spec.start_label),
+            (spec.end_marker, end_runway, spec.end_label),
         ];
         if reversed {
             terminals.swap(0, 1);
         }
-        for ((marker, label), (vertex, face, side)) in terminals
+        for ((marker, runway, label), (vertex, face, side)) in terminals
             .into_iter()
             .zip([(first, 0, side_start), (last, 1, side_end)])
         {
             if side.is_none() {
-                ends[vertex][face].include(
+                let room = &mut ends[vertex][face];
+                room.include(
                     marker,
+                    runway,
                     label,
                     graph.direction,
                     options.spacing.end_label_along,
                 )?;
+                if face == 0 && !g.direct[edge] {
+                    // Stop sibling departure sweeps at the first physical barrier (such as an
+                    // inserted label band or kept waypoint), not only the destination node.
+                    let stop = chain[1..]
+                        .iter()
+                        .copied()
+                        .find(|&v| {
+                            let v = v as usize;
+                            row(v) != usize::MAX && (g.kind[v] != Kind::Dummy || g.keep[v])
+                        })
+                        .map_or(last, |v| v as usize);
+                    let horizon = row(stop);
+                    room.horizon = Some(room.horizon.map_or(horizon, |old| old.min(horizon)));
+                }
             }
         }
         if let Some(label) = g.label_vertex[edge] {
             let band = &mut bands[row(label as usize)];
             band.label_directions |= if reversed { 2 } else { 1 };
             band.label_count += 1;
-            let bias = (terminals[0].0.length - terminals[1].0.length) * 0.5;
+            let mut visible = terminals.map(|(marker, _, _)| marker.length);
+            if !g.direct[edge] {
+                let target = segment + chain.len() - 2;
+                let nodes = &ranked.component.nodes;
+                if side_start.is_none() {
+                    visible[0] -= contour_inset(
+                        nodes[first],
+                        graph.direction,
+                        Side::Bottom,
+                        g.source_offset[segment],
+                    );
+                }
+                if side_end.is_none() {
+                    visible[1] -= contour_inset(
+                        nodes[last],
+                        graph.direction,
+                        Side::Top,
+                        g.target_offset[target],
+                    );
+                }
+            }
+            let bias = visible[0] * 0.5 - visible[1] * 0.5;
             band.optical_shift += (bias - band.optical_shift) / band.label_count as f64;
         }
+        if !g.direct[edge] {
+            segment += chain.len() - 1;
+        }
+    }
+    // Match `Rect::center().x` (`(x - w/2) + w/2`) so downstream fixed-offset checks in
+    // `extras::finish` see the exact same bit-for-bit contact coordinates without 1-ULP drift.
+    let node_center = |v: usize| -> LayoutResult<f64> {
+        if v < node_count {
+            let half = g.width[v] * 0.5;
+            let left = finite(x[v] - half)?;
+            finite(left + half)
+        } else {
+            Ok(x[v])
+        }
+    };
+    segment = 0;
+    for (edge, chain) in g.chains.iter().enumerate() {
+        work.visit(1)?;
         if g.direct[edge] {
             continue;
         }
+        let first = chain[0] as usize;
+        let last = chain[chain.len() - 1] as usize;
+        let [side_start, side_end] = ranked.side_ports.get(edge).copied().unwrap_or_default();
         let mut upper = row(first);
         let mut start_lead = if side_start.is_none() {
-            terminals[0].0.length
+            ends[first][0].reach()?
         } else {
             0.0
         };
-        let mut from =
-            finite(side_start.map_or(x[first] + g.source_offset[segment], |port| port.rail))?;
+        let mut from = finite(
+            side_start.map_or(node_center(first)? + g.source_offset[segment], |port| {
+                port.rail
+            }),
+        )?;
         for &lower in &chain[1..] {
             work.visit(1)?;
             let lower = lower as usize;
@@ -332,21 +449,26 @@ fn collect_pieces(
                 {
                     port.rail
                 } else {
-                    finite(x[lower] + g.target_offset[segment])?
+                    finite(node_center(lower)? + g.target_offset[segment])?
                 };
                 let span = Span { from, to };
                 finite(span.width())?;
+                let horizon = (upper == row(first) && side_start.is_none() && from != to)
+                    .then_some(ends[first][0].horizon)
+                    .flatten();
                 gaps[upper].pieces.push(Piece {
                     span,
                     occupied: span,
                     leads: [
                         start_lead,
                         if lower == last && side_end.is_none() {
-                            terminals[1].0.length
+                            ends[last][1].reach()?
                         } else {
                             0.0
                         },
                     ],
+                    horizon,
+                    keep_landing_runway: horizon == Some(next) && lower != last,
                     lower,
                     track: None,
                 });
@@ -359,18 +481,17 @@ fn collect_pieces(
             segment += 1;
         }
     }
-    for (vertex, [outgoing, incoming]) in ends.into_iter().enumerate() {
+    let curved = options.routing == RoutingStyle::Curved;
+    for (vertex, &[outgoing, incoming]) in ends.iter().enumerate() {
         work.visit(1)?;
         let row = row(vertex);
         if let Some(gap) = gaps.get_mut(row) {
-            gap.upper_guard = gap.upper_guard.max(outgoing.guard(false)?);
-            gap.curved_guards[0] = gap.curved_guards[0].max(outgoing.guard(true)?);
+            gap.upper_guard = gap.upper_guard.max(outgoing.guard(curved)?);
             gap.include_terminals(outgoing);
         }
         if row > 0 {
             let gap = &mut gaps[row - 1];
-            gap.lower_guard = gap.lower_guard.max(incoming.guard(false)?);
-            gap.curved_guards[1] = gap.curved_guards[1].max(incoming.guard(true)?);
+            gap.lower_guard = gap.lower_guard.max(incoming.guard(curved)?);
             gap.include_terminals(incoming);
         }
     }
@@ -450,11 +571,19 @@ fn reaches(points: &[Point], line: &[Point], limit: f64) -> bool {
     false
 }
 
+/// Maximum horizontal-to-vertical aspect ratio allowed for an unpromoted single cubic S-curve
+/// within realistic diagram spans (`<= MAX_PROMOTABLE_SPAN_RANKS * spacing.rank`).
+/// Sweeps flatter than this threshold squash into "pancake" S-curves and are promoted to a clean
+/// rounded-orthogonal horizontal track when spatially isolated in the gap (or clashing with peers).
+const MAX_SWEEP_ASPECT: f64 = 6.0;
+const MAX_PROMOTABLE_SPAN_RANKS: f64 = 16.0;
+
 fn curved_levels(
     pieces: &[Piece],
     ids: &[usize],
     height: f64,
     room: f64,
+    max_promotable_span: f64,
     promoted: &mut [bool],
     work: &mut Work<'_>,
 ) -> LayoutResult<bool> {
@@ -467,7 +596,10 @@ fn curved_levels(
     for &id in ids {
         curves.push(sample(pieces[id].span, room));
     }
+    let mut has_peer = filled(ids.len(), false)?;
     meetings(pieces, ids, work, |left, right, work| {
+        has_peer[left] = true;
+        has_peer[right] = true;
         let (a, b) = (pieces[ids[left]].span, pieces[ids[right]].span);
         if !a.clashes(b) {
             return Ok(());
@@ -495,6 +627,18 @@ fn curved_levels(
         }
         Ok(())
     })?;
+    // A spatially isolated extreme sweep (disjoint in `[lo, hi]` from every peer in this gap)
+    // can safely promote to a rounded-orthogonal track without crossing any unpromoted curve.
+    if room > 0.0 {
+        for (slot, &id) in ids.iter().enumerate() {
+            if !has_peer[slot] {
+                let width = pieces[id].span.width();
+                if width > room * MAX_SWEEP_ASPECT && width <= max_promotable_span {
+                    promoted[slot] = true;
+                }
+            }
+        }
+    }
     let (mut crossed, mut alongside) = (0u64, 0u64);
     meetings(pieces, ids, work, |left, right, _| {
         if promoted[left] && promoted[right] {
@@ -696,12 +840,7 @@ fn weighed_tracks(pieces: &mut [Piece], ids: &[usize], work: &mut Work<'_>) -> L
     Ok(rows)
 }
 
-fn greedy_tracks(
-    pieces: &mut [Piece],
-    ids: &[usize],
-    curved: bool,
-    work: &mut Work<'_>,
-) -> LayoutResult<usize> {
+fn greedy_tracks(pieces: &mut [Piece], ids: &[usize], work: &mut Work<'_>) -> LayoutResult<usize> {
     let count = ids.len();
     work.charge(count.checked_mul(7).ok_or(WorkError::ArithmeticOverflow)?)?;
     let mut permutation = reserved(count)?;
@@ -739,23 +878,6 @@ fn greedy_tracks(
     work.sort(&mut permutation, |&a, &b| {
         bounds[a].0.total_cmp(&bounds[b].0).then(a.cmp(&b))
     })?;
-    if curved {
-        let mut reach = f64::NEG_INFINITY;
-        let mut kept = 0;
-        for i in 0..permutation.len() {
-            let bus = permutation[i];
-            let overlaps = bounds[bus].0 < reach
-                || permutation
-                    .get(i + 1)
-                    .is_some_and(|&next| bounds[next].0 < bounds[bus].1);
-            reach = reach.max(bounds[bus].1);
-            if overlaps {
-                permutation[kept] = bus;
-                kept += 1;
-            }
-        }
-        permutation.truncate(kept);
-    }
     let mut ends = reserved(permutation.len())?;
     ends.extend_from_slice(&permutation);
     work.sort(&mut ends, |&a, &b| {
@@ -815,9 +937,19 @@ impl Gap {
         Ok(true)
     }
 
+    #[cfg(test)]
     fn grade(&mut self, options: &Options, work: &mut Work<'_>) -> LayoutResult<()> {
+        self.grade_with_scratch(options, &mut Vec::new(), work)
+    }
+
+    fn grade_with_scratch(
+        &mut self,
+        options: &Options,
+        ids: &mut Vec<usize>,
+        work: &mut Work<'_>,
+    ) -> LayoutResult<()> {
         work.charge(self.pieces.len())?;
-        let mut ids = reserved(self.pieces.len())?;
+        clear_reserve(ids, self.pieces.len())?;
         ids.extend(
             self.pieces
                 .iter()
@@ -825,29 +957,82 @@ impl Gap {
                 .filter_map(|(i, p)| (p.span.from != p.span.to).then_some(i)),
         );
         let curved = options.routing == RoutingStyle::Curved;
+        let dense_curves = curved && ids.len() > MAX_SWEEP_PEERS;
         let isolated_curve = curved && self.pieces.len() == 1 && ids.len() == 1;
-        if !ids.is_empty() && !isolated_curve {
+        if !ids.is_empty() && (!curved || !self.allow_local_sweeps && !isolated_curve) {
             let lead = LEAD.max(options.spacing.edge * 0.5);
-            self.upper_guard = advance(self.upper_guard, lead)?;
-            self.lower_guard = advance(self.lower_guard, lead)?;
+            let dense_clearance = if dense_curves {
+                options.spacing.edge * 0.25
+            } else {
+                0.0
+            };
+            if !curved || !self.upper_free_band {
+                self.upper_guard = advance(self.upper_guard, lead)?;
+            } else if dense_clearance > 0.0 {
+                self.upper_guard = self.upper_guard.max(dense_clearance);
+            }
+            if !curved || !self.lower_free_band {
+                self.lower_guard = advance(self.lower_guard, lead)?;
+            } else if dense_clearance > 0.0 {
+                self.lower_guard = self.lower_guard.max(dense_clearance);
+            }
+        } else if dense_curves {
+            // On a shallow, wide fan the sweep otherwise reaches neighboring boxes
+            // while its stroke is still inside a rank's outline. Start it beyond the rank.
+            let clearance = options.spacing.edge * 0.25;
+            self.upper_guard = self.upper_guard.max(clearance);
+            self.lower_guard = self.lower_guard.max(clearance);
         }
         let guard = finite(self.upper_guard + self.lower_guard)?;
         self.minimum = finite(guard + if ids.is_empty() { 0.0 } else { 2.0 * LEAD })?;
-        self.height = self.height.max(self.minimum);
-        if isolated_curve {
-            [self.upper_guard, self.lower_guard] = self.curved_guards;
-            return Ok(());
+        let max_promotable_span = options.spacing.rank * MAX_PROMOTABLE_SPAN_RANKS;
+        let (widest, widest_promotable) = ids.iter().fold((0.0_f64, 0.0_f64), |(all, prom), &i| {
+            let w = self.pieces[i].span.width();
+            (
+                all.max(w),
+                if w <= max_promotable_span {
+                    prom.max(w)
+                } else {
+                    prom
+                },
+            )
+        });
+        if curved && !ids.is_empty() {
+            // Guarantee enough net vertical room for wide curved sweeps when guards (such as
+            // ER crow's-foot runways) or inserted-label slits squeeze a gap below healthy
+            // curvature, without inflating ordinary flat rank gaps or extreme synthetic spans.
+            let min_room = (widest * 0.35).min(options.spacing.rank * 0.75);
+            let mut target = finite(guard + min_room)?.min(options.spacing.rank);
+            let nominal_room = (self.height - guard).max(0.0);
+            if widest_promotable > nominal_room * 4.0
+                && (!self.allow_local_sweeps || widest_promotable > nominal_room * MAX_SWEEP_ASPECT)
+            {
+                let wide_room = (widest_promotable / 3.2).min(options.spacing.rank * 1.15);
+                target = target.max(finite(guard + wide_room)?);
+            }
+            self.minimum = self.minimum.max(target);
         }
+        self.height = self.height.max(self.minimum);
         if ids.is_empty() || options.routing == RoutingStyle::Polyline {
             return Ok(());
         }
-        if curved && ids.len() == 1 {
+        let room = (self.height - guard).max(0.0);
+        let has_extreme_sweep = curved && room > 0.0 && widest_promotable > room * MAX_SWEEP_ASPECT;
+        if (isolated_curve || (curved && ids.len() == 1)) && !has_extreme_sweep {
             return Ok(());
         }
-        if ids.len() > options.caps.max_weighed_gap_pieces {
-            self.tracks = greedy_tracks(&mut self.pieces, &ids, curved, work)?;
+        if curved && ids.len() == 1 {
+            // An isolated ultra-wide sweep promotes straight to a single horizontal track rather
+            // than flattening into a pancake cubic.
+            self.pieces[ids[0]].track = Some(0);
+            self.tracks = 1;
+        } else if ids.len() > options.caps.max_weighed_gap_pieces {
+            if curved {
+                return Ok(());
+            }
+            self.tracks = greedy_tracks(&mut self.pieces, ids, work)?;
         } else {
-            work.sort(&mut ids, |&a, &b| {
+            work.sort(ids, |&a, &b| {
                 self.pieces[a]
                     .span
                     .lo()
@@ -858,26 +1043,28 @@ impl Gap {
                 let mut promoted = filled(ids.len(), false)?;
                 if curved_levels(
                     &self.pieces,
-                    &ids,
+                    ids,
                     self.height,
-                    self.height - guard,
+                    room,
+                    max_promotable_span,
                     &mut promoted,
                     work,
                 )? {
-                    let widest = ids
-                        .iter()
-                        .map(|&i| self.pieces[i].span.width())
-                        .fold(0.0, f64::max);
-                    self.minimum = self
+                    let inflated_min = self
                         .minimum
                         .max((3.0 * options.spacing.rank).min(widest * 0.5));
-                    self.height = self.height.max(self.minimum);
-                    return Ok(());
+                    let inflated_room = (self.height.max(inflated_min) - guard).max(0.0);
+                    if inflated_room > 0.0 && widest_promotable <= inflated_room * MAX_SWEEP_ASPECT
+                    {
+                        self.minimum = inflated_min;
+                        self.height = self.height.max(self.minimum);
+                        return Ok(());
+                    }
                 }
                 let mut flags = promoted.into_iter();
                 ids.retain(|_| flags.next() == Some(true));
             }
-            self.tracks = weighed_tracks(&mut self.pieces, &ids, work)?;
+            self.tracks = weighed_tracks(&mut self.pieces, ids, work)?;
         }
         if self.tracks > 0 {
             let (margin, pitch, _) = track_metrics(options.routing, options.spacing.edge);
@@ -894,10 +1081,11 @@ fn place_bands(
     bands: &mut [Band],
     gaps: &mut [Gap],
     options: &Options,
+    ids: &mut Vec<usize>,
     work: &mut Work<'_>,
 ) -> LayoutResult<()> {
     for gap in gaps.iter_mut() {
-        gap.grade(options, work)?;
+        gap.grade_with_scratch(options, ids, work)?;
     }
     for row in 1..gaps.len() {
         work.visit(1)?;
@@ -932,9 +1120,10 @@ fn sweep_clearance(
     options: &Options,
     x: &[f64],
     index: &[usize],
+    rooms: &mut Vec<Option<(f64, f64)>>,
     work: &mut Work<'_>,
-) -> LayoutResult<Vec<Option<(f64, f64)>>> {
-    let mut rooms = Vec::new();
+) -> LayoutResult<()> {
+    rooms.clear();
     let half_sep = options.spacing.edge * 0.5;
     for (layer, &physical) in g.layers.iter().zip(index) {
         work.visit(1)?;
@@ -949,7 +1138,8 @@ fn sweep_clearance(
             }
             if rooms.is_empty() {
                 work.charge(x.len())?;
-                rooms = filled(x.len(), None)?;
+                clear_reserve(rooms, x.len())?;
+                rooms.resize(x.len(), None);
             }
             let neighbor = |peer: u32, direction: f64| {
                 let u = peer as usize;
@@ -971,7 +1161,7 @@ fn sweep_clearance(
             rooms[v] = Some((lo, hi));
         }
     }
-    Ok(rooms)
+    Ok(())
 }
 
 #[derive(Clone, Copy)]
@@ -1017,7 +1207,6 @@ struct SuperGap {
     sweep: Sweep,
     occupied: [Span; MAX_SWEEP_GAPS],
     steps: usize,
-    free_departure: bool,
 }
 
 fn prove_sweep(
@@ -1025,7 +1214,6 @@ fn prove_sweep(
     bands: &[Band],
     rooms: &[Option<(f64, f64)>],
     sep: f64,
-    share_departure: bool,
     work: &mut Work<'_>,
 ) -> LayoutResult<Option<SuperGap>> {
     let first = &gaps[0];
@@ -1049,13 +1237,6 @@ fn prove_sweep(
         ease: sweep_handle_fraction(span.width(), end - start),
     };
     let mut occupied = [span; MAX_SWEEP_GAPS];
-    // The painter can absorb a short terminal guard into the sweep. Longer guards keep
-    // their narrower per-gap occupancy so they do not block otherwise compatible curves.
-    let mut free_departure = share_departure
-        && first.allow_local_sweeps
-        && first.pieces.len() > 1
-        && first.upper_guard > 0.0
-        && first.upper_guard <= 2.0 * LEAD;
     let mut above = sweep.at(bands[0].bottom, work)?;
     for (step, (gap, lower)) in gaps.iter().zip(&bands[1..]).enumerate() {
         work.visit(1)?;
@@ -1072,26 +1253,13 @@ fn prove_sweep(
             if through.from < lo || through.to > hi {
                 return Ok(None);
             }
-            free_departure &= span.lo() >= lo && span.hi() <= hi;
             above = bottom;
-        }
-    }
-    if free_departure {
-        for gap in gaps {
-            if !gap.clear_of_peers(span, sep, work)? {
-                free_departure = false;
-                break;
-            }
-        }
-        if free_departure {
-            occupied[..gaps.len()].fill(span);
         }
     }
     Ok(Some(SuperGap {
         sweep,
         occupied,
         steps: gaps.len(),
-        free_departure,
     }))
 }
 
@@ -1100,7 +1268,6 @@ fn super_gap(
     bands: &[Band],
     rooms: &[Option<(f64, f64)>],
     sep: f64,
-    share_departure: bool,
     work: &mut Work<'_>,
 ) -> LayoutResult<Option<SuperGap>> {
     let usable = |gap: &Gap| {
@@ -1136,8 +1303,7 @@ fn super_gap(
         }
     }
     for count in (2..=steps).rev().take(MAX_SWEEP_TRIALS) {
-        if let Some(merge) = prove_sweep(&gaps[..count], bands, rooms, sep, share_departure, work)?
-        {
+        if let Some(merge) = prove_sweep(&gaps[..count], bands, rooms, sep, work)? {
             return Ok(Some(merge));
         }
     }
@@ -1179,8 +1345,9 @@ fn draw_piece(
         && (2..=MAX_SWEEP_PEERS).contains(&gap.pieces.len())
         && gap.clear_of_peers(piece.span, options.spacing.edge, work)?
     {
-        for (guide, lead) in guides.iter_mut().zip(piece.leads) {
-            *guide = guide.min(lead);
+        guides[0] = guides[0].min(piece.leads[0]);
+        if !piece.keep_landing_runway {
+            guides[1] = guides[1].min(piece.leads[1]);
         }
     }
     let start = advance(upper.bottom, guides[0])?;
@@ -1224,13 +1391,99 @@ fn reverse_route(points: &mut [RoutePoint]) {
     points[0].axis = points[1].axis;
 }
 
-fn direct_port(rect: Rect, hint: PortSideHint, dir: Direction, side: Side) -> f64 {
+fn face_separation(
+    ranked: &RankedComponent<'_>,
+    graph: &Graph,
+    nodes: &[Rect],
+    bands: &mut [Band],
+    index: &[usize],
+    work: &mut Work<'_>,
+) -> LayoutResult<bool> {
+    let c = ranked.component;
+    let g = ranked.expanded;
+    if c.boundaries
+        || c.group_proxies
+        || !c.loops.is_empty()
+        || !graph.groups.is_empty()
+        || !graph.lane_order.is_empty()
+        || nodes.len() != graph.nodes.len()
+        || ranked.orientation.cyclic_sccs != 0
+        || bands.len() < 2
+    {
+        return Ok(false);
+    }
+    for (layer, &row) in g.layers.iter().zip(index) {
+        work.visit(1)?;
+        let Some(band) = bands.get_mut(row) else {
+            continue;
+        };
+        let mut separation = f64::INFINITY;
+        let mut only_nodes = !layer.is_empty();
+        let mut right = f64::NEG_INFINITY;
+        for &v in layer {
+            work.visit(1)?;
+            let v = v as usize;
+            let Some(node) = nodes.get(v).filter(|_| g.kind[v] == Kind::Node) else {
+                only_nodes = false;
+                continue;
+            };
+            if matches!(c.nodes[v].contour, ShapeContourHint::OffsetDiamond { x, y } if x != 0.0 || y != 0.0)
+            {
+                return Ok(false);
+            }
+            // The neighboring band bounds also have to enclose their real boxes.
+            if node.y < band.top || node.y + node.height > band.bottom {
+                return Ok(false);
+            }
+            separation = separation.min(node.x - right);
+            right = node.x + node.width;
+        }
+        if only_nodes {
+            band.face_separation = separation.max(0.0);
+        }
+    }
+    Ok(true)
+}
+
+fn sweep_clearance_margin(
+    points: &[RoutePoint],
+    separation: f64,
+    [upper_face, lower_face]: [f64; 2],
+    [start_runway, end_runway]: [f64; 2],
+) -> f64 {
+    if separation == 0.0 {
+        return 0.0;
+    }
+    let Some(i) = points.windows(2).position(|leg| leg[0].x != leg[1].x) else {
+        return separation * 0.49;
+    };
+    if points[i + 1..].iter().any(|p| p.x != points[i + 1].x) {
+        return 0.0;
+    }
+    let [from, to] = [points[i], points[i + 1]];
+    // Painting can replace the first or last sweep knot with the end of a marker shaft.
+    let start = from.y.max(points[0].y + start_runway);
+    let end = to.y.min(points[points.len() - 1].y - end_runway);
+    let along = end - start;
+    let runway = (from.y - upper_face).min(lower_face - to.y);
+    if along <= 0.0 || runway < 0.0 {
+        return 0.0;
+    }
+    // The axial derivative of a sweep is at least 3/4 of its length. In the strip
+    // within r of either rank the cross-axis motion is at most 3*across*(r/(.75*along))².
+    // Use only half of the neighbor separation for that motion and half for the stroke.
+    let across = (to.x - from.x).abs();
+    let reach = 0.75 * along * (separation / across / 6.0).sqrt();
+    (runway + (along * 0.25).min(reach)).min(separation * 0.5) * 0.99
+}
+
+fn direct_port(rect: Rect, hint: PortSideHint, dir: Direction, side: Side, slot: f64) -> f64 {
     let offset = match super::to_canonical_port(dir, hint) {
         PortSideHint::FixedOffset {
             side: fixed,
             offset,
         } if fixed == side => offset,
-        _ => 0.0,
+        _ => slot,
     };
     (rect.center().x + offset).clamp(rect.x, rect.x + rect.width)
 }
@@ -1250,8 +1503,17 @@ pub(super) fn route(
         expanded: g,
         orientation,
         side_ports: &[],
+        direct_offsets: &[],
     };
-    route_ranked(ranked, graph, options, x, work).map(|(drawing, _)| drawing)
+    route_ranked(
+        ranked,
+        graph,
+        options,
+        x,
+        &mut RoutingScratch::default(),
+        work,
+    )
+    .map(|(drawing, _)| drawing)
 }
 
 pub(super) fn route_with_label_gaps(
@@ -1263,7 +1525,7 @@ pub(super) fn route_with_label_gaps(
     x: &[f64],
     work: &mut Work<'_>,
 ) -> LayoutResult<(Drawing, Vec<[f64; 2]>)> {
-    let side_ports = exterior::attach_exterior_ports(g, c, orientation, graph, options, x, work)?;
+    let side_ports = exterior::attach_side_ports(g, c, orientation, graph, options, x, work)?;
     g.spine_ports.resolve(
         [&mut g.target_offset, &mut g.source_offset],
         &options.spacing,
@@ -1274,13 +1536,18 @@ pub(super) fn route_with_label_gaps(
         },
         work,
     )?;
+    let direct_offsets = parallel::balance(g, c, graph, options, x, &side_ports, work)?;
+    let mut scratch = std::mem::take(&mut g.routing_scratch);
     let ranked = RankedComponent {
         component: c,
         expanded: g,
         orientation,
         side_ports: &side_ports,
+        direct_offsets: &direct_offsets,
     };
-    route_ranked(ranked, graph, options, x, work)
+    let result = route_ranked(ranked, graph, options, x, &mut scratch, work);
+    g.routing_scratch = scratch;
+    result
 }
 
 fn route_ranked(
@@ -1288,6 +1555,7 @@ fn route_ranked(
     graph: &Graph,
     options: &Options,
     x: &[f64],
+    scratch: &mut RoutingScratch,
     work: &mut Work<'_>,
 ) -> LayoutResult<(Drawing, Vec<[f64; 2]>)> {
     work.check()?;
@@ -1295,14 +1563,24 @@ fn route_ranked(
     if g.keep.len() != g.rank.len() || x.len() != g.rank.len() {
         return Err(LayoutError::InvalidInput("incomplete refined vertices"));
     }
-    let (mut bands, index) = bands(g, work)?;
+    bands(
+        g,
+        ranked.component,
+        &mut scratch.bands,
+        &mut scratch.index,
+        work,
+    )?;
+    let mut gaps = collect_pieces(&ranked, graph, options, x, scratch, work)?;
+    let bands = &mut scratch.bands;
+    let index = &scratch.index;
     let (c, orientation, side_ports) = (ranked.component, ranked.orientation, ranked.side_ports);
-    let mut gaps = collect_pieces(ranked, graph, options, x, &mut bands, &index, work)?;
-    place_bands(&mut bands, &mut gaps, options, work)?;
-    let clearance = if options.routing == RoutingStyle::Curved && !g.direct.contains(&true) {
-        sweep_clearance(g, c, options, x, &index, work)?
+    place_bands(bands, &mut gaps, options, &mut scratch.ids, work)?;
+    let ranked_curves = options.routing == RoutingStyle::Curved && !g.direct.contains(&true);
+    let clearance = if ranked_curves {
+        sweep_clearance(g, c, options, x, index, &mut scratch.rooms, work)?;
+        scratch.rooms.as_slice()
     } else {
-        Vec::new()
+        &[]
     };
     work.charge(c.nodes.len())?;
     let mut nodes = reserved(c.nodes.len())?;
@@ -1331,6 +1609,12 @@ fn route_ranked(
             height,
         });
     }
+    // An editor cache can replay a component after other components have been added.
+    let prove_gaps = options.routing == RoutingStyle::Curved
+        && !options.reuse_unchanged_components
+        && face_separation(&ranked, graph, &nodes, bands, index, work)?;
+    let mut has_labels = false;
+    let mut has_candidate = false;
     work.charge(c.links.len())?;
     let mut edges = reserved(c.links.len())?;
     if !g.inline_labels.is_empty() {
@@ -1349,10 +1633,12 @@ fn route_ranked(
         let (first, last) = (first as usize, last as usize);
         let (a, b) = (row(first), row(last));
         if inline.next_if_eq(&edge).is_some() {
-            debug_assert_eq!(b, a + 1);
             label_gaps.push([bands[a].bottom, bands[b].top]);
         }
         let spec = &graph.edges[link.edge as usize];
+        let has_edge_labels = prove_gaps
+            && (spec.label.is_some() || spec.start_label.is_some() || spec.end_label.is_some());
+        has_labels |= has_edge_labels;
         let direct = g.direct[edge];
         let [side_start, side_end] = side_ports.get(edge).copied().unwrap_or_default();
         let mut capacity =
@@ -1388,9 +1674,10 @@ fn route_ranked(
             } else {
                 (spec.source_port, spec.target_port)
             };
+            let [from_slot, to_slot] = ranked.direct_offsets.get(edge).copied().unwrap_or_default();
             (
-                direct_port(nodes[first], s, graph.direction, Side::Bottom),
-                direct_port(nodes[last], t, graph.direction, Side::Top),
+                direct_port(nodes[first], s, graph.direction, Side::Bottom, from_slot),
+                direct_port(nodes[last], t, graph.direction, Side::Top, to_slot),
             )
         } else {
             (
@@ -1418,29 +1705,25 @@ fn route_ranked(
             ));
         }
         if !direct {
-            let share_departure = !reversed
-                && side_start.is_none()
-                && spec.start_marker.width == 0.0
-                && g.layers[g.rank[first] as usize].as_slice() == [first as u32];
             let mut level = a;
             while level < b {
                 work.visit(1)?;
+                let piece = gaps[level].next_piece();
+                // An adjacent sibling sets the outer limit for a shared departure sweep.
+                let horizon = piece.horizon.unwrap_or(b).min(b).max(level + 1);
                 let merged = super_gap(
-                    &gaps[level..b],
+                    &gaps[level..horizon],
                     &bands[level..],
-                    &clearance,
+                    clearance,
                     options.spacing.edge,
-                    share_departure && level == a,
                     work,
                 )?;
                 let next = if let Some(merge) = merged {
                     let sweep = merge.sweep;
-                    let start = if merge.free_departure {
-                        RoutePoint::new(sweep.span.from, sweep.start, Axis::Vertical)
-                    } else {
-                        RoutePoint::gap_boundary(sweep.span.from, sweep.start, Axis::Vertical)
-                    };
-                    knot(&mut points, start);
+                    knot(
+                        &mut points,
+                        RoutePoint::gap_boundary(sweep.span.from, sweep.start, Axis::Vertical),
+                    );
                     knot(
                         &mut points,
                         RoutePoint::gap_boundary(sweep.span.to, sweep.end, Axis::Vertical),
@@ -1528,6 +1811,69 @@ fn route_ranked(
         if reversed {
             reverse_route(&mut points);
         }
+        let (source, source_side) = if reversed {
+            (last, ports.1)
+        } else {
+            (first, ports.0)
+        };
+        let across = points[1].x - points[0].x;
+        let offset = points[0].x - nodes[source].center().x;
+        let contour = c.nodes[source].contour;
+        let contour_center = super::diamond_offset(contour, graph.direction)
+            .map(|offset| offset.x)
+            .or((contour == ShapeContourHint::Ellipse).then_some(0.0));
+        let contour_departure = options.routing == RoutingStyle::Curved
+            && !direct
+            && source_side.axis() == Axis::Vertical
+            && spec.start_marker.length == 0.0
+            && spec.start_marker.width == 0.0
+            && across != 0.0
+            && points[0].y != points[1].y
+            && contour_center.is_some_and(|center| (offset - center) * across >= 0.0);
+        if contour_departure {
+            points[0].kind = KnotKind::ContourDeparture;
+        }
+        // A dummy-only tier may be omitted from the physical bands. Require adjacency in
+        // both views and check the label boxes separately once they have been placed.
+        let corridor_clearance = if prove_gaps
+            && !direct
+            && !has_edge_labels
+            && !contour_departure
+            && !reversed
+            && side_start.is_none()
+            && side_end.is_none()
+            && b == a + 1
+            && g.rank[last] == g.rank[first] + 1
+            && gaps[a].pieces[gaps[a].cursor - 1].track.is_none()
+            && (nodes[first].x..=nodes[first].x + nodes[first].width).contains(&source_x)
+            && (nodes[last].x..=nodes[last].x + nodes[last].width).contains(&target_x)
+        {
+            let (upper, lower) = (&bands[a], &bands[b]);
+            let separation = upper.face_separation.min(lower.face_separation);
+            // Every other band's boxes are outside the outer faces of these two bands.
+            let above = a
+                .checked_sub(1)
+                .map_or(f64::INFINITY, |row| upper.top - bands[row].bottom);
+            let below = bands
+                .get(b + 1)
+                .map_or(f64::INFINITY, |band| band.top - lower.bottom);
+            // Compaction checks foreign node moves against route envelopes with this spacing.
+            let retained = if options.compact_ranks {
+                options.spacing.edge
+            } else {
+                f64::INFINITY
+            };
+            sweep_clearance_margin(
+                &points,
+                separation,
+                [upper.bottom, lower.top],
+                spec.marker_runways(),
+            )
+            .min(0.99 * above.min(below).min(retained))
+        } else {
+            0.0
+        };
+        has_candidate |= corridor_clearance > 0.0;
         edges.push((
             link.edge,
             EdgeGeometry {
@@ -1536,10 +1882,13 @@ fn route_ranked(
                 label_center,
                 start_label_center: None,
                 end_label_center: None,
+                shared_bus: false,
+                corridor_clearance,
                 reversed_for_ranking: reversed,
             },
         ));
     }
+    scratch.needs_label_clearance = has_labels && has_candidate;
     Ok((Drawing { nodes, edges }, label_gaps))
 }
 
