@@ -12,6 +12,11 @@ use super::{
 use indexmap::IndexMap;
 use merman_layout_elk as elk;
 use merman_model::families::requirement::RequirementRelationship;
+use merman_render_core::config::config_bool;
+use merman_render_core::elk_adapter::{
+    apply_cyclic_entry_constraints, feedback_edges::orient_feedback_edges, options::layout_options,
+};
+use merman_render_core::elk_edge_geometry::{self, Outline, Shape};
 use merman_render_core::graph_layout::{Direction, Size, elk_terminal_jogs};
 use merman_render_core::layout_work::OperationLayoutWorkControl;
 use merman_render_core::text::TextMeasurer;
@@ -25,9 +30,9 @@ pub fn layout(
     measured: RequirementMeasurements<'_>,
     config: &Value,
     text_measurer: &dyn TextMeasurer,
+    algorithm: elk::Algorithm,
+    operation_seed: elk::ElkOperationSeed,
     work: &mut OperationLayoutWorkControl,
-    solve: impl FnOnce(&mut elk::Graph, &mut OperationLayoutWorkControl) -> Result<elk::LayoutResult>,
-    clip_rect_route: impl Fn(&[LayoutPoint], &LayoutNode, &LayoutNode) -> Vec<LayoutPoint>,
 ) -> Result<RequirementPreparedArtifact> {
     let RequirementMeasurements {
         direction,
@@ -95,7 +100,7 @@ pub fn layout(
         spacing: elk::Spacing::default(),
         options: elk::LayoutOptions::default(),
     };
-    let placed = solve(&mut input, work)?;
+    let placed = solve(&mut input, config, algorithm, operation_seed, work)?;
 
     let mut node_slots: IndexMap<_, _> = input
         .nodes
@@ -186,7 +191,7 @@ pub fn layout(
         edges: out_edges,
         bounds,
     };
-    let render_layout = render_layout(&layout, label_sizes, config, work, clip_rect_route)?;
+    let render_layout = render_layout(&layout, label_sizes, config, work)?;
     Ok(RequirementPreparedArtifact {
         layout,
         render_layout: Some(render_layout),
@@ -194,6 +199,39 @@ pub fn layout(
         edges: prepared_edges,
         measurement_binding,
     })
+}
+
+fn solve(
+    input: &mut elk::Graph,
+    config: &Value,
+    algorithm: elk::Algorithm,
+    operation_seed: elk::ElkOperationSeed,
+    work: &mut OperationLayoutWorkControl,
+) -> Result<elk::LayoutResult> {
+    input.options = layout_options(config, algorithm);
+    if config_bool(config, &["elk", "keepEntryNodeOnTop"]).unwrap_or(false) {
+        apply_cyclic_entry_constraints(
+            &mut input.nodes,
+            input
+                .edges
+                .iter()
+                .map(|edge| (edge.source.as_str(), edge.target.as_str())),
+            &mut Some(&mut *work),
+        )?;
+    }
+    work.charge_adapter(input.nodes.len().saturating_add(input.edges.len()))?;
+    let oriented = orient_feedback_edges(input, config, &mut Some(&mut *work))?;
+    let solved = {
+        #[cfg(feature = "benchmark-stages")]
+        let _stage = merman_model::benchmark_stages::enter(
+            merman_model::benchmark_stages::Stage::LayoutSolve,
+        );
+        elk::layout_with_operation_seed_and_work_control(oriented.graph(), operation_seed, work)
+    };
+    let mut placed =
+        solved.map_err(|error| work.map_elk_error_with_context(error, "Requirement ELK"))?;
+    oriented.restore(&mut placed, &mut Some(&mut *work))?;
+    Ok(placed)
 }
 
 /// JavaScript array indices precede the other keys, whose declaration order is stable.
@@ -214,7 +252,6 @@ fn render_layout(
     label_sizes: Vec<Size>,
     config: &Value,
     work: &mut OperationLayoutWorkControl,
-    clip_rect_route: impl Fn(&[LayoutPoint], &LayoutNode, &LayoutNode) -> Vec<LayoutPoint>,
 ) -> Result<RequirementDiagramLayout> {
     let mut render = layout.clone();
     // Requirement's public geometry uses top-left nodes; the shared shape adapter uses centers.
@@ -295,4 +332,24 @@ fn render_layout(
     )?;
     // The SVG renderer reconstructs final viewport bounds from these painted paths and labels.
     Ok(render)
+}
+
+fn clip_rect_route(
+    points: &[LayoutPoint],
+    start: &LayoutNode,
+    end: &LayoutNode,
+) -> Vec<LayoutPoint> {
+    elk_edge_geometry::sanitize(
+        points,
+        Shape {
+            intersection: None,
+            node: start,
+            outline: Outline::Rect,
+        },
+        Shape {
+            intersection: None,
+            node: end,
+            outline: Outline::Rect,
+        },
+    )
 }

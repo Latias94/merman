@@ -214,6 +214,14 @@ impl RouteContract {
         false
     }
 
+    #[cfg(any(
+        feature = "diagram-agentflow",
+        feature = "diagram-class",
+        feature = "diagram-er",
+        feature = "diagram-flowchart",
+        feature = "diagram-state",
+        feature = "diagram-swimlane"
+    ))]
     pub(crate) fn is_elk_parity(&self) -> bool {
         #[cfg(feature = "layout-elk")]
         return matches!(self, Self::ElkParity);
