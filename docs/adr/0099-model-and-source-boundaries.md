@@ -91,10 +91,10 @@ SVG policy.
 ### Structured diagrams
 
 `merman-core-structured` owns parsing and model construction for Cynefin, Gantt, Info,
-Ishikawa, Journey, Packet, Pie, Quadrant Chart, Radar, Railroad, Sankey, Timeline, Treemap,
-Venn, and XY Chart. It uses shared scanners in `merman-core-preprocess`. `merman-core` prepares the
-source, supplies config-dependent sanitization, and maps models and syntax diagnostics into
-public parse results with optional editor facts.
+Ishikawa, Journey, Packet, Pie, Quadrant Chart, Radar, Railroad, Sankey, Timeline, Tree View,
+Treemap, Venn, and XY Chart. It uses shared scanners in `merman-core-preprocess`. `merman-core`
+prepares the source, supplies config-dependent sanitization, and maps models and syntax
+diagnostics into public parse results with optional editor facts.
 
 `merman-render-structured` owns the typed layout and complete SVG emission for Cynefin, Info,
 Ishikawa, Packet, and Railroad. It uses the shared root SVG, CSS,

@@ -1,11 +1,6 @@
 #[cfg(feature = "diagram-c4")]
 pub(crate) use merman_core_preprocess::scan::LineCursor;
-#[cfg(any(
-    test,
-    feature = "diagram-event-modeling",
-    feature = "diagram-tree-view",
-    feature = "diagram-wardley"
-))]
+#[cfg(any(test, feature = "diagram-event-modeling", feature = "diagram-wardley"))]
 pub(crate) use merman_core_preprocess::scan::physical_line_at;
 #[cfg(test)]
 pub(crate) use merman_core_preprocess::scan::split_statement_suffix_hash_or_semi;
@@ -41,10 +36,6 @@ pub(crate) fn split_indent(line: &str) -> (usize, &str) {
     split_indent_by(line, char::is_whitespace)
 }
 
-pub(crate) fn split_ascii_indent(line: &str) -> (usize, &str) {
-    split_indent_by(line, |ch| matches!(ch, ' ' | '\t'))
-}
-
 pub(crate) fn leading_whitespace_len(s: &str) -> usize {
     s.chars()
         .take_while(|ch| ch.is_whitespace())
@@ -55,8 +46,8 @@ pub(crate) fn leading_whitespace_len(s: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use super::{
-        leading_whitespace_len, physical_line_at, split_ascii_indent, split_indent,
-        split_indent_by, split_statement_suffix_hash_or_semi, starts_with_case_insensitive,
+        leading_whitespace_len, physical_line_at, split_indent, split_indent_by,
+        split_statement_suffix_hash_or_semi, starts_with_case_insensitive,
     };
 
     #[test]
@@ -83,13 +74,6 @@ mod tests {
         let (indent, rest) = split_indent(" \troot");
         assert_eq!(indent, 2);
         assert_eq!(rest, "root");
-    }
-
-    #[test]
-    fn split_ascii_indent_counts_only_spaces_and_tabs() {
-        let (indent, rest) = split_ascii_indent(" \t\u{00A0}root");
-        assert_eq!(indent, 2);
-        assert_eq!(rest, "\u{00A0}root");
     }
 
     #[test]

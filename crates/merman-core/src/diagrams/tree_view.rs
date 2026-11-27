@@ -1,9 +1,5 @@
-#[cfg(feature = "presentation")]
-use crate::SourcePresentationMetadata;
 #[cfg(feature = "editor-facts")]
 use crate::diagrams::langium_common::push_langium_common_editor_fact;
-use crate::diagrams::langium_common::{LangiumCommonField, parse_langium_common};
-use crate::diagrams::scan::{physical_line_at, split_ascii_indent};
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
 #[cfg(feature = "editor-facts")]
@@ -11,18 +7,23 @@ use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol,
 };
-use crate::{Error, MAX_DIAGRAM_NESTING_DEPTH, Result, SourceSpan};
-use merman_model::families::tree_view::{TREE_VIEW_DIRECTORY_NODE_TYPE, TREE_VIEW_FILE_NODE_TYPE};
-pub(crate) use merman_model::families::tree_view::{TreeViewDiagramModel, TreeViewNode};
+use crate::{Error, MermaidConfig, OperationControl, OperationControlResult};
+#[cfg(test)]
+use crate::{MAX_DIAGRAM_NESTING_DEPTH, SourceSpan};
+#[cfg(feature = "presentation")]
+use crate::{Result, SourcePresentationMetadata};
+use merman_core_structured::tree_view::{
+    ParsedTreeView, TreeViewParseIssue, parse_tree_view_source_controlled,
+};
+#[cfg(feature = "editor-facts")]
+use merman_core_structured::tree_view::{
+    TreeViewAnnotationKind, TreeViewObservation, parse_tree_view_source_with_observer_controlled,
+};
+pub(crate) use merman_model::families::tree_view::TreeViewDiagramModel;
 #[cfg(feature = "compat-json")]
 use serde_json::Value;
 #[cfg(all(test, feature = "compat-json"))]
 use serde_json::json;
-
-#[cfg(test)]
-thread_local! {
-    static TREE_VIEW_BODY_LINE_SCAN_BYTES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
-}
 
 pub(crate) fn sanitize_common_db_fields(
     model: &mut TreeViewDiagramModel,
@@ -33,73 +34,38 @@ pub(crate) fn sanitize_common_db_fields(
     crate::common_db::sanitize_optional_acc_descr(&mut model.acc_descr, config);
 }
 
-#[derive(Debug, Clone)]
-struct ParsedTreeViewInput {
-    title: Option<String>,
-    acc_title: Option<String>,
-    acc_descr: Option<String>,
-    nodes: Vec<TreeViewNodeDetails>,
+struct TreeViewParseOutcome {
+    syntax: std::result::Result<ParsedTreeView, TreeViewParseIssue>,
     #[cfg(feature = "editor-facts")]
     editor_facts: Option<EditorSemanticFacts>,
 }
 
-#[derive(Debug, Clone)]
-struct TreeViewParseIssue {
-    message: String,
-    span: Option<SourceSpan>,
-}
-
-struct TreeViewParseOutcome {
-    snapshot: ParsedTreeViewInput,
-    first_issue: Option<TreeViewParseIssue>,
-}
-
 impl TreeViewParseOutcome {
-    #[cfg(feature = "compat-json")]
-    #[cfg(feature = "editor-facts")]
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     fn into_combined(
         self,
         meta: &SourcePresentationMetadata,
     ) -> crate::family::CombinedSemanticParse {
-        let Self {
-            snapshot,
-            first_issue,
-        } = self;
-        let construction = match first_issue {
-            Some(issue) => Err(crate::family::CombinedSemanticFailure::new(
-                issue.into_error(&meta.diagram_type),
-                Some(
-                    snapshot
-                        .editor_facts
-                        .expect("combined parsing requests editor facts"),
-                ),
+        let editor_facts = self
+            .editor_facts
+            .expect("combined parsing requests editor facts");
+        let construction = match self.syntax {
+            Ok(syntax) => Ok((syntax, editor_facts)),
+            Err(issue) => Err(crate::family::CombinedSemanticFailure::new(
+                tree_view_source_error(&meta.diagram_type, issue),
+                Some(editor_facts),
             )),
-            None => Ok(snapshot),
         };
         crate::family::CombinedSemanticParse::from_construction(
             construction,
-            |snapshot| {
-                let ParsedTreeViewInput {
-                    title,
-                    acc_title,
-                    acc_descr,
-                    nodes,
-                    editor_facts,
-                } = snapshot;
-                let mut editor_facts =
-                    editor_facts.expect("combined parsing requests editor facts");
-                let model = tree_view_input_to_model(
-                    title,
-                    acc_title,
-                    acc_descr,
-                    nodes,
-                    meta.effective_config.as_config(),
-                )
-                .map_err(|message| {
-                    editor_facts.mark_recovered_from_parse_error(message.clone(), None);
-                    Error::diagram_parse_fallback(meta.diagram_type.clone(), message)
-                })
-                .and_then(|model| render_model_to_compat_json(&model, meta));
+            |(syntax, mut editor_facts)| {
+                let model = syntax
+                    .into_model(meta.effective_config.as_config())
+                    .map_err(|message| {
+                        editor_facts.mark_recovered_from_parse_error(message.clone(), None);
+                        Error::diagram_parse_fallback(&meta.diagram_type, message)
+                    })
+                    .and_then(|model| render_model_to_compat_json(&model, meta));
                 (model, editor_facts)
             },
             crate::family::CombinedSemanticFailure::into_parts,
@@ -107,156 +73,10 @@ impl TreeViewParseOutcome {
     }
 }
 
-impl TreeViewParseIssue {
-    fn new(message: impl Into<String>, span: Option<SourceSpan>) -> Self {
-        Self {
-            message: message.into(),
-            span,
-        }
-    }
-
-    fn into_error(self, diagram_type: &str) -> Error {
-        match self.span {
-            Some(span) => Error::diagram_parse_exact(diagram_type.to_string(), &self.message, span),
-            None => Error::diagram_parse_fallback(diagram_type.to_string(), &self.message),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-struct TreeViewNodeDetails {
-    indent: usize,
-    name: String,
-    node_type: String,
-    css_class: Option<TreeViewSpannedValue>,
-    icon: Option<TreeViewSpannedValue>,
-    description: Option<TreeViewSpannedValue>,
-    #[cfg(feature = "editor-facts")]
-    span: SourceSpan,
-    #[cfg(feature = "editor-facts")]
-    selection: SourceSpan,
-}
-
-#[derive(Debug, Clone)]
-struct TreeViewSpannedValue {
-    value: String,
-    #[cfg(feature = "editor-facts")]
-    span: SourceSpan,
-}
-
-#[derive(Debug, Clone, Default)]
-struct TreeViewAnnotations {
-    css_class: Option<TreeViewSpannedValue>,
-    icon: Option<TreeViewSpannedValue>,
-    description: Option<TreeViewSpannedValue>,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct TreeViewLineFormat {
-    box_drawing: bool,
-    segment_width: usize,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct TreeViewLineView<'a> {
-    indent: usize,
-    content: &'a str,
-    content_offset: usize,
-    expand_content_tabs: bool,
-}
-
-struct TreeViewSourceSegment {
-    text: SourceSpan,
-    source: SourceSpan,
-}
-
-/// Family preprocessing keeps token boundaries tied to the original box-drawing/CRLF input.
-struct TreeViewSource {
-    text: String,
-    segments: Vec<TreeViewSourceSegment>,
-    source_end: usize,
-}
-
-impl TreeViewSource {
-    fn push(&mut self, text: &str, source: SourceSpan) {
-        if text.is_empty() {
-            return;
-        }
-        let start = self.text.len();
-        self.text.push_str(text);
-        if let Some(last) = self.segments.last_mut()
-            && last.source.end == source.start
-            && last.text.end - last.text.start == last.source.end - last.source.start
-            && text.len() == source.end - source.start
-        {
-            last.text.end = self.text.len();
-            last.source.end = source.end;
-        } else {
-            self.segments.push(TreeViewSourceSegment {
-                text: SourceSpan::new(start, self.text.len()),
-                source,
-            });
-        }
-    }
-
-    fn source_offset(&self, offset: usize, end: bool) -> usize {
-        // EOF insertions use the original EOF; token ends use the last retained segment.
-        if offset == self.text.len() && !end {
-            return self.source_end;
-        }
-        let index = if end {
-            self.segments
-                .partition_point(|segment| segment.text.start < offset)
-                .saturating_sub(1)
-        } else {
-            self.segments
-                .partition_point(|segment| segment.text.end <= offset)
-        };
-        let Some(segment) = self.segments.get(index) else {
-            return self.source_end;
-        };
-        if offset <= segment.text.start {
-            segment.source.start
-        } else if offset >= segment.text.end {
-            segment.source.end
-        } else if segment.text.end - segment.text.start == segment.source.end - segment.source.start
-        {
-            segment.source.start + offset - segment.text.start
-        } else if end {
-            segment.source.end
-        } else {
-            segment.source.start
-        }
-    }
-
-    fn source_span(&self, span: SourceSpan) -> SourceSpan {
-        let start = self.source_offset(span.start, false);
-        let end = if span.start == span.end {
-            start
-        } else {
-            self.source_offset(span.end, true)
-        };
-        SourceSpan::new(start, end)
-    }
-}
-
-#[derive(Debug, Clone)]
-struct ArenaNode {
-    id: i64,
-    level: i64,
-    name: String,
-    node_type: String,
-    css_class: Option<String>,
-    icon: Option<String>,
-    description: Option<String>,
-    children: Vec<usize>,
-}
-
 #[cfg(feature = "compat-json")]
 pub(crate) fn parse_tree_view(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
-    let model =
-        parse_tree_view_model_for_render_controlled(code, meta, &crate::OperationControl::new())
-            .expect("a private parse control cannot be cancelled")?;
+    let model = parse_tree_view_model_for_render_controlled(code, meta, &OperationControl::new())
+        .expect("a private parse control cannot be cancelled")?;
     render_model_to_compat_json(&model, meta)
 }
 
@@ -265,15 +85,10 @@ pub(crate) fn parse_tree_view(code: &str, meta: &SourcePresentationMetadata) -> 
 pub(crate) fn parse_tree_view_json_and_editor_facts(
     code: &str,
     meta: &SourcePresentationMetadata,
-    control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::family::CombinedSemanticParse> {
-    let parsed = parse_tree_view_input_controlled(
-        code,
-        &meta.diagram_type,
-        EditorFactsDemand::Capture,
-        control,
-    )?
-    .into_combined(meta);
+    control: &OperationControl,
+) -> OperationControlResult<crate::family::CombinedSemanticParse> {
+    let parsed = parse_tree_view_input_controlled(code, EditorFactsDemand::Capture, control)?
+        .into_combined(meta);
     control.checkpoint()?;
     Ok(parsed)
 }
@@ -283,7 +98,7 @@ pub(crate) fn parse_tree_view_model_for_render(
     code: &str,
     meta: &SourcePresentationMetadata,
 ) -> Result<TreeViewDiagramModel> {
-    parse_tree_view_model_for_render_controlled(code, meta, &crate::OperationControl::new())
+    parse_tree_view_model_for_render_controlled(code, meta, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
 
@@ -291,8 +106,8 @@ pub(crate) fn parse_tree_view_model_for_render(
 pub(crate) fn parse_tree_view_model_for_render_controlled(
     code: &str,
     meta: &SourcePresentationMetadata,
-    control: &crate::OperationControl,
-) -> crate::OperationControlResult<Result<TreeViewDiagramModel>> {
+    control: &OperationControl,
+) -> OperationControlResult<Result<TreeViewDiagramModel>> {
     Ok(construct_tree_view_model_controlled(
         code,
         &meta.diagram_type,
@@ -308,8 +123,8 @@ pub(crate) fn parse_tree_view_semantic_model_controlled(
     code: &str,
     meta: &crate::SemanticMetadata,
     #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
-    control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::family::SemanticConstruction<TreeViewDiagramModel>> {
+    control: &OperationControl,
+) -> OperationControlResult<crate::family::SemanticConstruction<TreeViewDiagramModel>> {
     Ok(construct_tree_view_model_controlled(
         code,
         &meta.diagram_type,
@@ -327,43 +142,37 @@ pub(crate) fn parse_tree_view_semantic_model_controlled(
 fn construct_tree_view_model_controlled(
     code: &str,
     diagram_type: &str,
-    config: &crate::MermaidConfig,
+    config: &MermaidConfig,
     #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
-    control: &crate::OperationControl,
-) -> crate::OperationControlResult<crate::family::SemanticConstruction<TreeViewDiagramModel>> {
+    control: &OperationControl,
+) -> OperationControlResult<crate::family::SemanticConstruction<TreeViewDiagramModel>> {
     let TreeViewParseOutcome {
-        snapshot,
-        first_issue,
+        syntax,
+        #[cfg(feature = "editor-facts")]
+        mut editor_facts,
     } = parse_tree_view_input_controlled(
         code,
-        diagram_type,
         #[cfg(feature = "editor-facts")]
         editor_demand,
         control,
     )?;
-    let ParsedTreeViewInput {
-        title,
-        acc_title,
-        acc_descr,
-        nodes,
+    let syntax = match syntax {
+        Ok(syntax) => syntax,
+        Err(issue) => {
+            return Ok(crate::family::SemanticConstruction {
+                model: Err(tree_view_source_error(diagram_type, issue)),
+                #[cfg(feature = "editor-facts")]
+                editor_facts,
+            });
+        }
+    };
+    let model = syntax.into_model(config).map_err(|message| {
         #[cfg(feature = "editor-facts")]
-        mut editor_facts,
-    } = snapshot;
-    if let Some(issue) = first_issue {
-        return Ok(crate::family::SemanticConstruction {
-            model: Err(issue.into_error(diagram_type)),
-            #[cfg(feature = "editor-facts")]
-            editor_facts,
-        });
-    }
-    let model =
-        tree_view_input_to_model(title, acc_title, acc_descr, nodes, config).map_err(|message| {
-            #[cfg(feature = "editor-facts")]
-            if let Some(facts) = &mut editor_facts {
-                facts.mark_recovered_from_parse_error(message.clone(), None);
-            }
-            Error::diagram_parse_fallback(diagram_type.to_string(), message)
-        });
+        if let Some(facts) = &mut editor_facts {
+            facts.mark_recovered_from_parse_error(message.clone(), None);
+        }
+        Error::diagram_parse_fallback(diagram_type, message)
+    });
     control.checkpoint()?;
     Ok(crate::family::SemanticConstruction {
         model,
@@ -383,1040 +192,93 @@ pub(crate) fn render_model_to_compat_json(
 
 fn parse_tree_view_input_controlled(
     code: &str,
-    diagram_type: &str,
     #[cfg(feature = "editor-facts")] demand: EditorFactsDemand,
-    control: &crate::OperationControl,
-) -> crate::OperationControlResult<TreeViewParseOutcome> {
+    control: &OperationControl,
+) -> OperationControlResult<TreeViewParseOutcome> {
     control.checkpoint()?;
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("treeView");
     #[cfg(feature = "editor-facts")]
     let mut editor_facts = demand.needs_recovery().then(EditorSemanticFacts::new);
-    let mut first_issue = None;
-    let body = match tree_view_body_start_controlled(code, control)? {
-        Ok(body) => body,
-        Err(issue) => {
-            mark_tree_view_recovery(
-                #[cfg(feature = "editor-facts")]
-                &mut editor_facts,
-                &mut first_issue,
-                issue,
-            );
-            return Ok(TreeViewParseOutcome {
-                snapshot: ParsedTreeViewInput {
-                    title: None,
-                    acc_title: None,
-                    acc_descr: None,
-                    nodes: Vec::new(),
-                    #[cfg(feature = "editor-facts")]
-                    editor_facts,
-                },
-                first_issue,
-            });
-        }
+    #[cfg(feature = "editor-facts")]
+    let syntax = if let Some(facts) = &mut editor_facts {
+        parse_tree_view_source_with_observer_controlled(
+            code,
+            demand.captures_rich(),
+            &mut |observation| project_tree_view_observation(facts, observation),
+            control,
+        )?
+    } else {
+        parse_tree_view_source_controlled(code, control)?
     };
-    let (source, issues) = preprocess_tree_view_body(code, body.offset, diagram_type, control)?;
-    for issue in issues {
-        mark_tree_view_recovery(
-            #[cfg(feature = "editor-facts")]
-            &mut editor_facts,
-            &mut first_issue,
-            issue,
-        );
-    }
-    let code = source.text.as_str();
-    let mut offset = 0;
-    let mut title = None;
-    let mut acc_title = None;
-    let mut acc_descr = None;
-    let mut nodes = Vec::new();
-    let mut saw_node = false;
-    let mut line_end = 0;
-    let mut next_line_offset = 0;
-
-    while offset < code.len() {
-        control.checkpoint()?;
-        if let Some(parsed) = parse_langium_common(code, offset) {
-            if saw_node {
-                let span = parsed.fact.raw_span;
-                mark_tree_view_recovery(
-                    #[cfg(feature = "editor-facts")]
-                    &mut editor_facts,
-                    &mut first_issue,
-                    TreeViewParseIssue::new(
-                        "tree view title and accessibility fields must precede every node",
-                        Some(source.source_span(span)),
-                    ),
-                );
-                offset += parsed.consumed;
-                continue;
-            }
-            let field = parsed.fact.field;
-            let value = parsed.fact.value.clone();
-            #[cfg(feature = "editor-facts")]
-            if let Some(facts) = editor_facts.as_mut().filter(|_| demand.captures_rich()) {
-                let mut fact = parsed.fact.clone();
-                fact.raw_span = source.source_span(fact.raw_span);
-                fact.value_span = source.source_span(fact.value_span);
-                push_langium_common_editor_fact(facts, &fact, "tree view");
-            }
-            match field {
-                LangiumCommonField::Title => title = Some(value),
-                LangiumCommonField::AccTitle => acc_title = Some(value),
-                LangiumCommonField::AccDescr => acc_descr = Some(value),
-            }
-            if let Some(diagnostic) = parsed.diagnostic {
-                mark_tree_view_recovery(
-                    #[cfg(feature = "editor-facts")]
-                    &mut editor_facts,
-                    &mut first_issue,
-                    TreeViewParseIssue::new(
-                        diagnostic.message,
-                        Some(source.source_span(diagnostic.span)),
-                    ),
-                );
-            }
-            offset += parsed.consumed;
-            continue;
-        }
-
-        // Adjacent quoted nodes can resume within one physical line.
-        if offset >= next_line_offset {
-            let (line, next_offset) = physical_line_at(code, offset);
-            line_end = offset + line.len();
-            next_line_offset = next_offset;
-            #[cfg(test)]
-            TREE_VIEW_BODY_LINE_SCAN_BYTES.with(|bytes| {
-                bytes.set(bytes.get() + next_offset - offset);
-            });
-        }
-        let line = &code[offset..line_end];
-        let starts_physical_line = offset == 0 || code.as_bytes()[offset - 1] == b'\n';
-        if line.is_empty()
-            || (starts_physical_line
-                && (is_tree_view_cleaned_comment_line(line) || line.starts_with("%%")))
-        {
-            offset = next_line_offset;
-            continue;
-        }
-        saw_node = true;
-        let (parsed, next_offset) = parse_tree_view_node(code, offset, control)?;
-        offset = next_offset;
-        match parsed {
-            Ok(node) => {
-                #[cfg(feature = "editor-facts")]
-                let mut node = node;
-                #[cfg(feature = "editor-facts")]
-                {
-                    node.span = source.source_span(node.span);
-                    node.selection = source.source_span(node.selection);
-                    for value in [&mut node.css_class, &mut node.icon, &mut node.description]
-                        .into_iter()
-                        .flatten()
-                    {
-                        value.span = source.source_span(value.span);
-                    }
-                    if let Some(facts) = editor_facts.as_mut().filter(|_| demand.captures_rich()) {
-                        push_tree_view_node_editor_facts(facts, &node);
-                    }
-                }
-                nodes.push(node);
-            }
-            Err(mut issue) => {
-                issue.span = issue.span.map(|span| source.source_span(span));
-                mark_tree_view_recovery(
-                    #[cfg(feature = "editor-facts")]
-                    &mut editor_facts,
-                    &mut first_issue,
-                    issue,
-                );
-            }
-        }
-    }
-
-    control.checkpoint()?;
+    #[cfg(not(feature = "editor-facts"))]
+    let syntax = parse_tree_view_source_controlled(code, control)?;
     Ok(TreeViewParseOutcome {
-        snapshot: ParsedTreeViewInput {
-            title,
-            acc_title,
-            acc_descr,
-            nodes,
-            #[cfg(feature = "editor-facts")]
-            editor_facts,
-        },
-        first_issue,
+        syntax,
+        #[cfg(feature = "editor-facts")]
+        editor_facts,
     })
 }
 
-#[derive(Debug, Clone, Copy)]
-struct TreeViewBodyStart {
-    offset: usize,
-}
-
-fn tree_view_body_start_controlled(
-    code: &str,
-    control: &crate::OperationControl,
-) -> crate::OperationControlResult<std::result::Result<TreeViewBodyStart, TreeViewParseIssue>> {
-    let mut offset = 0usize;
-    while offset < code.len() {
-        control.checkpoint()?;
-        let (line, next_offset) = physical_line_at(code, offset);
-        let trimmed = line.trim();
-        if trimmed.is_empty() || is_tree_view_comment_line(line) {
-            offset = next_offset;
-            continue;
-        }
-
-        let leading = line.len().saturating_sub(line.trim_start().len());
-        let span = SourceSpan::new(offset + leading, offset + leading + trimmed.len());
-        let Some(trailing) = trimmed.strip_prefix("treeView-beta") else {
-            return Ok(Err(TreeViewParseIssue::new(
-                "expected treeView-beta",
-                Some(span),
-            )));
-        };
-        if !trailing.trim().is_empty() && !trailing.trim_start().starts_with("%%") {
-            return Ok(Err(TreeViewParseIssue::new(
-                "unexpected tokens after treeView-beta",
-                Some(span),
-            )));
-        }
-        return Ok(Ok(TreeViewBodyStart {
-            offset: next_offset,
-        }));
+fn tree_view_source_error(diagram_type: &str, issue: TreeViewParseIssue) -> Error {
+    match issue.span {
+        Some(span) => Error::diagram_parse_exact(diagram_type, issue.message, span),
+        None => Error::diagram_parse_fallback(diagram_type, issue.message),
     }
-
-    Ok(Err(TreeViewParseIssue::new("expected treeView-beta", None)))
 }
 
-fn mark_tree_view_recovery(
-    #[cfg(feature = "editor-facts")] editor_facts: &mut Option<EditorSemanticFacts>,
-    first_issue: &mut Option<TreeViewParseIssue>,
-    issue: TreeViewParseIssue,
+#[cfg(feature = "editor-facts")]
+fn project_tree_view_observation(
+    facts: &mut EditorSemanticFacts,
+    observation: TreeViewObservation<'_>,
 ) {
-    if first_issue.is_none() {
-        *first_issue = Some(issue.clone());
-    }
-    #[cfg(feature = "editor-facts")]
-    if let Some(editor_facts) = editor_facts {
-        editor_facts.mark_recovered_from_parse_error(
+    match observation {
+        TreeViewObservation::Common(fact) => {
+            push_langium_common_editor_fact(facts, fact, "tree view")
+        }
+        TreeViewObservation::Issue(issue) => facts.mark_recovered_from_parse_error(
             format!(
                 "treeView parser recovered after parse error: {}",
                 issue.message
             ),
             issue.span,
-        );
-    }
-}
-
-fn tree_view_error_message(error: &Error) -> String {
-    match error {
-        Error::DiagramParse { diagnostic, .. } => diagnostic.message().to_string(),
-        _ => error.to_string(),
-    }
-}
-
-fn tree_view_input_to_model(
-    title: Option<String>,
-    acc_title: Option<String>,
-    acc_descr: Option<String>,
-    nodes: Vec<TreeViewNodeDetails>,
-    config: &crate::MermaidConfig,
-) -> std::result::Result<TreeViewDiagramModel, String> {
-    let mut arena = vec![ArenaNode {
-        id: 0,
-        level: -1,
-        name: "/".to_string(),
-        node_type: TREE_VIEW_DIRECTORY_NODE_TYPE.to_string(),
-        css_class: None,
-        icon: None,
-        description: None,
-        children: Vec::new(),
-    }];
-    let mut stack = vec![0usize];
-    for (next_id, flat) in (1i64..).zip(nodes) {
-        let level = flat.indent as i64;
-        while stack
-            .last()
-            .and_then(|&idx| arena.get(idx))
-            .is_some_and(|node| level <= node.level)
-        {
-            stack.pop();
-        }
-
-        let parent = stack.last().copied().unwrap_or(0);
-        let idx = arena.len();
-        arena.push(ArenaNode {
-            id: next_id,
-            level,
-            name: flat.name,
-            node_type: flat.node_type,
-            css_class: flat.css_class.map(|value| value.value),
-            icon: flat.icon.map(|value| value.value),
-            description: flat
-                .description
-                .map(|value| crate::sanitize::sanitize_text(&value.value, config)),
-            children: Vec::new(),
-        });
-        arena[parent].children.push(idx);
-        stack.push(idx);
-        if stack.len().saturating_sub(1) > MAX_DIAGRAM_NESTING_DEPTH {
-            return Err(format!(
-                "treeView nesting depth exceeds {MAX_DIAGRAM_NESTING_DEPTH}"
-            ));
-        }
-    }
-
-    Ok(TreeViewDiagramModel {
-        title,
-        acc_title,
-        acc_descr,
-        root: arena_node_to_model(&arena, 0),
-    })
-}
-
-fn arena_node_to_model(arena: &[ArenaNode], idx: usize) -> TreeViewNode {
-    let mut models: Vec<Option<TreeViewNode>> = vec![None; arena.len()];
-    let mut stack = vec![(idx, false)];
-
-    while let Some((node_idx, visited)) = stack.pop() {
-        let Some(node) = arena.get(node_idx) else {
-            continue;
-        };
-
-        if visited {
-            let children = node
-                .children
-                .iter()
-                .filter_map(|&child_idx| models.get_mut(child_idx).and_then(Option::take))
-                .collect();
-            models[node_idx] = Some(TreeViewNode {
-                id: node.id,
-                level: node.level,
-                name: node.name.clone(),
-                node_type: node.node_type.clone(),
-                css_class: node.css_class.clone(),
-                icon: node.icon.clone(),
-                description: node.description.clone(),
-                children,
-            });
-        } else {
-            stack.push((node_idx, true));
-            for &child_idx in node.children.iter().rev() {
-                stack.push((child_idx, false));
-            }
-        }
-    }
-
-    models
-        .get_mut(idx)
-        .and_then(Option::take)
-        .unwrap_or_default()
-}
-
-fn preprocess_tree_view_body(
-    code: &str,
-    body_start: usize,
-    diagram_type: &str,
-    control: &crate::OperationControl,
-) -> crate::OperationControlResult<(TreeViewSource, Vec<TreeViewParseIssue>)> {
-    let lines = code[body_start..].lines().collect::<Vec<_>>();
-    let line_format = TreeViewLineFormat::from_lines(&lines);
-    let mut source = TreeViewSource {
-        text: String::new(),
-        segments: Vec::new(),
-        source_end: code.len(),
-    };
-    let mut issues = Vec::new();
-    let mut offset = body_start;
-    while offset < code.len() {
-        control.checkpoint()?;
-        let (line, next_offset) = physical_line_at(code, offset);
-        let passthrough = !line_format.box_drawing
-            || line.trim().is_empty()
-            || is_tree_view_comment_line(line)
-            || is_tree_view_metadata_line(line);
-        if passthrough {
-            source.push(line, SourceSpan::new(offset, offset + line.len()));
-        } else {
-            match tree_view_line_view(line, line_format, diagram_type) {
-                Ok(Some(view)) if view.expand_content_tabs => {
-                    let content_start = offset + view.content_offset;
-                    source.push(
-                        &" ".repeat(view.indent),
-                        SourceSpan::new(offset, content_start),
-                    );
-                    let mut start = 0;
-                    for (index, ch) in view.content.char_indices() {
-                        if index % 128 == 0 {
-                            control.checkpoint()?;
-                        }
-                        if ch == '\t' {
-                            source.push(
-                                &view.content[start..index],
-                                SourceSpan::new(content_start + start, content_start + index),
-                            );
-                            source.push(
-                                "    ",
-                                SourceSpan::new(content_start + index, content_start + index + 1),
-                            );
-                            start = index + 1;
-                        }
-                    }
-                    source.push(
-                        &view.content[start..],
-                        SourceSpan::new(content_start + start, content_start + view.content.len()),
-                    );
-                }
-                Ok(Some(_)) => {
-                    source.push(line, SourceSpan::new(offset, offset + line.len()));
-                }
-                Ok(None) => {
-                    offset = next_offset;
-                    continue;
-                }
-                Err(error) => {
-                    let leading = line.len() - line.trim_start().len();
-                    issues.push(TreeViewParseIssue::new(
-                        tree_view_error_message(&error),
-                        Some(SourceSpan::new(
-                            offset + leading,
-                            offset + line.trim_end().len(),
-                        )),
-                    ));
-                    offset = next_offset;
-                    continue;
-                }
-            }
-        }
-        let line_end = offset + line.len();
-        if next_offset > line_end {
-            source.push("\n", SourceSpan::new(line_end, next_offset));
-        }
-        offset = next_offset;
-    }
-    control.checkpoint()?;
-    Ok((source, issues))
-}
-
-impl TreeViewLineFormat {
-    fn from_lines(lines: &[&str]) -> Self {
-        let mut content_lines = Vec::new();
-        for line in lines {
-            if should_skip_tree_view_box_detection_line(line) {
-                continue;
-            }
-            content_lines.push(line.replace('\t', "    "));
-        }
-        let box_drawing = content_lines
-            .iter()
-            .any(|line| line.chars().any(is_tree_view_box_char));
-        let segment_width = if box_drawing {
-            infer_tree_view_box_segment_width(&content_lines)
-        } else {
-            4
-        };
-        Self {
-            box_drawing,
-            segment_width,
-        }
-    }
-}
-
-fn tree_view_line_view<'a>(
-    line: &'a str,
-    line_format: TreeViewLineFormat,
-    diagram_type: &str,
-) -> Result<Option<TreeViewLineView<'a>>> {
-    if !line_format.box_drawing {
-        let (indent, rest) = split_ascii_indent(line);
-        let content = rest.trim_end();
-        if content.is_empty() {
-            return Ok(None);
-        }
-        let content_offset = line.len().saturating_sub(rest.len());
-        return Ok(Some(TreeViewLineView {
-            indent,
-            content,
-            content_offset,
-            expand_content_tabs: false,
-        }));
-    }
-
-    if is_tree_view_decoration_only(line) {
-        return Ok(None);
-    }
-
-    if let Some((branch_byte, branch_col, branch_char)) = find_tree_view_branch_char(line) {
-        let depth = ((branch_col as f64 / line_format.segment_width as f64).round() as usize) + 1;
-        let mut content_offset = branch_byte + branch_char.len_utf8();
-        while let Some(ch) = line[content_offset..].chars().next() {
-            if is_tree_view_dash_char(ch) {
-                content_offset += ch.len_utf8();
-            } else {
-                break;
-            }
-        }
-        while let Some(ch) = line[content_offset..].chars().next() {
-            if ch == ' ' || ch == '\t' {
-                content_offset += ch.len_utf8();
-            } else {
-                break;
-            }
-        }
-        let content = line[content_offset..].trim_end();
-        if content.is_empty() {
-            return Err(parse_error(
-                diagram_type,
-                "empty tree node after box-drawing prefix",
-            ));
-        }
-        return Ok(Some(TreeViewLineView {
-            indent: depth * 4,
-            content,
-            content_offset,
-            expand_content_tabs: true,
-        }));
-    }
-
-    if is_tree_view_box_drawing_only(line) {
-        return Ok(None);
-    }
-
-    if line.chars().any(is_tree_view_box_char) {
-        let content = line.trim_end();
-        return Ok(Some(TreeViewLineView {
-            indent: 0,
-            content,
-            content_offset: 0,
-            expand_content_tabs: false,
-        }));
-    }
-
-    if line.chars().next().is_some_and(char::is_whitespace) {
-        return Err(parse_error(
-            diagram_type,
-            "unexpected indentation without box-drawing prefix in treeView box-drawing input",
-        ));
-    }
-
-    let content = line.trim_end();
-    Ok(Some(TreeViewLineView {
-        indent: 0,
-        content,
-        content_offset: 0,
-        expand_content_tabs: false,
-    }))
-}
-
-fn normalize_tree_view_node_name(
-    raw_name: String,
-    raw_selection_end: usize,
-) -> (String, String, usize) {
-    if raw_name.ends_with('/') {
-        let mut name = raw_name;
-        name.pop();
-        (
+        ),
+        TreeViewObservation::Node {
             name,
-            TREE_VIEW_DIRECTORY_NODE_TYPE.to_string(),
-            raw_selection_end.saturating_sub('/'.len_utf8()),
-        )
-    } else {
-        (
-            raw_name,
-            TREE_VIEW_FILE_NODE_TYPE.to_string(),
-            raw_selection_end,
-        )
-    }
-}
-
-fn parse_tree_view_node(
-    code: &str,
-    offset: usize,
-    control: &crate::OperationControl,
-) -> crate::OperationControlResult<(
-    std::result::Result<TreeViewNodeDetails, TreeViewParseIssue>,
-    usize,
-)> {
-    let (indent, content) = split_ascii_indent(&code[offset..]);
-    let mut node_start = code.len() - content.len();
-    // INDENTATION is a grammar token, while NL and comments are hidden. An indent
-    // after a completed node can therefore belong to a name on a later line.
-    loop {
-        control.checkpoint()?;
-        if code.as_bytes().get(node_start) == Some(&b'\n') {
-            node_start += 1;
-            continue;
-        }
-        if code[node_start..].starts_with("%%") {
-            node_start = physical_line_at(code, node_start).1;
-            continue;
-        }
-        if node_start == 0 || code.as_bytes().get(node_start - 1) == Some(&b'\n') {
-            let (line, next_offset) = physical_line_at(code, node_start);
-            if is_tree_view_cleaned_comment_line(line) {
-                node_start = next_offset;
-                continue;
-            }
-        }
-        break;
-    }
-    let content = &code[node_start..];
-    if let Some(common) = parse_langium_common(code, node_start) {
-        return Ok((
-            Err(TreeViewParseIssue::new(
-                "tree view title and accessibility fields must precede every node",
-                Some(common.fact.raw_span),
-            )),
-            node_start + common.consumed,
-        ));
-    }
-    if content.starts_with([' ', '\t']) {
-        return Ok(tree_view_node_failure(
-            code,
-            node_start,
-            node_start,
-            "expected tree node name after indentation",
-        ));
-    }
-    let (raw_name, _name_start, name_end, mut pos) = if let Some(quote @ (b'"' | b'\'')) =
-        content.as_bytes().first().copied()
-    {
-        // QUOTED_NAME has no escapes or line-ending restriction. Only its matching quote
-        // ends the token; comment and metadata spellings inside it are ordinary payload.
-        let mut close = None;
-        for (index, byte) in content.as_bytes()[1..].iter().enumerate() {
-            if index % 128 == 0 {
-                control.checkpoint()?;
-            }
-            if *byte == quote {
-                close = Some(node_start + index + 1);
-                break;
-            }
-        }
-        let Some(close) = close else {
-            return Ok(tree_view_node_failure(
-                code,
-                node_start,
-                node_start,
-                "unterminated quoted tree node name",
+            span,
+            selection,
+        } => {
+            facts.push_expected_syntax(EditorExpectedSyntax::new(
+                EditorExpectedSyntaxKind::NodeIdentifier,
+                selection,
             ));
-        };
-        (
-            code[node_start + 1..close].to_string(),
-            node_start + 1,
-            close,
-            close + 1,
-        )
-    } else {
-        // BARE_NAME excludes these prefixes even when they cannot form an annotation.
-        if content.starts_with(":::") || content.starts_with("icon(") || content.starts_with("##") {
-            return Ok(tree_view_node_failure(
-                code,
-                node_start,
-                node_start,
-                "expected tree node name",
+            facts.push_symbol(EditorSemanticSymbol::new(
+                name,
+                Some("tree view node".to_string()),
+                EditorSemanticKind::Namespace,
+                span,
+                selection,
             ));
         }
-        let (line, _) = physical_line_at(code, node_start);
-        let annotation_start = find_next_tree_view_annotation_start(line, 0);
-        let end = trim_end_byte_index(&line[..annotation_start.unwrap_or(line.len())]);
-        if end == 0 {
-            return Ok(tree_view_node_failure(
-                code,
-                node_start,
-                node_start,
-                "expected tree node name",
+        TreeViewObservation::Annotation { kind, text, span } => {
+            let detail = match kind {
+                TreeViewAnnotationKind::Class => "tree view class",
+                TreeViewAnnotationKind::Icon => "tree view icon",
+                TreeViewAnnotationKind::Description => "tree view description",
+            };
+            facts.push_expected_syntax(EditorExpectedSyntax::new(
+                EditorExpectedSyntaxKind::Payload,
+                span,
+            ));
+            facts.push_symbol(EditorSemanticSymbol::payload(
+                text,
+                Some(detail.to_string()),
+                EditorSemanticKind::String,
+                span,
+                span,
             ));
         }
-        (
-            line[..end].to_string(),
-            node_start,
-            node_start + end,
-            // A bare token owns its trailing blanks unless an annotation starts there.
-            node_start
-                + if annotation_start.is_some() {
-                    end
-                } else {
-                    line.len()
-                },
-        )
-    };
-    let (name, node_type, _selection_end) = normalize_tree_view_node_name(raw_name, name_end);
-    let mut annotations = TreeViewAnnotations::default();
-    let mut _node_end = pos;
-    loop {
-        control.checkpoint()?;
-        let token_start = skip_ascii_whitespace(code, pos);
-        if token_start >= code.len() {
-            break;
-        }
-        if code.as_bytes()[token_start] == b'\n' {
-            if token_start != pos {
-                break;
-            }
-            pos = token_start + 1;
-            continue;
-        }
-        // Hidden ML_COMMENT is recognized between tokens, never within BARE_NAME or DESC.
-        if code[token_start..].starts_with("%%") {
-            if token_start != pos {
-                break;
-            }
-            pos = physical_line_at(code, token_start).1;
-            continue;
-        }
-        if token_start == pos {
-            break;
-        }
-
-        if code[token_start..].starts_with(":::") {
-            let value_start = skip_ascii_whitespace(code, token_start + 3);
-            let Some(value_end) = tree_view_class_name_end(code, value_start) else {
-                return Ok(tree_view_node_failure(
-                    code,
-                    node_start,
-                    token_start,
-                    "expected tree node class after :::",
-                ));
-            };
-            annotations.css_class = Some(TreeViewSpannedValue {
-                value: code[value_start..value_end].to_string(),
-                #[cfg(feature = "editor-facts")]
-                span: SourceSpan::new(value_start, value_end),
-            });
-            pos = value_end;
-        } else if code[token_start..].starts_with("icon(") {
-            let value_start = token_start + "icon(".len();
-            let (payload_line, _) = physical_line_at(code, value_start);
-            let Some(close_rel) = payload_line.find(')') else {
-                return Ok(tree_view_node_failure(
-                    code,
-                    node_start,
-                    token_start,
-                    "unterminated tree node icon annotation",
-                ));
-            };
-            let value_end = value_start + close_rel;
-            let payload = &code[value_start..value_end];
-            if !is_tree_view_icon_name(payload) {
-                return Ok(tree_view_node_failure(
-                    code,
-                    node_start,
-                    token_start,
-                    "invalid tree node icon annotation",
-                ));
-            }
-            let value = if payload.is_empty() {
-                "none".to_string()
-            } else {
-                payload.to_string()
-            };
-            annotations.icon = Some(TreeViewSpannedValue {
-                value,
-                #[cfg(feature = "editor-facts")]
-                span: SourceSpan::new(value_start, value_end),
-            });
-            pos = value_end + ')'.len_utf8();
-        } else if code[token_start..].starts_with("##") {
-            let value_start = token_start + 2;
-            let (line, _) = physical_line_at(code, value_start);
-            let end = value_start + line.len();
-            let (trimmed_start, trimmed_end) = trim_ascii_span(code, value_start, end);
-            annotations.description =
-                (trimmed_start != trimmed_end).then(|| TreeViewSpannedValue {
-                    value: code[trimmed_start..trimmed_end].to_string(),
-                    #[cfg(feature = "editor-facts")]
-                    span: SourceSpan::new(trimmed_start, trimmed_end),
-                });
-            pos = end;
-        } else {
-            break;
-        }
-        _node_end = pos;
     }
-
-    Ok((
-        Ok(TreeViewNodeDetails {
-            indent,
-            name,
-            node_type,
-            css_class: annotations.css_class,
-            icon: annotations.icon,
-            description: annotations.description,
-            #[cfg(feature = "editor-facts")]
-            span: SourceSpan::new(node_start, _node_end),
-            #[cfg(feature = "editor-facts")]
-            selection: SourceSpan::new(_name_start, _selection_end),
-        }),
-        pos,
-    ))
-}
-
-fn tree_view_node_failure(
-    code: &str,
-    node_start: usize,
-    error_offset: usize,
-    message: &str,
-) -> (
-    std::result::Result<TreeViewNodeDetails, TreeViewParseIssue>,
-    usize,
-) {
-    let (line, next_offset) = physical_line_at(code, error_offset);
-    (
-        Err(TreeViewParseIssue::new(
-            message,
-            Some(SourceSpan::new(
-                node_start,
-                error_offset + line.trim_end().len(),
-            )),
-        )),
-        next_offset,
-    )
-}
-
-#[cfg(feature = "editor-facts")]
-fn push_tree_view_spanned_payload_fact(
-    facts: &mut EditorSemanticFacts,
-    value: &TreeViewSpannedValue,
-    detail: &'static str,
-) {
-    if value.value.is_empty() || value.span.start == value.span.end {
-        return;
-    }
-    facts.push_expected_syntax(EditorExpectedSyntax::new(
-        EditorExpectedSyntaxKind::Payload,
-        value.span,
-    ));
-    facts.push_symbol(EditorSemanticSymbol::payload(
-        value.value.clone(),
-        Some(detail.to_string()),
-        EditorSemanticKind::String,
-        value.span,
-        value.span,
-    ));
-}
-
-#[cfg(feature = "editor-facts")]
-fn push_tree_view_node_editor_facts(facts: &mut EditorSemanticFacts, node: &TreeViewNodeDetails) {
-    facts.push_expected_syntax(EditorExpectedSyntax::new(
-        EditorExpectedSyntaxKind::NodeIdentifier,
-        node.selection,
-    ));
-    facts.push_symbol(EditorSemanticSymbol::new(
-        node.name.clone(),
-        Some("tree view node".to_string()),
-        EditorSemanticKind::Namespace,
-        node.span,
-        node.selection,
-    ));
-    for (value, detail) in [
-        (node.css_class.as_ref(), "tree view class"),
-        (node.icon.as_ref(), "tree view icon"),
-        (node.description.as_ref(), "tree view description"),
-    ] {
-        if let Some(value) = value {
-            push_tree_view_spanned_payload_fact(facts, value, detail);
-        }
-    }
-}
-
-fn should_skip_tree_view_box_detection_line(line: &str) -> bool {
-    let trimmed = line.trim();
-    trimmed.is_empty()
-        || is_tree_view_comment_line(line)
-        || is_tree_view_metadata_line(line)
-        || is_tree_view_decoration_only(line)
-}
-
-fn is_tree_view_metadata_line(line: &str) -> bool {
-    let trimmed = line.trim_start();
-    if let Some(rest) = trimmed.strip_prefix("title") {
-        return rest.starts_with([' ', '\t']);
-    }
-    if let Some(rest) = trimmed.strip_prefix("accTitle") {
-        return rest.trim_start_matches([' ', '\t']).starts_with(':');
-    }
-    if let Some(rest) = trimmed.strip_prefix("accDescr") {
-        return rest.trim_start_matches([' ', '\t']).starts_with(':')
-            || rest.trim_start().starts_with('{');
-    }
-    false
-}
-
-fn is_tree_view_comment_line(line: &str) -> bool {
-    line.trim_start().starts_with("%%")
-}
-
-fn is_tree_view_cleaned_comment_line(line: &str) -> bool {
-    // Shared cleanupComments removes only complete non-directive lines with a
-    // nonempty payload. Empty %% is still hidden grammar text, after any indent.
-    line.trim_start()
-        .strip_prefix("%%")
-        .is_some_and(|payload| !payload.is_empty() && !payload.starts_with('{'))
-}
-
-fn infer_tree_view_box_segment_width(content_lines: &[String]) -> usize {
-    for line in content_lines {
-        if let Some((col, _)) = line
-            .chars()
-            .enumerate()
-            .find(|(_, ch)| is_tree_view_branch_char(*ch))
-            && col > 0
-        {
-            return col;
-        }
-    }
-    4
-}
-
-fn find_tree_view_branch_char(line: &str) -> Option<(usize, usize, char)> {
-    let mut col = 0usize;
-    for (idx, ch) in line.char_indices() {
-        if is_tree_view_branch_char(ch) {
-            return Some((idx, col, ch));
-        }
-        col += if ch == '\t' { 4 } else { 1 };
-    }
-    None
-}
-
-fn is_tree_view_box_char(ch: char) -> bool {
-    matches!(ch, '─' | '━' | '│' | '┃' | '└' | '┗' | '├' | '┣')
-}
-
-fn is_tree_view_branch_char(ch: char) -> bool {
-    matches!(ch, '└' | '┗' | '├' | '┣')
-}
-
-fn is_tree_view_dash_char(ch: char) -> bool {
-    matches!(ch, '─' | '━')
-}
-
-fn is_tree_view_decoration_only(line: &str) -> bool {
-    !line.is_empty()
-        && line
-            .chars()
-            .all(|ch| ch.is_whitespace() || matches!(ch, '│' | '┃'))
-}
-
-fn is_tree_view_box_drawing_only(line: &str) -> bool {
-    !line.is_empty()
-        && line
-            .chars()
-            .all(|ch| ch.is_whitespace() || is_tree_view_box_char(ch))
-}
-
-fn find_next_tree_view_annotation_start(s: &str, from: usize) -> Option<usize> {
-    for (idx, _) in s.char_indices().filter(|(idx, _)| *idx >= from) {
-        let valid_class = s[idx..].starts_with(":::")
-            && tree_view_class_name_end(s, skip_ascii_whitespace(s, idx + 3)).is_some();
-        if (valid_class || s[idx..].starts_with("##") || s[idx..].starts_with("icon("))
-            && ((from == 0 && idx == 0) || is_annotation_token_boundary(s, idx))
-        {
-            return Some(idx);
-        }
-    }
-    None
-}
-
-fn tree_view_class_name_end(s: &str, start: usize) -> Option<usize> {
-    let mut chars = s.get(start..)?.char_indices();
-    let (_, first) = chars.next()?;
-    if !first.is_ascii_alphabetic() && first != '_' {
-        return None;
-    }
-    let mut end = start + first.len_utf8();
-    for (relative, ch) in chars {
-        if !ch.is_ascii_alphanumeric() && ch != '_' && ch != '-' {
-            break;
-        }
-        end = start + relative + ch.len_utf8();
-    }
-    Some(end)
-}
-
-fn is_tree_view_icon_name(value: &str) -> bool {
-    fn is_component(value: &str, allow_empty: bool) -> bool {
-        (allow_empty || !value.is_empty())
-            && value
-                .chars()
-                .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
-    }
-
-    match value.split_once(':') {
-        Some((pack, icon)) => {
-            !icon.contains(':') && is_component(pack, true) && is_component(icon, false)
-        }
-        None => is_component(value, true),
-    }
-}
-
-fn is_annotation_token_boundary(s: &str, idx: usize) -> bool {
-    idx > 0
-        && s[..idx]
-            .chars()
-            .next_back()
-            .is_some_and(|ch| ch == ' ' || ch == '\t')
-}
-
-fn skip_ascii_whitespace(s: &str, mut idx: usize) -> usize {
-    while let Some(ch) = s[idx..].chars().next() {
-        if ch == ' ' || ch == '\t' {
-            idx += ch.len_utf8();
-        } else {
-            break;
-        }
-        if idx >= s.len() {
-            break;
-        }
-    }
-    idx
-}
-
-fn trim_ascii_span(s: &str, start: usize, end: usize) -> (usize, usize) {
-    let mut start = start;
-    let mut end = end;
-    while start < end {
-        let Some(ch) = s[start..end].chars().next() else {
-            break;
-        };
-        if ch == ' ' || ch == '\t' {
-            start += ch.len_utf8();
-        } else {
-            break;
-        }
-    }
-    while start < end {
-        let Some(ch) = s[start..end].chars().next_back() else {
-            break;
-        };
-        if ch == ' ' || ch == '\t' {
-            end -= ch.len_utf8();
-        } else {
-            break;
-        }
-    }
-    (start, end)
-}
-
-fn trim_end_byte_index(s: &str) -> usize {
-    let mut end = s.len();
-    while end > 0 {
-        let Some(ch) = s[..end].chars().next_back() else {
-            break;
-        };
-        if ch == ' ' || ch == '\t' {
-            end -= ch.len_utf8();
-        } else {
-            break;
-        }
-    }
-    end
-}
-
-fn parse_error(diagram_type: &str, message: impl Into<String>) -> Error {
-    Error::diagram_parse_fallback(diagram_type.to_string(), message.into())
 }
 
 #[cfg(test)]
@@ -1669,12 +531,11 @@ mod semantic_tests {
                 {
                     let outcome = parse_tree_view_input_controlled(
                         &source,
-                        "treeView",
                         EditorFactsDemand::Capture,
                         &crate::OperationControl::new(),
                     )
                     .unwrap();
-                    let facts = outcome.snapshot.editor_facts.unwrap();
+                    let facts = outcome.editor_facts.unwrap();
                     assert_eq!(
                         facts.completeness,
                         crate::EditorSemanticCompleteness::Recovered
@@ -1705,27 +566,14 @@ mod semantic_tests {
         assert!(model.root.children[0].css_class.is_none());
     }
 
+    #[cfg(feature = "editor-facts")]
     #[test]
-    fn box_drawing_eof_mapping_preserves_token_ends_and_eof_insertions() {
+    fn box_drawing_at_eof_keeps_editor_payload_spans() {
         for newline in ["\n", "\r\n"] {
             for class_suffix in ["", " :::ready"] {
                 for ending in ["", newline] {
                     let text =
                         format!("treeView-beta{newline}├── file.txt{class_suffix}   {ending}");
-                    let (source, issues) = preprocess_tree_view_body(
-                        &text,
-                        "treeView-beta".len() + newline.len(),
-                        "treeView",
-                        &crate::OperationControl::new(),
-                    )
-                    .unwrap();
-                    assert!(issues.is_empty());
-                    let eof = source.text.len();
-                    assert_eq!(
-                        source.source_span(SourceSpan::new(eof, eof)),
-                        SourceSpan::new(text.len(), text.len())
-                    );
-
                     let crlf_extra = newline.len() - 1;
                     let mut expected = vec![(
                         "file.txt",
@@ -1734,57 +582,44 @@ mod semantic_tests {
                     if !class_suffix.is_empty() {
                         expected.push(("ready", SourceSpan::new(36 + crlf_extra, 41 + crlf_extra)));
                     }
-                    for (payload, span) in &expected {
-                        let start = source.text.find(*payload).unwrap();
+                    let outcome = parse_tree_view_input_controlled(
+                        &text,
+                        EditorFactsDemand::Capture,
+                        &crate::OperationControl::new(),
+                    )
+                    .unwrap();
+                    assert!(outcome.syntax.is_ok());
+                    let captures = [
+                        outcome.editor_facts.unwrap(),
+                        #[cfg(feature = "presentation")]
+                        crate::MermaidEngine::new()
+                            .parse_editor_semantic_facts_with_type_sync("treeView", &text)
+                            .unwrap()
+                            .unwrap(),
+                    ];
+                    for facts in captures {
                         assert_eq!(
-                            source.source_span(SourceSpan::new(start, start + payload.len())),
-                            *span
+                            facts.completeness,
+                            crate::EditorSemanticCompleteness::Complete
                         );
-                        assert_eq!(&text[span.start..span.end], *payload);
-                    }
-
-                    #[cfg(feature = "editor-facts")]
-                    {
-                        let outcome = parse_tree_view_input_controlled(
-                            &text,
-                            "treeView",
-                            EditorFactsDemand::Capture,
-                            &crate::OperationControl::new(),
-                        )
-                        .unwrap();
-                        assert!(outcome.first_issue.is_none());
-                        let captures = [
-                            outcome.snapshot.editor_facts.unwrap(),
-                            #[cfg(feature = "presentation")]
-                            crate::MermaidEngine::new()
-                                .parse_editor_semantic_facts_with_type_sync("treeView", &text)
-                                .unwrap()
-                                .unwrap(),
-                        ];
-                        for facts in captures {
+                        assert!(facts.diagnostics.is_empty());
+                        for (payload, span) in &expected {
+                            let symbol = facts
+                                .symbols
+                                .iter()
+                                .find(|symbol| symbol.name == *payload)
+                                .expect("retained box node or class fact");
+                            assert_eq!(symbol.selection, *span);
                             assert_eq!(
-                                facts.completeness,
-                                crate::EditorSemanticCompleteness::Complete
+                                &text[symbol.selection.start..symbol.selection.end],
+                                *payload
                             );
-                            assert!(facts.diagnostics.is_empty());
-                            for (payload, span) in &expected {
-                                let symbol = facts
-                                    .symbols
+                            assert!(
+                                facts
+                                    .expected_syntax
                                     .iter()
-                                    .find(|symbol| symbol.name == *payload)
-                                    .expect("retained box node or class fact");
-                                assert_eq!(symbol.selection, *span);
-                                assert_eq!(
-                                    &text[symbol.selection.start..symbol.selection.end],
-                                    *payload
-                                );
-                                assert!(
-                                    facts
-                                        .expected_syntax
-                                        .iter()
-                                        .any(|syntax| syntax.span == *span)
-                                );
-                            }
+                                    .any(|syntax| syntax.span == *span)
+                            );
                         }
                     }
                 }
@@ -1792,61 +627,40 @@ mod semantic_tests {
         }
     }
 
+    #[cfg(feature = "editor-facts")]
     #[test]
-    fn adjacent_quoted_nodes_scan_each_physical_line_once() {
+    fn adjacent_quoted_nodes_keep_a_fact_for_each_occurrence() {
         const HEADER: &str = "treeView-beta\n";
         for count in [8, 64, 1_024] {
             for ending in ["", "\n"] {
                 let source = format!("{HEADER}{}{ending}", "\"x\"".repeat(count));
-                TREE_VIEW_BODY_LINE_SCAN_BYTES.with(|bytes| bytes.set(0));
                 let outcome = parse_tree_view_input_controlled(
                     &source,
-                    "treeView",
-                    #[cfg(feature = "editor-facts")]
                     EditorFactsDemand::Capture,
                     &crate::OperationControl::new(),
                 )
                 .unwrap();
-                let scanned_bytes = TREE_VIEW_BODY_LINE_SCAN_BYTES.with(|bytes| bytes.get());
-                assert_eq!(scanned_bytes, source.len() - HEADER.len());
-                assert!(outcome.first_issue.is_none());
-                let snapshot = outcome.snapshot;
-                assert_eq!(snapshot.nodes.len(), count);
-                #[cfg(feature = "editor-facts")]
-                {
-                    let facts = snapshot.editor_facts.as_ref().unwrap();
+                assert!(outcome.syntax.is_ok());
+                let facts = outcome.editor_facts.unwrap();
+                assert_eq!(
+                    facts.completeness,
+                    crate::EditorSemanticCompleteness::Complete
+                );
+                assert!(facts.diagnostics.is_empty());
+                assert_eq!(facts.symbols.len(), count);
+                assert_eq!(facts.expected_syntax.len(), count);
+                for (index, symbol) in facts.symbols.iter().enumerate() {
+                    let start = HEADER.len() + index * "\"x\"".len();
+                    let selection = SourceSpan::new(start + 1, start + 2);
+                    assert_eq!(symbol.name, "x");
+                    assert_eq!(symbol.span, SourceSpan::new(start, start + 3));
+                    assert_eq!(symbol.selection, selection);
+                    assert_eq!(facts.expected_syntax[index].span, selection);
                     assert_eq!(
-                        facts.completeness,
-                        crate::EditorSemanticCompleteness::Complete
+                        facts.expected_syntax[index].kind,
+                        EditorExpectedSyntaxKind::NodeIdentifier
                     );
-                    assert!(facts.diagnostics.is_empty());
-                    assert_eq!(facts.symbols.len(), count);
-                    assert_eq!(facts.expected_syntax.len(), count);
-                    for (index, symbol) in facts.symbols.iter().enumerate() {
-                        let start = HEADER.len() + index * "\"x\"".len();
-                        let selection = SourceSpan::new(start + 1, start + 2);
-                        assert_eq!(symbol.name, "x");
-                        assert_eq!(symbol.span, SourceSpan::new(start, start + 3));
-                        assert_eq!(symbol.selection, selection);
-                        assert_eq!(facts.expected_syntax[index].span, selection);
-                        assert_eq!(
-                            facts.expected_syntax[index].kind,
-                            EditorExpectedSyntaxKind::NodeIdentifier
-                        );
-                    }
                 }
-                let model = tree_view_input_to_model(
-                    snapshot.title,
-                    snapshot.acc_title,
-                    snapshot.acc_descr,
-                    snapshot.nodes,
-                    &crate::MermaidConfig::default(),
-                )
-                .unwrap();
-                assert_eq!(model.root.children.len(), count);
-                assert!(model.root.children.iter().all(|node| {
-                    node.name == "x" && node.level == 0 && node.children.is_empty()
-                }));
             }
         }
     }

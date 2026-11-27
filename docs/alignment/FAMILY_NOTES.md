@@ -1021,7 +1021,8 @@ bounds. The render environment exposes `RawBBoxWidth` and `RawBBoxHeight` as sep
 operations. A uniform lattice correction or emoji-specific geometry would not represent those
 inputs. Parser diagnostics are Rust-native rather than exact Langium messages and offsets.
 
-Owners: [Tree View layout and SVG](../../crates/merman-render-structured/src/tree_view/mod.rs) and
+Owners: [Tree View parser](../../crates/merman-core-structured/src/tree_view.rs),
+[Tree View layout and SVG](../../crates/merman-render-structured/src/tree_view/mod.rs) and
 [SVG/root tests](../../crates/merman-render/tests/tree_view_svg_test.rs).
 
 ## Wardley

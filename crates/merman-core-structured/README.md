@@ -10,9 +10,10 @@ Packet headers and fields and expands them into bounded rows. `diagram-pie` pars
 statements and builds the ordered slice model. `diagram-quadrant-chart` builds axes, points,
 and their styles. `diagram-radar` resolves axes, curves, and options. `diagram-railroad`
 parses Railroad IR, EBNF, ABNF, and PEG into `merman-model` values. `diagram-sankey` parses
-CSV and builds the canonical graph. `diagram-treemap` parses rows and builds the Treemap
-hierarchy. `diagram-venn` parses Venn statements and builds the typed set model. `diagram-xychart`
-parses chart statements and builds typed axes and series.
+CSV and builds the canonical graph. `diagram-tree-view` parses indented and box-drawing trees.
+`diagram-treemap` parses rows and builds the Treemap hierarchy. `diagram-venn` parses Venn
+statements and builds the typed set model. `diagram-xychart` parses chart statements and builds
+typed axes and series.
 `editor-facts` enables syntax spans for editor consumers.
 
 This crate exposes a workspace-internal service provider interface (SPI). It is published in

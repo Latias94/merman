@@ -48,6 +48,10 @@ pub mod sankey;
 #[doc(hidden)]
 pub mod timeline;
 
+#[cfg(feature = "diagram-tree-view")]
+#[doc(hidden)]
+pub mod tree_view;
+
 #[cfg(feature = "diagram-treemap")]
 #[doc(hidden)]
 pub mod treemap;
