@@ -35,3 +35,7 @@ pub mod timeline;
 #[cfg(feature = "diagram-treemap")]
 #[doc(hidden)]
 pub mod treemap;
+
+#[cfg(feature = "diagram-venn")]
+#[doc(hidden)]
+pub mod venn;

@@ -557,7 +557,7 @@ keywords, numbers and style values, and tracks beginning-of-line indentation ind
 statement completion. Semantic construction and editor facts share the same cursor; recovery
 retains completed statements and resumes at a following statement with original source ranges.
 
-Owners: [Venn parser](../../crates/merman-core/src/diagrams/venn.rs),
+Owners: [Venn parser](../../crates/merman-core-structured/src/venn.rs),
 [Venn layout](../../crates/merman-render-charts/src/venn/layout.rs),
 [Venn SVG tests](../../crates/merman-render/tests/venn_svg_test.rs), and
 [Ishikawa SVG tests](../../crates/merman-render/tests/ishikawa_svg_test.rs).

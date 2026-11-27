@@ -7,8 +7,9 @@ typed task models. `diagram-info` scans Info headers and statements and builds t
 parses Journey statements and builds the typed task and section model. `diagram-packet` scans
 Packet headers and fields and expands them into bounded rows. `diagram-railroad` parses Railroad
 IR, EBNF, ABNF, and PEG into `merman-model` values. `diagram-sankey` parses CSV and builds the
-canonical graph. `diagram-treemap` parses rows and builds the Treemap hierarchy. `editor-facts`
-enables syntax spans for editor consumers.
+canonical graph. `diagram-treemap` parses rows and builds the Treemap hierarchy. `diagram-venn`
+parses Venn statements and builds the typed set model. `editor-facts` enables syntax spans for
+editor consumers.
 
 This crate exposes a workspace-internal service provider interface (SPI). It is published in
 lockstep with Merman and expects an exact version match with the Merman crates that use it.
