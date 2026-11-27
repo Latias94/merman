@@ -385,11 +385,10 @@ fn write_marker_start(
     out.push('>');
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "layout-shoal"))]
 mod tests {
     use super::*;
 
-    #[cfg(feature = "layout-shoal")]
     #[test]
     fn canonical_crow_foot_markers_require_zero_trim_and_emit_open_forks() {
         for card in ["ONE_OR_MORE", "ZERO_OR_MORE"] {
