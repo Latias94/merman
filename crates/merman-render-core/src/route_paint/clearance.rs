@@ -102,6 +102,7 @@ impl Clearance {
             edge,
             endpoints,
             terminal_contacts: None,
+            label_bounds: None,
             paint_to_layout,
             stroke_outset,
         }
@@ -114,11 +115,18 @@ pub struct EdgeClearance<'a> {
     edge: usize,
     endpoints: (Endpoint, Endpoint),
     terminal_contacts: Option<[TerminalContact; 2]>,
+    pub(super) label_bounds: Option<Rect>,
     paint_to_layout: Vec2,
     stroke_outset: f64,
 }
 
 impl EdgeClearance<'_> {
+    /// Keeps a relocated step in contact with its caption, in paint coordinates.
+    pub fn with_label_bounds(mut self, bounds: Option<Rect>) -> Self {
+        self.label_bounds = bounds;
+        self
+    }
+
     /// Records the route's contour contacts in the same space as the obstacle inventory.
     pub fn with_terminal_contacts(mut self, contacts: (RoutePoint, RoutePoint)) -> Self {
         self.terminal_contacts = Some([

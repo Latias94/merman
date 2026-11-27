@@ -530,7 +530,7 @@ pub(super) fn level(
     let title = if let Some(rect) = title {
         Some(PlacedTitle {
             center: rect.center(),
-            struck: routes::title_struck(rect, &legs, work)?,
+            struck: routes::title_struck(rect, &legs, ctx.options.routing, work)?,
         })
     } else {
         None

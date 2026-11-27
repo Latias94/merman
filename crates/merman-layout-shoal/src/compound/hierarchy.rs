@@ -1,7 +1,8 @@
 use crate::validate;
 use crate::work::{LayoutResult, Work, filled, push, reserved};
 use crate::{
-    Direction, Endpoint, Graph, GroupId, LayoutError, NodeId, Options, PortSideHint, WorkError,
+    Direction, Endpoint, Graph, GroupId, GroupSpec, LayoutError, NodeId, Options, PortSideHint,
+    WorkError,
 };
 
 #[derive(Debug)]
@@ -156,12 +157,12 @@ fn validate_endpoint(graph: &Graph, endpoint: Endpoint, port: PortSideHint) -> L
     }
 }
 
-fn normalize_parents(graph: &Graph, work: &mut Work<'_>) -> LayoutResult<Vec<usize>> {
-    let root = graph.groups.len();
+fn normalize_parents(groups: &[GroupSpec], work: &mut Work<'_>) -> LayoutResult<Vec<usize>> {
+    let root = groups.len();
     let count = root.checked_add(1).ok_or(WorkError::ArithmeticOverflow)?;
     admit(count, 2, work)?;
     let mut parents = reserved(count)?;
-    for group in &graph.groups {
+    for group in groups {
         work.visit(1)?;
         if !validate::measured_group(group) {
             return Err(LayoutError::InvalidInput("invalid group measurements"));
@@ -204,6 +205,37 @@ fn normalize_parents(graph: &Graph, work: &mut Work<'_>) -> LayoutResult<Vec<usi
         }
     }
     Ok(parents)
+}
+
+// Width turns honor authored directions even where the natural trial inherited a crossed scope.
+pub(crate) fn authored_directions(
+    groups: &[GroupSpec],
+    root_direction: Direction,
+    work: &mut Work<'_>,
+) -> LayoutResult<Vec<Option<Direction>>> {
+    let parents = normalize_parents(groups, work)?;
+    work.charge(parents.len())?;
+    let mut directions = reserved(parents.len())?;
+    directions.extend(groups.iter().map(|group| group.direction));
+    directions.push(Some(root_direction));
+    let mut path = Vec::new();
+    for start in 0..groups.len() {
+        work.visit(1)?;
+        let mut at = start;
+        let inherited = loop {
+            if let Some(direction) = directions[at] {
+                break direction;
+            }
+            work.visit(1)?;
+            push(&mut path, at)?;
+            at = parents[at];
+        };
+        work.visit(path.len())?;
+        for group in path.drain(..) {
+            directions[group] = Some(inherited);
+        }
+    }
+    Ok(directions)
 }
 
 fn breadth_first(
@@ -563,7 +595,7 @@ pub(super) fn build(
         .len()
         .checked_add(graph.groups.len())
         .ok_or(WorkError::ArithmeticOverflow)?;
-    let mut parents = normalize_parents(graph, work)?;
+    let mut parents = normalize_parents(&graph.groups, work)?;
     let lanes = if graph.lane_order.is_empty() {
         None
     } else {

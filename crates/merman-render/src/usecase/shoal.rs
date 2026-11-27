@@ -275,7 +275,10 @@ pub(super) fn layout(
         node_ids.iter().copied(),
         boundary_plans.iter().map(|&index| plans[index].id.as_str()),
         execution,
-        Default::default(),
+        placement::Constraints {
+            flush_top_left_titles: true,
+            ..Default::default()
+        },
         work,
     )?;
     let boundary_order = boundary_paint_order(&solved.groups, &boundary_plans, work)?;

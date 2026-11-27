@@ -10,6 +10,7 @@ pub(super) struct Fit {
     pub adaptive_top_title: bool,
     pub protected_title_margin: f64,
     marker_insets: [f64; 4],
+    flush_title: bool,
     title_drop: f64,
     vertical_slack: f64,
 }
@@ -55,11 +56,14 @@ impl Fit {
         let mut inset = [padding.top, padding.right, padding.bottom, padding.left];
         let title = group.title.unwrap_or_default();
         let title_side = title_side(group.title_position) as usize;
+        let flush_title = options.group_policy.flush_top_left_titles
+            && group.title_position == TitlePosition::TopLeft;
         let adaptive_top_title = group.title_position == TitlePosition::TopAuto
             && options.group_policy.adaptive_title_clearance;
         inset[title_side] = inset[title_side].max(title.height);
-        let mut before_title = (inset[title_side] - title.height) / 2.0;
-        let mut after_title = before_title;
+        let slack = inset[title_side] - title.height;
+        let mut before_title = if flush_title { 0.0 } else { slack / 2.0 };
+        let mut after_title = slack - before_title;
         let body = Rect {
             width: content.width,
             height: content.height,
@@ -141,7 +145,7 @@ impl Fit {
                     title_clear = title_clear.max(wire.title_clearance(end, title_margin));
                 }
                 let gap = spacing.edge.max(title_margin);
-                if !adaptive_top_title || protect || markers[end].length > 0.0 {
+                if !flush_title && (!adaptive_top_title || protect || markers[end].length > 0.0) {
                     before_title = before_title.max(markers[end].length + gap);
                 }
                 let shaft = if manual_inner && inner.side == side {
@@ -283,7 +287,8 @@ impl Fit {
         let needed_width = finite(room(Side::Left) + core.width + room(Side::Right))?;
         let needed_height = finite(room(Side::Top) + core.height + room(Side::Bottom))?;
         let title_width = |inset: f64| {
-            let padded = padding.left + title.width + padding.right;
+            let left = if flush_title { 0.0 } else { padding.left };
+            let padded = left + title.width + padding.right;
             if movable_at_title == 0 {
                 return padded;
             }
@@ -291,7 +296,7 @@ impl Fit {
                 |count: usize| title_clear + inset + (count - 1) as f64 * spacing.min_port_pitch;
             let with_ports = match group.title_position {
                 TitlePosition::TopLeft | TitlePosition::BottomLeft => {
-                    padding.left + title.width + lane(movable_at_title)
+                    left + title.width + lane(movable_at_title)
                 }
                 TitlePosition::TopRight | TitlePosition::BottomRight => {
                     lane(movable_at_title) + title.width + padding.right
@@ -385,6 +390,7 @@ impl Fit {
             adaptive_top_title,
             protected_title_margin,
             marker_insets,
+            flush_title,
             title_drop: before_title + title.height / 2.0,
             vertical_slack: (size.height - needed_height) / 2.0,
         })
@@ -441,6 +447,7 @@ impl Fit {
         };
         let mut reserve_at = None;
         let x = match group.title_position {
+            TitlePosition::TopLeft if self.flush_title => title.width / 2.0,
             TitlePosition::TopLeft | TitlePosition::BottomLeft => left,
             TitlePosition::TopRight | TitlePosition::BottomRight => right,
             TitlePosition::TopAuto
@@ -514,9 +521,23 @@ impl Fit {
                             .then_with(|| a.3.total_cmp(&b.3))
                     })
                     .expect("three title anchors");
-                // Nested lanes already reserve room to move their automatic title ports.
-                if movable_hits > 0 && self.protected_title_margin == 0.0 {
-                    reserve_at = Some(position);
+                if movable_hits > 0 {
+                    if let Some(x) = self.between_title_ports(
+                        centered(Point { x, y }, title),
+                        (left, right),
+                        wires,
+                        ports,
+                        work,
+                    )? {
+                        return Ok(Some(TitlePlacement {
+                            rect: centered(Point { x, y }, title),
+                            reserve_at: None,
+                        }));
+                    }
+                    // Nested lanes already reserve room to move their automatic title ports.
+                    if self.protected_title_margin == 0.0 {
+                        reserve_at = Some(position);
+                    }
                 }
                 x
             }
@@ -526,5 +547,43 @@ impl Fit {
             rect: centered(Point { x, y }, title),
             reserve_at,
         }))
+    }
+
+    fn between_title_ports(
+        &self,
+        title: Rect,
+        bounds: (f64, f64),
+        wires: &[Wire],
+        ports: &[Point],
+        work: &mut Work<'_>,
+    ) -> LayoutResult<Option<f64>> {
+        let mut blocked = Vec::new();
+        for wire in wires {
+            work.visit(1)?;
+            let Some((end, slot, side)) = wire.border() else {
+                continue;
+            };
+            let outer = ports[slot];
+            let margin = wire.title_clearance(end, self.title_margin());
+            let interval = match side {
+                Side::Top => (outer.x, outer.x),
+                Side::Left | Side::Right
+                    if outer.y > title.y - margin && outer.y < title.y + title.height + margin =>
+                {
+                    let inner = wire.contacts[1 - end].expect("inner contact").at.x + self.offset.x;
+                    (outer.x.min(inner), outer.x.max(inner))
+                }
+                _ => continue,
+            };
+            let reach = title.width / 2.0 + margin;
+            push(
+                &mut blocked,
+                (
+                    (interval.0 - reach).next_down(),
+                    (interval.1 + reach).next_up(),
+                ),
+            )?;
+        }
+        ports::closest_clear_port(title.center().x, bounds, &blocked, work)
     }
 }

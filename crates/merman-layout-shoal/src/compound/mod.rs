@@ -8,6 +8,7 @@ mod seam_relax;
 mod sides;
 mod solve;
 
+pub(super) use hierarchy::authored_directions;
 pub(crate) use refine::PairSet;
 pub(super) use refine::crossings;
 #[cfg(test)]

@@ -25,6 +25,7 @@ pub struct Constraints<'a> {
     pub lane_boundaries: &'a [u32],
     pub capture_ranks: bool,
     pub allow_turn: bool,
+    pub flush_top_left_titles: bool,
 }
 
 #[derive(Default)]
@@ -187,6 +188,7 @@ impl Placement<'_> {
             measured.component_spacing,
         ));
         options.group_policy.inherit_crossed_direction = measured.inherit_crossed_group_direction;
+        options.group_policy.flush_top_left_titles = self.constraints.flush_top_left_titles;
         options.width_policy = self.width;
         options.capture_node_ranks = self.capture_ranks || self.constraints.capture_ranks;
         options.reuse_unchanged_components = self.reuse_components;

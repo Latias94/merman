@@ -221,7 +221,13 @@ pub(super) fn paint(
                     kurbo::Vec2::new(origin_x - ctx.tx, origin_y - ctx.ty),
                     stroke_outset.unwrap_or_default(),
                 )
-                .with_terminal_contacts((layout_contact(0), layout_contact(last))),
+                .with_terminal_contacts((layout_contact(0), layout_contact(last)))
+                .with_label_bounds(solved.label().map(|label| {
+                    kurbo::Rect::from_center_size(
+                        (label.x + ctx.tx - origin_x, label.y + ctx.ty - origin_y),
+                        (label.width, label.height),
+                    )
+                })),
         )
     };
     if ctx.compatibility.look.is_neo() && !ctx.edge_style_plan.animation_for(key)?.is_active() {

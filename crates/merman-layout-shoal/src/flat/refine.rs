@@ -5,7 +5,7 @@ use super::{
     Component, Expanded, Kind, acyclic::Orientation, position::extents, to_canonical_port,
 };
 use crate::scratch::{capacity_bytes, clear_reserve};
-use crate::work::{LayoutResult, Work};
+use crate::work::{LayoutResult, Work, filled};
 use crate::{Direction, Graph, LayoutError, Options, PortSideHint, RoutingStyle, Side, WorkError};
 
 mod mental_map;
@@ -1268,7 +1268,18 @@ fn align_ports(
                     },
                 };
                 work.visit(values.len())?;
-                if pava(values, gaps, room, ZeroGap::Ordered, pools) {
+                let mut fits = pava(values, gaps, room, ZeroGap::Ordered, pools);
+                if !fits {
+                    // Preferred pitch may exceed the span between pinned ports. Retry at the
+                    // validated minimum spacing before giving up the whole run.
+                    work.visit(gaps.len())?;
+                    for (gap, pair) in gaps[1..].iter_mut().zip(row[first..end].windows(2)) {
+                        *gap = pitch(pair[0], pair[1]);
+                    }
+                    work.visit(values.len())?;
+                    fits = pava(values, gaps, room, ZeroGap::Ordered, pools);
+                }
+                if fits {
                     for (&v, &at) in row[first..end].iter().zip(values.iter()) {
                         s.data.x[v as usize] = at;
                     }
@@ -1871,6 +1882,7 @@ pub(super) fn follow_final_ports(
 ) -> LayoutResult<()> {
     let geometry = &g.refine_scratch.geometry;
     let mut segment = 0;
+    let mut proposals = None;
     for (edge, chain) in g.chains.iter().enumerate() {
         work.visit(1)?;
         if g.direct[edge] {
@@ -1935,7 +1947,35 @@ pub(super) fn follow_final_ports(
                 && (x[v] - previous).abs() < COLLINEAR
                 && room.contains(desired)
             {
-                x[v] = desired;
+                let proposed = match &mut proposals {
+                    Some(values) => values,
+                    slot => {
+                        work.charge(x.len())?;
+                        slot.insert(filled(x.len(), None)?)
+                    }
+                };
+                proposed[v] = Some(desired);
+            }
+        }
+    }
+    if let Some(mut proposals) = proposals {
+        for row in &g.layers {
+            work.visit(row.len())?;
+            for pair in row.windows(2) {
+                let (a, b) = (pair[0] as usize, pair[1] as usize);
+                if let (Some(left), Some(right)) = (proposals[a], proposals[b])
+                    && left + geometry.extent[a].1 > right - geometry.extent[b].0
+                {
+                    // Each proposal already clears the neighbor's original position.
+                    proposals[a] = None;
+                    proposals[b] = None;
+                }
+            }
+        }
+        work.visit(x.len())?;
+        for (at, proposed) in x.iter_mut().zip(proposals) {
+            if let Some(proposed) = proposed {
+                *at = proposed;
             }
         }
     }

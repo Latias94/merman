@@ -24,6 +24,7 @@ pub(crate) struct Constraints<'a> {
     pub(crate) lane_boundaries: &'a [u32],
     pub(crate) capture_ranks: bool,
     pub(crate) allow_turn: bool,
+    pub(crate) flush_top_left_titles: bool,
 }
 
 /// IDs are supplied in measured node and group order so persisted hints survive reindexing.
@@ -41,6 +42,7 @@ pub(crate) fn solve<'id>(
         lane_order: constraints.lane_order,
         lane_boundaries: constraints.lane_boundaries,
         capture_ranks: constraints.capture_ranks,
+        flush_top_left_titles: constraints.flush_top_left_titles,
         ..Default::default()
     };
     let split = constraints.split_incoming_ports;

@@ -312,6 +312,71 @@ fn steps(
     }
 }
 
+/// Reduce multiple same-direction offsets between fixed borders to one caption crossbar.
+fn caption_crossbar(route: &[RoutePoint], guard: EdgeClearance<'_>) -> Option<[RoutePoint; 4]> {
+    let &[first, second, .., penultimate, last] = route else {
+        return None;
+    };
+    let label = guard.label_bounds?;
+    let vertical = (first.x - second.x).abs() <= ALIGN_EPS;
+    let axes = |p: Point| if vertical { (p.y, p.x) } else { (p.x, p.y) };
+    let (start_run, start_lane) = axes(position(first));
+    let (end_run, end_lane) = axes(position(last));
+    let (run, lane) = axes(label.center());
+    let inside = |from: f64, value: f64, to: f64| from.min(to) < value && value < from.max(to);
+    let nearest_lane = lane.clamp(start_lane.min(end_lane), start_lane.max(end_lane));
+    let caption_half_span = if vertical {
+        label.width()
+    } else {
+        label.height()
+    } / 2.0;
+    if !inside(start_run, run, end_run)
+        || start_lane == end_lane
+        || (nearest_lane - lane).abs() >= caption_half_span
+        || (axes(position(second)).1 - start_lane).abs() > ALIGN_EPS
+        || (axes(position(penultimate)).1 - end_lane).abs() > ALIGN_EPS
+    {
+        return None;
+    }
+    let mut changes = 0;
+    let mut first_turn = None;
+    let mut last_turn = start_run;
+    let mut lateral_reversal = 0.0;
+    for pair in route.windows(2) {
+        let (a, b) = (axes(position(pair[0])), axes(position(pair[1])));
+        if (b.0 - a.0) * (end_run - start_run).signum() < -ALIGN_EPS {
+            return None;
+        }
+        if (b.1 - a.1).abs() > ALIGN_EPS {
+            changes += 1;
+            first_turn.get_or_insert(a.0);
+            last_turn = b.0;
+            lateral_reversal += ((a.1 - b.1) * (end_lane - start_lane).signum()).max(0.0);
+        }
+    }
+    let first_turn = first_turn?;
+    if changes < 2 || lateral_reversal > STEP_INSET || !inside(first_turn, run, last_turn) {
+        return None;
+    }
+    let axis = if vertical {
+        Axis::Horizontal
+    } else {
+        Axis::Vertical
+    };
+    let on_plane = |p: RoutePoint| {
+        if vertical {
+            RoutePoint { y: run, axis, ..p }
+        } else {
+            RoutePoint { x: run, axis, ..p }
+        }
+    };
+    let candidate = [first, on_plane(first), on_plane(last), last];
+    candidate
+        .windows(2)
+        .all(|pair| !guard.blocks_line(position(pair[0]), position(pair[1])))
+        .then_some(candidate)
+}
+
 fn sweep_curve(from: Point, end: RoutePoint, contour_departure: bool, scale: f64) -> CubicBez {
     let to = position(end);
     let delta = to - from;
@@ -426,6 +491,9 @@ impl<'a> Pen<'a> {
     fn flush_line(&mut self) {
         if let Some(start) = self.line_start.take() {
             let (start, end) = (svg_point(start), svg_point(self.at));
+            if start == end {
+                return;
+            }
             let _ = write!(self.d, "L{},{}", end.x, end.y);
             self.record_segment(PathSeg::Line(Line::new(start, end)));
             if let Some(length) = &mut self.length {
@@ -980,6 +1048,14 @@ fn draw_section(
             .ok_or(RoutePaintError::InvalidGeometry);
     }
     if style.stepped() {
+        if style != RouteStyle::Step
+            && terminals.0.is_none()
+            && terminals.1.is_none()
+            && let Some(path) = clearance.and_then(|guard| caption_crossbar(route, guard))
+        {
+            route.clear();
+            route.extend(path);
+        }
         let markers = (
             terminals.0.map(|end| end.marker),
             terminals.1.map(|end| end.marker),
@@ -1067,6 +1143,19 @@ mod tests {
     use super::*;
     use crate::route_types::Endpoint;
     use kurbo::{BezPath, ParamCurve, ParamCurveArclen, PathEl, PathSeg};
+
+    #[test]
+    fn serialized_lines_skip_knots_that_round_to_the_same_point() {
+        let mut segments = Vec::new();
+        let mut pen = Pen::new(Point::ORIGIN, false, true, Some(&mut segments));
+        pen.start_path(4, RouteStyle::Step);
+        pen.line(Point::new(3.0, 0.0));
+        pen.line(Point::new(3.0, 0.000_000_5));
+        pen.line(Point::new(3.0, 4.0));
+        assert_eq!(pen.length, Some(7.0));
+        assert_eq!(pen.finish().unwrap().d, "M0,0L3,0L3,4");
+        assert_eq!(segments.len(), 2);
+    }
 
     fn v(x: f64, y: f64) -> RoutePoint {
         RoutePoint::new(x, y, Axis::Vertical)
@@ -1692,6 +1781,45 @@ mod tests {
         assert!((curves[0].0.y - (6.0 + 0.62 * 24.0)).abs() < 1e-12);
         assert!((curves[0].1.x - (8.0 - 0.62 * 8.0)).abs() < 1e-12);
         segments(&wide);
+    }
+
+    #[test]
+    fn a_captioned_step_between_borders_uses_one_clear_crossbar() {
+        use kurbo::Rect;
+
+        let points = [
+            v(0., 0.),
+            v(0., 10.),
+            h(20., 10.),
+            v(20., 45.),
+            v(36., 75.),
+            v(36., 90.),
+        ];
+        let unblocked = Clearance::default();
+        let blocked = Clearance::new(vec![(
+            Rect::new(4., 28., 12., 36.),
+            ObstacleOwner::GroupTitle(4),
+        )])
+        .unwrap();
+        fn guard(clearance: &Clearance) -> EdgeClearance<'_> {
+            clearance
+                .for_edge(0, (Endpoint::Node(0), Endpoint::Node(1)), Vec2::ZERO, 0.)
+                .with_label_bounds(Some(Rect::new(16., 28., 24., 36.)))
+        }
+        let mut pen = Pen::new(position(points[0]), true, false, None);
+        draw_section(
+            &mut pen,
+            &points,
+            (None, None),
+            RouteStyle::StepAfter,
+            &mut Vec::new(),
+            &mut Vec::new(),
+            Some(guard(&unblocked)),
+        )
+        .unwrap();
+        pen.flush_line();
+        assert_eq!(pen.finish().unwrap().d, "M0,0L0,32L36,32L36,90");
+        assert!(caption_crossbar(&points, guard(&blocked)).is_none());
     }
 
     #[test]

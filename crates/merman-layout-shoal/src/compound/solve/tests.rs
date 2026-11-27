@@ -663,6 +663,64 @@ fn automatic_title_placement_leaves_the_lateral_entry_clear() {
 }
 
 #[test]
+fn an_automatic_title_can_fit_between_top_ports_without_widening_the_group() {
+    let spec = GroupSpec {
+        title: Some(size(60., 20.)),
+        title_position: TitlePosition::TopAuto,
+        min_size: size(320., 150.),
+        padding: Insets {
+            left: 20.,
+            right: 20.,
+            top: 30.,
+            ..Insets::default()
+        },
+        ..GroupSpec::new(0)
+    };
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    let fit = fit::Fit::new(
+        Some(&spec),
+        size(120., 50.),
+        &[],
+        &[],
+        0.,
+        &Options::default(),
+        &mut work,
+    )
+    .unwrap();
+    let wires = std::array::from_fn::<_, 3, _>(|slot| Wire {
+        ends: [
+            End::Border {
+                slot,
+                side: Side::Top,
+                flat: None,
+                hint: PortSideHint::Auto,
+            },
+            End::Item {
+                slot: 0,
+                hint: PortSideHint::Auto,
+                child: None,
+            },
+        ],
+        spec: edge(GroupId(0), NodeId(0)),
+        route: None,
+        contacts: [None; 2],
+    });
+    let points = [50., 160., 270.].map(|x| Point { x, y: 0. });
+    let placement = fit
+        .title(Some(&spec), &wires, &points, &mut work)
+        .unwrap()
+        .unwrap();
+    assert_eq!(placement.reserve_at, None);
+    let title = placement.rect;
+    assert!(
+        points
+            .iter()
+            .all(|p| p.x <= title.x - TITLE_CLEAR || p.x >= title.x + title.width + TITLE_CLEAR)
+    );
+}
+
+#[test]
 fn fixed_contacts_under_a_title_do_not_consume_either_clear_port_run() {
     let options = Options::default();
     let mut control = NoopWorkControl;

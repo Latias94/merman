@@ -4,7 +4,7 @@ use crate::flat::{self, Expanded};
 use crate::validate;
 use crate::work::{LayoutResult, Work, reserved};
 use crate::{
-    Axis, Direction, Graph, GroupSpec, LayoutDetail, LayoutError, LayoutOutput, Options,
+    Axis, Direction, Endpoint, Graph, GroupSpec, LayoutDetail, LayoutError, LayoutOutput, Options,
     PackingPolicy, PortSideHint, Side, TitlePosition, WidthPolicy,
 };
 
@@ -264,19 +264,58 @@ fn turn_down(graph: &mut Graph, options: &Options, work: &mut Work<'_>) -> Layou
             node.align_flow(graph.direction);
         }
     }
-    // Flow faces turn with the ranks. Upright boxes keep their physical transverse pins.
-    let turn_port = |hint| match hint {
-        PortSideHint::Side(Side::Left | Side::Right)
-        | PortSideHint::FixedOffset {
-            side: Side::Left | Side::Right,
-            ..
-        } => flat::to_canonical_port(original, hint),
-        _ => hint,
+    let mut directions = None;
+    let mut turn_port = |endpoint, hint, work: &mut Work<'_>| -> LayoutResult<_> {
+        if !matches!(
+            hint,
+            PortSideHint::Side(Side::Left | Side::Right)
+                | PortSideHint::FixedOffset {
+                    side: Side::Left | Side::Right,
+                    ..
+                }
+        ) {
+            return Ok(hint);
+        }
+        let (node, scope) = match endpoint {
+            Endpoint::Node(id) => {
+                let node = graph.nodes[id.0 as usize];
+                (Some(node), node.parent)
+            }
+            Endpoint::Group(id) => (None, Some(id)),
+        };
+        if let Some(scope) = scope {
+            if directions.is_none() {
+                directions = Some(crate::compound::authored_directions(
+                    &graph.groups,
+                    original,
+                    work,
+                )?);
+            }
+            if directions
+                .as_ref()
+                .and_then(|levels| levels[scope.0 as usize])
+                .is_some_and(|direction| direction.axis() == Axis::Vertical)
+            {
+                return Ok(hint);
+            }
+        }
+        // The root turn is shared by horizontal scopes. An opposed scope becomes Up.
+        let turned = flat::to_canonical_port(original, hint);
+        if let (Some(mut node), PortSideHint::FixedOffset { side, .. }) = (node, turned) {
+            let measured = node.size;
+            node.align_flow(Direction::Down);
+            if validate::port(measured, turned).is_err()
+                || validate::port(node.size, turned).is_err()
+            {
+                return Ok(PortSideHint::Side(side));
+            }
+        }
+        Ok(turned)
     };
     for edge in &mut graph.edges {
         work.visit(1)?;
-        edge.source_port = turn_port(edge.source_port);
-        edge.target_port = turn_port(edge.target_port);
+        edge.source_port = turn_port(edge.source, edge.source_port, work)?;
+        edge.target_port = turn_port(edge.target, edge.target_port, work)?;
     }
     for group in &mut graph.groups {
         work.visit(1)?;
@@ -387,5 +426,80 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn a_width_turn_preserves_physical_pins_in_authored_vertical_scopes() {
+        let mut graph = Graph {
+            direction: Direction::Left,
+            groups: vec![GroupSpec::new(0), GroupSpec::new(1)],
+            nodes: vec![NodeSpec::new(
+                Size {
+                    width: 40.,
+                    height: 100.,
+                },
+                0,
+            )],
+            ..Default::default()
+        };
+        graph.groups[0].parent = Some(GroupId(1));
+        graph.groups[1].direction = Some(Direction::Down);
+        graph.nodes[0].parent = Some(GroupId(0));
+        let pin = PortSideHint::FixedOffset {
+            side: Side::Right,
+            offset: 35.,
+        };
+        let mut edge = EdgeSpec::new(NodeId(0).into(), GroupId(0).into());
+        edge.source_port = pin;
+        edge.target_port = pin;
+        graph.edges.push(edge);
+        turn_down(
+            &mut graph,
+            &Options::default(),
+            &mut Work::new(&mut crate::NoopWorkControl),
+        )
+        .unwrap();
+        assert_eq!(graph.direction, Direction::Down);
+        assert_eq!(graph.edges[0].source_port, pin);
+        assert_eq!(graph.edges[0].target_port, pin);
+    }
+
+    #[test]
+    fn a_tall_upright_node_does_not_block_a_width_turn_with_its_old_face_offset() {
+        let mut graph = Graph {
+            direction: Direction::Right,
+            nodes: (0..4)
+                .map(|id| {
+                    NodeSpec::new(
+                        Size {
+                            width: 40.,
+                            height: 100.,
+                        },
+                        id,
+                    )
+                })
+                .collect(),
+            edges: (0..3)
+                .map(|id| EdgeSpec::new(NodeId(id).into(), NodeId(id + 1).into()))
+                .collect(),
+            ..Default::default()
+        };
+        graph.edges[0].source_port = PortSideHint::FixedOffset {
+            side: Side::Right,
+            offset: 35.,
+        };
+        let options = Options {
+            width_policy: WidthPolicy::FitWidth {
+                max_width: 120.,
+                allow_turn: true,
+                turn_breakpoint: 200.,
+                fold_wide_ranks: false,
+            },
+            ..Options::default()
+        };
+        let drawing = crate::layout(&graph, &options).unwrap();
+        assert_eq!(drawing.direction, Direction::Down);
+        assert!(drawing.bounds.width <= 120.);
+        assert_eq!(drawing.edges[0].ports, (Side::Bottom, Side::Top));
     }
 }

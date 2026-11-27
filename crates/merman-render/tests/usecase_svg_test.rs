@@ -2427,6 +2427,14 @@ note for Pay "PCI DSS scope"
         })
         .unwrap();
     let number = |key| tab.attribute(key).unwrap().parse::<f64>().unwrap();
+    let body = tab
+        .parent()
+        .unwrap()
+        .children()
+        .find(|node| node.attribute("class") == Some("boundary-body label-container"))
+        .unwrap();
+    assert_eq!(tab.attribute("x"), body.attribute("x"));
+    assert_eq!(tab.attribute("y"), body.attribute("y"));
     let tab = Rect::from_origin_size(
         (number("x"), number("y")),
         (number("width"), number("height")),

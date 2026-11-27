@@ -695,6 +695,11 @@ fn inverted_flow_faces_read_the_first_outer_turn_in_either_semantic_direction() 
                 suggested_on_face(dir, (0., 0.), &ports, false, &adjusted, first_face),
                 None
             );
+            let same_order = [Some(91.), Some(92.), Some(40.), Some(30.)];
+            assert_eq!(
+                suggested_on_face(dir, (0., 0.), &ports, false, &same_order, first_face),
+                None
+            );
         }
     }
 }

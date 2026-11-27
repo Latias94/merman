@@ -512,6 +512,37 @@ impl Connection<'_> {
             self.fit.size,
             work,
         )?;
+        if let Some(title) = self.protected_title
+            && inner.side == opposite(outer.side)
+        {
+            let vertical = inner.side.axis() == Axis::Vertical;
+            let along = |p: Point| if vertical { p.y } else { p.x };
+            let sign = match inner.side {
+                Side::Top | Side::Left => -1.0,
+                Side::Bottom | Side::Right => 1.0,
+            };
+            let (near, far) = (along(start), along(end));
+            if (far - near) * sign >= 0.0 {
+                // The title apron already has a hard clearance. Use a monotone crossbar
+                // there before asking the general corridor to take an exterior detour.
+                for level in [near, near.midpoint(far), far] {
+                    let on_plane = |point: Point| {
+                        if vertical {
+                            Point { y: level, ..point }
+                        } else {
+                            Point { x: level, ..point }
+                        }
+                    };
+                    let via = [inner.at, on_plane(start), on_plane(end), outer.at];
+                    if clear(&via, &[title], work)? && clear(&via, self.walls, work)? {
+                        for p in via {
+                            knot(&mut points, p)?;
+                        }
+                        return Ok(points);
+                    }
+                }
+            }
+        }
         knot(&mut points, start)?;
         if let Some(item) = item
             && rim > 0.0
@@ -882,6 +913,7 @@ fn boundary_leg(
 pub(super) fn title_struck(
     title: Rect,
     legs: &[EdgeGeometry],
+    routing: crate::RoutingStyle,
     work: &mut Work<'_>,
 ) -> LayoutResult<bool> {
     if title.width == 0.0 || title.height == 0.0 {
@@ -894,11 +926,12 @@ pub(super) fn title_struck(
             let [from, to] = [point(pair[0]), point(pair[1])];
             // A rounded corner can enter the rectangle between two clear straight segments.
             if blocks(title, from, to)
-                || leg.points.get(index + 2).is_some_and(|&next| {
-                    let next = point(next);
-                    ((from.x == to.x && to.y == next.y) || (from.y == to.y && to.x == next.x))
-                        && blocks(title, from, next)
-                })
+                || (routing != crate::RoutingStyle::Polyline
+                    && leg.points.get(index + 2).is_some_and(|&next| {
+                        let next = point(next);
+                        ((from.x == to.x && to.y == next.y) || (from.y == to.y && to.x == next.x))
+                            && blocks(title, from, next)
+                    }))
             {
                 return Ok(true);
             }
@@ -1149,15 +1182,27 @@ fn rehome_detached_border_captions(
                     };
                     for &off in offsets {
                         work.visit(1)?;
+                        // The padded box abuts the host. Round outward to keep that boundary
+                        // clear when forming the box loses an ULP to cancellation.
+                        let shift = |along: f64| {
+                            let shifted = along + off;
+                            if off > 0.0 {
+                                shifted.next_up()
+                            } else if off < 0.0 {
+                                shifted.next_down()
+                            } else {
+                                shifted
+                            }
+                        };
                         let center = if horizontal {
                             Point {
-                                x: base.x,
-                                y: base.y + off,
+                                y: shift(base.y),
+                                ..base
                             }
                         } else {
                             Point {
-                                x: base.x + off,
-                                y: base.y,
+                                x: shift(base.x),
+                                ..base
                             }
                         };
                         let footprint = centered(
@@ -1240,6 +1285,54 @@ mod route_unit_tests {
         Direction, Endpoint, GroupId, GroupSpec, Insets, NodeId, NodeSpec, NoopWorkControl,
         RoutingStyle, layout,
     };
+
+    #[test]
+    fn title_apron_crosses_once_below_the_title_instead_of_wrapping_around_it() {
+        let options = Options::default();
+        let mut control = NoopWorkControl;
+        let mut work = Work::new(&mut control);
+        let fit = fit::Fit::new(
+            None,
+            Size {
+                width: 280.,
+                height: 160.,
+            },
+            &[],
+            &[],
+            0.,
+            &options,
+            &mut work,
+        )
+        .unwrap();
+        let title = Rect {
+            x: 2.,
+            y: 8.,
+            width: 192.,
+            height: 36.,
+        };
+        let inner = Contact {
+            at: Point { x: 100., y: 72. },
+            side: Side::Top,
+        };
+        let outer = Contact {
+            at: Point { x: 195., y: 0. },
+            side: Side::Bottom,
+        };
+        let path = Connection {
+            fit: &fit,
+            walls: &[title],
+            gap: TITLE_CLEAR,
+            protected_title: Some(title),
+        }
+        .path(inner, outer, [16., 0.], None, &mut work)
+        .unwrap();
+        assert_eq!(path.len(), 4, "{path:?}");
+        assert!(
+            path.windows(2)
+                .all(|pair| pair[0].x <= pair[1].x && pair[0].y >= pair[1].y)
+        );
+        assert!(clear(&path, &[title], &mut work).unwrap());
+    }
 
     fn rehome_label(points: &[(f64, f64)], walls: &[Rect]) -> Rect {
         let size = Size {

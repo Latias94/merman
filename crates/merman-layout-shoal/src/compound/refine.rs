@@ -1417,6 +1417,30 @@ pub(super) fn port_hints(
                 left.0 < right.0 && left.1 > right.1
             });
             if inverted {
+                // Boundary hints feed only the flat row's relative order. If the outer
+                // coordinates changed but induce the same order, the local frame is current.
+                if positions.iter().all(|&(_, _, id)| ctx.ports[id].is_some()) {
+                    let order = |left: f64, right: f64, a: usize, b: usize| {
+                        if left == right {
+                            a.cmp(&b)
+                        } else {
+                            left.total_cmp(&right)
+                        }
+                    };
+                    work.sort(&mut sorted, |&a, &b| {
+                        let (_, left, left_id) = positions[a];
+                        let (_, right, right_id) = positions[b];
+                        order(left, right, left_id, right_id)
+                    })?;
+                    work.visit(sorted.len())?;
+                    if sorted.windows(2).all(|pair| {
+                        let (_, _, a) = positions[pair[0]];
+                        let (_, _, b) = positions[pair[1]];
+                        order(ctx.ports[a].unwrap(), ctx.ports[b].unwrap(), a, b).is_lt()
+                    }) {
+                        continue;
+                    }
+                }
                 for &(_, hint, id) in &positions {
                     work.visit(1)?;
                     if ctx.ports[id] == Some(hint) {
