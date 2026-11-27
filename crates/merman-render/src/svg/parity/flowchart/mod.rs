@@ -1,4 +1,4 @@
-use super::{util::css_selector_diagram_id, *};
+use super::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 mod agentflow;
@@ -11,7 +11,6 @@ mod cluster_geometry;
 mod compact;
 mod css;
 mod defs;
-mod document;
 mod document_ids;
 mod edge;
 mod edge_fill;

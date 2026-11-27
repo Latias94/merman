@@ -16,6 +16,7 @@ categories = ["visualization"]
 third-party-bundle = true
 
 [features]
+benchmark-stages = ["merman-model?/benchmark-stages"]
 diagram-agentflow = [
     "dep:indexmap",
     "dep:memchr",
@@ -28,6 +29,7 @@ diagram-agentflow = [
     "merman-model/diagram-agentflow",
     "merman-render-core/css-style",
     "merman-render-core/markdown-labels",
+    "merman-render-core/root-svg",
     "merman-render-core/theme-svg",
 ]
 diagram-flowchart = [
@@ -42,6 +44,7 @@ diagram-flowchart = [
     "merman-model/diagram-flowchart",
     "merman-render-core/css-style",
     "merman-render-core/markdown-labels",
+    "merman-render-core/root-svg",
     "merman-render-core/theme-svg",
 ]
 diagram-swimlane = [
@@ -56,6 +59,7 @@ diagram-swimlane = [
     "merman-model/diagram-swimlane",
     "merman-render-core/css-style",
     "merman-render-core/markdown-labels",
+    "merman-render-core/root-svg",
     "merman-render-core/theme-svg",
 ]
 layout-dagre = ["dep:dugong", "dep:serde_json", "merman-render-core/layout-dagre"]
