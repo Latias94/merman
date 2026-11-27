@@ -40,6 +40,13 @@ pub fn parse_source_with_observer_controlled<'a>(
     parse_source(code, observer, control)
 }
 
+#[cfg_attr(
+    not(feature = "editor-facts"),
+    allow(
+        clippy::needless_lifetimes,
+        reason = "The editor observer shares the operation control borrow when enabled."
+    )
+)]
 fn parse_source<'a>(
     code: &str,
     #[cfg(feature = "editor-facts")] observer: Option<SourceObserver<'a>>,

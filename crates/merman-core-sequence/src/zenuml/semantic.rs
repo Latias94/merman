@@ -24,6 +24,13 @@ fn build(parsed: ParsedSyntax) -> SemanticBuild {
     .expect("a private parse control cannot be cancelled")
 }
 
+#[cfg_attr(
+    not(feature = "editor-facts"),
+    allow(
+        clippy::needless_lifetimes,
+        reason = "The semantic builder borrows the operation control and the editor observer."
+    )
+)]
 pub(super) fn build_controlled<'a>(
     parsed: ParsedSyntax,
     #[cfg(feature = "editor-facts")] observer: Option<SourceObserver<'a>>,
