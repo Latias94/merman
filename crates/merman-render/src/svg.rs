@@ -24,8 +24,7 @@ pub(crate) use parity::BaseEdgeMarkerKind;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
-    feature = "diagram-agentflow",
-    feature = "diagram-usecase"
+    feature = "diagram-agentflow"
 ))]
 pub(crate) use parity::PreparedCommonNeoCss;
 pub(crate) use parity::PreparedLookDefs;

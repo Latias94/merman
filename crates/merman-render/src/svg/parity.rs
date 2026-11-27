@@ -55,8 +55,7 @@ mod css;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
-    feature = "diagram-agentflow",
-    feature = "diagram-usecase"
+    feature = "diagram-agentflow"
 ))]
 pub(crate) use css::PreparedCommonNeoCss;
 #[cfg(any(

@@ -1,7 +1,7 @@
 //! Operation-owned Usecase visual values from Mermaid 12 styles.ts.
 
-use crate::config::{config_f64, config_string};
-use crate::text::TextStyle;
+use merman_render_core::config::{config_f64, config_string};
+use merman_render_core::text::TextStyle;
 use serde_json::Value;
 
 #[derive(Debug, Clone)]
@@ -71,8 +71,8 @@ pub(crate) struct UsecaseCssBinding {
     pub(crate) edge_look: String,
     pub(crate) rotate: bool,
     pub(crate) hand_drawn_seed: f64,
-    pub(crate) neo: crate::svg::PreparedCommonNeoCss,
-    pub(crate) look_defs: crate::svg::PreparedLookDefs,
+    pub(crate) neo: merman_render_core::svg_css::PreparedCommonNeoCss,
+    pub(crate) look_defs: merman_render_core::svg_css::PreparedLookDefs,
     pub(crate) native_title_font: Option<TextStyle>,
 }
 
@@ -165,8 +165,8 @@ impl UsecaseCssBinding {
                 .and_then(Value::as_str)
                 == Some("rotate"),
             hand_drawn_seed: config_f64(config, &["handDrawnSeed"]).unwrap_or(0.0),
-            neo: crate::svg::PreparedCommonNeoCss::new(config),
-            look_defs: crate::svg::PreparedLookDefs::new(config),
+            neo: merman_render_core::svg_css::PreparedCommonNeoCss::new(config),
+            look_defs: merman_render_core::svg_css::PreparedLookDefs::new(config),
             native_title_font: None,
         }
     }
@@ -174,13 +174,13 @@ impl UsecaseCssBinding {
     pub(super) fn apply_native(
         &mut self,
         config: &merman_model::presentation::PresentationConfig,
-        theme: &crate::theme::FamilyTheme,
-        background: Option<crate::theme::Color>,
+        theme: &merman_theme_contract::v2::FamilyTheme,
+        background: Option<merman_theme_contract::v2::Color>,
     ) {
         use merman_theme_contract::v2::EdgeLabelBackground;
 
         let roles = &theme.roles;
-        let paint = |binding: &mut UsecaseCssPaint, color: crate::theme::Color| {
+        let paint = |binding: &mut UsecaseCssPaint, color: merman_theme_contract::v2::Color| {
             if !binding.variable.is_some_and(|key| {
                 config.explicit_config_owns_path(&format!("themeVariables.{key}"))
             }) {
@@ -220,14 +220,16 @@ impl UsecaseCssBinding {
         let edge_label = match theme.form.edge_label_bg {
             EdgeLabelBackground::Auto | EdgeLabelBackground::Canvas => canvas,
             EdgeLabelBackground::Pill => node,
-            EdgeLabelBackground::Transparent => crate::theme::Color::TRANSPARENT,
+            EdgeLabelBackground::Transparent => merman_theme_contract::v2::Color::TRANSPARENT,
         };
         paint(&mut self.edge_background, edge_label);
         self.palette.clear();
         self.backgrounds.clear();
 
         let typography = &theme.typography;
-        let family = crate::theme::font_family_css(typography.stack(typography.body_family));
+        let family = merman_render_core::mermaid_style::font_family_css(
+            typography.stack(typography.body_family),
+        );
         for style in [
             &mut self.generic_font,
             &mut self.root_font,
@@ -238,7 +240,9 @@ impl UsecaseCssBinding {
             style.font_size = typography.base_size_px;
             style.font_weight = Some(typography.label_weight.to_string());
         }
-        let title = crate::theme::font_family_css(typography.stack(typography.title_family));
+        let title = merman_render_core::mermaid_style::font_family_css(
+            typography.stack(typography.title_family),
+        );
         self.native_title_font = Some(TextStyle {
             font_family: Some(title),
             font_size: typography.base_size_px,

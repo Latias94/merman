@@ -5,11 +5,9 @@
 //! cluster-anchor rewriting or recursive arena is needed for this native family.
 
 use super::*;
-use crate::Error;
-use crate::layout_work::OperationLayoutWorkControl;
-use crate::model::{LayoutLabel, LayoutPoint};
 use dugong::graphlib::{Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, NodeLabel, RankDir};
+use merman_render_core::{Error, LayoutLabel};
 use std::collections::{HashMap, HashSet};
 
 type DagreGraph = Graph<NodeLabel, EdgeLabel, GraphLabel>;
@@ -282,8 +280,14 @@ pub(super) fn layout(
         for member in members {
             child.set_parent_ref(&member, &id);
         }
-        crate::layout_work::measure_layout_solve!(dugong::layout_controlled(&mut child, work))
-            .map_err(|error| work.map_dugong_error(error))?;
+        let solved = {
+            #[cfg(feature = "benchmark-stages")]
+            let _stage = merman_model::benchmark_stages::enter(
+                merman_model::benchmark_stages::Stage::LayoutSolve,
+            );
+            dugong::layout_controlled(&mut child, work)
+        };
+        solved.map_err(|error| work.map_dugong_error(error))?;
         let fragment = project(
             &child,
             &plan_by_id,
@@ -299,8 +303,14 @@ pub(super) fn layout(
         extracted.insert(id, fragment);
     }
     let extracted_ids = extracted.keys().cloned().collect();
-    crate::layout_work::measure_layout_solve!(dugong::layout_controlled(&mut root, work))
-        .map_err(|error| work.map_dugong_error(error))?;
+    let solved = {
+        #[cfg(feature = "benchmark-stages")]
+        let _stage = merman_model::benchmark_stages::enter(
+            merman_model::benchmark_stages::Stage::LayoutSolve,
+        );
+        dugong::layout_controlled(&mut root, work)
+    };
+    solved.map_err(|error| work.map_dugong_error(error))?;
     let outer = project(
         &root,
         &plan_by_id,

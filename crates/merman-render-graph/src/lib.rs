@@ -25,3 +25,10 @@ pub mod requirement;
 #[cfg(feature = "diagram-state")]
 #[doc(hidden)]
 pub mod state;
+
+#[cfg(all(test, any(feature = "diagram-class", feature = "diagram-usecase")))]
+mod test_support;
+
+#[cfg(feature = "diagram-usecase")]
+#[doc(hidden)]
+pub mod usecase;

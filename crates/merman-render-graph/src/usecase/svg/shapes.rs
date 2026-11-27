@@ -1,9 +1,10 @@
+use super::super::actor::{self, ActorPlacement};
 use super::*;
-use crate::svg::icon_registry::{
+use merman_model::families::usecase::UsecaseNode;
+use merman_render_core::icon_registry::{
     IconIdScopePrefix, IconRenderRequest, mermaid_unknown_icon_svg, render_icon,
 };
-use crate::usecase::actor::{self, ActorPlacement};
-use merman_model::families::usecase::UsecaseNode;
+use merman_render_core::rough_svg::{RoughRectSpec, roughjs_paths_for_rect};
 
 pub(super) fn write_dagre_helper(
     out: &mut String,
@@ -73,10 +74,10 @@ pub(super) fn rect(
 pub(super) struct UsecaseNodeRenderContext<'a> {
     pub(super) source: Option<&'a UsecaseNode>,
     pub(super) note: bool,
-    pub(super) css_binding: &'a crate::usecase::UsecaseCssBinding,
+    pub(super) css_binding: &'a super::super::UsecaseCssBinding,
     pub(super) labels: UsecaseLabelRenderContext<'a>,
-    pub(super) diagram_id: SvgDiagramId<'a>,
-    pub(super) options: &'a SvgExecution<'a>,
+    pub(super) diagram_id: SvgId<'a>,
+    pub(super) options: &'a UsecaseSvgContext<'a>,
     #[cfg(feature = "layout-shoal")]
     pub(super) canonical: bool,
 }
@@ -228,8 +229,8 @@ pub(super) fn write_node(
                     actor::ICON_CORNER,
                     actor::ICON_CORNER
                 );
-                let icon = if let Some(registry) = context.options.icon_registry() {
-                    let work = context.options.work_meter();
+                let icon = if let Some(registry) = context.options.icon_registry {
+                    let work = context.options.work_meter;
                     let prefix = IconIdScopePrefix::from_parts(
                         &["usecase-", context.diagram_id.semantic_str(), "-"],
                         work,
@@ -373,19 +374,21 @@ pub(super) fn write_node(
         } else if context.note {
             // note.ts uses a RoughJS rectangle even for classic/neo. At zero
             // roughness its fill and outline still remain separate SVG paths.
-            let randomness = context
-                .options
-                .rough_randomness(context.css_binding.hand_drawn_seed, "usecase-note");
+            let randomness = operation_randomness(
+                context.options.operation,
+                context.css_binding.hand_drawn_seed,
+                "usecase-note",
+            );
             let note_fill = context.css_binding.note.css();
             let note_stroke = context.css_binding.note_border.css();
             let style = escape_attr(&plan.source_style);
-            let paths = roughjs_common::roughjs_paths_for_rect(roughjs_common::RoughRectSpec {
+            let paths = roughjs_paths_for_rect(RoughRectSpec {
                 x: -node.width / 2.0,
                 y: -node.height / 2.0,
                 w: node.width,
                 h: node.height,
                 stroke_width: 1.3,
-                work_meter: context.options.work_meter(),
+                work_meter: context.options.work_meter,
                 phase: merman_model::OperationPhase::Emit,
                 randomness: &randomness,
             });
@@ -464,10 +467,9 @@ fn annotate_folded_stereotype(out: &mut String, start: usize) -> Result<()> {
     // The fragment is our own complete label group, so byte ranges can be applied
     // without reparsing the entire diagram or depending on literal label content.
     let fragment = &out[start..];
-    let document =
-        crate::xml_dom::Document::parse(fragment).map_err(|error| Error::InvalidModel {
-            message: format!("invalid prepared Usecase stereotype label: {error}"),
-        })?;
+    let document = roxmltree::Document::parse(fragment).map_err(|error| Error::InvalidModel {
+        message: format!("invalid prepared Usecase stereotype label: {error}"),
+    })?;
     if let Some(span) = document
         .descendants()
         .find(|node| node.has_tag_name("span") && node.attribute("class") == Some("nodeLabel"))

@@ -1,21 +1,20 @@
 use super::*;
-use crate::Error;
-use crate::layout_work::OperationLayoutWorkControl;
-use crate::text::TextMeasurer;
-use crate::text::{
-    WrapMode, measure_wrapped_markdown_with_inline_styles,
-    measure_xhtml_label_fragment_with_terminal_fonts,
-};
 use merman_model::families::usecase::{
     UsecaseArrowType, UsecaseJsonInfinity, UsecaseJsonNode, UsecaseNodeKind,
     UsecaseRelationshipType,
+};
+use merman_render_core::Error;
+use merman_render_core::text::{
+    WrapMode,
+    inline_html::{MermaidMarkdownWordType, svg_markdown_word_style},
+    measure_wrapped_markdown_with_inline_styles, measure_xhtml_label_fragment_with_terminal_fonts,
 };
 use std::collections::HashSet;
 
 #[derive(Debug)]
 pub(crate) struct UsecasePreparedHtmlLabel {
     pub(crate) xhtml: String,
-    _retained_text: crate::resources::PreparedTextRetainedReservation,
+    _retained_text: merman_render_core::resources::PreparedTextRetainedReservation,
 }
 
 impl UsecasePreparedHtmlLabel {
@@ -32,7 +31,7 @@ impl UsecasePreparedHtmlLabel {
     }
 }
 
-pub(super) fn number(config: &Value, key: &str, fallback: f64) -> f64 {
+pub fn number(config: &Value, key: &str, fallback: f64) -> f64 {
     configured_number(config, key).unwrap_or(fallback)
 }
 
@@ -45,7 +44,7 @@ fn configured_number(config: &Value, key: &str) -> Option<f64> {
 }
 
 fn configured_generic_font_size(config: &Value) -> Option<f64> {
-    crate::config::config_f64_css_absolute_px(config, &["themeVariables", "fontSize"])
+    merman_render_core::config::config_f64_css_absolute_px(config, &["themeVariables", "fontSize"])
         .filter(|size| size.is_finite() && *size >= 0.0)
 }
 
@@ -103,7 +102,8 @@ fn styles(
 
 fn apply_inline_styles(values: &mut indexmap::IndexMap<String, String>, inline: &[String]) {
     for item in inline {
-        if let Some(declaration) = crate::mermaid_style::parse_style_declaration(item) {
+        if let Some(declaration) = merman_render_core::mermaid_style::parse_style_declaration(item)
+        {
             values.insert(
                 declaration.property_source().to_owned(),
                 declaration.source_value().to_owned(),
@@ -115,7 +115,7 @@ fn apply_inline_styles(values: &mut indexmap::IndexMap<String, String>, inline: 
 fn shape_style(styles: &indexmap::IndexMap<String, String>) -> String {
     styles
         .iter()
-        .filter(|(key, _)| !crate::mermaid_style::is_label_style_key(key))
+        .filter(|(key, _)| !merman_render_core::mermaid_style::is_label_style_key(key))
         .map(|(key, value)| {
             format!(
                 "{key}:{} !important;",
@@ -131,9 +131,12 @@ fn styled(
     styles: &indexmap::IndexMap<String, String>,
     root_font_size: f64,
 ) -> TextStyle {
-    let mut cascade = crate::mermaid_style::TextStyleCascade::new(
+    let mut cascade = merman_render_core::mermaid_style::TextStyleCascade::new(
         inherited,
-        crate::mermaid_style::CssFontSizeContext::new(inherited.font_size, root_font_size),
+        merman_render_core::mermaid_style::CssFontSizeContext::new(
+            inherited.font_size,
+            root_font_size,
+        ),
     );
     // Role selectors match this element, not its parent. Their defaults compete
     // with source declarations without changing the inherited relative-unit base.
@@ -161,7 +164,7 @@ fn styled(
 struct LabelContext<'a> {
     config: &'a merman_model::presentation::PresentationConfig,
     measurer: &'a dyn TextMeasurer,
-    math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
+    math_renderer: Option<&'a (dyn merman_render_core::math::MathRenderer + Send + Sync)>,
     styles: &'a indexmap::IndexMap<String, String>,
     root_font_size: f64,
 }
@@ -173,7 +176,7 @@ fn measure_plain_label(
 ) -> TextMetrics {
     // Match the writer's source tokenization before decoding each textContent payload.
     // Decoded rows are literal tspan text, not another input to label normalization.
-    let lines = crate::text::DeterministicTextMeasurer::normalized_text_lines(source);
+    let lines = merman_render_core::text::DeterministicTextMeasurer::normalized_text_lines(source);
     let mut metrics = TextMetrics {
         width: 0.0,
         height: 0.0,
@@ -181,8 +184,8 @@ fn measure_plain_label(
     };
     let mut vertical_bounds: Option<(f64, f64)> = None;
     for (index, line) in lines.iter().enumerate() {
-        let visible = crate::text::non_markdown_svg_words(line)
-            .map(crate::entities::decode_svg_text_content_entities)
+        let visible = merman_render_core::text::non_markdown_svg_words(line)
+            .map(merman_render_core::entities::decode_svg_text_content_entities)
             .collect::<Vec<_>>()
             .join(" ");
         if visible.is_empty() {
@@ -235,28 +238,25 @@ fn label(
             context.root_font_size,
         );
     } else {
-        terminal_style = crate::text::svg_markdown_word_style(
-            &terminal_style,
-            crate::text::MermaidMarkdownWordType::Normal,
-        )
-        .into_owned();
+        terminal_style =
+            svg_markdown_word_style(&terminal_style, MermaidMarkdownWordType::Normal).into_owned();
     }
     let source = create_text_source(text, label_type);
     let source = source.as_ref();
     let math_renderer = context
         .math_renderer
-        .filter(|_| crate::math::contains_delimited_math(source));
+        .filter(|_| merman_render_core::math::contains_delimited_math(source));
     let html_content = if html {
         Some(
-            crate::math::render_math_html_label(source, context.config, math_renderer)
+            merman_render_core::math::render_math_html_label(source, context.config, math_renderer)
                 .unwrap_or_else(|| match label_type {
                     UsecaseLabelType::Text => {
                         format!("<p>{}</p>", source.replace('\n', "<br/>"))
                     }
                     UsecaseLabelType::Markdown => {
-                        crate::text::mermaid_markdown_to_xhtml_label_fragment(
+                        merman_render_core::text::mermaid_markdown_to_xhtml_label_fragment(
                             text,
-                            crate::config::config_bool(
+                            merman_render_core::config::config_bool(
                                 context.config.as_value(),
                                 &["markdownAutoWrap"],
                             )
@@ -272,15 +272,15 @@ fn label(
     // structural XHTML and is still measured as separate rows with no width constraint.
     let measurement_width = if html
         && label_type == UsecaseLabelType::Markdown
-        && crate::config::config_bool(context.config.as_value(), &["markdownAutoWrap"])
+        && merman_render_core::config::config_bool(context.config.as_value(), &["markdownAutoWrap"])
             == Some(false)
     {
         None
     } else {
         max_width
     };
-    let mut metrics =
-        crate::math::math_label_metrics_for_layout(crate::math::MathLabelMetricsRequest {
+    let mut metrics = merman_render_core::math::math_label_metrics_for_layout(
+        merman_render_core::math::MathLabelMetricsRequest {
             measurer: context.measurer,
             raw_label: source,
             style: &terminal_style,
@@ -288,29 +288,30 @@ fn label(
             wrap_mode: mode,
             config: context.config,
             math_renderer,
-        })
-        .unwrap_or_else(|| {
-            if let Some(content) = html_content.as_deref() {
-                measure_xhtml_label_fragment_with_terminal_fonts(
-                    context.measurer,
-                    content,
-                    &terminal_style,
-                    measurement_width,
-                    // HTML rem uses the document root independently of the role font.
-                    16.0,
-                )
-            } else if label_type == UsecaseLabelType::Markdown {
-                measure_wrapped_markdown_with_inline_styles(
-                    context.measurer,
-                    text,
-                    &terminal_style,
-                    max_width,
-                    mode,
-                )
-            } else {
-                measure_plain_label(source, &terminal_style, context.measurer)
-            }
-        });
+        },
+    )
+    .unwrap_or_else(|| {
+        if let Some(content) = html_content.as_deref() {
+            measure_xhtml_label_fragment_with_terminal_fonts(
+                context.measurer,
+                content,
+                &terminal_style,
+                measurement_width,
+                // HTML rem uses the document root independently of the role font.
+                16.0,
+            )
+        } else if label_type == UsecaseLabelType::Markdown {
+            measure_wrapped_markdown_with_inline_styles(
+                context.measurer,
+                text,
+                &terminal_style,
+                max_width,
+                mode,
+            )
+        } else {
+            measure_plain_label(source, &terminal_style, context.measurer)
+        }
+    });
     let text_metrics = metrics;
     // labelHelper.withMinWidth also widens the measured box for SVG labels.
     if !text.is_empty() {
@@ -331,7 +332,7 @@ fn label(
         styles: context
             .styles
             .iter()
-            .filter(|(key, _)| crate::mermaid_style::is_label_style_key(key))
+            .filter(|(key, _)| merman_render_core::mermaid_style::is_label_style_key(key))
             .map(|(key, value)| (key.clone(), value.clone()))
             .collect(),
     })
@@ -460,7 +461,7 @@ pub(super) fn measure(
     full_config: &merman_model::presentation::PresentationConfig,
     css_binding: &UsecaseCssBinding,
     measurer: &dyn TextMeasurer,
-    math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
+    math_renderer: Option<&(dyn merman_render_core::math::MathRenderer + Send + Sync)>,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<(Vec<UsecaseNodePlan>, Vec<UsecaseEdgePlan>)> {
     let config = full_config.as_value();
@@ -856,7 +857,7 @@ pub(super) fn measure(
                         plan.metrics.width += 4.0;
                         plan.metrics.height += 4.0;
                     }
-                    Ok::<_, crate::Error>(plan)
+                    Ok::<_, Error>(plan)
                 })
                 .transpose()?,
             minlen: edge.minlen,
@@ -919,13 +920,13 @@ pub(super) fn measure(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::resources::OperationWorkMeter;
-    use crate::resources::RenderResourcePolicy;
-    use crate::text::DeterministicTextMeasurer;
     use merman_model::families::usecase::{
         UsecaseActorType, UsecaseBoundary, UsecaseClassDef, UsecaseNode, UsecaseNote,
         UsecaseRelationship,
     };
+    use merman_render_core::resources::OperationWorkMeter;
+    use merman_render_core::resources::RenderResourcePolicy;
+    use merman_render_core::text::DeterministicTextMeasurer;
     use serde_json::json;
     use std::collections::BTreeMap;
 

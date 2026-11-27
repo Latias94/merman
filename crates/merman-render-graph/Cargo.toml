@@ -59,6 +59,14 @@ diagram-state = [
     "merman-render-core/root-svg", "merman-render-core/rough-svg", "merman-render-core/svg-edge-parity",
     "merman-render-core/theme-elevation", "merman-render-core/theme-label-background",
 ]
+diagram-usecase = [
+    "dep:base64", "dep:indexmap", "dep:kurbo", "dep:merman-markup", "dep:merman-model",
+    "dep:merman-render-core", "dep:merman-theme-contract", "dep:roxmltree", "dep:ryu-js", "dep:serde",
+    "dep:serde_json", "merman-model/diagram-usecase", "merman-render-core/graph-layout",
+    "merman-render-core/icon-svg", "merman-render-core/markdown-labels",
+    "merman-render-core/math-labels", "merman-render-core/root-svg", "merman-render-core/rough-svg",
+    "merman-render-core/svg-edge-parity", "merman-render-core/theme-elevation",
+]
 layout-shoal = ["dep:kurbo", "merman-render-core?/route-paint"]
 layout-dagre = ["dep:dugong", "merman-render-core?/layout-dagre"]
 layout-elk = ["dep:merman-layout-elk"]

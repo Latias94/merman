@@ -38,7 +38,7 @@ fn class_html_and_fallback_plans_enforce_retained_limits_and_release_partial_pre
             panic!("expected Class model");
         };
         let config =
-            crate::class::test_support::presentation_config(serde_json::json!({"htmlLabels":true}));
+            crate::test_support::presentation_config(serde_json::json!({"htmlLabels":true}));
         let typography = super::ClassTextThemePlan::resolve(None, &config);
         let render_config = super::ClassRenderConfig::resolve(&config, &typography);
         let measurer = DeterministicTextMeasurer::default();
@@ -199,8 +199,7 @@ fn class_html_prepared_plans_release_on_mid_preparation_cancellation() {
     let RenderSemanticModel::Class(model) = parsed.model() else {
         panic!("expected Class model");
     };
-    let config =
-        crate::class::test_support::presentation_config(serde_json::json!({"htmlLabels":true}));
+    let config = crate::test_support::presentation_config(serde_json::json!({"htmlLabels":true}));
     let typography = super::ClassTextThemePlan::resolve(None, &config);
     let render_config = super::ClassRenderConfig::resolve(&config, &typography);
     let control = merman_model::OperationControl::new();
@@ -248,8 +247,7 @@ fn class_svg_prepared_labels_own_retained_bytes_and_release_partial_preparation(
     let RenderSemanticModel::Class(model) = parsed.model() else {
         panic!("expected Class model");
     };
-    let config =
-        crate::class::test_support::presentation_config(serde_json::json!({"htmlLabels":false}));
+    let config = crate::test_support::presentation_config(serde_json::json!({"htmlLabels":false}));
     let typography = super::ClassTextThemePlan::resolve(None, &config);
     let render_config = super::ClassRenderConfig::resolve(&config, &typography);
     let measurer = DeterministicTextMeasurer::default();

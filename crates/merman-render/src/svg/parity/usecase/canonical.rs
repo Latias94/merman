@@ -1,15 +1,9 @@
 use super::*;
-use crate::model::LayoutPoint;
 use crate::usecase::{UsecaseEdgePlan, UsecaseMarker, canonical_route_style};
 use kurbo::{Rect, Vec2};
+use merman_render_graph::usecase::UsecasePaintedEdge;
 use roughr::core::{RoughJsSeed, RoughMathRandom, RoughRandomness};
 use serde_json::Value;
-
-pub(super) struct PaintedEdge {
-    pub(super) path: String,
-    pub(super) points: Vec<LayoutPoint>,
-    pub(super) markers: [Option<UsecaseMarker>; 2],
-}
 
 fn stroke_width(plan: &UsecaseEdgePlan) -> f64 {
     plan.source_style
@@ -26,15 +20,14 @@ pub(super) fn prepare_edges(
     config: &Value,
     bounds: &mut Bounds,
     options: &SvgExecution<'_>,
-) -> Result<Option<Vec<PaintedEdge>>> {
+) -> Result<Option<Vec<UsecasePaintedEdge>>> {
     let Some(routes) = prepared.canonical_routes() else {
         return Ok(None);
     };
     let neo = config.get("look").and_then(Value::as_str) == Some("neo");
     let style = canonical_route_style(config);
-    let randomness = (prepared.css_binding.look == "handDrawn").then(|| {
-        let randomness =
-            options.rough_randomness(prepared.css_binding.hand_drawn_seed, "usecase-edge");
+    let randomness = prepared.prepared.hand_drawn_seed().map(|seed| {
+        let randomness = options.rough_randomness(seed, "usecase-edge");
         let seed = randomness.seed().number();
         if seed == 0.0 {
             randomness
@@ -42,9 +35,16 @@ pub(super) fn prepare_edges(
             RoughRandomness::new(RoughJsSeed::new(0.0), RoughMathRandom::new(seed.to_bits()))
         }
     });
-    options.work_meter().charge(prepared.edges.len())?;
-    let mut painted = Vec::with_capacity(prepared.edges.len());
-    for (edge, plan) in prepared.layout.edges.iter().zip(&prepared.edges) {
+    options
+        .work_meter()
+        .charge(prepared.prepared.edges().len())?;
+    let mut painted = Vec::with_capacity(prepared.prepared.edges().len());
+    for (edge, plan) in prepared
+        .layout()
+        .edges
+        .iter()
+        .zip(prepared.prepared.edges())
+    {
         let width = stroke_width(plan);
         options.checkpoint_emit()?;
         options.work_meter().charge(edge.points.len())?;
@@ -87,49 +87,11 @@ pub(super) fn prepare_edges(
         bounds.min_y = bounds.min_y.min(paint_bounds.y0);
         bounds.max_x = bounds.max_x.max(paint_bounds.x1);
         bounds.max_y = bounds.max_y.max(paint_bounds.y1);
-        painted.push(PaintedEdge {
+        painted.push(UsecasePaintedEdge {
             path,
             points: geometry.data_points,
             markers,
         });
     }
     Ok(Some(painted))
-}
-
-pub(super) fn write_marker(
-    out: &mut String,
-    diagram_id: SvgDiagramId<'_>,
-    marker: &UsecaseMarker,
-    start: bool,
-    index: usize,
-) -> String {
-    let name = marker.name();
-    let side = if start { "Start" } else { "End" };
-    let id = format!("{diagram_id}_usecase-{name}{side}-shoal-{index}");
-    let (width, height) = marker.dimensions();
-    let _ = write!(
-        out,
-        r#"<defs><marker id="{id}" class="marker {name} usecase" refX="{}" refY="{}" markerWidth="{}" markerHeight="{}" markerUnits="userSpaceOnUse" orient="auto" overflow="visible">"#,
-        fmt(marker.ref_x),
-        fmt(marker.ref_y()),
-        fmt(width),
-        fmt(height)
-    );
-    if let Some(radius) = marker.radius() {
-        let _ = write!(
-            out,
-            r#"<circle cx="{}" cy="{}" r="{}""#,
-            fmt(radius),
-            fmt(radius),
-            fmt(radius)
-        );
-    } else {
-        let _ = write!(out, r#"<path d="{}""#, marker.path().to_svg());
-    }
-    let _ = write!(
-        out,
-        r#" style="stroke-width:{};stroke-dasharray:0;stroke-linecap:round;stroke-linejoin:round;"/></marker></defs>"#,
-        fmt(marker.stroke_width)
-    );
-    format!("url(#{id})")
 }

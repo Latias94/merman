@@ -1,4 +1,4 @@
-//! Source-fixture adapters used only by renderer unit tests.
+//! Config fixtures shared by graph renderer unit tests.
 
 use merman_model::presentation::PresentationConfig;
 use merman_model::resources::{InputResourcePolicy, ResourceProfile};

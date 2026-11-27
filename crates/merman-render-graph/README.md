@@ -24,8 +24,9 @@ The `diagram-state` feature owns State presentation binding, label measurement, 
 complete SVG emission. `merman-render` selects the layout backend, supplies its route
 geometry and the operation context, and applies terminal SVG policies.
 
-The `diagram-c4` feature owns C4 configuration, grid layout, text and theme binding, and
-complete SVG emission. The facade supplies the operation context and any solved Shoal geometry.
+The `diagram-usecase` feature owns Usecase style binding, label preparation, Dagre layout,
+and complete SVG emission. `merman-render` selects the layout backend, supplies canonical
+routes when using Shoal, and applies terminal SVG policies.
 
 This crate exposes a workspace-internal service provider interface (SPI). It is published in
 lockstep with Merman and expects an exact version match with the Merman crates that use it.

@@ -361,7 +361,7 @@ mod tests {
 
     #[test]
     fn prepared_config_preserves_font_probe_and_padding_domains() {
-        let source = crate::class::test_support::presentation_config(json!({
+        let source = crate::test_support::presentation_config(json!({
             "fontFamily": "Root Sans, monospace",
             "fontSize": "18",
             "htmlLabels": false,
@@ -421,7 +421,7 @@ mod tests {
                 merman_render_core::text::MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX,
             ),
         ] {
-            let source = crate::class::test_support::presentation_config(
+            let source = crate::test_support::presentation_config(
                 json!({ "flowchart": { "wrappingWidth": width } }),
             );
             let typography = super::super::ClassTextThemePlan::resolve(None, &source);
@@ -434,8 +434,7 @@ mod tests {
             (json!("17"), None),
             (json!(null), None),
         ] {
-            let source =
-                crate::class::test_support::presentation_config(json!({ "handDrawnSeed": seed }));
+            let source = crate::test_support::presentation_config(json!({ "handDrawnSeed": seed }));
             let typography = super::super::ClassTextThemePlan::resolve(None, &source);
             let config = ClassRenderConfig::resolve(&source, &typography);
             assert_eq!(config.hand_drawn_seed, expected);
@@ -499,7 +498,7 @@ mod tests {
 
     #[test]
     fn class_namespace_padding_defaults_to_sixteen_from_native_config() {
-        let source = crate::class::test_support::presentation_config_from_config(
+        let source = crate::test_support::presentation_config_from_config(
             merman_core::generated::default_site_config(),
         );
         assert!(source.as_value()["class"].get("padding").is_none());
@@ -657,7 +656,7 @@ mod tests {
             json!({"class": {"diagramPadding": 31, "padding": 23}}),
             json!({"diagramPadding": 99, "flowchart": {"diagramPadding": 0}}),
         ] {
-            let source = crate::class::test_support::presentation_config(source);
+            let source = crate::test_support::presentation_config(source);
             let typography = super::super::ClassTextThemePlan::resolve(None, &source);
             let config = ClassRenderConfig::resolve(&source, &typography);
             assert_eq!(config.viewport_padding, 8.0, "{source:?}");
@@ -683,7 +682,7 @@ mod tests {
                 false,
             ),
         ] {
-            let source = crate::class::test_support::presentation_config(source);
+            let source = crate::test_support::presentation_config(source);
             let typography = super::super::ClassTextThemePlan::resolve(None, &source);
             let config = ClassRenderConfig::resolve(&source, &typography);
             assert_eq!(config.use_max_width, expected, "{source:?}");

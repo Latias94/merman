@@ -1,7 +1,8 @@
 //! Usecase role colors and opt-in participant palettes from Mermaid 12 styles.ts.
 
+use super::super::UsecaseCssBinding;
 use super::*;
-use crate::usecase::UsecaseCssBinding;
+use merman_render_core::svg_output::{SvgOutput, XmlTextOutput};
 
 pub(super) fn appearance_attributes(
     binding: &UsecaseCssBinding,
@@ -20,7 +21,7 @@ pub(super) fn appearance_attributes(
 
 pub(super) fn write_css(
     out: &mut String,
-    id: SvgDiagramId<'_>,
+    id: SvgId<'_>,
     binding: &UsecaseCssBinding,
     mermaid_parity: bool,
 ) -> Result<()> {
@@ -50,7 +51,8 @@ pub(super) fn write_css(
     let mut css = String::new();
     // HTML label metrics exclude the browser's default paragraph margins, as does
     // Mermaid's shared styles.ts reset. Apply it before the family-specific styles.
-    let _ = super::super::css::write_mermaid_paragraph_css_to(&mut css, id);
+    let _ = write!(css, "#{id} p{{margin:0;}}");
+    let _ = css.checkpoint();
     let font = &binding.root_font;
     let _ = write!(
         css,
@@ -138,7 +140,7 @@ pub(super) fn write_css(
     }
     // CSS is XML character data. Preserve declarations while preventing a token from closing style.
     out.push_str("<style>");
-    super::super::output::XmlTextOutput::new(out).push_str(&css);
+    XmlTextOutput::new(out).push_str(&css);
     out.push_str("</style>");
     Ok(())
 }

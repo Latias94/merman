@@ -23,7 +23,6 @@ pub(crate) use merman_render_core::theme_svg::edge_label_background as edge_labe
     feature = "diagram-agentflow",
     feature = "diagram-swimlane",
     feature = "diagram-block",
-    feature = "diagram-usecase",
 ))]
 pub(crate) use merman_render_core::theme_svg::elevation as elevation_svg;
 #[cfg(any(
