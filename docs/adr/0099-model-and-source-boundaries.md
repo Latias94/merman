@@ -36,11 +36,11 @@ Use `merman_model::families::<family>` as the canonical family namespace. Core r
 
 `merman-core-preprocess` owns controlled UTF-8 edits, byte-span mapping, and the source-only
 line-ending, HTML attribute, and Mermaid entity rewrites. It also scans the shared Langium string
-and declaration terminals and owns the bounded YAML arena, value materialization, and YAML-local
-source ranges. Core's preprocessing orchestrator combines the frontmatter and directive modules,
-which admit configuration and map the YAML evidence to the diagram source. Core also owns
-`PreprocessedSource` and the projection of parser diagnostics and editor facts back to the
-original source.
+and declaration terminals and owns the bounded YAML arena, value materialization, frontmatter
+field projection, and YAML-local source ranges. Core's preprocessing orchestrator applies
+Mermaid frontmatter and directive configuration and maps the YAML evidence to the diagram source.
+Core also owns `PreprocessedSource` and the projection of parser diagnostics and editor facts
+back to the original source.
 
 Move pure value/model operations with the types. Keep source sanitization, detector effects,
 preprocessing orchestration, source errors, and engine initialization in Core. Replace
@@ -65,9 +65,9 @@ back into the route point types used by the path builder. The renderer selects t
 placement policy and owns layout dispatch.
 
 Render Core also owns shared font stacks, label tokenization and line breaking, SVG XML structure
-admission, and Iconify pack admission and lookup. `merman-render` selects the text measurement
-provider, performs terminal resource and font checks, and applies the operation's output policy
-to icon fragments before they enter a diagram.
+admission, attribute and CSS sanitization, and Iconify pack admission and lookup. `merman-render`
+selects the text measurement provider, applies the operation's output policy, and performs
+terminal resource and font checks.
 
 ### Flow diagrams
 

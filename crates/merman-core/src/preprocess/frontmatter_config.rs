@@ -1,4 +1,4 @@
-//! Frontmatter YAML fields, Mermaid config projection, and source evidence.
+//! Mermaid config projection and source evidence for frontmatter.
 
 use super::config_scan::MAX_CONFIG_NESTING_DEPTH;
 #[cfg(feature = "editor-facts")]
@@ -14,7 +14,8 @@ use super::{
 use crate::SourceSpan;
 use crate::{Error, MermaidConfig, OperationControl, OperationControlResult, Result};
 use merman_core_preprocess::frontmatter::{
-    FrontmatterByteSpan, dedent_frontmatter_body_controlled, locate_frontmatter_block_controlled,
+    FrontmatterByteSpan, dedent_frontmatter_body_controlled, frontmatter_fields_from_yaml_value,
+    locate_frontmatter_block_controlled,
 };
 #[cfg(feature = "editor-facts")]
 use merman_core_preprocess::{
@@ -390,37 +391,6 @@ pub fn parse_frontmatter_yaml_fields_controlled(
     let parsed =
         crate::yaml_config::parse_yaml_value_controlled(input, MAX_CONFIG_NESTING_DEPTH, control)?;
     Ok(frontmatter_fields_from_yaml_value(parsed))
-}
-
-/// Parses frontmatter fields with caller-owned nesting and materialization budgets.
-pub fn parse_frontmatter_yaml_fields_bounded_controlled(
-    input: &str,
-    max_input_bytes: usize,
-    max_nesting_depth: usize,
-    max_materialized_bytes: usize,
-    control: &OperationControl,
-) -> OperationControlResult<std::result::Result<Map<String, Value>, String>> {
-    let parsed = crate::yaml_config::parse_yaml_value_with_limits_controlled(
-        input,
-        max_input_bytes,
-        max_nesting_depth,
-        max_materialized_bytes,
-        control,
-    )?;
-    Ok(frontmatter_fields_from_yaml_value(parsed))
-}
-
-fn frontmatter_fields_from_yaml_value(
-    parsed: std::result::Result<Value, String>,
-) -> std::result::Result<Map<String, Value>, String> {
-    let parsed = parsed?;
-    match parsed {
-        Value::Object(map) => Ok(map),
-        other => {
-            crate::json_value::drop_value_nonrecursive(other);
-            Ok(Map::new())
-        }
-    }
 }
 
 fn frontmatter_truthy(value: &Value) -> bool {
