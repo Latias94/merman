@@ -14,6 +14,7 @@ use merman_render_core::{
 };
 use roughr::core::RoughRandomness;
 
+mod cylinders;
 mod datastore;
 pub mod document_shapes;
 mod label_container;
@@ -22,6 +23,7 @@ mod outer_path;
 mod rectangle_with_divider;
 mod subroutine;
 
+pub use cylinders::CylinderBody;
 pub use datastore::{advance_datastore, write_datastore};
 pub use label_container::{advance_hourglass, write_hourglass, write_notched_rectangle};
 pub use lean_trapezoids::{advance_lean_hand_drawn, write_lean};

@@ -22,7 +22,6 @@ mod icon;
 mod icon_circle;
 mod icon_square;
 mod image_square;
-mod lined_cylinder;
 mod manuals;
 mod no_label;
 mod note;
@@ -49,7 +48,7 @@ pub(super) use curly_braces::render_curly_brace_comment;
 pub(in crate::svg::parity::flowchart) use curly_braces::{
     curly_brace_comment_geometry, curly_brace_comment_intersection_points,
 };
-pub(super) use cylinders::{render_cylinder, render_horizontal_cylinder};
+pub(super) use cylinders::{render_cylinder, render_horizontal_cylinder, render_lined_cylinder};
 pub(super) use dispatch::render_flowchart_shape;
 pub(super) use document_shapes::{
     render_lined_wave_document, render_stacked_document, render_tagged_wave_document,
@@ -61,7 +60,6 @@ pub(super) use icon::render_icon;
 pub(super) use icon_circle::render_icon_circle;
 pub(super) use icon_square::{render_icon_rounded, render_icon_square};
 pub(super) use image_square::try_render_image_square;
-pub(super) use lined_cylinder::render_lined_cylinder;
 pub(super) use manuals::{render_manual_file, render_manual_input};
 pub(super) use no_label::try_render_flowchart_no_label;
 pub(super) use note::render_note;
