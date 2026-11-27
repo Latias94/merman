@@ -32,6 +32,7 @@ layout-dagre = ["resources", "dep:dugong"]
 layout-elk = ["resources", "dep:merman-layout-elk"]
 layout-grid = ["graph-layout", "resources", "dep:serde_json"]
 layout-shoal = ["route-paint", "dep:merman-layout-shoal"]
+layout-layered = ["graph-layout", "resources"]
 markdown-labels = ["html", "xhtml-labels", "dep:pulldown-cmark"]
 math = [
     "math-labels", "dep:kurbo", "dep:quick-xml", "dep:roxmltree",

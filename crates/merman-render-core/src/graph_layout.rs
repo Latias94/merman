@@ -12,6 +12,9 @@ pub mod elk_terminal_jogs;
 #[cfg(feature = "layout-grid")]
 #[doc(hidden)]
 pub mod mermaid_grid;
+#[cfg(feature = "layout-layered")]
+#[doc(hidden)]
+pub mod mermaid_layered;
 #[cfg(feature = "shoal-bridge")]
 pub mod shoal;
 
