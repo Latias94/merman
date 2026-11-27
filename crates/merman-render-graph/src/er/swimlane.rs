@@ -1,4 +1,4 @@
-//! ER's retained Swimlane terminals and lane paint geometry.
+//! ER's plain relationship label terminals and Swimlane lane paint geometry.
 
 use merman_render_core::{
     LayoutLabel, SwimlaneDirection, SwimlaneLaneLayout,
@@ -13,7 +13,7 @@ use merman_render_core::{
 /// The selected provider creates a fresh plain labelRect node. Its frozen terminal supplies
 /// layout metrics, painted content, and HTML mode to every consumer.
 #[derive(Debug, Clone)]
-pub(super) struct ErSwimlaneRelationshipLabel {
+pub(super) struct ErRelationshipLabelRect {
     metrics: TextMetrics,
     content: ErSwimlaneLabelContent,
 }
@@ -26,6 +26,7 @@ enum ErSwimlaneLabelContent {
     },
     Svg {
         lines: Vec<Vec<String>>,
+        grid_bbox_top: Option<f64>,
     },
 }
 
@@ -38,14 +39,14 @@ pub fn relationship_html_source(source: &str) -> String {
     }
 }
 
-impl ErSwimlaneRelationshipLabel {
+impl ErRelationshipLabelRect {
     pub(super) fn retained_buffer_bytes(&self) -> usize {
         match &self.content {
             ErSwimlaneLabelContent::Html {
                 fragment,
                 wrapper_style,
             } => fragment.capacity().saturating_add(wrapper_style.capacity()),
-            ErSwimlaneLabelContent::Svg { lines } => lines.iter().fold(
+            ErSwimlaneLabelContent::Svg { lines, .. } => lines.iter().fold(
                 lines
                     .capacity()
                     .saturating_mul(std::mem::size_of::<Vec<String>>()),
@@ -67,6 +68,7 @@ impl ErSwimlaneRelationshipLabel {
         style: &TextStyle,
         html_labels: bool,
         config: &merman_model::MermaidConfig,
+        grid: bool,
     ) -> Self {
         let view = super::ErConfigView::new(config.as_value());
         let wrapping_width = view.swimlane_relationship_wrapping_width();
@@ -118,13 +120,33 @@ impl ErSwimlaneRelationshipLabel {
             let lines = source.wrapped_lines(measurer, style, Some(wrapping_width), true);
             let metrics =
                 source.metrics_from_wrapped(measurer, style, &lines, FlowchartSvgWidthMode::Bbox);
-            (metrics, ErSwimlaneLabelContent::Svg { lines })
+            let grid_bbox_top = grid.then(|| {
+                if source.plain_text().is_empty() {
+                    0.0
+                } else {
+                    measurer.measure_svg_create_text_bbox_y_offset_px(source.plain_text(), style)
+                }
+            });
+            (
+                metrics,
+                ErSwimlaneLabelContent::Svg {
+                    lines,
+                    grid_bbox_top,
+                },
+            )
         };
         Self { metrics, content }
     }
 
     pub(super) fn metrics(&self) -> TextMetrics {
         self.metrics
+    }
+
+    pub(super) fn grid_svg_bbox_top(&self) -> Option<f64> {
+        match &self.content {
+            ErSwimlaneLabelContent::Svg { grid_bbox_top, .. } => *grid_bbox_top,
+            ErSwimlaneLabelContent::Html { .. } => None,
+        }
     }
 
     pub(super) fn xhtml_fragment(&self) -> Option<&str> {
@@ -143,7 +165,7 @@ impl ErSwimlaneRelationshipLabel {
 
     pub(super) fn svg_lines(&self) -> Option<&[Vec<String>]> {
         match &self.content {
-            ErSwimlaneLabelContent::Svg { lines } => Some(lines),
+            ErSwimlaneLabelContent::Svg { lines, .. } => Some(lines),
             ErSwimlaneLabelContent::Html { .. } => None,
         }
     }

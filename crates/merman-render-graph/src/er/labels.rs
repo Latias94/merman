@@ -1,6 +1,6 @@
 //! Prepared ER entity, attribute, relationship and title labels.
 
-#[cfg(test)]
+#[cfg(any(test, feature = "layout-grid"))]
 use super::ErConfigView;
 use super::{
     ErEntityMeasurementSettings, ErEntitySourceStyle, ErLayoutSettings,
@@ -565,7 +565,14 @@ enum ErRelationshipLabelTerminal {
         xhtml_fragment: String,
         svg: Option<ErPreparedSvgRelationshipLabel>,
     },
-    Swimlane(swimlane::ErSwimlaneRelationshipLabel),
+    LabelRect(swimlane::ErRelationshipLabelRect),
+}
+
+#[derive(Clone, Copy)]
+struct ErLabelRectPreparation<'a> {
+    config: &'a merman_model::MermaidConfig,
+    html_labels: bool,
+    grid: bool,
 }
 
 impl ErPreparedRelationshipLabel {
@@ -624,21 +631,21 @@ impl ErPreparedRelationshipLabel {
                 svg.as_ref()
                     .map_or(0, ErPreparedSvgRelationshipLabel::retained_buffer_bytes),
             ),
-            ErRelationshipLabelTerminal::Swimlane(label) => label.retained_buffer_bytes(),
+            ErRelationshipLabelTerminal::LabelRect(label) => label.retained_buffer_bytes(),
         }
     }
 
     pub(super) fn xhtml_fragment(&self) -> &str {
         match &self.terminal {
             ErRelationshipLabelTerminal::Markdown { xhtml_fragment, .. } => xhtml_fragment,
-            ErRelationshipLabelTerminal::Swimlane(label) => label.xhtml_fragment().unwrap_or(""),
+            ErRelationshipLabelTerminal::LabelRect(label) => label.xhtml_fragment().unwrap_or(""),
         }
     }
 
     pub(super) fn svg(&self) -> Option<&ErPreparedSvgRelationshipLabel> {
         match &self.terminal {
             ErRelationshipLabelTerminal::Markdown { svg, .. } => svg.as_ref(),
-            ErRelationshipLabelTerminal::Swimlane(_) => None,
+            ErRelationshipLabelTerminal::LabelRect(_) => None,
         }
     }
 
@@ -648,9 +655,9 @@ impl ErPreparedRelationshipLabel {
         self.metrics.width >= MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX
     }
 
-    pub(super) fn swimlane(&self) -> Option<&swimlane::ErSwimlaneRelationshipLabel> {
+    pub(super) fn label_rect(&self) -> Option<&swimlane::ErRelationshipLabelRect> {
         match &self.terminal {
-            ErRelationshipLabelTerminal::Swimlane(label) => Some(label),
+            ErRelationshipLabelTerminal::LabelRect(label) => Some(label),
             ErRelationshipLabelTerminal::Markdown { .. } => None,
         }
     }
@@ -659,23 +666,23 @@ impl ErPreparedRelationshipLabel {
         (self.metrics.width.max(0.0), self.metrics.height.max(0.0))
     }
 
-    fn new_swimlane(
+    fn new_label_rect(
         text: &str,
         measurer: &dyn TextMeasurer,
         style: &TextStyle,
-        html_labels: bool,
-        config: &merman_model::MermaidConfig,
+        preparation: ErLabelRectPreparation<'_>,
     ) -> Self {
-        let label = swimlane::ErSwimlaneRelationshipLabel::prepare(
+        let label = swimlane::ErRelationshipLabelRect::prepare(
             text,
             measurer,
             style,
-            html_labels,
-            config,
+            preparation.html_labels,
+            preparation.config,
+            preparation.grid,
         );
         Self {
             metrics: label.metrics(),
-            terminal: ErRelationshipLabelTerminal::Swimlane(label),
+            terminal: ErRelationshipLabelTerminal::LabelRect(label),
             _retained: None,
         }
     }
@@ -709,7 +716,41 @@ impl ErPreparedLabels {
             measurer,
             settings,
             merman_render_core::config::config_bool(config, &["markdownAutoWrap"]).unwrap_or(true),
-            sanitize_config.as_ref(),
+            sanitize_config
+                .as_ref()
+                .map(|config| ErLabelRectPreparation {
+                    config,
+                    html_labels: settings.relationship_html_labels,
+                    grid: false,
+                }),
+            work_meter,
+        )
+    }
+
+    #[cfg(feature = "layout-grid")]
+    pub fn prepare_for_grid(
+        model: &merman_model::families::er::ErDiagramModel,
+        measurer: &dyn TextMeasurer,
+        settings: &ErLayoutSettings,
+        config: &Value,
+        work_meter: &Arc<OperationWorkMeter>,
+    ) -> Result<Self> {
+        // Grid creates a plain labelRect before measurement. Its labelHelper follows root
+        // htmlLabels, while ordinary ER cluster titles keep the existing effective HTML setting.
+        let html_labels = ErConfigView::new(config).relationship_html_labels(true);
+        let sanitize_config = merman_model::MermaidConfig::from_value(
+            merman_model::json::clone_value_nonrecursive(config),
+        );
+        Self::prepare_with_provider(
+            model,
+            measurer,
+            settings,
+            true,
+            Some(ErLabelRectPreparation {
+                config: &sanitize_config,
+                html_labels,
+                grid: true,
+            }),
             work_meter,
         )
     }
@@ -729,7 +770,7 @@ impl ErPreparedLabels {
         measurer: &dyn TextMeasurer,
         settings: &ErLayoutSettings,
         markdown_auto_wrap: bool,
-        swimlane_config: Option<&merman_model::MermaidConfig>,
+        label_rect: Option<ErLabelRectPreparation<'_>>,
         work_meter: &Arc<OperationWorkMeter>,
     ) -> Result<Self> {
         let owner_bytes = (std::mem::size_of::<Self>() + 2 * std::mem::size_of::<usize>())
@@ -777,13 +818,15 @@ impl ErPreparedLabels {
         let mut relationship_labels = Vec::with_capacity(model.relationships.len());
         for relationship in &model.relationships {
             work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
-            let mut label = if let Some(config) = swimlane_config {
-                ErPreparedRelationshipLabel::new_swimlane(
+            let mut label = if let Some(preparation) = label_rect {
+                if preparation.grid {
+                    work_meter.charge(relationship.role_a.len())?;
+                }
+                ErPreparedRelationshipLabel::new_label_rect(
                     &relationship.role_a,
                     measurer,
                     &settings.relationship_label_style,
-                    settings.relationship_html_labels,
-                    config,
+                    preparation,
                 )
             } else {
                 ErPreparedRelationshipLabel::new(
@@ -1980,7 +2023,7 @@ mod tests {
             let labels = super::prepare_er_labels(&model, &config, &measurer, true);
             let relationship = labels.relationship(0).unwrap();
             let terminal = relationship
-                .swimlane()
+                .label_rect()
                 .expect("provider-owned plain terminal");
             assert_eq!(
                 relationship.dimensions(),

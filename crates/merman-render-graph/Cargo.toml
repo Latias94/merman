@@ -85,6 +85,7 @@ layout-shoal = ["dep:kurbo", "merman-render-core?/route-paint", "merman-render-c
 layout-cytoscape = ["dep:indexmap", "dep:manatee", "merman-render-core?/layout-cytoscape"]
 layout-dagre = ["dep:dugong", "merman-render-core?/layout-dagre"]
 layout-elk = ["dep:merman-layout-elk", "merman-render-core?/layout-elk"]
+layout-grid = ["dep:kurbo", "merman-render-core?/layout-grid"]
 benchmark-stages = ["merman-model?/benchmark-stages"]
 
 [dependencies]

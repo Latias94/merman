@@ -88,6 +88,11 @@ pub(crate) fn render_er_diagram_svg_model(
         canvas_has_texture,
         elk_parity: route_contract.is_elk_parity(),
         swimlane: matches!(route_contract, RouteContract::Swimlane),
+        #[cfg(feature = "layout-grid")]
+        grid: match route_contract {
+            RouteContract::Grid(paint) => Some(*paint),
+            _ => None,
+        },
         #[cfg(feature = "layout-shoal")]
         canonical_routes: canonical_routes
             .as_ref()

@@ -115,12 +115,13 @@ pub(crate) enum RouteContract {
     #[cfg(all(
         feature = "layout-grid",
         any(
+            feature = "diagram-er",
             feature = "diagram-flowchart",
             feature = "diagram-swimlane",
             feature = "diagram-agentflow"
         )
     ))]
-    Grid(merman_render_flow::svg::FlowchartGridPaint),
+    Grid(merman_render_core::graph_layout::mermaid_grid::GridPaint),
     #[cfg(any(
         feature = "diagram-flowchart",
         feature = "diagram-swimlane",

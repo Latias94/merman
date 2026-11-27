@@ -2,8 +2,10 @@
 
 use super::*;
 use line_hops::{LineHopConfig, LineHopEdge, LineHopStyle};
-use merman_render_core::{SwimlaneDirection, SwimlaneLaneLayout};
+use merman_render_core::{LayoutLabel, SwimlaneDirection, SwimlaneLaneLayout};
 use std::collections::HashMap;
+
+use super::super::swimlane::ErRelationshipLabelRect;
 
 pub(super) fn render_cluster(
     out: &mut impl SvgOutput,
@@ -328,20 +330,31 @@ pub(super) fn render_relationship_label(
                 message: format!("missing prepared Swimlane relationship label {index}"),
             })?;
     let prepared = prepared_label
-        .swimlane()
+        .label_rect()
         .ok_or_else(|| Error::InvalidModel {
             message: format!("missing prepared Swimlane relationship terminal {index}"),
         })?;
     let dom_id = er_edge_dom_id(&edge.id, &model.relationships);
     let label_id = relationship_label_dom_id(edge, &dom_id);
+    write_relationship_label_rect(out, label, &label_id, prepared, context)
+}
+
+pub(super) fn write_relationship_label_rect(
+    out: &mut impl SvgOutput,
+    label: &LayoutLabel,
+    label_id: &str,
+    prepared: &ErRelationshipLabelRect,
+    context: ErSubgraphRenderContext<'_>,
+) -> Result<()> {
+    let grid_bbox_top = prepared.grid_svg_bbox_top();
     let _ = write!(
         out,
         r#"<g class="label edgeLabel" id="{}" transform="translate({}, {})"><rect width="0.1" height="0.1"/><g class="label" style="" transform="translate({}, {})"><rect/>"#,
-        escape_attr(&label_id),
+        escape_attr(label_id),
         fmt(label.x + context.translate_x),
         fmt(label.y + context.translate_y),
         fmt(-label.width / 2.0),
-        fmt(-label.height / 2.0),
+        fmt(-label.height / 2.0 - grid_bbox_top.unwrap_or(0.0)),
     );
     if let Some((fragment, wrapper_style)) = prepared.html() {
         let _ = write!(
@@ -355,10 +368,17 @@ pub(super) fn render_relationship_label(
         );
     } else {
         let lines = prepared.svg_lines().ok_or_else(|| Error::InvalidModel {
-            message: format!("missing prepared Swimlane SVG rows for relationship {index}"),
+            message: format!("missing prepared ER SVG rows for label `{label_id}`"),
         })?;
-        write_er_svg_label_background(out);
+        if grid_bbox_top.is_some() {
+            out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
+        } else {
+            write_er_svg_label_background(out);
+        }
         label::write_svg_text_source_word_lines_with_style(out, lines, "", false, None);
+        if grid_bbox_top.is_some() {
+            out.push_str("</g>");
+        }
     }
     out.push_str("</g></g>");
     out.checkpoint()?;

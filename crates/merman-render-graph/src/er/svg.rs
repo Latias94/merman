@@ -34,10 +34,12 @@ use super::{
     ErBoxLabel, ErConfigView, ErCssBinding, ErEntityThemePlan, ErMarkerDefs, ErNativeStyle,
     ErPreparedLabels, ErPreparedRelationshipLabel, ErSvgGeometry, ErSvgLayoutView, ErSvgRouteKind,
     ErSwimlanePaintLayout, er_color_indices, er_redux_color_id, er_rel_idx_from_edge_id,
-    er_unified_marker_id, stylesheet::write_er_stylesheet_with_cluster_titles,
-    write_er_marker_definitions,
+    er_unified_marker_id, geometry::er_relationship_dom_id,
+    stylesheet::write_er_stylesheet_with_cluster_titles, write_er_marker_definitions,
 };
 
+#[cfg(feature = "layout-grid")]
+mod grid;
 mod swimlane;
 mod zero_markers;
 
@@ -74,6 +76,8 @@ pub struct ErSvgContext<'a> {
     pub canvas_has_texture: bool,
     pub elk_parity: bool,
     pub swimlane: bool,
+    #[cfg(feature = "layout-grid")]
+    pub grid: Option<merman_render_core::graph_layout::mermaid_grid::GridPaint>,
     #[cfg(feature = "layout-shoal")]
     pub canonical_routes: Option<&'a ErCanonicalEdgePainter<'a>>,
     pub work_meter: &'a OperationWorkMeter,
@@ -341,7 +345,7 @@ fn er_cluster_dom_ids(
     clusters: &[LayoutCluster],
     model: &ErDiagramModel,
     geometry: &ErSvgGeometry<'_>,
-    swimlane: bool,
+    label_rect_nodes: bool,
     diagram_id: SvgId<'_>,
     work: &OperationWorkMeter,
 ) -> Result<Vec<String>> {
@@ -384,7 +388,7 @@ fn er_cluster_dom_ids(
     for edge in geometry.edges() {
         let id = er_edge_dom_id(&edge.id, &model.relationships);
         occupied.insert(format!("{diagram_id}-{id}"));
-        if swimlane {
+        if label_rect_nodes {
             occupied.insert(swimlane::relationship_label_dom_id(edge, &id));
         }
     }
@@ -420,7 +424,7 @@ fn er_edge_dom_id(edge_id: &str, relationships: &[ErRelationship]) -> String {
     // one logical relationship edge. Mermaid's common painter consequently uses the ordinary
     // relationship id for that visible edge; the `cyclic-special-*` ids belong only to the
     // hidden helper labels that remain in the layout model.
-    format!("id_{}_{}_{}", rel.entity_a, rel.entity_b, idx)
+    er_relationship_dom_id(rel, idx)
 }
 
 #[derive(Default)]
@@ -611,6 +615,15 @@ pub fn render_er_diagram_svg_model(
     let uses_canonical_routes = false;
     let is_elk_layout = options.elk_parity;
     let is_swimlane_layout = options.swimlane;
+    #[cfg(feature = "layout-grid")]
+    let grid = options
+        .grid
+        .map(|settings| grid::paint_settings(settings, native));
+    #[cfg(feature = "layout-grid")]
+    let is_grid_layout = grid.is_some();
+    #[cfg(not(feature = "layout-grid"))]
+    let is_grid_layout = false;
+    let label_rect_nodes = is_swimlane_layout || is_grid_layout;
     let allow_html_label_overflow = uses_canonical_routes || is_swimlane_layout;
     let rounded_layout = is_elk_layout || is_swimlane_layout;
     let route_kind = if uses_canonical_routes {
@@ -621,6 +634,12 @@ pub fn render_er_diagram_svg_model(
         ErSvgRouteKind::Swimlane
     } else {
         ErSvgRouteKind::Dagre
+    };
+    #[cfg(feature = "layout-grid")]
+    let route_kind = if is_grid_layout {
+        ErSvgRouteKind::Grid
+    } else {
+        route_kind
     };
     let data_look = er_render_settings.diagram_look.as_str();
     let redux_border_colors = &binding.redux_border_colors;
@@ -743,7 +762,8 @@ pub fn render_er_diagram_svg_model(
     root_chrome.class = Some("erDiagram");
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
     root_chrome.aria_describedby = aria_describedby.as_deref();
-    let root_document = if uses_canonical_routes {
+    let defer_paint_bounds = uses_canonical_routes || is_grid_layout;
+    let root_document = if defer_paint_bounds {
         root_viewport.begin_document(
             &mut out,
             root_svg::DeferredRootSpec::mermaid(use_max_width),
@@ -827,7 +847,7 @@ pub fn render_er_diagram_svg_model(
             clusters,
             model,
             &geometry,
-            is_swimlane_layout,
+            label_rect_nodes,
             diagram_id,
             options.work_meter,
         )?;
@@ -843,7 +863,7 @@ pub fn render_er_diagram_svg_model(
         out.push_str("</g>");
     }
 
-    if is_elk_layout {
+    if is_elk_layout || is_grid_layout {
         out.push_str(r#"<g class="edges edgePaths">"#);
     } else {
         out.push_str(r#"<g class="edgePaths">"#);
@@ -905,6 +925,12 @@ pub fn render_er_diagram_svg_model(
     } else {
         std::collections::HashMap::new()
     };
+    #[cfg(feature = "layout-grid")]
+    let hop_paths = if let Some(settings) = grid.filter(|_| options.include_edges && !sketch) {
+        grid::line_hop_paths(edges, settings, options.work_meter)?
+    } else {
+        hop_paths
+    };
     out.checkpoint()?;
     if options.include_edges {
         #[cfg(feature = "layout-shoal")]
@@ -952,7 +978,15 @@ pub fn render_er_diagram_svg_model(
                         y: p.y + translate_y,
                     })
                     .collect::<Vec<_>>();
-                let mut d = er_edge_path_d(&legacy_points, rounded_layout, missing_section, native);
+                #[cfg(feature = "layout-grid")]
+                let grid_path = grid
+                    .map(|settings| grid::shaft(&legacy_points, settings, options.work_meter))
+                    .transpose()?;
+                #[cfg(not(feature = "layout-grid"))]
+                let grid_path: Option<String> = None;
+                let mut d = grid_path.unwrap_or_else(|| {
+                    er_edge_path_d(&legacy_points, rounded_layout, missing_section, native)
+                });
                 if let Some(native) = native.filter(|_| sketch && !d.is_empty()) {
                     let [start, end] =
                         [e.start_marker.as_deref(), e.end_marker.as_deref()].map(|marker| {
@@ -989,6 +1023,15 @@ pub fn render_er_diagram_svg_model(
                 .encode_string(&points_json, &mut points_base64);
             let hopped_d = hop_paths.get(e.id.as_str()).map(String::as_str);
             let d = hopped_d.unwrap_or(&original_d);
+            if is_grid_layout {
+                options.work_meter.charge_emit_work(d.len())?;
+                if let Some(bounds) = merman_render_core::svg_bounds::svg_path_bounds_from_d(d) {
+                    content_bounds.min_x = content_bounds.min_x.min(bounds.min_x);
+                    content_bounds.min_y = content_bounds.min_y.min(bounds.min_y);
+                    content_bounds.max_x = content_bounds.max_x.max(bounds.max_x);
+                    content_bounds.max_y = content_bounds.max_y.max(bounds.max_y);
+                }
+            }
 
             let mut edge_style = String::new();
             if data_look == "neo"
@@ -1012,7 +1055,20 @@ pub fn render_er_diagram_svg_model(
                 });
             }
             let edge_style = if let Some(hopped_d) = hopped_d {
-                line_hops::rewrite_style_after_line_hop(&edge_style, hopped_d, options.work_meter)?
+                if is_grid_layout {
+                    line_hops::rewrite_style_after_line_hop_with_phase(
+                        &edge_style,
+                        hopped_d,
+                        OperationPhase::Emit,
+                        options.work_meter,
+                    )?
+                } else {
+                    line_hops::rewrite_style_after_line_hop(
+                        &edge_style,
+                        hopped_d,
+                        options.work_meter,
+                    )?
+                }
             } else {
                 std::borrow::Cow::Borrowed(edge_style.as_str())
             };
@@ -1076,13 +1132,13 @@ pub fn render_er_diagram_svg_model(
     out.push_str("</g>");
     out.checkpoint()?;
 
-    if is_swimlane_layout {
+    if label_rect_nodes {
         out.push_str(r#"<g class="edgeLabels"/><g class="nodes">"#);
     } else {
         out.push_str(r#"<g class="edgeLabels">"#);
     }
     out.checkpoint()?;
-    if options.include_edges {
+    if options.include_edges && !is_grid_layout {
         for e in edges {
             let rel_idx = er_rel_idx_from_edge_id(&e.id)
                 .and_then(|idx| model.relationships.get(idx).map(|r| (idx, r)));
@@ -1287,13 +1343,13 @@ pub fn render_er_diagram_svg_model(
             out.checkpoint()?;
         }
     }
-    if !is_swimlane_layout {
+    if !label_rect_nodes {
         out.push_str("</g>\n");
     }
     out.checkpoint()?;
 
     // Entities drawn after relationships so they cover markers when overlapping.
-    if !is_swimlane_layout {
+    if !label_rect_nodes {
         out.push_str(r#"<g class="nodes">"#);
     }
     out.checkpoint()?;
@@ -1943,6 +1999,18 @@ pub fn render_er_diagram_svg_model(
         out.push_str("</g>");
         out.checkpoint()?;
     }
+    #[cfg(feature = "layout-grid")]
+    if is_grid_layout && options.include_edges {
+        grid::write_labels(
+            &mut out,
+            nodes,
+            edges,
+            model,
+            prepared_labels,
+            diagram_id,
+            subgraph_context,
+        )?;
+    }
     out.push_str("</g>\n");
     out.checkpoint()?;
     out.push_str("</g>\n</g>\n");
@@ -1972,7 +2040,7 @@ pub fn render_er_diagram_svg_model(
 
     push_er_shadow_defs(&mut out, diagram_id.semantic_str(), binding)?;
 
-    let root_document = if uses_canonical_routes {
+    let root_document = if defer_paint_bounds {
         root_viewport.finish_document(
             &mut out,
             root_document,

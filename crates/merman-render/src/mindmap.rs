@@ -28,6 +28,8 @@ pub(crate) fn prepare(
     let unavailable = || selected.unavailable_for("mindmap");
     let backend = match selected {
         GraphLayoutBackend::TidyTree => MindmapLayoutBackend::TidyTree,
+        #[cfg(feature = "layout-grid")]
+        GraphLayoutBackend::Grid => MindmapLayoutBackend::Grid,
         GraphLayoutBackend::Swimlane => MindmapLayoutBackend::Swimlane(solve_swimlane),
         #[cfg(feature = "layout-dagre")]
         GraphLayoutBackend::Dagre => MindmapLayoutBackend::Dagre,

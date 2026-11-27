@@ -18,6 +18,8 @@ use serde_json::Value;
 use std::{collections::BTreeMap, sync::Arc};
 
 mod css_binding;
+#[cfg(feature = "layout-grid")]
+mod grid;
 mod registered;
 mod svg;
 pub(crate) use css_binding::MindmapCssBinding;
@@ -95,6 +97,8 @@ pub type MindmapSwimlaneSolver = fn(
 /// The facade selects a Mermaid loader before preparing the family.
 pub enum MindmapLayoutBackend<'a> {
     TidyTree,
+    #[cfg(feature = "layout-grid")]
+    Grid,
     #[cfg(feature = "layout-dagre")]
     Dagre,
     #[cfg(feature = "layout-cytoscape")]
@@ -119,6 +123,8 @@ pub struct MindmapLayoutContext<'a> {
 #[derive(Debug, Clone, Copy)]
 enum MindmapEdgeRouting {
     TidyTree,
+    #[cfg(feature = "layout-grid")]
+    Grid(merman_render_core::graph_layout::mermaid_grid::GridPaint),
     #[cfg(feature = "layout-dagre")]
     Dagre,
     #[cfg(feature = "layout-cytoscape")]
@@ -555,21 +561,18 @@ fn mindmap_node_dimensions_px(
 }
 
 fn compute_bounds(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> {
-    let mut pts: Vec<(f64, f64)> = Vec::new();
-    for n in nodes {
-        let x0 = n.x - n.width / 2.0;
-        let y0 = n.y - n.height / 2.0;
-        let x1 = n.x + n.width / 2.0;
-        let y1 = n.y + n.height / 2.0;
-        pts.push((x0, y0));
-        pts.push((x1, y1));
-    }
-    for e in edges {
-        for p in &e.points {
-            pts.push((p.x, p.y));
-        }
-    }
-    Bounds::from_points(pts)
+    let corners = nodes.iter().flat_map(|node| {
+        let half_width = node.width / 2.0;
+        let half_height = node.height / 2.0;
+        [
+            (node.x - half_width, node.y - half_height),
+            (node.x + half_width, node.y + half_height),
+        ]
+    });
+    let points = edges
+        .iter()
+        .flat_map(|edge| edge.points.iter().map(|point| (point.x, point.y)));
+    Bounds::from_points(corners.chain(points))
 }
 
 fn mindmap_layout_adapter_work(
@@ -689,6 +692,11 @@ pub fn prepare_mindmap_diagram(
     }
 
     let (layout, routing) = match backend {
+        #[cfg(feature = "layout-grid")]
+        MindmapLayoutBackend::Grid => {
+            let (layout, paint) = grid::layout(model, nodes, &edge_indices, config, &work_meter)?;
+            (layout, MindmapEdgeRouting::Grid(paint))
+        }
         MindmapLayoutBackend::Swimlane(solve) => (
             registered::swimlane(model, nodes, config, work_meter, solve)?,
             MindmapEdgeRouting::Swimlane,

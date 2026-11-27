@@ -279,13 +279,15 @@ pub const fn layout_elk_available() -> bool {
     cfg!(feature = "layout-elk")
 }
 
-/// Reports whether a compiled Flow-family renderer includes Mermaid Grid.
+/// Reports whether any compiled family renderer includes Mermaid Grid.
 pub const fn layout_grid_available() -> bool {
     cfg!(all(
         feature = "layout-grid",
         any(
             feature = "diagram-flowchart",
             feature = "diagram-agentflow",
+            feature = "diagram-er",
+            feature = "diagram-mindmap",
             feature = "diagram-swimlane"
         )
     ))
@@ -842,6 +844,7 @@ mod tests {
             (RenderCapability::LayoutElk, "layout-elk"),
             (RenderCapability::LayoutDagre, "layout-dagre"),
             (RenderCapability::LayoutGrid, "layout-grid"),
+            (RenderCapability::LayoutLayered, "layout-layered"),
             (RenderCapability::Math, "math"),
             (RenderCapability::LayoutShoal, "layout-shoal"),
         ] {
@@ -869,6 +872,8 @@ mod tests {
             RenderCapability::LayoutCytoscape,
             RenderCapability::LayoutElk,
             RenderCapability::LayoutDagre,
+            RenderCapability::LayoutGrid,
+            RenderCapability::LayoutLayered,
             RenderCapability::Math,
             RenderCapability::LayoutShoal,
         ] {
@@ -1661,8 +1666,11 @@ id1(Start)-->id2(Stop)
 
     #[test]
     fn pending_mermaid_layout_requests_fail_during_planning_and_preparation() {
-        for requested in ["grid", "layered"] {
-            if requested == "grid" && layout_grid_available() {
+        for (requested, available) in [
+            ("grid", layout_grid_available()),
+            ("layered", layout_layered_available()),
+        ] {
+            if available {
                 continue;
             }
             for body in ["flowchart LR\nA --> B", "agentflow LR\nA --> B"] {

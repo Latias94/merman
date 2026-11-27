@@ -160,6 +160,8 @@ fn er_redux_colors_follow_entity_insertion_ids() {
         canvas_has_texture: false,
         elk_parity: false,
         swimlane: false,
+        #[cfg(feature = "layout-grid")]
+        grid: None,
         #[cfg(feature = "layout-shoal")]
         canonical_routes: None,
         work_meter: &work_meter,

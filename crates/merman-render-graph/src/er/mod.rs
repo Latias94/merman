@@ -1,4 +1,4 @@
-//! ER configuration, prepared labels and styles, Dagre and ELK layout, and complete SVG emission.
+//! ER configuration, prepared labels and styles, layout adapters, and complete SVG emission.
 
 mod binding;
 mod config;
@@ -7,6 +7,8 @@ mod dagre;
 #[cfg(feature = "layout-elk")]
 mod elk;
 mod geometry;
+#[cfg(feature = "layout-grid")]
+mod grid;
 mod labels;
 mod markers;
 mod native_theme;
@@ -27,6 +29,8 @@ use geometry::calc_label_position;
 pub use geometry::{
     ErSvgGeometry, ErSvgLayoutView, ErSvgRouteKind, er_layout_bounds, er_rel_idx_from_edge_id,
 };
+#[cfg(feature = "layout-grid")]
+pub use grid::{ErGridLayout, layout as layout_grid};
 pub use labels::{
     ErBoxLabel, ErPreparedLabels, ErPreparedRelationshipLabel, er_subgraph_title_metrics,
     er_swimlane_title_metrics,

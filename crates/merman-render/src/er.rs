@@ -90,6 +90,36 @@ pub(crate) fn layout_er_diagram_typed(
     let adapter_work = er_layout_adapter_work(model, &work_control)?;
     work_control.charge_adapter(adapter_work)?;
     validate_er_relationship_endpoints(model)?;
+    #[cfg(feature = "layout-grid")]
+    if backend == GraphLayoutBackend::Grid {
+        let prepared_labels = Arc::new(ErPreparedLabels::prepare_for_grid(
+            model,
+            measurer,
+            &settings,
+            effective_config,
+            &work_meter,
+        )?);
+        let layout = merman_render_graph::er::layout_grid(
+            model,
+            effective_config,
+            measurer,
+            &settings,
+            &prepared_labels,
+            &work_meter,
+        )?;
+        return Ok(ErPreparedLayout {
+            layout: ErDiagramLayout {
+                nodes: layout.nodes,
+                edges: layout.edges,
+                render_edges: Vec::new(),
+                swimlane: None,
+                clusters: layout.clusters,
+                bounds: layout.bounds,
+                prepared_labels,
+            },
+            route_contract: RouteContract::Grid(layout.paint),
+        });
+    }
     let prepared_labels = Arc::new(ErPreparedLabels::prepare_for_layout(
         model,
         measurer,

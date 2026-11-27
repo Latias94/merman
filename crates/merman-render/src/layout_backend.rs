@@ -205,7 +205,11 @@ pub(crate) fn resolve(
         && crate::layout_grid_available()
         && matches!(
             family,
-            DiagramFamilyId::FLOWCHART | DiagramFamilyId::AGENTFLOW | DiagramFamilyId::SWIMLANE
+            DiagramFamilyId::FLOWCHART
+                | DiagramFamilyId::AGENTFLOW
+                | DiagramFamilyId::SWIMLANE
+                | DiagramFamilyId::ER
+                | DiagramFamilyId::MINDMAP
         )
     {
         return Ok(Backend::Grid);
@@ -360,7 +364,7 @@ mod tests {
     }
 
     #[test]
-    fn pending_mermaid_layouts_apply_only_to_families_with_selectable_layouts() {
+    fn mermaid_layouts_apply_only_to_families_with_registered_adapters() {
         for requested in ["grid", "layered"] {
             let config = json!({"layout": requested});
             for (family, diagram_type) in [
@@ -379,13 +383,16 @@ mod tests {
                     "layered" if crate::layout_layered_available() => Some(Backend::Layered),
                     _ => None,
                 };
+                let flow_family = matches!(
+                    family,
+                    DiagramFamilyId::FLOWCHART
+                        | DiagramFamilyId::AGENTFLOW
+                        | DiagramFamilyId::SWIMLANE
+                );
                 if let Some(backend) = available
-                    && matches!(
-                        family,
-                        DiagramFamilyId::FLOWCHART
-                            | DiagramFamilyId::AGENTFLOW
-                            | DiagramFamilyId::SWIMLANE
-                    )
+                    && (flow_family
+                        || (backend == Backend::Grid
+                            && matches!(family, DiagramFamilyId::ER | DiagramFamilyId::MINDMAP)))
                 {
                     assert_eq!(resolve(family, diagram_type, &config).unwrap(), backend);
                     continue;
