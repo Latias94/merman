@@ -1,7 +1,13 @@
 //! SVG emitted bounds scanner used for Mermaid parity.
 
-use super::svg_path_bounds_from_d;
-use crate::model::Bounds;
+use crate::Bounds;
+
+mod path;
+
+pub use path::{
+    CubicBezier, SvgPathBounds, svg_path_bounds_from_d, svg_path_bounds_include_cubic,
+    svg_path_bounds_include_quadratic,
+};
 
 #[derive(Debug, Clone)]
 pub struct SvgEmittedBoundsContributor {
@@ -42,11 +48,12 @@ pub fn debug_svg_emitted_bounds(svg: &str) -> Option<SvgEmittedBoundsDebug> {
     Some(dbg)
 }
 
-pub(in crate::svg::parity) fn svg_emitted_bounds_from_svg(svg: &str) -> Option<Bounds> {
+/// Scans the emitted shapes that contribute to the parity viewport.
+pub fn svg_emitted_bounds_from_svg(svg: &str) -> Option<Bounds> {
     svg_emitted_bounds_from_svg_inner(svg, None)
 }
 
-pub(in crate::svg::parity) fn svg_emitted_bounds_from_svg_inner(
+fn svg_emitted_bounds_from_svg_inner(
     svg: &str,
     mut dbg: Option<&mut SvgEmittedBoundsDebug>,
 ) -> Option<Bounds> {

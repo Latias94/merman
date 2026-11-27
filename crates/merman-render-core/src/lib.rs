@@ -52,6 +52,9 @@ pub mod route_paint;
 #[cfg(feature = "svg-animation")]
 #[doc(hidden)]
 pub mod step_animation;
+#[cfg(feature = "svg-bounds")]
+#[doc(hidden)]
+pub mod svg_bounds;
 #[cfg(feature = "svg-output")]
 #[doc(hidden)]
 pub mod svg_css;

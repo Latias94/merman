@@ -15,6 +15,7 @@ paint. The writer does not select an output profile or replace terminal SVG admi
 `svg-parse` provides lexical scanning, XML stylesheet decoding, and SVG structure
 validation for postprocessing.
 `svg-animation` validates and removes Mermaid Step animations for static SVG output.
+`svg-bounds` measures emitted SVG shape and path bounds for parity viewports.
 `svg-identity` rewrites Mermaid marker selectors for the native SVG CSS engine.
 `css-style` provides presentation lookups, Mermaid CSS value parsing, and the shared `TextMeasurer`
 trait and its value types. `text-layout` provides font stacks, deterministic measurement, and

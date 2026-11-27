@@ -1321,7 +1321,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     // GitGraph renders rotated commit labels (e.g. `rotate(-45, ...)`) that are not represented
     // in the precomputed layout bounds. Mirror Mermaid's `setupGraphViewbox(svg.getBBox() + pad)`
     // by computing a headless SVG bbox and patching the root viewBox/max-width.
-    let mut b = svg_emitted_bounds_from_svg_inner(out.as_str(), None).unwrap_or(Bounds {
+    let mut b = svg_emitted_bounds_from_svg(out.as_str()).unwrap_or(Bounds {
         min_x: vb_min_x,
         min_y: vb_min_y,
         max_x: vb_min_x + vb_w,

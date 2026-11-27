@@ -96,15 +96,6 @@ mod edge_label_geometry;
     )
 )]
 mod edge_path;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
-    )
-)]
-mod emitted_bounds;
 #[cfg(feature = "diagram-er")]
 mod er;
 #[cfg(all(feature = "diagram-er", feature = "layout-shoal"))]
@@ -296,9 +287,6 @@ pub(crate) fn mindmap_cloud_rendered_bbox_size_px(w: f64, h: f64) -> Option<(f64
     mindmap::mindmap_cloud_rendered_bbox_size_px(w, h)
 }
 
-pub use emitted_bounds::{
-    SvgEmittedBoundsContributor, SvgEmittedBoundsDebug, debug_svg_emitted_bounds,
-};
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -306,7 +294,10 @@ pub use emitted_bounds::{
         reason = "Common SVG imports are consumed by the selected family emitters."
     )
 )]
-use emitted_bounds::{svg_emitted_bounds_from_svg, svg_emitted_bounds_from_svg_inner};
+use merman_render_core::svg_bounds::svg_emitted_bounds_from_svg;
+pub use merman_render_core::svg_bounds::{
+    SvgEmittedBoundsContributor, SvgEmittedBoundsDebug, debug_svg_emitted_bounds,
+};
 #[cfg(feature = "diagram-requirement")]
 use roughjs_common::{ops_to_svg_path_d as roughjs_ops_to_svg_path_d, roughjs_paths_for_rect};
 #[cfg_attr(
