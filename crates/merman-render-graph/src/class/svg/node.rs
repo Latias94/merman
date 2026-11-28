@@ -185,6 +185,7 @@ pub(super) struct ClassSvgNodeBodyContext<'a> {
     pub node_stroke_dasharray: &'a str,
     pub look: &'a str,
     pub use_neo_line_class: bool,
+    pub uses_canonical_routes: bool,
     pub timing: RenderTiming,
     pub native: Option<&'a crate::class::ClassNativeStyle>,
     pub paint_heading: bool,
@@ -749,12 +750,18 @@ pub(super) fn render_class_html_node_body<O: SvgOutput>(
         + content_top
         + padding
         + gap * 2.0;
+    let has_dividers = !ctx.hide_empty_members_box || members_rows != 0 || methods_rows != 0;
 
     if let Some(native) = ctx.native.filter(|_| ctx.paint_heading) {
+        let heading_bottom = if ctx.uses_canonical_routes && has_dividers {
+            divider1_y
+        } else {
+            divider1_y.max(title_y - 12.0 + title_height)
+        };
         write_class_native_heading(
             out,
             &geometry,
-            divider1_y.max(title_y - 12.0 + title_height),
+            heading_bottom,
             native,
             ctx.node_stroke_width,
         );
@@ -861,7 +868,7 @@ pub(super) fn render_class_html_node_body<O: SvgOutput>(
         ctx,
     );
 
-    if ctx.hide_empty_members_box && members_rows == 0 && methods_rows == 0 {
+    if !has_dividers {
         ClassNodeRenderStats::default()
     } else {
         render_class_node_dividers(
@@ -1070,11 +1077,26 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
     };
     let ann_new_y = adjust_y(ann_ty);
     let label_new_y = adjust_y(label_ty);
+    let has_dividers = !ctx.hide_empty_members_box || members_rows != 0 || methods_rows != 0;
+    let divider_shrink = if render_extra_box {
+        (padding / 2.0).max(0.0)
+    } else {
+        0.0
+    };
+    let divider1_y = (annotation_group_height - divider_shrink)
+        + (label_group_height - divider_shrink)
+        + y
+        + padding;
     if let Some(native) = ctx.native.filter(|_| ctx.paint_heading) {
+        let heading_bottom = if ctx.uses_canonical_routes && has_dividers {
+            divider1_y
+        } else {
+            label_new_y + label_group_height / 2.0 + padding / 2.0
+        };
         write_class_native_heading(
             out,
             &geometry,
-            label_new_y + label_group_height / 2.0 + padding / 2.0,
+            heading_bottom,
             native,
             ctx.node_stroke_width,
         );
@@ -1129,20 +1151,16 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
     );
 
     // Dividers (classBox.ts uses group bbox heights).
-    if ctx.hide_empty_members_box && members_rows == 0 && methods_rows == 0 {
+    if !has_dividers {
         ClassNodeRenderStats::default()
     } else {
-        let mut ann_h = annotation_group_height;
-        let mut label_h = label_group_height;
-        let mut members_h = members_rect.as_ref().map(|r| r.height()).unwrap_or(0.0);
-        if render_extra_box {
-            let shrink = (padding / 2.0).max(0.0);
-            ann_h -= shrink;
-            label_h -= shrink;
-            members_h -= shrink;
-        }
-        let divider1_y = ann_h + label_h + y + padding;
-        let divider2_y = ann_h + label_h + members_h + y + gap * 2.0 + padding;
+        let members_h = members_rect.as_ref().map(|r| r.height()).unwrap_or(0.0);
+        let divider2_y = (annotation_group_height - divider_shrink)
+            + (label_group_height - divider_shrink)
+            + (members_h - divider_shrink)
+            + y
+            + gap * 2.0
+            + padding;
         render_class_node_dividers(
             ClassNodeRenderState {
                 out,
@@ -1611,6 +1629,7 @@ mod typography_tests {
             node_stroke_dasharray: "",
             look: "classic",
             use_neo_line_class: false,
+            uses_canonical_routes: false,
             timing: RenderTiming::disabled(),
             native: None,
             paint_heading: false,

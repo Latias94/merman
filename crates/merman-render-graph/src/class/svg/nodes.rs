@@ -874,6 +874,7 @@ fn render_class_node_id<O: SvgOutput>(
                 node_stroke_dasharray,
                 look: settings.look.as_str(),
                 use_neo_line_class,
+                uses_canonical_routes: ctx.uses_canonical_routes,
                 timing: ctx.timing,
                 native,
                 paint_heading,
