@@ -1,3 +1,4 @@
+mod geometry;
 mod measure;
 
 use super::ArchitectureGroupThemePlan;
@@ -330,6 +331,7 @@ pub(crate) fn layout_architecture_shoal(
     let mut sides = Vec::with_capacity(m);
     let mut edge_labels = Vec::with_capacity(m);
     let mut bottom_degree = vec![0usize; n];
+    let mut junction_marker_axes = vec![[false; 2]; n];
     for edge in &model.edges {
         work.charge_adapter(work.checked_add(edge.lhs_id.len(), edge.rhs_id.len())?)?;
         let source = endpoint(
@@ -343,11 +345,20 @@ pub(crate) fn layout_architecture_shoal(
             edge.rhs_group,
         );
         let pair = (side(edge.lhs_dir)?, side(edge.rhs_dir)?);
-        for (end, port) in [(source, pair.0), (target, pair.1)] {
-            if let Endpoint::Node(id) = end
-                && port == Side::Bottom
-            {
-                bottom_degree[id as usize] += 1;
+        for (end, port, arrow) in [
+            (source, pair.0, edge.lhs_into),
+            (target, pair.1, edge.rhs_into),
+        ] {
+            if let Endpoint::Node(id) = end {
+                let index = id as usize;
+                if port == Side::Bottom {
+                    bottom_degree[index] += 1;
+                }
+                if arrow == Some(true)
+                    && model.nodes[index].node_type == ArchitectureNodeKind::Junction
+                {
+                    junction_marker_axes[index][usize::from(port.axis() == Axis::Vertical)] = true;
+                }
             }
         }
         sides.push(pair);
@@ -378,6 +389,8 @@ pub(crate) fn layout_architecture_shoal(
     let mut titles = Vec::with_capacity(n);
     let mut bottom_pitch = vec![None; n];
     let mut bottom_ordinal = vec![0; n];
+    let junction_radius = (arrow * 0.3).min(4.0);
+    let has_junction_room = |index| junction_marker_axes[index] == [true, true];
     for (index, node) in model.nodes.iter().enumerate() {
         work.charge_adapter(1)?;
         let junction = node.node_type == ArchitectureNodeKind::Junction;
@@ -391,8 +404,17 @@ pub(crate) fn layout_architecture_shoal(
             },
             |style| style.radius,
         );
-        // A junction's transparent SVG box positions it. Its visible connections meet at its center.
-        let profile = if junction {
+        // Perpendicular markers need separate tips at the junction. Keep its measured routing
+        // box for the leads and clip the canonical contacts to the small visible junction.
+        let profile = if junction && has_junction_room(index) {
+            let diameter = 2.0 * junction_radius;
+            ShapePortProfile::rounded_rectangle(
+                diameter,
+                diameter,
+                junction_radius,
+                junction_radius,
+            )
+        } else if junction {
             ShapePortProfile::rectangle(0.0, 0.0)
         } else {
             ShapePortProfile::rounded_rectangle(icon, icon, radius, radius)
@@ -510,7 +532,40 @@ pub(crate) fn layout_architecture_shoal(
         &mut work,
     ))
     .map_err(|error| work.map_shoal_error(error))?;
-    let solved = project_output(&graph, geometry, &mut work)?;
+    let mut solved = project_output(&graph, geometry, &mut work)?;
+    work.charge_adapter(solved.nodes.len())?;
+    let painted_nodes: Vec<_> = model
+        .nodes
+        .iter()
+        .zip(&solved.nodes)
+        .zip(&titles)
+        .enumerate()
+        .map(|(index, ((node, &body), title))| {
+            let size = if has_junction_room(index) {
+                2.0 * junction_radius
+            } else if node.node_type == ArchitectureNodeKind::Junction {
+                0.0
+            } else {
+                icon
+            };
+            geometry::node_ink(body, title.as_ref(), size)
+        })
+        .collect();
+    geometry::flatten_top_corridors(
+        &graph,
+        &mut solved,
+        &painted_nodes,
+        (&profiles, native.map_or(0.0, |style| style.group_radius)),
+        style.font_size,
+        edge_stroke_outset,
+        &mut work,
+    )?;
+    // Reserve enough space for a shaft, its marker, and the painted corners at a scope border.
+    let route_outset = edge_stroke_outset
+        + arrow
+            .max(10.0)
+            .max(native.map_or(0.0, |style| style.group_radius));
+    geometry::compact_empty_groups(&graph, &mut solved, node_spacing, route_outset, &mut work)?;
     let placement = placement::placement_for_solved(
         &graph,
         &solved,
@@ -528,7 +583,13 @@ pub(crate) fn layout_architecture_shoal(
         bounds: None,
     };
     let mut retained = 0usize;
-    for ((node, &rect), title) in model.nodes.iter().zip(&solved.nodes).zip(&mut titles) {
+    for (index, ((node, &rect), title)) in model
+        .nodes
+        .iter()
+        .zip(&solved.nodes)
+        .zip(&mut titles)
+        .enumerate()
+    {
         work.charge_adapter(node.id.len())?;
         let center = rect.center();
         if let Some(title) = title {
@@ -536,12 +597,17 @@ pub(crate) fn layout_architecture_shoal(
             title.anchor.y += center.y;
             retained = work.checked_add(retained, title.text.checked_retained_bytes(&work)?)?;
         }
+        let size = if has_junction_room(index) {
+            2.0 * junction_radius
+        } else {
+            icon
+        };
         layout.nodes.push(LayoutNode {
             id: node.id.clone(),
-            x: center.x - icon / 2.0,
-            y: center.y - icon / 2.0,
-            width: icon,
-            height: icon,
+            x: center.x - size / 2.0,
+            y: center.y - size / 2.0,
+            width: size,
+            height: size,
             is_cluster: false,
             label_width: title.as_ref().map(|title| title.text.size().width),
             label_height: title.as_ref().map(|title| title.text.size().height),
@@ -647,7 +713,7 @@ pub(crate) fn layout_architecture_shoal(
         &profiles,
         |_| native.map_or(0.0, |style| style.group_radius),
         layout.edges.iter().map(|edge| edge.id.as_str()),
-        CaptionClearance::Avoid,
+        CaptionClearance::AvoidWithPaintedNodes(&painted_nodes),
         &mut work,
     )?;
     routes.placement = placement;

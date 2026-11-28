@@ -4,6 +4,7 @@ use merman_model::families::architecture::{
 use merman_render_core::Bounds;
 use merman_render_core::icon_registry::{IconIdScope, IconIdScopePrefix};
 use merman_render_core::text::TextMeasurer;
+use merman_render_core::xml::escape_attr_display;
 
 use super::super::labels::{architecture_svg_text_terminal_bounds, wrap_svg_words_to_lines};
 #[cfg(feature = "layout-shoal")]
@@ -26,9 +27,15 @@ pub(super) struct ArchitectureNodeRenderContext<'a, O: SvgOutput> {
     pub(super) model: &'a ArchitectureDiagramModel,
     #[cfg(feature = "layout-shoal")]
     pub(super) shoal: Option<&'a dyn ArchitectureCanonicalSvg>,
+    #[cfg(feature = "layout-shoal")]
+    pub(super) layout_nodes: &'a [merman_render_core::LayoutNode],
+    #[cfg(feature = "layout-shoal")]
+    pub(super) junction_dot_color: &'a str,
     pub(super) node_xy: &'a rustc_hash::FxHashMap<&'a str, (f64, f64)>,
     pub(super) settings: &'a ArchitectureRenderSettings,
     pub(super) native: Option<&'a super::super::ArchitectureNativeStyle>,
+    pub(super) neo_node_fill: Option<&'a str>,
+    pub(super) icon_ink: Option<&'a str>,
     pub(super) text_measurer: &'a dyn TextMeasurer,
     pub(super) resources: ArchitectureNodeResources<'a>,
     pub(super) icon_scope_root: Option<IconIdScopePrefix>,
@@ -141,13 +148,21 @@ pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
                 let _ = write!(
                     out,
                     r#"<rect class="architecture-native-service-card" width="{size}" height="{size}" rx="{radius}" ry="{radius}" fill="{}" stroke="{}" stroke-width="{}"/>"#,
-                    merman_render_core::xml::escape_attr_display(&native.node_fill),
-                    merman_render_core::xml::escape_attr_display(&native.node_stroke),
+                    escape_attr_display(&native.node_fill),
+                    escape_attr_display(&native.node_stroke),
                     fmt(native.stroke_width),
                     size = fmt(settings.icon_size_px),
                     radius = fmt(native.radius),
                 );
                 checkpoints.checkpoint()?;
+            } else if let Some(fill) = ctx.neo_node_fill {
+                // Keep registered icons and text outside the common Neo shape selectors.
+                let _ = write!(
+                    out,
+                    r#"<g class="node" data-look="neo"><rect width="{size}" height="{size}" fill="{}"/></g>"#,
+                    escape_attr_display(fill),
+                    size = fmt(settings.icon_size_px),
+                );
             }
 
             let has_icon_text = architecture_service_has_icon_text(svc);
@@ -199,16 +214,16 @@ pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
                             settings.icon_size_px,
                             id_scope,
                             resources,
-                            native,
+                            ctx.icon_ink,
                         )?;
                     } else {
-                        write_arch_icon_svg(out, icon, settings.icon_size_px, None, native)?;
+                        write_arch_icon_svg(out, icon, settings.icon_size_px, None, ctx.icon_ink)?;
                     }
                     out.push_str("</g>");
                 }
                 (None, Some(icon_text)) if has_icon_text => {
                     out.push_str("<g>");
-                    write_arch_icon_svg(out, "blank", settings.icon_size_px, None, native)?;
+                    write_arch_icon_svg(out, "blank", settings.icon_size_px, None, ctx.icon_ink)?;
                     out.push_str("</g>");
 
                     // Mermaid computes `iconText` clamp from the DOM `font-size` applied to the
@@ -254,15 +269,25 @@ pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
                     )?;
                     let _ = write!(
                         out,
-                        r#"<g><foreignObject width="{w}" height="{h}"><div class="node-icon-text" style="height: {h}px;" xmlns="http://www.w3.org/1999/xhtml"><div style="-webkit-line-clamp: {clamp};">"#,
+                        r#"<g><foreignObject width="{w}" height="{h}"><div class="node-icon-text" style="height: {h}px;" xmlns="http://www.w3.org/1999/xhtml"><div style="-webkit-line-clamp: {clamp};"#,
                         w = fmt(settings.icon_size_px),
                         h = fmt(settings.icon_size_px),
                         clamp = line_clamp,
                     );
+                    if ctx.neo_node_fill.is_some()
+                        && let Some(ink) = ctx
+                            .icon_ink
+                            .and_then(|ink| merman_model::css_color::parse(ink.trim()))
+                    {
+                        let [r, g, b, a] = ink.rgba.to_rgba8();
+                        let ink = merman_theme_contract::v2::Color::rgba(r, g, b, a);
+                        let _ = write!(out, "color:{ink};");
+                    }
+                    out.push_str(r#"">"#);
                     out.push_str(&sanitized);
                     out.push_str("</div></div></foreignObject></g>");
                 }
-                (None, _) if native.is_none() => {
+                (None, _) if native.is_none() && ctx.neo_node_fill.is_none() => {
                     out.push_str(r#"<path class="node-bkg" id=""#);
                     write_diagram_node_id(out, diagram_id, &svc.id);
                     checkpoints.checkpoint()?;
@@ -282,10 +307,11 @@ pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
             out.checkpoint()?;
         }
 
-        for junction in model
+        for (_node_index, junction) in model
             .nodes
             .iter()
-            .filter(|node| node.node_type == ArchitectureNodeKind::Junction)
+            .enumerate()
+            .filter(|(_, node)| node.node_type == ArchitectureNodeKind::Junction)
         {
             checkpoints.checkpoint()?;
             let (x, y) = node_xy
@@ -306,6 +332,21 @@ pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
             out.push_str(r#"><g><rect id=""#);
             write_diagram_node_id(out, diagram_id, &junction.id);
             checkpoints.checkpoint()?;
+            #[cfg(feature = "layout-shoal")]
+            if let Some(node) = ctx.shoal.and_then(|_| ctx.layout_nodes.get(_node_index))
+                && node.id == junction.id
+                && node.width < settings.icon_size_px
+            {
+                let _ = write!(
+                    out,
+                    r#"" width="{size}" height="{size}" rx="{radius}" fill="{}"/></g></g>"#,
+                    escape_attr_display(ctx.junction_dot_color),
+                    size = fmt(node.width),
+                    radius = fmt(node.width / 2.0),
+                );
+                out.checkpoint()?;
+                continue;
+            }
             let _ = write!(
                 out,
                 r#"" fill-opacity="0" width="{s}" height="{s}"/></g></g>"#,
@@ -319,37 +360,70 @@ pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
     Ok(())
 }
 
+#[derive(Clone, Copy)]
+pub(super) enum GroupSurfaceStyle<'a> {
+    Classic,
+    Native {
+        inline: &'a str,
+        radius: f64,
+    },
+    #[cfg(feature = "layout-shoal")]
+    Neo {
+        fill: &'a str,
+        stroke_width: &'a str,
+    },
+}
+
 fn push_architecture_group_surface(
     out: &mut impl SvgOutput,
     diagram_id: SvgDiagramId<'_>,
     group: &GroupRect<'_>,
-    group_inline_style: Option<&str>,
-    radius: Option<f64>,
+    style: GroupSurfaceStyle<'_>,
     #[cfg(feature = "layout-shoal")] shoal: bool,
 ) -> merman_render_core::Result<()> {
+    #[cfg(feature = "layout-shoal")]
+    if matches!(style, GroupSurfaceStyle::Neo { .. }) {
+        out.push_str(r#"<g class="cluster" data-look="neo">"#);
+    }
     let _ = write!(out, r#"<rect id="{diagram_id}-group-"#);
     escape_attr_into(out, group.id);
     let _ = write!(
         out,
-        r#"" x="{x}" y="{y}" width="{w}" height="{h}" class="node-bkg""#,
+        r#"" x="{x}" y="{y}" width="{w}" height="{h}""#,
         x = fmt(group.x),
         y = fmt(group.y),
         w = fmt(group.w.max(1.0)),
         h = fmt(group.h.max(1.0)),
     );
-    if let Some(radius) = radius {
-        let _ = write!(out, r#" rx="{radius}" ry="{radius}""#, radius = fmt(radius));
-    }
-    if let Some(style) = group_inline_style {
-        out.push_str(r#" style=""#);
-        escape_attr_into(out, style);
-        out.push('"');
+    match style {
+        GroupSurfaceStyle::Classic => out.push_str(r#" class="node-bkg""#),
+        GroupSurfaceStyle::Native { inline, radius } => {
+            let _ = write!(
+                out,
+                r#" class="node-bkg" rx="{radius}" ry="{radius}" style="{}""#,
+                escape_attr_display(inline),
+                radius = fmt(radius),
+            );
+        }
+        #[cfg(feature = "layout-shoal")]
+        GroupSurfaceStyle::Neo { fill, stroke_width } => {
+            let _ = write!(
+                out,
+                r#" fill="{}" stroke-width="{}""#,
+                escape_attr_display(fill),
+                escape_attr_display(stroke_width),
+            );
+        }
     }
     #[cfg(feature = "layout-shoal")]
     if shoal {
         super::write_geometry_attrs(out, "cluster", group.id);
     }
     out.push_str("/>");
+    #[cfg(feature = "layout-shoal")]
+    if matches!(style, GroupSurfaceStyle::Neo { .. }) {
+        out.push_str("</g>");
+    }
     out.checkpoint()
 }
 
@@ -357,8 +431,7 @@ pub(super) fn push_architecture_group_surfaces(
     out: &mut impl SvgOutput,
     diagram_id: SvgDiagramId<'_>,
     group_rects: &[GroupRect<'_>],
-    group_inline_style: Option<&str>,
-    radius: Option<f64>,
+    style: GroupSurfaceStyle<'_>,
     #[cfg(feature = "layout-shoal")] shoal: bool,
     checkpoints: ArchitectureEmitCheckpoints<'_>,
 ) -> merman_render_core::Result<()> {
@@ -383,8 +456,7 @@ pub(super) fn push_architecture_group_surfaces(
                 out,
                 diagram_id,
                 &group,
-                group_inline_style,
-                radius,
+                style,
                 #[cfg(feature = "layout-shoal")]
                 shoal,
             )?;
@@ -436,8 +508,7 @@ pub(super) fn push_architecture_groups<'a, O: SvgOutput>(
                     out,
                     ctx.diagram_id,
                     grp,
-                    None,
-                    None,
+                    GroupSurfaceStyle::Classic,
                     #[cfg(feature = "layout-shoal")]
                     false,
                 )?;
@@ -476,10 +547,10 @@ pub(super) fn push_architecture_groups<'a, O: SvgOutput>(
                         group_icon_size_px,
                         id_scope,
                         resources,
-                        ctx.native,
+                        ctx.icon_ink,
                     )?;
                 } else {
-                    write_arch_icon_svg(out, icon, group_icon_size_px, None, ctx.native)?;
+                    write_arch_icon_svg(out, icon, group_icon_size_px, None, ctx.icon_ink)?;
                 }
                 out.push_str("</g></g>");
                 shifted_x1 += group_icon_size_px;
@@ -582,8 +653,10 @@ mod tests {
                 &mut svg,
                 diagram_id,
                 &groups,
-                Some("fill:#123456;"),
-                None,
+                GroupSurfaceStyle::Native {
+                    inline: "fill:#123456;",
+                    radius: 0.0,
+                },
                 #[cfg(feature = "layout-shoal")]
                 false,
                 ArchitectureEmitCheckpoints::new(work_meter),
