@@ -95,7 +95,9 @@ pub(super) fn capture<R>(
     }));
     let output = observe_stage_changes(switch_stage, operation);
     let mut active = ACTIVE.take().expect("stage allocation capture is active");
-    let mut heap = allocator.finish_measurement(active.start.live_bytes);
+    // Read the final interval's counters with a zero baseline. This capture validates its own
+    // baselines below, so a bad interval cannot set the allocator's sticky underflow flag.
+    let mut heap = allocator.finish_measurement(0);
     active.close_interval(AllocationCheckpoint {
         allocation_count: heap.allocation_count,
         allocated_bytes: heap.allocated_bytes,

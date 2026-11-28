@@ -181,3 +181,60 @@ fn stage_capture_rejects_a_counter_reset_during_an_interval() {
     });
     assert!(heap.counter_underflowed);
 }
+
+#[cfg(feature = "benchmark-stages")]
+#[test]
+fn stage_peak_underflow_does_not_poison_next_capture() {
+    use merman_model::benchmark_stages::{Stage, enter};
+
+    static FINAL_INTERVAL: CountingSystemAllocator = CountingSystemAllocator::new(System);
+    static MEASURE_INTERVAL: CountingSystemAllocator = CountingSystemAllocator::new(System);
+    let layout = Layout::from_size_align(8, 8).expect("valid setup layout");
+
+    let next_underflowed = [
+        (&FINAL_INTERVAL, None),
+        (&MEASURE_INTERVAL, Some(Stage::Measure)),
+    ]
+    .map(|(allocator, stage)| {
+        // SAFETY: the allocation is released once with the same layout below.
+        let retained = unsafe { allocator.alloc(layout) };
+        assert!(!retained.is_null());
+        let ((), rejected, _) = stages::capture(allocator, || {
+            let _stage = stage.map(enter);
+            let start = allocator.checkpoint(false);
+            // SAFETY: `retained` is still live and was allocated with `layout`.
+            unsafe { allocator.dealloc(retained, layout) };
+            assert_eq!(allocator.begin_measurement(), 0);
+            let end = allocator.checkpoint(false);
+            assert_eq!((start.live_bytes, end.peak_live_bytes), (8, 0));
+            assert_eq!(start.allocation_count, end.allocation_count);
+            assert_eq!(start.allocated_bytes, end.allocated_bytes);
+        });
+        assert!(rejected.counter_underflowed);
+
+        let ((), independent, _) = stages::capture(allocator, || {});
+        assert_eq!(independent.snapshot_live_bytes, 0);
+        assert!(!independent.counter_overflowed);
+        independent.counter_underflowed
+    });
+    assert_eq!(next_underflowed, [false, false]);
+}
+
+#[cfg(feature = "benchmark-stages")]
+#[test]
+fn stage_capture_preserves_sticky_allocator_underflow() {
+    static ALLOCATOR: CountingSystemAllocator = CountingSystemAllocator::new(System);
+    let layout = Layout::from_size_align(8, 8).expect("valid test allocation");
+    let ((), failed, _) = stages::capture(&ALLOCATOR, || {
+        // SAFETY: the counting allocator delegates to the same System allocator with the same
+        // layout. Bypassing the counter on allocation exercises its real live-byte underflow.
+        unsafe {
+            let pointer = System.alloc(layout);
+            assert!(!pointer.is_null());
+            ALLOCATOR.dealloc(pointer, layout);
+        }
+    });
+    assert!(failed.counter_underflowed);
+    let ((), independent, _) = stages::capture(&ALLOCATOR, || {});
+    assert!(independent.counter_underflowed);
+}
