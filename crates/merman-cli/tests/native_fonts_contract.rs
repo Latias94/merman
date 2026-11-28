@@ -178,6 +178,59 @@ fn cumulative_font_byte_limit_preserves_output_and_gives_a_working_retry() {
     }
 }
 
+#[cfg(all(target_os = "macos", feature = "png"))]
+#[test]
+fn macos_system_font_byte_budget_follows_the_cli_profile_and_explicit_override() {
+    let directory = tempfile::tempdir().unwrap();
+    let font = directory.path().join("oversized.ttc");
+    // Acquisition checks the logical size before reading any font data.
+    std::fs::File::create(&font)
+        .unwrap()
+        .set_len(384 * 1024 * 1024 + 1)
+        .unwrap();
+
+    let policies: &[(&[&str], u64)] = &[
+        (&["--font-system=on"], 384),
+        (&["--font-system=on", "--resource-profile=constrained"], 256),
+        (&["--font-system=off"], 256),
+        (&["--font-system=on", "--font-max-bytes=192MiB"], 192),
+        (
+            &[
+                "--font-system=on",
+                "--resource-profile=constrained",
+                "--font-max-bytes=320MiB",
+            ],
+            320,
+        ),
+    ];
+    for (kind, source) in [
+        ("mermaid", "flowchart LR\nA[汉字 🙂]\n"),
+        ("svg", RAW_FONT_SVG),
+    ] {
+        for &(policy, maximum_mib) in policies {
+            let mut args = vec![
+                "render",
+                "-",
+                "--format=png",
+                "--output=-",
+                "--input-kind",
+                kind,
+                "--font-file",
+                font.to_str().unwrap(),
+            ];
+            args.extend_from_slice(policy);
+            let output = run_with_stdin(&args, source);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert_eq!(output.status.code(), Some(3), "{kind} {policy:?}: {stderr}");
+            assert!(output.stdout.is_empty(), "{kind} {policy:?}: {stderr}");
+            assert!(
+                stderr.contains(&format!("exceeded the {maximum_mib} MiB budget")),
+                "{kind} {policy:?}: {stderr}"
+            );
+        }
+    }
+}
+
 #[test]
 fn invalid_font_byte_limits_fail_before_rendering() {
     for size in ["0", "1.5MiB"] {

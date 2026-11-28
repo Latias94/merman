@@ -273,9 +273,12 @@ If bounded discovery reports `native font limit system-cmap-bytes exceeded`, the
 combined character map tables exceeded the scan budget. Supply the diagram's fonts with
 `--font-file`, or select `--font-system platform` on a build that offers it.
 
-Each native font context has a default budget of 256 MiB for explicit font files
-(including files from `--font-dir`) and selected system font data combined.
-Set `--font-max-bytes <SIZE>` to a positive integer in bytes, KiB, MiB, or GiB.
+The font data budget covers explicit font files (including files from `--font-dir`)
+and selected system font data combined. On macOS, `trusted-native` with system
+font discovery enabled defaults to 384 MiB to accommodate CJK and emoji fallback.
+Other configurations, including `constrained`, default to 256 MiB.
+Use `--font-max-bytes <SIZE>` to replace that default with a positive integer in
+bytes, KiB, MiB, or GiB.
 For example, `--font-max-bytes 536870912` and `--font-max-bytes 512MiB`
 set the same limit. With only this option, ordinary Mermaid SVG uses deterministic
 measurement with system discovery off. For raw SVG conversion, a byte budget on
