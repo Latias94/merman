@@ -17,6 +17,8 @@ pub enum PresentationContext {
     Flowchart(crate::families::flowchart::FlowchartRenderContext),
     #[cfg(feature = "diagram-class")]
     Class(crate::families::class::ClassStylePrecedenceFacts),
+    #[cfg(feature = "diagram-c4")]
+    C4(crate::families::c4::C4RowPreferences),
     #[cfg(feature = "diagram-info")]
     Info(crate::families::info::InfoOutputData),
     #[cfg(feature = "diagram-pie")]
@@ -44,6 +46,8 @@ impl PresentationContext {
             Self::Flowchart(_) => Some("flowchart"),
             #[cfg(feature = "diagram-class")]
             Self::Class(_) => Some("class"),
+            #[cfg(feature = "diagram-c4")]
+            Self::C4(_) => Some("c4"),
             #[cfg(feature = "diagram-info")]
             Self::Info(_) => Some("info"),
             #[cfg(feature = "diagram-pie")]
@@ -79,6 +83,14 @@ impl PresentationContext {
     ) -> Option<&crate::families::class::ClassStylePrecedenceFacts> {
         match self {
             Self::Class(facts) => Some(facts),
+            _ => None,
+        }
+    }
+
+    #[cfg(feature = "diagram-c4")]
+    pub fn c4_row_preferences(&self) -> Option<crate::families::c4::C4RowPreferences> {
+        match self {
+            Self::C4(preferences) => Some(*preferences),
             _ => None,
         }
     }

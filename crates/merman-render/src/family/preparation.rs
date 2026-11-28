@@ -585,6 +585,9 @@ fn prepare_architecture_family<'parsed>(
 #[cfg(feature = "diagram-c4")]
 fn prepare_c4_family<'parsed>(
     model: &'parsed diagrams::c4::C4DiagramModel,
+    #[cfg(feature = "layout-shoal")] authored_rows: Option<
+        merman_model::families::c4::C4RowPreferences,
+    >,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
@@ -613,6 +616,7 @@ fn prepare_c4_family<'parsed>(
     let (layout, shoal) = if execution.layout_backend() == GraphLayoutBackend::Shoal {
         let (layout, geometry) = crate::c4::layout_c4_shoal(
             model,
+            authored_rows,
             config,
             &typography_theme,
             &cluster_theme,
@@ -1241,7 +1245,13 @@ pub(super) fn prepare_non_class_render<'parsed>(
             unreachable!("Class models use the stack-bounded family dispatch path")
         }
         #[cfg(feature = "diagram-c4")]
-        RenderSemanticModel::C4(model) => prepare_c4_family(model, meta, &execution)?,
+        RenderSemanticModel::C4(model) => prepare_c4_family(
+            model,
+            #[cfg(feature = "layout-shoal")]
+            parsed.render_context().c4_row_preferences(),
+            meta,
+            &execution,
+        )?,
         #[cfg(feature = "diagram-cynefin")]
         RenderSemanticModel::Cynefin(model) => prepare_cynefin_family(model, meta, &execution)?,
         #[cfg(feature = "diagram-wardley")]

@@ -44,6 +44,20 @@ pub struct C4LayoutConfig {
     pub c4_boundary_in_row: f64,
 }
 
+impl C4LayoutConfig {
+    pub const DEFAULT_CARD_COLUMNS: f64 = 4.0;
+    pub const DEFAULT_BOUNDARY_COLUMNS: f64 = 2.0;
+}
+
+/// Authored row counts for adaptive card placement. Mermaid's semantic model stores
+/// positional values with defaults, so it cannot distinguish an omitted count from a request
+/// equal to that default or preserve the intent of a named count in the other slot.
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub struct C4RowPreferences {
+    pub cards: Option<f64>,
+    pub boundaries: Option<f64>,
+}
+
 /// A relationship offset as stored by Mermaid's C4 database.
 ///
 /// Named offsets in the color argument slots remain strings; offsets in the offset slots

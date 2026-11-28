@@ -4,8 +4,8 @@ use super::{C4Diagnostic, C4Result};
 use merman_markup::sanitize::sanitize_text;
 use merman_model::MermaidConfig;
 use merman_model::families::c4::{
-    C4Boundary, C4DiagramModel, C4LayoutConfig, C4Relation, C4RelationOffset, C4Shape, C4Text,
-    parse_integer_prefix,
+    C4Boundary, C4DiagramModel, C4LayoutConfig, C4Relation, C4RelationOffset, C4RowPreferences,
+    C4Shape, C4Text, parse_integer_prefix,
 };
 use serde_json::{Map, Value, json};
 
@@ -24,6 +24,7 @@ pub(super) struct C4Db {
 
     c4_shape_in_row: f64,
     c4_boundary_in_row: f64,
+    pub(super) row_preferences: C4RowPreferences,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,8 +67,8 @@ impl C4Db {
         let wrap_enabled = config.get_bool("wrap").unwrap_or(false);
         let mut db = Self {
             wrap_enabled,
-            c4_shape_in_row: 4.0,
-            c4_boundary_in_row: 2.0,
+            c4_shape_in_row: C4LayoutConfig::DEFAULT_CARD_COLUMNS,
+            c4_boundary_in_row: C4LayoutConfig::DEFAULT_BOUNDARY_COLUMNS,
             ..Default::default()
         };
         db.add_global_boundary();
@@ -332,17 +333,24 @@ impl C4Db {
     }
 
     pub(super) fn update_layout_config(&mut self, args: &[C4Arg]) -> C4Result<()> {
-        if let Some(arg) = args.first()
-            && let Some(parsed) = parse_integer_prefix(arg.value())
-            && parsed >= 1.0
+        for ((positional, legacy), arg) in [
+            ("c4ShapeInRow", &mut self.c4_shape_in_row),
+            ("c4BoundaryInRow", &mut self.c4_boundary_in_row),
+        ]
+        .into_iter()
+        .zip(args)
         {
-            self.c4_shape_in_row = parsed;
-        }
-        if let Some(arg) = args.get(1)
-            && let Some(parsed) = parse_integer_prefix(arg.value())
-            && parsed >= 1.0
-        {
-            self.c4_boundary_in_row = parsed;
+            let Some(value) = parse_integer_prefix(arg.value()).filter(|&value| value >= 1.0)
+            else {
+                continue;
+            };
+            *legacy = value;
+            let preference = match arg.key_or(positional) {
+                "c4ShapeInRow" => &mut self.row_preferences.cards,
+                "c4BoundaryInRow" => &mut self.row_preferences.boundaries,
+                _ => continue,
+            };
+            *preference = Some(value);
         }
         Ok(())
     }

@@ -5,12 +5,12 @@ use merman_model::SourceSpan;
 mod db;
 mod parse;
 
-pub use parse::parse_c4_model_controlled;
 #[cfg(feature = "editor-facts")]
 pub use parse::{C4SourceIssue, parse_c4_model_observed_controlled};
 #[cfg(any(test, feature = "test-support"))]
 #[doc(hidden)]
 pub use parse::{c4_syntax_construction_count, reset_c4_syntax_construction_count};
+pub use parse::{parse_c4_model_controlled, parse_c4_model_with_rows_controlled};
 
 type C4Result<T> = Result<T, C4Diagnostic>;
 

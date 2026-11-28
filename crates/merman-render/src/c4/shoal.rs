@@ -21,7 +21,7 @@ use crate::model::{Bounds, C4DiagramLayout};
 use crate::{Error, LayoutAdaptation, LayoutAdaptationObservation, LayoutExecution, Result};
 use kurbo::{Insets, Shape, Vec2};
 use merman_layout_shoal::{WidthPolicy, card_grid};
-use merman_model::families::c4::C4DiagramModel;
+use merman_model::families::c4::{C4DiagramModel, C4LayoutConfig, C4RowPreferences};
 use merman_render_core::graph_layout::shoal::{Placement, project_input, project_output};
 use merman_render_core::rough_svg::{constrained_rough_edge_with_geometry, operation_randomness};
 use merman_render_graph::c4::{C4RoutedGeometry, C4RoutedRelation};
@@ -116,6 +116,7 @@ fn marker_ink(edge: &CanonicalPaintedEdge) -> [Option<Bounds>; 2] {
 
 pub(crate) fn layout_c4_shoal(
     model: &C4DiagramModel,
+    authored_rows: Option<C4RowPreferences>,
     effective_config: &Value,
     typography: &C4TypographyThemePlan,
     cluster_theme: &C4ClusterThemePlan,
@@ -382,10 +383,21 @@ pub(crate) fn layout_c4_shoal(
     let options = input.options_for(&graph);
     let measured = project_input(&graph, &input, &mut work)?;
     let row_limit = |value: f64| (value.is_finite() && value >= 1.0).then_some(value as usize);
-    let rows = card_grid::CardGridOptions::with_column_limits(
-        row_limit(model.layout.c4_shape_in_row),
-        row_limit(model.layout.c4_boundary_in_row),
-    );
+    let rows = if let Some(authored) = authored_rows {
+        let card_columns = authored.cards.and_then(row_limit);
+        let boundary_columns = authored.boundaries.and_then(row_limit);
+        card_grid::CardGridOptions::with_column_limits(
+            card_columns.or_else(|| row_limit(C4LayoutConfig::DEFAULT_CARD_COLUMNS)),
+            boundary_columns.or_else(|| row_limit(C4LayoutConfig::DEFAULT_BOUNDARY_COLUMNS)),
+        )
+        .prefer_columns(card_columns.is_some(), boundary_columns.is_some())
+    } else {
+        card_grid::CardGridOptions::with_column_limits(
+            row_limit(model.layout.c4_shape_in_row),
+            row_limit(model.layout.c4_boundary_in_row),
+        )
+        .prefer_columns(true, true)
+    };
     let geometry = crate::layout_work::measure_layout_solve!(card_grid::layout_with_hints(
         &measured, &options, rows, &mut work,
     ))
@@ -754,6 +766,7 @@ C4Context
             C4ClusterThemePlan::resolve(family.native_theme(), &model.boundaries, config, true);
         let (mut layout, geometry) = layout_c4_shoal(
             model,
+            parsed.render_context().c4_row_preferences(),
             config.as_value(),
             &typography,
             &cluster_theme,
@@ -922,6 +935,7 @@ C4Context
             let cluster_theme = C4ClusterThemePlan::resolve(None, &model.boundaries, config, true);
             let (mut layout, geometry) = layout_c4_shoal(
                 model,
+                parsed.render_context().c4_row_preferences(),
                 config.as_value(),
                 &typography,
                 &cluster_theme,
