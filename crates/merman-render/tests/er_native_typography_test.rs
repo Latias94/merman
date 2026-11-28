@@ -127,6 +127,52 @@ fn er_relationship_native_admission_observes_svg_and_sanitizer_removals() {
     }
 }
 
+#[cfg(feature = "layout-grid")]
+#[test]
+fn er_grid_native_admission_uses_the_relationship_label_rect_html_mode() {
+    let label = "<span style='letter-spacing:20px'>AAAA</span>";
+    for (overrides, retained) in [
+        (json!({}), true),
+        (json!({"htmlLabels": false}), false),
+        (
+            json!({"dompurifyConfig": {"FORBID_ATTR": ["style"]}}),
+            false,
+        ),
+    ] {
+        let mut config = json!({"layout": "grid", "flowchart": {"htmlLabels": false}});
+        let Value::Object(overrides) = overrides else {
+            unreachable!("test overrides are an object");
+        };
+        config.as_object_mut().unwrap().extend(overrides);
+        let source = parsed(label, config);
+        let artifact = family::prepare(
+            &source,
+            &LayoutOptions::default(),
+            RenderEnvironment::deterministic().begin_session().unwrap(),
+        )
+        .unwrap();
+        let svg = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let document = roxmltree::Document::parse(svg.svg()).unwrap();
+        assert_eq!(
+            document.descendants().any(|node| {
+                node.attribute("style") == Some("letter-spacing:20px")
+                    && node
+                        .ancestors()
+                        .any(|ancestor| ancestor.has_tag_name("foreignObject"))
+            }),
+            retained,
+        );
+        assert_eq!(
+            unsupported_native_html_style(&source, &OperationControl::new())
+                .unwrap()
+                .as_deref(),
+            retained.then_some("letter-spacing"),
+        );
+    }
+}
+
 #[test]
 fn er_dagre_native_admission_rejects_malformed_retained_html() {
     let source = parsed(

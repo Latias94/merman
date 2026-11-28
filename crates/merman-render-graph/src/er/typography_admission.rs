@@ -1,4 +1,5 @@
-use super::{ErBoxLabel, ErConfigView, swimlane_relationship_html_source};
+use super::{ErBoxLabel, ErConfigView};
+use crate::label_rect::label_rect_html_source;
 use merman_model::families::er::ErDiagramModel;
 use merman_model::presentation::PresentationConfig;
 use merman_model::{OperationControl, OperationControlResult, OperationPhase};
@@ -47,13 +48,14 @@ pub fn unsupported_html_style(
     }
 
     // This typography probe also runs without a prepared render plan.
-    let swimlane = config.get_str("layout") == Some("swimlane");
-    let relationship_html_labels = view.relationship_html_labels(swimlane);
-    if relationship_html_labels {
+    let layout = config.get_str("layout");
+    let swimlane = layout == Some("swimlane");
+    let uses_label_rect = swimlane || (cfg!(feature = "layout-grid") && layout == Some("grid"));
+    if view.relationship_html_labels(uses_label_rect) {
         for relationship in &model.relationships {
             control.checkpoint()?;
-            let html = if swimlane {
-                let source = swimlane_relationship_html_source(&relationship.role_a);
+            let html = if uses_label_rect {
+                let source = label_rect_html_source(&relationship.role_a);
                 let Some(html) = sanitize_relationship(&source, config, control)? else {
                     return Ok(Some("ER relationship HTML normalization".into()));
                 };
@@ -70,6 +72,8 @@ pub fn unsupported_html_style(
         }
     }
 
+    // Grid keeps the ordinary ER title mode even though it uses LabelRect for relationships.
+    let group_html_labels = view.relationship_html_labels(swimlane);
     // Match the provider's parent lookup once, rather than searching all groups per label.
     let mut children = HashSet::new();
     if swimlane {
@@ -84,7 +88,7 @@ pub fn unsupported_html_style(
     for group in &model.subgraphs {
         control.checkpoint()?;
         let is_lane = swimlane && !children.contains(group.id.as_str());
-        if !view.subgraph_html_labels(is_lane, relationship_html_labels)
+        if !view.subgraph_html_labels(is_lane, group_html_labels)
             || (!is_lane && matches!(group.label_type.as_str(), "string" | "text"))
         {
             // Ordinary string/text titles are escaped by the cluster writer.
@@ -117,7 +121,7 @@ fn sanitize_relationship(
     config: &PresentationConfig,
     control: &OperationControl,
 ) -> OperationControlResult<Option<String>> {
-    // Same policy as ErSwimlaneRelationshipLabel::prepare, with admission cancellation.
+    // Same sanitizer policy as LabelRect::prepare, with admission cancellation.
     let work = OperationWorkMeter::new_with_control(
         RenderResourcePolicy::unbounded_for_trusted_input(),
         control.clone(),

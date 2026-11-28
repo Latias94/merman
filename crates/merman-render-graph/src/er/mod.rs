@@ -21,7 +21,6 @@ mod swimlane;
 mod theme;
 mod typography_admission;
 
-pub use crate::label_rect::label_rect_html_source as swimlane_relationship_html_source;
 pub use binding::ErCssBinding;
 pub use config::{ErConfigView, ErEntityMeasurementSettings, ErLayoutSettings, ErRenderSettings};
 #[cfg(feature = "layout-dagre")]

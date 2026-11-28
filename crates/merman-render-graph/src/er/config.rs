@@ -174,8 +174,8 @@ impl<'a, C: ConfigLookup + ?Sized> ErConfigView<'a, C> {
         }
     }
 
-    pub fn relationship_html_labels(&self, swimlane: bool) -> bool {
-        if swimlane {
+    pub fn relationship_html_labels(&self, uses_label_rect: bool) -> bool {
+        if uses_label_rect {
             return Self::evaluate_html_labels(self.effective_config.get("htmlLabels"));
         }
         // Mermaid ER relationship labels follow `getEffectiveHtmlLabels(config)` from
