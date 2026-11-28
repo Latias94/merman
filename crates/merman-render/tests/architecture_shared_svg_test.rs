@@ -59,6 +59,8 @@ fn shoal_architecture_routes_around_an_occluded_group_entry() {
     let source = r#"---
 config:
   layout: shoal
+  htmlLabels: false
+  architecture: { htmlLabels: false }
 ---
 architecture-beta
   group org(cloud)[Enterprise Platform]
@@ -120,7 +122,7 @@ architecture-beta
         .position(|p| {
             (p.y - (data.y + data.height)).abs() < eps && data.x < p.x && p.x < data.x + data.width
         })
-        .expect("the occluded connection enters Storage Tier from its open bottom face");
+        .unwrap_or_else(|| panic!("the occluded connection enters Storage Tier from its open bottom face: {data:?} {:?}", resp.points));
     let wal_entry = wal
         .points
         .iter()
