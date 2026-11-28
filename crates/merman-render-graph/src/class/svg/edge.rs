@@ -44,6 +44,8 @@ pub(super) struct ClassEdgeGroupsRenderContext<'a> {
     pub prepared_labels: &'a crate::class::ClassPreparedLabels,
     #[cfg(feature = "layout-grid")]
     pub grid: Option<merman_render_core::graph_layout::mermaid_grid::GridPaint>,
+    #[cfg(feature = "layout-layered")]
+    pub layered: Option<super::layered::ClassLayeredSvg<'a>>,
     #[cfg(feature = "layout-shoal")]
     pub canonical_routes: Option<&'a ClassCanonicalRoutes<'a>>,
     pub diagram_marker_class: &'a str,
@@ -86,7 +88,24 @@ impl ClassEdgeGroupsRenderContext<'_> {
     }
 
     fn uses_flat_edge_labels(&self) -> bool {
-        self.uses_elk_adapter_dom || self.uses_grid()
+        self.uses_elk_adapter_dom || self.uses_grid() || self.uses_layered()
+    }
+
+    fn uses_layered(&self) -> bool {
+        #[cfg(feature = "layout-layered")]
+        return self.layered.is_some();
+        #[cfg(not(feature = "layout-layered"))]
+        false
+    }
+
+    fn translated_label_center(&self, label: &LayoutLabel) -> LayoutPoint {
+        let y = label.y + self.content_ty;
+        #[cfg(feature = "layout-layered")]
+        let y = self.layered.map_or(y, |layered| y + layered.label_y_offset);
+        LayoutPoint {
+            x: label.x + self.content_tx,
+            y,
+        }
     }
 
     fn auto_namespace_fill(&self) -> Option<Color> {
@@ -134,6 +153,8 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
     let mut edge_raw_points: Vec<LayoutPoint> = Vec::new();
     let mut edge_marker_points: Vec<LayoutPoint> = Vec::new();
     let mut edge_curve_points: Vec<LayoutPoint> = Vec::new();
+    #[cfg(feature = "layout-layered")]
+    let mut layered_points = Vec::new();
     let mut edge_class_buf = String::with_capacity(64);
     let mut edge_dom_id_buf = String::with_capacity(64);
     let mut edge_style_buf = String::new();
@@ -147,7 +168,10 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
         || ctx.auto_namespace_fill().is_some_and(is_transparent);
 
     let edge_paths_start = ctx.timing.start();
-    let ordered_edges = if ctx.uses_grid() {
+    let ordered_edges = if ctx.uses_grid() || ctx.uses_layered() {
+        if ctx.uses_layered() {
+            ctx.work_meter.charge_emit_work(ctx.edges.len())?;
+        }
         ctx.edges.iter().collect()
     } else {
         class_edge_render_order(ctx.edges, ctx.relation_index_by_id)
@@ -156,8 +180,12 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
         FxHashMap::with_capacity_and_hasher(ordered_edges.len(), Default::default());
     let _ = write!(out, r#"<g class="{}">"#, ctx.edge_paths_class);
     out.checkpoint()?;
+    #[cfg(feature = "layout-layered")]
+    let mut layered_axes = ctx.layered.map(|layered| layered.axes.iter());
     for e in ordered_edges.iter().copied() {
         ctx.emit.checkpoint()?;
+        #[cfg(feature = "layout-layered")]
+        let axis_tags = layered_axes.as_mut().and_then(Iterator::next);
         let missing_section = ctx.missing_section_points.get(e.id.as_str());
         let source_points = missing_section.map(Vec::as_slice).unwrap_or(&e.points);
         if source_points.is_empty() || (missing_section.is_none() && source_points.len() < 2) {
@@ -168,6 +196,14 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
 
         if !uses_canonical_routes {
             edge_raw_points.clear();
+            if ctx.uses_layered() {
+                ctx.work_meter.charge_emit_work(source_points.len())?;
+                edge_raw_points
+                    .try_reserve(source_points.len())
+                    .map_err(|_| merman_render_core::Error::LayoutAllocationFailed {
+                        backend: "layered",
+                    })?;
+            }
             edge_raw_points.reserve(source_points.len());
             for p in source_points {
                 edge_raw_points.push(LayoutPoint {
@@ -232,6 +268,27 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
                     }),
                     geometry.marker_points.as_slice(),
                     geometry.data_points.as_slice(),
+                );
+            }
+            #[cfg(feature = "layout-layered")]
+            if let Some(layered) = ctx.layered {
+                let axes = axis_tags.ok_or_else(|| {
+                    crate::class::layered::invalid_projection("missing Class relation axis tags")
+                })?;
+                parity_d = super::layered::shaft(
+                    &edge_raw_points,
+                    axes,
+                    layered.curve,
+                    super::layered::arrows(relation),
+                    &mut layered_points,
+                    &mut edge_marker_points,
+                    ctx.work_meter,
+                )?;
+                break 'geometry (
+                    parity_d.as_str(),
+                    None,
+                    edge_marker_points.as_slice(),
+                    edge_raw_points.as_slice(),
                 );
             }
             #[cfg(feature = "layout-grid")]
@@ -362,11 +419,8 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
         let hopped_d = ctx.line_hop_paths.get(e.id.as_str());
         let render_d = hopped_d.map(String::as_str).unwrap_or(paint_d);
         let label_center = e.label.as_ref().map(|lbl| {
-            if uses_canonical_routes || ctx.uses_grid() {
-                LayoutPoint {
-                    x: lbl.x + ctx.content_tx,
-                    y: lbl.y + ctx.content_ty,
-                }
+            if uses_canonical_routes || ctx.uses_grid() || ctx.uses_layered() {
+                ctx.translated_label_center(lbl)
             } else {
                 let center = if missing_section.is_some() {
                     let first = &edge_raw_points[0];
@@ -408,6 +462,9 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
             })
         };
         let path_paint_outset = stroke_outset.max(rough_marker_outset);
+        if ctx.uses_layered() {
+            ctx.work_meter.charge_emit_work(render_d.len())?;
+        }
         let path_bounds = if rough_d.is_none() && hopped_d.is_none() {
             d_pb
         } else {
@@ -454,11 +511,32 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
 
         let json_start = ctx.timing.start();
         edge_points_json_buf.clear();
-        json_stringify_points_into(
-            &mut edge_points_json_buf,
-            data_points,
-            &mut edge_points_json_ryu,
-        );
+        let axis_json = {
+            #[cfg(feature = "layout-layered")]
+            if let Some(axes) = axis_tags {
+                ctx.work_meter.charge_emit_work(data_points.len())?;
+                merman_render_core::svg_edge_parity::path_numbers::json_stringify_axis_points_into(
+                    &mut edge_points_json_buf,
+                    data_points,
+                    axes,
+                    &mut edge_points_json_ryu,
+                );
+                ctx.work_meter
+                    .charge_emit_work(edge_points_json_buf.len())?;
+                true
+            } else {
+                false
+            }
+            #[cfg(not(feature = "layout-layered"))]
+            false
+        };
+        if !axis_json {
+            json_stringify_points_into(
+                &mut edge_points_json_buf,
+                data_points,
+                &mut edge_points_json_ryu,
+            );
+        }
         if let Some(s) = json_start {
             detail.edge_points_json += s.elapsed();
         }
@@ -706,10 +784,7 @@ pub(super) fn render_class_edge_labels<O: SvgOutput>(
                 .label_centers
                 .get(e.id.as_str())
                 .cloned()
-                .unwrap_or(LayoutPoint {
-                    x: lbl.x + ctx.content_tx,
-                    y: lbl.y + ctx.content_ty,
-                })
+                .unwrap_or_else(|| ctx.translated_label_center(lbl))
         });
         if !label_text.trim().is_empty()
             && let (Some(lbl), Some(center)) = (e.label.as_ref(), label_center.as_ref())

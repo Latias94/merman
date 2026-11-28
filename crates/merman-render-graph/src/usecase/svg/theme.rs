@@ -23,6 +23,7 @@ pub(super) fn write_css(
     out: &mut impl SvgOutput,
     id: SvgId<'_>,
     binding: &UsecaseCssBinding,
+    mermaid_grid_label_font: bool,
 ) -> Result<()> {
     let UsecaseCssBinding {
         main,
@@ -61,6 +62,16 @@ pub(super) fn write_css(
         font.font_family.as_deref().unwrap_or("sans-serif"),
         fmt(font.font_size)
     );
+    #[cfg(feature = "layout-grid")]
+    if mermaid_grid_label_font {
+        let _ = write!(
+            css,
+            "#{id} .nodes>.label.edgeLabel{{font-size:{}px;font-weight:normal}}",
+            super::super::grid::MERMAID_EDGE_LABEL_FONT_SIZE
+        );
+    }
+    #[cfg(not(feature = "layout-grid"))]
+    let _ = mermaid_grid_label_font;
     for (index, color) in binding.palette.iter().enumerate() {
         let fill = if binding.backgrounds.is_empty() {
             String::new()

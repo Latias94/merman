@@ -329,10 +329,18 @@ pub(super) fn render_class_flat_adapter_dom<O: SvgOutput>(
     }
 
     // Mermaid 12 paints clusters before paths so namespace fills cannot cover relations.
+    let clusters = &ctx.layout.clusters;
+    let paint_clusters = (0..clusters.len()).map(|index| {
+        #[cfg(feature = "layout-layered")]
+        let index = edge_ctx
+            .layered
+            .map_or(index, |layered| layered.cluster_order[index]);
+        &clusters[index]
+    });
     detail.clusters += render_class_namespace_cluster_group(
         out,
         content_bounds,
-        &ctx.layout.clusters,
+        paint_clusters,
         ClassNamespaceClusterGroupContext {
             diagram_id: ctx.diagram_id,
             namespace_ids: ctx.namespace_ids,
@@ -604,6 +612,8 @@ fn render_class_split_edges_for_namespace<O: SvgOutput>(
         prepared_labels: edge_ctx.prepared_labels,
         #[cfg(feature = "layout-grid")]
         grid: None,
+        #[cfg(feature = "layout-layered")]
+        layered: None,
         #[cfg(feature = "layout-shoal")]
         canonical_routes: edge_ctx.canonical_routes,
         diagram_marker_class: edge_ctx.diagram_marker_class,

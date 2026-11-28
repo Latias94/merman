@@ -115,10 +115,46 @@ pub fn render_class_diagram_svg_model_with_config(
     let uses_grid = grid.is_some();
     #[cfg(not(feature = "layout-grid"))]
     let uses_grid = false;
+    #[cfg(feature = "layout-layered")]
+    let layered = if let crate::class::layered::Paint::Routed {
+        routing,
+        axes,
+        cluster_order,
+        label_y_offset,
+    } = &prepared_labels.layered
+    {
+        use merman_render_core::svg_edge_parity::layered_route::Curve;
+
+        let authored = mermaid_config.get_str("flowchart.curve").unwrap_or("basis");
+        let curve = if !mermaid_config.explicit_config_owns_path("layered.edgeRouting")
+            && let Some(native) = relation_theme.native_edge_curve()
+        {
+            Curve::from_mermaid(native)
+        } else {
+            Curve::for_edge_routing(*routing, authored)
+        };
+        Some(super::layered::ClassLayeredSvg {
+            axes,
+            cluster_order,
+            curve,
+            label_y_offset: *label_y_offset,
+        })
+    } else {
+        None
+    };
+    #[cfg(feature = "layout-layered")]
+    let uses_layered = layered.is_some();
+    #[cfg(not(feature = "layout-layered"))]
+    let uses_layered = false;
+    #[cfg(feature = "layout-layered")]
+    if let Some(layered) = layered {
+        layered.validate(&layout.edges, layout.clusters.len())?;
+    }
+    let uses_flat_dom = elk_parity || uses_grid || uses_layered;
 
     // Mermaid's Dagre renderer applies fixed 8px graph margins. The flat registered renderers
     // emit the layout coordinates directly with the viewport padding as their outer margin.
-    let content_tx = if elk_parity || uses_grid || uses_canonical_routes {
+    let content_tx = if uses_flat_dom || uses_canonical_routes {
         0.0
     } else {
         CLASS_GRAPH_MARGIN_PX
@@ -245,6 +281,27 @@ pub fn render_class_diagram_svg_model_with_config(
     } else {
         line_hop_paths
     };
+    #[cfg(feature = "layout-layered")]
+    let line_hop_paths = if let Some(layered) = layered {
+        let style = if relation_theme.sketch_edges {
+            None
+        } else {
+            merman_render_core::svg_edge_parity::layered_route::line_hop_style(
+                mermaid_config
+                    .as_config()
+                    .get_path(&["layered", "lineHops"]),
+            )
+        };
+        super::layered::line_hop_paths(
+            &paint_edges,
+            &relations_by_id,
+            layered.curve,
+            style,
+            options.work_meter,
+        )?
+    } else {
+        line_hop_paths
+    };
     let group_ctx = ClassSplitEdgeGroupsRenderContext {
         edges: &paint_edges,
         clusters: &layout.clusters,
@@ -257,6 +314,8 @@ pub fn render_class_diagram_svg_model_with_config(
         prepared_labels,
         #[cfg(feature = "layout-grid")]
         grid,
+        #[cfg(feature = "layout-layered")]
+        layered,
         #[cfg(feature = "layout-shoal")]
         canonical_routes,
         diagram_marker_class: aria_roledescription,
@@ -272,7 +331,7 @@ pub fn render_class_diagram_svg_model_with_config(
         hand_drawn_seed: hand_drawn_seed.clone(),
         timing,
         uses_elk_adapter_dom: elk_parity,
-        edge_paths_class: if elk_parity || uses_grid {
+        edge_paths_class: if uses_flat_dom {
             "edges edgePaths"
         } else {
             "edgePaths"
@@ -328,7 +387,7 @@ pub fn render_class_diagram_svg_model_with_config(
         timing,
         emit,
     };
-    if elk_parity || uses_grid {
+    if uses_flat_dom {
         out.push_str(r#"<g class="root">"#);
         render_class_flat_adapter_dom(
             ClassNodesRenderState {
@@ -423,6 +482,17 @@ pub fn render_class_diagram_svg_model_with_config(
     // Fixed sizing needs the final dimensions when the root is opened. Build its small
     // prefix after measuring content rather than changing a deferred document's sizing mode.
     let mut prefix = BoundedSvgOutput::new(options.work_meter);
+    #[cfg(all(feature = "layout-layered", feature = "layout-dagre"))]
+    let extra_attrs: &[(&str, &str)] = if matches!(
+        prepared_labels.layered,
+        crate::class::layered::Paint::DagreFallback
+    ) {
+        &[("data-layout-fallback", "dagre")]
+    } else {
+        &[]
+    };
+    #[cfg(not(all(feature = "layout-layered", feature = "layout-dagre")))]
+    let extra_attrs = &[];
     let root_document = write_class_svg_document(
         &mut prefix,
         model,
@@ -430,6 +500,7 @@ pub fn render_class_diagram_svg_model_with_config(
         aria_roledescription,
         root_context,
         final_root_spec,
+        extra_attrs,
     )?;
     out.replace_range(0..0, &prefix.finish()?)?;
 

@@ -38,6 +38,8 @@ use std::fmt::Write as _;
 mod canonical;
 #[cfg(feature = "layout-shoal")]
 pub use canonical::UsecasePaintedEdge;
+#[cfg(feature = "layout-grid")]
+mod grid;
 mod shapes;
 mod theme;
 
@@ -490,6 +492,25 @@ pub fn render_usecase_diagram_svg_model(
         .filter(|text| !text.is_empty());
     let title_x = (bounds.min_x + bounds.max_x) / 2.0;
     let mut viewport_bounds = bounds.clone();
+    #[cfg(feature = "layout-grid")]
+    let grid_edges = prepared
+        .grid
+        .as_ref()
+        .map(|grid| {
+            grid::paint_edges(
+                prepared,
+                grid,
+                &geometry,
+                &plans,
+                &mut viewport_bounds,
+                options.work_meter,
+            )
+        })
+        .transpose()?;
+    #[cfg(feature = "layout-grid")]
+    let uses_grid = grid_edges.is_some();
+    #[cfg(not(feature = "layout-grid"))]
+    let uses_grid = false;
     let elevation = native
         .map(|theme| &theme.elevation)
         .filter(|elevation| **elevation != merman_theme_contract::v2::Elevation::Flat);
@@ -625,7 +646,12 @@ pub fn render_usecase_diagram_svg_model(
             escape_xml(description)
         );
     }
-    theme::write_css(&mut out, diagram_id, css_binding)?;
+    theme::write_css(
+        &mut out,
+        diagram_id,
+        css_binding,
+        uses_grid && native.is_none(),
+    )?;
     // Mermaid emits marker wrappers that are observable in strict SVG DOM parity.
     out.push_str("<g>");
     if !uses_canonical {
@@ -773,13 +799,15 @@ pub fn render_usecase_diagram_svg_model(
     }
     out.checkpoint()?;
     let elk = prepared.elk;
-    let sketch = (!uses_canonical && css_binding.sketches_edges()).then(|| {
-        operation_randomness(
-            options.operation,
-            css_binding.hand_drawn_seed,
-            "usecase-edge",
-        )
-    });
+    let sketch = (!uses_canonical
+        && (css_binding.sketches_edges() || (uses_grid && css_binding.edge_look == "handDrawn")))
+        .then(|| {
+            operation_randomness(
+                options.operation,
+                css_binding.hand_drawn_seed,
+                "usecase-edge",
+            )
+        });
     let hop_points =
         if elk && sketch.is_none() && config_bool(cfg, &["elk", "lineHops"]) != Some(false) {
             let clone_work = prepared.measured.edges.iter().fold(0usize, |total, plan| {
@@ -846,23 +874,37 @@ pub fn render_usecase_diagram_svg_model(
                     .filter(|label| label.width > 0.0 && label.height > 0.0)
             }),
         )?;
+    let edge_layer_class = if uses_grid {
+        "edges edgePaths"
+    } else {
+        "edgePaths edges"
+    };
     if has_edge_mask {
         let _ = write!(
             out,
-            r#"<g class="edgePaths edges" mask="url(#{diagram_id}_usecase-edge-label-mask)">"#
+            r#"<g class="{edge_layer_class}" mask="url(#{diagram_id}_usecase-edge-label-mask)">"#
         );
     } else {
-        out.push_str("<g class=\"edgePaths edges\">");
+        let _ = write!(out, r#"<g class="{edge_layer_class}">"#);
     }
     for (edge_index, plan) in prepared.measured.edges.iter().enumerate() {
-        #[cfg(not(feature = "layout-shoal"))]
+        #[cfg(not(any(feature = "layout-shoal", feature = "layout-grid")))]
         let _ = edge_index;
         out.checkpoint()?;
         let edge = edge_geometry[plan.id.as_str()];
         let data_look = &css_binding.edge_look;
         #[cfg(feature = "layout-shoal")]
         let canonical_edge = canonical_edges.as_mut().and_then(Iterator::next);
+        #[cfg(feature = "layout-grid")]
+        let grid_edge = grid_edges.as_ref().map(|edges| &edges[edge_index]);
         let legacy = || {
+            #[cfg(feature = "layout-grid")]
+            if let Some(paint) = grid_edge {
+                return (
+                    json_stringify_points(&paint.points),
+                    Cow::Borrowed(paint.path.as_str()),
+                );
+            }
             let mut points = prepared.edge_points(edge);
             let curve = if elk {
                 elk_curve(edge)
@@ -911,11 +953,23 @@ pub fn render_usecase_diagram_svg_model(
             .get(plan.original_id.as_deref().unwrap_or(&plan.id))
             .copied();
         let label = relation.map(|edge| match edge.relationship_type {
-            UsecaseRelationshipType::Association => plan
-                .label
-                .as_ref()
-                .map(|label| format!("association {}", accessible_label(label)))
-                .unwrap_or_else(|| "association".into()),
+            UsecaseRelationshipType::Association => {
+                let label = if uses_grid {
+                    edge.label
+                        .as_deref()
+                        .filter(|label| !label.is_empty())
+                        .map(|label| {
+                            let kind = edge.label_type.unwrap_or_default();
+                            accessible_text(&sanitize_source_label(label, kind, config), kind)
+                        })
+                } else {
+                    plan.label.as_ref().map(accessible_label)
+                };
+                label.map_or_else(
+                    || "association".into(),
+                    |label| format!("association {label}"),
+                )
+            }
             UsecaseRelationshipType::Include => "include".into(),
             UsecaseRelationshipType::Extend => "extend".into(),
             UsecaseRelationshipType::Generalization => "generalization".into(),
@@ -1017,6 +1071,11 @@ pub fn render_usecase_diagram_svg_model(
             line_hops::rewrite_style_after_line_hop(&source_style, hopped_d, options.work_meter)?
         } else {
             std::borrow::Cow::Borrowed(source_style.as_str())
+        };
+        #[cfg(feature = "layout-grid")]
+        let source_style = match grid_edge {
+            Some(paint) => Cow::Owned(grid::path_style(plan, paint, options.work_meter)?),
+            None => source_style,
         };
         let _ = write!(out, r#" style="{}""#, escape_attr(&source_style));
         for (end, reference) in marker_references {
@@ -1179,6 +1238,17 @@ pub fn render_usecase_diagram_svg_model(
             },
         )?;
         out.push_str("</g>");
+    }
+    #[cfg(feature = "layout-grid")]
+    if let Some(grid) = &prepared.grid {
+        grid::write_labels(
+            &mut out,
+            prepared,
+            grid,
+            diagram_id,
+            config_bool(cfg, &["htmlLabels"]).unwrap_or(true),
+            options.work_meter,
+        )?;
     }
     out.push_str("</g></g></g>");
     if let Some(look) = &css_binding.mermaid_look {

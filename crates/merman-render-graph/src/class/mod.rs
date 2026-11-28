@@ -11,7 +11,8 @@ use merman_render_core::{Bounds, Error, Result};
 #[cfg(any(
     feature = "layout-dagre",
     feature = "layout-elk",
-    feature = "layout-grid"
+    feature = "layout-grid",
+    feature = "layout-layered"
 ))]
 use merman_render_core::{LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint};
 use rustc_hash::FxHashMap;
@@ -24,6 +25,8 @@ pub mod dagre;
 pub mod elk_layout;
 #[cfg(feature = "layout-grid")]
 pub mod grid;
+#[cfg(feature = "layout-layered")]
+pub mod layered;
 pub mod measured;
 mod model;
 mod native_theme;
@@ -206,6 +209,7 @@ pub type Rect = merman_render_core::euclid_box::Box2;
     feature = "layout-dagre",
     feature = "layout-elk",
     feature = "layout-grid",
+    feature = "layout-layered",
     test
 ))]
 #[derive(Debug)]
@@ -225,7 +229,8 @@ pub struct EdgeTerminalMetrics {
 #[cfg(any(
     feature = "layout-dagre",
     feature = "layout-elk",
-    feature = "layout-grid"
+    feature = "layout-grid",
+    feature = "layout-layered"
 ))]
 fn round_number(num: f64, precision: i32) -> f64 {
     if !num.is_finite() {
@@ -238,7 +243,8 @@ fn round_number(num: f64, precision: i32) -> f64 {
 #[cfg(any(
     feature = "layout-dagre",
     feature = "layout-elk",
-    feature = "layout-grid"
+    feature = "layout-grid",
+    feature = "layout-layered"
 ))]
 fn distance(a: &LayoutPoint, b: Option<&LayoutPoint>) -> f64 {
     let Some(b) = b else {
@@ -252,7 +258,8 @@ fn distance(a: &LayoutPoint, b: Option<&LayoutPoint>) -> f64 {
 #[cfg(any(
     feature = "layout-dagre",
     feature = "layout-elk",
-    feature = "layout-grid"
+    feature = "layout-grid",
+    feature = "layout-layered"
 ))]
 pub fn calculate_point(points: &[LayoutPoint], distance_to_traverse: f64) -> Option<LayoutPoint> {
     if points.is_empty() {
@@ -290,7 +297,8 @@ pub fn calculate_point(points: &[LayoutPoint], distance_to_traverse: f64) -> Opt
 #[cfg(any(
     feature = "layout-dagre",
     feature = "layout-elk",
-    feature = "layout-grid"
+    feature = "layout-grid",
+    feature = "layout-layered"
 ))]
 #[derive(Debug, Clone, Copy)]
 pub enum TerminalPos {
@@ -303,7 +311,8 @@ pub enum TerminalPos {
 #[cfg(any(
     feature = "layout-dagre",
     feature = "layout-elk",
-    feature = "layout-grid"
+    feature = "layout-grid",
+    feature = "layout-layered"
 ))]
 fn calc_terminal_label_position(
     terminal_marker_size: f64,
@@ -1289,6 +1298,16 @@ pub struct ClassPreparedLabels {
     pub(crate) edges_by_id: FxHashMap<String, ClassPreparedSvgEdgeLabel>,
     #[cfg(feature = "layout-grid")]
     grid_by_id: FxHashMap<String, grid::ClassGridLabel>,
+    #[cfg(feature = "layout-layered")]
+    layered: layered::Paint,
+}
+
+#[cfg(all(feature = "layout-layered", feature = "layout-dagre"))]
+impl ClassPreparedLabels {
+    /// Marks the fresh Dagre artifact when the caller admitted a retry from Layered.
+    pub fn mark_layered_dagre_fallback(&mut self) {
+        self.layered = layered::Paint::DagreFallback;
+    }
 }
 
 #[derive(Debug)]
@@ -2023,7 +2042,8 @@ fn validate_class_namespace_hierarchy(model: &ClassDiagramModel) -> Result<()> {
 #[cfg(any(
     feature = "layout-dagre",
     feature = "layout-elk",
-    feature = "layout-grid"
+    feature = "layout-grid",
+    feature = "layout-layered"
 ))]
 pub fn required_terminal_label_position(
     edge_id: &str,
@@ -2042,7 +2062,8 @@ pub fn required_terminal_label_position(
 #[cfg(any(
     feature = "layout-dagre",
     feature = "layout-elk",
-    feature = "layout-grid"
+    feature = "layout-grid",
+    feature = "layout-layered"
 ))]
 pub fn apply_class_terminal_labels(
     edge: &mut LayoutEdge,
@@ -2093,7 +2114,8 @@ pub fn apply_class_terminal_labels(
 #[cfg(any(
     feature = "layout-dagre",
     feature = "layout-elk",
-    feature = "layout-grid"
+    feature = "layout-grid",
+    feature = "layout-layered"
 ))]
 pub fn compute_bounds(
     nodes: &[LayoutNode],

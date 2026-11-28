@@ -473,6 +473,7 @@ pub(super) fn measure(
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn merman_render_core::math::MathRenderer + Send + Sync)>,
     work: &mut OperationLayoutWorkControl,
+    #[cfg(feature = "layout-grid")] mut grid_labels: Option<&mut super::grid::GridLabels<'_>>,
 ) -> Result<(Vec<UsecaseNodePlan>, Vec<UsecaseEdgePlan>)> {
     let config = full_config.as_value();
     let sanitize =
@@ -787,6 +788,8 @@ pub(super) fn measure(
     let mut edges = Vec::new();
     for edge in &model.relationships {
         work.charge_adapter(1)?;
+        #[cfg(feature = "layout-grid")]
+        let edge_slot = edges.len();
         let mut css = styles(model, &edge.classes, &[]);
         // Mermaid selects Neo marker margins from class styles before inline edge styles.
         let source_animated = css
@@ -850,6 +853,11 @@ pub(super) fn measure(
             target: edge.target.clone(),
             label: text
                 .map(|text| {
+                    #[cfg(feature = "layout-grid")]
+                    if let Some(grid_labels) = grid_labels.as_deref_mut() {
+                        grid_labels.measure(edge_slot, &source_text(text, kind), kind)?;
+                        return Ok(None);
+                    }
                     let mut plan = label(
                         &source_text(text, kind),
                         kind,
@@ -871,9 +879,10 @@ pub(super) fn measure(
                         plan.metrics.width += 4.0;
                         plan.metrics.height += 4.0;
                     }
-                    Ok::<_, Error>(plan)
+                    Ok::<_, Error>(Some(plan))
                 })
-                .transpose()?,
+                .transpose()?
+                .flatten(),
             minlen: edge.minlen,
             start_marker: start.map(str::to_owned),
             end_marker: end.map(str::to_owned),
@@ -1057,6 +1066,8 @@ mod tests {
                 &DeterministicTextMeasurer::default(),
                 None,
                 &mut work(),
+                #[cfg(feature = "layout-grid")]
+                None,
             )
             .unwrap();
             let node = nodes.iter().find(|node| node.id == "A").unwrap();
@@ -1115,6 +1126,8 @@ mod tests {
             &DeterministicTextMeasurer::default(),
             None,
             &mut work,
+            #[cfg(feature = "layout-grid")]
+            None,
         )
         .unwrap();
         let style = edges[0].source_style.clone();
@@ -1161,6 +1174,8 @@ mod tests {
             &DeterministicTextMeasurer::default(),
             None,
             &mut work,
+            #[cfg(feature = "layout-grid")]
+            None,
         )
         .unwrap();
         super::super::dagre::expand_self_loops(
@@ -1228,6 +1243,8 @@ mod tests {
             &measurer,
             None,
             &mut work(),
+            #[cfg(feature = "layout-grid")]
+            None,
         )
         .unwrap();
         let (large, _) = measure(
@@ -1237,6 +1254,8 @@ mod tests {
             &measurer,
             None,
             &mut work(),
+            #[cfg(feature = "layout-grid")]
+            None,
         )
         .unwrap();
         assert_eq!(small[0].width, 76.0);
@@ -1265,6 +1284,8 @@ mod tests {
             &DeterministicTextMeasurer::default(),
             None,
             &mut work(),
+            #[cfg(feature = "layout-grid")]
+            None,
         )
         .unwrap();
         let table = nodes[0].table.as_ref().unwrap();

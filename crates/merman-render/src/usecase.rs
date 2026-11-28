@@ -18,7 +18,7 @@ mod shoal;
 pub(crate) struct UsecasePreparedArtifact {
     pub(crate) prepared: UsecasePrepared,
     #[cfg(feature = "layout-shoal")]
-    route_contract: crate::graph_layout::RouteContract,
+    route_contract: Option<crate::graph_layout::RouteContract>,
     #[cfg(feature = "layout-shoal")]
     canonical: Option<shoal::UsecaseCanonicalLayout>,
 }
@@ -32,7 +32,7 @@ impl UsecasePreparedArtifact {
     pub(crate) fn canonical_routes(
         &self,
     ) -> Option<&crate::graph_layout::canonical::CanonicalRoutes> {
-        self.route_contract.canonical_routes()
+        self.route_contract.as_ref()?.canonical_routes()
     }
 
     #[cfg(feature = "layout-shoal")]
@@ -60,12 +60,32 @@ pub(crate) fn prepare_usecase_diagram(
     #[cfg(any(
         feature = "layout-dagre",
         feature = "layout-elk",
+        feature = "layout-grid",
         feature = "layout-shoal"
     ))]
     use crate::layout_backend::GraphLayoutBackend;
 
     let work_meter = execution.work_meter();
     work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
+    let backend = execution.layout_backend();
+    #[cfg(feature = "layout-grid")]
+    if backend == GraphLayoutBackend::Grid {
+        return Ok(UsecasePreparedArtifact {
+            prepared: merman_render_graph::usecase::prepare_grid(
+                model,
+                effective_config,
+                execution.native_family_theme(),
+                execution.family.session().canvas_background(),
+                execution.text_measurer(),
+                execution.math_renderer(),
+                &work_meter,
+            )?,
+            #[cfg(feature = "layout-shoal")]
+            route_contract: None,
+            #[cfg(feature = "layout-shoal")]
+            canonical: None,
+        });
+    }
     let config_value = effective_config.as_value();
     let mut work = crate::layout_work::OperationLayoutWorkControl::new(work_meter);
     let measured = prepare_usecase_measurements(
@@ -77,7 +97,6 @@ pub(crate) fn prepare_usecase_diagram(
         execution.math_renderer(),
         &mut work,
     )?;
-    let backend = execution.layout_backend();
     backend.validate_rootless_graph()?;
     #[cfg(feature = "layout-shoal")]
     if backend == GraphLayoutBackend::Shoal {
@@ -85,7 +104,7 @@ pub(crate) fn prepare_usecase_diagram(
             shoal::layout(model, config_value, &measured, Some(execution), &mut work)?;
         return Ok(UsecasePreparedArtifact {
             prepared: UsecasePrepared::new(measured, layout, Default::default(), false),
-            route_contract: RouteContract::canonical_graph(routes),
+            route_contract: Some(RouteContract::canonical_graph(routes)),
             canonical: Some(canonical),
         });
     }
@@ -96,7 +115,7 @@ pub(crate) fn prepare_usecase_diagram(
                 model, config, measured, &mut work,
             )?,
             #[cfg(feature = "layout-shoal")]
-            route_contract: RouteContract::DagreParity,
+            route_contract: Some(RouteContract::DagreParity),
             #[cfg(feature = "layout-shoal")]
             canonical: None,
         }),
@@ -111,7 +130,7 @@ pub(crate) fn prepare_usecase_diagram(
                 execution.elk_operation_seed(),
             )?,
             #[cfg(feature = "layout-shoal")]
-            route_contract: RouteContract::ElkParity,
+            route_contract: Some(RouteContract::ElkParity),
             #[cfg(feature = "layout-shoal")]
             canonical: None,
         }),

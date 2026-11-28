@@ -2,6 +2,7 @@
     feature = "svg",
     any(
         feature = "diagram-flowchart",
+        feature = "diagram-class",
         feature = "diagram-er",
         feature = "diagram-requirement"
     )
@@ -20,6 +21,12 @@ fn flowchart_layered_builder_matches_planning_and_host_admission() {
         DiagramFamilyId::FLOWCHART,
         "flowchart LR\nA[Start] -->|Approved| B[Done]\n",
     );
+}
+
+#[test]
+#[cfg(feature = "diagram-class")]
+fn class_layered_builder_matches_planning_and_host_admission() {
+    assert_layered_admission(DiagramFamilyId::CLASS, "classDiagram\n  A --> B\n");
 }
 
 #[test]

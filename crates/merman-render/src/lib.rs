@@ -291,7 +291,8 @@ pub const fn layout_grid_available() -> bool {
             feature = "diagram-mindmap",
             feature = "diagram-requirement",
             feature = "diagram-state",
-            feature = "diagram-swimlane"
+            feature = "diagram-swimlane",
+            feature = "diagram-usecase"
         )
     ))
 }
@@ -303,6 +304,7 @@ pub const fn layout_layered_available() -> bool {
         any(
             feature = "diagram-flowchart",
             feature = "diagram-agentflow",
+            feature = "diagram-class",
             feature = "diagram-er",
             feature = "diagram-mindmap",
             feature = "diagram-requirement",
@@ -635,6 +637,7 @@ impl std::ops::Deref for LayoutExecution<'_> {
         feature = "layout-dagre",
         feature = "layout-elk",
         feature = "layout-grid",
+        feature = "layout-layered",
         feature = "layout-shoal"
     )),
     allow(
@@ -675,6 +678,14 @@ pub(crate) fn layout_class_typed_by_engine(
             options,
             render_config,
             &work_control,
+        ),
+        #[cfg(feature = "layout-layered")]
+        layout_backend::GraphLayoutBackend::Layered => class::layout_layered(
+            model,
+            effective_config,
+            options,
+            render_config,
+            &mut work_control,
         ),
         #[cfg(feature = "layout-shoal")]
         GraphLayoutBackend::Shoal => class::shoal::layout(

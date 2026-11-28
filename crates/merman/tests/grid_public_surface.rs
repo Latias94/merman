@@ -16,7 +16,8 @@ fn grid_availability_requires_the_facade_feature_and_a_supported_family() {
                 feature = "diagram-er",
                 feature = "diagram-mindmap",
                 feature = "diagram-requirement",
-                feature = "diagram-state"
+                feature = "diagram-state",
+                feature = "diagram-usecase"
             )
         ))
     );
@@ -30,7 +31,8 @@ fn grid_availability_requires_the_facade_feature_and_a_supported_family() {
     feature = "diagram-er",
     feature = "diagram-mindmap",
     feature = "diagram-requirement",
-    feature = "diagram-state"
+    feature = "diagram-state",
+    feature = "diagram-usecase"
 ))]
 mod families {
     use super::layout_grid_available;
@@ -81,6 +83,11 @@ mod families {
         (
             DiagramFamilyId::STATE,
             "stateDiagram-v2\n  Idle --> Ready\n",
+        ),
+        #[cfg(feature = "diagram-usecase")]
+        (
+            DiagramFamilyId::USECASE,
+            "usecase-beta\n  actor Customer\n  Checkout[Checkout]\n  Customer --> Checkout\n",
         ),
     ];
 

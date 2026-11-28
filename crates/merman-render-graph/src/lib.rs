@@ -32,7 +32,11 @@ mod grid_edges;
     feature = "diagram-er",
     all(
         feature = "layout-grid",
-        any(feature = "diagram-requirement", feature = "diagram-state")
+        any(
+            feature = "diagram-requirement",
+            feature = "diagram-state",
+            feature = "diagram-usecase"
+        )
     )
 ))]
 mod label_rect;

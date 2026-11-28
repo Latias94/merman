@@ -1,4 +1,4 @@
-//! Usecase label preparation, Dagre and ELK placement, and complete Mermaid-compatible SVG.
+//! Usecase label preparation, graph placement, and complete Mermaid-compatible SVG.
 
 use merman_model::{
     families::usecase::{UsecaseDiagramModel, UsecaseLabelType},
@@ -20,9 +20,12 @@ pub mod actor;
 mod dagre;
 #[cfg(feature = "layout-elk")]
 mod elk;
+#[cfg(feature = "layout-grid")]
+mod grid;
 #[cfg(any(
     feature = "layout-dagre",
     feature = "layout-elk",
+    feature = "layout-grid",
     feature = "layout-shoal"
 ))]
 pub mod layout;
@@ -36,6 +39,8 @@ mod theme;
 
 #[cfg(feature = "layout-elk")]
 pub use elk::prepare as prepare_elk;
+#[cfg(feature = "layout-grid")]
+pub use grid::prepare as prepare_grid;
 #[cfg(feature = "layout-shoal")]
 pub use marker::UsecaseMarker;
 #[cfg(any(feature = "layout-elk", feature = "layout-shoal"))]
@@ -208,6 +213,8 @@ pub struct UsecasePrepared {
     layout: UsecaseDiagramLayout,
     edge_paths: HashMap<String, Vec<LayoutPoint>>,
     elk: bool,
+    #[cfg(feature = "layout-grid")]
+    grid: Option<grid::UsecaseGridPaint>,
 }
 
 impl UsecasePrepared {
@@ -222,6 +229,8 @@ impl UsecasePrepared {
             layout,
             edge_paths,
             elk,
+            #[cfg(feature = "layout-grid")]
+            grid: None,
         }
     }
 
@@ -257,12 +266,30 @@ pub fn prepare_usecase_measurements(
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<UsecaseMeasured> {
+    let css = resolve_css(config, native, canvas);
+    let (nodes, edges) = measure::measure(
+        model,
+        config,
+        &css,
+        measurer,
+        math_renderer,
+        work,
+        #[cfg(feature = "layout-grid")]
+        None,
+    )?;
+    Ok(UsecaseMeasured { css, nodes, edges })
+}
+
+fn resolve_css(
+    config: &PresentationConfig,
+    native: Option<&FamilyTheme>,
+    canvas: Option<Color>,
+) -> UsecaseCssBinding {
     let mut css = UsecaseCssBinding::new(config.as_value());
     if let Some(theme) = native {
         css.apply_native(config, theme, canvas);
     }
-    let (nodes, edges) = measure::measure(model, config, &css, measurer, math_renderer, work)?;
-    Ok(UsecaseMeasured { css, nodes, edges })
+    css
 }
 
 #[cfg(feature = "layout-dagre")]

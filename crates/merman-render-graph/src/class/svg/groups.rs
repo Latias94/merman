@@ -30,6 +30,8 @@ pub(super) struct ClassSplitEdgeGroupsRenderContext<'a> {
     pub(super) prepared_labels: &'a crate::class::ClassPreparedLabels,
     #[cfg(feature = "layout-grid")]
     pub(super) grid: Option<merman_render_core::graph_layout::mermaid_grid::GridPaint>,
+    #[cfg(feature = "layout-layered")]
+    pub(super) layered: Option<super::layered::ClassLayeredSvg<'a>>,
     #[cfg(feature = "layout-shoal")]
     pub(super) canonical_routes: Option<&'a ClassCanonicalRoutes<'a>>,
     pub(super) diagram_marker_class: &'a str,
@@ -117,6 +119,8 @@ pub(super) fn local_edge_context<'a>(
         prepared_labels: ctx.prepared_labels,
         #[cfg(feature = "layout-grid")]
         grid: ctx.grid,
+        #[cfg(feature = "layout-layered")]
+        layered: ctx.layered,
         #[cfg(feature = "layout-shoal")]
         canonical_routes: ctx.canonical_routes,
         diagram_marker_class: ctx.diagram_marker_class,

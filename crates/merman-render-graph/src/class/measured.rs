@@ -58,6 +58,11 @@ pub struct RelationTerminals<'a> {
 }
 
 pub trait MeasurementTarget<'a> {
+    #[cfg(feature = "layout-layered")]
+    fn uses_layered_labels(&self) -> bool {
+        false
+    }
+
     #[cfg(feature = "layout-grid")]
     fn grid_label_work(&self) -> Option<(&OperationWorkMeter, &OperationLayoutWorkControl)> {
         None
@@ -369,9 +374,13 @@ pub fn measure_into<'a>(
                 .insert(rel.id.clone(), label);
         }
 
+        #[cfg(feature = "layout-layered")]
+        let layered = target.uses_layered_labels();
         let measure_terminal = |text: Option<&str>| {
             #[cfg(feature = "layout-grid")]
             let text = text.filter(|&text| !grid || text != "none");
+            #[cfg(feature = "layout-layered")]
+            let text = text.filter(|&text| !layered || text != "none");
             positive_label_size(plain_label_metrics(
                 text.unwrap_or_default(),
                 measurer,

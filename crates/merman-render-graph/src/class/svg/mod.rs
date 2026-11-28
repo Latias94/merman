@@ -40,6 +40,9 @@ mod interface;
 
 mod label;
 
+#[cfg(feature = "layout-layered")]
+mod layered;
+
 mod namespace;
 
 mod node;

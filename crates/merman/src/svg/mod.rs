@@ -61,7 +61,8 @@ pub const fn layout_grid_available() -> bool {
             feature = "diagram-er",
             feature = "diagram-mindmap",
             feature = "diagram-requirement",
-            feature = "diagram-state"
+            feature = "diagram-state",
+            feature = "diagram-usecase"
         )
     )) && merman_render::layout_grid_available()
 }
@@ -75,6 +76,7 @@ pub const fn layout_layered_available() -> bool {
             feature = "diagram-flowchart",
             feature = "diagram-swimlane",
             feature = "diagram-agentflow",
+            feature = "diagram-class",
             feature = "diagram-er",
             feature = "diagram-mindmap",
             feature = "diagram-requirement"
