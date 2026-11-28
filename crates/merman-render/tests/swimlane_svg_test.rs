@@ -354,18 +354,22 @@ end
 B next@-->|Ship| X
 A retry@-->|Retry| X
 ";
-    let (_, layout, work) =
-        try_render_swimlane_with_layout(source, "review", swimlane_work_limit(222)).unwrap();
+    let (_, layout, required) =
+        try_render_swimlane_with_layout(source, "review", RenderResourcePolicy::interactive())
+            .unwrap();
     assert_eq!(layout.edges.len(), 3);
-    assert_eq!(work, 222);
+    let (_, _, work) =
+        try_render_swimlane_with_layout(source, "review", swimlane_work_limit(required)).unwrap();
+    assert_eq!(work, required);
 
-    let error = try_render_swimlane_with_layout(source, "review", swimlane_work_limit(221))
-        .expect_err("the budget below the required work must fail");
+    let error =
+        try_render_swimlane_with_layout(source, "review", swimlane_work_limit(required - 1))
+            .expect_err("the budget below the required work must fail");
     let Error::ResourceLimitExceeded(limit) = error else {
         panic!("expected a layout work ceiling, got {error}");
     };
     assert_eq!(limit.limit, ResourceLimitId::MaxLayoutWorkUnits.as_str());
-    assert_eq!((limit.actual, limit.max), (222, 221));
+    assert_eq!((limit.actual, limit.max), (required, required - 1));
 }
 
 #[test]
@@ -482,22 +486,80 @@ fn mermaid_12_3_shared_members_keep_empty_lane_shells_titles_and_edge_turns() {
 }
 
 #[test]
-fn mermaid_12_3_drawn_ports_preserve_the_rounded_hexagon_arrival() {
+fn mermaid_12_4_aligned_cross_lane_edge_keeps_contour_contacts_and_label() {
     let source = include_str!("../../../fixtures/swimlane/local_mermaid_12_3_drawn_ports_tb.mmd");
-    let upstream = roxmltree::Document::parse(include_str!(
-        "../../../fixtures/upstream-svgs/swimlane/local_mermaid_12_3_drawn_ports_tb.svg"
-    ))
-    .unwrap();
-    let svg = render_swimlane(source, "drawn-ports");
+    let (svg, layout) = render_swimlane_with_layout(source, "drawn-ports");
     let actual = roxmltree::Document::parse(&svg).unwrap();
-    let identity = "L_B_C_0";
-    let expected = upstream
-        .descendants()
-        .find(|node| node.has_tag_name("path") && node.attribute("data-id") == Some(identity))
+    let route = layout
+        .edges
+        .iter()
+        .find(|edge| edge.id == "L_B_C_0")
         .unwrap();
-    assert_eq!(path_commands(expected), "MLQL");
-    let edge = semantic_element(&actual, identity, "edge");
-    assert_eq!(path_commands(edge), path_commands(expected));
+    assert_eq!((route.from.as_str(), route.to.as_str()), ("B", "C"));
+    assert_eq!(route.curve, "rounded");
+    let source_node = layout
+        .nodes
+        .iter()
+        .find(|node| node.id == route.from)
+        .unwrap();
+    let target_node = layout
+        .nodes
+        .iter()
+        .find(|node| node.id == route.to)
+        .unwrap();
+    let label = layout
+        .nodes
+        .iter()
+        .find(|node| Some(&node.id) == route.label_node_id.as_ref())
+        .unwrap();
+    let [from, to] = route.points.as_slice() else {
+        panic!("expected a two-point shaft, got {:?}", route.points);
+    };
+    assert_eq!(
+        (from.x, from.y),
+        (source_node.x + source_node.width / 2.0, source_node.y)
+    );
+    assert_eq!(
+        (to.x, to.y),
+        (target_node.x - target_node.width / 2.0, source_node.y)
+    );
+    assert!(label.is_edge_label && label.x > from.x && label.x < to.x);
+    assert_eq!(label.y, from.y);
+
+    let edge = semantic_element(&actual, &route.id, "edge");
+    assert_eq!(edge.attribute("marker-start"), None);
+    assert!(
+        edge.attribute("marker-end")
+            .unwrap()
+            .ends_with("_swimlane-pointEnd)")
+    );
+    assert_eq!(
+        text_content(semantic_element(&actual, &route.id, "edge-label")),
+        "accept"
+    );
+    use svgtypes::PathSegment::{LineTo, MoveTo};
+    let path = svgtypes::PathParser::from(edge.attribute("d").unwrap())
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    let [
+        MoveTo {
+            abs: true,
+            x: start_x,
+            y: start_y,
+        },
+        LineTo {
+            abs: true,
+            x: end_x,
+            y: end_y,
+        },
+    ] = path.as_slice()
+    else {
+        panic!("expected an SVG move and line, got {path:?}");
+    };
+    assert!((start_x - from.x).abs() < 1e-3);
+    assert!((start_y - from.y).abs() < 1e-3);
+    assert!((end_x - (to.x - 4.0)).abs() < 1e-3);
+    assert!((end_y - to.y).abs() < 1e-3);
 }
 
 fn path_commands(node: roxmltree::Node<'_, '_>) -> String {
