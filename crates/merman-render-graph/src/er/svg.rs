@@ -1076,21 +1076,21 @@ pub fn render_er_diagram_svg_model(
                         .collect::<Vec<_>>();
                     legacy_points.as_slice()
                 };
+                let fallback_path =
+                    || er_edge_path_d(points, rounded_layout, missing_section, native);
                 #[cfg(feature = "layout-grid")]
-                let path = grid
+                let grid_path = grid
                     .map(|settings| grid::shaft(points, settings, options.work_meter))
                     .transpose()?;
-                #[cfg(not(feature = "layout-grid"))]
-                let path: Option<String> = None;
+                #[cfg(feature = "layout-grid")]
+                let fallback_path = || grid_path.unwrap_or_else(fallback_path);
                 #[cfg(feature = "layout-layered")]
-                let path = if let Some((route, curve)) = layered_route {
-                    Some(layered::shaft(route, curve, options.work_meter)?)
-                } else {
-                    path
+                let mut d = match layered_route {
+                    Some((route, curve)) => layered::shaft(route, curve, options.work_meter)?,
+                    None => fallback_path(),
                 };
-                let mut d = path.unwrap_or_else(|| {
-                    er_edge_path_d(points, rounded_layout, missing_section, native)
-                });
+                #[cfg(not(feature = "layout-layered"))]
+                let mut d = fallback_path();
                 if let Some(native) = native.filter(|_| sketch && !d.is_empty()) {
                     let [start, end] =
                         [e.start_marker.as_deref(), e.end_marker.as_deref()].map(|marker| {

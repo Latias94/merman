@@ -551,21 +551,30 @@ fn escaped_markdown(text: &str) -> String {
     escaped
 }
 
+struct MeasureInputs<'a> {
+    config: &'a PresentationConfig,
+    css: &'a UsecaseCssBinding,
+    measurer: &'a dyn TextMeasurer,
+    math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
+}
+
 pub(super) fn measure(
     model: &UsecaseDiagramModel,
-    full_config: &merman_model::presentation::PresentationConfig,
-    css_binding: &UsecaseCssBinding,
+    config: &PresentationConfig,
+    css: &UsecaseCssBinding,
     measurer: &dyn TextMeasurer,
-    math_renderer: Option<&(dyn merman_render_core::math::MathRenderer + Send + Sync)>,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     work: &mut OperationLayoutWorkControl,
     #[cfg(feature = "layout-grid")] grid_labels: Option<&mut super::grid::GridLabels<'_>>,
 ) -> Result<(Vec<UsecaseNodePlan>, Vec<UsecaseEdgePlan>)> {
     measure_pass(
         model,
-        full_config,
-        css_binding,
-        measurer,
-        math_renderer,
+        MeasureInputs {
+            config,
+            css,
+            measurer,
+            math_renderer,
+        },
         work,
         false,
         #[cfg(feature = "layout-grid")]
@@ -584,10 +593,12 @@ pub(super) fn measure_layered(
 ) -> Result<(Vec<UsecaseNodePlan>, Vec<UsecaseEdgePlan>)> {
     measure_pass(
         model,
-        config,
-        css,
-        measurer,
-        math_renderer,
+        MeasureInputs {
+            config,
+            css,
+            measurer,
+            math_renderer,
+        },
         work,
         true,
         #[cfg(feature = "layout-grid")]
@@ -643,14 +654,17 @@ pub(super) fn prepare_layered_boundary_labels(
 
 fn measure_pass(
     model: &UsecaseDiagramModel,
-    full_config: &PresentationConfig,
-    css_binding: &UsecaseCssBinding,
-    measurer: &dyn TextMeasurer,
-    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    inputs: MeasureInputs<'_>,
     work: &mut OperationLayoutWorkControl,
     layered: bool,
     #[cfg(feature = "layout-grid")] mut grid_labels: Option<&mut super::grid::GridLabels<'_>>,
 ) -> Result<(Vec<UsecaseNodePlan>, Vec<UsecaseEdgePlan>)> {
+    let MeasureInputs {
+        config: full_config,
+        css: css_binding,
+        measurer,
+        math_renderer,
+    } = inputs;
     let config = full_config.as_value();
     let sanitize =
         |text: &str| merman_markup::sanitize::sanitize_text(text, full_config.as_config());

@@ -198,14 +198,16 @@ fn write_label(
     let canonical_boundary = matches!(kind, UsecaseLabelKind::Boundary { canonical: true });
     let positioned_node = matches!(kind, UsecaseLabelKind::PositionedNode(_));
     let center_text = is_edge_label || matches!(kind, UsecaseLabelKind::CenteredNode(_));
-    #[cfg(feature = "layout-layered")]
-    let prepared_svg_bbox_y = plan.layered_svg.as_ref().map(|label| label.bbox_y);
-    #[cfg(not(feature = "layout-layered"))]
-    let prepared_svg_bbox_y: Option<f64> = None;
     let svg_bbox_y = if !html && (center_text || positioned_node || canonical_boundary) {
-        prepared_svg_bbox_y.unwrap_or_else(|| {
-            measurer.measure_svg_create_text_bbox_y_offset_px(&plan.text, &plan.style)
-        })
+        let measure_bbox_y =
+            || measurer.measure_svg_create_text_bbox_y_offset_px(&plan.text, &plan.style);
+        #[cfg(feature = "layout-layered")]
+        let measure_bbox_y = || {
+            plan.layered_svg
+                .as_ref()
+                .map_or_else(measure_bbox_y, |label| label.bbox_y)
+        };
+        measure_bbox_y()
     } else {
         0.0
     };
@@ -618,7 +620,7 @@ pub fn render_usecase_diagram_svg_model(
                 &geometry,
                 &plans,
                 &mut viewport_bounds,
-                &options,
+                options,
             )
         })
         .transpose()?;
