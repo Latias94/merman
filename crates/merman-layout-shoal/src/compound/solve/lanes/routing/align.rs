@@ -61,19 +61,7 @@ impl Alignment {
         }
         for ink in self.ink() {
             work.visit(1)?;
-            let guarded = inflate(ink, spacing.edge);
-            if !clear(
-                index,
-                guarded,
-                |item| {
-                    inactive(item.owner)
-                        || !match item.owner {
-                            Owner::Body(_) => guarded.overlaps_strictly(item.bounds),
-                            _ => ink.overlaps(item.bounds),
-                        }
-                },
-                work,
-            )? {
+            if !clear_ink(index, ink, spacing.edge, &[], inactive, work)? {
                 return Ok(false);
             }
         }
@@ -96,13 +84,6 @@ impl BodyClearance {
 
     fn search(&self) -> Bounds {
         self.nodes.union(self.ink)
-    }
-}
-
-fn inflate(Bounds { x, y }: Bounds, gap: f64) -> Bounds {
-    Bounds {
-        x: [x[0] - gap, x[1] + gap],
-        y: [y[0] - gap, y[1] + gap],
     }
 }
 
@@ -242,15 +223,16 @@ impl Scene<'_> {
                 return Ok(None);
             }
         }
+        let peer_slot = wire.ends[peer].node().map(|id| id.0 as usize);
         for &footprint in ink.iter().flatten() {
-            if !footprint.finite()
-                || !clear(
-                    &self.occupied,
-                    footprint,
-                    |item| item.owner == Owner::Wire(edge) || item.owner == Owner::Body(slot),
-                    work,
-                )?
-            {
+            if !clear_ink(
+                &self.occupied,
+                footprint,
+                self.spacing.edge,
+                peer_slot.as_slice(),
+                |owner| owner == Owner::Wire(edge) || owner == Owner::Body(slot),
+                work,
+            )? {
                 return Ok(None);
             }
         }
@@ -329,8 +311,7 @@ impl Scene<'_> {
                     gap.search(),
                     |item| match item.owner {
                         Owner::Body(other) => {
-                            other == slot
-                                || !gap.nodes.overlaps_strictly(Bounds::of(self.nodes[other]))
+                            other == slot || !gap.nodes.overlaps_strictly(item.bounds)
                         }
                         Owner::Header => !gap.ink.overlaps_strictly(item.bounds),
                         Owner::Wire(id) => {
@@ -772,6 +753,8 @@ mod tests {
             rect(20.0, 24.0, 40.0, 20.0),
             rect(130.0, 48.0, 40.0, 60.0),
             rect(194.0, 6.0, 10.0, 6.0),
+            rect(80.0, 40.0, 15.0, 10.0),
+            rect(80.0, 48.0, 15.0, 10.0),
         ];
         let graph = graph(&nodes);
         let spacing = Spacing {
@@ -793,6 +776,11 @@ mod tests {
         assert!(trial(8.0, vec![]).is_none());
         assert!(trial(4.0, vec![body()]).is_none());
         assert!(trial(4.0, vec![stroke()]).is_none());
+        // This body meets the node gap and leaves only 6 px beside the new shaft.
+        let near_shaft = Bounds::of(nodes[3]);
+        assert!(trial(4.0, vec![blocker(Owner::Body(3), near_shaft)]).is_none());
+        assert!(trial(4.0, vec![blocker(Owner::Wire(3), near_shaft)]).is_some());
+        assert!(trial(4.0, vec![blocker(Owner::Body(4), Bounds::of(nodes[4]))]).is_some());
         let plan = trial(4.0, vec![]).unwrap();
         assert_eq!(plan.rect.y, 4.0);
 
@@ -811,9 +799,7 @@ mod tests {
             blocker(Owner::Wire(0), stroke().bounds),
             &[true]
         ));
-        // The accepted node is clear of the proposed node, but too close to its new shaft.
-        let near_shaft = || blocker(Owner::Body(0), Bounds::of(rect(80.0, 40.0, 15.0, 10.0)));
-        assert!(!clear_plan(near_shaft(), &[true]));
-        assert!(clear_plan(near_shaft(), &[false]));
+        assert!(!clear_plan(blocker(Owner::Body(0), near_shaft), &[true]));
+        assert!(clear_plan(blocker(Owner::Body(0), near_shaft), &[false]));
     }
 }

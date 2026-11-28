@@ -521,10 +521,12 @@ end
 A edge0@-->|Next| C
 C edge1@--> D
 D edge3@-->|Pass| C
-E edge4@-->|Send report for approval| B
+E edge4@-->|Prepare audit<br/>and archive<br/>all records| B
 C edge5@-->|Next| E
 C edge6@--> B
-B edge7@-->|Pass| E";
+B edge7@-->|Pass| E
+B[Batch event for data processor]
+E[Dispatch the result before validation]";
     let sketch = ThemeCompiler::new()
         .compile_json(
             br#"{"schema_version":2,"extends":"studio","form":{"edge_style":"sketch"}}"#,
