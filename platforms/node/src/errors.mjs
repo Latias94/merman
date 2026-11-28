@@ -214,6 +214,9 @@ function assertTransportJsonTextLimits(value, label, limits) {
   if (!limits || typeof limits !== "object") {
     throw new TypeError(`Missing Node wire limits for ${label}.`);
   }
+  if (value.length > limits.max_utf8_bytes) {
+    throw utf8WireLimitError(label, limits.max_utf8_bytes);
+  }
   measureUtf8Field(value, label, Infinity, false, limits.max_utf8_bytes);
   scanBoundedJsonText(value, label, limits);
 }
@@ -536,9 +539,26 @@ function utf8FieldLimitError(label, maxUtf8Bytes) {
   );
 }
 
-function isolatedUtf16FieldError(value, label, maxUtf8Bytes) {
-  if (value.length > maxUtf8Bytes / 3 && Buffer.byteLength(value, "utf8") > maxUtf8Bytes) {
+function utf8WireLimitError(label, maxUtf8Bytes) {
+  return new MermanInvalidTransportError(
+    `Merman transport ${label} exceeds the ${maxUtf8Bytes}-byte wire limit.`,
+  );
+}
+
+function utf8LimitError(label, bytes, maxUtf8Bytes, maxDocumentUtf8Bytes) {
+  if (bytes > maxUtf8Bytes) {
     return utf8FieldLimitError(label, maxUtf8Bytes);
+  }
+  if (bytes > maxDocumentUtf8Bytes) {
+    return utf8WireLimitError(label, maxDocumentUtf8Bytes);
+  }
+}
+
+function isolatedUtf16FieldError(value, label, maxUtf8Bytes, maxDocumentUtf8Bytes) {
+  if (value.length > Math.min(maxUtf8Bytes, maxDocumentUtf8Bytes) / 3) {
+    const bytes = Buffer.byteLength(value, "utf8");
+    const error = utf8LimitError(label, bytes, maxUtf8Bytes, maxDocumentUtf8Bytes);
+    if (error) return error;
   }
   return new MermanInvalidTransportError(
     `Merman transport ${label} contains an isolated UTF-16 surrogate.`,
@@ -562,24 +582,18 @@ function measureUtf8Field(value, label, maxUtf8Bytes, countJsonEscapes, maxDocum
     } else if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
       const low = value.charCodeAt(index + 1);
       if (!(low >= 0xdc00 && low <= 0xdfff)) {
-        throw isolatedUtf16FieldError(value, label, maxUtf8Bytes);
+        throw isolatedUtf16FieldError(value, label, maxUtf8Bytes, maxDocumentUtf8Bytes);
       }
       bytes += 4;
       index += 1;
     } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
-      throw isolatedUtf16FieldError(value, label, maxUtf8Bytes);
+      throw isolatedUtf16FieldError(value, label, maxUtf8Bytes, maxDocumentUtf8Bytes);
     } else {
       bytes += 3;
     }
   }
-  if (bytes > maxUtf8Bytes) {
-    throw utf8FieldLimitError(label, maxUtf8Bytes);
-  }
-  if (bytes > maxDocumentUtf8Bytes) {
-    throw new MermanInvalidTransportError(
-      `Merman transport ${label} exceeds the ${maxDocumentUtf8Bytes}-byte wire limit.`,
-    );
-  }
+  const error = utf8LimitError(label, bytes, maxUtf8Bytes, maxDocumentUtf8Bytes);
+  if (error) throw error;
   return bytes + escapeBytes;
 }
 
