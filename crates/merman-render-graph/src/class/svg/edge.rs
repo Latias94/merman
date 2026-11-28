@@ -16,7 +16,9 @@ use merman_render_core::entities::decode_entities_minimal_cow;
 use merman_render_core::html::html_label_overflow_attr;
 #[cfg(feature = "layout-shoal")]
 use merman_render_core::route_paint::{CanonicalPaintScratch, RouteStyle};
-use merman_render_core::svg_bounds::{SvgPathBounds, svg_path_bounds_from_d};
+#[cfg(feature = "layout-shoal")]
+use merman_render_core::svg_bounds::SvgPathBounds;
+use merman_render_core::svg_bounds::svg_path_bounds_from_d;
 use merman_render_core::svg_css::SvgId as SvgDiagramId;
 use merman_render_core::svg_edge_parity::edge_label_geometry::position_edge_label;
 use merman_render_core::svg_output::{cutout, timing::RenderTiming};

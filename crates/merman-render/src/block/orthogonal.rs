@@ -835,16 +835,6 @@ pub(super) fn prepare(
         } = placement;
         let edge = &model.edges[occurrence];
         let label = layout.edges[index].label.as_ref();
-        // In a short grid gap a caption can cover both markers. The renderer keeps
-        // those markers on a separate carrier when it cuts the caption out of the shaft.
-        if let Some(label) = label
-            && let [Some(start), Some(end)] = fallback[occurrence]
-        {
-            let caption = label_box(label);
-            if intersects(caption, start.rect) && intersects(caption, end.rect) {
-                return Ok(None);
-            }
-        }
         let centers = bodies.map(|i| {
             let shape = &layout.shape_geometries[i as usize];
             Point::new(shape.allocated.x, shape.allocated.y)

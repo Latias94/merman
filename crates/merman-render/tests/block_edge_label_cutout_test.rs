@@ -186,10 +186,50 @@ fn shoal_block_cuts_transparent_captions_on_the_owning_shaft() {
 }
 
 #[test]
+fn shoal_block_routes_both_markers_clear_of_an_opaque_caption() {
+    let svg = render(
+        "block\n  A B\n  A -- \"sync\" <--> B\n",
+        json!({ "layout": "shoal", "htmlLabels": false, "block": { "padding": 12 } }),
+        Some("auto"),
+        Color::rgb(255, 255, 255),
+    );
+    let document = Document::parse(&svg).unwrap();
+    let shaft = edge(&document, "-A-B");
+    assert!(shaft.attribute("clip-path").is_none());
+    let label = caption_bounds(shaft, false);
+    let path = BezPath::from_svg(shaft.attribute("d").unwrap()).unwrap();
+    let start = path.segments().next().unwrap();
+    let end = path.segments().last().unwrap();
+    for (attribute, contact, toward_edge) in [
+        ("marker-start", start.start(), start.end()),
+        ("marker-end", end.end(), end.start()),
+    ] {
+        assert!(definition(shaft, attribute).has_tag_name("marker"));
+        let outward = (toward_edge - contact).normalize();
+        let across = Vec2::new(-outward.y, outward.x);
+        let ink = [
+            contact + outward * 4.4 + across * 4.0,
+            contact + outward * 4.4 - across * 4.0,
+            contact - outward * 4.0 + across * 4.0,
+            contact - outward * 4.0 - across * 4.0,
+        ]
+        .into_iter()
+        .fold(Rect::from_points(contact, contact), |bounds, point| {
+            bounds.union_pt(point)
+        });
+        assert_eq!(
+            label.intersect(ink).area(),
+            0.0,
+            "{attribute}: {ink:?} overlaps {label:?}"
+        );
+    }
+}
+
+#[test]
 fn shoal_block_preserves_markers_when_a_caption_covers_their_contacts() {
     let svg = render(
         "block\n  A B\n  A -- \"a caption wider than the gap\" <--> B\n",
-        json!({ "layout": "shoal", "htmlLabels": false }),
+        json!({ "layout": "shoal", "htmlLabels": false, "block": { "padding": 0 } }),
         Some("transparent"),
         Color::TRANSPARENT,
     );
