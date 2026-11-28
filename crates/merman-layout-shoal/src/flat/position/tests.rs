@@ -80,7 +80,7 @@ fn eight_parallel_occurrences_keep_a_visible_pitch() {
     let mut offsets = [0.0; 8];
     spread_face(
         &ids,
-        &[End::Leaves; 8],
+        &[End::Arrives; 8],
         &[11.0; 8],
         &mut offsets,
         28.0,
