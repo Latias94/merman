@@ -2514,7 +2514,11 @@ fn class_edge_label_background_selector_has_no_runtime_label_group_consumer() {
 #[cfg(feature = "layout-elk")]
 #[test]
 fn class_elk_and_dagre_labels_follow_the_requested_dom_mode() {
-    for layout in ["elk", "dagre"] {
+    for layout in [
+        "elk",
+        #[cfg(feature = "layout-dagre")]
+        "dagre",
+    ] {
         for html in [false, true] {
             let svg = render_class_svg_from_text(&format!(
                 "---\nconfig:\n  layout: {layout}\n  htmlLabels: {html}\n  flowchart:\n    htmlLabels: {}\n---\nclassDiagram\nnamespace NamespaceTitle {{\nclass ServiceClass {{\n+completeOperation()\n}}\n}}\nServiceClass --() ProvidedInterface\n",

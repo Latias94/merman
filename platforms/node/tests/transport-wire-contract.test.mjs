@@ -114,6 +114,18 @@ test("bounded JSON preparse enforces exact and plus-one document limits", () => 
     /wire limit/i,
   );
 
+  for (const malformed of ['"\ud800é"', '"é\udc00"']) {
+    const exactMalformed = malformed + " ".repeat(limits.max_utf8_bytes - Buffer.byteLength(malformed));
+    assert.throws(
+      () => parseTransportJsonText(exactMalformed, "boundary", limits),
+      /isolated UTF-16 surrogate/i,
+    );
+    assert.throws(
+      () => parseTransportJsonText(`${exactMalformed} `, "boundary", limits),
+      /wire limit/i,
+    );
+  }
+
   assert.doesNotThrow(() =>
     parseTransportJsonText(nestedArrayJson(limits.max_depth), "boundary", limits),
   );
