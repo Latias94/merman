@@ -8,6 +8,7 @@ use merman_bindings_core::BindingEngineServices;
 #[cfg(feature = "svg")]
 use merman_bindings_core::{
     BindingError, IconPack, IconRegistryResourceLimitId, build_icon_registry,
+    preflight_icon_pack_json_bytes, preflight_icon_pack_registration_name_bytes,
 };
 use std::mem::size_of;
 use std::ptr;
@@ -946,58 +947,15 @@ unsafe fn engine_new_with_services_impl(
 pub(super) fn preflight_native_icon_pack_resource_limits(
     native_packs: &[Option<MermanNativeIconPack>],
 ) -> Result<(), NativeFailure> {
-    use IconRegistryResourceLimitId::{MaxInputBytes, MaxPackBytes, MaxPrefixBytes};
-
     let mut input_bytes = 0usize;
     for (index, pack) in native_packs.iter().enumerate() {
         let pack = pack
             .as_ref()
             .expect("validated native icon-pack records are complete");
-
-        let pack_bytes = u64::try_from(pack.json.len).unwrap_or(u64::MAX);
-        if pack_bytes > MaxPackBytes.fixed_value() {
-            return Err(native_failure_from_binding(
-                BindingError::icon_registry_resource_limit(
-                    MaxPackBytes,
-                    pack_bytes,
-                    Some(index),
-                    "icon pack bytes exceed the fixed per-pack ceiling",
-                ),
-            ));
-        }
-
-        let next_input_bytes = input_bytes.checked_add(pack.json.len).ok_or_else(|| {
-            native_failure_from_binding(BindingError::icon_registry_resource_limit(
-                MaxInputBytes,
-                u64::MAX,
-                Some(index),
-                "aggregate icon pack byte accounting overflowed",
-            ))
-        })?;
-        let next_input_bytes_u64 = u64::try_from(next_input_bytes).unwrap_or(u64::MAX);
-        if next_input_bytes_u64 > MaxInputBytes.fixed_value() {
-            return Err(native_failure_from_binding(
-                BindingError::icon_registry_resource_limit(
-                    MaxInputBytes,
-                    next_input_bytes_u64,
-                    Some(index),
-                    "aggregate icon pack bytes exceed the fixed registry ceiling",
-                ),
-            ));
-        }
-
-        let prefix_bytes = u64::try_from(pack.registration_name.len).unwrap_or(u64::MAX);
-        if prefix_bytes > MaxPrefixBytes.fixed_value() {
-            return Err(native_failure_from_binding(
-                BindingError::icon_registry_resource_limit(
-                    MaxPrefixBytes,
-                    prefix_bytes,
-                    Some(index),
-                    "icon registry registration name exceeds the fixed byte ceiling",
-                ),
-            ));
-        }
-
+        let next_input_bytes = preflight_icon_pack_json_bytes(index, pack.json.len, input_bytes)
+            .map_err(native_failure_from_binding)?;
+        preflight_icon_pack_registration_name_bytes(index, pack.registration_name.len)
+            .map_err(native_failure_from_binding)?;
         input_bytes = next_input_bytes;
     }
 

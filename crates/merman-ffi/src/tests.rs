@@ -1627,6 +1627,8 @@ fn service_constructor_preflights_raw_icon_pack_limits_before_utf8_decoding() {
         usize::try_from(IconRegistryResourceLimitId::MaxPackBytes.fixed_value()).unwrap();
     let max_input_bytes =
         usize::try_from(IconRegistryResourceLimitId::MaxInputBytes.fixed_value()).unwrap();
+    let max_prefix_bytes =
+        usize::try_from(IconRegistryResourceLimitId::MaxPrefixBytes.fixed_value()).unwrap();
     let raw_slice = |len| MermanNativeSlice {
         struct_size: native_struct_size::<MermanNativeSlice>(),
         data: if len == 0 {
@@ -1646,13 +1648,16 @@ fn service_constructor_preflights_raw_icon_pack_limits_before_utf8_decoding() {
     let assert_preflight_failure = |packs: &[Option<MermanNativeIconPack>],
                                     limit: IconRegistryResourceLimitId,
                                     actual: u64,
-                                    pack_index: u64| {
+                                    pack_index: u64,
+                                    message: &str| {
         let failure = preflight_native_icon_pack_resource_limits(packs)
             .expect_err("resource preflight must reject the synthetic lengths");
         assert_eq!(failure.status, MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED);
         let payload: serde_json::Value =
             serde_json::from_slice(&native_error_json(&failure)).unwrap();
+        assert_eq!(payload["message"], message);
         let resource = &payload["details"]["resource"];
+        assert_eq!(resource["cause"], "ceiling");
         assert_eq!(resource["limit_id"], limit.stable_id());
         assert_eq!(resource["phase"], limit.descriptor().phase);
         assert_eq!(resource["actual"], actual);
@@ -1664,29 +1669,42 @@ fn service_constructor_preflights_raw_icon_pack_limits_before_utf8_decoding() {
         assert_eq!(details["registration_name"], serde_json::Value::Null);
     };
 
+    // One oversized pack also exceeds the aggregate limit and has an oversized name.
     assert_preflight_failure(
-        &[raw_pack(max_pack_bytes + 1, 0)],
+        &[
+            raw_pack(max_input_bytes - max_pack_bytes, 0),
+            raw_pack(max_pack_bytes + 1, max_prefix_bytes + 1),
+        ],
         IconRegistryResourceLimitId::MaxPackBytes,
         u64::try_from(max_pack_bytes + 1).unwrap(),
-        0,
+        1,
+        "icon pack bytes exceed the fixed per-pack ceiling",
     );
 
-    let shared_pack_len = max_input_bytes / 3 + 1;
-    assert!(shared_pack_len <= max_pack_bytes);
     let aggregate_packs = [
-        raw_pack(shared_pack_len, 1),
-        raw_pack(shared_pack_len, 0),
-        raw_pack(shared_pack_len, 0),
+        raw_pack(max_pack_bytes, max_prefix_bytes),
+        raw_pack(max_input_bytes - max_pack_bytes, 0),
+        raw_pack(1, max_prefix_bytes + 1),
     ];
+    preflight_native_icon_pack_resource_limits(&aggregate_packs[..2]).unwrap();
     assert_preflight_failure(
         &aggregate_packs,
         IconRegistryResourceLimitId::MaxInputBytes,
-        u64::try_from(shared_pack_len * aggregate_packs.len()).unwrap(),
+        u64::try_from(max_input_bytes + 1).unwrap(),
         2,
+        "aggregate icon pack bytes exceed the fixed registry ceiling",
+    );
+    assert_preflight_failure(
+        &[
+            raw_pack(1, max_prefix_bytes + 1),
+            raw_pack(max_pack_bytes + 1, 0),
+        ],
+        IconRegistryResourceLimitId::MaxPrefixBytes,
+        u64::try_from(max_prefix_bytes + 1).unwrap(),
+        0,
+        "icon registry registration name exceeds the fixed byte ceiling",
     );
 
-    let max_prefix_bytes =
-        usize::try_from(IconRegistryResourceLimitId::MaxPrefixBytes.fixed_value()).unwrap();
     let mut oversized_invalid_utf8_name = vec![b'a'; max_prefix_bytes + 1];
     oversized_invalid_utf8_name[0] = 0xff;
     let pack = native_icon_pack(

@@ -29,7 +29,10 @@ use merman_bindings_core::{
     BindingError, BindingOperationRequest, BindingOperationResult, OperationControl,
 };
 #[cfg(feature = "svg")]
-use merman_bindings_core::{BindingIconRegistry, BindingStatus, IconPack, build_icon_registry};
+use merman_bindings_core::{
+    BindingIconRegistry, BindingStatus, IconPack, IconRegistryResourceLimitId, build_icon_registry,
+    preflight_icon_pack_json_bytes, preflight_icon_pack_registration_name_bytes,
+};
 use operation_control::JniOperationControlRegistry;
 #[cfg(feature = "svg")]
 use std::cell::Cell;
@@ -999,24 +1002,15 @@ fn build_jni_icon_registry<'local>(
         return Ok(None);
     }
 
-    let max_packs =
-        icon_registry_limit_usize(merman_bindings_core::IconRegistryResourceLimitId::MaxPacks)?;
+    let max_packs = icon_registry_limit_usize(IconRegistryResourceLimitId::MaxPacks)?;
     if json_len > max_packs {
         return Err(BindingError::icon_registry_resource_limit(
-            merman_bindings_core::IconRegistryResourceLimitId::MaxPacks,
+            IconRegistryResourceLimitId::MaxPacks,
             u64::try_from(json_len).unwrap_or(u64::MAX),
             None,
             "icon pack count exceeds the fixed registry ceiling",
         ));
     }
-
-    use merman_bindings_core::IconRegistryResourceLimitId::{
-        MaxInputBytes, MaxPackBytes, MaxPrefixBytes,
-    };
-
-    let max_pack_bytes = icon_registry_limit_usize(MaxPackBytes)?;
-    let max_input_bytes = icon_registry_limit_usize(MaxInputBytes)?;
-    let max_prefix_bytes = icon_registry_limit_usize(MaxPrefixBytes)?;
 
     // Phase one keeps only bounded local references and exact byte counts. No Java string is
     // copied or decoded until every pack and registration name passes the complete preflight.
@@ -1034,28 +1028,10 @@ fn build_jni_icon_registry<'local>(
         let json_utf8_bytes = measure_icon_java_string_utf8(
             env,
             &json,
-            max_pack_bytes,
-            MaxPackBytes,
             index,
             "icon pack contains an unpaired UTF-16 surrogate",
-            "icon pack bytes exceed the fixed per-pack ceiling",
         )?;
-        let next_input_bytes = input_bytes.checked_add(json_utf8_bytes).ok_or_else(|| {
-            BindingError::icon_registry_resource_limit(
-                MaxInputBytes,
-                u64::MAX,
-                Some(index),
-                "aggregate icon pack byte accounting overflowed",
-            )
-        })?;
-        if next_input_bytes > max_input_bytes {
-            return Err(BindingError::icon_registry_resource_limit(
-                MaxInputBytes,
-                u64::try_from(next_input_bytes).unwrap_or(u64::MAX),
-                Some(index),
-                "aggregate icon pack bytes exceed the fixed registry ceiling",
-            ));
-        }
+        let next_input_bytes = preflight_icon_pack_json_bytes(index, json_utf8_bytes, input_bytes)?;
 
         let registration_name = icon_pack_registration_names
             .get_element(env, index)
@@ -1068,12 +1044,10 @@ fn build_jni_icon_registry<'local>(
             let utf8_bytes = measure_icon_java_string_utf8(
                 env,
                 &registration_name,
-                max_prefix_bytes,
-                MaxPrefixBytes,
                 index,
                 "icon registry registration name contains an unpaired UTF-16 surrogate",
-                "icon registry registration name exceeds the fixed byte ceiling",
             )?;
+            preflight_icon_pack_registration_name_bytes(index, utf8_bytes)?;
             Some((registration_name, utf8_bytes))
         };
         references.push(JniIconPackReference {
@@ -1180,13 +1154,10 @@ fn decode_icon_java_string(
 fn measure_icon_java_string_utf8(
     env: &mut Env<'_>,
     value: &JString<'_>,
-    maximum_bytes: usize,
-    limit: merman_bindings_core::IconRegistryResourceLimitId,
     pack_index: usize,
     invalid_message: &'static str,
-    limit_message: &'static str,
 ) -> Result<usize, BindingError> {
-    let utf8_bytes = measure_java_string_utf8(env, value).map_err(|error| match error {
+    measure_java_string_utf8(env, value).map_err(|error| match error {
         JavaStringMeasureError::Jni(error) => {
             jni_icon_input_error("measure Java string UTF-8 length", error)
         }
@@ -1196,22 +1167,11 @@ fn measure_icon_java_string_utf8(
         JavaStringMeasureError::LengthOverflow => {
             BindingError::internal("Java UTF-8 byte length did not fit usize")
         }
-    })?;
-    if utf8_bytes > maximum_bytes {
-        return Err(BindingError::icon_registry_resource_limit(
-            limit,
-            u64::try_from(utf8_bytes).unwrap_or(u64::MAX),
-            Some(pack_index),
-            limit_message,
-        ));
-    }
-    Ok(utf8_bytes)
+    })
 }
 
 #[cfg(feature = "svg")]
-fn icon_registry_limit_usize(
-    limit: merman_bindings_core::IconRegistryResourceLimitId,
-) -> Result<usize, BindingError> {
+fn icon_registry_limit_usize(limit: IconRegistryResourceLimitId) -> Result<usize, BindingError> {
     usize::try_from(limit.fixed_value()).map_err(|_| {
         BindingError::internal(format!(
             "Android cannot represent icon registry limit `{}`",
