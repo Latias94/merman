@@ -245,10 +245,17 @@ fn read_svg_id_input(
 }
 
 fn read_svg_text(value: JsString<'_>, field: &str, limit: usize) -> napi::Result<String> {
-    // Each UTF-16 code unit contributes at most three UTF-8 bytes, even for a replacement
-    // scalar. When the unit count is inconclusive, check the exact byte size before copying.
-    if value.utf16_len()? > limit / 3 {
-        wire::ensure_field_bytes(value.utf8_len()?, field, limit)
+    // UTF-8 uses between one and three bytes per UTF-16 unit in aggregate, including
+    // replacement scalars. Query the exact size only when the bounds straddle the cap.
+    let units = value.utf16_len()?;
+    if units > limit / 3 {
+        let bytes = if units > limit {
+            // This lower bound is enough to trigger the field limit error.
+            units
+        } else {
+            value.utf8_len()?
+        };
+        wire::ensure_field_bytes(bytes, field, limit)
             .map_err(wire::caller_options_error)
             .map_err(napi_binding_error)?;
     }
