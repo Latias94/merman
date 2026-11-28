@@ -125,9 +125,16 @@ pub struct FlowchartHierarchyInputs<'a> {
     pub tx: f64,
     pub ty: f64,
     pub work_meter: &'a OperationWorkMeter,
+    pub work_phase: OperationPhase,
 }
 
 impl FlowchartHierarchyInputs<'_> {
+    fn charge(&self, units: usize) -> Result<()> {
+        self.work_meter
+            .charge_work(units, self.work_phase)
+            .map_err(Into::into)
+    }
+
     fn subgraph_has_children(&self, id: &str) -> bool {
         self.subgraph_ids_with_children.contains(id)
     }
@@ -180,7 +187,7 @@ fn flowchart_sort_rendered_clusters<'a>(
     let sort_work = flowchart_checked_sort_work(clusters.len(), ctx.work_meter)?
         .checked_add(clusters.len())
         .ok_or_else(|| ctx.work_meter.arithmetic_overflow())?;
-    ctx.work_meter.charge(sort_work)?;
+    ctx.charge(sort_work)?;
 
     let mut keyed = clusters
         .into_iter()
@@ -227,7 +234,7 @@ impl<'a> FlowchartRenderedClusterBuckets<'a> {
     ) -> Result<Self> {
         let mut buckets = Self::default();
         for id in cluster_ids {
-            ctx.work_meter.charge(1)?;
+            ctx.charge(1)?;
             let cluster =
                 ctx.layout_clusters_by_id
                     .get(id)
@@ -262,7 +269,7 @@ impl<'a> FlowchartRenderedClusterBuckets<'a> {
     ) -> Result<Self> {
         let mut clusters = Vec::new();
         for id in cluster_ids {
-            ctx.work_meter.charge(1)?;
+            ctx.charge(1)?;
             clusters.push(ctx.layout_clusters_by_id.get(id).copied().ok_or_else(|| {
                 Error::InvalidModel {
                     message: format!("missing prepared Flowchart cluster geometry `{id}`"),
@@ -286,7 +293,7 @@ fn flowchart_prepare_root_offsets<'a>(
 ) -> Result<(FxHashMap<&'a str, FlowchartRootOffsets>, f64)> {
     const ROOT_MARGIN_PX: f64 = 8.0;
 
-    ctx.work_meter.charge(ctx.subgraphs_by_id.len())?;
+    ctx.charge(ctx.subgraphs_by_id.len())?;
     let mut empty_sibling_count_by_root: FxHashMap<Option<&'a str>, usize> = FxHashMap::default();
     let mut empty_subgraphs = FxHashSet::default();
     for id in ctx.subgraphs_by_id.keys().copied() {
@@ -302,7 +309,7 @@ fn flowchart_prepare_root_offsets<'a>(
             .ok_or_else(|| ctx.work_meter.arithmetic_overflow())?;
     }
 
-    ctx.work_meter.charge(ctx.recursive_clusters.len())?;
+    ctx.charge(ctx.recursive_clusters.len())?;
     let mut offsets_by_root = FxHashMap::default();
     offsets_by_root.reserve(ctx.recursive_clusters.len());
     let mut extra_root_y = 0.0f64;
@@ -383,13 +390,14 @@ impl<'a> FlowchartHierarchyPlan<'a> {
             ctx.layout_clusters_by_id,
             ctx.parent,
             ctx.work_meter,
+            ctx.work_phase,
         )?;
         let effective_parents = ctx.node_schedule.effective_parents();
         let (root_offsets, extra_recursive_root_y) =
             flowchart_prepare_root_offsets(&ctx, effective_parents)?;
 
         if ctx.uses_flat_adapter_dom {
-            ctx.work_meter.charge(ctx.edge_order.len())?;
+            ctx.charge(ctx.edge_order.len())?;
             let edges = ctx.edge_order.to_vec();
             let mut edge_root_by_key = FxHashMap::default();
             edge_root_by_key.reserve(edges.len());
@@ -412,7 +420,7 @@ impl<'a> FlowchartHierarchyPlan<'a> {
                 .checked_add(dom_order.len())
                 .and_then(|count| count.checked_add(clusters.len()))
                 .ok_or_else(|| ctx.work_meter.arithmetic_overflow())?;
-            ctx.work_meter.charge(retained_refs)?;
+            ctx.charge(retained_refs)?;
             return Ok(Self {
                 uses_flat_adapter_dom: true,
                 ordered_edges: None,
@@ -441,13 +449,12 @@ impl<'a> FlowchartHierarchyPlan<'a> {
         let mut edge_root_by_key = FxHashMap::default();
         edge_root_by_key.reserve(ctx.edge_order.len());
         for edge in ctx.edge_order.iter().copied() {
-            ctx.work_meter.charge(1)?;
+            ctx.charge(1)?;
             let root = flowchart_lca_with_work_meter(
                 &ctx,
                 edge.edge.from.as_str(),
                 edge.edge.to.as_str(),
                 effective_parents,
-                ctx.work_meter,
             )?;
             if edge_root_by_key.insert(edge.key, root).is_some() {
                 return Err(flowchart_duplicate_edge_key_error(edge.key));
@@ -470,7 +477,7 @@ impl<'a> FlowchartHierarchyPlan<'a> {
             .checked_add(top_dom_order.len())
             .and_then(|count| count.checked_add(top_clusters.len()))
             .ok_or_else(|| ctx.work_meter.arithmetic_overflow())?;
-        ctx.work_meter.charge(top_retained_refs)?;
+        ctx.charge(top_retained_refs)?;
         let top_root = FlowchartRootEmission {
             edges: top_edges,
             dom_order: top_dom_order,
@@ -492,7 +499,7 @@ impl<'a> FlowchartHierarchyPlan<'a> {
                 .checked_add(dom_order.len())
                 .and_then(|count| count.checked_add(clusters.len()))
                 .ok_or_else(|| ctx.work_meter.arithmetic_overflow())?;
-            ctx.work_meter.charge(retained_refs)?;
+            ctx.charge(retained_refs)?;
             if !edges.is_empty() {
                 let order = ordered_edges.get_or_insert_with(|| {
                     let mut order = Vec::with_capacity(ctx.edge_order.len());
@@ -630,7 +637,6 @@ fn flowchart_lca_with_work_meter<'a>(
     a: &'a str,
     b: &'a str,
     parent_index: &'a FlowchartEffectiveParentIndex,
-    work_meter: &OperationWorkMeter,
 ) -> Result<Option<&'a str>> {
     fn first_render_root<'a>(
         ctx: &FlowchartHierarchyInputs<'a>,
@@ -648,5 +654,5 @@ fn flowchart_lca_with_work_meter<'a>(
     let include_cluster_endpoints = a != b;
     let left = first_render_root(ctx, parent_index, a, include_cluster_endpoints);
     let right = first_render_root(ctx, parent_index, b, include_cluster_endpoints);
-    parent_index.common_root(left, right, work_meter)
+    parent_index.common_root(left, right, ctx.work_meter, ctx.work_phase)
 }

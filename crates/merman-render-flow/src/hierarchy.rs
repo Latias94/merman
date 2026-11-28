@@ -1,6 +1,6 @@
 //! Metered physical and effective group ancestry for Flow SVG planning.
 
-use merman_model::families::flowchart::FlowchartModel;
+use merman_model::{OperationPhase, families::flowchart::FlowchartModel};
 use merman_render_core::{Error, LayoutCluster, Result, resources::OperationWorkMeter};
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -77,6 +77,7 @@ impl<'a> FlowchartAncestryIndex<'a> {
         layout_clusters_by_id: &FxHashMap<&'a str, Cluster>,
         physical_parent_by_id: &FxHashMap<&'a str, &'a str>,
         work_meter: &OperationWorkMeter,
+        work_phase: OperationPhase,
     ) -> Result<Self> {
         let parent_identity_capacity = physical_parent_by_id
             .len()
@@ -87,7 +88,7 @@ impl<'a> FlowchartAncestryIndex<'a> {
             .checked_add(layout_clusters_by_id.len())
             .and_then(|count| count.checked_add(parent_identity_capacity))
             .ok_or_else(|| work_meter.arithmetic_overflow())?;
-        work_meter.charge(identity_capacity)?;
+        work_meter.charge_work(identity_capacity, work_phase)?;
         let mut identities_by_id = FxHashSet::default();
         identities_by_id.reserve(identity_capacity);
         identities_by_id.extend(
@@ -103,7 +104,7 @@ impl<'a> FlowchartAncestryIndex<'a> {
         );
         let identity_count = identities_by_id.len();
 
-        work_meter.charge(identity_count)?;
+        work_meter.charge_work(identity_count, work_phase)?;
         let mut children_by_parent: FxHashMap<&'a str, Vec<&'a str>> = FxHashMap::default();
         children_by_parent.reserve(identity_count);
         for id in identities_by_id.iter().copied() {
@@ -115,7 +116,7 @@ impl<'a> FlowchartAncestryIndex<'a> {
             }
         }
 
-        work_meter.charge(identity_count)?;
+        work_meter.charge_work(identity_count, work_phase)?;
         let roots = identities_by_id
             .iter()
             .copied()
@@ -129,7 +130,7 @@ impl<'a> FlowchartAncestryIndex<'a> {
         let traversal_work = identity_count
             .checked_mul(2)
             .ok_or_else(|| work_meter.arithmetic_overflow())?;
-        work_meter.charge(traversal_work)?;
+        work_meter.charge_work(traversal_work, work_phase)?;
         let mut entry_by_id = FxHashMap::default();
         entry_by_id.reserve(identity_count);
         let mut intervals_by_id = FxHashMap::default();
@@ -297,23 +298,24 @@ impl FlowchartEffectiveParentIndex {
         mut left: Option<&'a str>,
         mut right: Option<&'a str>,
         work_meter: &OperationWorkMeter,
+        work_phase: OperationPhase,
     ) -> Result<Option<&'a str>> {
         let mut left_depth = left.map_or(0, |root| self.depth(root));
         let mut right_depth = right.map_or(0, |root| self.depth(root));
 
         while left_depth > right_depth {
-            work_meter.charge(1)?;
+            work_meter.charge_work(1, work_phase)?;
             left = left.and_then(|root| self.parent(root));
             left_depth -= 1;
         }
         while right_depth > left_depth {
-            work_meter.charge(1)?;
+            work_meter.charge_work(1, work_phase)?;
             right = right.and_then(|root| self.parent(root));
             right_depth -= 1;
         }
 
         while let (Some(left_root), Some(right_root)) = (left, right) {
-            work_meter.charge(2)?;
+            work_meter.charge_work(2, work_phase)?;
             if left_root == right_root {
                 return Ok(Some(left_root));
             }
@@ -368,9 +370,14 @@ mod tests {
         let unique_cluster_count = 4usize;
         let work_meter =
             OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-        let index =
-            FlowchartAncestryIndex::prepare(&subgraphs, &layout_clusters, &parents, &work_meter)
-                .expect("prepare cluster ancestry");
+        let index = FlowchartAncestryIndex::prepare(
+            &subgraphs,
+            &layout_clusters,
+            &parents,
+            &work_meter,
+            OperationPhase::Layout,
+        )
+        .expect("prepare cluster ancestry");
 
         assert!(index.is_strict_ancestor("outer", "inner"));
         assert!(index.is_strict_ancestor("outer", "leaf"));
@@ -382,6 +389,27 @@ mod tests {
             work_meter.used(),
             subgraphs.len() + layout_clusters.len() + parents.len() * 2 + unique_cluster_count * 4
         );
+    }
+
+    #[test]
+    fn ungrouped_ancestry_checks_cancellation_in_the_paint_work_phase() {
+        let clusters = FxHashMap::<&str, ()>::default();
+        let parents = FxHashMap::default();
+        for phase in [OperationPhase::Layout, OperationPhase::Emit] {
+            for successful_checkpoints in 0..4 {
+                let control = merman_model::OperationControl::new();
+                control.cancel_after_checkpoints(successful_checkpoints);
+                let meter = OperationWorkMeter::new_with_control(
+                    RenderResourcePolicy::unbounded_for_trusted_input(),
+                    control,
+                );
+                assert!(matches!(
+                    FlowchartAncestryIndex::prepare(&clusters, &clusters, &parents, &meter, phase),
+                    Err(Error::Cancelled(error)) if error.phase == phase
+                ));
+                assert_eq!(meter.used(), 0);
+            }
+        }
     }
 
     #[test]
@@ -415,21 +443,31 @@ mod tests {
 
         assert_eq!(
             index
-                .common_root(Some("inner"), Some("inner"), &work_meter)
+                .common_root(
+                    Some("inner"),
+                    Some("inner"),
+                    &work_meter,
+                    OperationPhase::Layout
+                )
                 .expect("same-root LCA"),
             Some("inner")
         );
         assert_eq!(work_meter.used() - work_before_queries, 2);
         assert_eq!(
             index
-                .common_root(Some("inner"), Some("outer"), &work_meter)
+                .common_root(
+                    Some("inner"),
+                    Some("outer"),
+                    &work_meter,
+                    OperationPhase::Layout
+                )
                 .expect("ancestor LCA"),
             Some("outer")
         );
         assert_eq!(work_meter.used() - work_before_queries, 5);
         assert_eq!(
             index
-                .common_root(None, Some("outer"), &work_meter)
+                .common_root(None, Some("outer"), &work_meter, OperationPhase::Layout)
                 .expect("top-root LCA"),
             None
         );

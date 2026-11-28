@@ -25,6 +25,7 @@ pub(super) fn prepare_flowchart_hierarchy<'a>(
             tx: ctx.tx,
             ty: ctx.ty,
             work_meter: ctx.work_meter,
+            work_phase: ctx.work_phase,
         },
         ctx.prepared_nodes.cluster_ids(),
     )

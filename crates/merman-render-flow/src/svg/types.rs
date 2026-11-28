@@ -101,6 +101,7 @@ pub struct FlowchartRenderCtx<'a> {
     pub(in crate::svg) palette: super::agentflow::ContainerPalette<'a>,
     pub hand_drawn_seed: roughr::core::RoughRandomness,
     pub work_meter: &'a merman_render_core::resources::OperationWorkMeter,
+    pub(in crate::svg) work_phase: merman_model::OperationPhase,
     pub(in crate::svg) math_renderer:
         Option<&'a (dyn merman_render_core::math::MathRenderer + Send + Sync)>,
     pub(in crate::svg) svg_label_sidecar: Option<&'a crate::svg_label::FlowchartSvgLabelSidecar>,

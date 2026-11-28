@@ -4,6 +4,7 @@ use super::render_input::{
 };
 use super::svg_emit::FlowchartSvgModelRequest;
 use super::*;
+use merman_model::OperationPhase;
 
 #[cfg(feature = "canonical-edge-paint")]
 use merman_render_core::rough_svg::constrained_rough_edge_path;
@@ -14,6 +15,19 @@ use super::swimlane::label_seating as swimlane_label_seating;
 pub fn with_flowchart_paint_context<T>(
     request: FlowchartSvgModelRequest<'_>,
     services: &FlowchartSvgServices<'_>,
+    consume: impl FnOnce(
+        &FlowchartRenderCtx<'_>,
+        &[FlowchartRenderEdge<'_>],
+        &FlowchartHierarchyPlan<'_>,
+    ) -> Result<T>,
+) -> Result<T> {
+    with_flowchart_paint_context_in_phase(request, services, OperationPhase::Layout, consume)
+}
+
+pub(super) fn with_flowchart_paint_context_in_phase<T>(
+    request: FlowchartSvgModelRequest<'_>,
+    services: &FlowchartSvgServices<'_>,
+    work_phase: OperationPhase,
     consume: impl FnOnce(
         &FlowchartRenderCtx<'_>,
         &[FlowchartRenderEdge<'_>],
@@ -268,6 +282,7 @@ pub fn with_flowchart_paint_context<T>(
         palette,
         hand_drawn_seed,
         work_meter: services.work_meter,
+        work_phase,
         math_renderer: services.math_renderer,
         svg_label_sidecar: Some(svg_label_sidecar),
         icon_registry: services.icon_registry,
@@ -347,10 +362,10 @@ pub(super) fn charged_edge_route_request<'a>(
     Ok((request, offsets))
 }
 
-/// Prepares one painted shaft under the same per-edge layout debit as parity.
+/// Prepares one painted shaft under the shared per-edge work debit.
 ///
-/// The caller owns the batch debit and final layout checkpoint. A missing shaft is
-/// outside the compact pilot, not an edge to silently omit.
+/// The caller owns the batch debit and final checkpoint. A missing shaft requires compact
+/// rendering to refuse the request.
 #[cfg(all(
     feature = "diagram-flowchart",
     feature = "layout-dagre",
@@ -367,7 +382,7 @@ pub fn prepare_dagre_linear_edge_route(
 }
 
 /// Prepare the ELK batch through terminal straightening and label separation, before curve
-/// formatting and line hops. The caller owns the batch debit and final layout checkpoint.
+/// formatting and line hops. The caller owns the batch debit and final checkpoint.
 pub(super) fn prepare_elk_clipped_routes<'a>(
     ctx: &'a FlowchartRenderCtx<'a>,
     render_edges: &'a [FlowchartRenderEdge<'_>],
@@ -399,7 +414,7 @@ pub(super) fn prepare_elk_clipped_routes<'a>(
         .and_then(serde_json::Value::as_bool)
         != Some(false)
     {
-        edge_geom::straighten_edge_terminals(&mut routes, ctx.work_meter)?;
+        edge_geom::straighten_edge_terminals(&mut routes, ctx.work_meter, ctx.work_phase)?;
     }
     edge_geom::separate_edge_labels(
         &mut routes,
@@ -413,6 +428,7 @@ pub(super) fn prepare_elk_clipped_routes<'a>(
             )
         }),
         ctx.work_meter,
+        ctx.work_phase,
     )?;
     Ok(routed_edges
         .into_iter()
@@ -430,14 +446,13 @@ pub(super) fn prepare_elk_clipped_routes<'a>(
         }))
 }
 
-pub(super) fn edge_paint_phase(ctx: &FlowchartRenderCtx<'_>) -> merman_model::OperationPhase {
-    use merman_model::OperationPhase;
+pub(super) fn edge_paint_phase(ctx: &FlowchartRenderCtx<'_>) -> OperationPhase {
     match ctx.layout.route_contract {
         #[cfg(feature = "layout-grid")]
         FlowchartSvgRoute::Grid(_) => OperationPhase::Emit,
         #[cfg(feature = "layout-layered")]
         FlowchartSvgRoute::Layered(_) => OperationPhase::Emit,
-        _ => OperationPhase::Layout,
+        _ => ctx.work_phase,
     }
 }
 
