@@ -640,20 +640,36 @@ fn operation_control_tokens_cancel_release_and_preserve_structured_failure() {
     unsafe { api.result_free.unwrap()(&mut result) };
 
     assert_eq!(
+        unsafe { api.operation_control_release.unwrap()(control) },
+        MERMAN_NATIVE_STATUS_OK
+    );
+    // A correctly tagged token with counter zero has never been issued.
+    let never_issued = MERMAN_NATIVE_OPERATION_CONTROL_TOKEN_DOMAIN_TAG;
+    for unavailable in [control, never_issued] {
+        assert_eq!(
+            unsafe { api.operation_control_cancel.unwrap()(unavailable) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_eq!(
+            unsafe { api.operation_control_release.unwrap()(unavailable) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_eq!(
+            unsafe {
+                api.execute_collect_controlled.unwrap()(engine, unavailable, &request, &mut result)
+            },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_eq!(result.data.len, 0);
+        assert_eq!(
+            result_json(&result)["message"],
+            "operation control token is unknown or has already been released"
+        );
+        unsafe { api.result_free.unwrap()(&mut result) };
+    }
+    assert_eq!(
         unsafe { api.engine_try_close.unwrap()(engine) },
         MERMAN_NATIVE_STATUS_OK
-    );
-    assert_eq!(
-        unsafe { api.operation_control_release.unwrap()(control) },
-        MERMAN_NATIVE_STATUS_OK
-    );
-    assert_eq!(
-        unsafe { api.operation_control_cancel.unwrap()(control) },
-        MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
-    );
-    assert_eq!(
-        unsafe { api.operation_control_release.unwrap()(control) },
-        MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
     );
 }
 
