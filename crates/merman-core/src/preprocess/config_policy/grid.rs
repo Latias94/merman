@@ -374,9 +374,7 @@ mod tests {
     #[test]
     fn source_arrays_merge_by_slot_and_init_directives_replace_by_id() {
         let parser = crate::SemanticParser::new();
-        let frontmatter = concat!(
-            "---\r\nconfig:\r\n  grid:\r\n    placements:\r\n      service: [{row: 1, column: -2}, {row: -3}]\r\n---\r\n"
-        );
+        let frontmatter = "---\r\nconfig:\r\n  grid:\r\n    placements:\r\n      service: [{row: 1, column: -2}, {row: -3}]\r\n---\r\n";
         let init = "%%{init: {\"grid\": {\"placements\": {\"service\": [{\"row\": 5}]}}}}%%\n";
         let body = "flowchart LR\nservice --> target\n";
         let source = format!("{frontmatter}{init}{body}");

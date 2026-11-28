@@ -31,7 +31,7 @@ diagram-c4 = [
     "merman-render-core/text-layout",
 ]
 diagram-class = [
-    "dep:base64", "dep:indexmap", "dep:merman-markup", "dep:merman-model", "dep:merman-render-core",
+    "dep:base64", "dep:indexmap", "dep:kurbo", "dep:merman-markup", "dep:merman-model", "dep:merman-render-core",
     "dep:merman-theme-contract", "dep:roughr", "dep:rustc-hash", "dep:ryu-js", "dep:serde", "dep:serde_json",
     "merman-markup/html", "merman-model/diagram-class", "merman-render-core/euclid-geometry",
     "merman-render-core/graph-layout", "merman-render-core/markdown-labels", "merman-render-core/math-labels",
