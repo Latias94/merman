@@ -280,10 +280,14 @@ fn scan_json_string_token(
                     .get(index + 1)
                     .copied()
                     .ok_or_else(|| format!("{label} contains an unterminated JSON escape"))?;
-                if escaped != b'u' {
-                    decoded_bytes += 1;
-                    index += 2;
-                    continue;
+                match escaped {
+                    b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't' => {
+                        decoded_bytes += 1;
+                        index += 2;
+                        continue;
+                    }
+                    b'u' => {}
+                    _ => return Err(format!("{label} contains an invalid JSON escape")),
                 }
                 let first = parse_json_unicode_escape(bytes, index, label)?;
                 if (0xd800..=0xdbff).contains(&first) {
@@ -438,8 +442,9 @@ mod tests {
     use super::{
         BindingError, NodeDocumentLimits, NodeOperationRequest, decode_operation_request_options,
         deserialize_bounded_json, node_wire_contract, parse_operation_request_framing,
-        scan_bounded_json_text, validate_bounded_json_text,
+        scan_bounded_json_text, validate_binding_options, validate_bounded_json_text,
     };
+    use merman_bindings_core::BindingStatus;
 
     fn parse_operation_request(request_json: &str) -> Result<NodeOperationRequest, BindingError> {
         let request = parse_operation_request_framing(request_json)?;
@@ -507,6 +512,26 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn malformed_string_escapes_return_options_errors() {
+        let options = r#"{"value":"\é"}"#;
+        let error = validate_binding_options(options).unwrap_err();
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(error.message().contains("invalid JSON escape"));
+
+        let error =
+            parse_operation_request_framing(r#"{"operation_id":"svg","source":"\é"}"#).unwrap_err();
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+
+        let request =
+            serde_json::json!({"operation_id": "svg", "source": "info", "options_json": options});
+        let error = parse_operation_request(&request.to_string()).unwrap_err();
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+
+        validate_binding_options(r#"{"value":"\"\\\/\b\f\n\r\t\u00e9"}"#).unwrap();
+        assert!(validate_binding_options(r#"{"value":"\x"}"#).is_err());
     }
 
     #[test]
