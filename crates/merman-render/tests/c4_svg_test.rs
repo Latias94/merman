@@ -629,8 +629,12 @@ Rel(n0, n2, "Caption 2 for the relationship", "HTTPS")
 Rel(n0, n0, "Caption 3 for the relationship", "HTTPS")
 Rel(n1, n1, "Caption 4 for the relationship", "HTTPS")
 "#;
+    // A caption taller than the loop's entire shelf forces the exterior placement.
+    let line = "Caption 4 word group that must remain legible";
+    let caption = [line; 11].join("<br/>");
+    let source = source.replace("Caption 4 for the relationship", &caption);
     let parsed = MermaidEngine::new()
-        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
         .unwrap()
         .unwrap();
     let theme = ThemeCompiler::new()
@@ -648,7 +652,17 @@ Rel(n1, n1, "Caption 4 for the relationship", "HTTPS")
     .unwrap();
     let projection = prepared.layout_json().unwrap();
     let relation = &projection["layout"]["C4Diagram"]["rels"][4];
-    assert_eq!(relation["label"]["text"], "Caption 4 for the relationship");
+    let prepared_caption = relation["label"]["text"]
+        .as_str()
+        .unwrap()
+        .replace("<br/>", " ");
+    assert_eq!(
+        prepared_caption.split_whitespace().collect::<Vec<_>>(),
+        caption
+            .replace("<br/>", " ")
+            .split_whitespace()
+            .collect::<Vec<_>>(),
+    );
     assert_eq!(relation["techn"]["text"], "HTTPS");
 
     let svg = prepared
@@ -691,10 +705,12 @@ Rel(n1, n1, "Caption 4 for the relationship", "HTTPS")
         .filter(|node| node.has_tag_name("text"))
         .map(svg_text_content)
         .collect();
-    assert_eq!(
-        blocks,
-        ["n1 → n1 (5)", "Caption 4 for the relationship", "[HTTPS]"]
-    );
+    let [reference, message @ .., technology] = blocks.as_slice() else {
+        panic!("expected the exterior relationship caption: {blocks:?}");
+    };
+    assert_eq!(reference, "n1 → n1 (5)");
+    assert_eq!(message.join(" "), [line; 11].join(" "));
+    assert_eq!(technology, "[HTTPS]");
     let transform = caption
         .attribute("transform")
         .unwrap()
