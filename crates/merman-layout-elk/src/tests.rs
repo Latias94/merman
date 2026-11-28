@@ -734,20 +734,19 @@ fn separate_children_segment_edge_order_is_unique_within_materialized_scope() {
 
 #[test]
 fn separate_children_layout_is_small_stack_safe_and_deterministic() {
-    let graph = deep_separate_graph(256);
-    let first = std::thread::Builder::new()
-        .name("elk-separate-children-small-stack".to_string())
-        .stack_size(128 * 1024)
-        .spawn(move || layout(&graph))
-        .unwrap()
-        .join()
-        .expect("separate-children layout must not overflow the worker stack")
-        .unwrap();
-    assert_eq!(first.nodes.len(), 257);
-
-    let replay_graph = deep_separate_graph(256);
-    let replayed = layout(&replay_graph).unwrap();
-    assert_eq!(first, replayed);
+    for graph in [deep_separate_graph(256), deep_include_graph(256)] {
+        let expected = layout(&graph).unwrap();
+        let replayed = std::thread::Builder::new()
+            .name("elk-compound-small-stack".to_string())
+            .stack_size(128 * 1024)
+            .spawn(move || layout(&graph))
+            .unwrap()
+            .join()
+            .unwrap()
+            .unwrap();
+        assert_eq!(replayed.nodes.len(), 257);
+        assert_eq!(replayed, expected);
+    }
 }
 
 #[test]

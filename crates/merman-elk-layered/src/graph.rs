@@ -19,6 +19,7 @@ use crate::work::{NoopWorkControl, WorkControl, WorkError, checked_add, checked_
 
 mod clone_tree;
 mod port_remap;
+pub use clone_tree::OwnedLGraph;
 pub(crate) use port_remap::{FlatPortRemap, PendingPortRemap, PortListStorage};
 
 #[derive(Clone, Copy, Default)]
