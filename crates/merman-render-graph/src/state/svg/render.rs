@@ -116,6 +116,27 @@ pub fn render_state_diagram_svg_model(
             parent.insert(n.id.as_str(), p);
         }
     }
+    #[cfg(feature = "layout-shoal")]
+    if canonical_routes.is_some() {
+        for group in model.nodes.iter().filter(|node| node.shape == "noteGroup") {
+            options.work_meter.charge_emit_work(1)?;
+            let Some(owner) =
+                crate::state::note_group_owner_id(&group.id).and_then(|id| nodes_by_id.get(id))
+            else {
+                continue;
+            };
+            let container = crate::state::note_group_container(group, owner, |id| {
+                nodes_by_id
+                    .get(id)
+                    .is_some_and(|node| node.shape == "noteGroup")
+            });
+            if let Some(container) = container {
+                parent.insert(group.id.as_str(), container);
+            } else {
+                parent.remove(group.id.as_str());
+            }
+        }
+    }
 
     // Mermaid's state diagram DOM insertion order follows the order of `StateDB.getData().nodes`
     // (see `dataFetcher.ts` + dagre renderer `graph.nodes()` iteration). Our semantic model's
@@ -784,7 +805,9 @@ fn render_state_root(
             r#"<g class="edgePaths">"#
         });
         if ctx.include_edges {
-            for edge in ctx.edges {
+            for (ordinal, edge) in ctx.edges.iter().enumerate() {
+                #[cfg(not(feature = "layout-shoal"))]
+                let _ = ordinal;
                 if !ctx.uses_flat_routes()
                     && (state_is_hidden(ctx, edge.start.as_str())
                         || state_is_hidden(ctx, edge.end.as_str())
@@ -807,9 +830,10 @@ fn render_state_root(
                     out,
                     ctx,
                     edge,
-                    origin_x,
-                    origin_y,
+                    (origin_x, origin_y),
                     edge_scratch,
+                    #[cfg(feature = "layout-shoal")]
+                    ordinal,
                     #[cfg(feature = "layout-shoal")]
                     &mut details.canonical_edge_bounds,
                 )?;
@@ -1417,10 +1441,13 @@ fn render_state_cluster(
     }
 
     if ctx.html_labels {
-        let label_div_style = format!(
-            "{}display: table-cell; white-space: nowrap; line-height: 1.5;",
-            title_div_prefix
-        );
+        let positioning = if uses_canonical_routes {
+            "display: block; text-align: center;"
+        } else {
+            "display: table-cell;"
+        };
+        let label_div_style =
+            format!("{title_div_prefix}{positioning} white-space: nowrap; line-height: 1.5;");
         let _ = write!(
             out,
             r#"<g class="cluster-label" style="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g>"#,

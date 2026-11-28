@@ -19,8 +19,8 @@ use super::edges::{ArchitectureEdgeRenderContext, push_architecture_edges};
 use super::geometry::{GroupRect, GroupRectComputer, bounds_from_rect, extend_bounds};
 use super::icons::ArchitectureNodeResources;
 use super::nodes::{
-    ArchitectureNodeRenderContext, push_architecture_group_surfaces, push_architecture_groups,
-    push_architecture_services_and_junctions,
+    ArchitectureNodeRenderContext, GroupSurfaceStyle, push_architecture_group_surfaces,
+    push_architecture_groups, push_architecture_services_and_junctions,
 };
 use super::root::{architecture_a11y_nodes, begin_architecture_document};
 use super::settings::ArchitectureRenderSettings;
@@ -297,7 +297,29 @@ pub fn render_architecture_diagram_svg_typed_with_config(
     let checkpoints = ArchitectureEmitCheckpoints::new(options.work_meter);
     checkpoints.checkpoint()?;
     let typography = group_theme.typography_theme();
+    let binding = typography.css_binding();
     let native = group_theme.native_style();
+    let legacy_neo = false;
+    #[cfg(feature = "layout-shoal")]
+    let legacy_neo = legacy_neo
+        || (shoal_geometry.is_some()
+            && native.is_none()
+            && (effective_config.get_str("look") == Some("neo")
+                || (!effective_config.explicit_config_owns_path("look")
+                    && matches!(effective_config.get_str("theme"), Some("neo" | "neo-dark")))));
+    let neo_node_fill = legacy_neo.then(|| {
+        effective_config
+            .get_str("themeVariables.mainBkg")
+            .or_else(|| effective_config.get_str("themeVariables.primaryColor"))
+            .unwrap_or("none")
+    });
+    let icon_ink = native.map(|style| style.icon_ink.as_str()).or_else(|| {
+        legacy_neo.then(|| {
+            effective_config
+                .get_str("themeVariables.primaryTextColor")
+                .unwrap_or(binding.common.text_color())
+        })
+    });
     let settings = ArchitectureRenderSettings::from_prepared(typography, native);
     let icon_size_px = settings.icon_size_px;
     let half_icon = settings.half_icon;
@@ -340,24 +362,15 @@ pub fn render_architecture_diagram_svg_typed_with_config(
         &mut out,
         root_viewport,
         diagram_id,
-        |css| {
-            ArchitectureRenderSettings::write_stylesheet(
-                css,
-                diagram_id,
-                typography.css_binding(),
-                native,
-            )
-        },
+        |css| ArchitectureRenderSettings::write_stylesheet(css, diagram_id, binding, native),
         &a11y,
         use_max_width,
     )?;
     let look_defs = PreparedLookDefs::new(effective_config);
-    let emit_shadow_defs = typography
-        .css_binding()
-        .common
-        .references_builtin_drop_shadow();
+    let emit_shadow_defs = binding.common.references_builtin_drop_shadow();
     #[cfg(feature = "layout-shoal")]
     let emit_shadow_defs = emit_shadow_defs
+        || legacy_neo
         || (shoal_geometry.is_some() && effective_config.get_str("look") == Some("neo"));
     if emit_shadow_defs {
         look_defs.write_shadow_defs(&mut out, diagram_id)?;
@@ -372,14 +385,33 @@ pub fn render_architecture_diagram_svg_typed_with_config(
     #[cfg(feature = "layout-shoal")]
     let separate_group_surfaces = separate_group_surfaces || shoal_geometry.is_some();
     if separate_group_surfaces {
-        let group_style =
-            native.map(|style| format!("fill:{};stroke-dasharray:none;", style.group_fill));
+        let native_inline;
+        let surface = if let Some(native) = native {
+            native_inline = format!("fill:{};stroke-dasharray:none;", native.group_fill);
+            GroupSurfaceStyle::Native {
+                inline: &native_inline,
+                radius: native.group_radius,
+            }
+        } else {
+            #[cfg(feature = "layout-shoal")]
+            if legacy_neo {
+                GroupSurfaceStyle::Neo {
+                    fill: effective_config
+                        .get_str("themeVariables.clusterBkg")
+                        .unwrap_or("none"),
+                    stroke_width: &binding.group_border_width,
+                }
+            } else {
+                GroupSurfaceStyle::Classic
+            }
+            #[cfg(not(feature = "layout-shoal"))]
+            GroupSurfaceStyle::Classic
+        };
         push_architecture_group_surfaces(
             &mut out,
             diagram_id,
             &group_rects,
-            group_style.as_deref(),
-            native.map(|style| style.group_radius),
+            surface,
             #[cfg(feature = "layout-shoal")]
             shoal_geometry.is_some(),
             checkpoints,
@@ -466,10 +498,16 @@ pub fn render_architecture_diagram_svg_typed_with_config(
             diagram_id,
             #[cfg(feature = "layout-shoal")]
             shoal: shoal_geometry,
+            #[cfg(feature = "layout-shoal")]
+            layout_nodes: &layout.nodes,
+            #[cfg(feature = "layout-shoal")]
+            junction_dot_color: &binding.edge_color,
             model,
             node_xy: &node_xy,
             settings: &settings,
             native,
+            neo_node_fill,
+            icon_ink,
             text_measurer,
             resources: ArchitectureNodeResources {
                 effective_config,

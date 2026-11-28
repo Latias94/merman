@@ -23,6 +23,8 @@ pub(super) fn write_css(
     out: &mut impl SvgOutput,
     id: SvgId<'_>,
     binding: &UsecaseCssBinding,
+    config: &merman_model::presentation::PresentationConfig,
+    canonical: bool,
     mermaid_grid_label_font: bool,
 ) -> Result<()> {
     let UsecaseCssBinding {
@@ -31,7 +33,6 @@ pub(super) fn write_css(
         body,
         border,
         actor,
-        actor_border,
         boundary,
         boundary_border,
         line,
@@ -48,6 +49,8 @@ pub(super) fn write_css(
         look,
         ..
     } = binding;
+    let actor_border = binding.actor_outline(config, canonical);
+    let hand_drawn_shapes = canonical && look == "handDrawn";
     out.push_str("<style>");
     let mut css = XmlTextOutput::new(out);
     // HTML label metrics exclude the browser's default paragraph margins, as does
@@ -62,6 +65,12 @@ pub(super) fn write_css(
         font.font_family.as_deref().unwrap_or("sans-serif"),
         fmt(font.font_size)
     );
+    if canonical {
+        let _ = write!(
+            css,
+            "#{id} .usecase-json-title,#{id} .usecase-json-key,#{id} .usecase-json-value,#{id} .usecase-json-table text{{stroke:none}}"
+        );
+    }
     #[cfg(feature = "layout-grid")]
     if mermaid_grid_label_font {
         let _ = write!(
@@ -82,15 +91,28 @@ pub(super) fn write_css(
             )
         };
         let slot = format!(r##"#{id} [data-look="{look}"][data-color-id="color-{index}"]"##);
-        let _ = write!(
-            css,
-            "{slot}.system-boundary rect.boundary-body,{slot}.system-boundary rect.boundary-tab,{slot}.system-boundary .boundary-body path,{slot}.system-boundary .boundary-tab path{{stroke:{color};{fill}}}"
-        );
+        if hand_drawn_shapes {
+            let _ = write!(
+                css,
+                "{slot}.system-boundary .usecase-sketch-shape{{stroke:{color};{fill}}}"
+            );
+        } else {
+            let _ = write!(
+                css,
+                "{slot}.system-boundary rect.boundary-body,{slot}.system-boundary rect.boundary-tab,{slot}.system-boundary .boundary-body path,{slot}.system-boundary .boundary-tab path{{stroke:{color};{fill}}}"
+            );
+        }
         if binding.rotate {
             let _ = write!(
                 css,
                 "{slot}.usecase-element ellipse,{slot}.usecase-element rect{{stroke:{color};{fill}}}{slot}.usecase-element .usecase-business-marker{{stroke:{color}}}{slot}.usecase-actor .usecase-actor-glyph{{stroke:{color};{fill}}}"
             );
+            if hand_drawn_shapes {
+                let _ = write!(
+                    css,
+                    "{slot}.usecase-element .usecase-sketch-shape{{stroke:{color};{fill}}}"
+                );
+            }
             if look != "handDrawn" {
                 let _ = write!(
                     css,
@@ -128,6 +150,14 @@ pub(super) fn write_css(
 #{id} .edge-animation-slow{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round}}
 "#
     );
+    if hand_drawn_shapes {
+        let _ = write!(
+            css,
+            r#"#{id} .usecase-element .usecase-sketch-shape{{fill:{body};stroke:{border};stroke-width:2px}}
+#{id} .system-boundary .usecase-sketch-shape{{fill:{boundary};stroke:{boundary_border};stroke-width:1px}}
+#{id} .usecase-note .usecase-sketch-shape{{stroke-width:1.3px}}"#,
+        );
+    }
     // Mermaid appends shared neo paint after family CSS. The role selectors must
     // name the actual glyph/body children to outrank direct neo path/rect rules.
     if look != "handDrawn" {

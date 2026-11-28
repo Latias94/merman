@@ -5,6 +5,8 @@ use super::{
     sanitize_source_label,
 };
 use base64::Engine as _;
+#[cfg(feature = "layout-shoal")]
+use kurbo::Vec2;
 use kurbo::{Ellipse, Rect, Shape};
 use merman_markup::theme_color::ThemeColor;
 use merman_model::families::usecase::{
@@ -43,6 +45,8 @@ mod grid;
 #[cfg(feature = "layout-layered")]
 mod layered;
 mod shapes;
+#[cfg(feature = "layout-shoal")]
+mod sketch;
 mod theme;
 
 #[cfg(feature = "layout-shoal")]
@@ -678,6 +682,17 @@ pub fn render_usecase_diagram_svg_model(
     let uses_canonical = canonical_edges.is_some();
     #[cfg(not(feature = "layout-shoal"))]
     let uses_canonical = false;
+    #[cfg(feature = "layout-shoal")]
+    let sketch_shapes =
+        (uses_canonical && css_binding.look == "handDrawn").then(|| sketch::UsecaseSketch {
+            work_meter: options.work_meter,
+            randomness: operation_randomness(
+                options.operation,
+                css_binding.hand_drawn_seed,
+                "usecase-shape",
+            ),
+            bounds: Default::default(),
+        });
     let labels = UsecaseLabelRenderContext {
         config,
         measurer,
@@ -707,10 +722,8 @@ pub fn render_usecase_diagram_svg_model(
         viewport_bounds.max_y,
         padding,
     );
-    let spec = root_svg::RootViewportSpec::mermaid(
-        viewport,
-        config_bool(cfg, &["usecase", "useMaxWidth"]).unwrap_or(true),
-    );
+    let use_max_width = config_bool(cfg, &["usecase", "useMaxWidth"]).unwrap_or(true);
+    let spec = root_svg::RootViewportSpec::mermaid(viewport, use_max_width);
     let acc_title_id = model
         .acc_title
         .as_ref()
@@ -759,6 +772,17 @@ pub fn render_usecase_diagram_svg_model(
     ];
     chrome.custom_properties = &font_properties;
     let mut out = BoundedSvgOutput::new(options.work_meter);
+    #[cfg(feature = "layout-shoal")]
+    let document = if sketch_shapes.is_some() {
+        options.viewport.begin_document(
+            &mut out,
+            root_svg::DeferredRootSpec::mermaid(use_max_width),
+            chrome,
+        )?
+    } else {
+        options.viewport.write_open(&mut out, spec, chrome)?
+    };
+    #[cfg(not(feature = "layout-shoal"))]
     let document = options.viewport.write_open(&mut out, spec, chrome)?;
     if let Some(title) = &model.acc_title {
         let _ = write!(
@@ -778,6 +802,8 @@ pub fn render_usecase_diagram_svg_model(
         &mut out,
         diagram_id,
         css_binding,
+        config,
+        uses_canonical,
         uses_grid && native.is_none(),
     )?;
     // Mermaid emits marker wrappers that are observable in strict SVG DOM parity.
@@ -891,34 +917,39 @@ pub fn render_usecase_diagram_svg_model(
         } else {
             (left, 0.0, 0.0)
         };
-        let write_tab = |out: &mut BoundedSvgOutput<'_>| {
+        let write_tab = |out: &mut BoundedSvgOutput<'_>| -> Result<()> {
             if plan.package {
-                shapes::rect(
+                shapes::write_box(
                     out,
                     "boundary-tab system-boundary-package-tab label-container",
-                    tab_left,
-                    top,
-                    tab_width,
-                    tab_height,
+                    (tab_left, top),
+                    (tab_width, tab_height),
                     &plan.source_style,
-                );
+                    #[cfg(feature = "layout-shoal")]
+                    sketch_shapes.as_ref(),
+                    #[cfg(feature = "layout-shoal")]
+                    Vec2::ZERO,
+                )?;
             }
+            Ok(())
         };
         if !uses_canonical {
-            write_tab(&mut out);
+            write_tab(&mut out)?;
         }
         let body_inset = if uses_canonical { 0.0 } else { tab_height };
-        shapes::rect(
+        shapes::write_box(
             &mut out,
             "boundary-body label-container",
-            left,
-            top + body_inset,
-            node.width,
-            height - body_inset,
+            (left, top + body_inset),
+            (node.width, height - body_inset),
             &plan.source_style,
-        );
+            #[cfg(feature = "layout-shoal")]
+            sketch_shapes.as_ref(),
+            #[cfg(feature = "layout-shoal")]
+            Vec2::ZERO,
+        )?;
         if uses_canonical {
-            write_tab(&mut out);
+            write_tab(&mut out)?;
         }
         let title_x = placed_title.map_or_else(
             || {
@@ -1423,6 +1454,8 @@ pub fn render_usecase_diagram_svg_model(
                 diagram_id,
                 options,
                 canonical: uses_canonical,
+                #[cfg(feature = "layout-shoal")]
+                sketch: sketch_shapes.as_ref(),
             },
         )?;
         out.push_str("</g>");
@@ -1452,6 +1485,27 @@ pub fn render_usecase_diagram_svg_model(
             escape_xml(title)
         );
     }
+    #[cfg(feature = "layout-shoal")]
+    let document = if let Some(sketch) = &sketch_shapes {
+        let viewport = if let Some(rough) = sketch.bounds.get() {
+            root_svg::DiagramBounds::from_extents(
+                viewport_bounds.min_x.min(rough.x0),
+                viewport_bounds.min_y.min(rough.y0),
+                viewport_bounds.max_x.max(rough.x1),
+                viewport_bounds.max_y.max(rough.y1),
+                padding,
+            )
+        } else {
+            viewport
+        };
+        options.viewport.finish_document(
+            &mut out,
+            document,
+            root_svg::RootViewportSpec::mermaid(viewport, use_max_width),
+        )?
+    } else {
+        document
+    };
     out.push_str("</svg>");
     document.complete(out.finish()?)
 }

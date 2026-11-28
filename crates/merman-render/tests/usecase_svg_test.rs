@@ -2218,34 +2218,78 @@ style Login fill:#abcdef
 
 #[cfg(feature = "layout-shoal")]
 #[test]
-fn usecase_shoal_centers_non_html_ellipse_labels() {
-    let source = "usecase-beta\nA(Run Real-Time AML Screening)\n";
+fn usecase_shoal_centers_non_html_ellipse_and_note_labels() {
+    let source = "usecase-beta\nA(Run Real-Time AML Screening)\nnote for A \"PCI DSS scope\"\n";
     let (_, svg) = render_config(
         source,
         json!({"layout": "shoal", "look": "classic", "htmlLabels": false}),
     );
     let document = roxmltree::Document::parse(&svg).unwrap();
-    let node = document
+    for (id, class) in [("A", "label"), ("note-0", "label noteLabel")] {
+        let node = document
+            .descendants()
+            .find(|node| node.attribute("data-usecase-id") == Some(id))
+            .unwrap();
+        let label = node
+            .descendants()
+            .find(|label| label.attribute("class") == Some(class))
+            .unwrap();
+        assert!(
+            label
+                .attribute("transform")
+                .unwrap()
+                .starts_with("translate(0,")
+        );
+        let text = label
+            .descendants()
+            .find(|node| node.has_tag_name("text"))
+            .unwrap();
+        assert_eq!(text.attribute("text-anchor"), Some("middle"));
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn usecase_shoal_business_nodes_share_typography_and_json_text_has_no_stroke() {
+    let (_, svg) = render_config(
+        "usecase-beta\nA(Review the access request)\nB(Review the access request)@{business:true}\njson Claims@{\"role\":\"editor\"}\n",
+        json!({"layout": "shoal", "theme": "forest", "htmlLabels": false}),
+    );
+    let doc = roxmltree::Document::parse(&svg).unwrap();
+    let node = |id| {
+        doc.descendants()
+            .find(|node| node.attribute("data-usecase-id") == Some(id))
+            .unwrap()
+    };
+    let label_style = |id| {
+        node(id)
+            .descendants()
+            .find(|child| child.has_tag_name("text"))
+            .unwrap()
+            .attribute("style")
+            .unwrap()
+    };
+    assert_eq!(label_style("A"), label_style("B"));
+    assert!(label_style("B").contains("font-size:16px !important"));
+    assert!(
+        node("B")
+            .children()
+            .any(|child| child.attribute("class") == Some("usecase-business-marker"))
+    );
+    assert!(
+        node("Claims")
+            .descendants()
+            .any(|child| child.has_tag_name("rect")
+                && child.attribute("class") == Some("usecase-json-cell usecase-json-value-cell"))
+    );
+    let css = doc
         .descendants()
-        .find(|node| node.attribute("data-usecase-id") == Some("A"))
+        .find(|child| child.has_tag_name("style"))
+        .unwrap()
+        .text()
         .unwrap();
-    let label = node
-        .descendants()
-        .find(|label| label.attribute("class") == Some("label"))
-        .unwrap();
-    let transform = label
-        .attribute("transform")
-        .expect("label transform")
-        .strip_prefix("translate(")
-        .and_then(|rest| rest.strip_suffix(')'))
-        .expect("translate(...)");
-    let tx: f64 = transform.split(',').next().unwrap().trim().parse().unwrap();
-    assert_eq!(tx, 0.0);
-    let text = label
-        .descendants()
-        .find(|node| node.has_tag_name("text"))
-        .unwrap();
-    assert_eq!(text.attribute("text-anchor"), Some("middle"));
+    assert!(css.contains(".usecase-json-table text{stroke:none}"));
+    assert!(css.contains(".usecase-json-cell{fill:"));
 }
 
 #[cfg(feature = "layout-shoal")]
@@ -2271,6 +2315,175 @@ fn usecase_shoal_actor_paints_the_resolved_font_with_a_centered_caption() {
         text.attribute("style")
             .unwrap()
             .contains("font-size:23px !important")
+    );
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn usecase_shoal_preserves_authored_actor_outlines_and_adapts_the_forest_default() {
+    let source = "usecase-beta\nactor A(Developer)\n";
+    for (variables, expected) in [
+        (json!({}), "#13540c"),
+        (json!({"actorBorder": "#ff0000"}), "#ff0000"),
+    ] {
+        let (_, svg) = render_config(
+            source,
+            json!({"layout": "shoal", "theme": "forest", "themeVariables": variables}),
+        );
+        let css = format!(".usecase-actor-glyph{{fill:#cde498;stroke:{expected};");
+        assert!(svg.contains(&css), "{svg}");
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn usecase_shoal_actor_contacts_clear_the_stick_figure_and_caption() {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    use merman_render::model::LayoutPoint;
+
+    let translation = |node: roxmltree::Node<'_, '_>| {
+        let pair = node
+            .attribute("transform")
+            .unwrap()
+            .strip_prefix("translate(")
+            .unwrap()
+            .strip_suffix(')')
+            .unwrap();
+        let (x, y) = pair.split_once(',').unwrap();
+        (
+            x.trim().parse::<f64>().unwrap(),
+            y.trim().parse::<f64>().unwrap(),
+        )
+    };
+    for (variant, side_contact) in [("normal", 21.0), ("hollow", 26.0)] {
+        for (direction, relation) in [
+            ("LR", "A --> B"),
+            ("RL", "A --> B"),
+            ("TB", "A --> B"),
+            ("BT", "B --> A"),
+        ] {
+            let (_, svg) = render_config(
+                &format!(
+                    "usecase-beta\ndirection {direction}\nactor A(Buyer)@{{type:{variant}}}\nB(Cart)\n{relation}\n"
+                ),
+                json!({"layout": "shoal", "look": "classic", "htmlLabels": true}),
+            );
+            let doc = roxmltree::Document::parse(&svg).unwrap();
+            let actor = doc
+                .descendants()
+                .find(|node| node.attribute("data-usecase-id") == Some("A"))
+                .unwrap();
+            let (x, y) = translation(actor);
+            let edge = doc
+                .descendants()
+                .find(|node| node.attribute("data-et") == Some("edge"))
+                .unwrap();
+            let points: Vec<LayoutPoint> = serde_json::from_slice(
+                &STANDARD
+                    .decode(edge.attribute("data-points").unwrap())
+                    .unwrap(),
+            )
+            .unwrap();
+            let contact = if direction == "BT" {
+                points.last().unwrap()
+            } else {
+                &points[0]
+            };
+            if matches!(direction, "LR" | "RL") {
+                let offset = if direction == "LR" {
+                    side_contact
+                } else {
+                    -side_contact
+                };
+                assert!(
+                    (contact.x - x - offset).abs() < 1e-6,
+                    "{variant} {direction}: {contact:?}"
+                );
+            } else {
+                let label = actor
+                    .descendants()
+                    .find(|node| node.has_tag_name("foreignObject"))
+                    .unwrap();
+                let bottom = y
+                    + translation(label.parent().unwrap()).1
+                    + label.attribute("height").unwrap().parse::<f64>().unwrap();
+                assert!(
+                    (contact.y - bottom - 5.0).abs() < 1e-6,
+                    "{variant} {direction}: {contact:?}"
+                );
+            }
+        }
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn usecase_shoal_hand_drawn_paints_shells_glyphs_and_relationships() {
+    use kurbo::{BezPath, Rect, Shape};
+
+    let (_, svg) = render_config(
+        &format!("{SOURCE}\nstyle User opacity:0.5,stroke-width:4px\n"),
+        json!({"layout": "shoal", "look": "handDrawn", "handDrawnSeed": 17,
+            "htmlLabels": false, "usecase": {"diagramPadding": 0}}),
+    );
+    let doc = roxmltree::Document::parse(&svg).unwrap();
+    let viewbox: Vec<f64> = doc
+        .root_element()
+        .attribute("viewBox")
+        .unwrap()
+        .split_whitespace()
+        .map(|n| n.parse().unwrap())
+        .collect();
+    let viewport = Rect::from_origin_size((viewbox[0], viewbox[1]), (viewbox[2], viewbox[3]));
+    for class in [
+        "boundary-body",
+        "boundary-tab",
+        "usecase-actor-hollow-head",
+        "usecase-actor-hollow-body",
+        "usecase-business-ellipse",
+        "outer-path",
+        "usecase-json-border",
+    ] {
+        let shape = doc
+            .descendants()
+            .find(|node| {
+                node.attribute("class").is_some_and(|classes| {
+                    classes
+                        .split_whitespace()
+                        .any(|part| part == "usecase-sketch-shape")
+                        && classes.split_whitespace().any(|part| part == class)
+                })
+            })
+            .unwrap_or_else(|| panic!("missing hand-drawn {class}"));
+        let stroke = shape.last_element_child().unwrap();
+        assert_eq!(stroke.attribute("fill"), Some("none"));
+        let d = stroke.attribute("d").unwrap();
+        assert!(
+            d.contains('C') && d.matches('M').count() > 1,
+            "{class}: {d}"
+        );
+        if class.starts_with("boundary-") {
+            let paint = BezPath::from_svg(d)
+                .unwrap()
+                .bounding_box()
+                .inflate(0.5, 0.5);
+            assert!(viewport.inflate(1e-6, 1e-6).contains_rect(paint));
+        }
+        if class.starts_with("usecase-actor-") {
+            let glyph = shape.parent_element().unwrap();
+            let style = glyph.attribute("style").unwrap();
+            assert!(style.contains("opacity:0.5"), "{style}");
+            assert!(style.contains("stroke-width:4px"), "{style}");
+            assert!(shape.attribute("style").is_none());
+        }
+    }
+    assert!(
+        doc.descendants()
+            .filter(|node| node.attribute("data-et") == Some("edge"))
+            .all(|node| {
+                node.attribute("data-look") == Some("handDrawn")
+                    && node.attribute("d").unwrap().matches('M').count() > 1
+            })
     );
 }
 

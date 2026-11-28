@@ -121,7 +121,7 @@ pub struct EdgeClearance<'a> {
 }
 
 impl EdgeClearance<'_> {
-    /// Supplies the painted caption envelope for steps that may move near it.
+    /// Supplies the painted caption envelope for alternate route segments.
     pub fn with_label_bounds(mut self, bounds: Option<Rect>) -> Self {
         self.label_bounds = bounds;
         self
@@ -439,17 +439,17 @@ impl EdgeClearance<'_> {
     }
 }
 
-fn overlaps(a: Rect, b: Rect) -> bool {
+pub(super) fn overlaps(a: Rect, b: Rect) -> bool {
     a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0
 }
 
-fn control_bounds(curve: CubicBez) -> Rect {
+pub(super) fn control_bounds(curve: CubicBez) -> Rect {
     Rect::from_points(curve.p0, curve.p3)
         .union_pt(curve.p1)
         .union_pt(curve.p2)
 }
 
-fn line_enters(from: Point, to: Point, rect: Rect) -> bool {
+pub(super) fn line_enters(from: Point, to: Point, rect: Rect) -> bool {
     let mut near: f64 = 0.0;
     let mut far: f64 = 1.0;
     for (start, delta, min, max) in [
@@ -470,7 +470,7 @@ fn line_enters(from: Point, to: Point, rect: Rect) -> bool {
     near < far
 }
 
-fn cubic_enters(curve: CubicBez, rect: Rect) -> bool {
+pub(super) fn cubic_enters(curve: CubicBez, rect: Rect) -> bool {
     let inside = |p: Point| rect.x0 < p.x && p.x < rect.x1 && rect.y0 < p.y && p.y < rect.y1;
     if inside(curve.p0) || inside(curve.p3) {
         return true;

@@ -3,6 +3,7 @@
 mod captions;
 mod comb;
 mod gutters;
+mod runways;
 
 use gutters::{GutterSpan, LaneUse, card_channel, gutter_route, simple_candidate};
 
@@ -29,6 +30,8 @@ struct Site {
     at: Point,
     lane: FaceLane,
     aligned_dist: Option<f64>,
+    target_depth: f64,
+    projected_contact: Option<(usize, [f64; 2])>,
     straight: bool,
     scope: usize,
 }
@@ -145,11 +148,13 @@ impl Plan {
         projection: Projection,
         sides: [Side; 2],
         edge: usize,
+        gutters: &Gutters<'_>,
         work: &mut Work<'_>,
     ) -> LayoutResult<()> {
         let spec = &context.graph.edges[edge];
         let h = context.hierarchy;
         let scope = projection.scope;
+        let card_grid = matches!(gutters, Gutters::CardGrid(_));
         let scope_item = h.node_count + scope;
         let transit = |item: usize| {
             if item == scope_item {
@@ -186,12 +191,11 @@ impl Plan {
             site: 0,
             inner: false,
         }; 2];
-        let mut incoming = 0;
+        let anchors = ends.map(|item| anchor(context.graph, context.drawing, item));
         for (end, (&item, &side)) in ends.iter().zip(&sides).enumerate() {
             work.visit(1)?;
-            let other = anchor(context.graph, context.drawing, ends[1 - end]);
             let from_rect = rect(context.drawing, item);
-            let from = anchor(context.graph, context.drawing, item);
+            let [from, other] = [anchors[end], anchors[1 - end]];
             let inner = item == scope_item;
             let offset = match hints[end] {
                 PortSideHint::FixedOffset { offset, .. } if item == projection.ends[end] => {
@@ -203,13 +207,16 @@ impl Plan {
             {
                 let (axis, sign) = normal(side);
                 let delta = [other.x - from.x, other.y - from.y][axis] * sign as f64;
-                ((cross(side, other) - cross(side, from)).abs() <= 1.0 && delta > 0.0)
-                    .then_some(delta)
+                let aligned = (cross(side, other) - cross(side, from)).abs() <= 1.0;
+                let same_row_exit = card_grid
+                    && side.axis() == Axis::Horizontal
+                    && h.parent[item] != scope
+                    && (from_rect.y..=from_rect.y + from_rect.height).contains(&other.y);
+                ((aligned || same_row_exit) && delta > 0.0).then_some(delta)
             } else {
                 None
             };
-            let terminal_side = side;
-            let mut terminal = self.site(
+            terminals[end] = self.site(
                 Site {
                     owner: item,
                     side,
@@ -222,28 +229,59 @@ impl Plan {
                     at: Point::default(),
                     lane: FaceLane::default(),
                     aligned_dist,
+                    target_depth: (from.x - other.x).abs(),
+                    projected_contact: None,
                     straight: false,
                     scope: if inner { scope } else { h.parent[item] },
                 },
                 inner,
             )?;
-            let mut owner = if inner { scope } else { h.parent[item] };
+        }
+        let mut incoming = 0;
+        let mut contacts = terminals;
+        for (end, (&item, &terminal_side)) in ends.iter().zip(&sides).enumerate() {
+            let from_rect = rect(context.drawing, item);
+            let [from, other] = [anchors[end], anchors[1 - end]];
+            let mut terminal = terminals[end];
+            let card_terminal = (card_grid && item < h.node_count).then_some(terminal.site);
+            let mut owner = if terminal.inner {
+                scope
+            } else {
+                h.parent[item]
+            };
             if end == 1 {
                 incoming = steps.len();
             }
             while owner != scope {
                 work.visit(1)?;
                 let group = h.node_count + owner;
-                let side = side_toward(rect(context.drawing, group), other, side);
+                let side = side_toward(rect(context.drawing, group), other, terminal_side);
                 // When the terminal face is perpendicular to the group border it exits through
                 // (e.g., entering `orders:L` via `core:Top`), align the border crossing with the
                 // terminal's outward lead corridor instead of overshooting to its center.
+                let mut projected_contact = None;
                 let preferred = if terminal_side.axis() != side.axis() {
                     let (t_axis, t_sign) = normal(terminal_side);
                     let b = Bounds::of(from_rect);
                     let edge_coord = [b.x, b.y][t_axis][usize::from(t_sign > 0)];
                     edge_coord + t_sign as f64 * (markers[end].length + context.metrics.separation)
+                } else if card_terminal.is_some()
+                    && side == terminal_side
+                    && side.axis() == Axis::Vertical
+                    && !(from_rect.x..=from_rect.x + from_rect.width).contains(&other.x)
+                    && let [first, .., last] = gutters.tracks(owner)[0]
+                {
+                    // Use the destination's column when leaving the card's column. Returning to
+                    // the original column at the border adds a hook to the route around its row.
+                    if ends[1 - end] < h.node_count {
+                        projected_contact = Some((terminals[1 - end].site, [*first, *last]));
+                    }
+                    other.x.clamp(*first, *last)
                 } else {
+                    if side == terminal_side && side.axis() == Axis::Horizontal {
+                        projected_contact = card_terminal
+                            .map(|terminal| (terminal, [f64::NEG_INFINITY, f64::INFINITY]));
+                    }
                     cross(side, from)
                 };
                 let outer = self.site(
@@ -259,6 +297,8 @@ impl Plan {
                         at: Point::default(),
                         lane: FaceLane::default(),
                         aligned_dist: None,
+                        target_depth: 0.0,
+                        projected_contact,
                         straight: false,
                         scope: h.parent[group],
                     },
@@ -284,9 +324,9 @@ impl Plan {
                 };
                 owner = h.parent[group];
             }
-            terminals[end] = terminal;
+            contacts[end] = terminal;
         }
-        let [from, to] = terminals;
+        let [from, to] = contacts;
         steps.push(self.leg(
             scope,
             Part {
@@ -364,7 +404,12 @@ fn site_order(sites: &[Site], work: &mut Work<'_>) -> LayoutResult<Vec<usize>> {
     let mut indices = reserved(sites.len())?;
     work.charge(sites.len())?;
     indices.extend(0..sites.len());
-    work.sort(&mut indices, |&a, &b| {
+    sort_sites(sites, &mut indices, work)?;
+    Ok(indices)
+}
+
+fn sort_sites(sites: &[Site], indices: &mut [usize], work: &mut Work<'_>) -> LayoutResult<()> {
+    work.sort(indices, |&a, &b| {
         let u = &sites[a];
         let v = &sites[b];
         (u.owner, u.side as u8)
@@ -372,8 +417,7 @@ fn site_order(sites: &[Site], work: &mut Work<'_>) -> LayoutResult<Vec<usize>> {
             .then_with(|| u.preferred.total_cmp(&v.preferred))
             .then_with(|| u.tie_preferred.total_cmp(&v.tie_preferred))
             .then(a.cmp(&b))
-    })?;
-    Ok(indices)
+    })
 }
 
 fn card_face_room(
@@ -612,6 +656,9 @@ impl Routing<'_> {
             }
             let body = rect(self.drawing, first.owner);
             let [lo, center, hi] = self.seat(first.owner, first.side, inner);
+            let nest_horizontal = on_card
+                && first.side.axis() == Axis::Horizontal
+                && first.scope != self.hierarchy.root();
             // When multiple collinear edges share a node face (e.g., Admin and User both
             // targeting Inventory:L), the farther edge must detour around the closer one.
             // Nudge the farther edge toward the open scope interior so it takes the side port
@@ -628,8 +675,8 @@ impl Routing<'_> {
                             .flatten()
                     })
                     .fold(f64::INFINITY, f64::min);
+                let mut nudged = false;
                 if min_dist.is_finite() {
-                    let mut nudged = false;
                     work.visit(next - cursor)?;
                     for &i in &indices[cursor..next] {
                         let site = &mut sites[i];
@@ -643,19 +690,37 @@ impl Routing<'_> {
                             nudged = true;
                         }
                     }
-                    if nudged {
-                        work.charge_sort(next - cursor)?;
-                        indices[cursor..next].sort_unstable_by(|&a, &b| {
-                            sites[a]
-                                .preferred
-                                .total_cmp(&sites[b].preferred)
-                                .then_with(|| {
-                                    sites[a].tie_preferred.total_cmp(&sites[b].tie_preferred)
-                                })
-                                .then(a.cmp(&b))
-                        });
-                        work.check()?;
-                    }
+                }
+                if nudged || nest_horizontal {
+                    let turn_order = |site: Site| {
+                        let delta = site.preferred - center;
+                        if delta < -1.0 {
+                            -1
+                        } else if delta > 1.0 {
+                            1
+                        } else {
+                            0
+                        }
+                    };
+                    work.sort(&mut indices[cursor..next], |&a, &b| {
+                        let [u, v] = [sites[a], sites[b]];
+                        let nested = if nest_horizontal {
+                            // On the same side of the face center, let the nearer turn leave
+                            // the bundle first so the longer branch can pass outside it.
+                            let [a, b] = [turn_order(u), turn_order(v)];
+                            a.cmp(&b).then_with(|| match a {
+                                -1 => u.target_depth.total_cmp(&v.target_depth),
+                                1 => v.target_depth.total_cmp(&u.target_depth),
+                                _ => std::cmp::Ordering::Equal,
+                            })
+                        } else {
+                            std::cmp::Ordering::Equal
+                        };
+                        nested
+                            .then_with(|| u.preferred.total_cmp(&v.preferred))
+                            .then_with(|| u.tie_preferred.total_cmp(&v.tie_preferred))
+                            .then(a.cmp(&b))
+                    })?;
                 }
             }
             let (axis, sign) = normal(first.side);
@@ -917,7 +982,7 @@ fn fan_channel(
 // on the facing midline and the four open perimeter tracks before declining the route.
 fn span(
     router: &mut OrthoRouter,
-    span: GutterSpan,
+    span: GutterSpan<'_>,
     bounds: Rect,
     separation: f64,
     work: &mut Work<'_>,
@@ -1199,45 +1264,65 @@ pub(crate) fn draw(
         let mut plan = Plan::new(&context, work)?;
         for (index, &(projection, sides)) in edges.iter().enumerate() {
             work.visit(1)?;
-            plan.edge(&context, projection, sides, index, work)?;
+            plan.edge(&context, projection, sides, index, &gutters, work)?;
         }
         plan
     };
     let mut indices = site_order(&plan.sites, work)?;
     let mut group_start = 0;
-    if options.group_policy.adaptive_title_clearance {
+    let adapt_titles = if options.group_policy.adaptive_title_clearance {
         work.visit(graph.groups.len())?;
-        if graph
+        graph
             .groups
             .iter()
             .any(|group| group.title_position == TitlePosition::TopAuto && group.title.is_some())
-        {
-            work.visit(indices.len().max(1).ilog2() as usize + 1)?;
-            group_start = indices.partition_point(|&i| plan.sites[i].owner < hierarchy.node_count);
-            Routing {
-                graph,
-                hierarchy,
-                drawing,
-                metrics,
-                options,
-            }
-            .ports(
-                &mut indices[..group_start],
-                &mut plan.sites,
-                card_grid,
-                work,
-            )?;
-            plan.mark_straight_entries(hierarchy.node_count, work)?;
-            adapt_auto_titles(
-                graph,
-                &plan.sites,
-                &indices[group_start..],
-                metrics,
-                options,
-                drawing,
-                work,
-            )?;
+    } else {
+        false
+    };
+    if adapt_titles || boundary_channels {
+        work.visit(indices.len().max(1).ilog2() as usize + 1)?;
+        group_start = indices.partition_point(|&i| plan.sites[i].owner < hierarchy.node_count);
+        Routing {
+            graph,
+            hierarchy,
+            drawing,
+            metrics,
+            options,
         }
+        .ports(
+            &mut indices[..group_start],
+            &mut plan.sites,
+            card_grid,
+            work,
+        )?;
+        if boundary_channels {
+            let groups = &mut indices[group_start..];
+            let mut changed = false;
+            for &i in groups.iter() {
+                work.visit(1)?;
+                let site = plan.sites[i];
+                if let Some((terminal, [lo, hi])) = site.projected_contact {
+                    let preferred = cross(site.side, plan.sites[terminal].at).clamp(lo, hi);
+                    changed |= preferred != site.preferred;
+                    plan.sites[i].preferred = preferred;
+                }
+            }
+            if changed {
+                sort_sites(&plan.sites, groups, work)?;
+            }
+        }
+    }
+    if adapt_titles {
+        plan.mark_straight_entries(hierarchy.node_count, work)?;
+        adapt_auto_titles(
+            graph,
+            &plan.sites,
+            &indices[group_start..],
+            metrics,
+            options,
+            drawing,
+            work,
+        )?;
     }
     let context = Routing {
         graph,
@@ -1269,6 +1354,11 @@ pub(crate) fn draw(
                 work,
             )?;
             let mut lanes = LaneUse::default();
+            let runways = if card_grid {
+                Some(runways::Runways::new(parts, &plan.sites, work)?)
+            } else {
+                None
+            };
             let mut recorded = 0;
             for part in parts {
                 work.visit(1)?;
@@ -1279,6 +1369,10 @@ pub(crate) fn draw(
                 let gutter_span = GutterSpan {
                     leads: [start, end],
                     contacts: [from.at, to.at],
+                    prefer_row_gutter: [from, to].iter().any(|site| {
+                        site.side.axis() == Axis::Vertical && site.projected_contact.is_some()
+                    }),
+                    runways: None,
                 };
                 let early_gutters = card_grid && position(start.0) != position(end.0);
                 let labelled = part.labels.iter().any(Option::is_some);
@@ -1360,7 +1454,7 @@ pub(crate) fn draw(
                 } else {
                     ordinary
                 };
-                let middle = match ordinary {
+                let mut middle = match ordinary {
                     Some(points) => Some(points),
                     None => gutter_route(
                         &router,
@@ -1373,6 +1467,48 @@ pub(crate) fn draw(
                 .ok_or(LayoutError::InvalidInput(
                     "no clear orthogonal channel in grid scope",
                 ))?;
+                if let Some(runways) = &runways
+                    && let runways::Blockage::Middle(blocker) =
+                        runways.blockage(part.edge, gutter_span.contacts, &middle, work)?
+                {
+                    let slid = runways.slide(
+                        part.edge,
+                        (gutter_span.contacts, &middle),
+                        blocker,
+                        metrics.separation,
+                        work,
+                        |path, work| {
+                            Ok(simple_candidate(path, gutter_span.contacts)
+                                && lanes.vacant(path, work)?
+                                && clear(&router, path, scope_bounds, [start.1, end.1], work)?)
+                        },
+                    )?;
+                    let clear = if let Some(path) = slid {
+                        Some(path)
+                    } else {
+                        let tracks = gutters.tracks(scope);
+                        let guarded = GutterSpan {
+                            runways: Some((runways, part.edge)),
+                            ..gutter_span
+                        };
+                        match card_channel(
+                            &router,
+                            guarded,
+                            scope_bounds,
+                            tracks,
+                            &lanes,
+                            options.spacing.port_pitch,
+                            work,
+                        )? {
+                            Some(path) => Some(path),
+                            None => gutter_route(&router, guarded, scope_bounds, tracks, work)?,
+                        }
+                    };
+                    // Keep the wall-clear route when no bounded candidate clears the runways.
+                    if let Some(path) = clear {
+                        middle = path;
+                    }
+                }
                 let point_count = middle
                     .len()
                     .checked_add(2)
@@ -1575,6 +1711,8 @@ mod tests {
         let mut terminals = GutterSpan {
             leads: [(from, Side::Left), (to, Side::Left)],
             contacts: [point([3.0, 2.0]), point([5.0, 4.0])],
+            prefer_row_gutter: false,
+            runways: None,
         };
         let expected = dogleg(from, to, Axis::Vertical, 0.0);
         assert_eq!(
@@ -1658,6 +1796,8 @@ mod tests {
             at,
             lane: FaceLane::default(),
             aligned_dist: None,
+            target_depth: 0.0,
+            projected_contact: None,
             straight: false,
             scope: 0,
         };

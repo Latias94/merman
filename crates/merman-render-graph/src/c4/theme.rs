@@ -1,10 +1,9 @@
 use std::collections::BTreeMap;
 
-use merman_model::config::MermaidThemeId;
-use merman_model::families::c4::C4Boundary;
-use merman_model::presentation::PresentationConfig;
-
-use merman_theme_contract::v2::FamilyTheme;
+use merman_model::{
+    config::MermaidThemeId, css_color, families::c4::C4Boundary, presentation::PresentationConfig,
+};
+use merman_theme_contract::v2::{Color, FamilyTheme};
 
 const MERMAID_BOUNDARY_FILL: &str = "none";
 const MERMAID_BOUNDARY_STROKE: &str = "#444444";
@@ -15,6 +14,7 @@ struct C4BoundaryStyle {
     fill: Box<str>,
     stroke: Box<str>,
     radius: Box<str>,
+    theme_background: Option<Color>,
 }
 
 /// Fill, stroke, and radius for the explicit boundaries rendered by C4.
@@ -62,12 +62,14 @@ impl C4ClusterThemePlan {
                             .unwrap_or(MERMAID_BOUNDARY_STROKE)
                             .into(),
                         radius: MERMAID_BOUNDARY_RADIUS_PX.into(),
+                        theme_background: None,
                     },
                 )
             })
             .collect();
         if let Some(theme) = native {
-            let fill = theme.roles.surface_container.first_color().to_string();
+            let fill = theme.roles.surface_container.first_color();
+            let fill_css = fill.to_string();
             let stroke = theme.roles.stroke_border.first_color().to_string();
             let radius = theme.form.container_radius.to_string();
             let owns = |path: &str| {
@@ -78,7 +80,8 @@ impl C4ClusterThemePlan {
                     continue;
                 };
                 if boundary.bg_color.is_none() && !owns("c4.boundary_bg_color") {
-                    style.fill = fill.as_str().into();
+                    style.fill = fill_css.as_str().into();
+                    style.theme_background = Some(fill);
                 }
                 if boundary.border_color.is_none() && !owns("c4.boundary_border_color") {
                     style.stroke = stroke.as_str().into();
@@ -99,5 +102,44 @@ impl C4ClusterThemePlan {
             !style.fill.eq_ignore_ascii_case("none")
                 && !style.fill.eq_ignore_ascii_case("transparent")
         })
+    }
+
+    pub(crate) fn uses_theme_background(&self, alias: &str) -> bool {
+        self.boundaries
+            .get(alias)
+            .is_some_and(|style| style.theme_background.is_some())
+    }
+
+    pub(super) fn transparent_title_background(
+        &self,
+        alias: &str,
+        font_color: &str,
+    ) -> Option<Color> {
+        let fill = self.boundaries.get(alias)?.theme_background?;
+        Some(readable_opaque_background(fill, literal_color(font_color)))
+    }
+}
+
+pub(super) fn literal_color(value: &str) -> Option<Color> {
+    let [r, g, b, a] = css_color::parse(value.trim())?.rgba.to_rgba8();
+    Some(Color::rgba(r, g, b, a))
+}
+
+pub(super) fn readable_opaque_background(preferred: Color, ink: Option<Color>) -> Color {
+    let [r, g, b, _] = preferred.channels();
+    let fill = Color::rgb(r, g, b);
+    let Some(ink) = ink else {
+        return fill;
+    };
+    let contrast = |fill| ink.composite(fill, 1.0).contrast(fill);
+    if contrast(fill) >= 4.5 {
+        return fill;
+    }
+    let black = Color::rgb(0, 0, 0);
+    let white = Color::rgb(255, 255, 255);
+    if contrast(black) >= contrast(white) {
+        black
+    } else {
+        white
     }
 }

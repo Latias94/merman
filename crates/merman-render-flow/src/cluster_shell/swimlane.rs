@@ -12,8 +12,16 @@ use merman_render_core::{
     number_format::canonical_number as fmt_display,
     svg_output::SvgOutput,
     text::{
-        TextMeasurer, inline_html::SvgTextEntityMode, literal_label::FlowchartSvgWidthMode,
-        svg_label::write_svg_markdown_word_lines_with_style,
+        TextMeasurer,
+        inline_html::SvgTextEntityMode,
+        literal_label::FlowchartSvgWidthMode,
+        mermaid_markdown_svg_plain_text,
+        svg_label::{
+            write_svg_markdown_word_lines_centered_with_style,
+            write_svg_markdown_word_lines_with_style,
+            write_svg_text_markdown_wrapped_from_create_text_source_with_style,
+            write_svg_text_source_word_lines_with_style,
+        },
     },
     xml::escape_attr_display,
 };
@@ -29,8 +37,7 @@ use crate::{
     svg_label::{
         FlowchartSvgLabelRenderPlan, FlowchartSvgLabelSidecar, OptionalStyleAttr,
         append_native_label_color, flowchart_label_html_with_prepared_label,
-        write_flowchart_svg_label_plan, write_flowchart_svg_label_plan_with_style,
-        write_flowchart_svg_text_markdown, write_flowchart_svg_text_markdown_wrapped_with_style,
+        write_flowchart_svg_label_plan, write_flowchart_svg_text_markdown,
     },
 };
 
@@ -52,6 +59,7 @@ pub struct SwimlaneClusterSvg<'a> {
     pub translation: Vec2,
     pub group_origin: Point,
     pub html_labels: bool,
+    pub svg_font_fallback: Option<&'a str>,
     pub svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecar>,
     pub config: &'a PresentationConfig,
     pub measurer: &'a dyn TextMeasurer,
@@ -191,27 +199,30 @@ pub(crate) fn write_swimlane_cluster_with_label_ink(
         input.shape.hand_drawn(input.look, canonical),
     );
 
-    let (label_x, label_y, label_transform) = if horizontal {
-        let center_x = geometry.title_label.x + input.translation.x - input.group_origin.x;
-        let center_y = geometry.title_label.y + input.translation.y - input.group_origin.y;
-        (
-            0.0,
-            0.0,
+    let label_left = -label_width / 2.0;
+    let label_top = -label_height / 2.0;
+    let label_transform = |x, y| {
+        if horizontal {
+            let center_x = geometry.title_label.x + input.translation.x - input.group_origin.x;
+            let center_y = geometry.title_label.y + input.translation.y - input.group_origin.y;
             format!(
                 "translate({}, {}) rotate(-90) translate({}, {})",
                 fmt_display(center_x),
                 fmt_display(center_y),
-                fmt_display(-label_width / 2.0),
-                fmt_display(-label_height / 2.0),
-            ),
-        )
-    } else {
-        (
-            geometry.title_label.x - label_width / 2.0 + input.translation.x - input.group_origin.x,
-            geometry.title_label.y - label_height / 2.0 + input.translation.y
-                - input.group_origin.y,
-            String::new(),
-        )
+                fmt_display(x),
+                fmt_display(y),
+            )
+        } else {
+            format!(
+                "translate({}, {})",
+                fmt_display(
+                    geometry.title_label.x + x + input.translation.x - input.group_origin.x
+                ),
+                fmt_display(
+                    geometry.title_label.y + y + input.translation.y - input.group_origin.y
+                ),
+            )
+        }
     };
     if input.html_labels {
         let prepared_label = input
@@ -229,15 +240,7 @@ pub(crate) fn write_swimlane_cluster_with_label_ink(
             input.math_renderer,
             prepared_label,
         );
-        let transform = if horizontal {
-            label_transform
-        } else {
-            format!(
-                "translate({}, {})",
-                fmt_display(label_x),
-                fmt_display(label_y)
-            )
-        };
+        let transform = label_transform(label_left, label_top);
         let wrap_width = FLOWCHART_FIXED_LABEL_WRAP_WIDTH;
         let uses_wrapped_box = label_width >= wrap_width - 1e-3;
         let div_style = if uses_wrapped_box {
@@ -269,21 +272,6 @@ pub(crate) fn write_swimlane_cluster_with_label_ink(
             title_html,
         );
     } else {
-        let transform = if horizontal {
-            label_transform
-        } else {
-            format!(
-                "translate({}, {})",
-                fmt_display(label_x),
-                fmt_display(label_y)
-            )
-        };
-        let _ = write!(
-            out,
-            r#"<g class="cluster-label {}" transform="{}"><g><rect class="background" style="stroke: none"/>"#,
-            label_class,
-            escape_attr_display(&transform),
-        );
         let title_text_style = input
             .svg_label_sidecar
             .zip(title_owner)
@@ -292,6 +280,8 @@ pub(crate) fn write_swimlane_cluster_with_label_ink(
             .unwrap_or(&input.shape.terminal.title_text_style)
             .as_ref();
         let svg_style = if canonical { label_style.as_ref() } else { "" };
+        let svg_style =
+            crate::svg_label::with_svg_font_fallback(svg_style, input.svg_font_fallback);
         let prepared = FlowchartSvgLabelRenderPlan::new(
             input.svg_label_sidecar,
             title_owner,
@@ -302,29 +292,64 @@ pub(crate) fn write_swimlane_cluster_with_label_ink(
             true,
             FlowchartSvgWidthMode::Bbox,
         );
+        let transform = if canonical {
+            let plain_text = if prepared.is_prepared() {
+                Cow::Borrowed(prepared.plain_text())
+            } else {
+                let markdown = render_title
+                    .strip_prefix('`')
+                    .and_then(|title| title.strip_suffix('`'))
+                    .unwrap_or(render_title);
+                Cow::Owned(mermaid_markdown_svg_plain_text(markdown))
+            };
+            let bbox_y = input
+                .measurer
+                .measure_svg_create_text_bbox_y_offset_px(&plain_text, title_text_style);
+            label_transform(0.0, label_top - bbox_y)
+        } else {
+            label_transform(label_left, label_top)
+        };
+        let _ = write!(
+            out,
+            r#"<g class="cluster-label {}" transform="{}"><g><rect class="background" style="stroke: none"/>"#,
+            label_class,
+            escape_attr_display(&transform),
+        );
         let zero_width_title = lane.width == 0.0;
         if zero_width_title {
             let rows = zero_width_lane_title_rows(render_title);
-            write_svg_markdown_word_lines_with_style(
+            let write_rows = if canonical {
+                write_svg_markdown_word_lines_centered_with_style
+            } else {
+                write_svg_markdown_word_lines_with_style
+            };
+            write_rows(
                 out,
                 &rows,
-                Some(""),
+                Some(svg_style.as_ref()),
                 SvgTextEntityMode::DecodedModel,
             );
         } else if prepared.is_prepared() {
-            if svg_style.is_empty() {
-                write_flowchart_svg_label_plan(out, &prepared, true);
+            if canonical {
+                write_svg_text_source_word_lines_with_style(
+                    out,
+                    &prepared.wrapped_lines(),
+                    &svg_style,
+                    true,
+                    None,
+                );
             } else {
-                write_flowchart_svg_label_plan_with_style(out, &prepared, true, Some(svg_style));
+                write_flowchart_svg_label_plan(out, &prepared, true);
             }
         } else if canonical {
-            write_flowchart_svg_text_markdown_wrapped_with_style(
+            write_svg_text_markdown_wrapped_from_create_text_source_with_style(
                 out,
                 render_title,
-                svg_style,
+                &svg_style,
                 input.measurer,
                 title_text_style,
                 Some(FLOWCHART_FIXED_LABEL_WRAP_WIDTH),
+                true,
             );
         } else {
             write_flowchart_svg_text_markdown(out, render_title, true);

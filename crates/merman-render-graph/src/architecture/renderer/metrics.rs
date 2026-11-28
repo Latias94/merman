@@ -3,6 +3,9 @@ use merman_render_core::text::{TextMeasurer, TextStyle};
 
 pub(crate) const ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX: f64 = 18.0;
 pub const ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX: f64 = 200.0;
+#[cfg(feature = "layout-shoal")]
+#[doc(hidden)]
+pub const ARCHITECTURE_SHOAL_CAPTION_PADDING: (f64, f64) = (4.0, 2.0);
 #[cfg(any(feature = "layout-cytoscape", test))]
 const CYTOSCAPE_LEAF_BODY_BORDER_WIDTH_PX: f64 = 0.0;
 const CYTOSCAPE_NODE_LABEL_MARGIN_OF_ERROR_PX: f64 = 2.0;

@@ -12,6 +12,10 @@ use crate::model::{
 };
 use crate::{LayoutExecution, Result};
 use merman_model::presentation::PresentationConfig;
+use merman_theme_contract::v2::EdgeStyle;
+
+mod ports;
+mod terminals;
 
 pub(crate) fn layout(
     model: &ClassDiagramModel,
@@ -21,26 +25,40 @@ pub(crate) fn layout(
     work: &mut OperationLayoutWorkControl,
 ) -> Result<(ClassDiagramLayout, ClassPreparedLabels, CanonicalRoutes)> {
     let settings = render.layout_settings();
+    let theme = execution.native_family_theme();
     let (measured, labels) = measure_for_shoal(
         model,
         config,
         execution.text_measurer(),
         execution.math_renderer(),
         render,
-        execution
-            .native_family_theme()
-            .map(|theme| theme.form.edge_style),
+        theme.map(|theme| theme.form.edge_style),
         work,
     )?;
     let graph = &measured.graph;
-    let (solved, placement) = placement::solve(
-        graph,
-        measured.node_ids.iter().copied(),
-        measured.group_ids.iter().copied(),
-        Some(execution),
-        Default::default(),
-        work,
-    )?;
+    let solve = |edge_ports, work: &mut OperationLayoutWorkControl| {
+        placement::solve(
+            graph,
+            measured.node_ids.iter().copied(),
+            measured.group_ids.iter().copied(),
+            Some(execution),
+            placement::Constraints {
+                edge_ports,
+                ..Default::default()
+            },
+            work,
+        )
+    };
+    let (mut solved, mut placement) = solve(&[], work)?;
+    let edge_ports = ports::parallel_ports(graph, &measured.profiles, &solved, work)?;
+    if !edge_ports.is_empty() {
+        (solved, placement) = solve(&edge_ports, work)?;
+    }
+    let rough = crate::config::config_diagram_look(config).is_hand_drawn()
+        || theme.is_some_and(|theme| theme.form.edge_style == EdgeStyle::Sketch);
+    let shaft_outset = theme.map_or(0.5, |theme| theme.form.connector_width / 2.0)
+        + if rough { 0.75 } else { 0.0 };
+    terminals::seat(graph, &mut solved, shaft_outset, work)?;
     let mut routes = CanonicalRoutes::from_solved(
         graph,
         &solved,

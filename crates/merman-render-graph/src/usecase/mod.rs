@@ -306,6 +306,7 @@ fn resolve_css(
     canvas: Option<Color>,
 ) -> UsecaseCssBinding {
     let mut css = UsecaseCssBinding::new(config.as_value());
+    css.canvas_background = canvas;
     if let Some(theme) = native {
         css.apply_native(config, theme, canvas);
     }

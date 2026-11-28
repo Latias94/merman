@@ -7,6 +7,7 @@ use merman_render_core::{
 };
 
 use super::NodeBodySvg;
+use crate::document::FlowchartDocumentId;
 
 #[derive(Clone, Copy)]
 enum CylinderShape {
@@ -79,7 +80,7 @@ impl CylinderBody {
         self,
         out: &mut impl SvgOutput,
         mut svg: NodeBodySvg<'_>,
-        canonical_axis: bool,
+        canonical_node_id: Option<FlowchartDocumentId<'_>>,
         security_level_loose: bool,
     ) {
         let translation = match self.shape {
@@ -94,9 +95,11 @@ impl CylinderBody {
                 security_level_loose.then_some(self.ry)
             }
         };
-        if svg.geometry.hand_drawn && canonical_axis {
+        if svg.geometry.hand_drawn
+            && let Some(id) = canonical_node_id
+        {
             let (body, rims) = self.rough_source_paths();
-            write_hand_drawn_cylinder(out, &mut svg, &body, &rims, translation, label_offset);
+            write_hand_drawn_cylinder(out, &mut svg, [&body, &rims], translation, label_offset, id);
             return;
         }
 
@@ -223,10 +226,10 @@ impl CylinderBody {
 fn write_hand_drawn_cylinder(
     out: &mut impl SvgOutput,
     svg: &mut NodeBodySvg<'_>,
-    body: &str,
-    rims: &str,
+    [body, rims]: [&str; 2],
     (tx, ty): (f64, f64),
     label_offset: Option<f64>,
+    id: FlowchartDocumentId<'_>,
 ) {
     let _ = write!(
         out,
@@ -242,6 +245,13 @@ fn write_hand_drawn_cylinder(
     let sw = fmt(svg.geometry.stroke_width as f64);
     if let Some((fill, stroke)) = svg.hand_drawn_path_pair(body) {
         if let Some(fill_opacity) = svg.rough_fill_opacity {
+            // The rough hatch extends past its sampled polygon. Clip the fill at the actual
+            // cylinder silhouette and keep the rough outline and open rim outside the clip.
+            let _ = write!(
+                out,
+                r#"<defs><clipPath id="{id}-rough-fill"><path d="{}"/></clipPath></defs><g clip-path="url(#{id}-rough-fill)">"#,
+                escape_attr(body),
+            );
             super::write_backed_hachure(
                 out,
                 body,
@@ -250,6 +260,7 @@ fn write_hand_drawn_cylinder(
                 (svg.fill_color, svg.stroke_color),
                 fill_opacity,
             );
+            out.push_str("</g>");
         } else {
             let _ = write!(
                 out,

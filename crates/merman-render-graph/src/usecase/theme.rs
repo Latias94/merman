@@ -86,9 +86,43 @@ pub(crate) struct UsecaseCssBinding {
     pub(crate) connector_width: f64,
     pub(crate) mermaid_look: Option<UsecaseMermaidLook>,
     pub(crate) native_title_font: Option<TextStyle>,
+    pub(crate) canvas_background: Option<Color>,
 }
 
 impl UsecaseCssBinding {
+    pub(crate) fn actor_outline(
+        &self,
+        config: &merman_model::presentation::PresentationConfig,
+        canonical: bool,
+    ) -> &UsecaseCssPaint {
+        let authored = self
+            .actor_border
+            .variable
+            .is_some_and(|key| config.explicit_config_owns_path(&format!("themeVariables.{key}")));
+        if canonical && self.mermaid_look.is_some() && !authored {
+            let color = |paint: &str| {
+                let [r, g, b, a] = merman_model::css_color::parse(paint.trim())?
+                    .rgba
+                    .to_rgba8();
+                Some(Color::rgba(r, g, b, a))
+            };
+            let backdrop = self
+                .canvas_background
+                .or_else(|| color(config.get_str("themeVariables.background")?));
+            if let (Some(backdrop), Some(actor), Some(node)) = (
+                backdrop,
+                color(self.actor_border.css()),
+                color(self.node_border.css()),
+            ) && backdrop.channels()[3] == 255
+                && actor.composite(backdrop, 1.0).contrast(backdrop) < 3.0
+                && node.composite(backdrop, 1.0).contrast(backdrop) >= 3.0
+            {
+                return &self.node_border;
+            }
+        }
+        &self.actor_border
+    }
+
     pub(crate) fn new(config: &Value) -> Self {
         let token = |keys: &[&'static str], fallback: &str| {
             UsecaseCssPaint::resolve(config, keys, fallback)
@@ -185,6 +219,7 @@ impl UsecaseCssBinding {
                 defs: PreparedLookDefs::new(config),
             }),
             native_title_font: None,
+            canvas_background: None,
         }
     }
 

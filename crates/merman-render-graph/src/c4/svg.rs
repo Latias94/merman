@@ -1,14 +1,15 @@
 use std::fmt::Write as _;
 
+use euclid::default::{Box2D, Point2D};
 use merman_model::{
     OperationPhase,
     families::c4::{C4Boundary, C4DiagramModel, C4Shape},
     runtime::OperationContext,
 };
+#[cfg(not(feature = "layout-shoal"))]
+use merman_render_core::text::DeterministicTextMeasurer;
 #[cfg(feature = "layout-shoal")]
-use merman_render_core::text::{
-    TextMeasurer, svg_text_vertical_extents_px, svg_title_bbox_vertical_extents_px,
-};
+use merman_render_core::text::svg_text_vertical_extents_px;
 use merman_render_core::{
     Bounds, Error, Result, entities,
     number_format::{canonical_number as fmt, canonical_number_with_nonfinite},
@@ -20,10 +21,14 @@ use merman_render_core::{
     },
     svg_css::{PreparedLookDefs, SvgId, available_local_svg_id, scoped_svg_id, scoped_svg_url},
     svg_output::{BoundedSvgOutput, SvgOutput, XmlTextOutput},
-    text::line_break::split_mermaid_common_br_lines,
+    text::{
+        TextMeasurer, line_break::split_mermaid_common_br_lines, svg_title_bbox_vertical_extents_px,
+    },
     xml::{escape_attr, escape_attr_display, escape_xml, escape_xml_display},
 };
-use merman_theme_contract::v2::{EdgeStyle, MarkerStyle};
+#[cfg(feature = "layout-shoal")]
+use merman_theme_contract::v2::EdgeLabelBackground;
+use merman_theme_contract::v2::{Color, EdgeStyle, MarkerStyle};
 
 #[cfg(feature = "layout-shoal")]
 use super::C4RoutedGeometry;
@@ -32,6 +37,7 @@ use super::{
     C4ClusterThemePlan, C4ConfigView, C4DiagramLayout, C4Look, C4NativeStyle, C4NodeShape,
     C4PersonOutline, C4ShapeLayout, C4TextBlockLayout, C4TextPaintPlan, C4TypographyThemePlan,
     c4_cap_radius, c4_node_shape, c4_relation_markers, c4_relation_offset, c4_text_row_offset,
+    geometry::C4TextRenderPlan, typography::C4PreparedFont,
 };
 
 #[cfg(feature = "layout-shoal")]
@@ -291,6 +297,59 @@ fn c4_write_text_by_tspan(out: &mut impl SvgOutput, text: C4TspanText<'_>) -> Re
     Ok(())
 }
 
+fn c4_boundary_title_background_bounds(
+    sections: &[(Option<&C4TextBlockLayout>, &C4PreparedFont, &str)],
+    label_origin: Point2D<f64>,
+    context: &C4SvgContext<'_>,
+) -> Result<Option<Box2D<f64>>> {
+    #[cfg(feature = "layout-shoal")]
+    let measurer = context.text_measurer;
+    #[cfg(not(feature = "layout-shoal"))]
+    let measurer = DeterministicTextMeasurer::default();
+
+    let mut ink: Option<Box2D<f64>> = None;
+    for &(block, font, _) in sections {
+        let Some(block) = block else { continue };
+        let style = &font.measurement_style;
+        if style.font_size <= 0.0 {
+            continue;
+        }
+        context
+            .work_meter
+            .charge_emit_work(block.text.len().saturating_add(block.line_count))?;
+        let font_size = font.css_font_size_px.expect("C4 boundary font size");
+        let (ascent, descent) = svg_title_bbox_vertical_extents_px(style);
+        let rows = split_mermaid_common_br_lines(&block.text);
+        for (row, line) in rows
+            .iter()
+            .enumerate()
+            .filter(|(_, line)| !line.trim().is_empty())
+        {
+            let width = measurer.measure_svg_tspan_text_bbox_width_px(line, style);
+            let height = measurer.measure_svg_tspan_text_bbox_height_px(line, style);
+            // Compatibility builds without the render measurer still have layout's text metrics.
+            #[cfg(not(feature = "layout-shoal"))]
+            let (width, height) = (
+                width.max(block.width),
+                height.max(block.height / block.line_count.max(1) as f64),
+            );
+            let (top, bottom) = measurer
+                .measure_svg_raw_text_middle_bbox_y_offset_px(line, style)
+                .map_or(
+                    (-ascent.max(height / 2.0), descent.max(height / 2.0)),
+                    |top| (top, top + height),
+                );
+            let y = label_origin.y + block.y + c4_text_row_offset(row, block.line_count, font_size);
+            let row = Box2D::new(
+                Point2D::new(label_origin.x - width / 2.0, y + top),
+                Point2D::new(label_origin.x + width / 2.0, y + bottom),
+            );
+            ink = Some(ink.map_or(row, |ink| ink.union(&row)));
+        }
+    }
+    Ok(ink.map(|ink| ink.inflate(6.0, 3.0)))
+}
+
 fn write_c4_base_defs(out: &mut impl SvgOutput, diagram_id: SvgId<'_>) -> Result<()> {
     const PINNED_C4_DATABASE_SYMBOL_D: &str = include_str!("c4_database_d_11_16_0.txt");
 
@@ -337,6 +396,79 @@ fn write_c4_relation_arrows(
         out.checkpoint()?;
     }
     Ok(())
+}
+
+fn write_native_c4_relation_arrows(
+    out: &mut impl SvgOutput,
+    diagram_id: SvgId<'_>,
+    [arrowhead, arrowend]: [&str; 2],
+    style: MarkerStyle,
+    stroke_color: &str,
+    outline: Option<Color>,
+    is_shoal: bool,
+) -> Result<()> {
+    let (head, end, fill) = match style {
+        MarkerStyle::Stealth => (
+            "M 0 0 L 10 5 L 0 10 L 3 5 Z",
+            "M 10 0 L 0 5 L 10 10 L 7 5 Z",
+            stroke_color,
+        ),
+        MarkerStyle::Open => ("M 0 0 L 10 5 L 0 10", "M 10 0 L 0 5 L 10 10", "none"),
+        MarkerStyle::Classic | MarkerStyle::Filled => (
+            "M 0 0 L 10 5 L 0 10 z",
+            "M 10 0 L 0 5 L 10 10 z",
+            stroke_color,
+        ),
+    };
+    let stroke = stroke_color.trim();
+    let visible_stroke = !stroke.is_empty()
+        && !stroke.eq_ignore_ascii_case("none")
+        && !stroke.eq_ignore_ascii_case("transparent");
+    let (end_ref, start_ref, marker_geometry, stroke_geometry) = if is_shoal && visible_stroke {
+        (
+            "9.5",
+            "0.5",
+            r#" overflow="visible""#,
+            r#" stroke-linejoin="round" stroke-width="1""#,
+        )
+    } else {
+        ("9", "1", "", "")
+    };
+    out.push_str("<defs>");
+    for (id, ref_x, path) in [(arrowhead, end_ref, head), (arrowend, start_ref, end)] {
+        let _ = write!(
+            out,
+            r#"<marker id="{}" refX="{ref_x}" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"{marker_geometry}>"#,
+            escape_attr_display(scoped_svg_id(diagram_id, id)),
+        );
+        if let Some(outline) = outline {
+            if style == MarkerStyle::Open {
+                // Open tips have no fill. Nest the theme ink inside the existing outline.
+                let _ = write!(
+                    out,
+                    r#"<path d="{path}" fill="none" stroke="{outline}"{stroke_geometry}/><path d="{path}" fill="none" stroke="{}" stroke-linejoin="round" stroke-width="0.5"/>"#,
+                    escape_attr_display(stroke_color),
+                );
+            } else {
+                let _ = write!(
+                    out,
+                    r#"<path d="{path}" fill="{}" stroke="{outline}"{stroke_geometry}/>"#,
+                    escape_attr_display(fill),
+                );
+            }
+        } else {
+            let _ = write!(
+                out,
+                r#"<path d="{path}" fill="{}" stroke="{}"{stroke_geometry}/>"#,
+                escape_attr_display(fill),
+                escape_attr_display(stroke_color),
+            );
+        }
+        out.push_str("</marker>");
+        out.checkpoint()?;
+    }
+    out.push_str("</defs>");
+    out.checkpoint()
 }
 
 fn write_c4_relation_defs(
@@ -396,7 +528,7 @@ fn c4_write_unified_section(
     section_y: f64,
     color: &str,
 ) {
-    let Some(plan) = block.render_plan.as_ref() else {
+    let Some(C4TextRenderPlan::Unified(plan)) = block.render_plan.as_ref() else {
         return;
     };
     if plan.rows.is_empty() || block.text.trim().is_empty() {
@@ -883,6 +1015,7 @@ fn c4_write_unified_shape(
 pub struct C4SvgContext<'a> {
     pub diagram_id: SvgId<'a>,
     pub viewport: RootViewportContext<'a>,
+    pub canvas_background: Option<Color>,
     pub work_meter: &'a OperationWorkMeter,
     pub operation: &'a OperationContext,
     #[cfg(feature = "layout-shoal")]
@@ -913,6 +1046,10 @@ pub fn render_c4_diagram_svg_typed(
 
     let c4_cfg = C4ConfigView::new(effective_config);
     let look = c4_cfg.look();
+    let soften_boundary_surfaces = native.is_some()
+        && context
+            .canvas_background
+            .is_some_and(|color| color.channels()[3] == 0);
     let diagram_margin_x = c4_cfg.diagram_margin_x();
     let diagram_margin_y = c4_cfg.diagram_margin_y();
     let use_max_width = layout.use_max_width;
@@ -1027,16 +1164,27 @@ pub fn render_c4_diagram_svg_typed(
             || a11y_suffixes.contains(&Some(alias))
     };
 
+    let mut root_bounds = root_bounds;
     let mut out = BoundedSvgOutput::new(context.work_meter);
-    let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, use_max_width)
-        .with_max_width(root_svg::RootMaxWidth::SvgNumber(root_bounds.width));
+    let root_spec = |bounds: root_svg::DiagramBounds| {
+        root_svg::RootViewportSpec::mermaid(bounds, use_max_width)
+            .with_max_width(root_svg::RootMaxWidth::SvgNumber(bounds.width))
+    };
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, aria_roledescription);
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
     root_chrome.aria_describedby = aria_describedby.as_deref();
     root_chrome.dom.trailing_newline = false;
-    let root_document = context
-        .viewport
-        .write_open(&mut out, root_spec, root_chrome)?;
+    let mut root_document = if soften_boundary_surfaces {
+        context.viewport.begin_document(
+            &mut out,
+            root_svg::DeferredRootSpec::mermaid(use_max_width),
+            root_chrome,
+        )?
+    } else {
+        context
+            .viewport
+            .write_open(&mut out, root_spec(root_bounds), root_chrome)?
+    };
     context.work_meter.checkpoint(OperationPhase::Emit)?;
 
     if let Some(title) = model
@@ -1114,9 +1262,16 @@ pub fn render_c4_diagram_svg_typed(
                 let (fill, _, radius) = cluster_theme
                     .boundary_tokens(&boundary.alias)
                     .expect("prepared boundary background");
+                let opacity = if soften_boundary_surfaces
+                    && cluster_theme.uses_theme_background(&boundary.alias)
+                {
+                    r#" fill-opacity="0.16""#
+                } else {
+                    ""
+                };
                 let _ = write!(
-                    out,
-                    r#"<rect class="c4-boundary-background" x="{}" y="{}" fill="{}" stroke="none" width="{}" height="{}" rx="{}" ry="{}"/>"#,
+                    &mut out,
+                    r#"<rect class="c4-boundary-background" x="{}" y="{}" fill="{}" stroke="none" width="{}" height="{}" rx="{}" ry="{}"{opacity}/>"#,
                     fmt(boundary.x),
                     fmt(boundary.y),
                     escape_attr(fill),
@@ -1296,7 +1451,30 @@ pub fn render_c4_diagram_svg_typed(
                     out.push_str("<g>");
                 }
                 out.checkpoint()?;
-                if is_node_type {
+                let stroke_width = native.map_or(1.0, |theme| theme.shape_width);
+                let dash = if !is_node_type || native.is_some() {
+                    r#" stroke-dasharray="7.0,7.0""#
+                } else {
+                    ""
+                };
+                if is_shoal && look.is_hand_drawn() {
+                    let radius = boundary_radius_attr.parse().unwrap_or(2.5);
+                    let silhouette = c4_rounded_rect_path_d(b.width, b.height, radius);
+                    let outline = c4_hand_drawn_stroke(
+                        &silhouette,
+                        context.work_meter,
+                        &hand_drawn_randomness,
+                    )?;
+                    let _ = write!(
+                        &mut out,
+                        r#"<path class="c4-boundary-outline" transform="translate({}, {})" d="{}" fill="none" stroke="{}" stroke-width="{}"{dash}/>"#,
+                        fmt(b.x + b.width / 2.0),
+                        fmt(b.y + b.height / 2.0),
+                        escape_attr(&outline),
+                        escape_attr(stroke_color),
+                        fmt(stroke_width),
+                    );
+                } else {
                     let _ = write!(
                         &mut out,
                         r#"<rect x="{}" y="{}" fill="{}" stroke="{}" width="{}" height="{}" rx="{}" ry="{}" stroke-width="{}"{dash}/>"#,
@@ -1308,26 +1486,7 @@ pub fn render_c4_diagram_svg_typed(
                         fmt(b.height),
                         boundary_radius_attr,
                         boundary_radius_attr,
-                        fmt(native.map_or(1.0, |theme| theme.shape_width)),
-                        dash = if native.is_some() {
-                            r#" stroke-dasharray="7.0,7.0""#
-                        } else {
-                            ""
-                        },
-                    );
-                } else {
-                    let _ = write!(
-                        &mut out,
-                        r#"<rect x="{}" y="{}" fill="{}" stroke="{}" width="{}" height="{}" rx="{}" ry="{}" stroke-width="{}" stroke-dasharray="7.0,7.0"/>"#,
-                        fmt(b.x),
-                        fmt(b.y),
-                        escape_attr(terminal_fill),
-                        escape_attr(stroke_color),
-                        fmt(b.width),
-                        fmt(b.height),
-                        boundary_radius_attr,
-                        boundary_radius_attr,
-                        fmt(native.map_or(1.0, |theme| theme.shape_width)),
+                        fmt(stroke_width),
                     );
                 }
                 out.checkpoint()?;
@@ -1342,71 +1501,73 @@ pub fn render_c4_diagram_svg_typed(
                 #[cfg(not(feature = "layout-shoal"))]
                 let title_left = b.x;
                 let boundary_fonts = typography_theme.boundary_fonts();
-                let name_font = &boundary_fonts.name;
-                c4_write_text_by_tspan(
-                    &mut out,
-                    C4TspanText {
-                        content: &b.label.text,
-                        line_count: b.label.line_count,
-                        x: title_left,
-                        y: b.y + b.label.y,
-                        width: b.width,
-                        font_family: &name_font.css_font_family,
-                        font_size: name_font.css_font_size_px.expect("legacy name size"),
-                        font_weight: name_font
-                            .measurement_style
-                            .font_weight
-                            .as_deref()
-                            .unwrap_or("bold"),
-                        attrs: &[("fill", font_color)],
-                        shoal: is_shoal,
-                    },
-                )?;
-                if let Some(ty) = &b.ty
-                    && !ty.text.trim().is_empty()
+                let sections = [
+                    (Some(&b.label), &boundary_fonts.name, "bold"),
+                    (
+                        b.ty.as_ref().filter(|block| !block.text.trim().is_empty()),
+                        &boundary_fonts.ty,
+                        "normal",
+                    ),
+                    (
+                        b.descr
+                            .as_ref()
+                            .filter(|block| !block.text.trim().is_empty()),
+                        &boundary_fonts.descr,
+                        "normal",
+                    ),
+                ];
+                if soften_boundary_surfaces
+                    && let Some(fill) =
+                        cluster_theme.transparent_title_background(&b.alias, font_color)
+                    && let Some(plate) = c4_boundary_title_background_bounds(
+                        &sections,
+                        Point2D::new(title_left + b.width / 2.0, b.y),
+                        &context,
+                    )?
                 {
-                    let ty_font = &boundary_fonts.ty;
-                    c4_write_text_by_tspan(
+                    let viewport = Box2D::new(
+                        Point2D::new(root_bounds.min_x, root_bounds.min_y),
+                        Point2D::new(
+                            root_bounds.min_x + root_bounds.width,
+                            root_bounds.min_y + root_bounds.height,
+                        ),
+                    );
+                    if !viewport.contains_box(&plate) {
+                        let merged = viewport.union(&plate);
+                        root_bounds = root_svg::DiagramBounds::from_view_box(
+                            merged.min.x,
+                            merged.min.y,
+                            merged.width(),
+                            merged.height(),
+                        );
+                    }
+                    let _ = write!(
                         &mut out,
-                        C4TspanText {
-                            content: &ty.text,
-                            line_count: ty.line_count,
-                            x: title_left,
-                            y: b.y + ty.y,
-                            width: b.width,
-                            font_family: &ty_font.css_font_family,
-                            font_size: ty_font.css_font_size_px.expect("legacy type size"),
-                            font_weight: ty_font
-                                .measurement_style
-                                .font_weight
-                                .as_deref()
-                                .unwrap_or("normal"),
-                            attrs: &[("fill", font_color)],
-                            shoal: is_shoal,
-                        },
-                    )?;
+                        r#"<rect class="c4-boundary-title-background" x="{}" y="{}" width="{}" height="{}" rx="4" fill="{fill}" stroke="none"/>"#,
+                        fmt(plate.min.x),
+                        fmt(plate.min.y),
+                        fmt(plate.width()),
+                        fmt(plate.height()),
+                    );
+                    out.checkpoint()?;
                 }
-                if let Some(descr) = &b.descr
-                    && !descr.text.trim().is_empty()
-                {
-                    let descr_font = &boundary_fonts.descr;
+                for (block, font, default_weight) in sections {
+                    let Some(block) = block else { continue };
                     c4_write_text_by_tspan(
                         &mut out,
                         C4TspanText {
-                            content: &descr.text,
-                            line_count: descr.line_count,
+                            content: &block.text,
+                            line_count: block.line_count,
                             x: title_left,
-                            y: b.y + descr.y,
+                            y: b.y + block.y,
                             width: b.width,
-                            font_family: &descr_font.css_font_family,
-                            font_size: descr_font
-                                .css_font_size_px
-                                .expect("legacy description size"),
-                            font_weight: descr_font
+                            font_family: &font.css_font_family,
+                            font_size: font.css_font_size_px.expect("C4 boundary font size"),
+                            font_weight: font
                                 .measurement_style
                                 .font_weight
                                 .as_deref()
-                                .unwrap_or("normal"),
+                                .unwrap_or(default_weight),
                             attrs: &[("fill", font_color)],
                             shoal: is_shoal,
                         },
@@ -1423,6 +1584,19 @@ pub fn render_c4_diagram_svg_typed(
     }
     let classic_shoal = is_shoal && native.is_none();
     let relationship_line = text_paint.relationship_line();
+    #[cfg(feature = "layout-shoal")]
+    let transparent_native = native.filter(|_| is_shoal && soften_boundary_surfaces);
+    #[cfg(feature = "layout-shoal")]
+    let relation_background = transparent_native
+        .filter(|theme| theme.edge_label_bg == EdgeLabelBackground::Auto)
+        .map(|theme| theme.container_background);
+    #[cfg(feature = "layout-shoal")]
+    let relation_outline = transparent_native.and_then(|theme| {
+        let stroke = Color::parse(relationship_line).ok()?;
+        (stroke.channels()[3] == 255).then(|| {
+            super::theme::readable_opaque_background(theme.container_background, Some(stroke))
+        })
+    });
     write_c4_relation_defs(
         &mut out,
         diagram_id,
@@ -1443,6 +1617,10 @@ pub fn render_c4_diagram_svg_typed(
                         rel.from, rel.to
                     ),
                 })?;
+        #[cfg(feature = "layout-shoal")]
+        let outline = relation_outline.filter(|_| text_paint.uses_default_line(idx));
+        #[cfg(not(feature = "layout-shoal"))]
+        let outline = None;
         let custom_classic_color = classic_shoal && stroke_color != relationship_line;
         let indexed = (native.is_some() || custom_classic_color)
             .then(|| [format!("arrowhead-{idx}"), format!("arrowend-{idx}")]);
@@ -1450,45 +1628,15 @@ pub fn render_c4_diagram_svg_typed(
             ids.each_ref().map(String::as_str)
         });
         if let Some(native) = native {
-            let (head, end, fill) = match native.marker_style {
-                MarkerStyle::Stealth => (
-                    "M 0 0 L 10 5 L 0 10 L 3 5 Z",
-                    "M 10 0 L 0 5 L 10 10 L 7 5 Z",
-                    stroke_color,
-                ),
-                MarkerStyle::Open => ("M 0 0 L 10 5 L 0 10", "M 10 0 L 0 5 L 10 10", "none"),
-                MarkerStyle::Classic | MarkerStyle::Filled => (
-                    "M 0 0 L 10 5 L 0 10 z",
-                    "M 10 0 L 0 5 L 10 10 z",
-                    stroke_color,
-                ),
-            };
-            let stroke = stroke_color.trim();
-            let visible_stroke = !stroke.is_empty()
-                && !stroke.eq_ignore_ascii_case("none")
-                && !stroke.eq_ignore_ascii_case("transparent");
-            let (end_ref, start_ref, marker_geometry, stroke_geometry) =
-                if is_shoal && visible_stroke {
-                    (
-                        "9.5",
-                        "0.5",
-                        r#" overflow="visible""#,
-                        r#" stroke-linejoin="round" stroke-width="1""#,
-                    )
-                } else {
-                    ("9", "1", "", "")
-                };
-            let _ = write!(
-                out,
-                r#"<defs><marker id="{}" refX="{end_ref}" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"{marker_geometry}><path d="{head}" fill="{}" stroke="{}"{stroke_geometry}/></marker><marker id="{}" refX="{start_ref}" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"{marker_geometry}><path d="{end}" fill="{}" stroke="{}"{stroke_geometry}/></marker></defs>"#,
-                escape_attr_display(scoped_svg_id(diagram_id, arrowhead)),
-                escape_attr(fill),
-                escape_attr(stroke_color),
-                escape_attr_display(scoped_svg_id(diagram_id, arrowend)),
-                escape_attr(fill),
-                escape_attr(stroke_color)
-            );
-            out.checkpoint()?;
+            write_native_c4_relation_arrows(
+                &mut out,
+                diagram_id,
+                [arrowhead, arrowend],
+                native.marker_style,
+                stroke_color,
+                outline,
+                is_shoal,
+            )?;
         } else if custom_classic_color {
             write_c4_relation_arrows(
                 &mut out,
@@ -1529,8 +1677,11 @@ pub fn render_c4_diagram_svg_typed(
             routed::open_shaft(
                 &mut out,
                 route,
-                stroke_color,
-                connector_width,
+                routed::ShaftPaint {
+                    stroke: stroke_color,
+                    width: connector_width,
+                    outline,
+                },
                 diagram_id,
                 clip_id.as_deref().map(|id| (id, root_bounds)),
                 &mut relation_points,
@@ -1612,14 +1763,14 @@ pub fn render_c4_diagram_svg_typed(
             let Some(label_origin) = &route.label_origin else {
                 continue;
             };
-            let _ = write!(
-                out,
-                r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate({}, {})">"#,
-                escape_attr(&route.id),
-                fmt(label_origin.x),
-                fmt(label_origin.y)
-            );
-            out.checkpoint()?;
+            routed::open_label(
+                &mut out,
+                rel,
+                route,
+                label_origin,
+                relation_background,
+                text_color,
+            )?;
         }
         let midx = if is_shoal {
             -rel.label.width / 2.0
@@ -1730,6 +1881,12 @@ pub fn render_c4_diagram_svg_typed(
         out.checkpoint()?;
     }
 
+    if soften_boundary_surfaces {
+        root_document =
+            context
+                .viewport
+                .finish_document(&mut out, root_document, root_spec(root_bounds))?;
+    }
     out.push_str("</svg>");
     context.work_meter.checkpoint(OperationPhase::Emit)?;
     root_document.complete(out.finish()?)

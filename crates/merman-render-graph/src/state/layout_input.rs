@@ -1,5 +1,7 @@
 //! State-specific layout-adapter admission and semantic input rules.
 
+#[cfg(feature = "layout-shoal")]
+use super::StateNode;
 use merman_model::families::state::StateDiagramRenderModel as StateDiagramModel;
 use merman_render_core::layout_work::OperationLayoutWorkControl;
 use merman_render_core::{Error, Result};
@@ -135,6 +137,22 @@ pub fn state_hidden_prefixes(model: &StateDiagramModel) -> HiddenPrefixMatcher {
 pub fn note_group_owner_id(id: &str) -> Option<&str> {
     let (owner, _) = id.rsplit_once("----parent")?;
     (!owner.is_empty()).then_some(owner)
+}
+
+#[cfg(feature = "layout-shoal")]
+pub fn note_group_container<'a>(
+    group: &'a StateNode,
+    owner: &'a StateNode,
+    is_note_group: impl FnOnce(&str) -> bool,
+) -> Option<&'a str> {
+    match owner.parent_id.as_deref() {
+        Some(parent)
+            if note_group_owner_id(parent) == Some(owner.id.as_str()) && is_note_group(parent) =>
+        {
+            group.parent_id.as_deref()
+        }
+        parent => parent,
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

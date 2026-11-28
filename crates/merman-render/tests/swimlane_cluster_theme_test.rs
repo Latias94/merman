@@ -334,6 +334,18 @@ style N3 fill:#FFFBEB,stroke:#D97706";
             })
             .unwrap()
     };
+    let center_y = |id| {
+        owner(id, "node")
+            .attribute("transform")
+            .and_then(|transform| transform.strip_suffix(')'))
+            .and_then(|transform| transform.split_once(','))
+            .unwrap()
+            .1
+            .trim()
+            .parse::<f64>()
+            .unwrap()
+    };
+    assert!((center_y("N1") - center_y("N2")).abs() < 1e-6);
     let mut measured = Vec::new();
     let mut record = |name: String, ink: Color, fill: Color| {
         measured.push((name, ink.contrast(fill)));
@@ -491,6 +503,120 @@ style N3 fill:#FFFBEB,stroke:#D97706";
             .to_ascii_lowercase()
             .contains("ca8a04")
     );
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_swimlane_rough_edge_label_reseats_clear_of_foreign_ink() {
+    use kurbo::{BezPath, Line, ParamCurve, Point, Rect};
+    use merman_render::model::SwimlaneLayout;
+
+    let source = "swimlane-beta RL
+subgraph One
+A --> B --> C
+end
+subgraph Two
+D --> E --> F
+end
+A edge0@-->|Next| C
+C edge1@--> D
+D edge3@-->|Pass| C
+E edge4@-->|Send report for approval| B
+C edge5@-->|Next| E
+C edge6@--> B
+B edge7@-->|Pass| E";
+    let sketch = ThemeCompiler::new()
+        .compile_json(
+            br#"{"schema_version":2,"extends":"studio","form":{"edge_style":"sketch"}}"#,
+            None,
+        )
+        .unwrap();
+    for (look, theme) in [
+        ("handDrawn", None),
+        ("classic", Some(NativeTheme::new(sketch))),
+    ] {
+        let config = json!({
+            "layout":"shoal", "theme":"forest", "look":look, "handDrawnSeed":7,
+            "htmlLabels":false, "flowchart":{"nodeSpacing":8,"rankSpacing":50,"htmlLabels":false}
+        });
+        let (svg, layout) = with_artifact(source, config, theme, None, |artifact| {
+            let layout: SwimlaneLayout = serde_json::from_value(
+                artifact.layout_json().unwrap()["layout"]["SwimlaneDiagram"].clone(),
+            )
+            .unwrap();
+            let svg = artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap()
+                .svg()
+                .to_owned();
+            (svg, layout)
+        });
+        let doc = Document::parse(&svg).unwrap();
+        let element = |id, kind| {
+            doc.descendants()
+                .find(|node| {
+                    node.attribute("data-id") == Some(id) && node.attribute("data-et") == Some(kind)
+                })
+                .unwrap()
+        };
+        let host = element("edge4", "edge");
+        let d = host.attribute("d").unwrap();
+        assert!(d.contains('C') && !d.contains('L'), "{look}: {d}");
+        let foreign = element("edge5", "edge");
+        let shaft = BezPath::from_svg(foreign.attribute("d").unwrap()).unwrap();
+        let plate = element("edge4", "edge-label")
+            .prev_sibling_element()
+            .unwrap();
+        assert_eq!(
+            plate.attribute("class"),
+            Some("merman-edge-label-background")
+        );
+        let number = |name| plate.attribute(name).unwrap().parse::<f64>().unwrap();
+        let painted = Rect::from_origin_size(
+            (number("x"), number("y")),
+            (number("width"), number("height")),
+        );
+        let intersects = |rect: Rect| {
+            let corners = [
+                rect.origin(),
+                Point::new(rect.x1, rect.y0),
+                Point::new(rect.x1, rect.y1),
+                Point::new(rect.x0, rect.y1),
+            ];
+            shaft.segments().any(|segment| {
+                [segment.start(), segment.end()]
+                    .iter()
+                    .any(|&point| rect.contains(point))
+                    || (0..4).any(|i| {
+                        !segment
+                            .intersect_line(Line::new(corners[i], corners[(i + 1) % 4]))
+                            .is_empty()
+                    })
+            })
+        };
+        assert!(
+            !intersects(painted),
+            "{look}: label crosses its neighboring edge"
+        );
+        if look == "handDrawn" {
+            let label_id = layout
+                .edges
+                .iter()
+                .find(|edge| edge.id == "edge4")
+                .and_then(|edge| edge.label_node_id.as_deref())
+                .unwrap();
+            let label = layout
+                .nodes
+                .iter()
+                .find(|node| node.id == label_id)
+                .unwrap();
+            let unseated = Rect::from_center_size((label.x, label.y), painted.size());
+            assert!(
+                intersects(unseated),
+                "the layout anchor would overlap painted ink"
+            );
+        }
+    }
 }
 
 #[cfg(feature = "layout-shoal")]

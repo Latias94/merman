@@ -18,11 +18,18 @@ fn render_with_theme(
     source: &str,
     theme: Option<NativeTheme>,
 ) -> (ArchitectureDiagramLayout, String) {
+    render_configured(
+        &format!("---\nconfig:\n  layout: shoal\n---\n{source}"),
+        theme,
+    )
+}
+
+fn render_configured(
+    source: &str,
+    theme: Option<NativeTheme>,
+) -> (ArchitectureDiagramLayout, String) {
     let parsed = MermaidEngine::new()
-        .parse_diagram_for_render_model_sync(
-            &format!("---\nconfig:\n  layout: shoal\n---\n{source}"),
-            ParseOptions::strict(),
-        )
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
         .unwrap()
         .into_presentation();
@@ -201,6 +208,12 @@ fn vertical(leg: Line) -> bool {
     leg.p0.x == leg.p1.x
 }
 
+fn rect(node: Node<'_, '_>) -> Rect {
+    let x = number(node, "x");
+    let y = number(node, "y");
+    Rect::new(x, y, x + number(node, "width"), y + number(node, "height"))
+}
+
 fn check_comb_corner_guards(legs: &[Line], points: &[Point]) {
     for (index, bend) in legs.windows(2).enumerate() {
         let (incoming, outgoing) = (bend[0], bend[1]);
@@ -236,23 +249,230 @@ fn check_both_arrows(path: Node<'_, '_>, first: Point, last: Point) {
         .into_iter()
         .zip([(first, legs[0].start()), (last, legs.last().unwrap().end())])
     {
-        let vertices: Vec<_> = svgtypes::PointsParser::from(arrow.attribute("points").unwrap())
-            .map(|(x, y)| transform(arrow) * Point::new(x, y))
-            .collect();
-        assert_eq!(vertices.len(), 3);
-        assert_eq!(
-            vertices.iter().filter(|&&vertex| near(vertex, tip)).count(),
-            1
-        );
-        let mut base_points = vertices.into_iter().filter(|&point| !near(point, tip));
-        assert!(near(
-            base_points
-                .next()
-                .unwrap()
-                .midpoint(base_points.next().unwrap()),
-            base
-        ));
+        check_arrow(arrow, tip, base);
     }
+}
+
+fn check_arrow(arrow: Node<'_, '_>, tip: Point, base: Point) {
+    let vertices: Vec<_> = svgtypes::PointsParser::from(arrow.attribute("points").unwrap())
+        .map(|(x, y)| transform(arrow) * Point::new(x, y))
+        .collect();
+    assert_eq!(vertices.len(), 3);
+    assert_eq!(
+        vertices.iter().filter(|&&vertex| near(vertex, tip)).count(),
+        1
+    );
+    let mut base_points = vertices.into_iter().filter(|&point| !near(point, tip));
+    assert!(near(
+        base_points
+            .next()
+            .unwrap()
+            .midpoint(base_points.next().unwrap()),
+        base
+    ));
+}
+
+#[test]
+fn architecture_shoal_separates_perpendicular_junction_markers() {
+    let (layout, svg) = render(
+        "architecture-beta\n\
+         service api(server)[API]\n\
+         service auth(server)[Auth]\n\
+         service worker(server)[Worker]\n\
+         junction hub\n\
+         api:R <--> L:hub\n\
+         hub:T <-- B:auth\n\
+         hub:R -- L:worker\n",
+    );
+    let doc = Document::parse(&svg).unwrap();
+    let hub = element(&doc, "node", "hub");
+    let center = junction_contact(hub);
+    let dot = hub
+        .descendants()
+        .find(|node| node.has_tag_name("rect"))
+        .unwrap();
+    assert!(dot.attribute("fill").is_some());
+    let incoming = element(&doc, "edge", "edge-0");
+    let reverse = element(&doc, "edge", "edge-1");
+    let onward = element(&doc, "edge", "edge-2");
+    let incoming_points = contacts(incoming);
+    let left = *incoming_points.last().unwrap();
+    let top = contacts(reverse)[0];
+    let right = contacts(onward)[0];
+
+    let radius = center.x - left.x;
+    assert!(
+        (2.0..=5.0).contains(&radius),
+        "junction marker room {radius}"
+    );
+    assert!(near(left, Point::new(center.x - radius, center.y)));
+    assert!(near(top, Point::new(center.x, center.y - radius)));
+    assert!(near(right, Point::new(center.x + radius, center.y)));
+    let layout_tip = layout.edges[0].points.last().unwrap();
+    assert!(near(left, Point::new(layout_tip.x, layout_tip.y)));
+    check_both_arrows(incoming, incoming_points[0], left);
+    let arrow = reverse
+        .parent_element()
+        .unwrap()
+        .children()
+        .find(|node| node.has_tag_name("polygon"))
+        .unwrap();
+    check_arrow(arrow, top, shaft(reverse)[0].start());
+    assert!(near(shaft(onward)[0].start(), right));
+}
+
+#[test]
+fn architecture_shoal_keeps_the_top_corridor_level_past_a_taller_service_caption() {
+    let (_, svg) = render_configured(
+        "---\nconfig:\n  layout: shoal\n  theme: dark\n---\n\
+         architecture-beta\n\
+         group app[Application]\n\
+         service api(server)[API] in app\n\
+         service worker(server)[Worker<br/>Second] in app\n\
+         service store(disk)[Storage]\n\
+         api:R --> L:worker\n\
+         worker:R --> L:store\n\
+         api:T --> B:store\n",
+        None,
+    );
+    let doc = Document::parse(&svg).unwrap();
+    let app = rect(element(&doc, "cluster", "app"));
+    let worker_top = (transform(element(&doc, "node", "worker")) * Point::ZERO).y;
+    let route = element(&doc, "edge", "edge-2");
+    let points = contacts(route);
+    let border = points
+        .iter()
+        .find(|point| (point.x - app.x1).abs() < GEOMETRY_EPSILON)
+        .unwrap();
+    let legs = shaft(route);
+    assert!(border.y < worker_top - 6.0);
+    assert!(
+        legs.iter()
+            .filter(|leg| !vertical(**leg) && leg.start().x < app.x1 - GEOMETRY_EPSILON)
+            .all(|leg| (leg.start().y - border.y).abs() < GEOMETRY_EPSILON),
+        "top corridor must meet the group border on one level: {legs:?}",
+    );
+    assert!(legs.iter().all(|leg| !near(leg.start(), leg.end())));
+}
+
+#[test]
+fn architecture_shoal_packs_the_empty_group_against_its_own_scope() {
+    let (_, svg) = render(
+        "architecture-beta\n\
+         group outer(cloud)[Outer Zone]\n\
+         group empty(server)[Empty Staging Group] in outer\n\
+         group active(server)[Active Pool] in outer\n\
+         service a(server)[Node A] in active\n\
+         service b(server)[Node B] in active\n\
+         service island(database)[Isolated DR Backup]\n\
+         junction j1 in active\n\
+         junction j2 in active\n\
+         junction j3 in outer\n\
+         a:R --> L:j1\n\
+         j1:R -- L:j2\n\
+         j2:R --> L:b\n\
+         j2:B -- T:j3\n\
+         j3:R --> L:island\n",
+    );
+    let doc = Document::parse(&svg).unwrap();
+    let outer = rect(element(&doc, "cluster", "outer"));
+    let active = rect(element(&doc, "cluster", "active"));
+    let empty = rect(element(&doc, "cluster", "empty"));
+    let gap = empty.y0 - active.y1;
+    assert!((0.0..100.0).contains(&gap), "empty group gap {gap}");
+    assert!(outer.contains(empty.origin()) && outer.contains(Point::new(empty.x1, empty.y1)));
+    assert!(outer.y1 - empty.y1 < 100.0);
+    let link = contacts(element(&doc, "edge", "edge-4"));
+    assert!(link.iter().any(|point| {
+        (point.x - outer.x1).abs() < GEOMETRY_EPSILON && (outer.y0..outer.y1).contains(&point.y)
+    }));
+}
+
+#[test]
+fn architecture_shoal_mermaid_neo_dark_paints_group_and_service_surfaces() {
+    let source = "---\nconfig:\n  layout: shoal\n  theme: neo-dark\n  htmlLabels: false\n---\n\
+         architecture-beta\n\
+         group core(cloud)[Core Platform]\n\
+         service api(server)[Event Router] in core\n\
+         service private \"Internal\" [Service]\n\
+         service db(database)[Database] in core\n\
+         api:R -[Write Stream<br/>v2]-> L:db\n";
+    let (_, svg) = render_configured(source, None);
+    let doc = Document::parse(&svg).unwrap();
+    let service = element(&doc, "node", "api");
+    let neo_service = service
+        .children()
+        .find(|node| node.attribute("data-look") == Some("neo"))
+        .unwrap();
+    assert_eq!(neo_service.attribute("class"), Some("node"));
+    let tile = neo_service
+        .children()
+        .find(|node| node.has_tag_name("rect"))
+        .unwrap();
+    assert_eq!(tile.attribute("fill"), Some("#2a2020"));
+    assert!(!service.descendants().any(|node| {
+        node.attribute("style")
+            .is_some_and(|style| style.contains("#087ebf"))
+    }));
+    let group = element(&doc, "cluster", "core").parent_element().unwrap();
+    assert_eq!(group.attribute("class"), Some("cluster"));
+    assert_eq!(group.attribute("data-look"), Some("neo"));
+    assert!(!group.descendants().any(|node| node.has_tag_name("svg")));
+    let gradient = doc
+        .descendants()
+        .find(|node| node.has_tag_name("linearGradient"))
+        .unwrap();
+    let css = doc
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .unwrap()
+        .text()
+        .unwrap();
+    assert!(css.contains(&format!(
+        "stroke:url(#{})",
+        gradient.attribute("id").unwrap()
+    )));
+    element(&doc, "edge-label", "edge-0");
+
+    let light = source.replace("theme: neo-dark", "theme: neo");
+    let (_, light) = render_configured(&light, None);
+    let light = Document::parse(&light).unwrap();
+    let caption = element(&light, "node", "private")
+        .descendants()
+        .find(|node| node.attribute("class") == Some("node-icon-text"))
+        .and_then(|node| node.first_element_child())
+        .unwrap();
+    assert!(
+        caption
+            .attribute("style")
+            .unwrap()
+            .contains("color:#333333;")
+    );
+
+    let classic = source.replace("theme: neo-dark", "theme: neo-dark\n  look: classic");
+    let (_, classic) = render_configured(&classic, None);
+    let classic = Document::parse(&classic).unwrap();
+    assert!(
+        !element(&classic, "node", "api")
+            .descendants()
+            .any(|node| node.attribute("data-look") == Some("neo"))
+    );
+
+    let native = ThemeCompiler::new()
+        .compile_json(br#"{"schema_version":2,"extends":"studio"}"#, None)
+        .unwrap();
+    let (_, native_svg) = render_configured(source, Some(NativeTheme::new(native)));
+    let native = Document::parse(&native_svg).unwrap();
+    assert!(
+        element(&native, "node", "api")
+            .children()
+            .any(|node| { node.attribute("class") == Some("architecture-native-service-card") })
+    );
+    assert!(
+        !native
+            .descendants()
+            .any(|node| node.attribute("data-look") == Some("neo"))
+    );
 }
 
 #[test]
@@ -421,12 +641,7 @@ fn architecture_shoal_paints_full_routes_and_true_double_arrow_contacts() {
     let group_route = element(&doc, "edge", "edge-1");
     let group_points = contacts(group_route);
     let junction = junction_contact(hub);
-    let group_rect = Rect::new(
-        number(inner, "x"),
-        number(inner, "y"),
-        number(inner, "x") + number(inner, "width"),
-        number(inner, "y") + number(inner, "height"),
-    );
+    let group_rect = rect(inner);
     assert!((group_points[0].x - group_rect.x1).abs() < 1e-7);
     assert!((group_rect.y0..=group_rect.y1).contains(&group_points[0].y));
     assert!(near(*group_points.last().unwrap(), junction));

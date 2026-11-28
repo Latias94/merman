@@ -360,6 +360,59 @@ fn class_neo_dividers_and_marker_references_follow_look_and_gradient() {
 
 #[cfg(feature = "layout-shoal")]
 #[test]
+fn class_shoal_native_heading_fill_meets_first_divider() {
+    use kurbo::{BezPath, PathEl, Shape};
+    use merman_render::theme::{Appearance, BuiltinPreset, NativeTheme, ThemeCompiler};
+
+    let theme = ThemeCompiler::new()
+        .compile_preset(BuiltinPreset::Studio, Some(Appearance::Dark))
+        .unwrap();
+    for html in [false, true] {
+        let source = format!(
+            "---\nconfig:\n  layout: shoal\n  look: neo\n  htmlLabels: {html}\n  class:\n    htmlLabels: {html}\n---\nclassDiagram\nclass Account {{\n  +String id\n  +balance() Money\n}}\n",
+        );
+        let parsed = MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let session = RenderEnvironment::deterministic()
+            .begin_session_with_native_theme(NativeTheme::new(theme.clone()))
+            .unwrap();
+        let artifact =
+            family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let heading = document
+            .descendants()
+            .find(|node| node.attribute("class") == Some("class-native-header"))
+            .unwrap();
+        let divider = heading
+            .parent()
+            .unwrap()
+            .children()
+            .find(|node| node.attribute("class") == Some("divider neo-line"))
+            .and_then(|node| node.first_element_child())
+            .unwrap();
+        let path = |node: roxmltree::Node<'_, '_>| {
+            BezPath::from_svg(node.attribute("d").unwrap()).unwrap()
+        };
+        let PathEl::MoveTo(first) = path(divider).elements()[0] else {
+            panic!("divider start")
+        };
+        let bottom = path(heading).bounding_box().y1;
+        assert!(
+            (bottom - first.y).abs() < 1e-6,
+            "html={html}: heading {bottom}, divider {}",
+            first.y
+        );
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
 fn class_shoal_neo_dividers_keep_solid_guides_with_gradients() {
     for (theme, guide) in [("dark", "#ccc"), ("forest", "#13540c")] {
         for html_labels in [false, true] {

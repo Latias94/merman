@@ -155,27 +155,33 @@ fn write_wardley_svg(dir: &Path, stem: &str, include_flow_markers: bool) -> Path
 }
 
 #[test]
-fn pinned_source_metadata_is_mermaid_12_3_0() {
+fn pinned_source_metadata_matches_selected_reference_bundle() {
     let source = current_source().expect("read pinned Mermaid source metadata");
-    assert_eq!(source.mermaid_version, "12.3.0");
-    assert_eq!(source.mermaid_cli_version, "12.2.0");
-    assert_eq!(source.mermaid_source_tag, "mermaid@12.3.0");
-    assert_eq!(
-        source.mermaid_source_commit,
-        "2086904e76c692331e34a45d7cc3bc30860d040e"
-    );
-    assert_eq!(
-        source.package_json_sha256,
-        crate::cmd::REFERENCE_CLI_PACKAGE_JSON_SHA256
-    );
-    assert_eq!(
-        source.package_lock_sha256,
-        crate::cmd::REFERENCE_CLI_PACKAGE_LOCK_SHA256
-    );
-    assert_eq!(
-        source.mermaid_config_sha256,
-        crate::cmd::REFERENCE_CLI_CONFIG_SHA256
-    );
+    let bundle = read_json(
+        &crate::cmd::workspace_root().join("tools/upstreams/MERMAID_REFERENCE_BUNDLE.json"),
+    )
+    .expect("read selected Mermaid reference bundle");
+    for (pointer, actual) in [
+        ("/release/version", source.mermaid_version),
+        ("/release/source/reference", source.mermaid_source_tag),
+        ("/release/source/commit", source.mermaid_source_commit),
+        ("/referenceCli/package/version", source.mermaid_cli_version),
+        (
+            "/referenceCli/packageJsonSha256",
+            source.package_json_sha256,
+        ),
+        (
+            "/referenceCli/packageLockSha256",
+            source.package_lock_sha256,
+        ),
+        ("/referenceCli/configSha256", source.mermaid_config_sha256),
+    ] {
+        assert_eq!(
+            bundle.pointer(pointer).and_then(serde_json::Value::as_str),
+            Some(actual.as_str()),
+            "selected reference at {pointer}"
+        );
+    }
 }
 
 #[test]

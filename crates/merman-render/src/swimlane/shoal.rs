@@ -323,6 +323,7 @@ fn measure(
             end_marker,
         });
     }
+    prefer_lane_chains(&graph.nodes, &mut graph.edges, work)?;
     Ok((
         graph,
         columns,
@@ -332,6 +333,41 @@ fn measure(
             profiles,
         },
     ))
+}
+
+fn prefer_lane_chains(
+    nodes: &[MeasuredNode],
+    edges: &mut [MeasuredEdge],
+    work: &mut OperationLayoutWorkControl,
+) -> Result<()> {
+    let lane_link = |edge: &MeasuredEdge| {
+        let (Endpoint::Node(source), Endpoint::Node(target)) = (edge.source, edge.target) else {
+            return None;
+        };
+        let (source, target) = (source as usize, target as usize);
+        (source != target && nodes[source].parent == nodes[target].parent)
+            .then_some((source, target))
+    };
+    work.charge_adapter(nodes.len())?;
+    let mut counts = vec![[0_u8; 2]; nodes.len()];
+    for edge in edges.iter() {
+        work.charge_adapter(1)?;
+        if let Some((source, target)) = lane_link(edge) {
+            counts[source][0] = counts[source][0].saturating_add(1);
+            counts[target][1] = counts[target][1].saturating_add(1);
+        }
+    }
+    for edge in edges {
+        work.charge_adapter(1)?;
+        if let Some((source, target)) = lane_link(edge)
+            && counts[source][0] == 1
+            && counts[target][1] == 1
+        {
+            // Preserve the lane's unbranched flow when ordering it with cross-lane handoffs.
+            edge.weight = 4.0;
+        }
+    }
+    Ok(())
 }
 
 impl Bindings {

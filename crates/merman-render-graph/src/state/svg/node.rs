@@ -1001,6 +1001,8 @@ pub(super) fn render_state_node_svg(
             } else {
                 Some(text_style_attr)
             };
+            let center_svg_text = !ctx.html_labels && ctx.uses_canonical_routes();
+            let label_x = if center_svg_text { 0.0 } else { -lw / 2.0 };
             let label_html_start = timing.start();
             let label_dom = if ctx.html_labels {
                 state_node_label_html_with_style(
@@ -1009,7 +1011,12 @@ pub(super) fn render_state_node_svg(
                     node_text_style.font_size,
                 )
             } else {
-                state_native_svg_text_label(&label, measured_label, false, label_span_style)
+                state_native_svg_text_label(
+                    &label,
+                    measured_label,
+                    center_svg_text,
+                    label_span_style,
+                )
             };
             if let Some(s) = label_html_start {
                 details.leaf_nodes_label_html += s.elapsed();
@@ -1069,7 +1076,7 @@ pub(super) fn render_state_node_svg(
                         out,
                         r##"<g class="label" style="{}" transform="translate({}, {})"><rect/>{}</g></g>"##,
                         escape_attr_display(text_style_attr),
-                        fmt_display(-lw / 2.0),
+                        fmt_display(label_x),
                         fmt_display(-lh / 2.0),
                         label_dom,
                     );
@@ -1148,7 +1155,7 @@ pub(super) fn render_state_node_svg(
                     fmt_display(stroke_width_attr),
                     escape_attr_display(stroke_path_style_attr),
                     escape_attr_display(text_style_attr),
-                    fmt_display(-lw / 2.0),
+                    fmt_display(label_x),
                     fmt_display(-lh / 2.0),
                     label_dom,
                 );

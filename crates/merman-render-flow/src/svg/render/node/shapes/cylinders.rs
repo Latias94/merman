@@ -84,7 +84,11 @@ fn write_cylinder_body(
     cylinder.write(
         out,
         body_svg(common, details),
-        ctx.layout.route_contract.is_canonical_axis(),
+        ctx.layout
+            .route_contract
+            .is_canonical_axis()
+            .then(|| ctx.document_ids().node(common.node_id))
+            .flatten(),
         ctx.security_level_loose,
     );
 }

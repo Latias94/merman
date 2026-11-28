@@ -12,8 +12,11 @@ use merman_render_core::{
     resources::OperationWorkMeter,
     svg_output::SvgOutput,
     text::{
-        TextMeasurer, TextMetrics, literal_label::FlowchartSvgWidthMode,
-        svg_label::write_measured_svg_title,
+        TextMeasurer, TextMetrics,
+        literal_label::FlowchartSvgWidthMode,
+        svg_label::{
+            write_measured_svg_title, write_svg_text_markdown_from_create_text_source_with_style,
+        },
     },
     theme_svg::edge_label_background::literal_fill,
     xml::escape_attr_display,
@@ -255,7 +258,9 @@ impl FlowchartClusterSvg<'_> {
                 stroke,
             },
             form,
-            shape.hand_drawn(self.compatibility.look, solid_backing),
+            shape
+                .hand_drawn(self.compatibility.look, solid_backing)
+                .filter(|_| self.native.is_none() || (self.canonical_axis && !agentflow)),
         );
     }
 
@@ -361,6 +366,7 @@ pub struct FlowchartClusterTitle<'a> {
     pub label_type: &'a str,
     pub source: &'a str,
     pub html_labels: bool,
+    pub svg_font_fallback: Option<&'a str>,
     pub uses_elk_adapter_dom: bool,
     pub owner: Option<FlowchartSvgLabelOwner>,
     pub sidecar: Option<&'a FlowchartSvgLabelSidecar>,
@@ -398,6 +404,7 @@ impl FlowchartClusterTitle<'_> {
             label_type,
             source: render_title,
             html_labels,
+            svg_font_fallback,
             uses_elk_adapter_dom,
             owner: title_owner,
             sidecar,
@@ -503,6 +510,8 @@ impl FlowchartClusterTitle<'_> {
         }
         if !html_labels || svg_fallback {
             let svg_text_style = cluster_svg_text_style(label_style);
+            let svg_text_style =
+                crate::svg_label::with_svg_font_fallback(&svg_text_style, svg_font_fallback);
             out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
             if label_type == "markdown" {
                 if uses_elk_adapter_dom || svg_fallback {
@@ -525,6 +534,12 @@ impl FlowchartClusterTitle<'_> {
                             Some(markdown_wrap_width),
                         );
                     }
+                } else if canonical_group_title {
+                    write_svg_text_markdown_from_create_text_source_with_style(
+                        out,
+                        render_title,
+                        Some(svg_text_style.as_ref()),
+                    );
                 } else {
                     write_flowchart_svg_text_markdown(out, render_title, true);
                 }
@@ -552,7 +567,7 @@ impl FlowchartClusterTitle<'_> {
                         out,
                         &prepared,
                         true,
-                        (!svg_text_style.is_empty()).then_some(svg_text_style.as_str()),
+                        (!svg_text_style.is_empty()).then_some(svg_text_style.as_ref()),
                     );
                 }
             }

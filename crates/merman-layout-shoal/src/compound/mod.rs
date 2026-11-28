@@ -118,6 +118,19 @@ impl Frames {
     }
 }
 
+pub(super) struct Topology {
+    hierarchy: Hierarchy,
+    sides: Vec<Side>,
+}
+
+impl Topology {
+    pub(super) fn new(graph: &Graph, options: &Options, work: &mut Work<'_>) -> LayoutResult<Self> {
+        let hierarchy = hierarchy::build(graph, options, work)?;
+        let sides = sides::assign(graph, &hierarchy, options, work)?;
+        Ok(Self { hierarchy, sides })
+    }
+}
+
 pub(super) fn run(
     graph: &Graph,
     options: &Options,
@@ -125,13 +138,30 @@ pub(super) fn run(
     detail: LayoutDetail,
     work: &mut Work<'_>,
 ) -> LayoutResult<LayoutOutput> {
-    let hierarchy = hierarchy::build(graph, options, work)?;
-    let sides = sides::assign(graph, &hierarchy, options, work)?;
+    run_with_topology(
+        graph,
+        options,
+        &Topology::new(graph, options, work)?,
+        expanded,
+        detail,
+        work,
+    )
+}
+
+pub(super) fn run_with_topology(
+    graph: &Graph,
+    options: &Options,
+    topology: &Topology,
+    expanded: &mut Expanded,
+    detail: LayoutDetail,
+    work: &mut Work<'_>,
+) -> LayoutResult<LayoutOutput> {
+    let Topology { hierarchy, sides } = topology;
     let order_ports = hierarchy.lanes.is_none()
         && (2..=options.caps.max_ordered_compound_ports).contains(&hierarchy.borders.len())
         && graph.edges.len() <= options.caps.max_ordered_compound_edges;
     let ordered = if order_ports {
-        pre_order::ordered(graph, &hierarchy, options, &sides, expanded, work)?
+        pre_order::ordered(graph, hierarchy, options, sides, expanded, work)?
     } else {
         None
     };
@@ -149,9 +179,9 @@ pub(super) fn run(
     let no_hints = filled(hierarchy.borders.len(), None)?;
     let independent = Pass {
         graph,
-        hierarchy: &hierarchy,
+        hierarchy,
         options,
-        sides: &sides,
+        sides,
         items: &no_keys,
         ports: &no_hints,
     };

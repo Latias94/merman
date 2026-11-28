@@ -675,6 +675,24 @@ fn measure_pass(
         .get("htmlLabels")
         .and_then(Value::as_bool)
         .unwrap_or(true);
+    let canonical = cfg!(feature = "layout-shoal")
+        && config.get("layout").and_then(Value::as_str) == Some("shoal");
+    let canonical_font = (canonical && !html).then(|| {
+        let mut font = css_binding.root_font.clone();
+        if css_binding.native_title_font.is_none() {
+            let usecase_font = &css_binding.usecase_font;
+            if full_config.explicit_config_owns_path("usecase.usecaseFontFamily") {
+                font.font_family.clone_from(&usecase_font.font_family);
+            }
+            if full_config.explicit_config_owns_path("usecase.usecaseFontSize") {
+                font.font_size = usecase_font.font_size;
+            }
+            if full_config.explicit_config_owns_path("usecase.usecaseFontWeight") {
+                font.font_weight.clone_from(&usecase_font.font_weight);
+            }
+        }
+        font
+    });
     let root_font_size = if html {
         16.0
     } else {
@@ -682,6 +700,7 @@ fn measure_pass(
     };
     let mut nodes = Vec::new();
     for actor in [true, false] {
+        let canonical_node_font = canonical_font.as_ref().filter(|_| !actor);
         for node in model
             .nodes
             .iter()
@@ -697,6 +716,8 @@ fn measure_pass(
             let (inherited, element_defaults) = if html {
                 // HTML emits the computed role font inline on g.label.
                 (role_font, None)
+            } else if let Some(font) = canonical_node_font {
+                (&css_binding.root_font, Some(font))
             } else {
                 // Only SVG actor/business groups match a role selector; ordinary
                 // SVG labels inherit the root without .nodeLabel/.usecase-label.
@@ -752,11 +773,11 @@ fn measure_pass(
                 .as_ref()
                 .filter(|value| !value.is_empty() && !folded_stereotype)
                 .map(|value| {
-                    // The separate SVG stereotype lacks .actor-label/.usecase-label.
+                    // The separate legacy SVG stereotype lacks .actor-label/.usecase-label.
                     let font = if html {
                         role_font
                     } else {
-                        &css_binding.root_font
+                        canonical_node_font.unwrap_or(&css_binding.root_font)
                     };
                     let stereotype_style = styled(font, None, &css, root_font_size);
                     label(

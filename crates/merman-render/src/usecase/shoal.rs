@@ -178,10 +178,10 @@ pub(super) fn layout(
                     usecase_actor(
                         variant,
                         actor.placement,
-                        dimensions(&plan.label),
+                        actor.caption_contact_size,
                         plan.stereotype.as_ref().map(dimensions),
                     ),
-                    actor.size,
+                    actor.layout_size,
                     Some(actor.anchor_y),
                 )
             } else {

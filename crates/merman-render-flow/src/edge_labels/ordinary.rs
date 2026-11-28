@@ -144,6 +144,10 @@ pub fn write_ordinary_edge_label<'a>(
                 FlowchartEdgeLabelPlacement::Fallback(_) => (None, None),
             };
             if let Some(position) = position {
+                let css = crate::svg_label::with_svg_font_fallback(
+                    &svg_edge_label_text_style,
+                    ctx.svg_font_fallback,
+                );
                 let text = match prepared_svg_label.as_ref() {
                     Some(FlowchartSvgLabelRenderPlan::Prepared { measured, .. }) => {
                         SvgEdgeLabelText::Wrapped(measured.wrapped_lines())
@@ -162,7 +166,7 @@ pub fn write_ordinary_edge_label<'a>(
                     layout_size,
                     text,
                     plain_text: &label_text_plain,
-                    css: svg_edge_label_text_style.as_ref(),
+                    css: &css,
                     measurer: ctx.measurer,
                     metrics_style: edge_metrics_style,
                 }

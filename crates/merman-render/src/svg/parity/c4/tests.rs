@@ -653,16 +653,17 @@ Rel(db, q, "Publishes<br/>replicated change capture events across regional zones
     }
 
     // M1: dark Mermaid theme under Shoal must not fall back to invisible #444444 boundary stroke.
-    let boundary_rect = doc
-        .descendants()
+    let boundary_outline = element(&doc, "cluster", "b0")
+        .children()
         .find(|el| {
-            el.has_tag_name("rect")
+            el.has_tag_name("path")
+                && el.attribute("class") == Some("c4-boundary-outline")
                 && el.attribute("stroke-dasharray").is_some()
                 && el.attribute("stroke").is_some()
         })
-        .expect("C4 boundary rect");
+        .expect("C4 boundary outline");
     assert_ne!(
-        boundary_rect.attribute("stroke"),
+        boundary_outline.attribute("stroke"),
         Some("#444444"),
         "dark Shoal C4 boundary must use light theme lineColor instead of #444444"
     );
@@ -803,6 +804,131 @@ UpdateRelStyle(c, d, $offsetX="10", $offsetY="5")
             );
         }
     }
+}
+
+#[test]
+fn c4_shoal_crossing_shafts_clear_foreign_marker_runways() {
+    let source = r#"---
+config:
+  layout: shoal
+  htmlLabels: false
+---
+C4Container
+Container(n1, "Node 1")
+Container(n2, "Node 2")
+Container(n3, "Node 3")
+Container(n4, "Node 4")
+Container(b1, "Bottom 1")
+Container(b2, "Bottom 2")
+Container(b3, "Bottom 3")
+Container(b4, "Bottom 4")
+Rel(n1, n4, "Call Call Call Call Call Call Call Call")
+Rel(n1, b4, "Call Call Call Call Call Call Call Call")
+Rel(n4, b1, "Call Call Call Call Call Call Call Call")
+Rel(n2, b2, "Call Call Call Call Call Call Call Call")
+Rel(n3, b3, "Call Call Call Call Call Call Call Call")
+"#;
+    let (_, svg) = render(source, &LayoutOptions::headless_svg_defaults());
+    let doc = Document::parse(svg.svg()).unwrap();
+    let edges: Vec<_> = (0..5)
+        .map(|idx| element(&doc, "edge", &format!("c4-rel-{idx}")))
+        .collect();
+    let routes: Vec<_> = edges.iter().map(|&edge| points(edge)).collect();
+    for (owner, &edge) in edges.iter().enumerate() {
+        let route = &routes[owner];
+        let last = route.len() - 1;
+        for (attr, [tip, neighbor]) in [("marker-start", [0, 1]), ("marker-end", [last, last - 1])]
+        {
+            if edge.attribute(attr).is_none() {
+                continue;
+            }
+            let tip = route[tip];
+            let axis = (route[neighbor] - tip).normalize();
+            let half_width = Vec2::new(axis.y.abs(), axis.x.abs()) * 5.5;
+            let back = tip + axis * (11.0 + merman_layout_shoal::MIN_MARKER_LEAD);
+            let runway = Rect::from_points(tip, back).inflate(half_width.x, half_width.y);
+            for (other, route) in routes
+                .iter()
+                .enumerate()
+                .filter(|(other, _)| *other != owner)
+            {
+                assert!(
+                    route
+                        .windows(2)
+                        .all(|leg| !bounds_touch(Rect::from_points(leg[0], leg[1]), runway)),
+                    "shaft {other} enters the marker runway of relation {owner}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn c4_shoal_keeps_reciprocal_branches_nested_across_boundary() {
+    let source = r#"---
+config:
+  layout: shoal
+  htmlLabels: false
+---
+C4Dynamic
+Container_Boundary(store, "Storefront") {
+    Component(spa, "Browser SPA", "React", "Customer storefront")
+    Component(api, "Checkout API", "Rust", "Validates basket")
+    Component(inv, "Inventory Svc", "Rust", "Reserves stock")
+    ComponentDb(db, "Orders DB", "PostgreSQL", "Stores orders")
+}
+System_Ext(psp, "Stripe PSP", "External payment gateway")
+Rel(spa, api, "POST /checkout", "HTTPS/JSON")
+Rel(api, inv, "Reserve SKUs", "gRPC")
+Rel(inv, db, "Lock stock rows", "SQL")
+Rel(api, psp, "Charge card", "HTTPS")
+Rel(psp, api, "Payment authorized", "JSON")
+Rel(api, spa, "Return confirmation", "HTTP 201")
+"#;
+    let (_, svg) = render(source, &LayoutOptions::headless_svg_defaults());
+    let doc = Document::parse(svg.svg()).unwrap();
+    let outbound = points(element(&doc, "edge", "c4-rel-3"));
+    let incoming = points(element(&doc, "edge", "c4-rel-4"));
+    assert!(outbound[0].x < incoming.last().unwrap().x);
+    assert!(outbound.last().unwrap().x < incoming[0].x);
+    for leg in outbound.windows(2) {
+        let a = Rect::from_points(leg[0], leg[1]);
+        assert!(
+            incoming
+                .windows(2)
+                .all(|leg| !bounds_touch(a, Rect::from_points(leg[0], leg[1]))),
+            "the reciprocal shafts touch or cross"
+        );
+    }
+}
+
+#[test]
+fn c4_shoal_keeps_the_detour_column_through_the_boundary() {
+    let source = r#"---
+config:
+  layout: shoal
+  htmlLabels: false
+---
+C4Context
+Person(customer, "Retail Customer", "Uses mobile and web banking")
+Enterprise_Boundary(bank, "Acme Bank") {
+    System(core, "Core Banking", "Manages accounts and transfers")
+    SystemDb(vault, "Customer Vault", "PII and KYC store")
+}
+System_Ext(swift, "SWIFT Network", "International wire rail")
+Rel(customer, core, "Initiates wire transfer", "HTTPS")
+BiRel(core, vault, "Verifies KYC status", "gRPC")
+Rel(core, swift, "Dispatches MT103 message", "ISO 20022")
+"#;
+    let (_, svg) = render(source, &LayoutOptions::headless_svg_defaults());
+    let doc = Document::parse(svg.svg()).unwrap();
+    let points = points(element(&doc, "edge", "c4-rel-2"));
+    assert!(points[0].x > points.last().unwrap().x);
+    assert!(points.windows(2).all(|leg| leg[0].x >= leg[1].x));
+}
+
+fn bounds_touch(a: Rect, b: Rect) -> bool {
+    a.x0 <= b.x1 && b.x0 <= a.x1 && a.y0 <= b.y1 && b.y0 <= a.y1
 }
 
 #[test]

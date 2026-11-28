@@ -25,6 +25,7 @@ use crate::text::TextMeasurer;
 use crate::{Error, LayoutExecution, Result};
 use kurbo::Insets;
 use merman_model::families::state::StateDiagramRenderEdge;
+use merman_render_graph::state::note_group_container;
 use rustc_hash::FxHashMap;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -33,6 +34,7 @@ struct StateGroup<'a> {
     node: &'a StateNode,
     title: String,
     padding: f64,
+    requested_direction: Option<Direction>,
 }
 
 struct MeasuredState<'a> {
@@ -184,6 +186,7 @@ fn measure<'a>(
                 node,
                 title,
                 padding,
+                requested_direction: None,
             });
             endpoint
         } else {
@@ -198,8 +201,8 @@ fn measure<'a>(
         }
     }
 
-    let parent = |node: &'a StateNode| -> Result<Option<u32>> {
-        let Some(id) = node.parent_id.as_deref().filter(|id| !hidden.is_hidden(id)) else {
+    let parent = |node: &'a StateNode, id: Option<&'a str>| -> Result<Option<u32>> {
+        let Some(id) = id.filter(|id| !hidden.is_hidden(id)) else {
             return Ok(None);
         };
         match endpoints.get(canonical(id)) {
@@ -209,12 +212,47 @@ fn measure<'a>(
             }),
         }
     };
-    for (group, measured) in groups.iter().zip(&mut graph.groups) {
+    let mut note_groups = FxHashMap::default();
+    for (group_index, group) in groups.iter().enumerate() {
         work.charge_adapter(0)?;
-        measured.parent = parent(group.node)?;
+        let node = group.node;
+        if node.shape == "noteGroup"
+            && let Some(owner) = note_group_owner_id(&node.id)
+            && let Some(endpoint) = endpoints.get(owner)
+        {
+            let owner = match *endpoint {
+                Endpoint::Node(leaf) => leaves[leaf as usize].1,
+                Endpoint::Group(group) => groups[group as usize].node,
+            };
+            let measured = &mut graph.groups[group_index];
+            let container = note_group_container(node, owner, |id| aliases.contains_key(id));
+            measured.parent = parent(node, container)?;
+            work.charge_adapter(1)?;
+            note_groups.insert(owner.id.as_str(), index(group_index, work)?);
+        } else {
+            graph.groups[group_index].parent = parent(node, node.parent_id.as_deref())?;
+        }
     }
     restore_concurrent_directions(&groups, &mut graph.groups, work)?;
     let group_directions = effective_group_directions(&graph, work)?;
+    for ((group, measured), &direction) in groups
+        .iter_mut()
+        .zip(&mut graph.groups)
+        .zip(&group_directions)
+    {
+        work.charge_adapter(0)?;
+        group.requested_direction = measured.direction;
+        if let Some(&wrapper) = note_groups.get(group.node.id.as_str()) {
+            // Keep the owner's interior direction when the note group becomes its parent.
+            measured.direction = direction;
+            measured.parent = Some(wrapper);
+        }
+    }
+    for &wrapper in note_groups.values() {
+        work.charge_adapter(0)?;
+        // State encodes `left of` as note -> owner and `right of` as owner -> note.
+        graph.groups[wrapper as usize].direction = Some(Direction::Right);
+    }
     let mut profiles = Vec::with_capacity(leaves.len());
     let mut terminal_nodes = Vec::new();
     let (face, perpendicular) = match graph.direction {
@@ -223,9 +261,20 @@ fn measure<'a>(
     };
     for &(seq, node) in &leaves {
         work.charge_adapter(0)?;
-        let parent = parent(node)?;
+        let semantic_parent = parent(node, node.parent_id.as_deref())?;
+        let parent = note_groups
+            .get(node.id.as_str())
+            .copied()
+            .or(semantic_parent);
         let (width, height) = if matches!(node.shape.as_str(), "fork" | "join") {
-            let direction = parent.map_or(graph.direction, |group| {
+            let semantic_parent = semantic_parent.and_then(|group| {
+                if groups[group as usize].node.shape == "noteGroup" {
+                    graph.groups[group as usize].parent
+                } else {
+                    Some(group)
+                }
+            });
+            let direction = semantic_parent.map_or(graph.direction, |group| {
                 group_directions[group as usize].unwrap_or(graph.direction)
             });
             state_fork_join_painted_dimensions(direction)
@@ -474,12 +523,7 @@ fn project(
         nodes.push(positioned_node(&leaf.id, rect, false));
     }
     let mut clusters = Vec::with_capacity(input.groups.len());
-    for ((group, measured), placed) in input
-        .groups
-        .iter()
-        .zip(&input.graph.groups)
-        .zip(&solved.groups)
-    {
+    for (group, placed) in input.groups.iter().zip(&solved.groups) {
         let node = positioned_node(&group.node.id, placed.rect, true);
         let title_label = placed.title.clone().unwrap_or(LayoutLabel {
             x: node.x,
@@ -499,7 +543,10 @@ fn project(
             title_margin_top: title_label.y - title_label.height / 2.0 - placed.rect.y,
             title_margin_bottom: 0.0,
             title_label,
-            requested_dir: measured.direction.map(direction_name).map(str::to_owned),
+            requested_dir: group
+                .requested_direction
+                .map(direction_name)
+                .map(str::to_owned),
             effective_dir: direction_name(placed.direction).to_owned(),
             padding: group.padding,
         });

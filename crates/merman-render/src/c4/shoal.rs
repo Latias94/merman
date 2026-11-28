@@ -977,11 +977,15 @@ C4Context
                 })
                 .collect();
             let settings = C4ConfigView::new(config.as_value()).layout_settings();
+            // Verify caption ink with a fresh meter after the constrained layout has completed.
+            let verification_work = crate::resources::OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::constrained(),
+            );
             let measure = C4Measurement {
                 typography: &typography,
                 conf: &settings,
                 measurer: execution.text_measurer(),
-                work: execution.work_meter_ref(),
+                work: &verification_work,
             };
             for (idx, (route, relation)) in routes.iter().zip(&mut layout.rels).enumerate() {
                 assert!(route.label_reference.is_none(), "{} is exterior", route.id);
@@ -991,7 +995,13 @@ C4Context
                     .unwrap();
                 let center = ink.center() + Vec2::new(origin.x, origin.y);
                 let clearance = merman_render_graph::c4::SHAFT_CLEARANCE;
-                for displaced in [center, center + (0.0, clearance), center - (0.0, clearance)] {
+                for displaced in [
+                    center,
+                    center + (0.0, clearance),
+                    center - (0.0, clearance),
+                    center + (clearance, 0.0),
+                    center - (clearance, 0.0),
+                ] {
                     let distance = |path: &BezPath| {
                         path.segments()
                             .map(|segment| segment.nearest(displaced, 1e-3).distance_sq)

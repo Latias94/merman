@@ -599,6 +599,33 @@ fn state_canonical_edge_bounds(
     bounds
 }
 
+#[cfg(feature = "layout-shoal")]
+fn write_state_edge_label_cutout(
+    out: &mut impl SvgOutput,
+    diagram_id: SvgDiagramId<'_>,
+    ordinal: usize,
+    shaft: kurbo::Rect,
+    gap: kurbo::Rect,
+) -> Result<()> {
+    // State roots can translate independently. Both rectangles are local to the edge path.
+    let frame = shaft.union(gap).inflate(1.0, 1.0);
+    let _ = write!(
+        out,
+        r#"<defs><clipPath id="{diagram_id}_state-edge-label-{ordinal}"><path clip-rule="evenodd" d="M{} {}H{}V{}H{}ZM{} {}H{}V{}H{}Z"/></clipPath></defs>"#,
+        fmt(frame.x0),
+        fmt(frame.y0),
+        fmt(frame.x1),
+        fmt(frame.y1),
+        fmt(frame.x0),
+        fmt(gap.x0),
+        fmt(gap.y0),
+        fmt(gap.x1),
+        fmt(gap.y1),
+        fmt(gap.x0),
+    );
+    out.checkpoint()
+}
+
 #[derive(Default)]
 pub(super) struct StateEdgePathScratch {
     #[cfg(feature = "layout-shoal")]
@@ -666,6 +693,7 @@ fn write_state_edge_path(
     origin_x: f64,
     origin_y: f64,
     scratch: &mut StateEdgePathScratch,
+    #[cfg(feature = "layout-shoal")] ordinal: usize,
     #[cfg(feature = "layout-shoal")] canonical_bounds: &mut Option<kurbo::Rect>,
 ) -> Result<()> {
     if !ctx.uses_elk_adapter_dom && !ctx.uses_canonical_routes() && le.points.len() < 2 {
@@ -678,6 +706,8 @@ fn write_state_edge_path(
     let sketch =
         compatibility.native_edge_style == Some(merman_theme_contract::v2::EdgeStyle::Sketch);
     #[cfg(feature = "layout-shoal")]
+    let mut label_cutout = false;
+    #[cfg(feature = "layout-shoal")]
     let canonical = match ctx.canonical_routes {
         Some(paint) => {
             if look == "neo" && !sketch {
@@ -688,7 +718,22 @@ fn write_state_edge_path(
             let randomness = (sketch || state_effective_look(ctx) == "handDrawn")
                 .then_some(&ctx.hand_drawn_seed);
             let geometry = paint(le, -origin, outset, randomness, &mut scratch.canonical)?;
-            let bounds = state_canonical_edge_bounds(&geometry, outset) + origin;
+            let bounds = state_canonical_edge_bounds(&geometry, outset);
+            if let Some(label) = le
+                .label
+                .as_ref()
+                .filter(|l| l.width > 0.0 && l.height > 0.0)
+            {
+                let gap = kurbo::Rect::from_center_size(
+                    (label.x - origin_x, label.y - origin_y),
+                    (label.width, label.height),
+                );
+                if bounds.intersect(gap).area() > 0.0 {
+                    write_state_edge_label_cutout(out, ctx.diagram_id, ordinal, bounds, gap)?;
+                    label_cutout = true;
+                }
+            }
+            let bounds = bounds + origin;
             *canonical_bounds = Some(canonical_bounds.map_or(bounds, |cur| cur.union(bounds)));
             Some(geometry)
         }
@@ -852,6 +897,11 @@ fn write_state_edge_path(
     out.push_str(r#"" data-look=""#);
     escape_attr_into(out, look);
     out.push('"');
+    #[cfg(feature = "layout-shoal")]
+    if label_cutout {
+        let id = ctx.diagram_id;
+        let _ = write!(out, r#" clip-path="url(#{id}_state-edge-label-{ordinal})""#);
+    }
     if let Some(marker_end) = marker_end {
         out.push_str(r#" marker-end=""#);
         escape_attr_into(out, marker_end);
@@ -866,9 +916,9 @@ pub(super) fn render_state_edge_path(
     out: &mut impl SvgOutput,
     ctx: &StateRenderCtx<'_>,
     edge: &StateSvgEdge,
-    origin_x: f64,
-    origin_y: f64,
+    (origin_x, origin_y): (f64, f64),
     scratch: &mut StateEdgePathScratch,
+    #[cfg(feature = "layout-shoal")] ordinal: usize,
     #[cfg(feature = "layout-shoal")] canonical_bounds: &mut Option<kurbo::Rect>,
 ) -> Result<()> {
     let Some(le) = ctx.layout_edges_by_id.get(edge.id.as_str()).copied() else {
@@ -876,7 +926,7 @@ pub(super) fn render_state_edge_path(
     };
     let mut classes = std::mem::take(&mut scratch.classes);
     classes.clear();
-    if (ctx.uses_elk_adapter_dom || ctx.uses_flat_routes())
+    if (ctx.uses_elk_adapter_dom || ctx.uses_canonical_routes() || ctx.uses_flat_routes())
         && edge
             .classes
             .split_whitespace()
@@ -926,6 +976,8 @@ pub(super) fn render_state_edge_path(
         origin_x,
         origin_y,
         scratch,
+        #[cfg(feature = "layout-shoal")]
+        ordinal,
         #[cfg(feature = "layout-shoal")]
         canonical_bounds,
     );

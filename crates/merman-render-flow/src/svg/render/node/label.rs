@@ -268,6 +268,10 @@ fn render_flowchart_node_label_with_wrapper(
     };
     if !ctx.node_html_labels {
         let label_group_style = common.label_emission.final_style();
+        let label_group_style = crate::svg_label::with_svg_font_fallback(
+            &label_group_style,
+            ctx.svg_label_font_fallback(),
+        );
         let _ = write!(
             out,
             r#"<g class="{}" style="{}" transform="translate({},{})"><rect/><g><rect class="background" style="stroke: none"/>"#,

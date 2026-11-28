@@ -92,6 +92,7 @@ pub(in crate::svg) fn render_swimlane_cluster(
             translation: kurbo::Vec2::new(ctx.tx, ctx.ty),
             group_origin: kurbo::Point::new(origin_x, origin_y),
             html_labels: ctx.swimlane_title_html_labels,
+            svg_font_fallback: ctx.svg_label_font_fallback(),
             svg_label_sidecar: ctx.svg_label_sidecar,
             config: ctx.config,
             measurer: ctx.measurer,

@@ -6,7 +6,7 @@ use merman_model::presentation::{
 use merman_model::resources::InputResourcePolicy;
 use merman_model::{MermaidConfig, OperationControl, OperationPhase};
 use merman_render::LayoutOptions;
-use merman_render::environment::RenderEnvironment;
+use merman_render::environment::{RenderEnvironment, RenderSession};
 use merman_render::family;
 use merman_render::model::ErDiagramLayout;
 use std::path::PathBuf;
@@ -18,12 +18,16 @@ fn workspace_root() -> PathBuf {
 }
 
 fn layout_er(text: &str) -> ErDiagramLayout {
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    layout_er_in_session(text, session)
+}
+
+fn layout_er_in_session(text: &str, session: RenderSession) -> ErDiagramLayout {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected")
         .into_presentation();
-    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).expect("ER layout");
     let projection = artifact.layout_json().expect("serialize ER layout");
     serde_json::from_value(projection["layout"]["ErDiagram"].clone()).expect("ER layout projection")
@@ -151,6 +155,190 @@ fn er_shoal_reserves_the_physical_axis_of_a_nested_direction() {
         }
         contacts.sort_by(f64::total_cmp);
         assert!(contacts.windows(2).all(|pair| pair[1] - pair[0] >= 18.0));
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn er_shoal_keeps_rough_crowsfeet_clear_and_ordered_on_assigned_faces() {
+    use merman_render::theme::{NativeTheme, ThemeCompiler};
+    use merman_render_graph::er::er_canonical_marker;
+
+    let body = r#"erDiagram
+direction LR
+A ||--o{ B : owns
+A }|--|{ B : audits
+A ||..o| B : mirrors
+A ||--o{ A : parent_of
+B }o..|{ C : feeds
+B ||--|| C : locks
+C ||--o{ D : routes
+C }|--o| E : tags
+D ||..o{ E : notifies
+D }|--|{ A : loops_back
+E ||--o| E : self_ref
+A }o--|{ E : spans
+"#;
+    for (look, edge_style) in [("handDrawn", "orthogonal"), ("classic", "sketch")] {
+        let source = format!(
+            "---\nconfig:\n  layout: shoal\n  look: {look}\n  htmlLabels: false\n---\n{body}"
+        );
+        let theme = serde_json::json!({
+            "schema_version": 2,
+            "extends": "blueprint",
+            "form": { "edge_style": edge_style }
+        });
+        let compiled = ThemeCompiler::new()
+            .compile_json(theme.to_string().as_bytes(), None)
+            .unwrap();
+        let session = RenderEnvironment::deterministic()
+            .begin_session_with_native_theme(NativeTheme::new(compiled))
+            .unwrap();
+        let layout = layout_er_in_session(&source, session);
+        let e = &layout.edges;
+        let [owns, audits, mirrors, notifies, spans] = [0, 1, 2, 8, 11].map(|index| &e[index]);
+        let target = |edge: &merman_render::model::LayoutEdge| {
+            let point = edge.points.last().unwrap();
+            (point.x, point.y)
+        };
+        let (x0, y0) = target(owns);
+        let (x1, y1) = target(audits);
+        let crown_width = er_canonical_marker("ONE_OR_MORE", false, false).width;
+        assert_eq!(x0, x1, "the markers use the same actual face");
+        assert!(
+            y1 - y0 >= crown_width + 4.0 - 1e-6,
+            "{look}: {y0} versus {y1}"
+        );
+
+        if edge_style == "orthogonal" {
+            assert_er_routes_keep_vertical_order(mirrors, spans);
+            let label = notifies.label.as_ref().unwrap();
+            let [first, .., last] = notifies.points.as_slice() else {
+                panic!("notifies route")
+            };
+            assert!((label.y - first.y).abs() < 1e-6 && (label.y - last.y).abs() < 1e-6);
+            let start_gap = label.x
+                - label.width / 2.0
+                - first.x
+                - er_canonical_marker("ONLY_ONE", true, false).depth;
+            let end_gap = last.x
+                - label.x
+                - label.width / 2.0
+                - er_canonical_marker("ZERO_OR_MORE", false, false).depth;
+            assert!(
+                start_gap >= 12.0 - 1e-6 && end_gap >= 12.0 - 1e-6,
+                "{start_gap}, {end_gap}"
+            );
+        }
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+fn assert_er_routes_keep_vertical_order(
+    upper: &merman_render::model::LayoutEdge,
+    lower: &merman_render::model::LayoutEdge,
+) {
+    use merman_render::model::LayoutPoint;
+
+    let y_at = |segment: &[LayoutPoint], x: f64, choose: fn(f64, f64) -> f64| {
+        let (a, b) = (&segment[0], &segment[1]);
+        if a.x == b.x {
+            choose(a.y, b.y)
+        } else {
+            a.y + (b.y - a.y) * (x - a.x) / (b.x - a.x)
+        }
+    };
+    let x_range = |segment: &[LayoutPoint]| {
+        let [a, b] = [segment[0].x, segment[1].x];
+        (a.min(b), a.max(b))
+    };
+    for a in upper.points.windows(2) {
+        let (a0, a1) = x_range(a);
+        for b in lower.points.windows(2) {
+            let (b0, b1) = x_range(b);
+            let (lo, hi) = (a0.max(b0), a1.min(b1));
+            if lo <= hi {
+                for x in [lo, hi] {
+                    assert!(
+                        y_at(b, x, f64::min) - y_at(a, x, f64::max) >= 6.0,
+                        "routes at x={x}: {a:?}, {b:?}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn er_shoal_keeps_a_vertical_caption_clear_of_the_start_marker() {
+    use merman_render_graph::er::er_canonical_marker;
+
+    let layout = layout_er(
+        r#"---
+config:
+  layout: shoal
+  theme: forest
+  htmlLabels: false
+---
+erDiagram
+direction TB
+ORDER {
+  uuid id PK
+  uuid customer FK
+  decimal total
+  varchar status
+}
+ORDER ||--|{ LINE_ITEM : contains
+SKU ||--o{ LINE_ITEM : referenced_by
+"#,
+    );
+    let contains = &layout.edges[0];
+    let start = &contains.points[0];
+    let label = contains.label.as_ref().unwrap();
+    let start_gap =
+        label.y - label.height / 2.0 - start.y - er_canonical_marker("ONLY_ONE", true, false).depth;
+    assert!((label.x - start.x).abs() < 1e-6, "{contains:?}");
+    assert!(start_gap >= 12.0 - 1e-6, "{start_gap}: {contains:?}");
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn er_shoal_aligns_parallel_ports_shafts_and_caption_rows() {
+    let layout = layout_er(
+        r#"---
+config:
+  layout: shoal
+  theme: neo-dark
+  htmlLabels: true
+---
+erDiagram
+direction RL
+X ||--o{ Y : rel_one
+X }|--|{ Y : rel_two
+X ||..o| Y : rel_three
+X }o--|| Y : rel_four
+X ||..|{ Y : rel_five
+X ||--o{ X : self_x
+Y }o..o{ Y : self_y
+"#,
+    );
+    for edge in &layout.edges[..5] {
+        let port = &edge.points[0];
+        let label = edge.label.as_ref().unwrap();
+        assert!((label.y - port.y).abs() < 1e-6, "{edge:?}");
+        assert!(
+            edge.points
+                .iter()
+                .all(|point| (point.y - port.y).abs() < 1e-6),
+            "{edge:?}"
+        );
+        assert!(
+            edge.points
+                .windows(2)
+                .all(|points| points[0].x > points[1].x),
+            "{edge:?}"
+        );
     }
 }
 

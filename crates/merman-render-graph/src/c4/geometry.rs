@@ -11,13 +11,21 @@ pub(crate) struct C4TextRowLayout {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct C4TextRenderPlan {
+pub(crate) struct C4UnifiedTextRows {
     /// Wrapped source-word rows consumed by the C4 SVG emitter.
     pub(crate) rows: Vec<C4TextRowLayout>,
     /// The section bbox x offset relative to the centered outer tspan anchor.
     pub(crate) bbox_x: f64,
     /// The section bbox y offset produced by Mermaid's createText DOM shape.
     pub(crate) bbox_y: f64,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum C4TextRenderPlan {
+    Unified(C4UnifiedTextRows),
+    /// Measured relation text bounds relative to the block's baseline.
+    #[cfg(feature = "layout-shoal")]
+    RelationInk(kurbo::Rect),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -27,11 +35,8 @@ pub struct C4TextBlockLayout {
     pub width: f64,
     pub height: f64,
     pub line_count: usize,
-    /// Unified C4 labels carry the exact wrapped rows used during measurement. Legacy C4
-    /// boundary and relationship labels leave this unset and continue using their historical
-    /// text path.
-    /// This is an in-memory render artifact; the public layout projection intentionally keeps
-    /// the stable historical C4 layout schema and does not expose tokenization details.
+    /// In-memory paint geometry for unified text and routed captions. Legacy text and the
+    /// serialized C4 layout retain their historical representation.
     #[serde(skip)]
     pub(crate) render_plan: Option<C4TextRenderPlan>,
 }

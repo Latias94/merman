@@ -63,7 +63,7 @@ pub(super) fn write_arch_icon_svg(
     icon_name: &str,
     icon_size_px: f64,
     id_scope: Option<IconIdScope>,
-    native: Option<&super::super::ArchitectureNativeStyle>,
+    ink: Option<&str>,
 ) -> merman_render_core::Result<()> {
     let body = arch_icon_body(icon_name);
     let rewritten;
@@ -83,9 +83,9 @@ pub(super) fn write_arch_icon_svg(
     out.push_str(r#"" height=""#);
     fmt_into(out, icon_size_px);
     out.push_str(r#"" viewBox="0 0 80 80">"#);
-    if let Some(native) = native {
+    if let Some(ink) = ink {
         // The card supplies the icon tile. Registered multicolor icons are emitted separately.
-        let ink = merman_render_core::xml::escape_attr(&native.icon_ink);
+        let ink = merman_render_core::xml::escape_attr(ink);
         out.push_str(&body.replace("#087ebf", "none").replace("#fff", &ink));
     } else {
         out.push_str(body);
@@ -106,7 +106,7 @@ pub(super) fn write_arch_icon_svg_with_registry(
     icon_size_px: f64,
     id_scope: IconIdScope,
     resources: &ArchitectureNodeResources<'_>,
-    native: Option<&super::super::ArchitectureNativeStyle>,
+    ink: Option<&str>,
 ) -> merman_render_core::Result<()> {
     let svg = match resources.icon_registry {
         Some(registry) => render_icon(
@@ -126,7 +126,7 @@ pub(super) fn write_arch_icon_svg_with_registry(
     if let Some(svg) = svg {
         out.push_str(&svg);
     } else {
-        write_arch_icon_svg(out, icon_name, icon_size_px, Some(id_scope), native)?;
+        write_arch_icon_svg(out, icon_name, icon_size_px, Some(id_scope), ink)?;
     }
     Ok(())
 }

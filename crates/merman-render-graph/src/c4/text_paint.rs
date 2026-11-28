@@ -13,6 +13,8 @@ pub struct C4TextPaintPlan {
     relations: Vec<C4RelationPaintOverride>,
     relationship_text: String,
     relationship_line: String,
+    #[cfg(feature = "layout-shoal")]
+    relationship_line_is_authored: bool,
     boundary_text: Vec<Option<String>>,
 }
 
@@ -163,6 +165,10 @@ impl C4TextPaintPlan {
             relations,
             relationship_text,
             relationship_line,
+            #[cfg(feature = "layout-shoal")]
+            relationship_line_is_authored: config
+                .explicit_config_owns_path("c4.relationship_line_color")
+                && config.get_str("c4.relationship_line_color").is_some(),
             boundary_text,
         })
     }
@@ -185,6 +191,15 @@ impl C4TextPaintPlan {
 
     pub(crate) fn relationship_line(&self) -> &str {
         &self.relationship_line
+    }
+
+    #[cfg(feature = "layout-shoal")]
+    pub(super) fn uses_default_line(&self, index: usize) -> bool {
+        !self.relationship_line_is_authored
+            && self
+                .relations
+                .get(index)
+                .is_some_and(|paint| paint.line.is_none())
     }
 }
 

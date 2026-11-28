@@ -5,6 +5,9 @@ use std::{borrow::Cow, fmt::Write as _};
 use merman_model::presentation::PresentationConfig;
 use merman_render_core::{
     math::{MathRenderer, render_math_html_label},
+    mermaid_style::{
+        is_static_css_font_family_list, parse_style_declaration, visit_style_declaration_boundaries,
+    },
     svg_output::SvgOutput,
     text::{TextMeasurer, TextStyle, create_text_html::flowchart_label_html_source, svg_label},
     xml::escape_attr_display,
@@ -21,6 +24,64 @@ impl std::fmt::Display for OptionalStyleAttr<'_> {
             return Ok(());
         }
         write!(f, r#" style="{}""#, escape_attr_display(self.0))
+    }
+}
+
+pub(crate) fn with_svg_font_fallback<'a>(style: &'a str, fallback: Option<&str>) -> Cow<'a, str> {
+    let Some(fallback) = fallback.filter(|_| {
+        style
+            .as_bytes()
+            .windows(b"font-family".len())
+            .any(|name| name.eq_ignore_ascii_case(b"font-family"))
+    }) else {
+        return Cow::Borrowed(style);
+    };
+    let fallback = if is_static_css_font_family_list(fallback) {
+        fallback
+    } else {
+        "sans-serif"
+    };
+    let mut parser = cssparser::Parser::new(fallback);
+    let mut family_start = true;
+    let mut ends_in_sans_serif = false;
+    while let Ok(token) = parser.next() {
+        ends_in_sans_serif = family_start
+            && matches!(token, cssparser::Token::Ident(name) if name.eq_ignore_ascii_case("sans-serif"));
+        family_start = matches!(token, cssparser::Token::Comma);
+    }
+    let mut rewritten = String::new();
+    let mut changed = false;
+    visit_style_declaration_boundaries(style, |boundary| {
+        let raw = boundary.raw();
+        if !rewritten.is_empty() {
+            rewritten.push(';');
+        }
+        if let Some(decl) = parse_style_declaration(raw)
+            && decl.property() == "font-family"
+            && is_static_css_font_family_list(decl.value())
+        {
+            let _ = write!(
+                rewritten,
+                "{}:{}, {}",
+                decl.property_css(),
+                decl.value(),
+                fallback,
+            );
+            if !ends_in_sans_serif {
+                rewritten.push_str(", sans-serif");
+            }
+            if decl.important() {
+                rewritten.push_str(" !important");
+            }
+            changed = true;
+        } else {
+            rewritten.push_str(raw);
+        }
+    });
+    if changed {
+        Cow::Owned(rewritten)
+    } else {
+        Cow::Borrowed(style)
     }
 }
 
@@ -151,4 +212,24 @@ pub fn write_flowchart_svg_text_markdown_wrapped_with_style(
         max_width_px,
         false,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::with_svg_font_fallback;
+
+    #[test]
+    fn svg_font_fallback_recognizes_only_a_generic_family_at_the_tail() {
+        for (fallback, expected) in [
+            ("Inter, Sans-Serif", "Inter, Sans-Serif"),
+            ("Custom sans-serif", "Custom sans-serif, sans-serif"),
+            (r#""sans-serif""#, r#""sans-serif", sans-serif"#),
+            (r"Custom\,sans-serif", r"Custom\,sans-serif, sans-serif"),
+        ] {
+            assert_eq!(
+                with_svg_font_fallback("font-family:Author !important", Some(fallback)),
+                format!("font-family:Author, {expected} !important"),
+            );
+        }
+    }
 }

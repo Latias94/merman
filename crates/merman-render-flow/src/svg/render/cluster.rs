@@ -274,6 +274,7 @@ pub(in crate::svg) fn render_flowchart_cluster_pass(
         label_type,
         source: render_title,
         html_labels: ctx.edge_html_labels,
+        svg_font_fallback: ctx.svg_label_font_fallback(),
         uses_elk_adapter_dom: ctx.uses_elk_adapter_dom,
         owner: title_owner,
         sidecar: ctx.svg_label_sidecar,

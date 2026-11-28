@@ -103,6 +103,177 @@ classDiagram
     }));
 }
 
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_class_multiplicity_stays_with_its_own_arrow_on_a_busy_face() {
+    use kurbo::{Line, ParamCurveNearest, Point, Rect};
+    use merman_render::theme::{Appearance, BuiltinPreset, NativeTheme, ThemeCompiler};
+    use merman_render_graph::class::class_canonical_marker;
+
+    let source = r#"---
+config:
+  layout: shoal
+  look: neo
+  htmlLabels: false
+  class:
+    htmlLabels: false
+---
+classDiagram
+direction LR
+namespace Platform {
+  namespace Persistence {
+    class Repository~K, V~ {
+      <<interface>>
+      +Map~String, List~Int~~ cache
+      +findById(K id) Optional~V~
+      +saveAll(List~V~ batch) Map~K, Boolean~
+    }
+    class PostgresRepo {
+      -ConnectionPool pool
+      +execute(String sql) ResultSet~Row~
+    }
+  }
+  namespace Domain {
+    class OrderService {
+      +Map~String, List~OrderItem~~ index
+      +placeOrder(Order req) Receipt
+    }
+    class AuditLogger {
+      <<abstract>>
+      +record(Event~Map~String, String~~ ev) void
+    }
+  }
+}
+class Gateway {
+  +dispatch(Request req) Response
+}
+Repository <|.. PostgresRepo : implements
+OrderService "1" --> "1..*" Repository : reads
+OrderService "1" <-- "0..*" Repository : notifies
+OrderService *-- AuditLogger : owns
+OrderService ..> AuditLogger : emits
+OrderService --> OrderService : retries
+Gateway --> OrderService : routes
+Gateway ..> PostgresRepo : healthcheck
+"#;
+    let theme = ThemeCompiler::new()
+        .compile_preset(BuiltinPreset::Studio, Some(Appearance::Dark))
+        .unwrap();
+    for look in ["neo", "handDrawn"] {
+        let parsed = parse_class(&source.replace("look: neo", &format!("look: {look}")));
+        let session = RenderEnvironment::deterministic()
+            .begin_session_with_native_theme(NativeTheme::new(theme.clone()))
+            .unwrap();
+        let prepared =
+            family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
+        let projection = prepared.layout_json().unwrap();
+        let layout: ClassDiagramLayout =
+            serde_json::from_value(projection["layout"]["ClassDiagramV2"].clone()).unwrap();
+        let reads = &layout.edges[1];
+        let notifies = &layout.edges[2];
+        let owns = &layout.edges[3];
+        let label = notifies.start_label_right.as_ref().unwrap();
+        let port = &notifies.points[0];
+        let along = label.x - port.x;
+        assert!(
+            (16.0 - 1e-6..=24.0 + 1e-6).contains(&along),
+            "{look}: {label:?} at {port:?}"
+        );
+
+        let center = Point::new(label.x, label.y);
+        let ink = Rect::from_center_size(center, (label.width, label.height));
+        let own_distance = (center.y - port.y).abs();
+        assert!(own_distance > label.height / 2.0);
+        for edge in [reads, owns] {
+            let distance = edge
+                .points
+                .windows(2)
+                .map(|pair| {
+                    let line = Line::new((pair[0].x, pair[0].y), (pair[1].x, pair[1].y));
+                    line.nearest(center, 0.0).distance_sq.sqrt()
+                })
+                .fold(f64::INFINITY, f64::min);
+            assert!(
+                distance > own_distance,
+                "{look}: {label:?} is closer to {}",
+                edge.id
+            );
+        }
+        let composition = class_canonical_marker(2, true, look == "neo");
+        let contact = &owns.points[0];
+        let diamond = Rect::new(
+            contact.x,
+            contact.y - composition.width / 2.0,
+            contact.x + composition.trim + composition.depth,
+            contact.y + composition.width / 2.0,
+        );
+        assert_eq!(ink.intersect(diamond).area(), 0.0);
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_class_spreads_four_labelled_routes_over_both_facing_sides() {
+    let parsed = parse_class(
+        r#"---
+config:
+  layout: shoal
+  theme: forest
+  htmlLabels: false
+  class:
+    htmlLabels: false
+---
+classDiagram
+direction BT
+class Alpha~T~ {
+  <<interface>>
+  +Map~String, List~Int~~ items
+  +merge(Map~String, T~ other) Alpha~T~
+}
+class Beta~U~ {
+  <<abstract>>
+  -List~Map~String, U~~ history
+  +sync() void
+}
+Alpha --> Beta : edge 1 primary
+Alpha <-- Beta : edge 2 reverse
+Alpha *-- Beta : edge 3 compose
+Alpha ..> Beta : edge 4 depend
+Alpha --> Alpha : self loop A
+Beta --> Beta : self loop B
+note for Alpha "Generics & 4 parallel edges"
+"#,
+    );
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let artifact =
+        family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
+    let projection = artifact.layout_json().unwrap();
+    let layout: ClassDiagramLayout =
+        serde_json::from_value(projection["layout"]["ClassDiagramV2"].clone()).unwrap();
+    let mut pairs = layout
+        .edges
+        .iter()
+        .filter(|edge| edge.from == "Alpha" && edge.to == "Beta")
+        .map(|edge| (edge.points[0].x, edge.points.last().unwrap().x))
+        .collect::<Vec<_>>();
+    assert_eq!(pairs.len(), 4);
+    pairs.sort_by(|a, b| a.0.total_cmp(&b.0));
+    assert!(
+        pairs
+            .windows(2)
+            .all(|pair| pair[0].0 < pair[1].0 && pair[0].1 < pair[1].1)
+    );
+    let [span_a, span_b] = [pairs[3].0 - pairs[0].0, pairs[3].1 - pairs[0].1];
+    for (id, span) in [("Alpha", span_a), ("Beta", span_b)] {
+        let node = layout.nodes.iter().find(|node| node.id == id).unwrap();
+        let usable = node.width - 16.0;
+        assert!(
+            (usable * 0.60 - 1e-6..=usable * 0.75 + 1e-6).contains(&span),
+            "{id}: {span} of {usable}"
+        );
+    }
+}
+
 #[test]
 fn class_note_padding_expands_each_side_in_both_label_modes() {
     for layout in ["dagre", "elk"]

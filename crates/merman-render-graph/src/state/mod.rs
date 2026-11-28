@@ -43,6 +43,8 @@ pub use geometry::StateDiagramLayout;
 pub use grid::layout as layout_grid;
 #[cfg(feature = "layout-layered")]
 pub use layered::{StateLayeredError, StateLayeredPaint, layout as layout_layered};
+#[cfg(feature = "layout-shoal")]
+pub use layout_input::note_group_container;
 pub use layout_input::{
     HiddenPrefixMatcher, note_group_owner_id, state_hidden_prefixes, state_layout_adapter_work,
     validate_state_parent_cycles,

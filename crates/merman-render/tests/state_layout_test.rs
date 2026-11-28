@@ -86,6 +86,105 @@ fn state_shoal_requires_the_build_and_host_capability() {
 
 #[cfg(feature = "layout-shoal")]
 #[test]
+fn shoal_state_keeps_left_and_right_notes_by_their_declared_hosts() {
+    for direction in ["TB", "BT", "LR", "RL"] {
+        let source = format!(
+            "---\nconfig:\n  layout: shoal\n---\nstateDiagram-v2\ndirection {direction}\n\
+             state Platform {{\n  state Pipeline {{\n    [*] --> Ingest\n    Ingest --> Done\n  }}\n}}\n\
+             Boot --> Ingest\nDone --> Emergency\n\
+             note right of Ingest: Entry point\nnote left of Emergency: PagerDuty alert\n"
+        );
+        let parsed = MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let RenderSemanticModel::State(model) = parsed.model() else {
+            panic!("expected State presentation");
+        };
+        let ingest = model.nodes.iter().find(|node| node.id == "Ingest").unwrap();
+        assert_eq!(ingest.parent_id.as_deref(), Some("Pipeline"));
+        let artifact = family::prepare(
+            &parsed,
+            &LayoutOptions::headless_svg_defaults(),
+            RenderEnvironment::deterministic().begin_session().unwrap(),
+        )
+        .unwrap();
+        let layout: StateDiagramLayout = serde_json::from_value(
+            artifact.layout_json().unwrap()["layout"]["StateDiagramV2"].clone(),
+        )
+        .unwrap();
+        let pipeline = layout
+            .clusters
+            .iter()
+            .find(|group| group.id == "Pipeline")
+            .unwrap();
+        for (id, note_side) in [("Ingest", 1.0), ("Emergency", -1.0)] {
+            let host = layout.nodes.iter().find(|node| node.id == id).unwrap();
+            let note_prefix = format!("{id}----note-");
+            let note = layout
+                .nodes
+                .iter()
+                .find(|node| node.id.starts_with(&note_prefix))
+                .unwrap();
+            if id == "Ingest" {
+                for node in [host, note] {
+                    assert!(rect_contains(
+                        rect_from_cluster(pipeline),
+                        rect_from_node(node),
+                        1e-6
+                    ));
+                }
+            }
+            let gap = note_side * (note.x - host.x) - (note.width + host.width) / 2.0;
+            assert!((0.0..120.0).contains(&gap), "{direction} / {id}: gap {gap}");
+            let edge = layout
+                .edges
+                .iter()
+                .find(|edge| {
+                    (edge.from == host.id && edge.to == note.id)
+                        || (edge.to == host.id && edge.from == note.id)
+                })
+                .unwrap();
+            let length = edge
+                .points
+                .windows(2)
+                .map(|pair| (pair[0].x - pair[1].x).hypot(pair[0].y - pair[1].y))
+                .sum::<f64>();
+            assert!(length < 160.0, "{direction} / {id}: tether length {length}");
+        }
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_state_preserves_the_inherited_direction_of_a_composite_with_a_note() {
+    let layout = layout_state_from_text(
+        "---\nconfig:\n  layout: shoal\n---\nstateDiagram-v2\ndirection TB\n\
+         state G {\n  state Fork <<fork>>\n  Fork --> A\n  A --> B\n}\n\
+         note right of G: Review this stage\n",
+    );
+    let host = layout
+        .clusters
+        .iter()
+        .find(|group| group.id == "G")
+        .unwrap();
+    let node = |id| layout.nodes.iter().find(|node| node.id == id).unwrap();
+    let (fork, a, b) = (node("Fork"), node("A"), node("B"));
+    let note = layout
+        .nodes
+        .iter()
+        .find(|node| node.id.starts_with("G----note-"))
+        .unwrap();
+    assert_eq!(host.requested_dir, None);
+    assert_eq!(host.effective_dir, "TB");
+    assert!(fork.y < a.y && a.y < b.y);
+    assert!(fork.width > fork.height);
+    assert!(note.x - note.width / 2.0 > host.x + host.width / 2.0);
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
 fn shoal_keeps_region_direction_and_draws_a_native_self_transition() {
     let source = "\
 ---

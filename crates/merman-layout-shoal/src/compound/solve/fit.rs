@@ -95,6 +95,7 @@ impl Fit {
         let mut rightmost = [0.0_f64; 4];
         let mut counts = [0usize; 4];
         let mut movable_at_title = 0usize;
+        let mut title_trunk = 0.0;
         let title_margin = TITLE_CLEAR.max(protected_title_margin);
         let has_title = title.width > 0.0 && title.height > 0.0;
         let mut title_clear = title_margin;
@@ -142,6 +143,7 @@ impl Fit {
                 let protect = movable && protected_title_margin > 0.0;
                 if movable && (!adaptive_top_title || protect) {
                     movable_at_title += 1;
+                    title_trunk = cross(side, preferred);
                     title_clear = title_clear.max(wire.title_clearance(end, title_margin));
                 }
                 let gap = spacing.edge.max(title_margin);
@@ -352,10 +354,32 @@ impl Fit {
                     .max(marker_span(Side::Right)),
             )?;
         }
-        let offset = Point {
+        let mut offset = Point {
             x: finite(room(Side::Left) + (size.width - needed_width) / 2.0)?,
             y: finite(room(Side::Top) + (size.height - needed_height) / 2.0)?,
         };
+        if counts[title_side] == 1 && movable_at_title == 1 && !flush_title {
+            // Keep an isolated entrance on the content's trunk. Borrow the unused shoulder
+            // before widening the shell on the title's side.
+            match group.title_position {
+                TitlePosition::TopLeft | TitlePosition::BottomLeft => {
+                    let clear_edge = (padding.left + title.width + title_clear).next_up();
+                    let required = clear_edge - title_trunk;
+                    let last = room(Side::Left) + (size.width - needed_width);
+                    offset.x = finite(offset.x.max(required))?;
+                    size.width = finite(size.width + (offset.x - last).max(0.0))?;
+                }
+                TitlePosition::TopRight | TitlePosition::BottomRight => {
+                    let clear_edge =
+                        (size.width - padding.right - title.width - title_clear).next_down();
+                    let limit = clear_edge - title_trunk;
+                    let first = room(Side::Left);
+                    offset.x = finite(offset.x.min(limit).max(first))?;
+                    size.width = finite(size.width + (first - limit).max(0.0))?;
+                }
+                _ => {}
+            }
+        }
         for (wire, boxes) in wires.iter().zip(&mut seats) {
             work.visit(1)?;
             let Some((_, _, side)) = wire.border() else {
@@ -450,6 +474,7 @@ impl Fit {
             TitlePosition::TopLeft if self.flush_title => title.width / 2.0,
             TitlePosition::TopLeft | TitlePosition::BottomLeft => left,
             TitlePosition::TopRight | TitlePosition::BottomRight => right,
+            TitlePosition::TopAuto if self.adaptive_top_title && ports.is_empty() => left,
             TitlePosition::TopAuto
                 if self.adaptive_top_title && title.width > 0.0 && title.height > 0.0 =>
             {

@@ -134,6 +134,15 @@ flowchart LR
     );
     assert!(edge_style.contains("font-family:\"a;b\""), "{edge_style}");
     assert!(!edge_style.contains(";;;"), "{edge_style}");
+    for caption in ["Title \"abc\" ō <group>", "url(#evil) \"edge\" ō"] {
+        let style = doc
+            .descendants()
+            .find(|node| node.has_tag_name("text") && text_content(*node) == caption)
+            .and_then(|text| text.attribute("style"))
+            .unwrap();
+        assert!(style.contains("font-family:\"a;b\","), "{style}");
+        assert!(style.contains("sans-serif !important"), "{style}");
+    }
 }
 
 #[test]
@@ -236,6 +245,47 @@ fn shoal_transparent_edge_labels_cut_their_shaft_in_svg_and_resvg() {
             assert_label_cutout(&svg);
         }
         assert!(!render(&source, Color::rgb(255, 255, 255), false).contains("-label-cutout"));
+    }
+}
+
+#[test]
+fn shoal_auto_labels_keep_light_text_legible_on_an_exterior_transparent_canvas() {
+    use merman_render::theme::{Appearance, BuiltinPreset};
+
+    let theme = ThemeCompiler::new()
+        .compile_preset(BuiltinPreset::Studio, Some(Appearance::Dark))
+        .unwrap();
+    for html_labels in [false, true] {
+        let source = format!(
+            "---\nconfig:\n  layout: shoal\n  htmlLabels: {html_labels}\n---\n\
+             flowchart LR\nA outside@-->|Outside| B\n\
+             subgraph Transparent\nC inside@-->|Inside| D\nend\nstyle Transparent fill:none\n"
+        );
+        let svg = render_with_theme(
+            &source,
+            Color::TRANSPARENT,
+            false,
+            Some(NativeTheme::new(theme.clone())),
+        );
+        let doc = Document::parse(&svg).unwrap();
+        let mut plates = doc
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("merman-edge-label-background"));
+        let plate = plates.next().expect("exterior Auto edge label backing");
+        assert!(
+            plates.next().is_none(),
+            "transparent cluster retains its paint"
+        );
+        assert_eq!(
+            text_content(plate.next_sibling_element().unwrap()),
+            "Outside"
+        );
+        let fill = Color::parse(plate.attribute("fill").unwrap()).unwrap();
+        let opacity: f64 = plate.attribute("fill-opacity").unwrap().parse().unwrap();
+        assert!((0.0..1.0).contains(&opacity));
+        let light_text = Color::parse("#E5ECF6").unwrap();
+        let light_host = Color::rgb(255, 255, 255);
+        assert!(light_text.contrast(fill.composite(light_host, opacity)) >= 4.5);
     }
 }
 

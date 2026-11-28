@@ -111,21 +111,33 @@ Keep one public Shoal IR, `WorkControl`, DDLT verifier, and `route_paint` contra
   captions closest to their own relation and apply a single clip hole only to that shaft. Classic
   Shoal relation markers use the resolved shaft ink, including per-relation overrides. Dark Mermaid
   palettes supply the default relation and boundary-title ink.
+- Card-grid recovery reuses the scope's wall index. It checks candidate middle segments against
+  other relations' marker runways while preserving terminal leads. On a transparent canvas, native
+  C4 themes give automatic relationship labels an opaque backing and use two tones within the
+  reserved shaft and arrow footprints. Authored relation colors retain their original paint.
 - When all top title anchors intersect automatic compound ports, Shoal reserves shoulder space
-  and solves the group's contacts again. Fixed contacts still have a title halo when a route must
-  pass through the title.
+  and solves the group's contacts again. With a single lane on the title face, the shoulder moves
+  the title and shell away from the content trunk so the interior route can stay straight. Fixed
+  contacts still have a title halo when a route must pass through the title.
 - The canonical painter tests step crossbars against the placed obstacle inventory after preparing
   the route sections. A bounded rectilinear detour handles a blocked step while keeping border
   stitches and marker leads fixed. Card-grid captions use shaft cutouts for crowded gutters, so
   the painter protects their node and title obstacles independently of relationship captions.
+- A steep curved offset can use two rounded corners around a clear crossbar. Each candidate clears
+  both the obstacle inventory and the corner control curves. The painter classifies the offset
+  after applying the terminal lead distances, so ordinary sweeps can retain their corridor proof.
+  Long fan spans keep their distributed sweeps. Architecture reserves the full size of relationship
+  label backings and their clearance during placement. It measures visible service shapes
+  separately from routing boxes.
 - Compound crossing comparisons index line and curve bounds before sampling overlapping curves.
   Geometry-only solves skip the statistic when it cannot affect route selection. Orthogonal
   refinement shares projected segments and route bounds, and the visibility router combines
   cached scope events with the current terminal rays.
 - Width fitting uses the same geometric solve as natural layout and relaxes compound seams on the
-  selected drawing. The opt-in render environment can retain up to 64 KiB of empty rank and
-  edge-chain rows across independent flat and compound solves. Preview frames own their editor
-  state separately.
+  selected drawing. Width trials that differ only in spacing share the same compound hierarchy
+  and port sides. A change in orientation builds a new hierarchy. The opt-in render environment can
+  retain up to 64 KiB of empty rank and edge-chain rows across independent flat and compound solves.
+  Preview frames own their editor state separately.
 - Grid auto titles score corner and center anchors against the actual border slots, favoring a
   clear column through a group when its terminals are already aligned. Curved compound routes can
   move automatic group contacts into peer order when the move preserves clearance and reduces
@@ -135,7 +147,9 @@ Keep one public Shoal IR, `WorkControl`, DDLT verifier, and `route_paint` contra
   Rounded paths and rewritten paths retain the SVG-based length calculation where needed.
 - The native SVG painter applies fill-aware ink and casings to Flowchart and Agentflow edges when
   it can resolve solid fills and the applicable stroke style. Swimlane compacts complete bands and
-  checks specialized handoffs and returns against occupied geometry before committing them.
+  checks specialized handoffs and returns against occupied geometry before committing them. A node
+  alignment fits inside the lane padding and preserves adjacent captions, both terminal runways,
+  and clearance from retained route segments.
 
 ## Consequences
 

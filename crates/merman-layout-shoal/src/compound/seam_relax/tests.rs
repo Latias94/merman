@@ -237,13 +237,20 @@ fn aligned_ports() -> (Graph, LayoutOutput) {
 }
 
 fn offset_ports() -> (Graph, LayoutOutput) {
+    let title = Size {
+        width: 87.78,
+        height: 21.,
+    };
     let output = LayoutOutput {
         nodes: vec![rect(72., 461., 40., 45.), rect(148., 661., 107., 85.)],
         groups: vec![
             group(rect(0., 0., 420., 897.), None),
             group(rect(8., 37., 404., 497.), Some(GroupId(0))),
             GroupGeometry {
-                title_center: Some(Point { x: 201.5, y: 602.5 }),
+                title_center: Some(Point {
+                    x: 151.61 + TITLE_CLEAR + title.width / 2.0,
+                    y: 584.0 + TITLE_CLEAR + title.height / 2.0 + 2.0,
+                }),
                 ..group(rect(108., 584., 187., 285.), Some(GroupId(0)))
             },
         ],
@@ -267,10 +274,7 @@ fn offset_ports() -> (Graph, LayoutOutput) {
         ..Default::default()
     };
     let mut graph = graph(&output, [GroupId(1), GroupId(2)]);
-    graph.groups[2].title = Some(Size {
-        width: 87.78,
-        height: 21.,
-    });
+    graph.groups[2].title = Some(title);
     graph.edges[0].end_marker = MarkerMetrics {
         width: 12.,
         length: 10.,

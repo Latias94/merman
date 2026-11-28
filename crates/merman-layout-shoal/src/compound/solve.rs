@@ -34,8 +34,8 @@ pub(super) struct PlacedTitle {
 }
 
 const SIDES: [Side; 4] = [Side::Top, Side::Right, Side::Bottom, Side::Left];
-pub(super) const TITLE_CLEAR: f64 = 6.0;
-const NESTED_LANE_TITLE_CLEAR: f64 = 8.0;
+pub(super) const TITLE_CLEAR: f64 = 10.0;
+const NESTED_LANE_TITLE_CLEAR: f64 = 12.0;
 
 fn finite(value: f64) -> LayoutResult<f64> {
     if value.is_finite() {
@@ -486,7 +486,8 @@ pub(super) fn level(
      -> LayoutResult<_> {
         let mut ports = ports::border(&wires, &nodes, fit, level.ports.len(), ctx.options, work)?;
         let title = fit.title(group, &wires, &ports, work)?;
-        if (!fit.adaptive_top_title || fit.protected_title_margin > 0.0)
+        if !ports.is_empty()
+            && (!fit.adaptive_top_title || fit.protected_title_margin > 0.0)
             && let (Some(title), Some(group)) = (&title, group)
         {
             ports::beside_title(
@@ -511,7 +512,9 @@ pub(super) fn level(
         (ports, placement) = border(&fit, Some(group), work)?;
     }
     let mut title = placement.map(|title| title.rect);
-    if let (Some(rect), Some(group)) = (title, &group) {
+    if !ports.is_empty()
+        && let (Some(rect), Some(group)) = (title, &group)
+    {
         let side = fit::title_side(group.title_position);
         let extra = routes::title_room(&wires, &ports, side, &fit, rect, ctx.options, work)?;
         if extra > 0.0 {

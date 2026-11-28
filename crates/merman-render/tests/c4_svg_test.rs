@@ -178,6 +178,388 @@ UpdateElementStyle(inner, $bgColor="#445566")
 }
 
 #[test]
+fn c4_transparent_canvas_softens_theme_boundaries_and_keeps_titles_readable() {
+    use kurbo::{Point, Rect};
+    use merman_render::text::{DeterministicTextMeasurer, TextMeasurer};
+    use merman_render::theme::{Appearance, BuiltinPreset, Color};
+
+    const DESCRIPTION: &str = "A long boundary description reaches past the compatibility viewport while having its own text size";
+    let source = |layout| {
+        format!(
+            r##"---
+config:
+{layout}  c4:
+    diagramMarginX: 0
+    diagramMarginY: 0
+    c4ShapeMargin: 0
+---
+C4Context
+Deployment_Node(outer, "Theme fill", "Boundary subtitle<br/>Second row", "{DESCRIPTION}") {{
+  Boundary(inner, "Authored fill") {{
+    System(leaf, "Leaf")
+  }}
+}}
+UpdateElementStyle(inner, $bgColor="#445566")
+"##
+        )
+    };
+    let theme = ThemeCompiler::new()
+        .compile_preset(BuiltinPreset::Studio, Some(Appearance::Dark))
+        .unwrap();
+    let environment = RenderEnvironment::deterministic();
+    let measurer = DeterministicTextMeasurer::default();
+    for layout in ["", "  layout: shoal\n"] {
+        if !layout.is_empty() && !cfg!(feature = "layout-shoal") {
+            continue;
+        }
+        let parsed = MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(&source(layout), ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        for (canvas, expected_opacity) in [
+            (Color::TRANSPARENT, Some("0.16")),
+            (Color::rgb(255, 255, 255), None),
+        ] {
+            let session = environment
+                .begin_session_with_native_theme(NativeTheme::new(theme.clone()))
+                .unwrap()
+                .with_canvas_background(canvas);
+            let artifact = family::prepare(
+                parsed.presentation(),
+                &LayoutOptions::headless_svg_defaults(),
+                session,
+            )
+            .unwrap();
+            let svg = artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
+            let document = roxmltree::Document::parse(svg.svg()).unwrap();
+            let backgrounds: Vec<_> = document
+                .descendants()
+                .filter(|node| node.attribute("class") == Some("c4-boundary-background"))
+                .collect();
+            assert_eq!(backgrounds.len(), 2);
+            assert_eq!(backgrounds[0].attribute("fill-opacity"), expected_opacity);
+            assert_eq!(backgrounds[1].attribute("fill"), Some("#445566"));
+            assert_eq!(backgrounds[1].attribute("fill-opacity"), None);
+
+            let mut title_backgrounds = document.descendants().filter(|node| {
+                node.has_tag_name("rect")
+                    && node.attribute("class") == Some("c4-boundary-title-background")
+            });
+            let Some(background) = title_backgrounds.next() else {
+                assert!(
+                    expected_opacity.is_none(),
+                    "missing transparent-canvas title backing"
+                );
+                continue;
+            };
+            assert!(expected_opacity.is_some());
+            assert!(
+                title_backgrounds.next().is_none(),
+                "authored fill owns its title backdrop"
+            );
+
+            let number = |node: roxmltree::Node<'_, '_>, name| {
+                node.attribute(name).unwrap().parse::<f64>().unwrap()
+            };
+            let rect = Rect::from_origin_size(
+                (number(background, "x"), number(background, "y")),
+                (number(background, "width"), number(background, "height")),
+            );
+            let [x, y, width, height]: [f64; 4] = document
+                .root_element()
+                .attribute("viewBox")
+                .unwrap()
+                .split_whitespace()
+                .map(|value| value.parse().unwrap())
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap();
+            let viewport = Rect::from_origin_size((x, y), (width, height));
+            assert!(viewport.inflate(1e-7, 1e-7).contains_rect(rect));
+            if layout.is_empty() {
+                assert!(rect.width() > number(backgrounds[0], "width"));
+                assert!(rect.x0 < number(backgrounds[0], "x"));
+            }
+
+            let fill = Color::parse(background.attribute("fill").unwrap()).unwrap();
+            let opacity = background
+                .attribute("fill-opacity")
+                .map_or(1.0, |value| value.parse().unwrap());
+            let layer = Color::parse(backgrounds[0].attribute("fill").unwrap()).unwrap();
+            let layer_opacity = backgrounds[0]
+                .attribute("fill-opacity")
+                .unwrap()
+                .parse()
+                .unwrap();
+            let title = background.parent_element().unwrap();
+            for content in [
+                "Theme fill",
+                "[Boundary subtitle",
+                "Second row]",
+                DESCRIPTION,
+            ] {
+                let row = title
+                    .descendants()
+                    .find(|node| node.has_tag_name("text") && svg_text_content(*node) == content)
+                    .unwrap_or_else(|| panic!("missing boundary text row {content}"));
+                let x = number(row, "x");
+                let y = number(row, "y") + number(row.first_element_child().unwrap(), "dy");
+                let style = TextStyle {
+                    font_size: c4_effective_property(row, "font-size")
+                        .unwrap()
+                        .trim_end_matches("px")
+                        .parse()
+                        .unwrap(),
+                    font_family: c4_effective_property(row, "font-family"),
+                    font_weight: c4_effective_property(row, "font-weight"),
+                    ..Default::default()
+                };
+                let half_width =
+                    measurer.measure_svg_tspan_text_bbox_width_px(content, &style) / 2.0;
+                assert!(
+                    rect.contains(Point::new(x - half_width, y))
+                        && rect.contains(Point::new(x + half_width, y)),
+                    "backing misses {content}"
+                );
+                assert!(background.range().start < row.range().start);
+                let ink = Color::parse(row.attribute("fill").unwrap()).unwrap();
+                for host in [Color::rgb(0, 0, 0), Color::rgb(255, 255, 255)] {
+                    let backdrop = fill.composite(layer.composite(host, layer_opacity), opacity);
+                    assert!(ink.contrast(backdrop) >= 4.5, "{content} on {host}");
+                }
+            }
+        }
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn c4_transparent_shoal_relations_keep_contrast_and_authored_paint() {
+    use kurbo::{Point, Rect, Vec2};
+    use merman_render::theme::{Appearance, BuiltinPreset, Color};
+
+    let source = r##"---
+config:
+  layout: shoal
+  c4:
+    diagramMarginX: 0
+    diagramMarginY: 0
+---
+C4Context
+Boundary(outer, "Outer") {
+  Boundary(middle, "Middle") {
+    Boundary(inner, "Inner") {
+      System(a, "Source")
+      System(b, "Target")
+    }
+  }
+}
+Boundary(authored, "Authored") {
+  System(c, "Outside")
+}
+BiRel(a, b, "First row<br/>Second row", "HTTP<br/>TLS")
+Rel(b, c, "Authored color")
+UpdateElementStyle(authored, $bgColor="#334455")
+UpdateRelStyle(b, c, $textColor="#112233", $lineColor="#2468AC")
+"##;
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let compiler = ThemeCompiler::new();
+    let theme = compiler
+        .compile_preset(BuiltinPreset::Studio, Some(Appearance::Dark))
+        .unwrap();
+    let render = |theme, canvas| {
+        let session = RenderEnvironment::deterministic()
+            .begin_session_with_native_theme(NativeTheme::new(theme))
+            .unwrap()
+            .with_canvas_background(canvas);
+        family::prepare(
+            parsed.presentation(),
+            &LayoutOptions::headless_svg_defaults(),
+            session,
+        )
+        .unwrap()
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap()
+    };
+    let transparent = render(theme.clone(), Color::TRANSPARENT);
+    let opaque = render(theme, Color::rgb(15, 20, 28));
+    let document = roxmltree::Document::parse(transparent.svg()).unwrap();
+    let opaque_document = roxmltree::Document::parse(opaque.svg()).unwrap();
+    let find = |id| {
+        document
+            .descendants()
+            .find(|node| {
+                node.attribute("data-id") == Some(id) && node.attribute("data-et") == Some("edge")
+            })
+            .unwrap()
+    };
+    let shaft = find("c4-rel-0");
+    let authored = find("c4-rel-1");
+    let outline = shaft.prev_sibling().unwrap();
+    assert_eq!(outline.attribute("class"), Some("c4-relation-outline"));
+    for attr in ["d", "clip-path"] {
+        assert_eq!(outline.attribute(attr), shaft.attribute(attr));
+    }
+    assert!(outline.attribute("marker-end").is_none());
+    assert!(outline.attribute("marker-start").is_none());
+    assert_eq!(authored.attribute("stroke"), Some("#2468AC"));
+    assert_ne!(
+        authored.prev_sibling().unwrap().attribute("class"),
+        Some("c4-relation-outline")
+    );
+    assert!(document.descendants().any(|node| node.attribute("class")
+        == Some("c4-boundary-background")
+        && node.attribute("fill") == Some("#334455")
+        && node.attribute("fill-opacity").is_none()));
+
+    let marker = |edge: roxmltree::Node<'_, '_>, attr| {
+        let id = edge
+            .attribute(attr)
+            .unwrap()
+            .strip_prefix("url(#")
+            .unwrap()
+            .strip_suffix(')')
+            .unwrap();
+        document
+            .descendants()
+            .find(|node| node.attribute("id") == Some(id))
+            .unwrap()
+    };
+    let shaft_ink = Color::parse(shaft.attribute("stroke").unwrap()).unwrap();
+    let outline_ink = Color::parse(outline.attribute("stroke").unwrap()).unwrap();
+    let surface = Color::parse("#141B25").unwrap();
+    for side in ["marker-start", "marker-end"] {
+        let tip_paint = marker(shaft, side).first_element_child().unwrap();
+        assert_eq!(tip_paint.attribute("fill"), shaft.attribute("stroke"));
+        assert_eq!(tip_paint.attribute("stroke"), outline.attribute("stroke"));
+        assert_eq!(tip_paint.attribute("stroke-width"), Some("1"));
+    }
+    let authored_tip = marker(authored, "marker-end")
+        .first_element_child()
+        .unwrap();
+    assert_eq!(authored_tip.attribute("fill"), Some("#2468AC"));
+    assert_eq!(authored_tip.attribute("stroke"), Some("#2468AC"));
+
+    for mut host in [Color::rgb(248, 250, 252), Color::rgb(15, 20, 28)] {
+        for _ in 0..=3 {
+            assert!(
+                shaft_ink.contrast(host).max(outline_ink.contrast(host)) >= 3.0,
+                "shaft and markers on {host}"
+            );
+            host = surface.composite(host, 0.16);
+        }
+    }
+
+    let view_box: svgtypes::ViewBox = document
+        .root_element()
+        .attribute("viewBox")
+        .unwrap()
+        .parse()
+        .unwrap();
+    let viewport = Rect::from_origin_size((view_box.x, view_box.y), (view_box.w, view_box.h));
+    let number =
+        |node: roxmltree::Node<'_, '_>, attr| node.attribute(attr).unwrap().parse::<f64>().unwrap();
+    for (edge, fill) in [(shaft, "#141B25"), (authored, "#FFFFFF")] {
+        let label = document
+            .descendants()
+            .find(|node| {
+                node.attribute("data-id") == edge.attribute("data-id")
+                    && node.attribute("class") == Some("label")
+            })
+            .unwrap();
+        let plate = label.first_element_child().unwrap();
+        assert_eq!(
+            plate.attribute("class"),
+            Some("c4-relation-label-background")
+        );
+        assert_eq!(plate.attribute("fill"), Some(fill));
+        assert_eq!(label.attribute("stroke"), Some(fill));
+        assert_eq!(label.attribute("paint-order"), Some("stroke"));
+        let origin: svgtypes::Transform = label.attribute("transform").unwrap().parse().unwrap();
+        let bounds = Rect::from_origin_size(
+            (number(plate, "x"), number(plate, "y")),
+            (number(plate, "width"), number(plate, "height")),
+        );
+        assert!(
+            viewport
+                .inflate(1e-7, 1e-7)
+                .contains_rect(bounds + Vec2::new(origin.e, origin.f))
+        );
+        let rows: Vec<_> = label
+            .children()
+            .filter(|node| node.has_tag_name("text"))
+            .collect();
+        assert_eq!(rows.len(), if edge == shaft { 4 } else { 1 });
+        for row in rows {
+            let ink = Color::parse(row.attribute("fill").unwrap()).unwrap();
+            assert!(ink.contrast(Color::parse(fill).unwrap()) >= 4.5);
+            let y = number(row, "y") + number(row.first_element_child().unwrap(), "dy");
+            assert!(
+                bounds.contains(Point::new(number(row, "x"), y)),
+                "{}",
+                svg_text_content(row)
+            );
+        }
+        let opaque_shaft = opaque_document
+            .descendants()
+            .find(|node| {
+                node.attribute("data-id") == edge.attribute("data-id")
+                    && node.attribute("data-et") == Some("edge")
+            })
+            .unwrap();
+        for attr in [
+            "d",
+            "data-points",
+            "marker-start",
+            "marker-end",
+            "clip-path",
+        ] {
+            assert_eq!(opaque_shaft.attribute(attr), edge.attribute(attr));
+        }
+    }
+    assert!(!opaque.svg().contains("c4-relation-label-background"));
+    assert!(!opaque.svg().contains("c4-relation-outline"));
+
+    let explicit_background = compiler
+        .compile_json(
+            br#"{"schema_version":2,"extends":"studio","form":{"edge_label_bg":"transparent","marker_style":"open"}}"#,
+            Some(Appearance::Dark),
+        )
+        .unwrap();
+    let bare = render(explicit_background, Color::TRANSPARENT);
+    assert!(!bare.svg().contains("c4-relation-label-background"));
+    let bare_document = roxmltree::Document::parse(bare.svg()).unwrap();
+    let open_marker = bare_document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("marker")
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.ends_with("-arrowhead-0"))
+        })
+        .unwrap();
+    let open_paths: Vec<_> = open_marker
+        .children()
+        .filter(|node| node.has_tag_name("path"))
+        .collect();
+    assert_eq!(open_paths.len(), 2);
+    for (path, stroke, width) in [
+        (open_paths[0], outline.attribute("stroke"), "1"),
+        (open_paths[1], shaft.attribute("stroke"), "0.5"),
+    ] {
+        assert_eq!(path.attribute("fill"), Some("none"));
+        assert_eq!(path.attribute("stroke"), stroke);
+        assert_eq!(path.attribute("stroke-width"), Some(width));
+    }
+    assert_eq!(open_paths[0].attribute("d"), open_paths[1].attribute("d"));
+}
+
+#[test]
 fn c4_nodes_render_each_layout_occurrence_after_alias_updates() {
     let source =
         "C4Context\nSystem(a, \"A\")\nSystem(b, \"B\")\nUpdateElementStyle(a, $alias=\"b\")\n";
@@ -1448,7 +1830,7 @@ fn c4_hand_drawn_look_honors_configured_seed() {
                     && node.attribute("class").is_some_and(|classes| {
                         classes
                             .split_whitespace()
-                            .any(|class| class == "rough-stroke")
+                            .any(|class| matches!(class, "rough-stroke" | "c4-boundary-outline"))
                     })
             })
             .map(|node| {
@@ -1459,23 +1841,68 @@ fn c4_hand_drawn_look_honors_configured_seed() {
             .collect()
     }
 
-    let source_for_seed = |seed| {
+    let source_for_seed = |layout, seed| {
         format!(
-            r#"%%{{init: {{"look": "handDrawn", "handDrawnSeed": {seed}}}}}%%
+            r#"---
+config:
+{layout}  look: handDrawn
+  handDrawnSeed: {seed}
+---
 C4Context
-System(service, "Service")
+Boundary(group, "Group") {{
+  System(service, "Service")
+}}
+UpdateElementStyle(group, $bgColor="lightgrey")
 "#
         )
     };
     let environment = RenderEnvironment::deterministic();
-    let seeded_once = render_c4_svg_with_environment(&source_for_seed(7), &environment);
-    let seeded_again = render_c4_svg_with_environment(&source_for_seed(7), &environment);
-    let differently_seeded = render_c4_svg_with_environment(&source_for_seed(8), &environment);
+    for (layout, shoal) in [("", false), ("  layout: shoal\n", true)] {
+        if shoal && !cfg!(feature = "layout-shoal") {
+            continue;
+        }
+        let render =
+            |seed| render_c4_svg_with_environment(&source_for_seed(layout, seed), &environment);
+        let seeded = render(7);
+        let paths = rough_stroke_paths(&seeded);
+        assert_eq!(paths.len(), if shoal { 2 } else { 1 });
+        assert_eq!(paths, rough_stroke_paths(&render(7)));
+        let different_paths = rough_stroke_paths(&render(8));
+        assert_eq!(paths.len(), different_paths.len());
+        for (path, different_path) in paths.iter().zip(&different_paths) {
+            assert_ne!(path, different_path);
+        }
 
-    let paths = rough_stroke_paths(&seeded_once);
-    assert!(!paths.is_empty());
-    assert_eq!(paths, rough_stroke_paths(&seeded_again));
-    assert_ne!(paths, rough_stroke_paths(&differently_seeded));
+        let document = roxmltree::Document::parse(&seeded).unwrap();
+        let background = document
+            .descendants()
+            .find(|node| node.attribute("class") == Some("c4-boundary-background"))
+            .unwrap();
+        let rough_outline = document
+            .descendants()
+            .find(|node| node.attribute("class") == Some("c4-boundary-outline"));
+        let outline = if shoal {
+            let path = rough_outline.expect("Shoal boundary has a rough outline");
+            assert!(path.has_tag_name("path"));
+            path
+        } else {
+            assert!(rough_outline.is_none());
+            let rect = c4_rect_labeled(&document, "Group");
+            assert!(rect.has_tag_name("rect"));
+            assert_eq!(rect.attribute("rx"), Some("2.5"));
+            assert_eq!(rect.attribute("ry"), Some("2.5"));
+            rect
+        };
+        let card = document
+            .descendants()
+            .find(|node| node.attribute("id") == Some("merman-service"))
+            .unwrap();
+        assert_eq!(background.attribute("fill"), Some("lightgrey"));
+        assert_eq!(outline.attribute("fill"), Some("none"));
+        assert_eq!(outline.attribute("stroke-dasharray"), Some("7.0,7.0"));
+        assert!(background.range().start < card.range().start);
+        assert!(card.range().start < outline.range().start);
+    }
 }
 
 #[test]

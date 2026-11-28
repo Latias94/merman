@@ -249,6 +249,80 @@ fn state_shoal_backplate_keeps_neo_transition_masks_and_marker_geometry() {
 
 #[cfg(feature = "layout-shoal")]
 #[test]
+fn state_shoal_cuts_out_the_label_box_in_nested_svg_coordinates() {
+    use kurbo::{BezPath, Rect, Shape};
+
+    let source = "stateDiagram-v2\nstate InScope {\nA --> B: advance\n}\n";
+    for html in [false, true] {
+        let svg = render(
+            source,
+            json!({"layout": "shoal", "look": "neo", "htmlLabels": html}),
+            None,
+        );
+        let doc = Document::parse(&svg).unwrap();
+        let label = label(&doc, "advance");
+        let caption = label.parent().unwrap();
+        let edge = doc
+            .descendants()
+            .find(|node| {
+                node.attribute("data-et") == Some("edge")
+                    && node.attribute("data-id") == label.attribute("data-id")
+            })
+            .unwrap();
+        assert!(edge.attribute("marker-end").is_some());
+        assert_eq!(
+            edge.parent().unwrap().parent(),
+            caption.parent().unwrap().parent()
+        );
+        let id = edge
+            .attribute("clip-path")
+            .unwrap()
+            .strip_prefix("url(#")
+            .unwrap()
+            .strip_suffix(')')
+            .unwrap();
+        let clip = doc
+            .descendants()
+            .find(|node| node.has_tag_name("clipPath") && node.attribute("id") == Some(id))
+            .unwrap()
+            .first_element_child()
+            .unwrap();
+        assert_eq!(clip.attribute("clip-rule"), Some("evenodd"));
+        let (_, gap) = clip.attribute("d").unwrap().split_once('Z').unwrap();
+        let gap = BezPath::from_svg(gap).unwrap().bounding_box();
+        let position = caption
+            .attribute("transform")
+            .unwrap()
+            .trim_start_matches("translate(")
+            .trim_end_matches(')');
+        let (x, y) = position.split_once(',').unwrap();
+        let center = (
+            x.trim().parse::<f64>().unwrap(),
+            y.trim().parse::<f64>().unwrap(),
+        );
+        let surface = label
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("foreignObject") || node.attribute("class") == Some("background")
+            })
+            .unwrap();
+        let expected = Rect::from_center_size(
+            center,
+            (extent(surface, "width"), extent(surface, "height")),
+        );
+        for (actual, expected) in [gap.x0, gap.y0, gap.x1, gap.y1].into_iter().zip([
+            expected.x0,
+            expected.y0,
+            expected.x1,
+            expected.y1,
+        ]) {
+            assert!((actual - expected).abs() < 1e-7, "{gap:?} vs {expected:?}");
+        }
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
 fn state_shoal_dark_composite_paints_header_and_adapts_edge_label_ink() {
     let config = json!({"layout": "shoal", "htmlLabels": true});
     let source = "stateDiagram-v2\n\
