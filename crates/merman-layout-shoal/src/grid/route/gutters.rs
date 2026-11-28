@@ -72,17 +72,32 @@ fn lane_bounds(segment: OrthoSegment) -> Bounds {
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct GutterSpan {
+pub(super) struct GutterSpan<'a> {
     pub(super) leads: [(RoutePoint, Side); 2],
     pub(super) contacts: [Point; 2],
     pub(super) prefer_row_gutter: bool,
+    pub(super) runways: Option<(&'a runways::Runways, usize)>,
+}
+
+impl GutterSpan<'_> {
+    fn clears_runways(self, path: &[RoutePoint], work: &mut Work<'_>) -> LayoutResult<bool> {
+        let Some((runways, edge)) = self.runways else {
+            return Ok(true);
+        };
+        // These candidates can change the middle only. Keep the fixed leads and exclude
+        // this relation's own runways through the same test used on its original route.
+        Ok(!matches!(
+            runways.blockage(edge, self.contacts, path, work)?,
+            runways::Blockage::Middle(_)
+        ))
+    }
 }
 
 /// Card placement already supplies clear lanes between its rows and columns. Try a straight
 /// approach or an elbow matching the endpoint normals before using those measured lanes.
 pub(super) fn card_channel(
     router: &OrthoRouter,
-    span: GutterSpan,
+    span: GutterSpan<'_>,
     bounds: Rect,
     gutters: [&[f64]; 2],
     used: &LaneUse,
@@ -96,7 +111,9 @@ pub(super) fn card_channel(
         return Ok(None);
     }
     let vacant = |path: &[RoutePoint], work: &mut Work<'_>| -> LayoutResult<bool> {
-        Ok(used.vacant(path, work)? && clear(router, path, bounds, sides, work)?)
+        Ok(used.vacant(path, work)?
+            && clear(router, path, bounds, sides, work)?
+            && span.clears_runways(path, work)?)
     };
     let axis = start.1.axis();
     if a.x == b.x || a.y == b.y {
@@ -238,7 +255,7 @@ impl Lines<'_> {
 /// same obstacle index used by visibility routing.
 pub(super) fn gutter_route(
     router: &OrthoRouter,
-    span: GutterSpan,
+    span: GutterSpan<'_>,
     bounds: Rect,
     gutters: [&[f64]; 2],
     work: &mut Work<'_>,
@@ -255,7 +272,7 @@ pub(super) fn gutter_route(
 
 fn trace_gutter(
     router: &OrthoRouter,
-    span: GutterSpan,
+    span: GutterSpan<'_>,
     bounds: Rect,
     lines: &Lines<'_>,
     shift: f64,
@@ -278,7 +295,9 @@ fn trace_gutter(
     let knot = |coords| super::knot(point(coords), Axis::Horizontal);
     let usable = |path: &[RoutePoint], work: &mut Work<'_>| -> LayoutResult<bool> {
         work.visit(path.len())?;
-        Ok(simple_candidate(path, span.contacts) && clear(router, path, bounds, sides, work)?)
+        Ok(simple_candidate(path, span.contacts)
+            && clear(router, path, bounds, sides, work)?
+            && span.clears_runways(path, work)?)
     };
     for from in first.into_iter().flatten() {
         let mut p = a;
@@ -372,6 +391,7 @@ mod tests {
             leads: [(a, Side::Right), (b, Side::Left)],
             contacts: [point([0.0, 2.0]), point([12.0, 5.0])],
             prefer_row_gutter: false,
+            runways: None,
         };
         let path = gutter_route(&router, span, bounds, [&[6.0], &[1.0]], &mut work)
             .unwrap()

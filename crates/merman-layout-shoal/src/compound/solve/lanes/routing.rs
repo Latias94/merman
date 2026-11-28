@@ -12,7 +12,27 @@ pub(super) struct Lanes<'a> {
     pub(super) axes: Axes,
     pub(super) owners: &'a [usize],
     pub(super) rects: Vec<(Rect, Option<Point>)>,
-    pub(super) feedback: &'a [[Option<f64>; 2]],
+    pub(super) feedback: &'a LaneReservations,
+}
+
+pub(super) struct LaneReservations {
+    rails: Vec<[Option<f64>; 2]>,
+    padding: Vec<[f64; 4]>,
+    depth_padding: [f64; 2],
+}
+
+impl Lanes<'_> {
+    fn content(&self, lane: usize) -> Bounds {
+        let mut padding = self.feedback.padding[lane];
+        padding[self.axes.start as usize] = self.feedback.depth_padding[0];
+        padding[self.axes.finish as usize] = self.feedback.depth_padding[1];
+        let [top, right, bottom, left] = padding;
+        let Bounds { x, y } = Bounds::of(self.rects[lane].0);
+        Bounds {
+            x: [x[0] + left, x[1] - right],
+            y: [y[0] + top, y[1] - bottom],
+        }
+    }
 }
 
 fn items(wire: &Wire, graph: &Graph) -> Option<[usize; 2]> {
@@ -62,7 +82,7 @@ pub(super) fn reserve_feedback(
     shells: &mut [Shell],
     options: &Options,
     work: &mut Work<'_>,
-) -> LayoutResult<(Vec<[Option<f64>; 2]>, bool)> {
+) -> LayoutResult<(LaneReservations, bool)> {
     let axes = Axes::new(graph.direction);
     work.charge(wires.len() + shells.len())?;
     let mut feedback = filled(wires.len(), [None; 2])?;
@@ -104,7 +124,23 @@ pub(super) fn reserve_feedback(
             *at = finite(*at + pitch)?;
         }
     }
-    Ok((feedback, widened))
+    let mut padding = reserved(shells.len())?;
+    let mut depth_padding = [0.0_f64; 2];
+    for shell in shells {
+        work.visit(1)?;
+        padding.push(shell.padding);
+        for (max, side) in depth_padding.iter_mut().zip([axes.start, axes.finish]) {
+            *max = max.max(shell.padding[side as usize]);
+        }
+    }
+    Ok((
+        LaneReservations {
+            rails: feedback,
+            padding,
+            depth_padding,
+        },
+        widened,
+    ))
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -160,6 +196,15 @@ fn marker(
         towards(contact.at, routes::opposite(side), inset)
     });
     Bounds::marker_footprint(at, contact.side, metrics)
+}
+
+fn terminal_marker(graph: &Graph, nodes: &[Rect], wire: &Wire, end: usize) -> Option<Bounds> {
+    let metrics = [wire.spec.start_marker, wire.spec.end_marker][end];
+    let item = wire.ends[end].node().map(|id| {
+        let slot = id.0 as usize;
+        (&graph.nodes[slot], nodes[slot])
+    });
+    marker(travel(wire, end), metrics, item)
 }
 
 fn occupied(
@@ -229,15 +274,8 @@ fn occupied(
                 add(&mut occupied, owner, Bounds::centered(at, size))?;
             }
         }
-        for (end, metrics) in [wire.spec.start_marker, wire.spec.end_marker]
-            .into_iter()
-            .enumerate()
-        {
-            let item = wire.ends[end].node().map(|id| {
-                let slot = id.0 as usize;
-                (&graph.nodes[slot], nodes[slot])
-            });
-            if let Some(bounds) = marker(travel(wire, end), metrics, item) {
+        for end in 0..2 {
+            if let Some(bounds) = terminal_marker(graph, nodes, wire, end) {
                 add(&mut occupied, owner, bounds)?;
             }
         }
@@ -529,7 +567,7 @@ impl Scene<'_> {
             .midpoint(cross(axes.start, self.nodes[slots[1]].center()));
         let right = center > cross(axes.start, shell.center());
         for i in [usize::from(right), usize::from(!right)] {
-            let Some(inset) = lanes.feedback[id][i] else {
+            let Some(inset) = lanes.feedback.rails[id][i] else {
                 continue;
             };
             let side = axes.cross[i];
@@ -573,7 +611,7 @@ pub(super) fn improve(
             continue;
         };
         let [a, b] = slots.map(|slot| lanes.owners[slot]);
-        if a != b || lanes.feedback[id].iter().any(Option::is_some) {
+        if a != b || lanes.feedback.rails[id].iter().any(Option::is_some) {
             push(&mut candidates, (id, slots, a == b))?;
         }
     }

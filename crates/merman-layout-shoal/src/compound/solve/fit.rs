@@ -363,14 +363,16 @@ impl Fit {
             // before widening the shell on the title's side.
             match group.title_position {
                 TitlePosition::TopLeft | TitlePosition::BottomLeft => {
-                    let required = padding.left + title.width + title_clear - title_trunk;
+                    let clear_edge = (padding.left + title.width + title_clear).next_up();
+                    let required = clear_edge - title_trunk;
                     let last = room(Side::Left) + (size.width - needed_width);
                     offset.x = finite(offset.x.max(required))?;
                     size.width = finite(size.width + (offset.x - last).max(0.0))?;
                 }
                 TitlePosition::TopRight | TitlePosition::BottomRight => {
-                    let limit =
-                        size.width - padding.right - title.width - title_clear - title_trunk;
+                    let clear_edge =
+                        (size.width - padding.right - title.width - title_clear).next_down();
+                    let limit = clear_edge - title_trunk;
                     let first = room(Side::Left);
                     offset.x = finite(offset.x.min(limit).max(first))?;
                     size.width = finite(size.width + (first - limit).max(0.0))?;

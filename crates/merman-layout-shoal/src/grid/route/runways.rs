@@ -190,32 +190,6 @@ impl Runways {
         }
         Ok(None)
     }
-
-    pub(super) fn guarded_router(
-        &self,
-        walls: &[Rect],
-        separation: f64,
-        work: &mut Work<'_>,
-    ) -> LayoutResult<OrthoRouter> {
-        let capacity = walls
-            .len()
-            .checked_add(self.0.items().len())
-            .ok_or(WorkError::ArithmeticOverflow)?;
-        work.charge(capacity)?;
-        let mut obstacles = reserved(capacity)?;
-        obstacles.extend_from_slice(walls);
-        for runway in &self.0 {
-            let Bounds { x, y } = runway.bounds;
-            obstacles.push(Rect {
-                x: x[0],
-                y: y[0],
-                width: x[1] - x[0],
-                height: y[1] - y[0],
-            });
-        }
-        // Recovery shares the scope's full inventory. Only the channel queries use this index.
-        OrthoRouter::new(&obstacles, separation, 0, work)
-    }
 }
 
 #[cfg(test)]
@@ -350,5 +324,67 @@ mod tests {
             runways.blockage(2, contacts, &moved, &mut work).unwrap(),
             Blockage::FixedLead
         ));
+    }
+
+    #[test]
+    fn compact_gutters_avoid_a_foreign_shaft_with_a_fixed_lead_conflict() {
+        let mut control = NoopWorkControl;
+        let mut work = Work::new(&mut control);
+        let router = OrthoRouter::new(&[], 4.0, 0, &mut work).unwrap();
+        let bounds = Rect {
+            width: 100.0,
+            height: 60.0,
+            ..Rect::default()
+        };
+        let runways = scene(
+            &[
+                // A 10px marker with a 6px runway extends beyond its own 14px lead.
+                Bounds {
+                    x: [0.0, 16.0],
+                    y: [19.0, 21.0],
+                },
+                Bounds {
+                    x: [2.0, 12.0],
+                    y: [18.0, 22.0],
+                },
+                Bounds {
+                    x: [40.0, 50.0],
+                    y: [15.0, 25.0],
+                },
+            ],
+            &mut work,
+        );
+        let [a, b] = [14.0, 86.0].map(|x| RoutePoint::new(x, 20.0, Axis::Horizontal));
+        let span = GutterSpan {
+            leads: [(a, Side::Right), (b, Side::Left)],
+            contacts: [point([0.0, 20.0]), point([100.0, 20.0])],
+            prefer_row_gutter: false,
+            runways: Some((&runways, 0)),
+        };
+        assert!(matches!(
+            runways
+                .blockage(0, span.contacts, &[a, b], &mut work)
+                .unwrap(),
+            Blockage::Middle(_)
+        ));
+        let tracks = [&[30.0, 70.0][..], &[35.0][..]];
+        let used = LaneUse::default();
+        let card = card_channel(&router, span, bounds, tracks, &used, 4.0, &mut work)
+            .unwrap()
+            .unwrap();
+        let gutter = gutter_route(&router, span, bounds, tracks, &mut work)
+            .unwrap()
+            .unwrap();
+        for path in [card, gutter] {
+            assert_eq!(path.first().copied().map(position), Some(position(a)));
+            assert_eq!(path.last().copied().map(position), Some(position(b)));
+            assert!(simple_candidate(&path, span.contacts));
+            assert!(matches!(
+                runways
+                    .blockage(0, span.contacts, &path, &mut work)
+                    .unwrap(),
+                Blockage::FixedLead
+            ));
+        }
     }
 }

@@ -982,7 +982,7 @@ fn fan_channel(
 // on the facing midline and the four open perimeter tracks before declining the route.
 fn span(
     router: &mut OrthoRouter,
-    span: GutterSpan,
+    span: GutterSpan<'_>,
     bounds: Rect,
     separation: f64,
     work: &mut Work<'_>,
@@ -1359,7 +1359,6 @@ pub(crate) fn draw(
             } else {
                 None
             };
-            let mut guarded_router = None;
             let mut recorded = 0;
             for part in parts {
                 work.visit(1)?;
@@ -1373,6 +1372,7 @@ pub(crate) fn draw(
                     prefer_row_gutter: [from, to].iter().any(|site| {
                         site.side.axis() == Axis::Vertical && site.projected_contact.is_some()
                     }),
+                    runways: None,
                 };
                 let early_gutters = card_grid && position(start.0) != position(end.0);
                 let labelled = part.labels.iter().any(Option::is_some);
@@ -1486,15 +1486,14 @@ pub(crate) fn draw(
                     let clear = if let Some(path) = slid {
                         Some(path)
                     } else {
-                        if guarded_router.is_none() {
-                            guarded_router =
-                                Some(runways.guarded_router(&walls, metrics.separation, work)?);
-                        }
-                        let guarded = guarded_router.as_ref().expect("guarded grid router");
                         let tracks = gutters.tracks(scope);
+                        let guarded = GutterSpan {
+                            runways: Some((runways, part.edge)),
+                            ..gutter_span
+                        };
                         match card_channel(
+                            &router,
                             guarded,
-                            gutter_span,
                             scope_bounds,
                             tracks,
                             &lanes,
@@ -1502,11 +1501,10 @@ pub(crate) fn draw(
                             work,
                         )? {
                             Some(path) => Some(path),
-                            None => gutter_route(guarded, gutter_span, scope_bounds, tracks, work)?,
+                            None => gutter_route(&router, guarded, scope_bounds, tracks, work)?,
                         }
                     };
-                    // With fixed leads, the shared index can reject every bounded candidate.
-                    // Keep the wall-clear route in that case.
+                    // Keep the wall-clear route when no bounded candidate clears the runways.
                     if let Some(path) = clear {
                         middle = path;
                     }
@@ -1714,6 +1712,7 @@ mod tests {
             leads: [(from, Side::Left), (to, Side::Left)],
             contacts: [point([3.0, 2.0]), point([5.0, 4.0])],
             prefer_row_gutter: false,
+            runways: None,
         };
         let expected = dogleg(from, to, Axis::Vertical, 0.0);
         assert_eq!(
