@@ -127,6 +127,72 @@ fn fit_width_admission_follows_the_selected_flowchart_backend() {
 
 #[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
 #[test]
+fn shoal_reserves_parallel_contacts_on_crossed_and_width_turned_faces() {
+    use merman_render::{LayoutAdaptation, model::FlowchartLayout};
+
+    let solve = |diagram: &str, options: LayoutOptions| -> FlowchartLayout {
+        let parsed = parse(&format!(
+            "---\nconfig:\n  layout: shoal\n  htmlLabels: false\n  flowchart:\n    minNodeWidth: 0\n---\n{diagram}"
+        ));
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let artifact = family::prepare(&parsed, &options, session).unwrap();
+        serde_json::from_value(artifact.layout_json().unwrap()["layout"]["FlowchartV2"].clone())
+            .unwrap()
+    };
+    let bundle = "A --> B\n".repeat(8);
+    let invisible = "A --> B\n".repeat(2) + &"A ~~~ B\n".repeat(6);
+    let prefix = "flowchart TB\nsubgraph G\ndirection LR\n";
+    let suffix = "end\nOutside --> A\n";
+    let original = solve(
+        &format!("{prefix}{invisible}{suffix}"),
+        LayoutOptions::default(),
+    );
+    let crossed = solve(
+        &format!("{prefix}{bundle}{suffix}"),
+        LayoutOptions::default(),
+    );
+    let turned = solve(
+        &format!("flowchart LR\n{bundle}B --> C --> D --> E --> F"),
+        LayoutOptions::default()
+            .with_adaptation(LayoutAdaptation::FitWidth)
+            .with_container_size(130.0, 800.0),
+    );
+    let width = |layout: &FlowchartLayout| {
+        layout
+            .nodes
+            .iter()
+            .find(|node| node.id == "A")
+            .unwrap()
+            .width
+    };
+    for (case, layout) in [("crossed", crossed), ("turned", turned)] {
+        assert!(
+            width(&layout) > width(&original) + 20.0,
+            "{case}: {} vs {}",
+            width(&layout),
+            width(&original)
+        );
+        let mut contacts = layout
+            .edges
+            .iter()
+            .filter(|edge| edge.from == "A" && edge.to == "B")
+            .map(|edge| &edge.points[0])
+            .collect::<Vec<_>>();
+        assert_eq!(contacts.len(), 8);
+        assert!(
+            contacts.iter().all(|point| point.y == contacts[0].y),
+            "{case}: {contacts:?}"
+        );
+        contacts.sort_by(|a, b| a.x.total_cmp(&b.x));
+        assert!(
+            contacts.windows(2).all(|pair| pair[1].x - pair[0].x >= 2.5),
+            "{case}: {contacts:?}"
+        );
+    }
+}
+
+#[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
+#[test]
 fn shoal_preview_reuses_semantic_node_order_after_an_edit() {
     use merman_render::ShoalLayoutFrame;
     use std::sync::Arc;

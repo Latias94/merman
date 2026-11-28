@@ -290,6 +290,65 @@ fn shoal_auto_labels_keep_light_text_legible_on_an_exterior_transparent_canvas()
 }
 
 #[test]
+fn shoal_light_auto_labels_keep_the_transparent_canvas_and_authored_colors() {
+    use merman_render::theme::{Appearance, BuiltinPreset};
+
+    let theme = ThemeCompiler::new()
+        .compile_preset(BuiltinPreset::Studio, Some(Appearance::Light))
+        .unwrap();
+    for html_labels in [false, true] {
+        let source = format!(
+            "---\nconfig:\n  layout: shoal\n  htmlLabels: {html_labels}\n---\n\
+             flowchart LR\nA e@-->|Caption| B\nlinkStyle 0 stroke:#2563EB,color:#3730A3\n"
+        );
+        let svg = render_with_theme(
+            &source,
+            Color::TRANSPARENT,
+            false,
+            Some(NativeTheme::new(theme.clone())),
+        );
+        assert_label_cutout(&svg);
+        let doc = Document::parse(&svg).unwrap();
+        assert!(
+            !doc.descendants()
+                .any(|node| { node.attribute("class") == Some("merman-edge-label-background") })
+        );
+        let edge = doc
+            .descendants()
+            .find(|node| node.attribute("data-edge") == Some("true"))
+            .unwrap();
+        assert!(edge.attribute("style").unwrap().contains("stroke:#2563EB"));
+        let marker_id = edge
+            .attribute("marker-end")
+            .unwrap()
+            .trim_start_matches("url(#")
+            .trim_end_matches(')');
+        let marker = doc
+            .descendants()
+            .find(|node| node.attribute("id") == Some(marker_id))
+            .unwrap();
+        assert_eq!(
+            marker.first_element_child().unwrap().attribute("stroke"),
+            Some("#2563EB")
+        );
+        let label = doc
+            .descendants()
+            .find(|node| {
+                node.has_tag_name(if html_labels { "span" } else { "text" })
+                    && text_content(*node) == "Caption"
+            })
+            .unwrap();
+        let property = if html_labels { "color" } else { "fill" };
+        assert!(
+            label
+                .attribute("style")
+                .unwrap()
+                .contains(&format!("{property}:#3730A3"))
+        );
+    }
+}
+
+#[test]
 fn shoal_explicitly_transparent_edge_labels_get_a_cutout_on_an_opaque_canvas() {
     let theme = ThemeCompiler::new()
         .compile_json(

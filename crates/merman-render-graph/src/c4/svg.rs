@@ -1703,6 +1703,7 @@ pub fn render_c4_diagram_svg_typed(
                 diagram_id,
                 clip_id.as_deref().map(|id| (id, root_bounds)),
                 &mut relation_points,
+                context.work_meter,
             )?;
         }
         if straight {

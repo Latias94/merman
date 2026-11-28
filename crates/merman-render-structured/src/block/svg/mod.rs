@@ -4,6 +4,8 @@ use merman_render_core::{
     text::TextMeasurer,
 };
 
+use merman_theme_contract::v2::Color;
+
 mod native;
 mod palette;
 mod render;
@@ -19,6 +21,7 @@ pub struct BlockSvgContext<'a> {
     pub work_meter: &'a OperationWorkMeter,
     pub text_measurer: &'a dyn TextMeasurer,
     pub operation: &'a OperationContext,
+    pub canvas_background: Option<Color>,
     pub shoal: bool,
 }
 

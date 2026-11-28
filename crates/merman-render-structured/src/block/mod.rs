@@ -1145,7 +1145,7 @@ pub fn prepare_block_layout(
         Some((theme, background)) => {
             BlockTypographyThemePlan::resolve_native(theme, background, config.as_value())
         }
-        None => BlockTypographyThemePlan::resolve(config.as_value())?,
+        None => BlockTypographyThemePlan::resolve(config)?,
     };
     typography_theme.prepare_class_definitions(&model.class_defs);
     let (layout, prepared_labels) = layout_block_diagram_typed_with_text_style(

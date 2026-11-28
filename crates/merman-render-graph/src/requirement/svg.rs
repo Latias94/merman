@@ -3,8 +3,6 @@
 use super::{RequirementEdgeIdentity, RequirementNativeStyle, requirement_color_indices};
 use base64::Engine as _;
 use merman_model::{OperationPhase, families::requirement::RequirementDiagramModel};
-#[cfg(feature = "layout-shoal")]
-use merman_render_core::LayoutEdge;
 use merman_render_core::{
     Bounds, Error, LayoutPoint, Result,
     number_format::canonical_number as fmt,
@@ -28,6 +26,8 @@ use merman_render_core::{
     text::{TextMeasurer, TextStyle, svg_label as label},
     xml::{escape_attr, escape_attr_display, escape_xml},
 };
+#[cfg(feature = "layout-shoal")]
+use merman_render_core::{LayoutEdge, svg_output::cutout};
 #[cfg(feature = "layout-layered")]
 use merman_render_core::{
     graph_layout::mermaid_layered::EdgeRouting,
@@ -340,6 +340,11 @@ pub fn render_requirement_diagram_svg_model(
     });
     #[cfg(feature = "layout-shoal")]
     let uses_canonical_routes = canonical_paint.is_some();
+    #[cfg(feature = "layout-shoal")]
+    let cutout_labels = uses_canonical_routes
+        && cutout::is_transparent_paint(&binding.edge_label_background)
+        && (!render_settings.edge_html_labels
+            || cutout::is_transparent_paint(&binding.requirement_edge_label_background));
     #[cfg(not(feature = "layout-shoal"))]
     let uses_canonical_routes = false;
     let look = render_settings.look;
@@ -897,10 +902,29 @@ pub fn render_requirement_diagram_svg_model(
             prepared_label.rendered_id.clone()
         };
         options.work_meter.checkpoint(OperationPhase::Emit)?;
+        #[cfg(feature = "layout-shoal")]
+        let mut caption_cutout = None;
+        #[cfg(feature = "layout-shoal")]
+        if cutout_labels
+            && let (Some(canonical), Some(label), Some(position)) =
+                (&painted.canonical, &e.label, &painted.label_position)
+        {
+            let bounds = &canonical.bounds;
+            let bounds = kurbo::Rect::new(bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y);
+            let gap = kurbo::Rect::from_center_size(
+                (position.x, position.y),
+                (label.width, label.height),
+            );
+            if bounds.intersect(gap).area() > 0.0 {
+                let id = format!("{diagram_id}_requirement-edge-label-{edge_index}");
+                cutout::write_defs(&mut out, &id, bounds, 1.0, &[gap], options.work_meter)?;
+                caption_cutout = Some(id);
+            }
+        }
 
         let _ = write!(
             &mut out,
-            r#"<path d="{d}" id="{dom_id}" class="{class}" style="{style}" data-edge="true" data-et="edge" data-id="{id}" data-points="{data_points}"{look_attr}{marker_attr}/>"#,
+            r#"<path d="{d}" id="{dom_id}" class="{class}" style="{style}" data-edge="true" data-et="edge" data-id="{id}" data-points="{data_points}"{look_attr}{marker_attr}"#,
             d = escape_attr_display(hopped_d.unwrap_or(d)),
             dom_id = escape_attr_display(&dom_id),
             id = escape_attr_display(&prepared_label.rendered_id),
@@ -910,6 +934,11 @@ pub fn render_requirement_diagram_svg_model(
             look_attr = look_attr.as_str(),
             marker_attr = marker_attr,
         );
+        #[cfg(feature = "layout-shoal")]
+        if let Some(id) = caption_cutout {
+            cutout::write_reference(&mut out, id);
+        }
+        out.push_str("/>");
     }
     out.push_str("</g>");
 

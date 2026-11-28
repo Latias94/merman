@@ -314,9 +314,9 @@ fn terminal_labels_clear_later_markers_middle_labels_nodes_and_one_another() {
     let (mut d, g, c, mut graph) = fixture(
         vec![
             rect(0., 0., 24., 20.),
-            rect(0., 120., 24., 20.),
+            rect(0., 200., 24., 20.),
             rect(21., 0., 18., 20.),
-            rect(21., 120., 18., 20.),
+            rect(21., 200., 18., 20.),
             rect(-35., 20., 36., 35.),
         ],
         &[(0, 1), (2, 3)],
@@ -334,13 +334,13 @@ fn terminal_labels_clear_later_markers_middle_labels_nodes_and_one_another() {
         width: 31.,
     };
     graph.edges[0].label = Some(size(35., 20.));
-    d.edges[0].1.label_center = Some(p(17., 70.));
+    d.edges[0].1.label_center = Some(p(17., 61.));
     solve(&mut d, &g, &c, &graph).unwrap();
     let mut occupied = d.nodes.clone();
     occupied.extend([
         rect(11.5, 20., 37., 45.),
-        rect(14.5, 83., 31., 37.),
-        label_rect(p(17., 70.), size(35., 20.)),
+        rect(14.5, 163., 31., 37.),
+        label_rect(p(17., 61.), size(35., 20.)),
     ]);
     for (id, e) in &d.edges {
         let spec = &graph.edges[*id as usize];
@@ -356,6 +356,140 @@ fn terminal_labels_clear_later_markers_middle_labels_nodes_and_one_another() {
             occupied.push(label);
         }
     }
+}
+
+#[test]
+fn bounded_end_label_slide_admits_the_touching_seat_at_its_limit() {
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    let mut walls = Obstacles::new();
+    walls
+        .add(
+            Owner::Node,
+            Bounds::checked_rect(rect(-1.0, -1.0, 11.0, 2.0)).unwrap(),
+            &mut work,
+        )
+        .unwrap();
+    let origin = Point { x: 0.0, y: 0.0 };
+    let slide = |limit, work: &mut Work<'_>| {
+        walls
+            .slide(
+                origin,
+                size(2.0, 2.0),
+                Side::Right,
+                Some(limit),
+                |_| true,
+                work,
+            )
+            .unwrap()
+    };
+    assert_eq!(
+        slide(11.0, &mut work),
+        Some((Point { x: 11.0, y: 0.0 }, 11.0))
+    );
+    assert_eq!(slide(11.0_f64.next_down(), &mut work), None);
+}
+
+#[test]
+fn bounded_end_label_slide_rejects_a_seat_across_a_long_obstacle() {
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    let spec = edge(0, 1);
+    for span in [100.0, 400.0] {
+        let edge = seed_edge(rect(0., 0., 24., 20.), rect(0., 20. + span, 24., 20.));
+        let mut walls = Obstacles::new();
+        walls
+            .add(
+                Owner::Middle(1),
+                Bounds::checked_rect(rect(-40., 20., 100., span - 10.)).unwrap(),
+                &mut work,
+            )
+            .unwrap();
+        let size = size(20., 12.);
+        let from = edge.points[0];
+        let origin = Point {
+            x: from.x,
+            y: from.y + 8.0,
+        };
+        let limit = (0.35 * span).min(64.0);
+        assert!(
+            walls
+                .slide(origin, size, Side::Bottom, Some(limit), |_| true, &mut work)
+                .unwrap()
+                .is_none()
+        );
+
+        let center = end_label(
+            (0, &edge),
+            false,
+            size,
+            &spec,
+            &Options::default(),
+            &walls,
+            &mut work,
+        )
+        .unwrap();
+        assert!(center.y > origin.y + limit);
+        assert!(
+            walls
+                .fits(
+                    Bounds::checked_centered(center, size).unwrap(),
+                    None,
+                    &mut work
+                )
+                .unwrap()
+        );
+    }
+}
+
+#[test]
+fn coincident_loop_label_uses_its_run_and_respects_markers_and_other_labels() {
+    let mut route = seed_edge(rect(-12.0, -20.0, 24.0, 20.0), rect(-12.0, 0.0, 24.0, 20.0));
+    route.ports = (Side::Bottom, Side::Bottom);
+    route.points = [
+        p(0.0, 0.0),
+        p(0.0, 40.0),
+        p(60.0, 40.0),
+        p(60.0, 80.0),
+        p(0.0, 80.0),
+        p(0.0, 0.0),
+    ]
+    .into_iter()
+    .map(|at| route_point(at, Axis::Vertical))
+    .collect();
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    let mut walls = Obstacles::new();
+    for (owner, wall) in [
+        (Owner::Stroke(0), rect(-60.0, 0.0, 120.0, 110.0)),
+        (Owner::Marker(1), rect(-60.0, 0.0, 60.0, 22.0)),
+        (Owner::End, rect(0.0, 0.0, 60.0, 30.0)),
+    ] {
+        walls
+            .add(owner, Bounds::checked_rect(wall).unwrap(), &mut work)
+            .unwrap();
+    }
+    let label_size = size(20.0, 12.0);
+    let seat = end_label(
+        (0, &route),
+        false,
+        label_size,
+        &edge(0, 0),
+        &Options::default(),
+        &walls,
+        &mut work,
+    )
+    .unwrap();
+    assert!(seat.x < 0.0 && seat.y > 28.0 && seat.y < 40.0, "{seat:?}");
+    assert!(
+        walls
+            .fits(
+                Bounds::checked_centered(seat, label_size).unwrap(),
+                Some(0),
+                &mut work
+            )
+            .unwrap()
+    );
 }
 
 #[test]

@@ -5,6 +5,8 @@ use base64::Engine as _;
 use merman_render_core::svg_bounds::svg_path_bounds_from_d;
 #[cfg(test)]
 use merman_render_core::svg_edge_parity::curve::curve_basis_path_d;
+#[cfg(feature = "layout-shoal")]
+use merman_render_core::svg_output::cutout;
 use merman_render_core::{
     svg_edge_parity::{
         curve::interpolated_path_d,
@@ -600,33 +602,6 @@ fn state_canonical_edge_bounds(
     bounds
 }
 
-#[cfg(feature = "layout-shoal")]
-fn write_state_edge_label_cutout(
-    out: &mut impl SvgOutput,
-    diagram_id: SvgDiagramId<'_>,
-    ordinal: usize,
-    shaft: kurbo::Rect,
-    gap: kurbo::Rect,
-) -> Result<()> {
-    // State roots can translate independently. Both rectangles are local to the edge path.
-    let frame = shaft.union(gap).inflate(1.0, 1.0);
-    let _ = write!(
-        out,
-        r#"<defs><clipPath id="{diagram_id}_state-edge-label-{ordinal}"><path clip-rule="evenodd" d="M{} {}H{}V{}H{}ZM{} {}H{}V{}H{}Z"/></clipPath></defs>"#,
-        fmt(frame.x0),
-        fmt(frame.y0),
-        fmt(frame.x1),
-        fmt(frame.y1),
-        fmt(frame.x0),
-        fmt(gap.x0),
-        fmt(gap.y0),
-        fmt(gap.x1),
-        fmt(gap.y1),
-        fmt(gap.x0),
-    );
-    out.checkpoint()
-}
-
 #[derive(Default)]
 pub(super) struct StateEdgePathScratch {
     #[cfg(feature = "layout-shoal")]
@@ -725,12 +700,20 @@ fn write_state_edge_path(
                 .as_ref()
                 .filter(|l| l.width > 0.0 && l.height > 0.0)
             {
+                // State roots can translate independently. Both rectangles are local to the edge.
                 let gap = kurbo::Rect::from_center_size(
                     (label.x - origin_x, label.y - origin_y),
                     (label.width, label.height),
                 );
                 if bounds.intersect(gap).area() > 0.0 {
-                    write_state_edge_label_cutout(out, ctx.diagram_id, ordinal, bounds, gap)?;
+                    cutout::write_defs(
+                        out,
+                        format_args!("{}_state-edge-label-{ordinal}", ctx.diagram_id),
+                        bounds,
+                        1.0,
+                        &[gap],
+                        work_meter,
+                    )?;
                     label_cutout = true;
                 }
             }
@@ -900,8 +883,10 @@ fn write_state_edge_path(
     out.push('"');
     #[cfg(feature = "layout-shoal")]
     if label_cutout {
-        let id = ctx.diagram_id;
-        let _ = write!(out, r#" clip-path="url(#{id}_state-edge-label-{ordinal})""#);
+        cutout::write_reference(
+            out,
+            format_args!("{}_state-edge-label-{ordinal}", ctx.diagram_id),
+        );
     }
     if let Some(marker_end) = marker_end {
         out.push_str(r#" marker-end=""#);

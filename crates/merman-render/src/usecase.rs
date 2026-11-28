@@ -45,6 +45,7 @@ impl UsecasePreparedArtifact {
             .map(|canonical| UsecaseCanonicalSvg {
                 titles: &canonical.titles,
                 boundary_order: &canonical.boundary_order,
+                panel_captions: &canonical.panel_captions,
                 paint_edges,
             })
     }

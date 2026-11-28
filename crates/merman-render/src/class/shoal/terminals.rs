@@ -7,6 +7,8 @@ use kurbo::{Line, ParamCurveNearest, Point, Rect, Shape, Vec2};
 use merman_layout_shoal::geom::{Bounds, BoundsIndex, Bvh, BvhEntry};
 use std::ops::ControlFlow::{Break, Continue};
 
+const MAX_TERMINAL_DISTANCE: f64 = 56.0;
+
 #[derive(Clone, Copy)]
 enum Obstacle {
     Box(Rect),
@@ -94,7 +96,7 @@ pub(super) fn seat(
     let mut seating = Seating {
         fixed,
         occupied: BoundsIndex::default(),
-        placed: vec![[false; 2]; solved.edges.len()],
+        handled: vec![[false; 2]; solved.edges.len()],
         drawing,
         shaft_outset,
     };
@@ -103,6 +105,8 @@ pub(super) fn seat(
         let [first, .., last] = edge.points.as_slice() else {
             continue;
         };
+        let span = point(*first).distance(point(*last));
+        let mut paired = None;
         for (start, label, port, side, marker) in [
             (
                 true,
@@ -119,22 +123,31 @@ pub(super) fn seat(
                 spec.end_marker,
             ),
         ] {
-            if let Some(label) = label {
-                let outward = outward(side);
-                let lead = if start {
-                    straight_lead(edge.points.iter().skip(1), point(port), outward, work)?
-                } else {
-                    straight_lead(edge.points.iter().rev().skip(1), point(port), outward, work)?
-                };
-                seating.place(
-                    label,
-                    (index, start),
-                    point(port),
+            let Some(current) = label.take() else {
+                continue;
+            };
+            let port = point(port);
+            let outward = outward(side);
+            let lead = if start {
+                straight_lead(edge.points.iter().skip(1), port, outward, work)?
+            } else {
+                straight_lead(edge.points.iter().rev().skip(1), port, outward, work)?
+            };
+            *label = Some(seating.place(
+                current,
+                Terminal {
+                    owner: (index, start),
+                    port,
                     outward,
                     lead,
+                    span,
                     marker,
-                    work,
-                )?;
+                },
+                paired,
+                work,
+            )?);
+            if start {
+                paired = label.as_ref().map(label_rect);
             }
         }
     }
@@ -144,38 +157,70 @@ pub(super) fn seat(
 struct Seating {
     fixed: Bvh<Obstacle>,
     occupied: BoundsIndex,
-    // A placed label's current box belongs to `occupied`.
-    placed: Vec<[bool; 2]>,
+    // A relocated label's original box is obsolete.
+    handled: Vec<[bool; 2]>,
     drawing: Rect,
     shaft_outset: f64,
 }
 
+struct Terminal {
+    owner: (usize, bool),
+    port: Point,
+    outward: Vec2,
+    lead: f64,
+    span: f64,
+    marker: Marker,
+}
+
+struct Clearance {
+    overlap: f64,
+    foreign_shaft_overlap: f64,
+    nearest_shaft: f64,
+}
+
 impl Seating {
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "Seating uses one complete terminal frame."
-    )]
     fn place(
         &mut self,
-        label: &mut LayoutLabel,
-        owner: (usize, bool),
-        port: Point,
-        outward: Vec2,
-        lead: f64,
-        marker: Marker,
+        mut label: LayoutLabel,
+        terminal: Terminal,
+        paired: Option<Rect>,
         work: &mut OperationLayoutWorkControl,
-    ) -> Result<()> {
+    ) -> Result<LayoutLabel> {
+        let Some(rect) = self.choose(&label, &terminal, paired, work)? else {
+            // Keep the solver's clear seat when the label cannot fit near its terminal.
+            return Ok(label);
+        };
+        let (edge, start) = terminal.owner;
+        self.handled[edge][usize::from(start)] = true;
+        self.occupied
+            .insert(bounds(rect), work)
+            .map_err(|error| work.map_shoal_error(error))?;
+        let center = rect.center();
+        (label.x, label.y) = (center.x, center.y);
+        Ok(label)
+    }
+
+    fn choose(
+        &self,
+        label: &LayoutLabel,
+        terminal: &Terminal,
+        paired: Option<Rect>,
+        work: &mut OperationLayoutWorkControl,
+    ) -> Result<Option<Rect>> {
+        let Terminal {
+            owner,
+            port,
+            outward,
+            lead,
+            span,
+            marker,
+        } = *terminal;
         let across = Vec2::new(-outward.y, outward.x);
         let half = Vec2::new(label.width / 2.0, label.height / 2.0);
         let along_half = half.dot(Vec2::new(outward.x.abs(), outward.y.abs()));
         let across_half = half.dot(Vec2::new(across.x.abs(), across.y.abs()));
-        let limit = lead - along_half;
         let minimum = along_half + 2.0;
-        if limit < minimum {
-            return Ok(());
-        }
-        let near = 16.0_f64.max(minimum).min(limit);
-        let furthest = (near + 8.0).min(limit);
+        let preferred_along = 16.0_f64.max(minimum);
         let existing = Point::new(label.x, label.y);
         let preferred = if (existing - port).dot(across) < 0.0 {
             -1.0
@@ -184,43 +229,121 @@ impl Seating {
         };
         let adjacent = across_half + self.shaft_outset + 1.0;
         let between_shafts = across_half + self.shaft_outset + 0.25;
-        let past_marker = (marker.trim + marker.depth + along_half + 1.0).clamp(near, furthest);
-        // Keep a little whitespace beside the shaft. A tight lane can still provide ink clearance.
-        for offset in [
+        let past_marker = marker.trim + marker.depth + along_half + 1.0;
+        let offsets = [
             adjacent,
             between_shafts,
             adjacent.max(across_half + marker.width / 2.0 + 1.0),
-        ] {
-            for distance in [near, past_marker, furthest] {
-                let mut best = None::<(Point, f64)>;
-                for sign in [preferred, -preferred] {
-                    let center = port + outward * distance + across * (sign * offset);
-                    let rect = Rect::from_center_size(center, (label.width, label.height));
-                    if self.drawing.intersect(rect) != rect {
+        ];
+        let mut radius = (0.35 * span)
+            .min(MAX_TERMINAL_DISTANCE)
+            .max(minimum.hypot(between_shafts));
+        // Very wide authored text can need more room just to sit beside the lead.
+        let preferred_radius = preferred_along.hypot(adjacent);
+        if preferred_radius > MAX_TERMINAL_DISTANCE {
+            radius = radius.max(preferred_radius);
+        }
+        let assess = |center: Point, offset: f64, work: &mut OperationLayoutWorkControl| {
+            work.charge_adapter(1)?;
+            let rect = Rect::from_center_size(center, (label.width, label.height));
+            if self.drawing.intersect(rect) != rect
+                || paired.is_some_and(|paired| rect.intersect(paired).area() > 0.0)
+            {
+                return Ok(None);
+            }
+            self.clearance(rect, owner, offset, work)
+                .map(|clearance| clearance.map(|clearance| (rect, clearance)))
+        };
+
+        let lead_limit = lead - along_half;
+        if lead_limit >= minimum {
+            let near = preferred_along.min(lead_limit);
+            let far = (near + 8.0).min(lead_limit);
+            // Preserve the close, shaft-owned seat whenever there is room beside the lead.
+            let distances = [near, past_marker.clamp(near, far), far];
+            for (index, &offset) in offsets.iter().enumerate() {
+                if offsets[..index].contains(&offset) {
+                    continue;
+                }
+                for (index, &distance) in distances.iter().enumerate() {
+                    if distances[..index].contains(&distance) || distance.hypot(offset) > radius {
                         continue;
                     }
-                    if let Some(clearance) = self.clearance(rect, owner, offset, work)?
-                        && clearance > offset
-                        && best.is_none_or(|(_, previous)| clearance > previous)
-                    {
-                        best = Some((center, clearance));
+                    let mut best = None::<(Rect, f64)>;
+                    for sign in [preferred, -preferred] {
+                        let center = port + outward * distance + across * (sign * offset);
+                        if let Some((rect, clearance)) = assess(center, offset, work)?
+                            && clearance.overlap == 0.0
+                            && clearance.nearest_shaft > offset
+                            && best.is_none_or(|(_, previous)| clearance.nearest_shaft > previous)
+                        {
+                            best = Some((rect, clearance.nearest_shaft));
+                            if clearance.nearest_shaft.is_infinite() {
+                                break;
+                            }
+                        }
                     }
-                }
-                if let Some((center, _)) = best {
-                    self.occupied
-                        .insert(
-                            bounds(Rect::from_center_size(center, (label.width, label.height))),
-                            work,
-                        )
-                        .map_err(|error| work.map_shoal_error(error))?;
-                    self.placed[owner.0][usize::from(owner.1)] = true;
-                    label.x = center.x;
-                    label.y = center.y;
-                    return Ok(());
+                    if let Some((rect, _)) = best {
+                        return Ok(Some(rect));
+                    }
                 }
             }
         }
-        Ok(())
+
+        // Nearby labels and shafts can compete for the same channel. Keep boxes and markers
+        // hard, and prefer covering our own shaft (which SVG clips under the label) to a peer's.
+        let mut best = None::<(Rect, [f64; 4])>;
+        let mut consider = |center: Point, offset: f64, work: &mut OperationLayoutWorkControl| {
+            let distance = center.distance(port);
+            if best.is_some_and(|(_, rank)| rank <= [0.0, 0.0, 0.0, distance]) {
+                return Ok(());
+            }
+            if let Some((rect, clearance)) = assess(center, offset, work)? {
+                let rank = [
+                    clearance.foreign_shaft_overlap,
+                    clearance.overlap,
+                    (offset - clearance.nearest_shaft).max(0.0),
+                    distance,
+                ];
+                if best.is_none_or(|(_, previous)| rank < previous) {
+                    best = Some((rect, rank));
+                }
+            }
+            Ok::<_, crate::Error>(())
+        };
+        if existing.distance(port) <= radius {
+            consider(existing, (existing - port).dot(across).abs(), work)?;
+        }
+        for offset in offsets
+            .into_iter()
+            .chain([adjacent / 2.0, 0.0, adjacent + across_half])
+        {
+            let far = (radius * radius - offset * offset).max(0.0).sqrt();
+            if far < minimum {
+                continue;
+            }
+            let near = preferred_along.min(far);
+            let distances = [
+                near,
+                past_marker.clamp(minimum, far),
+                near.midpoint(far),
+                far,
+                minimum,
+            ];
+            for (index, &distance) in distances.iter().enumerate() {
+                if distances[..index].contains(&distance) {
+                    continue;
+                }
+                for sign in [preferred, -preferred] {
+                    let center = port + outward * distance + across * (sign * offset);
+                    consider(center, offset, work)?;
+                    if offset == 0.0 {
+                        break;
+                    }
+                }
+            }
+        }
+        Ok(best.map(|(rect, _)| rect))
     }
 
     fn clearance(
@@ -229,21 +352,19 @@ impl Seating {
         owner: (usize, bool),
         own_distance: f64,
         work: &mut OperationLayoutWorkControl,
-    ) -> Result<Option<f64>> {
+    ) -> Result<Option<Clearance>> {
         let terminal_ink = rect.inflate(1.0, 1.0);
-        if self
-            .occupied
-            .any_overlap(bounds(terminal_ink), work)
-            .map_err(|error| work.map_shoal_error(error))?
-        {
-            return Ok(None);
-        }
         let center = rect.center();
         let shaft_ink = rect.inflate(self.shaft_outset, self.shaft_outset);
         // A competing shaft can be nearer to a wide label's center without nearing its ink.
         let ownership = Rect::from_center_size(center, (2.0 * own_distance, 2.0 * own_distance));
         let halo = rect.inflate(24.0, 24.0).union(shaft_ink).union(ownership);
-        let mut nearest = f64::INFINITY;
+        let mut clearance = Clearance {
+            overlap: 0.0,
+            foreign_shaft_overlap: 0.0,
+            nearest_shaft: f64::INFINITY,
+        };
+        let mut nearest_sq = f64::INFINITY;
         let result = self.fixed.visit(|entry| -> Result<_> {
             work.charge_adapter(1)?;
             let obstacle = match entry {
@@ -262,25 +383,47 @@ impl Seating {
             let blocked = match obstacle {
                 Obstacle::Shaft(edge, line) => {
                     if edge != owner.0 {
-                        nearest = nearest.min(line.nearest(center, 0.0).distance_sq.sqrt());
+                        nearest_sq = nearest_sq.min(line.nearest(center, 0.0).distance_sq);
                     }
-                    shaft_ink.contains(line.p0)
+                    let hits = shaft_ink.contains(line.p0)
                         || shaft_ink.contains(line.p1)
                         || (shaft_ink.overlaps(ink)
                             && shaft_ink
                                 .path_segments(0.0)
-                                .any(|side| !side.intersect_line(line).is_empty()))
+                                .any(|side| !side.intersect_line(line).is_empty()));
+                    if hits {
+                        let area = shaft_ink
+                            .intersect(ink.inflate(self.shaft_outset, self.shaft_outset))
+                            .area()
+                            .max(f64::EPSILON);
+                        clearance.overlap += area;
+                        if edge != owner.0 {
+                            clearance.foreign_shaft_overlap += area;
+                        }
+                    }
+                    false
                 }
                 Obstacle::Terminal(terminal, ink) => {
                     terminal != owner
-                        && !self.placed[terminal.0][usize::from(terminal.1)]
+                        && !self.handled[terminal.0][usize::from(terminal.1)]
                         && terminal_ink.intersect(ink).area() > 0.0
                 }
                 Obstacle::Box(ink) => rect.intersect(ink).area() > 0.0,
             };
             Ok(if blocked { Break(()) } else { Continue(true) })
         })?;
-        Ok((!result.is_break()).then_some(nearest))
+        if result.is_break() {
+            return Ok(None);
+        }
+        if self
+            .occupied
+            .any_overlap(bounds(terminal_ink), work)
+            .map_err(|error| work.map_shoal_error(error))?
+        {
+            return Ok(None);
+        }
+        clearance.nearest_shaft = nearest_sq.sqrt();
+        Ok(Some(clearance))
     }
 }
 
@@ -338,7 +481,7 @@ mod tests {
         let mut work = OperationLayoutWorkControl::new(Arc::new(OperationWorkMeter::new(
             RenderResourcePolicy::constrained(),
         )));
-        let mut label = LayoutLabel {
+        let label = LayoutLabel {
             x: 118.5,
             y: 116.0,
             width: 160.0,
@@ -358,22 +501,26 @@ mod tests {
         let mut seating = Seating {
             fixed,
             occupied: BoundsIndex::default(),
-            placed: vec![[false; 2]; 2],
+            handled: vec![[false; 2]; 2],
             drawing: Rect::new(0.0, 0.0, 400.0, 400.0),
             shaft_outset: 0.5,
         };
-        seating
+        let seated = seating
             .place(
-                &mut label,
-                (0, true),
-                owner.p0,
-                outward(Side::Bottom),
-                40.0,
-                Marker::default(),
+                label,
+                Terminal {
+                    owner: (0, true),
+                    port: owner.p0,
+                    outward: outward(Side::Bottom),
+                    lead: 40.0,
+                    span: owner.p0.distance(owner.p1),
+                    marker: Marker::default(),
+                },
+                None,
                 &mut work,
             )
             .unwrap();
-        assert_eq!(label.x, 281.5);
+        assert_eq!(seated.x, 281.5);
     }
 
     #[test]
@@ -387,8 +534,8 @@ mod tests {
             width: 8.0,
             height: 8.0,
         };
-        let mut moving = make_label(20.0, 40.0);
-        let mut unseated = make_label(60.0, 40.0);
+        let moving = make_label(20.0, 40.0);
+        let unseated = make_label(60.0, 40.0);
         let old_ink = label_rect(&moving);
         let fixed = Bvh::build_controlled(
             vec![
@@ -402,29 +549,31 @@ mod tests {
         let mut seating = Seating {
             fixed,
             occupied: BoundsIndex::default(),
-            placed: vec![[false; 2]; 2],
+            handled: vec![[false; 2]; 2],
             drawing: Rect::new(0.0, 0.0, 150.0, 100.0),
             shaft_outset: 0.5,
         };
-        for (start, label, lead) in [(true, &mut moving, 40.0), (false, &mut unseated, 0.0)] {
-            seating
-                .place(
-                    label,
-                    (0, start),
-                    Point::new(90.0, 40.0),
-                    outward(Side::Right),
-                    lead,
-                    Marker::default(),
-                    &mut work,
-                )
-                .unwrap();
-        }
+        let moving = seating
+            .place(
+                moving,
+                Terminal {
+                    owner: (0, true),
+                    port: Point::new(90.0, 40.0),
+                    outward: outward(Side::Right),
+                    lead: 40.0,
+                    span: 40.0,
+                    marker: Marker::default(),
+                },
+                None,
+                &mut work,
+            )
+            .unwrap();
 
         let mut can_place = |ink| {
             seating
                 .clearance(ink, (1, true), 0.0, &mut work)
                 .unwrap()
-                .is_some()
+                .is_some_and(|clearance| clearance.overlap == 0.0)
         };
         assert!(can_place(old_ink));
         for current in [&moving, &unseated] {
@@ -432,5 +581,60 @@ mod tests {
             assert!(!can_place(ink + Vec2::new(8.5, 0.0)));
             assert!(can_place(ink + Vec2::new(9.0, 0.0)));
         }
+    }
+
+    #[test]
+    fn blocked_terminal_uses_its_own_shaft_locally_without_covering_nodes() {
+        let mut work = OperationLayoutWorkControl::new(Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::constrained(),
+        )));
+        let shaft = Line::new((100.0, 40.0), (180.0, 40.0));
+        let nodes = [
+            Rect::new(98.0, 28.0, 180.0, 36.0),
+            Rect::new(98.0, 44.0, 180.0, 52.0),
+            Rect::new(110.0, 36.0, 126.0, 44.0),
+        ];
+        let fixed = Bvh::build_controlled(
+            nodes
+                .into_iter()
+                .map(Obstacle::Box)
+                .chain([Obstacle::Shaft(0, shaft)])
+                .collect(),
+            |obstacle| bounds(obstacle.bounds()),
+            &mut work,
+        )
+        .unwrap();
+        let mut seating = Seating {
+            fixed,
+            occupied: BoundsIndex::default(),
+            handled: vec![[false; 2]],
+            drawing: Rect::new(0.0, 0.0, 400.0, 100.0),
+            shaft_outset: 0.5,
+        };
+        let label = LayoutLabel {
+            x: 350.0,
+            y: 40.0,
+            width: 16.0,
+            height: 8.0,
+        };
+        let seated = seating
+            .place(
+                label,
+                Terminal {
+                    owner: (0, true),
+                    port: shaft.p0,
+                    outward: outward(Side::Right),
+                    lead: 80.0,
+                    span: 200.0,
+                    marker: Marker::default(),
+                },
+                None,
+                &mut work,
+            )
+            .unwrap();
+        let ink = label_rect(&seated);
+        assert_eq!(ink.center().y, shaft.p0.y);
+        assert!(ink.center().distance(shaft.p0) <= 56.0);
+        assert!(nodes.iter().all(|node| ink.intersect(*node).area() == 0.0));
     }
 }

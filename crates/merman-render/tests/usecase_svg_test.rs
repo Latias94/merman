@@ -2755,10 +2755,11 @@ fn usecase_shoal_reads_root_spacing_before_family_defaults() {
 
 #[cfg(feature = "layout-shoal")]
 #[test]
-fn usecase_native_theme_paints_sketch_and_masks_transparent_labels() {
+fn usecase_native_theme_paints_sketch_with_a_cutout_on_the_labeled_edge() {
+    use kurbo::{BezPath, ParamCurve, Point, Shape};
     use merman_render::theme::{NativeTheme, ThemeCompiler};
 
-    let source = "usecase-beta\ndirection LR\nA -- status --> B\n";
+    let source = "usecase-beta\ndirection LR\nA -- status --> B\nC --> D\n";
     for (style, has_curves) in [("orthogonal", false), ("sketch", true)] {
         let theme = ThemeCompiler::new().compile_json(
             format!(r#"{{"schema_version":2,"extends":"paper","form":{{"edge_style":"{style}","marker_style":"open","edge_label_bg":"transparent"}}}}"#).as_bytes(),
@@ -2767,17 +2768,20 @@ fn usecase_native_theme_paints_sketch_and_masks_transparent_labels() {
         let session = RenderEnvironment::deterministic()
             .begin_session_with_native_theme(NativeTheme::new(theme))
             .unwrap();
-        let (_, svg) = render_config_with_session(
+        let (layout, svg) = render_config_with_session(
             source,
             json!({"layout":"shoal", "htmlLabels":false, "look":"neo", "themeVariables":{"useGradient":true}}),
             session,
         );
         let document = roxmltree::Document::parse(&svg).unwrap();
         assert!(!svg.contains("url(#usecase-test-gradient)"));
-        let edge = document
+        let edges: Vec<_> = document
             .descendants()
-            .find(|node| node.attribute("data-edge") == Some("true"))
-            .unwrap();
+            .filter(|node| node.attribute("data-edge") == Some("true"))
+            .collect();
+        let [edge, unlabeled] = edges[..] else {
+            panic!("expected two relationships");
+        };
         assert_eq!(
             edge.attribute("d").unwrap().contains('C'),
             has_curves,
@@ -2802,19 +2806,150 @@ fn usecase_native_theme_paints_sketch_and_masks_transparent_labels() {
                 .unwrap()
                 .contains("fill:none")
         );
-        assert_eq!(
-            edge.parent_element().unwrap().attribute("mask"),
-            Some("url(#usecase-test_usecase-edge-label-mask)")
-        );
-        let mask = document
+        assert_eq!(edge.parent_element().unwrap().attribute("mask"), None);
+        assert_eq!(unlabeled.attribute("clip-path"), None);
+        let clip_id = "usecase-test_usecase-edge-label-0";
+        let clip_url = format!("url(#{clip_id})");
+        assert_eq!(edge.attribute("clip-path"), Some(clip_url.as_str()));
+        let clip = document
             .descendants()
-            .find(|node| node.has_tag_name("mask"))
+            .find(|node| node.has_tag_name("clipPath") && node.attribute("id") == Some(clip_id))
+            .unwrap()
+            .first_element_child()
             .unwrap();
-        assert_eq!(
-            mask.children()
-                .filter(|node| node.attribute("fill") == Some("black"))
-                .count(),
-            1
+        assert_eq!(clip.attribute("clip-rule"), Some("evenodd"));
+        let geometry = BezPath::from_svg(clip.attribute("d").unwrap()).unwrap();
+        let label = &layout["layout"]["UsecaseDiagram"]["edges"][0]["label"];
+        let anchor = Point::new(label["x"].as_f64().unwrap(), label["y"].as_f64().unwrap());
+        assert_eq!(geometry.winding(anchor) % 2, 0);
+        let shaft = BezPath::from_svg(edge.attribute("d").unwrap()).unwrap();
+        assert_ne!(
+            geometry.winding(shaft.segments().next().unwrap().start()) % 2,
+            0
         );
+        assert_ne!(
+            geometry.winding(shaft.segments().last().unwrap().end()) % 2,
+            0
+        );
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_usecase_cuts_panel_captions_on_an_opaque_canvas() {
+    use merman_render::theme::{Appearance, BuiltinPreset, Color, NativeTheme, ThemeCompiler};
+
+    let source = "usecase-beta\ndirection TB\nsystemBoundary Panel(\"Payments\")\n  A(\"Authorize\")\n  B(\"Capture\")\nend\nA -- internal --> B\nC -- external --> D\n";
+    let theme = ThemeCompiler::new()
+        .compile_preset(BuiltinPreset::Studio, Some(Appearance::Dark))
+        .unwrap();
+    for html in [false, true] {
+        let session = RenderEnvironment::deterministic()
+            .begin_session_with_native_theme(NativeTheme::new(theme.clone()))
+            .unwrap();
+        let (_, svg) = render_config_with_session(
+            source,
+            json!({"layout":"shoal", "htmlLabels":html}),
+            session,
+        );
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        if html {
+            let css = document
+                .descendants()
+                .find(|node| node.has_tag_name("style"))
+                .unwrap()
+                .text()
+                .unwrap();
+            assert!(
+                css.contains(".edgeLabel.usecase-panel-caption p{background-color:transparent}")
+            );
+        }
+        for (id, on_panel) in [("edge-0", true), ("edge-1", false)] {
+            let path = document
+                .descendants()
+                .find(|node| {
+                    node.attribute("data-et") == Some("edge")
+                        && node.attribute("data-id") == Some(id)
+                })
+                .unwrap();
+            let caption = document
+                .descendants()
+                .find(|node| {
+                    node.attribute("class") == Some("label")
+                        && node.attribute("data-id") == Some(id)
+                })
+                .unwrap();
+            assert_eq!(path.attribute("clip-path").is_some(), on_panel, "{id}");
+            if !html {
+                let rect = caption
+                    .descendants()
+                    .find(|node| node.attribute("class") == Some("background"))
+                    .unwrap();
+                assert_eq!(
+                    rect.attribute("style"),
+                    Some(if on_panel { "fill:none" } else { "" })
+                );
+            }
+            assert_eq!(
+                caption.parent_element().unwrap().attribute("class"),
+                Some(if on_panel {
+                    "edgeLabel usecase-panel-caption"
+                } else {
+                    "edgeLabel"
+                }),
+            );
+        }
+
+        let session = RenderEnvironment::deterministic()
+            .begin_session_with_native_theme(
+                NativeTheme::new(theme.clone()).with_background(Color::TRANSPARENT),
+            )
+            .unwrap();
+        let (_, svg) = render_config_with_session(
+            source,
+            json!({"layout":"shoal", "htmlLabels":html}),
+            session,
+        );
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        for (id, exposed) in [("edge-0", false), ("edge-1", true)] {
+            let caption = document
+                .descendants()
+                .find(|node| {
+                    node.attribute("class") == Some("label")
+                        && node.attribute("data-id") == Some(id)
+                })
+                .unwrap();
+            let plate = caption
+                .parent_element()
+                .unwrap()
+                .children()
+                .find(|node| node.attribute("class") == Some("merman-edge-label-background"));
+            assert_eq!(plate.is_some(), exposed, "{id}");
+            if let Some(plate) = plate {
+                let parse = |paint| {
+                    let [r, g, b, a] = merman_model::css_color::parse(paint)
+                        .unwrap()
+                        .rgba
+                        .to_rgba8();
+                    Color::rgba(r, g, b, a)
+                };
+                let fill = parse(plate.attribute("fill").unwrap());
+                assert_eq!(fill.channels()[3], 255);
+                let css = document
+                    .descendants()
+                    .find(|node| node.has_tag_name("style"))
+                    .unwrap()
+                    .text()
+                    .unwrap();
+                let (_, ink) = css.split_once(".edgeLabel{color:").unwrap();
+                let ink = parse(ink.split('}').next().unwrap());
+                assert!(ink.contrast(fill) >= 4.5);
+            }
+            assert!(document.descendants().any(|path| {
+                path.attribute("data-et") == Some("edge")
+                    && path.attribute("data-id") == Some(id)
+                    && path.attribute("clip-path").is_some()
+            }));
+        }
     }
 }

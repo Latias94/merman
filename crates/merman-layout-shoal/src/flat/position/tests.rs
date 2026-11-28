@@ -47,15 +47,16 @@ fn edge(a: u32, b: u32) -> EdgeSpec {
 }
 
 #[test]
-fn spread_uses_all_three_pitch_tiers_and_preserves_a_held_zero() {
+fn spread_compresses_ports_before_coalescing_and_preserves_a_held_zero() {
     use End::*;
     let role = [Arrives, Leaves, Held, Leaves, Leaves, Arrives];
     let ids = [0, 1, 2, 3, 4, 5];
     for (span, expected) in [
         (100.0, [-32.0, -16.0, 0.0, 0.0, 16.0, 32.0]),
         (24.0, [-12.0, -4.0, 0.0, 0.0, 4.0, 12.0]),
-        (16.0, [-8.0, 0.0, 0.0, 0.0, 0.0, 8.0]),
-        (10.0, [-5.0, 0.0, 0.0, 0.0, 0.0, 5.0]),
+        (16.0, [-8.0, -4.0, 0.0, 0.0, 4.0, 8.0]),
+        (10.0, [-5.0, -2.5, 0.0, 0.0, 2.5, 5.0]),
+        (8.0, [-4.0, 0.0, 0.0, 0.0, 0.0, 4.0]),
     ] {
         let mut offsets = [0.0; 6];
         let markers = [0.0; 6];
@@ -71,6 +72,24 @@ fn spread_uses_all_three_pitch_tiers_and_preserves_a_held_zero() {
         .unwrap();
         assert_eq!(offsets, expected);
     }
+}
+
+#[test]
+fn eight_parallel_occurrences_keep_a_visible_pitch() {
+    let ids = std::array::from_fn::<_, 8, _>(|index| index as u32);
+    let mut offsets = [0.0; 8];
+    spread_face(
+        &ids,
+        &[End::Arrives; 8],
+        &[11.0; 8],
+        &mut offsets,
+        28.0,
+        &Spacing::default(),
+        &mut Work::new(&mut NoopWorkControl),
+    )
+    .unwrap();
+    assert!(offsets.windows(2).all(|pair| pair[1] - pair[0] >= 2.5));
+    assert_eq!((offsets[0], offsets[7]), (-14.0, 14.0));
 }
 
 #[test]
@@ -159,7 +178,9 @@ fn reverse_links_share_a_face_with_forward_tails_in_peer_order() {
         &mut Work::new(&mut NoopWorkControl),
     )
     .unwrap();
-    assert_eq!(g.source_offset, [8.0, 0.0, -8.0, 0.0]);
+    let order = [2, 1, 3, 0].map(|slot| g.source_offset[slot]);
+    assert_eq!((order[0], order[3]), (-8.0, 8.0));
+    assert!(order.windows(2).all(|pair| pair[1] - pair[0] >= 2.5));
     assert_eq!(g.target_offset, [0.0, 0.0, 3.0, 0.0]);
 }
 

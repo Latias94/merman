@@ -156,6 +156,22 @@ pub fn sweep_handle_fraction(across: f64, along: f64) -> f64 {
     (4.0 / (1.15 * ratio + 6.4)).clamp(0.25, 0.46)
 }
 
+/// Minimum arm of either turn on a rounded crossbar.
+#[doc(hidden)]
+pub const MIN_CROSSBAR_ARM: f64 = 8.0;
+
+/// Exclusive along-axis limit for a rounded crossbar, or zero outside its cross-axis range.
+#[doc(hidden)]
+pub fn steep_sweep_run_limit(across: f64) -> f64 {
+    let across = across.abs();
+    // Keep short offsets and long fan spans as distributed curves.
+    if across > 48.0 && across <= 960.0 {
+        across / 1.6
+    } else {
+        0.0
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct OrderHint {
     pub rank: i32,

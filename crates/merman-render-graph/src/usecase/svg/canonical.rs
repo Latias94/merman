@@ -1,11 +1,13 @@
 use super::super::UsecaseMarker;
 use super::{SvgId, SvgOutput, fmt};
+use kurbo::Rect;
 use merman_render_core::LayoutPoint;
 
 pub struct UsecasePaintedEdge {
     pub path: String,
     pub points: Vec<LayoutPoint>,
     pub markers: [Option<UsecaseMarker>; 2],
+    pub paint_bounds: Rect,
 }
 
 pub(super) fn write_marker(
