@@ -26,6 +26,8 @@ use merman_render_core::{
     },
     xml::{escape_attr, escape_attr_display, escape_xml, escape_xml_display},
 };
+#[cfg(feature = "layout-shoal")]
+use merman_theme_contract::v2::EdgeLabelBackground;
 use merman_theme_contract::v2::{Color, EdgeStyle, MarkerStyle};
 
 #[cfg(feature = "layout-shoal")]
@@ -35,7 +37,7 @@ use super::{
     C4ClusterThemePlan, C4ConfigView, C4DiagramLayout, C4Look, C4NativeStyle, C4NodeShape,
     C4PersonOutline, C4ShapeLayout, C4TextBlockLayout, C4TextPaintPlan, C4TypographyThemePlan,
     c4_cap_radius, c4_node_shape, c4_relation_markers, c4_relation_offset, c4_text_row_offset,
-    typography::C4PreparedFont,
+    geometry::C4TextRenderPlan, typography::C4PreparedFont,
 };
 
 #[cfg(feature = "layout-shoal")]
@@ -396,6 +398,79 @@ fn write_c4_relation_arrows(
     Ok(())
 }
 
+fn write_native_c4_relation_arrows(
+    out: &mut impl SvgOutput,
+    diagram_id: SvgId<'_>,
+    [arrowhead, arrowend]: [&str; 2],
+    style: MarkerStyle,
+    stroke_color: &str,
+    outline: Option<Color>,
+    is_shoal: bool,
+) -> Result<()> {
+    let (head, end, fill) = match style {
+        MarkerStyle::Stealth => (
+            "M 0 0 L 10 5 L 0 10 L 3 5 Z",
+            "M 10 0 L 0 5 L 10 10 L 7 5 Z",
+            stroke_color,
+        ),
+        MarkerStyle::Open => ("M 0 0 L 10 5 L 0 10", "M 10 0 L 0 5 L 10 10", "none"),
+        MarkerStyle::Classic | MarkerStyle::Filled => (
+            "M 0 0 L 10 5 L 0 10 z",
+            "M 10 0 L 0 5 L 10 10 z",
+            stroke_color,
+        ),
+    };
+    let stroke = stroke_color.trim();
+    let visible_stroke = !stroke.is_empty()
+        && !stroke.eq_ignore_ascii_case("none")
+        && !stroke.eq_ignore_ascii_case("transparent");
+    let (end_ref, start_ref, marker_geometry, stroke_geometry) = if is_shoal && visible_stroke {
+        (
+            "9.5",
+            "0.5",
+            r#" overflow="visible""#,
+            r#" stroke-linejoin="round" stroke-width="1""#,
+        )
+    } else {
+        ("9", "1", "", "")
+    };
+    out.push_str("<defs>");
+    for (id, ref_x, path) in [(arrowhead, end_ref, head), (arrowend, start_ref, end)] {
+        let _ = write!(
+            out,
+            r#"<marker id="{}" refX="{ref_x}" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"{marker_geometry}>"#,
+            escape_attr_display(scoped_svg_id(diagram_id, id)),
+        );
+        if let Some(outline) = outline {
+            if style == MarkerStyle::Open {
+                // Open tips have no fill. Nest the theme ink inside the existing outline.
+                let _ = write!(
+                    out,
+                    r#"<path d="{path}" fill="none" stroke="{outline}"{stroke_geometry}/><path d="{path}" fill="none" stroke="{}" stroke-linejoin="round" stroke-width="0.5"/>"#,
+                    escape_attr_display(stroke_color),
+                );
+            } else {
+                let _ = write!(
+                    out,
+                    r#"<path d="{path}" fill="{}" stroke="{outline}"{stroke_geometry}/>"#,
+                    escape_attr_display(fill),
+                );
+            }
+        } else {
+            let _ = write!(
+                out,
+                r#"<path d="{path}" fill="{}" stroke="{}"{stroke_geometry}/>"#,
+                escape_attr_display(fill),
+                escape_attr_display(stroke_color),
+            );
+        }
+        out.push_str("</marker>");
+        out.checkpoint()?;
+    }
+    out.push_str("</defs>");
+    out.checkpoint()
+}
+
 fn write_c4_relation_defs(
     out: &mut impl SvgOutput,
     diagram_id: SvgId<'_>,
@@ -453,7 +528,7 @@ fn c4_write_unified_section(
     section_y: f64,
     color: &str,
 ) {
-    let Some(plan) = block.render_plan.as_ref() else {
+    let Some(C4TextRenderPlan::Unified(plan)) = block.render_plan.as_ref() else {
         return;
     };
     if plan.rows.is_empty() || block.text.trim().is_empty() {
@@ -1509,6 +1584,19 @@ pub fn render_c4_diagram_svg_typed(
     }
     let classic_shoal = is_shoal && native.is_none();
     let relationship_line = text_paint.relationship_line();
+    #[cfg(feature = "layout-shoal")]
+    let transparent_native = native.filter(|_| is_shoal && soften_boundary_surfaces);
+    #[cfg(feature = "layout-shoal")]
+    let relation_background = transparent_native
+        .filter(|theme| theme.edge_label_bg == EdgeLabelBackground::Auto)
+        .map(|theme| theme.container_background);
+    #[cfg(feature = "layout-shoal")]
+    let relation_outline = transparent_native.and_then(|theme| {
+        let stroke = Color::parse(relationship_line).ok()?;
+        (stroke.channels()[3] == 255).then(|| {
+            super::theme::readable_opaque_background(theme.container_background, Some(stroke))
+        })
+    });
     write_c4_relation_defs(
         &mut out,
         diagram_id,
@@ -1529,6 +1617,10 @@ pub fn render_c4_diagram_svg_typed(
                         rel.from, rel.to
                     ),
                 })?;
+        #[cfg(feature = "layout-shoal")]
+        let outline = relation_outline.filter(|_| text_paint.uses_default_line(idx));
+        #[cfg(not(feature = "layout-shoal"))]
+        let outline = None;
         let custom_classic_color = classic_shoal && stroke_color != relationship_line;
         let indexed = (native.is_some() || custom_classic_color)
             .then(|| [format!("arrowhead-{idx}"), format!("arrowend-{idx}")]);
@@ -1536,45 +1628,15 @@ pub fn render_c4_diagram_svg_typed(
             ids.each_ref().map(String::as_str)
         });
         if let Some(native) = native {
-            let (head, end, fill) = match native.marker_style {
-                MarkerStyle::Stealth => (
-                    "M 0 0 L 10 5 L 0 10 L 3 5 Z",
-                    "M 10 0 L 0 5 L 10 10 L 7 5 Z",
-                    stroke_color,
-                ),
-                MarkerStyle::Open => ("M 0 0 L 10 5 L 0 10", "M 10 0 L 0 5 L 10 10", "none"),
-                MarkerStyle::Classic | MarkerStyle::Filled => (
-                    "M 0 0 L 10 5 L 0 10 z",
-                    "M 10 0 L 0 5 L 10 10 z",
-                    stroke_color,
-                ),
-            };
-            let stroke = stroke_color.trim();
-            let visible_stroke = !stroke.is_empty()
-                && !stroke.eq_ignore_ascii_case("none")
-                && !stroke.eq_ignore_ascii_case("transparent");
-            let (end_ref, start_ref, marker_geometry, stroke_geometry) =
-                if is_shoal && visible_stroke {
-                    (
-                        "9.5",
-                        "0.5",
-                        r#" overflow="visible""#,
-                        r#" stroke-linejoin="round" stroke-width="1""#,
-                    )
-                } else {
-                    ("9", "1", "", "")
-                };
-            let _ = write!(
-                out,
-                r#"<defs><marker id="{}" refX="{end_ref}" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"{marker_geometry}><path d="{head}" fill="{}" stroke="{}"{stroke_geometry}/></marker><marker id="{}" refX="{start_ref}" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"{marker_geometry}><path d="{end}" fill="{}" stroke="{}"{stroke_geometry}/></marker></defs>"#,
-                escape_attr_display(scoped_svg_id(diagram_id, arrowhead)),
-                escape_attr(fill),
-                escape_attr(stroke_color),
-                escape_attr_display(scoped_svg_id(diagram_id, arrowend)),
-                escape_attr(fill),
-                escape_attr(stroke_color)
-            );
-            out.checkpoint()?;
+            write_native_c4_relation_arrows(
+                &mut out,
+                diagram_id,
+                [arrowhead, arrowend],
+                native.marker_style,
+                stroke_color,
+                outline,
+                is_shoal,
+            )?;
         } else if custom_classic_color {
             write_c4_relation_arrows(
                 &mut out,
@@ -1615,8 +1677,11 @@ pub fn render_c4_diagram_svg_typed(
             routed::open_shaft(
                 &mut out,
                 route,
-                stroke_color,
-                connector_width,
+                routed::ShaftPaint {
+                    stroke: stroke_color,
+                    width: connector_width,
+                    outline,
+                },
                 diagram_id,
                 clip_id.as_deref().map(|id| (id, root_bounds)),
                 &mut relation_points,
@@ -1698,14 +1763,14 @@ pub fn render_c4_diagram_svg_typed(
             let Some(label_origin) = &route.label_origin else {
                 continue;
             };
-            let _ = write!(
-                out,
-                r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate({}, {})">"#,
-                escape_attr(&route.id),
-                fmt(label_origin.x),
-                fmt(label_origin.y)
-            );
-            out.checkpoint()?;
+            routed::open_label(
+                &mut out,
+                rel,
+                route,
+                label_origin,
+                relation_background,
+                text_color,
+            )?;
         }
         let midx = if is_shoal {
             -rel.label.width / 2.0

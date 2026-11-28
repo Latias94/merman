@@ -9,7 +9,7 @@ use merman_render_core::{
 
 use super::{
     C4_TECHNOLOGY_GAP, C4BoundaryLayout, C4Measurement, C4RelLayout, C4TextBlockLayout,
-    c4_relation_offset, c4_text_row_offset, typography::C4PreparedFont,
+    c4_relation_offset, c4_text_row_offset, geometry::C4TextRenderPlan, typography::C4PreparedFont,
 };
 
 const RELATION_WRAP_WIDTH: f64 = 190.0;
@@ -101,7 +101,24 @@ fn relation_ink(
     }
     block.width = ink.map_or(0.0, |ink| ink.width());
     block.height = ink.map_or(0.0, |ink| ink.height());
+    block.render_plan = ink.map(C4TextRenderPlan::RelationInk);
     Ok(ink)
+}
+
+/// Includes the same caption clearance as layout and the shaft cutout.
+pub(super) fn relation_label_footprint(
+    relation: &C4RelLayout,
+    reference: Option<&C4TextBlockLayout>,
+) -> Option<Rect> {
+    [Some(&relation.label), relation.techn.as_ref(), reference]
+        .into_iter()
+        .flatten()
+        .filter_map(|block| match block.render_plan.as_ref()? {
+            C4TextRenderPlan::RelationInk(ink) => Some(*ink + Vec2::new(0.0, block.y)),
+            C4TextRenderPlan::Unified(_) => None,
+        })
+        .reduce(|ink, block| ink.union(block))
+        .map(|ink| ink.inflate(SHAFT_CLEARANCE, SHAFT_CLEARANCE))
 }
 
 pub fn title_ink(boundary: &C4BoundaryLayout, ctx: &C4Measurement<'_>) -> Result<Option<Rect>> {

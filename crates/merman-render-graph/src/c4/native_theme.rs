@@ -1,4 +1,6 @@
 use merman_model::presentation::PresentationConfig;
+#[cfg(feature = "layout-shoal")]
+use merman_theme_contract::v2::{Color, EdgeLabelBackground};
 use merman_theme_contract::v2::{EdgeStyle, MarkerStyle};
 
 use merman_render_core::mermaid_style::font_family_css;
@@ -15,6 +17,10 @@ pub struct C4NativeStyle {
     pub(crate) title_family: String,
     pub(crate) title_weight: u16,
     pub(crate) text_ink: String,
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) container_background: Color,
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) edge_label_bg: EdgeLabelBackground,
 }
 
 impl C4NativeStyle {
@@ -29,6 +35,10 @@ impl C4NativeStyle {
             title_family,
             title_weight: theme.typography.title_weight,
             text_ink: theme.roles.text_primary.to_string(),
+            #[cfg(feature = "layout-shoal")]
+            container_background: theme.roles.surface_container.first_color(),
+            #[cfg(feature = "layout-shoal")]
+            edge_label_bg: theme.form.edge_label_bg,
         }
     }
 }

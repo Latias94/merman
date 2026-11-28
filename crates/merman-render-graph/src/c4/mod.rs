@@ -1,4 +1,4 @@
-use geometry::{C4TextRenderPlan, C4TextRowLayout};
+use geometry::{C4TextRowLayout, C4UnifiedTextRows};
 use merman_model::families::c4::{C4DiagramModel, C4RelationOffset, C4Shape, parse_integer_prefix};
 use merman_render_core::resources::OperationWorkMeter;
 use merman_render_core::text::{
@@ -176,7 +176,7 @@ pub(crate) struct TextMeasure {
 #[derive(Debug, Clone)]
 pub(crate) struct UnifiedTextMeasure {
     pub(crate) metrics: TextMeasure,
-    pub(crate) render_plan: C4TextRenderPlan,
+    pub(crate) render_plan: C4UnifiedTextRows,
 }
 
 struct C4LegacyWrapMeasurer<'a> {
@@ -369,7 +369,7 @@ fn measure_c4_unified_text(
     };
     UnifiedTextMeasure {
         metrics,
-        render_plan: C4TextRenderPlan {
+        render_plan: C4UnifiedTextRows {
             rows,
             bbox_x: -left,
             bbox_y,

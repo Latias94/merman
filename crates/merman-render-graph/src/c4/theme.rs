@@ -115,23 +115,31 @@ impl C4ClusterThemePlan {
         alias: &str,
         font_color: &str,
     ) -> Option<Color> {
-        let [r, g, b, _] = self.boundaries.get(alias)?.theme_background?.channels();
-        let fill = Color::rgb(r, g, b);
-        let Some(ink) = css_color::parse(font_color.trim()) else {
-            return Some(fill);
-        };
-        let [r, g, b, a] = ink.rgba.to_rgba8();
-        let ink = Color::rgba(r, g, b, a);
-        let contrast = |fill| ink.composite(fill, 1.0).contrast(fill);
-        if contrast(fill) >= 4.5 {
-            return Some(fill);
-        }
-        let black = Color::rgb(0, 0, 0);
-        let white = Color::rgb(255, 255, 255);
-        Some(if contrast(black) >= contrast(white) {
-            black
-        } else {
-            white
-        })
+        let fill = self.boundaries.get(alias)?.theme_background?;
+        Some(readable_opaque_background(fill, literal_color(font_color)))
+    }
+}
+
+pub(super) fn literal_color(value: &str) -> Option<Color> {
+    let [r, g, b, a] = css_color::parse(value.trim())?.rgba.to_rgba8();
+    Some(Color::rgba(r, g, b, a))
+}
+
+pub(super) fn readable_opaque_background(preferred: Color, ink: Option<Color>) -> Color {
+    let [r, g, b, _] = preferred.channels();
+    let fill = Color::rgb(r, g, b);
+    let Some(ink) = ink else {
+        return fill;
+    };
+    let contrast = |fill| ink.composite(fill, 1.0).contrast(fill);
+    if contrast(fill) >= 4.5 {
+        return fill;
+    }
+    let black = Color::rgb(0, 0, 0);
+    let white = Color::rgb(255, 255, 255);
+    if contrast(black) >= contrast(white) {
+        black
+    } else {
+        white
     }
 }

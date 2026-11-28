@@ -1,7 +1,8 @@
 use super::{
     C4_FRAMED_FRAME_WIDTH, C4_NEO_FRAMED_LABEL_PADDING_X, C4_NEO_FRAMED_LABEL_PADDING_Y, C4Conf,
     C4ConfigView, C4Look, C4Model, C4NodeShape, c4_cap_radius, c4_node_shape,
-    c4_person_head_radius, c4_stereotype_text, measure_c4_unified_text, prepare_c4_legacy_text,
+    c4_person_head_radius, c4_stereotype_text, geometry::C4TextRenderPlan, measure_c4_unified_text,
+    prepare_c4_legacy_text,
 };
 use super::{
     C4BoundaryLayout, C4DiagramLayout, C4ImageLayout, C4RelLayout, C4ShapeLayout, C4TextBlockLayout,
@@ -515,7 +516,7 @@ pub fn measure_c4_shape(shape: &C4Shape, ctx: &C4Measurement<'_>) -> C4ShapeLayo
         width: label_m.as_ref().map_or(0.0, |m| m.metrics.width),
         height: label_m.as_ref().map_or(0.0, |m| m.metrics.height),
         line_count: label_m.as_ref().map_or(0, |m| m.metrics.line_count),
-        render_plan: label_m.map(|m| m.render_plan),
+        render_plan: label_m.map(|m| C4TextRenderPlan::Unified(m.render_plan)),
     };
 
     // Mermaid's unified C4 shape adapter derives the node stereotype exclusively from
@@ -537,7 +538,7 @@ pub fn measure_c4_shape(shape: &C4Shape, ctx: &C4Measurement<'_>) -> C4ShapeLayo
         width: stereotype_m.metrics.width,
         height: stereotype_m.metrics.height,
         line_count: stereotype_m.metrics.line_count,
-        render_plan: Some(stereotype_m.render_plan),
+        render_plan: Some(C4TextRenderPlan::Unified(stereotype_m.render_plan)),
     };
 
     let descr_block = shape
@@ -561,7 +562,7 @@ pub fn measure_c4_shape(shape: &C4Shape, ctx: &C4Measurement<'_>) -> C4ShapeLayo
                 width: measured.metrics.width,
                 height: measured.metrics.height,
                 line_count: measured.metrics.line_count,
-                render_plan: Some(measured.render_plan),
+                render_plan: Some(C4TextRenderPlan::Unified(measured.render_plan)),
             }
         });
 
