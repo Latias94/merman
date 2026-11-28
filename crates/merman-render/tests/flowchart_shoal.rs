@@ -1278,6 +1278,41 @@ const AGENTFLOW_ROUGH_STRESS: &str = include_str!(
     "../../../docs/performance/fixtures/shoal-native-visual/mmd/s39-agentflow-hand-drawn-transparent.mmd"
 );
 
+#[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
+#[test]
+fn shoal_mixed_direction_ingress_and_return_keep_distinct_painted_shafts() {
+    use kurbo::{BezPath, Line, PathEl};
+
+    let svg = render_studio_shoal(include_str!(
+        "../../../docs/performance/fixtures/shoal-native-visual/mmd/s01-flow-mixed-directions.mmd"
+    ));
+    let doc = roxmltree::Document::parse(&svg).unwrap();
+    let shaft = |id| {
+        let edge = doc
+            .descendants()
+            .find(|node| node.has_tag_name("path") && node.attribute("data-id") == Some(id))
+            .unwrap();
+        BezPath::from_svg(edge.attribute("d").unwrap()).unwrap()
+    };
+    let ingress = shaft("L_Ext_L1A_0");
+    let returning = shaft("L_L2_Ext_0");
+    let mut from = kurbo::Point::ORIGIN;
+    kurbo::flatten(ingress.iter(), 0.05, |element| match element {
+        PathEl::MoveTo(point) => from = point,
+        PathEl::LineTo(to) => {
+            let leg = Line::new(from, to);
+            assert!(
+                returning
+                    .segments()
+                    .all(|segment| segment.intersect_line(leg).is_empty()),
+                "ingress and return intersect along {leg:?}"
+            );
+            from = to;
+        }
+        _ => unreachable!("an open flattened shaft contains only moves and lines"),
+    });
+}
+
 #[cfg(all(feature = "diagram-agentflow", feature = "layout-shoal"))]
 #[test]
 fn agentflow_shoal_hand_drawn_stays_within_svg_budget() {
