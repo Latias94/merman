@@ -381,8 +381,13 @@ pub(crate) fn layout_c4_shoal(
     };
     let options = input.options_for(&graph);
     let measured = project_input(&graph, &input, &mut work)?;
-    let geometry = crate::layout_work::measure_layout_solve!(card_grid::layout_with_control(
-        &measured, &options, &mut work,
+    let row_limit = |value: f64| (value.is_finite() && value >= 1.0).then_some(value as usize);
+    let rows = card_grid::CardGridOptions::with_column_limits(
+        row_limit(model.layout.c4_shape_in_row),
+        row_limit(model.layout.c4_boundary_in_row),
+    );
+    let geometry = crate::layout_work::measure_layout_solve!(card_grid::layout_with_hints(
+        &measured, &options, rows, &mut work,
     ))
     .map_err(|error| work.map_shoal_error(error))?;
     // Captions without a grid seat remain in `labels` for the painted-shaft search.

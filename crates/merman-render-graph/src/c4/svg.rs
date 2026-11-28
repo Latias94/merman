@@ -30,8 +30,6 @@ use merman_render_core::{
 use merman_theme_contract::v2::EdgeLabelBackground;
 use merman_theme_contract::v2::{Color, EdgeStyle, MarkerStyle};
 
-#[cfg(feature = "layout-shoal")]
-use super::C4RoutedGeometry;
 use super::{
     C4_ELEMENT_TYPES, C4_FRAMED_FRAME_WIDTH, C4_ROUNDED_RADIUS, C4_TECHNOLOGY_GAP,
     C4ClusterThemePlan, C4ConfigView, C4DiagramLayout, C4Look, C4NativeStyle, C4NodeShape,
@@ -39,6 +37,8 @@ use super::{
     c4_cap_radius, c4_node_shape, c4_relation_markers, c4_relation_offset, c4_text_row_offset,
     geometry::C4TextRenderPlan, typography::C4PreparedFont,
 };
+#[cfg(feature = "layout-shoal")]
+use super::{C4BoundaryLayout, C4RoutedGeometry};
 
 #[cfg(feature = "layout-shoal")]
 mod routed;

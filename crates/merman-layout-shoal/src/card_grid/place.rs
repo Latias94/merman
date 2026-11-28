@@ -83,25 +83,45 @@ fn caption_gaps(
 ) -> LayoutResult<Gutters> {
     let nx = columns - 1;
     let ny = items.div_ceil(columns) - 1;
-    work.charge(nx.checked_add(ny).ok_or(WorkError::ArithmeticOverflow)?)?;
-    let mut gaps = [filled(nx, gap.width)?, filled(ny, gap.height)?];
+    let len = nx.checked_add(ny).ok_or(WorkError::ArithmeticOverflow)?;
+    work.charge(len.checked_mul(2).ok_or(WorkError::ArithmeticOverflow)?)?;
+    let mut room = [
+        filled(nx, (0.0_f64, 0.0_f64, 0usize))?,
+        filled(ny, (0.0, 0.0, 0))?,
+    ];
     work.visit(demands.len())?;
     for &CaptionDemand {
         slots: [a, b],
         size,
     } in demands
     {
-        for (axis, a, b, span, normal) in [
-            (0, a % columns, b % columns, size.width, gap.width),
-            (1, a / columns, b / columns, size.height, gap.height),
+        for (axis, a, b, span, shelf) in [
+            (0, a % columns, b % columns, size.width, size.height),
+            (1, a / columns, b / columns, size.height, size.height),
         ] {
             if a != b {
                 // Each caption reserves a nearby crossing in its own scope. No caption can
                 // enlarge more than one row gap and one column gap.
-                let gap = &mut gaps[axis][a.min(b) + (a.abs_diff(b) - 1) / 2];
-                *gap = gap.max((span + runway).min(2.2 * normal));
+                let (widest, shelf_height, count) =
+                    &mut room[axis][a.min(b) + (a.abs_diff(b) - 1) / 2];
+                *widest = widest.max(span);
+                *shelf_height = shelf_height.max(shelf);
+                *count = count.saturating_add(1);
             }
         }
+    }
+    let mut gaps = [reserved(nx)?, reserved(ny)?];
+    work.visit(len)?;
+    for (axis, normal) in [gap.width, gap.height].into_iter().enumerate() {
+        gaps[axis].extend(room[axis].iter().map(|&(span, shelf, count)| {
+            if count == 0 {
+                normal
+            } else {
+                // A congested channel needs room for neighboring label shelves as well as
+                // the terminal lead-ins. Bound demand independently of relation multiplicity.
+                normal.max(span + runway + count.saturating_sub(1).min(3) as f64 * shelf)
+            }
+        }));
     }
     Ok(gaps)
 }
@@ -225,17 +245,18 @@ fn cells(
     let natural = natural.clamp(1, column_limit);
     // The widest card gives a fitting column count without repeated trial layouts.
     // An oversized card gets its own row.
-    let max_gap = if demands.is_empty() {
-        gap.width
-    } else {
-        gap.width * 2.2
-    };
-    let guaranteed_fit = (((available + max_gap) / (widest + max_gap)).floor() as usize).max(1);
     let mut gaps = caption_gaps(count, natural, demands, gap, margin, work)?;
     let (mut columns, mut total_width) = widths(items, natural, &gaps[0], drawing, work)?;
-    if total_width > available && guaranteed_fit < natural {
-        gaps = caption_gaps(count, guaranteed_fit, demands, gap, margin, work)?;
-        (columns, total_width) = widths(items, guaranteed_fit, &gaps[0], drawing, work)?;
+    if total_width > available && natural > 1 {
+        let max_gap = gap
+            .width
+            .max(scope.caption.width + margin + 3.0 * scope.caption.height);
+        let guaranteed_fit =
+            (((available + max_gap) / (widest + max_gap)).floor() as usize).clamp(1, natural);
+        if guaranteed_fit < natural {
+            gaps = caption_gaps(count, guaranteed_fit, demands, gap, margin, work)?;
+            (columns, total_width) = widths(items, guaranteed_fit, &gaps[0], drawing, work)?;
+        }
     }
     let count_columns = columns.len();
     let count_rows = count.div_ceil(count_columns);
