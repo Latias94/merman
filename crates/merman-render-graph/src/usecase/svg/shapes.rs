@@ -1,4 +1,5 @@
 use super::super::actor::{self, ActorPlacement};
+use super::sketch::{ShapeStyle, UsecaseSketch, ellipse_path};
 use super::*;
 use merman_model::families::usecase::UsecaseNode;
 use merman_render_core::icon_registry::{
@@ -71,6 +72,31 @@ pub(super) fn rect(
     );
 }
 
+pub(super) fn write_box(
+    out: &mut impl SvgOutput,
+    class: &str,
+    origin: (f64, f64),
+    size: (f64, f64),
+    style: &str,
+    sketch: Option<&UsecaseSketch<'_>>,
+    translation: Vec2,
+) -> Result<()> {
+    if let Some(sketch) = sketch {
+        let outline = Rect::from_origin_size(origin, size).to_path(0.1).to_svg();
+        sketch.write_shape(
+            out,
+            class,
+            ShapeStyle::Local(style),
+            &outline,
+            translation,
+            true,
+        )
+    } else {
+        rect(out, class, origin.0, origin.1, size.0, size.1, style);
+        Ok(())
+    }
+}
+
 pub(super) struct UsecaseNodeRenderContext<'a> {
     pub(super) source: Option<&'a UsecaseNode>,
     pub(super) note: bool,
@@ -79,31 +105,44 @@ pub(super) struct UsecaseNodeRenderContext<'a> {
     pub(super) diagram_id: SvgId<'a>,
     pub(super) options: &'a UsecaseSvgContext<'a>,
     pub(super) canonical: bool,
+    pub(super) sketch: Option<&'a UsecaseSketch<'a>>,
 }
 
 fn write_usecase_body(
     out: &mut impl SvgOutput,
     node: &LayoutNode,
     plan: &UsecaseNodePlan,
-    source: Option<&UsecaseNode>,
-) {
+    context: &UsecaseNodeRenderContext<'_>,
+) -> Result<()> {
     let style = &plan.source_style;
+    let translation = Vec2::new(node.x, node.y);
     if plan.ellipse {
-        let business = source.is_some_and(|node| node.business);
-        let _ = write!(
-            out,
-            r#"<ellipse class="basic label-container{}" cx="0" cy="0" rx="{}" ry="{}" style="{}"/>"#,
-            if business {
-                " usecase-business-ellipse"
-            } else {
-                ""
-            },
-            fmt(node.width / 2.0),
-            fmt(node.height / 2.0),
-            escape_attr(style)
-        );
+        let business = context.source.is_some_and(|node| node.business);
+        let class = if business {
+            "basic label-container usecase-business-ellipse"
+        } else {
+            "basic label-container"
+        };
+        let (rx, ry) = (node.width / 2.0, node.height / 2.0);
+        if let Some(sketch) = context.sketch {
+            sketch.write_shape(
+                out,
+                class,
+                ShapeStyle::Local(style),
+                &ellipse_path(0.0, rx, ry),
+                translation,
+                true,
+            )?;
+        } else {
+            let _ = write!(
+                out,
+                r#"<ellipse class="{class}" cx="0" cy="0" rx="{}" ry="{}" style="{}"/>"#,
+                fmt(rx),
+                fmt(ry),
+                escape_attr(style)
+            );
+        }
         if business {
-            let (rx, ry) = (node.width / 2.0, node.height / 2.0);
             let label_width = plan.label.metrics.width.max(
                 plan.stereotype
                     .as_ref()
@@ -123,20 +162,21 @@ fn write_usecase_body(
             );
         }
     } else {
-        rect(
+        write_box(
             out,
             "basic label-container",
-            -node.width / 2.0,
-            -node.height / 2.0,
-            node.width,
-            node.height,
+            (-node.width / 2.0, -node.height / 2.0),
+            (node.width, node.height),
             style,
-        );
+            context.sketch,
+            translation,
+        )?;
     }
+    Ok(())
 }
 
-pub(super) fn write_node(
-    out: &mut impl SvgOutput,
+pub(super) fn write_node<O: SvgOutput>(
+    out: &mut O,
     node: &LayoutNode,
     plan: &UsecaseNodePlan,
     context: &UsecaseNodeRenderContext<'_>,
@@ -200,41 +240,72 @@ pub(super) fn write_node(
             fmt(glyph_y),
             escape_attr(&plan.source_style)
         );
+        let glyph_translation = Vec2::new(node.x, node.y + glyph_y);
+        let write_glyph = |out: &mut O, class: &str, outline: &str, filled: bool| -> Result<()> {
+            if let Some(sketch) = context.sketch {
+                sketch.write_shape(
+                    out,
+                    class,
+                    ShapeStyle::Inherited(&plan.source_style),
+                    outline,
+                    glyph_translation,
+                    filled,
+                )
+            } else {
+                let fill = if filled { "" } else { r#" fill="none""# };
+                let _ = write!(out, r#"<path class="{class}" d="{outline}"{fill}/>"#);
+                Ok(())
+            }
+        };
         match actor.actor_type {
             UsecaseActorType::Normal => {
-                let _ = write!(
-                    out,
-                    r#"<path class="usecase-actor-stick" d="{}"/>"#,
-                    actor::NORMAL
-                );
+                write_glyph(out, "usecase-actor-stick", actor::NORMAL, true)?;
             }
             UsecaseActorType::Hollow => {
-                let _ = write!(
-                    out,
-                    r#"<circle class="usecase-actor-hollow-head" cx="0" cy="{}" r="{}" fill="none"/><path class="usecase-actor-hollow-body" d="{}" fill="none"/>"#,
-                    actor::HOLLOW_HEAD_Y,
-                    actor::HOLLOW_HEAD_RADIUS,
-                    actor::HOLLOW_BODY
-                );
+                if context.sketch.is_some() {
+                    let radius = actor::HOLLOW_HEAD_RADIUS;
+                    let head = ellipse_path(actor::HOLLOW_HEAD_Y, radius, radius);
+                    write_glyph(out, "usecase-actor-hollow-head", &head, false)?;
+                } else {
+                    let _ = write!(
+                        out,
+                        r#"<circle class="usecase-actor-hollow-head" cx="0" cy="{}" r="{}" fill="none"/>"#,
+                        actor::HOLLOW_HEAD_Y,
+                        actor::HOLLOW_HEAD_RADIUS,
+                    );
+                }
+                write_glyph(out, "usecase-actor-hollow-body", actor::HOLLOW_BODY, false)?;
             }
             UsecaseActorType::Awesome => {
-                let _ = write!(
+                write_glyph(
                     out,
-                    r#"<path class="usecase-actor-awesome-silhouette" d="{}"/>"#,
-                    actor::AWESOME
-                );
+                    "usecase-actor-awesome-silhouette",
+                    actor::AWESOME,
+                    true,
+                )?;
             }
             UsecaseActorType::Icon => {
-                let _ = write!(
-                    out,
-                    r#"<rect class="usecase-actor-icon-frame" x="{}" y="{}" width="{}" height="{}" rx="{}" ry="{}"/>"#,
-                    -actor::ICON_WIDTH / 2.0,
-                    actor::ICON_Y,
-                    actor::ICON_WIDTH,
-                    actor::ICON_HEIGHT,
-                    actor::ICON_CORNER,
-                    actor::ICON_CORNER
-                );
+                if context.sketch.is_some() {
+                    let frame = Rect::from_origin_size(
+                        (-actor::ICON_WIDTH / 2.0, actor::ICON_Y),
+                        (actor::ICON_WIDTH, actor::ICON_HEIGHT),
+                    )
+                    .to_rounded_rect(actor::ICON_CORNER)
+                    .to_path(0.1)
+                    .to_svg();
+                    write_glyph(out, "usecase-actor-icon-frame", &frame, true)?;
+                } else {
+                    let _ = write!(
+                        out,
+                        r#"<rect class="usecase-actor-icon-frame" x="{}" y="{}" width="{}" height="{}" rx="{}" ry="{}"/>"#,
+                        -actor::ICON_WIDTH / 2.0,
+                        actor::ICON_Y,
+                        actor::ICON_WIDTH,
+                        actor::ICON_HEIGHT,
+                        actor::ICON_CORNER,
+                        actor::ICON_CORNER
+                    );
+                }
                 let icon = if let Some(registry) = context.options.icon_registry {
                     let work = context.options.work_meter;
                     let prefix = IconIdScopePrefix::from_parts(
@@ -298,15 +369,15 @@ pub(super) fn write_node(
         }
         out.push_str("</g>");
     } else if let Some(table) = &plan.table {
-        rect(
+        write_box(
             out,
             "label-container usecase-json-border",
-            -node.width / 2.0,
-            -node.height / 2.0,
-            node.width,
-            node.height,
+            (-node.width / 2.0, -node.height / 2.0),
+            (node.width, node.height),
             &plan.source_style,
-        );
+            context.sketch,
+            Vec2::new(node.x, node.y),
+        )?;
         let inner_width = node.width - 2.0 * table.border_width;
         let left = -inner_width / 2.0;
         let top = -node.height / 2.0 + table.border_width;
@@ -375,8 +446,16 @@ pub(super) fn write_node(
         }
         out.push_str("</g>");
     } else {
-        if plan.ellipse {
-            write_usecase_body(out, node, plan, context.source);
+        if context.note && context.sketch.is_some() {
+            write_box(
+                out,
+                "basic label-container outer-path",
+                (-node.width / 2.0, -node.height / 2.0),
+                (node.width, node.height),
+                &plan.source_style,
+                context.sketch,
+                Vec2::new(node.x, node.y),
+            )?;
         } else if context.note {
             // note.ts uses a RoughJS rectangle even for classic/neo. At zero
             // roughness its fill and outline still remain separate SVG paths.
@@ -409,7 +488,7 @@ pub(super) fn write_node(
                 escape_attr(note_stroke)
             );
         } else {
-            write_usecase_body(out, node, plan, context.source);
+            write_usecase_body(out, node, plan, context)?;
         }
         let stereo_height = plan
             .stereotype
@@ -436,7 +515,7 @@ pub(super) fn write_node(
             out,
             &plan.label,
             if context.note {
-                UsecaseLabelKind::PositionedNode("label noteLabel")
+                caption_kind("label noteLabel")
             } else if context.canonical {
                 let class = if context
                     .source

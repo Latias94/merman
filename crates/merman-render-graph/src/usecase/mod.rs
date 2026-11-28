@@ -258,6 +258,7 @@ pub fn prepare_usecase_measurements(
     work: &mut OperationLayoutWorkControl,
 ) -> Result<UsecaseMeasured> {
     let mut css = UsecaseCssBinding::new(config.as_value());
+    css.canvas_background = canvas;
     if let Some(theme) = native {
         css.apply_native(config, theme, canvas);
     }

@@ -16,6 +16,7 @@ use merman_model::families::usecase::{
     UsecaseActorType, UsecaseArrowType, UsecaseNodeKind, UsecaseRelationshipType,
 };
 use merman_model::presentation::RenderSemanticModel;
+use merman_render_graph::usecase::actor::{caption_contact_bounds, side_contact_bounds};
 use roxmltree::{Document, Node};
 use std::collections::HashMap;
 
@@ -170,7 +171,7 @@ C --> D
     assert_ne!(paths(render(17).svg()), paths(render(23).svg()));
 }
 
-fn actor_glyph(painted: Node<'_, '_>, variant: UsecaseActorType) -> (BezPath, f64) {
+fn actor_glyph(painted: Node<'_, '_>, variant: UsecaseActorType) -> (BezPath, f64, f64) {
     let glyph = painted
         .children()
         .find(|&item| svg_has_class(item, "usecase-actor-glyph"))
@@ -210,9 +211,11 @@ fn actor_glyph(painted: Node<'_, '_>, variant: UsecaseActorType) -> (BezPath, f6
         UsecaseActorType::Awesome => 13.0,
         UsecaseActorType::Icon => -2.0,
     };
+    let transform = svg_group_transform(glyph);
     (
         outline,
-        (svg_group_transform(glyph) * Point::new(0.0, anchor_y)).y,
+        (transform * Point::ORIGIN).y,
+        (transform * Point::new(0.0, anchor_y)).y,
     )
 }
 
@@ -297,16 +300,28 @@ fn check_usecase_geometry(source: &str, context: &str, expected_stitches: usize)
                 .filter(|bounds| bounds.area() > 0.0);
             match semantic.kind {
                 UsecaseNodeKind::Actor => {
-                    let (mut outline, anchor_y) = actor_glyph(painted, semantic.actor_type);
+                    let (mut outline, glyph_y, anchor_y) =
+                        actor_glyph(painted, semantic.actor_type);
                     let glyph_bounds = outline.bounding_box();
+                    if let Some(envelope) =
+                        side_contact_bounds(semantic.actor_type, glyph_bounds, glyph_y)
+                    {
+                        outline.extend(envelope.path_elements(FLATNESS));
+                    }
                     let mut previous_bottom = glyph_bounds.y1;
-                    for label in labels.clone() {
+                    let mut actor_labels = labels.clone().peekable();
+                    while let Some(label) = actor_labels.next() {
                         assert!(
                             label.y0 >= previous_bottom,
                             "{context}: actor labels overlap"
                         );
                         previous_bottom = label.y1;
-                        outline.extend(label.path_elements(FLATNESS));
+                        let contact = if actor_labels.peek().is_none() {
+                            caption_contact_bounds(label)
+                        } else {
+                            label
+                        };
+                        outline.extend(contact.path_elements(FLATNESS));
                     }
                     assert_same_bounds(outline.bounding_box(), measured);
                     actor_anchors.insert(owner, anchor_y);
