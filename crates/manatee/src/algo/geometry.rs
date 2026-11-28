@@ -36,6 +36,54 @@ impl Rect {
     }
 }
 
+pub(super) struct RectOverlap {
+    x: f64,
+    y: f64,
+}
+
+impl RectOverlap {
+    /// Measures overlap, including containment, as in layout-base `IGeometry.calcSeparationAmount`.
+    #[inline]
+    pub(super) fn between(a: Rect, b: Rect) -> Self {
+        let mut x = a.right().min(b.right()) - a.left.max(b.left);
+        let mut y = a.bottom().min(b.bottom()) - a.top.max(b.top);
+
+        if (a.left <= b.left) && (a.right() >= b.right()) {
+            x += (b.left - a.left).min(a.right() - b.right());
+        } else if (b.left <= a.left) && (b.right() >= a.right()) {
+            x += (a.left - b.left).min(b.right() - a.right());
+        }
+        if (a.top <= b.top) && (a.bottom() >= b.bottom()) {
+            y += (b.top - a.top).min(a.bottom() - b.bottom());
+        } else if (b.top <= a.top) && (b.bottom() >= a.bottom()) {
+            y += (a.top - b.top).min(b.bottom() - a.bottom());
+        }
+
+        Self { x, y }
+    }
+
+    /// Returns the buffered half-separation using the caller's center slope and direction signs.
+    #[inline]
+    pub(super) fn separation(
+        self,
+        slope: f64,
+        (dir_x, dir_y): (f64, f64),
+        separation_buffer: f64,
+    ) -> (f64, f64) {
+        let mut move_by_y = slope * self.x;
+        let mut move_by_x = self.y / slope;
+        if self.x < move_by_x {
+            move_by_x = self.x;
+        } else {
+            move_by_y = self.y;
+        }
+
+        let dx = -dir_x * ((move_by_x / 2.0) + separation_buffer);
+        let dy = -dir_y * ((move_by_y / 2.0) + separation_buffer);
+        (dx, dy)
+    }
+}
+
 /// Returns both input centers on overlap, or clips their connecting line to the rectangles.
 #[inline]
 pub(super) fn clip_points(

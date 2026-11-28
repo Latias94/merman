@@ -1,6 +1,6 @@
 #![allow(clippy::needless_range_loop)]
 
-use super::geometry::{self, Rect};
+use super::geometry::{self, Rect, RectOverlap};
 use crate::algo::FcoseOptions;
 use crate::error::{Error, Result, WorkFailure};
 use crate::graph::{Anchor, BoundsExtras, Graph, LayoutRect, LayoutResult, Point};
@@ -1611,22 +1611,9 @@ fn calc_separation_amount_with_centers(
 ) -> (f64, f64) {
     debug_assert!(rects_intersect(a, b));
 
-    let (dir_x, dir_y) = decide_directions_for_overlapping_nodes(a, b);
-
-    // Port of layout-base `IGeometry.calcSeparationAmount` overlap logic used by FDLayout.
-    let mut overlap_x = a.right().min(b.right()) - a.left.max(b.left);
-    let mut overlap_y = a.bottom().min(b.bottom()) - a.top.max(b.top);
-
-    if (a.left <= b.left) && (a.right() >= b.right()) {
-        overlap_x += (b.left - a.left).min(a.right() - b.right());
-    } else if (b.left <= a.left) && (b.right() >= a.right()) {
-        overlap_x += (a.left - b.left).min(b.right() - a.right());
-    }
-    if (a.top <= b.top) && (a.bottom() >= b.bottom()) {
-        overlap_y += (b.top - a.top).min(a.bottom() - b.bottom());
-    } else if (b.top <= a.top) && (b.bottom() >= a.bottom()) {
-        overlap_y += (a.top - b.top).min(b.bottom() - a.bottom());
-    }
+    // Direction uses the current node centers. The slope uses the caller's cached centers.
+    let directions = decide_directions_for_overlapping_nodes(a, b);
+    let overlap = RectOverlap::between(a.rect(), b.rect());
 
     let center_dx = b_center_x - a_center_x;
     let center_dy = b_center_y - a_center_y;
@@ -1635,17 +1622,7 @@ fn calc_separation_amount_with_centers(
         slope = 1.0;
     }
 
-    let mut move_by_y = slope * overlap_x;
-    let mut move_by_x = overlap_y / slope;
-    if overlap_x < move_by_x {
-        move_by_x = overlap_x;
-    } else {
-        move_by_y = overlap_y;
-    }
-
-    let dx = -dir_x * ((move_by_x / 2.0) + separation_buffer);
-    let dy = -dir_y * ((move_by_y / 2.0) + separation_buffer);
-    (dx, dy)
+    overlap.separation(slope, directions, separation_buffer)
 }
 
 fn decide_directions_for_overlapping_nodes(a: &SimNode, b: &SimNode) -> (f64, f64) {

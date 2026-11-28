@@ -1,4 +1,4 @@
-use super::geometry::{self, Rect};
+use super::geometry::{self, Rect, RectOverlap};
 use super::grid_cells::{clear_dense_cells, reset_dense_cells};
 use crate::error::{Error, Result, WorkFailure};
 use crate::graph::{Graph, LayoutResult, Point};
@@ -1951,37 +1951,14 @@ fn calc_separation_amount(a: &SimNode, b: &SimNode, separation_buffer: f64) -> (
     debug_assert!(rects_intersect(a, b));
 
     let (dir_x, dir_y) = decide_directions_for_overlapping_nodes(a, b);
-
-    let mut overlap_x = a.right().min(b.right()) - a.left.max(b.left);
-    let mut overlap_y = a.bottom().min(b.bottom()) - a.top.max(b.top);
-
-    if (a.left <= b.left) && (a.right() >= b.right()) {
-        overlap_x += (b.left - a.left).min(a.right() - b.right());
-    } else if (b.left <= a.left) && (b.right() >= a.right()) {
-        overlap_x += (a.left - b.left).min(b.right() - a.right());
-    }
-    if (a.top <= b.top) && (a.bottom() >= b.bottom()) {
-        overlap_y += (b.top - a.top).min(a.bottom() - b.bottom());
-    } else if (b.top <= a.top) && (b.bottom() >= a.bottom()) {
-        overlap_y += (a.top - b.top).min(b.bottom() - a.bottom());
-    }
+    let overlap = RectOverlap::between(a.rect(), b.rect());
 
     let mut slope = ((b.center_y() - a.center_y()) / (b.center_x() - a.center_x())).abs();
     if (b.center_y() == a.center_y()) && (b.center_x() == a.center_x()) {
         slope = 1.0;
     }
 
-    let mut move_by_y = slope * overlap_x;
-    let mut move_by_x = overlap_y / slope;
-    if overlap_x < move_by_x {
-        move_by_x = overlap_x;
-    } else {
-        move_by_y = overlap_y;
-    }
-
-    let dx = -(dir_x as f64) * ((move_by_x / 2.0) + separation_buffer);
-    let dy = -(dir_y as f64) * ((move_by_y / 2.0) + separation_buffer);
-    (dx, dy)
+    overlap.separation(slope, (dir_x as f64, dir_y as f64), separation_buffer)
 }
 
 fn decide_directions_for_overlapping_nodes(a: &SimNode, b: &SimNode) -> (i32, i32) {
@@ -2242,6 +2219,28 @@ mod tests {
     fn assert_close(a: f64, b: f64) {
         let eps = 1e-3;
         assert!((a - b).abs() <= eps, "expected {a} ~= {b} (eps={eps})");
+    }
+
+    #[test]
+    fn overlap_separation_uses_exact_center_comparisons() {
+        // A nonzero horizontal offset below FCoSE's epsilon leaves the slope at zero.
+        let offset = 1.0 / f64::from(1_u32 << 30);
+        let a = IndexedNode {
+            width: 2.0,
+            height: 2.0,
+            x: 1.0,
+            y: 1.0,
+        };
+        let b = IndexedNode {
+            x: a.x + offset,
+            ..a
+        };
+        let graph = SimGraph::from_indexed(&[a, b], &[]);
+        let (dx, dy) = super::calc_separation_amount(&graph.nodes[0], &graph.nodes[1], 0.0);
+        assert_eq!(
+            (dx.to_bits(), dy.to_bits()),
+            ((1.0 - offset / 2.0).to_bits(), (-0.0_f64).to_bits())
+        );
     }
 
     #[test]
