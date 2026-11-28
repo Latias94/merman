@@ -213,15 +213,16 @@ impl Obstacles {
     }
 
     /// Slide a measured box along a ray. Intersecting walls project onto forbidden open
-    /// intervals for its center. Sorting once also handles obstacles hidden behind others.
+    /// intervals for its center. With a limit, return no seat if every local position is blocked.
     pub(super) fn slide(
         &self,
         origin: Point,
         size: Size,
         side: Side,
-        own_stroke: Option<u32>,
+        max_slide: Option<f64>,
+        blocks: impl Fn(Owner) -> bool,
         work: &mut Work<'_>,
-    ) -> LayoutResult<(Point, f64)> {
+    ) -> LayoutResult<Option<(Point, f64)>> {
         let initial = Bounds::checked_centered(origin, size)?;
         let (start, half) = match side {
             Side::Top => (-origin.y, size.height / 2.0),
@@ -229,26 +230,32 @@ impl Obstacles {
             Side::Left => (-origin.x, size.width / 2.0),
             Side::Right => (origin.x, size.width / 2.0),
         };
+        let limit = max_slide.map(|max| finite(start + max)).transpose()?;
         let total = self
             .boxes
             .len()
             .checked_add(self.strokes.len())
             .ok_or(WorkError::ArithmeticOverflow)?;
         work.charge(total)?;
-        let mut intervals = reserved(total)?;
+        let mut intervals = reserved(if limit.is_some() { 0 } else { total })?;
         for (owner, b) in self.iter() {
             work.visit(1)?;
-            if matches!(owner,Owner::Stroke(id) if Some(id)==own_stroke) {
+            if !blocks(owner) {
                 continue;
             }
             let across = match side.axis() {
                 Axis::Vertical => initial.x[0] < b.x[1] && b.x[0] < initial.x[1],
                 Axis::Horizontal => initial.y[0] < b.y[1] && b.y[0] < initial.y[1],
             };
-            if across {
+            if across && half > 0.0 {
                 let (lo, hi) = b.along(side);
-                if half > 0.0 && finite(hi + half)? > start {
-                    intervals.push((finite(lo - half)?, finite(hi + half)?));
+                let lo = finite(lo - half)?;
+                if limit.is_some_and(|limit| lo >= limit) {
+                    continue;
+                }
+                let hi = finite(hi + half)?;
+                if hi > start {
+                    push(&mut intervals, (lo, hi))?;
                 }
             }
         }
@@ -261,6 +268,9 @@ impl Obstacles {
                 break;
             }
             if at < hi {
+                if limit.is_some_and(|limit| hi >= limit) {
+                    return Ok(None);
+                }
                 at = finite(hi.next_up())?;
             }
         }
@@ -270,7 +280,7 @@ impl Obstacles {
             Side::Left => Point { x: -at, ..origin },
             Side::Right => Point { x: at, ..origin },
         };
-        Ok((center, finite(at - start)?))
+        Ok(Some((center, finite(at - start)?)))
     }
 }
 

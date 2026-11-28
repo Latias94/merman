@@ -314,9 +314,9 @@ fn terminal_labels_clear_later_markers_middle_labels_nodes_and_one_another() {
     let (mut d, g, c, mut graph) = fixture(
         vec![
             rect(0., 0., 24., 20.),
-            rect(0., 120., 24., 20.),
+            rect(0., 200., 24., 20.),
             rect(21., 0., 18., 20.),
-            rect(21., 120., 18., 20.),
+            rect(21., 200., 18., 20.),
             rect(-35., 20., 36., 35.),
         ],
         &[(0, 1), (2, 3)],
@@ -334,13 +334,13 @@ fn terminal_labels_clear_later_markers_middle_labels_nodes_and_one_another() {
         width: 31.,
     };
     graph.edges[0].label = Some(size(35., 20.));
-    d.edges[0].1.label_center = Some(p(17., 70.));
+    d.edges[0].1.label_center = Some(p(17., 61.));
     solve(&mut d, &g, &c, &graph).unwrap();
     let mut occupied = d.nodes.clone();
     occupied.extend([
         rect(11.5, 20., 37., 45.),
-        rect(14.5, 83., 31., 37.),
-        label_rect(p(17., 70.), size(35., 20.)),
+        rect(14.5, 163., 31., 37.),
+        label_rect(p(17., 61.), size(35., 20.)),
     ]);
     for (id, e) in &d.edges {
         let spec = &graph.edges[*id as usize];
@@ -355,6 +355,35 @@ fn terminal_labels_clear_later_markers_middle_labels_nodes_and_one_another() {
             );
             occupied.push(label);
         }
+    }
+}
+
+#[test]
+fn end_label_slide_is_bounded_to_its_owning_endpoint() {
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    for span in [100.0, 400.0] {
+        let edge = seed_edge(rect(0., 0., 24., 20.), rect(0., 20. + span, 24., 20.));
+        let mut walls = Obstacles::new();
+        walls
+            .add(
+                Owner::Middle(1),
+                Bounds::checked_rect(rect(-40., 20., 100., span - 10.)).unwrap(),
+                &mut work,
+            )
+            .unwrap();
+        let center = end_label(
+            &edge,
+            false,
+            size(20., 12.),
+            MarkerMetrics::default(),
+            &Options::default(),
+            &walls,
+            &mut work,
+        )
+        .unwrap();
+        let from = edge.points[0];
+        assert!((center.x - from.x).hypot(center.y - from.y) <= (0.35 * span).min(64.0));
     }
 }
 

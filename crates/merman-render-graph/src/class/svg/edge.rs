@@ -215,6 +215,7 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
 
         let curve_start = ctx.timing.start();
         let is_note_edge = e.id.starts_with("edgeNote");
+        let use_neo_mask = ctx.look == "neo" && !sketch && !(uses_canonical_routes && is_note_edge);
         let relation = if is_note_edge {
             None
         } else {
@@ -237,7 +238,7 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
         let canonical = ctx
             .canonical_routes
             .map(|routes| {
-                if ctx.look == "neo" && !sketch {
+                if use_neo_mask {
                     paint_scratch.route.measure_length();
                 }
                 (routes.paint)(
@@ -563,34 +564,60 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
         }
         edge_class_buf.push_str(" relation");
 
-        let label_cutout = if has_transparent_label_fill
-            && let (Some(center), Some(label), Some(bounds), Some(&ordinal)) = (
-                &label_center,
-                &e.label,
-                &path_bounds,
-                ctx.relation_index_by_id.get(e.id.as_str()),
-            )
-            && label.width > 0.0
-            && label.height > 0.0
-            && relation.is_some_and(|relation| {
-                !decode_entities_minimal_cow(&relation.source.title)
-                    .trim()
-                    .is_empty()
-            })
-            && ctx
-                .edge_label_fill((center.x, center.y))
-                .is_some_and(is_transparent)
+        let label_cutout = if let (Some(bounds), Some(&ordinal)) =
+            (&path_bounds, ctx.relation_index_by_id.get(e.id.as_str()))
         {
-            let gap =
-                kurbo::Rect::from_center_size((center.x, center.y), (label.width, label.height));
-            let width = relation_stroke_width.map_or(1.0, f64::from);
-            let outset = [start_marker_paint, end_marker_paint]
-                .into_iter()
-                .flatten()
-                .map(|marker| marker.conservative_radius(width))
-                .fold(width, f64::max);
-            write_class_edge_label_cutout(out, ctx.diagram_id, ordinal, bounds, gap, outset)?;
-            Some(ordinal)
+            let mut gaps = [None; 3];
+            if has_transparent_label_fill
+                && let (Some(center), Some(label)) = (&label_center, &e.label)
+                && label.width > 0.0
+                && label.height > 0.0
+                && relation.is_some_and(|relation| {
+                    !decode_entities_minimal_cow(&relation.source.title)
+                        .trim()
+                        .is_empty()
+                })
+                && ctx
+                    .edge_label_fill((center.x, center.y))
+                    .is_some_and(is_transparent)
+            {
+                gaps[0] = Some(kurbo::Rect::from_center_size(
+                    (center.x, center.y),
+                    (label.width, label.height),
+                ));
+            }
+            if uses_canonical_routes {
+                let shaft =
+                    kurbo::Rect::new(bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y)
+                        .inflate(path_paint_outset, path_paint_outset);
+                for (gap, terminal) in gaps[1..]
+                    .iter_mut()
+                    .zip([&e.start_label_right, &e.end_label_left])
+                {
+                    if let Some(label) = terminal {
+                        let center = ctx.translated_label_center(label);
+                        let rect = kurbo::Rect::from_center_size(
+                            (center.x, center.y),
+                            (label.width, label.height),
+                        );
+                        if rect.intersect(shaft).area() > 0.0 {
+                            *gap = Some(rect);
+                        }
+                    }
+                }
+            }
+            if gaps.iter().any(Option::is_some) {
+                let width = relation_stroke_width.map_or(1.0, f64::from);
+                let outset = [start_marker_paint, end_marker_paint]
+                    .into_iter()
+                    .flatten()
+                    .map(|marker| marker.conservative_radius(width))
+                    .fold(width, f64::max);
+                write_class_edge_label_cutout(out, ctx.diagram_id, ordinal, bounds, &gaps, outset)?;
+                Some(ordinal)
+            } else {
+                None
+            }
         } else {
             None
         };
@@ -644,7 +671,7 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
             );
         }
         edge_style_buf.clear();
-        if ctx.look == "neo" && !sketch {
+        if use_neo_mask {
             #[cfg(feature = "layout-shoal")]
             let length = canonical.as_ref().and_then(|_| {
                 paint_scratch
@@ -715,28 +742,38 @@ fn write_class_edge_label_cutout(
     id: SvgDiagramId<'_>,
     ordinal: usize,
     bounds: &SvgPathBounds,
-    gap: kurbo::Rect,
+    gaps: &[Option<kurbo::Rect>],
     outset: f64,
 ) -> merman_render_core::Result<()> {
-    // Keep the label hole inside the outer contour and retain the shaft and marker paint around it.
-    let frame = kurbo::Rect::new(bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y)
-        .inflate(outset, outset)
-        .union(gap)
+    // Keep all label holes inside the frame and retain the shaft and marker paint around them.
+    let shaft = kurbo::Rect::new(bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y)
+        .inflate(outset, outset);
+    let frame = gaps
+        .iter()
+        .flatten()
+        .fold(shaft, |frame, gap| frame.union(*gap))
         .inflate(1.0, 1.0);
     let _ = write!(
         out,
-        r#"<defs><clipPath id="{id}_class-edge-label-{ordinal}"><path clip-rule="evenodd" d="M{} {}H{}V{}H{}ZM{} {}H{}V{}H{}Z"/></clipPath></defs>"#,
+        r#"<defs><clipPath id="{id}_class-edge-label-{ordinal}"><path clip-rule="evenodd" d="M{} {}H{}V{}H{}Z"#,
         fmt(frame.x0),
         fmt(frame.y0),
         fmt(frame.x1),
         fmt(frame.y1),
         fmt(frame.x0),
-        fmt(gap.x0),
-        fmt(gap.y0),
-        fmt(gap.x1),
-        fmt(gap.y1),
-        fmt(gap.x0),
     );
+    for gap in gaps.iter().flatten() {
+        let _ = write!(
+            out,
+            "M{} {}H{}V{}H{}Z",
+            fmt(gap.x0),
+            fmt(gap.y0),
+            fmt(gap.x1),
+            fmt(gap.y1),
+            fmt(gap.x0),
+        );
+    }
+    out.push_str(r#""/></clipPath></defs>"#);
     out.checkpoint()
 }
 

@@ -326,11 +326,23 @@ fn shortest_slide(
     walls: &Obstacles,
     work: &mut Work<'_>,
 ) -> LayoutResult<Point> {
-    let (a, da) = walls.slide(at, size, sides[0], Some(id), work)?;
+    let slide = |side, work: &mut Work<'_>| {
+        walls
+            .slide(
+                at,
+                size,
+                side,
+                None,
+                |owner| owner != Owner::Stroke(id),
+                work,
+            )
+            .map(|seat| seat.expect("unbounded label slide"))
+    };
+    let (a, da) = slide(sides[0], work)?;
     if da == 0.0 {
         return Ok(a);
     }
-    let (b, db) = walls.slide(at, size, sides[1], Some(id), work)?;
+    let (b, db) = slide(sides[1], work)?;
     Ok(if db < da { b } else { a })
 }
 
@@ -450,19 +462,20 @@ fn end_label(
     walls: &Obstacles,
     work: &mut Work<'_>,
 ) -> LayoutResult<Point> {
-    let port = old_ports(edge)?[usize::from(end)];
+    let [first, last] = old_ports(edge)?;
+    let port = if end { last } else { first };
     let vertical = port.side.axis() == Axis::Vertical;
     let (depth, width) = if vertical {
         (size.height, size.width)
     } else {
         (size.width, size.height)
     };
-    let start = advance(
-        port.at,
-        port.side,
-        finite(marker.length + options.spacing.end_label_along + depth / 2.0)?,
-    )?;
+    let along = finite(marker.length + options.spacing.end_label_along + depth / 2.0)?;
+    let start = advance(port.at, port.side, along)?;
     let cross = finite(options.spacing.end_label_across + width / 2.0)?;
+    let span = (first.at.x - last.at.x).hypot(first.at.y - last.at.y);
+    let radius = (0.35 * span).min(64.0);
+    let max_slide = ((radius * radius - cross * cross).max(0.0).sqrt() - along).max(0.0);
     let mut positive = true;
     for j in 1..edge.points.len() {
         work.visit(1)?;
@@ -483,18 +496,45 @@ fn end_label(
         (false, true) => [Side::Bottom, Side::Top],
         (false, false) => [Side::Top, Side::Bottom],
     };
-    let mut best = None;
-    for side in sides {
-        let at = advance(start, side, cross)?;
+    let origins = [
+        advance(start, sides[0], cross)?,
+        advance(start, sides[1], cross)?,
+    ];
+    for at in origins {
         if walls.fits(Bounds::checked_centered(at, size)?, None, work)? {
             return Ok(at);
         }
-        let (p, d) = walls.slide(at, size, port.side, None, work)?;
-        if best.is_none_or(|(_, old)| d < old) {
-            best = Some((p, d));
+    }
+    // The kernel must supply an anchor for every measured label. Only a hard node barrier
+    // can extend the slide when the local window has no clear seat.
+    for (limit, nodes_only) in [
+        (Some(max_slide), false),
+        (Some(max_slide), true),
+        (None, true),
+    ] {
+        let mut best = None;
+        for origin in origins {
+            if let Some((p, d)) = walls.slide(
+                origin,
+                size,
+                port.side,
+                limit,
+                |owner| !nodes_only || owner == Owner::Node,
+                work,
+            )? {
+                if d == 0.0 {
+                    return Ok(p);
+                }
+                if best.is_none_or(|(_, old)| d < old) {
+                    best = Some((p, d));
+                }
+            }
+        }
+        if let Some((p, _)) = best {
+            return Ok(p);
         }
     }
-    Ok(best.expect("two label sides").0)
+    unreachable!("an unbounded node-only slide always has a seat")
 }
 
 fn endpoints(index: usize, c: &Component) -> [usize; 2] {
