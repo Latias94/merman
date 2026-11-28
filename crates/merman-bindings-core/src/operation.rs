@@ -1102,7 +1102,7 @@ impl ValidatedArtifactContract {
         } = self.prepare_engine_execution(operation, options_json, services, control)?;
         execute_controlled_output(&control, || {
             engine
-                .analyze_json_data(source, &control)
+                .execute_cached_analysis(operation.key(), source, None, &control)
                 .map(BindingOperationOutput::plain)
         })
         .map(BindingOperationOutput::into_data)
@@ -1277,28 +1277,12 @@ impl BindingEngine {
             OperationKey::EdgeGeometryJson => self
                 .edge_geometry_json_data(source, control.clone())
                 .map(BindingOperationOutput::plain),
-            OperationKey::AnalysisJson => self
-                .analyze_json_data(source, &control)
-                .map(BindingOperationOutput::plain),
-            OperationKey::AnalysisFactsJson => self
-                .analysis_facts_json_data(source, &control)
-                .map(BindingOperationOutput::plain),
-            OperationKey::ValidationJson => self
-                .validate_json_data(source, &control)
-                .map(BindingOperationOutput::plain),
-            OperationKey::DocumentAnalysisJson => self
-                .analyze_document_json_data(
-                    source,
-                    uri.expect("validated document URI presence"),
-                    &control,
-                )
-                .map(BindingOperationOutput::plain),
-            OperationKey::DocumentAnalysisFactsJson => self
-                .analyze_document_facts_json_data(
-                    source,
-                    uri.expect("validated document URI presence"),
-                    &control,
-                )
+            operation @ (OperationKey::AnalysisJson
+            | OperationKey::AnalysisFactsJson
+            | OperationKey::ValidationJson
+            | OperationKey::DocumentAnalysisJson
+            | OperationKey::DocumentAnalysisFactsJson) => self
+                .execute_cached_analysis(operation, source, uri, &control)
                 .map(BindingOperationOutput::plain),
         })
     }

@@ -28,6 +28,27 @@ impl BindingEngine {
             .parse_json_controlled(source, control)
     }
 
+    pub(crate) fn execute_cached_analysis(
+        &self,
+        operation: OperationKey,
+        source: &[u8],
+        uri: Option<&[u8]>,
+        control: &OperationControl,
+    ) -> Result<Vec<u8>, BindingError> {
+        #[cfg(feature = "analysis")]
+        let full_analyzer =
+            (operation != OperationKey::ValidationJson).then(|| self.full_analysis_analyzer());
+
+        dispatch_analysis(
+            operation,
+            #[cfg(feature = "analysis")]
+            full_analyzer.as_ref().unwrap_or(&self.analyzer),
+            source,
+            uri,
+            control,
+        )
+    }
+
     pub(super) fn execute_analysis_projection(
         &self,
         operation: OperationKey,
@@ -37,61 +58,24 @@ impl BindingEngine {
         control: &OperationControl,
     ) -> Result<Vec<u8>, BindingError> {
         #[cfg(feature = "analysis")]
-        {
-            let analyzer = Analyzer::with_options(analysis_projection_options(
-                options,
-                operation != OperationKey::ValidationJson,
-                &self.artifact_contract,
-            ));
-            let data = match operation {
-                OperationKey::AnalysisJson => analyze_json_with(&analyzer, source, control),
-                OperationKey::AnalysisFactsJson => {
-                    analyze_facts_json_with(&analyzer, source, control)
-                }
-                OperationKey::ValidationJson => validate_json_with(&analyzer, source, control),
-                OperationKey::DocumentAnalysisJson => analyze_document_json_with(
-                    &analyzer,
-                    source,
-                    uri.expect("validated document URI presence"),
-                    control,
-                ),
-                OperationKey::DocumentAnalysisFactsJson => analyze_document_facts_json_with(
-                    &analyzer,
-                    source,
-                    uri.expect("validated document URI presence"),
-                    control,
-                ),
-                _ => unreachable!("analysis projection requires an analysis operation"),
-            }?;
-            control
-                .checkpoint_at(OperationPhase::Postprocess)
-                .map_err(BindingError::cancelled)?;
-            Ok(data)
-        }
-        #[cfg(not(feature = "analysis"))]
-        {
-            let _ = (source, uri, control);
-            match operation {
-                OperationKey::AnalysisJson => {
-                    Err(common::feature_required_error("analysis", "analysis"))
-                }
-                OperationKey::AnalysisFactsJson => {
-                    Err(common::feature_required_error("analysis facts", "analysis"))
-                }
-                OperationKey::ValidationJson => {
-                    Err(common::feature_required_error("validation", "analysis"))
-                }
-                OperationKey::DocumentAnalysisJson => Err(common::feature_required_error(
-                    "document analysis",
-                    "analysis",
-                )),
-                OperationKey::DocumentAnalysisFactsJson => Err(common::feature_required_error(
-                    "document analysis facts",
-                    "analysis",
-                )),
-                _ => unreachable!("analysis projection requires an analysis operation"),
-            }
-        }
+        let analyzer = Analyzer::with_options(analysis_projection_options(
+            options,
+            operation != OperationKey::ValidationJson,
+            &self.artifact_contract,
+        ));
+        let data = dispatch_analysis(
+            operation,
+            #[cfg(feature = "analysis")]
+            &analyzer,
+            source,
+            uri,
+            control,
+        )?;
+        #[cfg(feature = "analysis")]
+        control
+            .checkpoint_at(OperationPhase::Postprocess)
+            .map_err(BindingError::cancelled)?;
+        Ok(data)
     }
 
     pub fn analyze_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
@@ -109,43 +93,11 @@ impl BindingEngine {
             .with_diagnostic_policy(options.diagnostic_policy().clone())
     }
 
-    pub(crate) fn analyze_json_data(
-        &self,
-        source: &[u8],
-        control: &OperationControl,
-    ) -> Result<Vec<u8>, BindingError> {
-        #[cfg(feature = "analysis")]
-        {
-            analyze_json_with(&self.full_analysis_analyzer(), source, control)
-        }
-        #[cfg(not(feature = "analysis"))]
-        {
-            let _ = (source, control);
-            Err(common::feature_required_error("analysis", "analysis"))
-        }
-    }
-
     pub fn analysis_facts_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         self.execute_data(crate::BindingOperationRequest::new(
             "analysis-facts-json",
             source,
         ))
-    }
-
-    pub(crate) fn analysis_facts_json_data(
-        &self,
-        source: &[u8],
-        control: &OperationControl,
-    ) -> Result<Vec<u8>, BindingError> {
-        #[cfg(feature = "analysis")]
-        {
-            analyze_facts_json_with(&self.full_analysis_analyzer(), source, control)
-        }
-        #[cfg(not(feature = "analysis"))]
-        {
-            let _ = (source, control);
-            Err(common::feature_required_error("analysis facts", "analysis"))
-        }
     }
 
     pub fn analyze_document_json(
@@ -156,26 +108,6 @@ impl BindingEngine {
         self.execute_data(
             crate::BindingOperationRequest::new("document-analysis-json", source).with_uri(uri),
         )
-    }
-
-    pub(crate) fn analyze_document_json_data(
-        &self,
-        source: &[u8],
-        uri: &[u8],
-        control: &OperationControl,
-    ) -> Result<Vec<u8>, BindingError> {
-        #[cfg(feature = "analysis")]
-        {
-            analyze_document_json_with(&self.full_analysis_analyzer(), source, uri, control)
-        }
-        #[cfg(not(feature = "analysis"))]
-        {
-            let _ = (source, uri, control);
-            Err(common::feature_required_error(
-                "document analysis",
-                "analysis",
-            ))
-        }
     }
 
     pub fn analyze_document_facts_json(
@@ -189,47 +121,54 @@ impl BindingEngine {
         )
     }
 
-    pub(crate) fn analyze_document_facts_json_data(
-        &self,
-        source: &[u8],
-        uri: &[u8],
-        control: &OperationControl,
-    ) -> Result<Vec<u8>, BindingError> {
-        #[cfg(feature = "analysis")]
-        {
-            analyze_document_facts_json_with(&self.full_analysis_analyzer(), source, uri, control)
-        }
-        #[cfg(not(feature = "analysis"))]
-        {
-            let _ = (source, uri, control);
-            Err(common::feature_required_error(
-                "document analysis facts",
-                "analysis",
-            ))
-        }
-    }
-
     pub fn validate_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         self.execute_data(crate::BindingOperationRequest::new(
             "validation-json",
             source,
         ))
     }
+}
 
-    pub(crate) fn validate_json_data(
-        &self,
-        source: &[u8],
-        control: &OperationControl,
-    ) -> Result<Vec<u8>, BindingError> {
-        #[cfg(feature = "analysis")]
-        {
-            validate_json_with(&self.analyzer, source, control)
+fn dispatch_analysis(
+    operation: OperationKey,
+    #[cfg(feature = "analysis")] analyzer: &Analyzer,
+    source: &[u8],
+    uri: Option<&[u8]>,
+    control: &OperationControl,
+) -> Result<Vec<u8>, BindingError> {
+    #[cfg(feature = "analysis")]
+    {
+        match operation {
+            OperationKey::AnalysisJson => analyze_json_with(analyzer, source, control),
+            OperationKey::AnalysisFactsJson => analyze_facts_json_with(analyzer, source, control),
+            OperationKey::ValidationJson => validate_json_with(analyzer, source, control),
+            OperationKey::DocumentAnalysisJson => analyze_document_json_with(
+                analyzer,
+                source,
+                uri.expect("validated document URI presence"),
+                control,
+            ),
+            OperationKey::DocumentAnalysisFactsJson => analyze_document_facts_json_with(
+                analyzer,
+                source,
+                uri.expect("validated document URI presence"),
+                control,
+            ),
+            _ => unreachable!("analysis projection requires an analysis operation"),
         }
-        #[cfg(not(feature = "analysis"))]
-        {
-            let _ = (source, control);
-            Err(common::feature_required_error("validation", "analysis"))
-        }
+    }
+    #[cfg(not(feature = "analysis"))]
+    {
+        let _ = (source, uri, control);
+        let subject = match operation {
+            OperationKey::AnalysisJson => "analysis",
+            OperationKey::AnalysisFactsJson => "analysis facts",
+            OperationKey::ValidationJson => "validation",
+            OperationKey::DocumentAnalysisJson => "document analysis",
+            OperationKey::DocumentAnalysisFactsJson => "document analysis facts",
+            _ => unreachable!("analysis projection requires an analysis operation"),
+        };
+        Err(common::feature_required_error(subject, "analysis"))
     }
 }
 
