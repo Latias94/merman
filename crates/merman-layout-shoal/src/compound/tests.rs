@@ -171,7 +171,7 @@ fn a_nested_crossing_exposed_by_the_first_port_retry_is_rechecked() {
     .collect();
     let options = Options::default();
     let drawing = crate::layout(&graph, &options).unwrap();
-    assert_eq!(drawing.stats.routed_crossings, 2);
+    assert_eq!(drawing.stats.routed_crossings, 1);
     assert_eq!(drawing, crate::layout(&graph, &options).unwrap());
 }
 

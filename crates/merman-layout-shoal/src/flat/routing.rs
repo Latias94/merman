@@ -605,31 +605,31 @@ fn curved_levels(
     for &id in ids {
         curves.push(sample(pieces[id].span, room));
     }
-    let mut has_peer = filled(ids.len(), false)?;
+    // None is isolated, Some(false) only meets a shared contact or interval boundary.
+    let mut peers = filled(ids.len(), None)?;
+    let crossbar_run = room.max(2.0 * MIN_CROSSBAR_ARM);
+    let shelf_run = room.max(2.0 * SHELF_MARGIN);
     meetings(pieces, ids, work, |left, right, work| {
-        has_peer[left] = true;
-        has_peer[right] = true;
         let (a, b) = (pieces[ids[left]].span, pieces[ids[right]].span);
         if !a.clashes(b) {
+            peers[left].get_or_insert(false);
+            peers[right].get_or_insert(false);
             return Ok(());
         }
+        peers[left] = Some(true);
+        peers[right] = Some(true);
         let wide_a = a.width() * 0.5 > height;
         let wide_b = b.width() * 0.5 > height;
         let opposing = (a.from < a.to) != (b.from < b.to);
-        // Opposing sweeps are not sampled for proximity, but they can still acquire
-        // the same painter crossbar. A shelf already required by either sweep adds
-        // runway before painting, which can make the other sweep ineligible.
-        let shared_crossbar = opposing && {
-            let run = if wide_a || wide_b {
-                room.max(2.0 * SHELF_MARGIN)
-            } else {
-                room
-            };
-            let paints_crossbar = |span: Span| {
-                (2.0 * MIN_CROSSBAR_ARM..steep_sweep_run_limit(span.width())).contains(&run)
-            };
-            (wide_a || paints_crossbar(a)) && (wide_b || paints_crossbar(b))
+        // The painter can turn either sweep into a centered shelf. Optical shifts can
+        // open a short gap, while an already required shelf adds its own minimum run.
+        let run = if wide_a || wide_b {
+            shelf_run
+        } else {
+            crossbar_run
         };
+        let shared_crossbar = (wide_a || run < steep_sweep_run_limit(a.width()))
+            && (wide_b || run < steep_sweep_run_limit(b.width()));
         promoted[left] |= wide_a || shared_crossbar;
         promoted[right] |= wide_b || shared_crossbar;
         if promoted[left] && promoted[right] || opposing {
@@ -655,12 +655,22 @@ fn curved_levels(
     // can safely promote to a rounded-orthogonal track without crossing any unpromoted curve.
     if room > 0.0 {
         for (slot, &id) in ids.iter().enumerate() {
-            if !has_peer[slot] {
+            if peers[slot].is_none() {
                 let width = pieces[id].span.width();
                 if width > room * MAX_SWEEP_ASPECT && width <= max_promotable_span {
                     promoted[slot] = true;
                 }
             }
+        }
+    }
+    work.visit(ids.len())?;
+    if promoted.iter().any(|&shelf| shelf) {
+        // A promotion elsewhere in the gap can make a previously short sweep eligible.
+        // Give every overlapping candidate a solver-owned track in the same grading pass.
+        for (slot, &id) in ids.iter().enumerate() {
+            work.visit(1)?;
+            promoted[slot] |= peers[slot] == Some(true)
+                && shelf_run < steep_sweep_run_limit(pieces[id].span.width());
         }
     }
     // Overlapping lanes of a parallel bundle must use the same curve family. A
