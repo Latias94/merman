@@ -379,7 +379,7 @@ stateDiagram-v2
             .parse_diagram_for_render_model_sync(&invalid, ParseOptions::strict());
         assert!(matches!(err,
             Err(merman_core::Error::SourceConfig { diagnostic })
-                if diagnostic.code().as_deref() == Some("GRID_INVALID_COORDINATE")
+                if diagnostic.code() == Some("GRID_INVALID_COORDINATE")
         ));
 
         let conflict = AUTHORED_PLACEMENTS

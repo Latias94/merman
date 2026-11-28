@@ -231,7 +231,7 @@ mod tests {
             prepared.route_sibling_edges(work)
         };
         let policy = RenderResourcePolicy::unbounded_for_trusted_input();
-        let work = OperationWorkMeter::new(policy.clone());
+        let work = OperationWorkMeter::new(policy);
         let routed = run(&work).unwrap();
         let points =
             |points: &[(f64, f64)]| points.iter().copied().map(Point::from).collect::<Vec<_>>();
@@ -251,7 +251,6 @@ mod tests {
         let meter = |limit| {
             OperationWorkMeter::new(
                 policy
-                    .clone()
                     .with_limit(ResourceLimitId::MaxLayoutWorkUnits, limit)
                     .unwrap(),
             )
