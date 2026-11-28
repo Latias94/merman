@@ -362,6 +362,7 @@ fn terminal_labels_clear_later_markers_middle_labels_nodes_and_one_another() {
 fn bounded_end_label_slide_rejects_a_seat_across_a_long_obstacle() {
     let mut control = NoopWorkControl;
     let mut work = Work::new(&mut control);
+    let spec = edge(0, 1);
     for span in [100.0, 400.0] {
         let edge = seed_edge(rect(0., 0., 24., 20.), rect(0., 20. + span, 24., 20.));
         let mut walls = Obstacles::new();
@@ -387,10 +388,10 @@ fn bounded_end_label_slide_rejects_a_seat_across_a_long_obstacle() {
         );
 
         let center = end_label(
-            &edge,
+            (0, &edge),
             false,
             size,
-            MarkerMetrics::default(),
+            &spec,
             &Options::default(),
             &walls,
             &mut work,
@@ -407,6 +408,56 @@ fn bounded_end_label_slide_rejects_a_seat_across_a_long_obstacle() {
                 .unwrap()
         );
     }
+}
+
+#[test]
+fn coincident_loop_label_uses_its_run_and_respects_markers_and_other_labels() {
+    let mut route = seed_edge(rect(-12.0, -20.0, 24.0, 20.0), rect(-12.0, 0.0, 24.0, 20.0));
+    route.ports = (Side::Bottom, Side::Bottom);
+    route.points = [
+        p(0.0, 0.0),
+        p(0.0, 40.0),
+        p(60.0, 40.0),
+        p(60.0, 80.0),
+        p(0.0, 80.0),
+        p(0.0, 0.0),
+    ]
+    .into_iter()
+    .map(|at| route_point(at, Axis::Vertical))
+    .collect();
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    let mut walls = Obstacles::new();
+    for (owner, wall) in [
+        (Owner::Stroke(0), rect(-60.0, 0.0, 120.0, 110.0)),
+        (Owner::Marker(1), rect(-60.0, 0.0, 60.0, 22.0)),
+        (Owner::End, rect(0.0, 0.0, 60.0, 30.0)),
+    ] {
+        walls
+            .add(owner, Bounds::checked_rect(wall).unwrap(), &mut work)
+            .unwrap();
+    }
+    let label_size = size(20.0, 12.0);
+    let seat = end_label(
+        (0, &route),
+        false,
+        label_size,
+        &edge(0, 0),
+        &Options::default(),
+        &walls,
+        &mut work,
+    )
+    .unwrap();
+    assert!(seat.x < 0.0 && seat.y > 28.0 && seat.y < 40.0, "{seat:?}");
+    assert!(
+        walls
+            .fits(
+                Bounds::checked_centered(seat, label_size).unwrap(),
+                Some(0),
+                &mut work
+            )
+            .unwrap()
+    );
 }
 
 #[test]

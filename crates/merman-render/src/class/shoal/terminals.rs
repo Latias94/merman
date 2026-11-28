@@ -394,10 +394,9 @@ impl Seating {
                     false
                 }
                 Obstacle::Terminal(terminal, ink) => {
-                    if terminal != owner && !self.handled[terminal.0][usize::from(terminal.1)] {
-                        clearance.overlap += terminal_ink.intersect(ink).area();
-                    }
-                    false
+                    terminal != owner
+                        && !self.handled[terminal.0][usize::from(terminal.1)]
+                        && terminal_ink.intersect(ink).area() > 0.0
                 }
                 Obstacle::Box(ink) => rect.intersect(ink).area() > 0.0,
             };
@@ -406,10 +405,13 @@ impl Seating {
         if result.is_break() {
             return Ok(None);
         }
-        clearance.overlap += self
+        if self
             .occupied
-            .overlap_area(bounds(terminal_ink), work)
-            .map_err(|error| work.map_shoal_error(error))?;
+            .any_overlap(bounds(terminal_ink), work)
+            .map_err(|error| work.map_shoal_error(error))?
+        {
+            return Ok(None);
+        }
         Ok(Some(clearance))
     }
 }
