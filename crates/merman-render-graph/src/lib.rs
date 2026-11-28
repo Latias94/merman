@@ -30,7 +30,10 @@ mod grid_edges;
 
 #[cfg(any(
     feature = "diagram-er",
-    all(feature = "layout-grid", feature = "diagram-requirement")
+    all(
+        feature = "layout-grid",
+        any(feature = "diagram-requirement", feature = "diagram-state")
+    )
 ))]
 mod label_rect;
 

@@ -198,6 +198,7 @@ pub(crate) fn resolve(
             family,
             DiagramFamilyId::FLOWCHART
                 | DiagramFamilyId::AGENTFLOW
+                | DiagramFamilyId::ER
                 | DiagramFamilyId::SWIMLANE
                 | DiagramFamilyId::MINDMAP
                 | DiagramFamilyId::REQUIREMENT
@@ -216,6 +217,7 @@ pub(crate) fn resolve(
                 | DiagramFamilyId::ER
                 | DiagramFamilyId::MINDMAP
                 | DiagramFamilyId::REQUIREMENT
+                | DiagramFamilyId::STATE
         )
     {
         return Ok(Backend::Grid);
@@ -399,10 +401,12 @@ mod tests {
                     && (flow_family
                         || matches!(
                             family,
-                            DiagramFamilyId::MINDMAP | DiagramFamilyId::REQUIREMENT
+                            DiagramFamilyId::ER
+                                | DiagramFamilyId::MINDMAP
+                                | DiagramFamilyId::REQUIREMENT
                         )
                         || (backend == Backend::Grid
-                            && matches!(family, DiagramFamilyId::CLASS | DiagramFamilyId::ER)))
+                            && matches!(family, DiagramFamilyId::CLASS | DiagramFamilyId::STATE)))
                 {
                     assert_eq!(resolve(family, diagram_type, &config).unwrap(), backend);
                     continue;

@@ -110,6 +110,8 @@ pub(crate) enum RouteContract {
         )
     ))]
     Layered(std::sync::Arc<merman_render_flow::layered::FlowLayeredRoutes>),
+    #[cfg(all(feature = "diagram-er", feature = "layout-layered"))]
+    ErLayered(std::sync::Arc<merman_render_graph::er::ErLayeredPaint>),
     #[cfg(feature = "layout-elk")]
     ElkParity,
     #[cfg(all(
@@ -118,6 +120,7 @@ pub(crate) enum RouteContract {
             feature = "diagram-class",
             feature = "diagram-er",
             feature = "diagram-flowchart",
+            feature = "diagram-state",
             feature = "diagram-swimlane",
             feature = "diagram-agentflow"
         )

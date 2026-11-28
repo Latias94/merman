@@ -4,7 +4,7 @@
   "capability_authority": {
     "path": "capabilities/feature-surface-v1.json",
     "schema_version": 1,
-    "digest": "sha256:226a4a1510519a273fcae4b92749888c1209ec59d5cc2a2c04fdb1e02029c06a"
+    "digest": "sha256:82ce96f52c8ed3e79d05ba19003ea88c25b20133d075dc498c11238c950b1f9d"
   },
   "profiles": [
     {

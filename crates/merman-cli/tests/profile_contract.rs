@@ -243,7 +243,8 @@ fn compiled_capabilities_for_auto_detection() -> Vec<&'static str> {
                 feature = "diagram-class",
                 feature = "diagram-er",
                 feature = "diagram-mindmap",
-                feature = "diagram-requirement"
+                feature = "diagram-requirement",
+                feature = "diagram-state"
             )
         ))]
         "layout-grid",
@@ -253,6 +254,7 @@ fn compiled_capabilities_for_auto_detection() -> Vec<&'static str> {
                 feature = "diagram-flowchart",
                 feature = "diagram-swimlane",
                 feature = "diagram-agentflow",
+                feature = "diagram-er",
                 feature = "diagram-mindmap",
                 feature = "diagram-requirement"
             )
@@ -1140,6 +1142,12 @@ fn workflow_grid() {
                 "requirementDiagram\n  requirement checkout {\n    id: 1\n  }\n",
                 "RequirementDiagram",
             ),
+            #[cfg(feature = "diagram-state")]
+            (
+                "state",
+                "stateDiagram-v2\n  Idle --> Ready\n",
+                "StateDiagramV2",
+            ),
         ],
     );
     #[cfg(not(feature = "layout-grid"))]
@@ -1151,6 +1159,12 @@ fn workflow_layered() {
     workflow_mermaid_layout(
         "layered",
         &[
+            #[cfg(feature = "diagram-er")]
+            (
+                "er",
+                "erDiagram\n  CUSTOMER ||--o{ ORDER : places\n",
+                "ErDiagram",
+            ),
             #[cfg(feature = "diagram-mindmap")]
             (
                 "mindmap",

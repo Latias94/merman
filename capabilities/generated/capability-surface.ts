@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1 as const;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:226a4a1510519a273fcae4b92749888c1209ec59d5cc2a2c04fdb1e02029c06a" as const;
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:82ce96f52c8ed3e79d05ba19003ea88c25b20133d075dc498c11238c950b1f9d" as const;
 
 export const TARGETS = [
   {
@@ -121,7 +121,7 @@ export const CAPABILITIES = [
     ]
   },
   {
-    "description": "Select Mermaid Grid for Flowchart, Swimlane, Agentflow, Class, ER, Mindmap, and Requirement SVG layout.",
+    "description": "Select Mermaid Grid for Flowchart, Swimlane, Agentflow, Class, ER, Mindmap, Requirement, and State SVG layout.",
     "id": "layout-grid",
     "implications": [
       "svg"
@@ -133,7 +133,7 @@ export const CAPABILITIES = [
     ]
   },
   {
-    "description": "Select Mermaid Layered for Flowchart, Swimlane, Agentflow, Mindmap, and Requirement SVG layout.",
+    "description": "Select Mermaid Layered for Flowchart, Swimlane, Agentflow, ER, Mindmap, and Requirement SVG layout.",
     "id": "layout-layered",
     "implications": [
       "svg"

@@ -15,7 +15,8 @@ fn grid_availability_requires_the_facade_feature_and_a_supported_family() {
                 feature = "diagram-class",
                 feature = "diagram-er",
                 feature = "diagram-mindmap",
-                feature = "diagram-requirement"
+                feature = "diagram-requirement",
+                feature = "diagram-state"
             )
         ))
     );
@@ -28,7 +29,8 @@ fn grid_availability_requires_the_facade_feature_and_a_supported_family() {
     feature = "diagram-class",
     feature = "diagram-er",
     feature = "diagram-mindmap",
-    feature = "diagram-requirement"
+    feature = "diagram-requirement",
+    feature = "diagram-state"
 ))]
 mod families {
     use super::layout_grid_available;
@@ -74,6 +76,11 @@ mod families {
         (
             DiagramFamilyId::REQUIREMENT,
             "requirementDiagram\n  requirement checkout {\n    id: 1\n  }\n",
+        ),
+        #[cfg(feature = "diagram-state")]
+        (
+            DiagramFamilyId::STATE,
+            "stateDiagram-v2\n  Idle --> Ready\n",
         ),
     ];
 

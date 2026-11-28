@@ -47,8 +47,8 @@ The public capability leaves are:
 | `ascii` | Terminal text output | None |
 | `png`, `jpeg`, `pdf` | Independent binary exports | None |
 | `layout-dagre`, `layout-elk`, `layout-cytoscape` | Mermaid-compatible layout engines | Each implies `svg` |
-| `layout-grid` | Mermaid Grid for Flowchart, Swimlane, Agentflow, Class, ER, Mindmap, and Requirement | Opt-in for source builds. Implies `svg`. |
-| `layout-layered` | Mermaid Layered for Flowchart, Swimlane, Agentflow, Mindmap, and Requirement | Opt-in for source builds. Implies `svg`. |
+| `layout-grid` | Mermaid Grid for Flowchart, Swimlane, Agentflow, Class, ER, Mindmap, Requirement, and State | Opt-in for source builds. Implies `svg`. |
+| `layout-layered` | Mermaid Layered for Flowchart, Swimlane, Agentflow, ER, Mindmap, and Requirement | Opt-in for source builds. Implies `svg`. |
 | `layout-shoal` | Experimental Merman layered, lane and grid layouts with orthogonal edge routing | Implies `svg` |
 | `math` | Math-label rendering | Implies `svg` |
 | `native-fonts` | Explicit font contexts for shared text measurement and native painting | Facade and CLI forward SVG; no codec requirement |

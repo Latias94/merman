@@ -162,6 +162,8 @@ fn er_redux_colors_follow_entity_insertion_ids() {
         swimlane: false,
         #[cfg(feature = "layout-grid")]
         grid: None,
+        #[cfg(feature = "layout-layered")]
+        layered: None,
         #[cfg(feature = "layout-shoal")]
         canonical_routes: None,
         work_meter: &work_meter,

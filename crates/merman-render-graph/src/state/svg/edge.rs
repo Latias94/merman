@@ -344,7 +344,7 @@ fn state_marker_offset_for(arrow_type_end: Option<&str>) -> Option<f64> {
     }
 }
 
-fn state_rounded_end_marker_offset_points(
+pub(super) fn state_rounded_end_marker_offset_points(
     input: &[LayoutPoint],
     arrow_type_end: Option<&str>,
 ) -> Vec<LayoutPoint> {
@@ -369,7 +369,7 @@ fn state_rounded_end_marker_offset_points(
     out
 }
 
-fn state_line_with_end_marker_offset_points(
+pub(super) fn state_line_with_end_marker_offset_points(
     input: &[LayoutPoint],
     arrow_type_end: Option<&str>,
 ) -> Vec<LayoutPoint> {
@@ -693,8 +693,25 @@ fn write_state_edge_path(
         None => None,
     };
 
+    #[cfg(feature = "layout-grid")]
+    let grid = match &ctx.grid_edges {
+        Some(edges) => match edges.get(edge_id) {
+            Some(paint) => Some(paint),
+            None => return Ok(()),
+        },
+        None => None,
+    };
     let legacy;
     let (base_d, paint_d, points) = 'geometry: {
+        #[cfg(feature = "layout-grid")]
+        if let Some(paint) = grid {
+            break 'geometry (
+                paint.path.as_str(),
+                paint.path.as_str(),
+                paint.points.as_slice(),
+            );
+        }
+
         #[cfg(feature = "layout-shoal")]
         if let Some(geometry) = &canonical {
             let path_d = geometry.d.as_str();
@@ -709,6 +726,8 @@ fn write_state_edge_path(
         break 'geometry (path_d, path_d, legacy.data_points.as_slice());
     };
     let hopped_d = ctx.elk_line_hop_paths.get(edge_id).map(String::as_str);
+    #[cfg(feature = "layout-grid")]
+    let hopped_d = hopped_d.or_else(|| grid.and_then(|paint| paint.hopped.as_deref()));
     let rendered_d = hopped_d.unwrap_or(paint_d);
     let rough_d = if sketch && !ctx.uses_canonical_routes() && !rendered_d.is_empty() {
         Some(merman_render_core::rough_svg::constrained_rough_edge_path(
@@ -802,7 +821,7 @@ pub(super) fn render_state_edge_path(
     };
     let mut classes = std::mem::take(&mut scratch.classes);
     classes.clear();
-    if ctx.uses_elk_adapter_dom
+    if (ctx.uses_elk_adapter_dom || ctx.uses_grid())
         && edge
             .classes
             .split_whitespace()
@@ -825,7 +844,7 @@ pub(super) fn render_state_edge_path(
     marker_end_buf.clear();
     let has_marker_end = match edge.arrow_type_end.trim() {
         "arrow_barb" | "arrow_barb_neo" => {
-            let neo = if ctx.uses_canonical_routes() {
+            let neo = if ctx.uses_canonical_routes() || ctx.uses_grid() {
                 ctx.style_plan.compatibility().is_neo()
             } else {
                 state_data_look(ctx) == "neo"
@@ -858,6 +877,27 @@ pub(super) fn render_state_edge_path(
     scratch.classes = classes;
     scratch.marker_end = marker_end_buf;
     result
+}
+
+pub(super) fn state_edge_label_fill(
+    ctx: &StateRenderCtx<'_>,
+    paint: crate::state::compatibility::StateEdgeLabelPaint,
+    center: kurbo::Point,
+) -> Result<Color> {
+    Ok(match paint.mode {
+        EdgeLabelBackground::Auto => {
+            ctx.work_meter
+                .charge_emit_work(ctx.composite_paints.len())?;
+            ctx.composite_paints
+                .values()
+                .fold(paint.canvas, |backdrop, composite| {
+                    composite.composite_at(center, backdrop)
+                })
+        }
+        EdgeLabelBackground::Canvas => paint.canvas,
+        EdgeLabelBackground::Pill => paint.node,
+        EdgeLabelBackground::Transparent => Color::TRANSPARENT,
+    })
 }
 
 pub(super) fn render_state_edge_label(
@@ -1111,22 +1151,8 @@ pub(super) fn render_state_edge_label(
     let native_background = ctx.style_plan.compatibility().native_edge_label_paint;
     let mut adaptive_label_style = String::new();
     if let Some(paint) = native_background {
-        let fill = match paint.mode {
-            EdgeLabelBackground::Auto => {
-                let center =
-                    kurbo::Point::new(label_position.x + origin_x, label_position.y + origin_y);
-                ctx.work_meter
-                    .charge_emit_work(ctx.composite_paints.len())?;
-                ctx.composite_paints
-                    .values()
-                    .fold(paint.canvas, |backdrop, composite| {
-                        composite.composite_at(center, backdrop)
-                    })
-            }
-            EdgeLabelBackground::Canvas => paint.canvas,
-            EdgeLabelBackground::Pill => paint.node,
-            EdgeLabelBackground::Transparent => Color::TRANSPARENT,
-        };
+        let center = kurbo::Point::new(label_position.x + origin_x, label_position.y + origin_y);
+        let fill = state_edge_label_fill(ctx, paint, center)?;
         if let Some(default_ink) =
             literal_fill(&ctx.style_plan.compatibility().transition_label_color)
             && let Some(ink) = adaptive_text_ink(fill, default_ink)

@@ -8,6 +8,8 @@ use serde_json::Value;
 use std::collections::HashSet;
 use std::sync::Arc;
 
+#[cfg(feature = "layout-layered")]
+mod layered;
 #[cfg(feature = "layout-shoal")]
 mod shoal;
 mod swimlane;
@@ -83,12 +85,46 @@ pub(crate) fn layout_er_diagram_typed(
     settings: ErLayoutSettings,
     #[cfg(feature = "layout-shoal")] execution: Option<&crate::LayoutExecution<'_>>,
     work_meter: Arc<OperationWorkMeter>,
+    #[cfg(feature = "layout-layered")] allow_dagre_retry: bool,
 ) -> Result<ErPreparedLayout> {
     use crate::graph_layout::RouteContract;
 
     let mut work_control = OperationLayoutWorkControl::new(Arc::clone(&work_meter));
     let adapter_work = er_layout_adapter_work(model, &work_control)?;
     work_control.charge_adapter(adapter_work)?;
+    #[cfg(feature = "layout-layered")]
+    if backend == GraphLayoutBackend::Layered {
+        if let Some(layout) = layered::prepare(
+            model,
+            effective_config,
+            measurer,
+            &settings,
+            &work_meter,
+            allow_dagre_retry,
+        )? {
+            return Ok(layout);
+        }
+        #[cfg(feature = "layout-dagre")]
+        {
+            let mut retry = layout_er_diagram_typed(
+                model,
+                effective_config,
+                GraphLayoutBackend::Dagre,
+                measurer,
+                #[cfg(feature = "layout-elk")]
+                operation_seed,
+                settings,
+                #[cfg(feature = "layout-shoal")]
+                execution,
+                work_meter,
+                false,
+            )?;
+            retry.route_contract = RouteContract::ErLayered(Arc::new(
+                merman_render_graph::er::ErLayeredPaint::dagre_fallback(),
+            ));
+            return Ok(retry);
+        }
+    }
     validate_er_relationship_endpoints(model)?;
     #[cfg(feature = "layout-grid")]
     if backend == GraphLayoutBackend::Grid {
@@ -312,6 +348,8 @@ mod tests {
                 settings,
                 None,
                 meter,
+                #[cfg(feature = "layout-layered")]
+                false,
             )
         };
         let standard = DeterministicTextMeasurer::default();

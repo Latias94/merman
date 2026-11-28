@@ -19,9 +19,21 @@ pub enum ErSvgRouteKind {
     Canonical,
     #[cfg(feature = "layout-grid")]
     Grid,
+    #[cfg(feature = "layout-layered")]
+    Layered,
 }
 
 impl ErSvgRouteKind {
+    const fn has_projected_geometry(self) -> bool {
+        match self {
+            #[cfg(feature = "layout-grid")]
+            Self::Grid => true,
+            #[cfg(feature = "layout-layered")]
+            Self::Layered => true,
+            _ => false,
+        }
+    }
+
     const fn uses_rounded_geometry(self) -> bool {
         matches!(self, Self::Elk | Self::Swimlane)
     }
@@ -49,8 +61,7 @@ impl<'a> ErSvgGeometry<'a> {
         effective_config: &Value,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self> {
-        #[cfg(feature = "layout-grid")]
-        if route_kind == ErSvgRouteKind::Grid {
+        if route_kind.has_projected_geometry() {
             // These edges already carry the selected provider's paint order and label anchors.
             work_meter.charge_emit_work(layout.nodes.len())?;
             for edge in layout.edges {
@@ -273,7 +284,7 @@ pub(super) fn calc_label_position(points: &[LayoutPoint]) -> Option<(f64, f64)> 
     Some((points.last()?.x, points.last()?.y))
 }
 
-fn compute_layout_bounds(
+pub(super) fn compute_layout_bounds(
     clusters: &[LayoutCluster],
     nodes: &[LayoutNode],
     edges: &[LayoutEdge],

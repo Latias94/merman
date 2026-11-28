@@ -1,6 +1,6 @@
 use super::{ErEntitySourceStyle, ErStyleDeclaration};
 use crate::er::ErCssBinding;
-use merman_model::families::er::{ErDiagramModel, ErEntity};
+use merman_model::families::er::ErEntity;
 use merman_render_core::number_format::canonical_number;
 use merman_render_core::resources::{OperationWorkError, OperationWorkMeter};
 use merman_render_core::theme_svg::cssom_color_value;
@@ -142,16 +142,14 @@ fn source_visual(source: &ErEntitySourceStyle) -> ErSourceVisual {
 }
 
 /// Entity styles are paired with the semantic entity order used during measurement.
-pub fn prepare_er_source_visuals(
+pub fn prepare_er_source_visuals<'a>(
     binding: &ErCssBinding,
-    model: &ErDiagramModel,
-    entity_source_styles: &mut [ErEntitySourceStyle],
+    entities: impl Iterator<Item = (&'a ErEntity, &'a mut ErEntitySourceStyle)>,
     subgraph_source_styles: &mut BTreeMap<String, ErEntitySourceStyle>,
     work: &OperationWorkMeter,
 ) -> Result<(), OperationWorkError> {
-    for (index, entity) in model.entities.values().enumerate() {
+    for (entity, source) in entities {
         work.charge(1usize.saturating_add(entity.attributes.len()))?;
-        let source = &mut entity_source_styles[index];
         let output = entity_visual(source, entity, binding);
         work.charge(output.byte_len())?;
         source.visual = output;

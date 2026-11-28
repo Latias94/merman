@@ -93,6 +93,11 @@ pub(crate) fn render_er_diagram_svg_model(
             RouteContract::Grid(paint) => Some(*paint),
             _ => None,
         },
+        #[cfg(feature = "layout-layered")]
+        layered: match route_contract {
+            RouteContract::ErLayered(paint) => Some(paint.as_ref()),
+            _ => None,
+        },
         #[cfg(feature = "layout-shoal")]
         canonical_routes: canonical_routes
             .as_ref()

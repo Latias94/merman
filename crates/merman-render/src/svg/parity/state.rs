@@ -88,6 +88,11 @@ pub(super) fn render_state_diagram_svg_model(
         diagram_id,
         viewport: options.root_viewport(DiagramFamilyId::STATE, diagram_id),
         elk_parity: route_contract.is_elk_parity(),
+        #[cfg(feature = "layout-grid")]
+        grid: match route_contract {
+            RouteContract::Grid(paint) => Some(*paint),
+            _ => None,
+        },
         #[cfg(feature = "layout-shoal")]
         canonical_routes: canonical_routes
             .as_ref()

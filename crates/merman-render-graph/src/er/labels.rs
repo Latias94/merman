@@ -715,6 +715,7 @@ impl ErPreparedLabels {
         });
         Self::prepare_with_provider(
             model,
+            model.entities.values(),
             measurer,
             settings,
             merman_render_core::config::config_bool(config, &["markdownAutoWrap"]).unwrap_or(true),
@@ -745,6 +746,7 @@ impl ErPreparedLabels {
         );
         Self::prepare_with_provider(
             model,
+            model.entities.values(),
             measurer,
             settings,
             true,
@@ -757,6 +759,26 @@ impl ErPreparedLabels {
         )
     }
 
+    #[cfg(feature = "layout-layered")]
+    pub(super) fn prepare_for_layered<'a>(
+        model: &merman_model::families::er::ErDiagramModel,
+        config: &Value,
+        measurer: &dyn TextMeasurer,
+        settings: &ErLayoutSettings,
+        entities: impl Iterator<Item = &'a ErEntity>,
+        work_meter: &Arc<OperationWorkMeter>,
+    ) -> Result<Self> {
+        Self::prepare_with_provider(
+            model,
+            entities,
+            measurer,
+            settings,
+            merman_render_core::config::config_bool(config, &["markdownAutoWrap"]).unwrap_or(true),
+            None,
+            work_meter,
+        )
+    }
+
     #[cfg(test)]
     fn prepare(
         model: &merman_model::families::er::ErDiagramModel,
@@ -764,11 +786,20 @@ impl ErPreparedLabels {
         settings: &ErLayoutSettings,
         work_meter: &Arc<OperationWorkMeter>,
     ) -> Result<Self> {
-        Self::prepare_with_provider(model, measurer, settings, true, None, work_meter)
+        Self::prepare_with_provider(
+            model,
+            model.entities.values(),
+            measurer,
+            settings,
+            true,
+            None,
+            work_meter,
+        )
     }
 
-    fn prepare_with_provider(
+    fn prepare_with_provider<'a>(
         model: &merman_model::families::er::ErDiagramModel,
+        entities: impl Iterator<Item = &'a ErEntity>,
         measurer: &dyn TextMeasurer,
         settings: &ErLayoutSettings,
         markdown_auto_wrap: bool,
@@ -785,7 +816,7 @@ impl ErPreparedLabels {
         work_meter.preflight_prepared_text_retained_bytes(owner_bytes)?;
         let retained = work_meter.reserve_prepared_text_retained_bytes(owner_bytes)?;
         let mut entity_measures = BTreeMap::new();
-        for entity in model.entities.values() {
+        for entity in entities {
             work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
             work_meter
                 .preflight_prepared_text_retained_bytes(std::mem::size_of::<ErEntityMeasure>())?;
@@ -958,6 +989,52 @@ pub fn er_subgraph_title_metrics(
         )
     } else {
         text::measure_markdown_with_inline_styles(measurer, &subgraph.title, style, None, wrap_mode)
+    }
+}
+
+#[cfg(feature = "layout-layered")]
+pub(super) fn er_layered_title_size(
+    group: &ErSubgraph,
+    config: &Value,
+    measurer: &dyn TextMeasurer,
+    settings: &ErLayoutSettings,
+) -> merman_render_core::graph_layout::Size {
+    use merman_render_core::graph_layout::Size;
+
+    if group.title.is_empty() {
+        return Size::default();
+    }
+    // labelHelper measures with the root HTML mode. The cluster painter uses the effective mode.
+    let view = ErConfigView::new(config);
+    let html = view.relationship_html_labels(true);
+    let metrics = if group.label_type == "markdown" {
+        let width = Some(view.swimlane_relationship_wrapping_width());
+        if html {
+            let auto_wrap = merman_render_core::config::config_bool(config, &["markdownAutoWrap"])
+                .unwrap_or(true);
+            let fragment = text::mermaid_markdown_to_xhtml_label_fragment(&group.title, auto_wrap);
+            text::measure_xhtml_label_fragment_with_terminal_fonts(
+                measurer,
+                &fragment,
+                &settings.label_style,
+                width,
+                HTML_DOCUMENT_ROOT_FONT_SIZE_PX,
+            )
+        } else {
+            text::measure_markdown_with_inline_styles(
+                measurer,
+                &group.title,
+                &settings.label_style,
+                width,
+                WrapMode::SvgLike,
+            )
+        }
+    } else {
+        er_subgraph_title_metrics(group, measurer, &settings.label_style, html)
+    };
+    Size {
+        width: super::layered::positive(metrics.width),
+        height: super::layered::positive(metrics.height),
     }
 }
 
@@ -2035,9 +2112,26 @@ mod tests {
                 let fragment = terminal.xhtml_fragment().unwrap();
                 assert!(fragment.contains("**owns**") && !fragment.contains("<strong>"));
             } else {
-                assert_eq!(
-                    terminal.svg_lines().unwrap(),
-                    &[vec!["**owns**".to_string()]]
+                let mut svg = String::new();
+                terminal
+                    .write(
+                        &mut svg,
+                        &merman_render_core::LayoutLabel {
+                            x: 0.0,
+                            y: 0.0,
+                            width: terminal.metrics().width,
+                            height: terminal.metrics().height,
+                        },
+                        "role",
+                        (0.0, 0.0),
+                        false,
+                    )
+                    .unwrap();
+                let document = roxmltree::Document::parse(&svg).unwrap();
+                assert!(
+                    document
+                        .descendants()
+                        .any(|node| node.is_text() && node.text() == Some("**owns**"))
                 );
             }
         }

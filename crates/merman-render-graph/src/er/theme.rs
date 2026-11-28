@@ -79,29 +79,23 @@ impl ErEntityThemePlan {
         layout: ErPreparedSvgLayout<'_>,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
-        let entity_indices = model
-            .entities
-            .values()
-            .enumerate()
-            .map(|(index, entity)| (entity.id.clone(), index))
-            .collect::<BTreeMap<_, _>>();
+        let entities = model.entities.values().filter_map(|entity| {
+            layout
+                .prepared_labels
+                .entity(&entity.id)
+                .map(|measurement| (entity, measurement))
+        });
+        let mut entity_indices = BTreeMap::new();
+        let mut entity_source_styles = Vec::with_capacity(model.entities.len());
+        for (index, (entity, measurement)) in entities.clone().enumerate() {
+            entity_indices.insert(entity.id.clone(), index);
+            entity_source_styles.push(measurement.source_style.clone());
+        }
         let config = config.as_value();
         let css_binding = match native {
             Some((theme, native)) => ErCssBinding::from_native(theme, native, config),
             None => ErCssBinding::resolve(config),
         };
-        let entity_source_styles = model
-            .entities
-            .values()
-            .map(|entity| {
-                layout
-                    .prepared_labels
-                    .entity(&entity.id)
-                    .expect("ER preparation retains every semantic entity")
-                    .source_style
-                    .clone()
-            })
-            .collect::<Vec<_>>();
         let ErSubgraphSourceStyles {
             subgraphs,
             styles: subgraph_source_styles,
@@ -154,7 +148,16 @@ impl ErEntityThemePlan {
             )?;
             html_subgraph_labels.insert(key, label);
         }
-        let mut plan = Self {
+        let mut subgraph_source_styles = subgraph_source_styles;
+        prepare_er_source_visuals(
+            &css_binding,
+            entities
+                .map(|(entity, _)| entity)
+                .zip(&mut entity_source_styles),
+            &mut subgraph_source_styles,
+            work_meter,
+        )?;
+        Ok(Self {
             css_binding,
             entity_indices,
             entity_source_styles,
@@ -162,15 +165,7 @@ impl ErEntityThemePlan {
             html_subgraph_labels,
             relationship_html_labels,
             _prepared_labels: Arc::clone(layout.prepared_labels),
-        };
-        prepare_er_source_visuals(
-            &plan.css_binding,
-            model,
-            &mut plan.entity_source_styles,
-            &mut plan.subgraph_source_styles,
-            work_meter,
-        )?;
-        Ok(plan)
+        })
     }
 
     pub(super) fn index_for_entity_id(&self, entity_id: &str) -> Option<usize> {

@@ -9,6 +9,8 @@ mod dagre;
 #[cfg(feature = "layout-elk")]
 mod elk;
 mod geometry;
+#[cfg(feature = "layout-grid")]
+mod grid;
 mod layout_input;
 mod measure;
 mod style_plan;
@@ -33,6 +35,8 @@ pub use dagre::{
 pub use elk::layout as layout_elk;
 use geometry::RectWithTitleGeometry;
 pub use geometry::StateDiagramLayout;
+#[cfg(feature = "layout-grid")]
+pub use grid::layout as layout_grid;
 pub use layout_input::{
     HiddenPrefixMatcher, note_group_owner_id, state_hidden_prefixes, state_layout_adapter_work,
     validate_state_parent_cycles,

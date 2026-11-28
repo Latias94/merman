@@ -290,6 +290,7 @@ pub const fn layout_grid_available() -> bool {
             feature = "diagram-er",
             feature = "diagram-mindmap",
             feature = "diagram-requirement",
+            feature = "diagram-state",
             feature = "diagram-swimlane"
         )
     ))
@@ -302,6 +303,7 @@ pub const fn layout_layered_available() -> bool {
         any(
             feature = "diagram-flowchart",
             feature = "diagram-agentflow",
+            feature = "diagram-er",
             feature = "diagram-mindmap",
             feature = "diagram-requirement",
             feature = "diagram-swimlane"

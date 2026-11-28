@@ -453,7 +453,6 @@ fn prepare_state_family<'parsed>(
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let label_sidecar = crate::state::StateLabelSidecarBuilder::default();
-    let config = meta.effective_config.as_value();
     let style = crate::state::StateStylePlan::resolve(
         model,
         &meta.effective_config,
@@ -463,9 +462,9 @@ fn prepare_state_family<'parsed>(
     );
     let (layout, route_contract) = crate::state::layout_state_diagram_typed_with_work_meter(
         model,
-        config,
+        &meta.effective_config,
         &style,
-        Some(&label_sidecar),
+        &label_sidecar,
         execution,
     )?;
     let label_sidecar = label_sidecar.finish();
@@ -837,6 +836,11 @@ fn prepare_er_family<'parsed>(
         #[cfg(feature = "layout-shoal")]
         Some(execution),
         execution.work_meter(),
+        #[cfg(feature = "layout-layered")]
+        execution
+            .family
+            .session()
+            .supports_capability(crate::RenderCapability::LayoutDagre),
     )?;
     let entity_theme = crate::er::ErEntityThemePlan::resolve(
         &meta.effective_config,

@@ -120,6 +120,14 @@ pub fn render_state_diagram_svg_model(
     // Mermaid's state diagram DOM insertion order follows the order of `StateDB.getData().nodes`
     // (see `dataFetcher.ts` + dagre renderer `graph.nodes()` iteration). Our semantic model's
     // `nodes` already preserves that first-seen insertion order, so use it directly.
+    #[cfg(feature = "layout-grid")]
+    let node_order: Vec<&str> = if options.grid.is_some() {
+        // The Grid projection retains the StateDB order, including merged note-group slots.
+        layout.nodes.iter().map(|n| n.id.as_str()).collect()
+    } else {
+        model.nodes.iter().map(|n| n.id.as_str()).collect()
+    };
+    #[cfg(not(feature = "layout-grid"))]
     let node_order: Vec<&str> = model.nodes.iter().map(|n| n.id.as_str()).collect();
 
     let native = options.native_theme;
@@ -132,6 +140,8 @@ pub fn render_state_diagram_svg_model(
         uses_elk_adapter_dom: elk_parity,
         elk_edge_paths: &layout.elk_edge_paths,
         elk_line_hop_paths: FxHashMap::default(),
+        #[cfg(feature = "layout-grid")]
+        grid_edges: None,
         diagram_look: state_render_settings.diagram_look,
         serialized_diagram_look,
         palette_size: style_plan.compatibility().redux_palette.len(),
@@ -301,9 +311,13 @@ pub fn render_state_diagram_svg_model(
         out
     }
 
+    #[cfg(feature = "layout-grid")]
+    if let Some(settings) = options.grid {
+        ctx.grid_edges = Some(grid::prepare_edges(&ctx, settings)?);
+    }
     if elk_parity {
         ctx.elk_line_hop_paths = prepare_state_line_hop_paths(&ctx, effective_config)?;
-    } else {
+    } else if !ctx.uses_grid() {
         ctx.nested_roots = compute_state_nested_roots(&ctx);
     }
     if native.is_some() {
@@ -359,6 +373,14 @@ pub fn render_state_diagram_svg_model(
     // unbounded temporary stylesheet before `MaxSvgBytes` admission.
     out.push_str("<style>");
     write_state_css(&mut XmlTextOutput::new(&mut out), diagram_id, style_plan)?;
+    #[cfg(feature = "layout-grid")]
+    if ctx.uses_grid() {
+        grid::write_native_label_css(
+            &mut XmlTextOutput::new(&mut out),
+            CssSelectorDiagramId(diagram_id),
+            style_plan,
+        );
+    }
     out.push_str("</style>");
     out.checkpoint()?;
 
@@ -697,7 +719,7 @@ fn render_state_root(
         if !node.is_group || node.shape == "noteGroup" {
             continue;
         }
-        if state_insertion_context(ctx, cluster_id) != root {
+        if !ctx.uses_grid() && state_insertion_context(ctx, cluster_id) != root {
             continue;
         }
         render_state_cluster(out, ctx, cluster_id, origin_x, origin_y, pass);
@@ -735,8 +757,7 @@ fn render_state_root(
                 continue;
             }
 
-            let target_root = state_insertion_context(ctx, note_owner);
-            if target_root != root {
+            if !ctx.uses_grid() && state_insertion_context(ctx, note_owner) != root {
                 continue;
             }
 
@@ -770,26 +791,25 @@ fn render_state_root(
     if pass != StateRenderPass::Depth {
         // edge paths
         let _g_edge_paths = detail_guard(timing, &mut details.edge_paths);
-        out.push_str(if ctx.uses_elk_adapter_dom {
+        out.push_str(if ctx.uses_elk_adapter_dom || ctx.uses_grid() {
             r#"<g class="edges edgePaths">"#
         } else {
             r#"<g class="edgePaths">"#
         });
         if ctx.include_edges {
             for edge in ctx.edges {
-                if state_is_hidden(ctx, edge.start.as_str())
-                    || state_is_hidden(ctx, edge.end.as_str())
-                    || state_is_hidden(ctx, edge.id.as_str())
+                if !ctx.uses_grid()
+                    && (state_is_hidden(ctx, edge.start.as_str())
+                        || state_is_hidden(ctx, edge.end.as_str())
+                        || state_is_hidden(ctx, edge.id.as_str())
+                        || state_edge_context(ctx, edge) != root
+                        || state_is_shadowed_self_loop_edge(ctx, edge))
                 {
                     continue;
                 }
-                if state_edge_context(ctx, edge) != root {
-                    continue;
-                }
-                if state_is_shadowed_self_loop_edge(ctx, edge) {
-                    continue;
-                }
-                if let Some(layout_edge) = ctx.layout_edges_by_id.get(edge.id.as_str()) {
+                if !ctx.uses_grid()
+                    && let Some(layout_edge) = ctx.layout_edges_by_id.get(edge.id.as_str())
+                {
                     let original_path_work = ctx
                         .elk_edge_paths
                         .get(&layout_edge.id)
@@ -815,7 +835,7 @@ fn render_state_root(
         // edge labels
         let _g_edge_labels = detail_guard(timing, &mut details.edge_labels);
         out.push_str(r#"<g class="edgeLabels">"#);
-        if ctx.include_edges {
+        if ctx.include_edges && !ctx.uses_grid() {
             for edge in ctx.edges {
                 if state_is_hidden(ctx, edge.start.as_str())
                     || state_is_hidden(ctx, edge.end.as_str())
@@ -880,7 +900,7 @@ fn render_state_root(
             if n.is_cluster {
                 continue;
             }
-            if state_leaf_context(ctx, id) != root {
+            if !ctx.uses_grid() && state_leaf_context(ctx, id) != root {
                 continue;
             }
             render_state_node_svg(out, ctx, id, origin_x, origin_y, timing, details)?;
@@ -889,6 +909,11 @@ fn render_state_root(
         if let Some(s) = leaf_start {
             details.leaf_nodes += s.elapsed();
         }
+    }
+
+    #[cfg(feature = "layout-grid")]
+    if ctx.uses_grid() && ctx.include_edges && pass != StateRenderPass::Depth {
+        grid::write_labels(out, ctx)?;
     }
 
     for child_root in nested {
@@ -914,6 +939,7 @@ fn render_state_root(
     if ctx.include_edges
         && !ctx.uses_elk_adapter_dom
         && !ctx.uses_canonical_routes()
+        && !ctx.uses_grid()
         && pass != StateRenderPass::Depth
     {
         let _g_placeholders = detail_guard(timing, &mut details.self_loop_placeholders);

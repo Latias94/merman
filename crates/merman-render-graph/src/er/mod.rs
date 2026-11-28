@@ -10,6 +10,8 @@ mod geometry;
 #[cfg(feature = "layout-grid")]
 mod grid;
 mod labels;
+#[cfg(feature = "layout-layered")]
+mod layered;
 mod markers;
 mod native_theme;
 mod source_style;
@@ -35,6 +37,10 @@ pub use grid::{ErGridLayout, layout as layout_grid};
 pub use labels::{
     ErBoxLabel, ErPreparedLabels, ErPreparedRelationshipLabel, er_subgraph_title_metrics,
     er_swimlane_title_metrics,
+};
+#[cfg(feature = "layout-layered")]
+pub use layered::{
+    ErLayeredError, ErLayeredLabels, ErLayeredLayout, ErLayeredPaint, layout as layout_layered,
 };
 pub use markers::{ErMarkerDefs, er_marker_id, er_unified_marker_id, write_er_marker_definitions};
 #[cfg(feature = "layout-shoal")]

@@ -1,6 +1,10 @@
 #![cfg(all(
     feature = "svg",
-    any(feature = "diagram-flowchart", feature = "diagram-requirement")
+    any(
+        feature = "diagram-flowchart",
+        feature = "diagram-er",
+        feature = "diagram-requirement"
+    )
 ))]
 
 use merman::svg::{
@@ -15,6 +19,15 @@ fn flowchart_layered_builder_matches_planning_and_host_admission() {
     assert_layered_admission(
         DiagramFamilyId::FLOWCHART,
         "flowchart LR\nA[Start] -->|Approved| B[Done]\n",
+    );
+}
+
+#[test]
+#[cfg(feature = "diagram-er")]
+fn er_layered_builder_matches_planning_and_host_admission() {
+    assert_layered_admission(
+        DiagramFamilyId::ER,
+        "erDiagram\n  CUSTOMER ||--o{ ORDER : places\n",
     );
 }
 
