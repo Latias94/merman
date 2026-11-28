@@ -19,7 +19,7 @@ use merman_render_core::route_paint::{CanonicalPaintScratch, RouteStyle};
 use merman_render_core::svg_bounds::{SvgPathBounds, svg_path_bounds_from_d};
 use merman_render_core::svg_css::SvgId as SvgDiagramId;
 use merman_render_core::svg_edge_parity::edge_label_geometry::position_edge_label;
-use merman_render_core::svg_output::timing::RenderTiming;
+use merman_render_core::svg_output::{cutout, timing::RenderTiming};
 use merman_render_core::text::{MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, TextMeasurer, TextStyle};
 use merman_render_core::{Bounds, LayoutEdge, LayoutLabel, LayoutPoint};
 use merman_theme_contract::v2::{Color, EdgeLabelBackground};
@@ -613,7 +613,7 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
                     .flatten()
                     .map(|marker| marker.conservative_radius(width))
                     .fold(width, f64::max);
-                write_class_edge_label_cutout(out, ctx.diagram_id, ordinal, bounds, &gaps, outset)?;
+                write_class_edge_label_cutout(out, ctx.diagram_id, ordinal, bounds, &gaps, outset, ctx.work_meter)?;
                 Some(ordinal)
             } else {
                 None
@@ -744,37 +744,19 @@ fn write_class_edge_label_cutout(
     bounds: &SvgPathBounds,
     gaps: &[Option<kurbo::Rect>],
     outset: f64,
+    work_meter: &merman_render_core::resources::OperationWorkMeter,
 ) -> merman_render_core::Result<()> {
-    // Keep all label holes inside the frame and retain the shaft and marker paint around them.
-    let shaft = kurbo::Rect::new(bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y)
+    let paint = kurbo::Rect::new(bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y)
         .inflate(outset, outset);
-    let frame = gaps
-        .iter()
-        .flatten()
-        .fold(shaft, |frame, gap| frame.union(*gap))
-        .inflate(1.0, 1.0);
-    let _ = write!(
+    let holes = gaps.iter().flatten().copied().collect::<Vec<_>>();
+    cutout::write_defs(
         out,
-        r#"<defs><clipPath id="{id}_class-edge-label-{ordinal}"><path clip-rule="evenodd" d="M{} {}H{}V{}H{}Z"#,
-        fmt(frame.x0),
-        fmt(frame.y0),
-        fmt(frame.x1),
-        fmt(frame.y1),
-        fmt(frame.x0),
-    );
-    for gap in gaps.iter().flatten() {
-        let _ = write!(
-            out,
-            "M{} {}H{}V{}H{}Z",
-            fmt(gap.x0),
-            fmt(gap.y0),
-            fmt(gap.x1),
-            fmt(gap.y1),
-            fmt(gap.x0),
-        );
-    }
-    out.push_str(r#""/></clipPath></defs>"#);
-    out.checkpoint()
+        format_args!("{id}_class-edge-label-{ordinal}"),
+        paint,
+        1.0,
+        &holes,
+        work_meter,
+    )
 }
 
 pub(super) fn render_class_edge_labels<O: SvgOutput>(

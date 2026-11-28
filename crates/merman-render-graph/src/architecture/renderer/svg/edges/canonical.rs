@@ -7,6 +7,8 @@ use super::{
 use crate::architecture::ArchitectureDiagramLayout;
 use crate::architecture::metrics::ARCHITECTURE_SHOAL_CAPTION_PADDING;
 use base64::Engine as _;
+use merman_render_core::resources::OperationWorkMeter;
+use merman_render_core::svg_output::cutout;
 use merman_render_core::xml::escape_attr_into;
 use merman_render_core::{Bounds, Error, Result};
 use merman_render_core::{LayoutEdge, LayoutPoint, route_paint::CanonicalPaintScratch};
@@ -68,7 +70,7 @@ impl<'a> Shaft<'a> {
         super::super::write_geometry_attrs(out, "edge", &self.edge.id);
         let _ = write!(out, r#" data-points="{points_base64}""#);
         if let Some(id) = clip_id {
-            let _ = write!(out, r#" clip-path="url(#{id})""#);
+            cutout::write_reference(out, id);
         }
         out.push_str("/>");
         Ok(())
@@ -127,24 +129,13 @@ pub(super) fn write_caption_cutout(
     ordinal: usize,
     shaft: &Bounds,
     caption: &Bounds,
-) -> String {
+    work_meter: &OperationWorkMeter,
+) -> Result<String> {
     let id = format!("{diagram_id}-architecture-edge-caption-{ordinal}");
-    // Include both rectangles so the even-odd hole cannot add a second visible region.
-    let x0 = fmt(shaft.min_x.min(caption.min_x) - 1.0);
-    let y0 = fmt(shaft.min_y.min(caption.min_y) - 1.0);
-    let x1 = fmt(shaft.max_x.max(caption.max_x) + 1.0);
-    let y1 = fmt(shaft.max_y.max(caption.max_y) + 1.0);
-    let (l, t, r, b) = (
-        fmt(caption.min_x),
-        fmt(caption.min_y),
-        fmt(caption.max_x),
-        fmt(caption.max_y),
-    );
-    let _ = write!(
-        out,
-        r#"<defs><clipPath id="{id}"><path clip-rule="evenodd" d="M{x0} {y0}H{x1}V{y1}H{x0}ZM{l} {t}H{r}V{b}H{l}Z"/></clipPath></defs>"#
-    );
-    id
+    let paint = kurbo::Rect::new(shaft.min_x, shaft.min_y, shaft.max_x, shaft.max_y);
+    let gap = kurbo::Rect::new(caption.min_x, caption.min_y, caption.max_x, caption.max_y);
+    cutout::write_defs(out, &id, paint, 1.0, &[gap], work_meter)?;
+    Ok(id)
 }
 
 fn arrow_at<'a>(

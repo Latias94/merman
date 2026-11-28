@@ -10,8 +10,6 @@ use merman_model::{
     families::er::{ErDiagramModel, ErEntity, ErRelationship, ErSubgraph},
     presentation::PresentationConfig,
 };
-#[cfg(feature = "layout-shoal")]
-use merman_render_core::route_paint::CanonicalPaintScratch;
 use merman_render_core::{
     Bounds, Error, LayoutCluster, LayoutEdge, LayoutPoint, Result,
     html::html_label_overflow_attr,
@@ -27,6 +25,8 @@ use merman_render_core::{
     },
     xml::{escape_attr, escape_attr_display, escape_xml},
 };
+#[cfg(feature = "layout-shoal")]
+use merman_render_core::{route_paint::CanonicalPaintScratch, svg_output::cutout};
 use merman_theme_contract::v2::{Color, EdgeStyle};
 use roughr::core::RoughRandomness;
 
@@ -667,6 +667,9 @@ pub fn render_er_diagram_svg_model(
     let canonical_routes = options.canonical_routes;
     #[cfg(feature = "layout-shoal")]
     let uses_canonical_routes = canonical_routes.is_some();
+    #[cfg(feature = "layout-shoal")]
+    let cutout_labels =
+        uses_canonical_routes && cutout::is_transparent_paint(&binding.edge_label_background);
     #[cfg(not(feature = "layout-shoal"))]
     let uses_canonical_routes = false;
     let is_elk_layout = options.elk_parity;
@@ -1045,6 +1048,8 @@ pub fn render_er_diagram_svg_model(
             let line_classes = format!("edge-thickness-normal {pattern_class} relationshipLine");
             #[cfg(feature = "layout-layered")]
             let layered_route = layered.map(|routes| (&routes.edges[edge_index], routes.curve));
+            #[cfg(feature = "layout-shoal")]
+            let mut canonical_paint_bounds = None;
             let legacy_points;
             let (original_d, shifted) = 'path: {
                 #[cfg(feature = "layout-shoal")]
@@ -1059,6 +1064,7 @@ pub fn render_er_diagram_svg_model(
                     content_bounds.min_y = content_bounds.min_y.min(painted.bounds.y0);
                     content_bounds.max_x = content_bounds.max_x.max(painted.bounds.x1);
                     content_bounds.max_y = content_bounds.max_y.max(painted.bounds.y1);
+                    canonical_paint_bounds = cutout_labels.then_some(painted.bounds);
                     break 'path (painted.d, painted.points);
                 }
                 let points = if is_layered_layout {
@@ -1198,6 +1204,24 @@ pub fn render_er_diagram_svg_model(
             } else {
                 None
             };
+            #[cfg(feature = "layout-shoal")]
+            let mut caption_cutout = None;
+            #[cfg(feature = "layout-shoal")]
+            if let Some((bounds, label)) = canonical_paint_bounds.zip(e.label.as_ref())
+                && er_rel_idx_from_edge_id(&e.id)
+                    .and_then(|index| model.relationships.get(index))
+                    .is_some_and(|relation| !relation.role_a.trim().is_empty())
+            {
+                let gap = kurbo::Rect::from_center_size(
+                    (label.x + translate_x, label.y + translate_y),
+                    (label.width, label.height),
+                );
+                if bounds.intersect(gap).area() > 0.0 {
+                    let id = format!("{diagram_id}_er-edge-label-{edge_index}");
+                    cutout::write_defs(&mut out, &id, bounds, 1.0, &[gap], options.work_meter)?;
+                    caption_cutout = Some(id);
+                }
+            }
 
             // The standard Base64 alphabet is safe in a quoted XML attribute.
             let _ = write!(
@@ -1219,6 +1243,10 @@ pub fn render_er_diagram_svg_model(
             );
             if let Some(id) = marker_cutout {
                 let _ = write!(&mut out, r#" mask="url(#{})""#, escape_attr(&id));
+            }
+            #[cfg(feature = "layout-shoal")]
+            if let Some(id) = caption_cutout {
+                cutout::write_reference(&mut out, id);
             }
             let start_marker_id = e
                 .start_marker

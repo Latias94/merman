@@ -891,8 +891,10 @@ pub(super) fn push_architecture_edges<O: SvgOutput>(
                         edge_idx,
                         &shaft_bounds,
                         &label.bounds,
+                        checkpoints.work_meter,
                     )
-                });
+                })
+                .transpose()?;
             shaft.write(
                 out,
                 diagram_id,

@@ -8,7 +8,6 @@ use base64::Engine as _;
 #[cfg(feature = "layout-shoal")]
 use kurbo::Vec2;
 use kurbo::{Ellipse, Rect, Shape};
-use merman_markup::theme_color::ThemeColor;
 use merman_model::families::usecase::{
     UsecaseActorType, UsecaseAnimation, UsecaseDiagramModel, UsecaseLabelType, UsecaseNodeKind,
     UsecaseRelationshipType,
@@ -26,7 +25,7 @@ use merman_render_core::{
     svg_edge_parity::{
         edge_path, line_hops, markers::BaseEdgeMarkerKind, path_numbers::json_stringify_points,
     },
-    svg_output::{BoundedSvgOutput, SvgOutput},
+    svg_output::{BoundedSvgOutput, SvgOutput, cutout},
     text::{self, TextMeasurer, svg_label as label},
     theme_svg::{elevation, marker::arrow_path},
     xml::{escape_attr, escape_xml},
@@ -1048,11 +1047,9 @@ pub fn render_usecase_diagram_svg_model(
             out.checkpoint()?;
         }
     }
-    let background = css_binding.edge_background.css().trim();
-    let transparent = background.eq_ignore_ascii_case("none")
-        || background.eq_ignore_ascii_case("transparent")
-        || ThemeColor::parse(background).is_ok_and(|color| color.rgba_channels().alpha == 0.0);
-    let has_edge_mask = transparent
+    let transparent = cutout::is_transparent_paint(css_binding.edge_background.css());
+    let has_edge_mask = !uses_canonical
+        && transparent
         && write_edge_label_mask(
             &mut out,
             diagram_id,
@@ -1235,6 +1232,30 @@ pub fn render_usecase_diagram_svg_model(
                 });
             }
         }
+        #[cfg(feature = "layout-shoal")]
+        let mut caption_cutout = None;
+        #[cfg(feature = "layout-shoal")]
+        if transparent
+            && plan.label.is_some()
+            && let Some((painted, label)) = canonical_edge.as_ref().zip(edge.label.as_ref())
+        {
+            let gap = Rect::from_center_size(
+                (label.x, label.y + label_y_offset),
+                (label.width, label.height),
+            );
+            if painted.paint_bounds.intersect(gap).area() > 0.0 {
+                let id = format!("{diagram_id}_usecase-edge-label-{edge_index}");
+                cutout::write_defs(
+                    &mut out,
+                    &id,
+                    painted.paint_bounds,
+                    1.0,
+                    &[gap],
+                    options.work_meter,
+                )?;
+                caption_cutout = Some(id);
+            }
+        }
         let _ = write!(
             out,
             r#"<path id="{}{}-{}" data-id="{}" data-et="edge" data-edge="true" data-look="{}" data-points="{}" class="{}" d="{}""#,
@@ -1299,6 +1320,10 @@ pub fn render_usecase_diagram_svg_model(
         let _ = write!(out, r#" style="{}""#, escape_attr(&source_style));
         for (end, reference) in marker_references {
             let _ = write!(out, r#" marker-{end}="{}""#, escape_attr(&reference));
+        }
+        #[cfg(feature = "layout-shoal")]
+        if let Some(id) = caption_cutout {
+            cutout::write_reference(&mut out, id);
         }
         out.push_str("/>");
     }

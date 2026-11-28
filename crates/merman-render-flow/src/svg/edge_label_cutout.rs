@@ -3,6 +3,7 @@
 use super::*;
 use crate::projection::FlowchartEdgeKey;
 use kurbo::{Rect, Vec2};
+use merman_render_core::svg_output::cutout;
 use merman_render_core::theme_svg::edge_label_background::literal_fill;
 use merman_theme_contract::v2::{EdgeLabelBackground, Paint};
 
@@ -72,8 +73,7 @@ pub(super) fn write_definitions(
         } else {
             path.pb
         };
-        let mut outer =
-            (viewport - Vec2::new(cached.origin_x, cached.abs_top_transform)).union(gap);
+        let mut outer = viewport - Vec2::new(cached.origin_x, cached.abs_top_transform);
         if let Some(ink) = ink {
             outer = outer.union(Rect::new(ink.min_x, ink.min_y, ink.max_x, ink.max_y));
         }
@@ -85,25 +85,17 @@ pub(super) fn write_definitions(
                 .unwrap_or_default();
         #[cfg(not(any(feature = "canonical-edge-paint", test)))]
         let outset = CUTOUT_FRAME_OUTSET;
-        let outer = outer.inflate(outset, outset);
         if cutouts.is_empty() {
             out.push_str("<defs>");
         }
-        let _ = write!(
+        cutout::write_definition(
             out,
-            r#"<clipPath id="{id}-label-cutout"><path clip-rule="evenodd" d="M{} {}H{}V{}H{}ZM{} {}H{}V{}H{}Z"/></clipPath>"#,
-            fmt_display(outer.x0),
-            fmt_display(outer.y0),
-            fmt_display(outer.x1),
-            fmt_display(outer.y1),
-            fmt_display(outer.x0),
-            fmt_display(gap.x0),
-            fmt_display(gap.y0),
-            fmt_display(gap.x1),
-            fmt_display(gap.y1),
-            fmt_display(gap.x0),
-        );
-        out.checkpoint()?;
+            format_args!("{id}-label-cutout"),
+            outer,
+            outset,
+            &[gap],
+            ctx.work_meter,
+        )?;
         cutouts.insert(key);
     }
     if !cutouts.is_empty() {
@@ -117,5 +109,5 @@ pub(crate) fn write_attribute(
     out: &mut impl std::fmt::Write,
     id: super::document_ids::FlowchartDocumentId<'_>,
 ) {
-    let _ = write!(out, r#" clip-path="url(#{id}-label-cutout)""#);
+    cutout::write_reference(out, format_args!("{id}-label-cutout"));
 }
