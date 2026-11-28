@@ -3286,10 +3286,10 @@
   ],
   "provenance": {
     "generator": "cargo run -p xtask -- gen-theme-snapshot",
-    "mermaidPackageSha256": "8dea6d2895b9a75667443ef8a82fc4b8d30f962de057686c7b6ef860bc69d251",
-    "mermaidSourceCommit": "2086904e76c692331e34a45d7cc3bc30860d040e",
-    "mermaidSourceTag": "mermaid@12.3.0",
-    "mermaidVersion": "12.3.0"
+    "mermaidPackageSha256": "e104992b5e4a0c794dd7f3834757173583836a9ee0387ee7460032327bc2ce63",
+    "mermaidSourceCommit": "9f93a44a36e46a36b1379f9de72fb1ee5684ee3f",
+    "mermaidSourceTag": "mermaid@12.4.0",
+    "mermaidVersion": "12.4.0"
   },
   "schemaVersion": 2,
   "stageOracleCases": [

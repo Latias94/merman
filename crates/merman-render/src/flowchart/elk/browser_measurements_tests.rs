@@ -1,7 +1,10 @@
-use super::build_flowchart_elk_graph;
+use super::{FlowchartRenderModelRef, build_flowchart_elk_graph};
 use crate::text::DeterministicTextMeasurer;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_layout_elk as elk;
+use merman_model::{
+    families::flowchart::FlowchartRenderContext, presentation::RenderSemanticModel,
+};
 use serde::Deserialize;
 use std::path::Path;
 
@@ -94,7 +97,20 @@ fn flowchart_elk_routes_with_captured_browser_dimensions() {
             edge.label = measured.label_size.map(label);
         }
 
-        let layout = elk::layout(&graph).unwrap();
+        let RenderSemanticModel::Flowchart(model) = parsed.model() else {
+            unreachable!("the measured fixture already produced a Flowchart graph");
+        };
+        let empty_sources = FlowchartRenderContext::default();
+        let sources = parsed
+            .render_context()
+            .flowchart_render_context()
+            .unwrap_or(&empty_sources);
+        let layout = merman_render_flow::elk::solve_diagnostic(
+            FlowchartRenderModelRef::new(model, sources),
+            &parsed.metadata().effective_config,
+            &mut graph,
+        )
+        .unwrap();
         if fixture
             .nodes
             .iter()

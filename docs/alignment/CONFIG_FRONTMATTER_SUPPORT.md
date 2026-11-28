@@ -84,7 +84,8 @@ available.
 
 When `layout: grid` is selected, successful body replay is followed by validation of the effective
 placement map. Flowchart, Swimlane, and Agentflow then validate the final inline coordinates in DB
-order. The layout-selecting render paths currently return `UnsupportedLayoutBackend` for Grid.
+order. Rendering requires the `layout-grid` Cargo feature and a compiled family adapter. With
+either prerequisite missing, explicit Grid selection returns `UnsupportedLayoutBackend`.
 See the [Grid Core tests](../../crates/merman-core/src/preprocess/config_policy/grid.rs) and
 [inline parser tests](../../crates/merman-core/src/diagrams/grid.rs).
 

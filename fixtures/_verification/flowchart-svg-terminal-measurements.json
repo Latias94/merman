@@ -1,22 +1,37 @@
 {
   "schema_version": 1,
-  "mermaid_version": "12.3.0",
-  "mermaid_source_commit": "2086904e76c692331e34a45d7cc3bc30860d040e",
-  "browser": "Chrome/156.0.8078.47",
-  "measurement_source": "Literal single-tspan height and row-zero createFormattedText bbox y independently remeasured in the selected Mermaid 12.3.0 browser render. Existing 78 probe identities across five fixtures are preserved, including row-start, leading-space, complete raw, and DOMPurify-sanitized source/plain text payloads. Typography is read from the matching current rendered SVG face; payloads are assigned with textContent. Responsive viewBox scaling is removed only after capturing the natural SVG and provider graph. No fonts or dimensions are injected. historical_collection is archival metadata only.",
+  "mermaid_version": "12.4.0",
+  "mermaid_source_commit": "9f93a44a36e46a36b1379f9de72fb1ee5684ee3f",
+  "browser": "HeadlessChrome/156.0.8078.47",
+  "measurement_source": "Independent browser measurement of the 78 retained literal terminal probe identities from five regenerated SVGs. Computed typography and literal textContent drive single-tspan height and row-zero createFormattedText bbox y. The probe removes responsive viewBox scaling after loading the unmodified reference SVG. No fonts or dimensions are injected during reference rendering. Historical collection metadata remains archival.",
   "capture": {
-    "node_version": "v24.21.0",
+    "node_version": "v26.13.0",
+    "mermaid_version": "12.4.0",
     "browser": {
-      "product": "Chrome",
+      "product": "HeadlessChrome",
       "version": "156.0.8078.47",
       "revision": "@1d17a2e2ee147bb7d6ae2ab6abdb3a2510c17775",
       "locale": "zh-CN",
       "timezone": "Asia/Shanghai"
     },
+    "operating_system": {
+      "platform": "win32",
+      "arch": "x64",
+      "release": "10.0.26300"
+    },
+    "browser_executable_sha256": "bcfdfad160ceb75478dddf8126449665dea82019d736340fe049ee46037cf179",
     "puppeteer_version": "25.16.0",
-    "reference_runtime_sha256": "555d901f1da7635d0727be0a5b95cc1b84a4770e08126fed19e53966515a8911",
-    "instrumented_runtime_sha256": "bc4a5d4e11c0f489c0485a18760c3dea7896fbcb5beca3213c8e9f0dfdc2589a",
-    "harness_sha256": "a6410c16076de07446cbf3aa23bab410f19e41de0b12f01ee8f463965921b89f",
+    "esbuild_version": "0.28.2",
+    "dompurify_version": "3.4.17",
+    "reference_runtime_sha256": "1683f26875fc5ed4ce134b7c76252add15dbc5053d1301ff6eb22970971fb408",
+    "instrumented_runtime_sha256": "bca48499e350f85763d1ba35803cefabd5effd7e907e058164682ec7128c5b23",
+    "harness_sha256": "06bded891ccdc1092962b5c99b7297cf8ade855f22cdef45bb5ee976add82f44",
+    "batched_renderer_sha256": "e3cc04107391fe26defecc7e22c5225f90b62ba1df45361e0fb5f8aa795ba256",
+    "seeded_renderer_sha256": "ce4093ffe0100f9da018dbbcd273ed99d33d801468d1a6c582ef35b7a224101e",
+    "terminal_harness_sha256": "5e321d056b74bc2914b6e211d61920f4e5ec70dabb92801cc1c28acf45046016",
+    "package_json_sha256": "5f638289fd05a3f23e20ca18dfbba3d46d97d117d7471559e5802cc19cb83458",
+    "package_lock_sha256": "1f0ca38a5fb1a39125f887d17c8eb01965e69e002e13bdb1c2cea91987142cdf",
+    "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "viewport": {
       "width": 800,
       "height": 600,
@@ -27,7 +42,23 @@
       "handDrawnSeed": 1
     },
     "seed": "1",
-    "fixed_wall_clock_ms": 1704067200000
+    "fixed_wall_clock_ms": 1704067200000,
+    "mermaid_source_commit": "9f93a44a36e46a36b1379f9de72fb1ee5684ee3f",
+    "elkjs_version": "0.12.1",
+    "elk_source_path": "repo-ref/mermaid-12.4.0/packages/mermaid/src/rendering-util/layout-algorithms/elk/render.ts",
+    "elk_source_sha256": "231709952fd61d48dcd374519ab31089447d6ce4403995ff0c8d4d13195ffa20",
+    "elk_adapter_path": "tools/mermaid-cli/node_modules/mermaid/dist/chunks/mermaid.core/elk-O5DQBFGD.mjs",
+    "elk_adapter_sha256": "c7a714de4ea48052abd64cbc18779c546628ee86ea569743c209a6c90382b965",
+    "elk_adapter_source_map_sha256": "e63d711b187c3abb03feae09b0d610037298037eb452be5e829fe5d005950c2d",
+    "elkjs_bundle_sha256": "b1032b7cfd2a57c54c6f0e8369d7665e19a579954f7cd20a6dae28f1912ea0d7",
+    "source_map_matches_selected_source": true,
+    "font_probe": {
+      "revision": "mermaid-font-probe-v1",
+      "sha256": "b74cb52f625a46ef61df9467965af3dac4a01564ba6a1d67812ff77ad4becc14"
+    },
+    "label_box_runtime_sha256": "dae3b655812ff7a661746a551070e7278ab963984a7484ff7244416e6c980359",
+    "label_box_harness_sha256": "26f1aaaeb3050cda4a60549819cc51d40323e4555b737f2786ae48bf9d18db22",
+    "baseline_manifest_sha256": "09d0dc072323390822817a1d665c854598fca768ee9ab3310996d13b048ca883"
   },
   "historical_collection": {
     "schema_version": 1,
@@ -41,7 +72,6 @@
     {
       "fixture": "upstream_cypress_flowchart_handdrawn_spec_fdh27_set_text_color_of_nodes_and_links_according_to_styles_when_027",
       "input_sha256": "e37d2bc5cfa26cefde0177a1c617384e8a8e6bf4de30269c5b35d9e1277ba8d1",
-      "upstream_svg_sha256": "c32ca666ce42c23f998ccb1785136674bf423a86b6f4df14c6faaa515b4b7cb0",
       "faces": [
         {
           "style": {
@@ -54,91 +84,91 @@
             {
               "text": "red",
               "tspan_bbox_height": 16,
-              "create_text_bbox_y": 1.0000009536743164
+              "create_text_bbox_y": 2.0000009536743164
             },
             {
               "text": " red",
               "tspan_bbox_height": 16,
-              "create_text_bbox_y": 1.0000009536743164
+              "create_text_bbox_y": 2.0000009536743164
             },
             {
               "text": "text",
               "tspan_bbox_height": 16,
-              "create_text_bbox_y": 1.0000009536743164
+              "create_text_bbox_y": 2.0000009536743164
             },
             {
               "text": "red\ntext",
               "tspan_bbox_height": 16,
-              "create_text_bbox_y": 1.0000009536743164
+              "create_text_bbox_y": 2.0000009536743164
             },
             {
               "text": "red text",
               "tspan_bbox_height": 16,
-              "create_text_bbox_y": 1.0000009536743164
+              "create_text_bbox_y": 2.0000009536743164
             },
             {
               "text": " text",
               "tspan_bbox_height": 16,
-              "create_text_bbox_y": 1.0000009536743164
+              "create_text_bbox_y": 2.0000009536743164
             },
             {
               "text": "blue",
               "tspan_bbox_height": 16,
-              "create_text_bbox_y": 1.0000009536743164
+              "create_text_bbox_y": 2.0000009536743164
             },
             {
               "text": " blue",
               "tspan_bbox_height": 16,
-              "create_text_bbox_y": 1.0000009536743164
+              "create_text_bbox_y": 2.0000009536743164
             },
             {
               "text": "blue\ntext",
               "tspan_bbox_height": 16,
-              "create_text_bbox_y": 1.0000009536743164
+              "create_text_bbox_y": 2.0000009536743164
             },
             {
               "text": "blue text",
               "tspan_bbox_height": 16,
-              "create_text_bbox_y": 1.0000009536743164
+              "create_text_bbox_y": 2.0000009536743164
             },
             {
               "text": "default",
               "tspan_bbox_height": 16,
-              "create_text_bbox_y": 1.0000009536743164
+              "create_text_bbox_y": 2.0000009536743164
             },
             {
               "text": " default",
               "tspan_bbox_height": 16,
-              "create_text_bbox_y": 1.0000009536743164
+              "create_text_bbox_y": 2.0000009536743164
             },
             {
               "text": "style",
               "tspan_bbox_height": 16,
-              "create_text_bbox_y": 1.0000009536743164
+              "create_text_bbox_y": 2.0000009536743164
             },
             {
               "text": "default\nstyle",
               "tspan_bbox_height": 16,
-              "create_text_bbox_y": 1.0000009536743164
+              "create_text_bbox_y": 2.0000009536743164
             },
             {
               "text": "default style",
               "tspan_bbox_height": 16,
-              "create_text_bbox_y": 1.0000009536743164
+              "create_text_bbox_y": 2.0000009536743164
             },
             {
               "text": " style",
               "tspan_bbox_height": 16,
-              "create_text_bbox_y": 1.0000009536743164
+              "create_text_bbox_y": 2.0000009536743164
             }
           ]
         }
-      ]
+      ],
+      "upstream_svg_sha256": "9af8bf52048b3cb969bc39f0fd231763abed382375bb781121c69f978edbe639"
     },
     {
       "fixture": "upstream_cypress_flowchart_spec_20_multiple_nodes_and_chaining_in_one_statement_020",
       "input_sha256": "89d1f6cdd6662da4eefc4f4023587c64545f50df14d3690946354d7aa58a92e9",
-      "upstream_svg_sha256": "f4859bfcf882e02427685ac573845ade8e7a970c792f736165c03cca7a95bc8a",
       "faces": [
         {
           "style": {
@@ -151,21 +181,21 @@
             {
               "text": "hello",
               "tspan_bbox_height": 16,
-              "create_text_bbox_y": 1.0000009536743164
+              "create_text_bbox_y": 2.0000009536743164
             },
             {
               "text": " hello",
               "tspan_bbox_height": 16,
-              "create_text_bbox_y": 1.0000009536743164
+              "create_text_bbox_y": 2.0000009536743164
             }
           ]
         }
-      ]
+      ],
+      "upstream_svg_sha256": "4997b1b4041978a66144f28a1c904d580f2efefd3dbb1a275f2c6cc8228cff1f"
     },
     {
       "fixture": "upstream_cypress_flowchart_spec_24_keep_node_label_text_if_already_defined_when_a_style_is_appli_024",
       "input_sha256": "9d416eaedbeda364326ad0d96ad075d2d12a96eda9278d763eba79cf1c939918",
-      "upstream_svg_sha256": "3d296ceab9ed3a364d2e6069c3430ea3ed94e35dfbcba70afd699cb5e302a09d",
       "faces": [
         {
           "style": {
@@ -178,66 +208,66 @@
             {
               "text": "step",
               "tspan_bbox_height": 16,
-              "create_text_bbox_y": 1.0000009536743164
+              "create_text_bbox_y": 2.0000009536743164
             },
             {
               "text": " step",
               "tspan_bbox_height": 16,
-              "create_text_bbox_y": 1.0000009536743164
+              "create_text_bbox_y": 2.0000009536743164
             },
             {
               "text": "step 1",
               "tspan_bbox_height": 16,
-              "create_text_bbox_y": 1.0000009536743164
+              "create_text_bbox_y": 2.0000009536743164
             },
             {
               "text": "1",
               "tspan_bbox_height": 16,
-              "create_text_bbox_y": 1.0000009536743164
+              "create_text_bbox_y": 2.0000009536743164
             },
             {
               "text": " 1",
               "tspan_bbox_height": 16,
-              "create_text_bbox_y": 1.0000009536743164
+              "create_text_bbox_y": 2.0000009536743164
             },
             {
               "text": "step 2",
               "tspan_bbox_height": 16,
-              "create_text_bbox_y": 1.0000009536743164
+              "create_text_bbox_y": 2.0000009536743164
             },
             {
               "text": "2",
               "tspan_bbox_height": 16,
-              "create_text_bbox_y": 1.0000009536743164
+              "create_text_bbox_y": 2.0000009536743164
             },
             {
               "text": " 2",
               "tspan_bbox_height": 16,
-              "create_text_bbox_y": 1.0000009536743164
+              "create_text_bbox_y": 2.0000009536743164
             },
             {
               "text": "step 3",
               "tspan_bbox_height": 16,
-              "create_text_bbox_y": 1.0000009536743164
+              "create_text_bbox_y": 2.0000009536743164
             },
             {
               "text": "3",
               "tspan_bbox_height": 16,
-              "create_text_bbox_y": 1.0000009536743164
+              "create_text_bbox_y": 2.0000009536743164
             },
             {
               "text": " 3",
               "tspan_bbox_height": 16,
-              "create_text_bbox_y": 1.0000009536743164
+              "create_text_bbox_y": 2.0000009536743164
             }
           ]
         }
-      ]
+      ],
+      "upstream_svg_sha256": "af2668d8eb2910c653a974ef6d7868a33b6a71d432fddadfc3bcb44140831349"
     },
     {
       "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset6_lr_md_html_false_094",
       "input_sha256": "fcc1647a03d968d09a49f5be57be869fa34639476d4c06065e49c686a9b69380",
-      "upstream_svg_sha256": "368d2cad76de90802a92dc9970e0b63eb21423ce833e4669e94c81077e76d75b",
       "faces": [
         {
           "style": {
@@ -454,12 +484,12 @@
             }
           ]
         }
-      ]
+      ],
+      "upstream_svg_sha256": "b7a630c597e5ad8b6512e1f26b6be35c5c51839ce46cd001b5ff3740422bc3c8"
     },
     {
       "fixture": "local_mermaid_12_2_elk_label_clearance_8368",
       "input_sha256": "e82ce307a88afea33da54324d9dfdfb674dfc7c35107dd162e71845ea1b8a497",
-      "upstream_svg_sha256": "26b4dde86ef879321f362a35486a1980d13088ef5d71baa25a449000db7b2fd4",
       "faces": [
         {
           "style": {
@@ -521,7 +551,8 @@
             }
           ]
         }
-      ]
+      ],
+      "upstream_svg_sha256": "2fb18d1be309976f8ac29af5acbc3cd2e4e9c788bbb64601c6cbd3687a6149b9"
     }
   ]
 }

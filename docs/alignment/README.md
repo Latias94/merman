@@ -45,7 +45,7 @@ still own admission.
 `cargo run -p xtask -- check-alignment` cross-checks capabilities, compare ownership, semantic/layout
 goldens, fixtures, and upstream manifests. It does not parse ordinary alignment prose.
 
-The [12.3 migration](../migrations/mermaid-12-3.md) describes current development behavior and
+The [12.4 migration](../migrations/mermaid-12-4.md) describes current development behavior and
 dependency selection. ADRs retain the scope of their original decisions. The
 [fixture version policy](../../fixtures/README.md) distinguishes historical input comments from
 selected runtime and SVG provenance; an old authoring version does not select current behavior.

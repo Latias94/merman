@@ -124,14 +124,25 @@ pub fn layout_diagnostic(
     effective_config: &PresentationConfig,
     mut graph: elk::Graph,
 ) -> Result<FlowchartElkProjection> {
+    let layout = solve_diagnostic(model, effective_config, &mut graph)?;
+    let settings = FlowchartConfigView::new(effective_config).layout_settings();
+    project_layout(model, settings, &graph, layout, None)
+}
+
+/// Solves measured input through the Flow provider adapter before SVG projection.
+#[cfg(any(test, feature = "test-support"))]
+pub fn solve_diagnostic(
+    model: FlowchartRenderModelRef<'_>,
+    effective_config: &PresentationConfig,
+    graph: &mut elk::Graph,
+) -> Result<elk::LayoutResult> {
     let mut no_work = None;
-    let orientation = prepare_provider_graph(model, effective_config, &mut graph, &mut no_work)?;
+    let orientation = prepare_provider_graph(model, effective_config, graph, &mut no_work)?;
     let mut layout = elk::layout(orientation.graph()).map_err(|error| Error::InvalidModel {
         message: format!("ELK layout failed: {error}"),
     })?;
     orientation.restore(&mut layout, &mut no_work)?;
-    let settings = FlowchartConfigView::new(effective_config).layout_settings();
-    project_layout(model, settings, &graph, layout, None)
+    Ok(layout)
 }
 
 fn prepare_provider_graph<'a>(
