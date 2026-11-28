@@ -181,6 +181,44 @@ fn clear(
     Ok(visit.is_continue())
 }
 
+fn inflate(Bounds { x, y }: Bounds, gap: f64) -> Bounds {
+    Bounds {
+        x: [x[0] - gap, x[1] + gap],
+        y: [y[0] - gap, y[1] + gap],
+    }
+}
+
+fn clear_ink(
+    occupied: &Bvh<Occupied>,
+    ink: Bounds,
+    gap: f64,
+    terminals: &[usize],
+    ignore: impl Fn(Owner) -> bool,
+    work: &mut Work<'_>,
+) -> LayoutResult<bool> {
+    if !ink.finite() {
+        return Ok(false);
+    }
+    let guarded = inflate(ink, gap);
+    clear(
+        occupied,
+        guarded,
+        |item| {
+            if ignore(item.owner) {
+                return true;
+            }
+            match item.owner {
+                Owner::Body(slot) if terminals.contains(&slot) => {
+                    !ink.overlaps_strictly(item.bounds)
+                }
+                Owner::Body(_) => !guarded.overlaps_strictly(item.bounds),
+                _ => !ink.overlaps(item.bounds),
+            }
+        },
+        work,
+    )
+}
+
 fn marker(
     contact: Contact,
     metrics: MarkerMetrics,
@@ -220,7 +258,7 @@ fn occupied(
     let root = &ctx.hierarchy.levels[ctx.graph.groups.len()];
     for (slot, (&rect, item)) in nodes.iter().zip(&root.items).enumerate() {
         work.visit(1)?;
-        let mut bounds = Bounds::of(rect);
+        let bounds = Bounds::of(rect);
         if let Endpoint::Group(id) = item {
             let child = frames[id.0 as usize].as_ref().expect("solved lane group");
             if let (Some(title), Some(size)) = (&child.title, ctx.graph.groups[id.0 as usize].title)
@@ -234,14 +272,6 @@ fn occupied(
                     Owner::Header,
                     Bounds::centered(translated(title.center, origin), size),
                 )?;
-            }
-            // A handoff or feedback candidate only terminates at ordinary nodes.
-            if bounds.has_area() {
-                let gap = ctx.options.spacing.edge;
-                bounds = Bounds {
-                    x: [bounds.x[0] - gap, bounds.x[1] + gap],
-                    y: [bounds.y[0] - gap, bounds.y[1] + gap],
-                };
             }
         }
         if bounds.has_area() {
@@ -376,14 +406,14 @@ impl Scene<'_> {
                 at.y += (b.y - a.y).signum() * (before - after) * 0.5;
             }
             let bounds = Bounds::centered(at, size);
-            if bounds.finite()
-                && clear(
-                    &self.occupied,
-                    bounds,
-                    |item| item.owner == Owner::Wire(id),
-                    work,
-                )?
-            {
+            if clear_ink(
+                &self.occupied,
+                bounds,
+                self.spacing.edge,
+                &[],
+                |owner| owner == Owner::Wire(id),
+                work,
+            )? {
                 best = Some(at);
                 longest = room;
             }
@@ -423,14 +453,14 @@ impl Scene<'_> {
                 metrics[end],
                 Some((&self.graph.nodes[slot], rects[end])),
             ) {
-                if !footprint.finite()
-                    || !clear(
-                        &self.occupied,
-                        footprint,
-                        |item| item.owner == Owner::Wire(id) || item.owner == Owner::Body(slot),
-                        work,
-                    )?
-                {
+                if !clear_ink(
+                    &self.occupied,
+                    footprint,
+                    self.spacing.edge,
+                    &slots,
+                    |owner| owner == Owner::Wire(id) || owner == Owner::Body(slot),
+                    work,
+                )? {
                     return Ok(None);
                 }
                 ink[end] = Some(footprint);
@@ -441,17 +471,14 @@ impl Scene<'_> {
             let a = leg[0];
             let b = leg[1];
             let bounds = Bounds::between(a, b);
-            if !bounds.finite()
-                || a == b
+            if a == b
                 || bounds.has_area()
-                || !clear(
+                || !clear_ink(
                     &self.occupied,
                     bounds,
-                    |item| {
-                        item.owner == Owner::Wire(id)
-                            || matches!(item.owner, Owner::Body(slot) if slots.contains(&slot)
-                                && !bounds.overlaps_strictly(item.bounds))
-                    },
+                    self.spacing.edge,
+                    &slots,
+                    |owner| owner == Owner::Wire(id),
                     work,
                 )?
             {

@@ -370,12 +370,23 @@ impl Fit {
                     size.width = finite(size.width + (offset.x - last).max(0.0))?;
                 }
                 TitlePosition::TopRight | TitlePosition::BottomRight => {
-                    let clear_edge =
-                        (size.width - padding.right - title.width - title_clear).next_down();
-                    let limit = clear_edge - title_trunk;
-                    let first = room(Side::Left);
-                    offset.x = finite(offset.x.min(limit).max(first))?;
-                    size.width = finite(size.width + (first - limit).max(0.0))?;
+                    let half_title = title.width / 2.0;
+                    let insets = [padding.right, half_title, half_title, title_clear];
+                    let clear_edge = insets.iter().fold(size.width, |edge, inset| edge - inset);
+                    // Budget the rounding guard at the scale of the shell's width.
+                    let width_ulp = size.width - size.width.next_down();
+                    let limit = clear_edge - title_trunk - width_ulp;
+                    offset.x = finite(offset.x.min(limit).max(room(Side::Left)))?;
+                    let trunk = title_trunk + offset.x;
+                    if trunk >= clear_edge {
+                        // Invert the title insets with outward rounding at each scale.
+                        size.width = finite(
+                            insets
+                                .iter()
+                                .rev()
+                                .fold(trunk.next_up(), |width, inset| (width + inset).next_up()),
+                        )?;
+                    }
                 }
                 _ => {}
             }
