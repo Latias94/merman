@@ -78,8 +78,8 @@ fn workload_metrics(
         return Err("invalid allocation counters".into());
     }
     debug_assert_eq!(
-        heap.peak_live_bytes - heap.snapshot_live_bytes,
-        heap.peak_growth_bytes
+        heap.peak_live_bytes.checked_sub(heap.snapshot_live_bytes),
+        Some(heap.peak_growth_bytes)
     );
     let delta = |value: u64| i128::from(value) - i128::from(heap.snapshot_live_bytes);
     Ok(serde_json::json!({

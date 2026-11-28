@@ -6,8 +6,7 @@ use merman_core_preprocess::directives::{
     MAX_DIRECTIVE_CONFIG_PARSE_BYTES, read_ordered_init_directive_controlled,
 };
 use merman_core_preprocess::frontmatter::{
-    frontmatter_config_routes, parse_frontmatter_insert_order_json,
-    read_ordered_frontmatter_controlled,
+    FrontmatterFields, parse_frontmatter_insert_order_json, read_ordered_frontmatter_controlled,
 };
 use merman_core_preprocess::yaml::YamlInsertOrder;
 use merman_model::config::values_equal_controlled;
@@ -139,7 +138,7 @@ pub fn source_config_rewrite_order_controlled(
     if directives.len() > MAX_REWRITE_DIRECTIVES {
         return Ok(None);
     }
-    let (frontmatter, mut compatibility_config) = match frontmatter {
+    let (frontmatter, compatibility_config) = match frontmatter {
         FrontmatterRewrite::Replace(span) => {
             let Some(text) = source
                 .get(span.start..span.end)
@@ -152,7 +151,10 @@ pub fn source_config_rewrite_order_controlled(
             else {
                 return Ok(None);
             };
-            (fields, empty_order())
+            let compatibility = fields
+                .as_ref()
+                .map_or_else(empty_order, FrontmatterFields::project_compatibility_order);
+            (fields, compatibility)
         }
         FrontmatterRewrite::Insert {
             frontmatter,
@@ -175,17 +177,6 @@ pub fn source_config_rewrite_order_controlled(
             (None, order)
         }
     };
-
-    if let Some(fields) = frontmatter.as_ref() {
-        let mut config = compatibility_config
-            .object_mut()
-            .expect("empty config object");
-        for &(key, namespace) in frontmatter_config_routes() {
-            if let Some(value) = fields.view().get(key) {
-                config.insert(namespace.to_owned(), value.to_ordered());
-            }
-        }
-    }
 
     let mut remaining_bytes = max_bytes;
     let mut directive_order = Vec::with_capacity(directives.len());

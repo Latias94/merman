@@ -1,7 +1,7 @@
 use super::svg_emit::test_support::{FlowchartSvgModelRequest, render_flowchart_svg_model};
 use super::*;
 use crate::environment::RenderEnvironment;
-use crate::model::FlowchartLayout;
+use crate::model::{FlowchartLayout, LayoutNode};
 use crate::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_model::presentation::RenderSemanticModel;

@@ -1,5 +1,8 @@
 use super::*;
-use crate::conversion::EmbeddedDataPlan;
+use crate::conversion::{EmbeddedDataPlan, plan_embedded_data_resource_bytes};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::operation::RECURSIVE_SVG_BACKEND_STACK_BYTES;
+use crate::operation::run_recursive_svg_backend;
 use crate::test_fixtures::{fixture_pdf_options, fixture_raster_options};
 use base64::Engine as _;
 use merman_model::{
@@ -672,7 +675,7 @@ fn dimensionless_pdf_preserves_visible_info_style_text() {
     let prepared = prepare_pdf(source, &fixture_pdf_options())
         .expect("ordinary dimensionless Info text stays inside its derived viewport");
     let page = prepared.report().page();
-    assert!(page.page_width_pt > 0.0 && page.page_height_pt > 0.0);
+    assert!(page.page_width_pt() > 0.0 && page.page_height_pt() > 0.0);
     assert!(!prepared.report().implicit_viewport_clipping_residual());
     let pdf = prepared.encode().unwrap();
     let pdf = String::from_utf8_lossy(&pdf);
@@ -901,7 +904,7 @@ fn trusted_resvg_backend_handles_the_declared_tree_depth() {
     let svg = trusted_compatible_svg(&nested_group_svg(depth));
     let options = fixture_raster_options().with_conversion_limits(SvgConversionLimits::unbounded());
     let prepared = super::prepare_raster(&svg, &options).unwrap();
-    assert_eq!(prepared.report.conversion.max_tree_depth, depth - 1);
+    assert_eq!(prepared.conversion_plan().max_tree_depth, depth - 1);
 
     let bytes = prepared.encode_png().unwrap();
     assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
@@ -1073,7 +1076,7 @@ fn embedded_image_plan_reports_intrinsic_pixels_from_headers() {
     let prepared = prepare_raster(&svg, &fixture_raster_options()).unwrap();
 
     assert_eq!(
-        prepared.report.embedded_images,
+        prepared.embedded_image_plan(),
         EmbeddedImagePlan {
             data_resources: 1,
             raster_images: 1,
@@ -1115,7 +1118,7 @@ fn raster_and_pdf_charge_each_effective_inline_image_source_once() {
             svg.resource_closure().inline_data_resource_count(),
             image_count
         );
-        for plan in [raster.report.embedded_images, pdf.report.embedded_images] {
+        for plan in [raster.embedded_image_plan(), pdf.embedded_image_plan()] {
             assert_eq!(plan.data_resources, image_count);
             assert_eq!(plan.largest_data_bytes, 68);
             assert_eq!(plan.total_data_bytes, byte_limit);

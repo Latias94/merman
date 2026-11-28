@@ -1,13 +1,15 @@
 use super::super::error::IconRegistryBuildError;
 use super::super::limits::{IconRegistryBuildLimits, IconRegistryResourceLimitId};
-use super::projection::{RewriteSources, XmlProjection};
-use super::{SVG_NAMESPACE, XLINK_NAMESPACE, arithmetic_error, invalid_xml_error, limit_error};
-use quick_xml::XmlVersion;
-use quick_xml::escape::resolve_xml_entity;
+use super::projection::{
+    Namespace, NamespaceScopes, ProjectionError, ProjectionResult, RewriteSources, XmlProjection,
+};
+use super::{allocation_error, arithmetic_error, invalid_xml_error, limit_error};
+use quick_xml::escape::{resolve_predefined_entity, resolve_xml_entity};
 use quick_xml::events::attributes::Attributes;
 use quick_xml::events::{BytesRef, Event};
-use quick_xml::name::{NamespaceResolver, ResolveResult};
+use quick_xml::name::{Prefix, PrefixDeclaration, QName};
 use quick_xml::reader::NsReader;
+use std::borrow::Cow;
 use std::collections::HashSet;
 
 #[derive(Debug, Default)]
@@ -21,12 +23,14 @@ pub(super) fn admit_wrapped_fragment<'xml>(
     pack_index: usize,
     limits: &IconRegistryBuildLimits,
     remaining_build_work: usize,
-) -> Result<(XmlStats, Option<RewriteSources<'xml>>), IconRegistryBuildError> {
+) -> Result<(XmlStats, ProjectionResult<RewriteSources<'xml>>), IconRegistryBuildError> {
     let mut reader = NsReader::from_str(wrapped);
     reader.config_mut().enable_all_checks(true);
 
     let mut stats = XmlStats::default();
-    let mut projection = (remaining_build_work > 0).then(|| XmlProjection::new(wrapped));
+    let mut projection = Ok(XmlProjection::new(wrapped, remaining_build_work));
+    let mut raw_namespaces = NamespaceScopes::default();
+    let mut raw_scopes = Vec::new();
     let mut depth = 0usize;
     let mut root_seen = false;
     let mut root_closed = false;
@@ -40,7 +44,6 @@ pub(super) fn admit_wrapped_fragment<'xml>(
         let empty = matches!(&event, Event::Empty(_));
         match event {
             Event::Start(element) | Event::Empty(element) => {
-                let (namespace, local_name) = reader.resolver().resolve_element(element.name());
                 let is_wrapper = !root_seen;
                 if is_wrapper {
                     if empty {
@@ -57,11 +60,6 @@ pub(super) fn admit_wrapped_fragment<'xml>(
                     }
                 } else {
                     ensure_inside_wrapper(depth, root_closed, pack_index)?;
-                    // The next admitted element and the wrapper each cost one unit. Keep
-                    // checking the stream for its own first error after that budget is exceeded.
-                    if stats.element_count.saturating_add(1) >= remaining_build_work {
-                        projection = None;
-                    }
                 }
 
                 let tag = &wrapped[start + 1..start + 1 + element.len()];
@@ -70,11 +68,21 @@ pub(super) fn admit_wrapped_fragment<'xml>(
                 observe(&mut projection, |xml| {
                     xml.begin_element(start + 1 + name.len())
                 });
+                let scope = raw_namespaces.scope_start();
+                collect_raw_namespaces(
+                    tag,
+                    name.len(),
+                    &mut raw_namespaces,
+                    pack_index,
+                    &mut projection,
+                )?;
+                let (local_name, prefix) = QName(name).decompose();
+                let namespace = resolve_raw_namespace(&raw_namespaces, prefix, true, pack_index)?;
                 let uses_xlink = validate_element(
                     tag,
                     name,
                     namespace,
-                    reader.resolver(),
+                    &raw_namespaces,
                     is_wrapper,
                     pack_index,
                     &mut projection,
@@ -91,10 +99,16 @@ pub(super) fn admit_wrapped_fragment<'xml>(
                     record_element(&mut stats, depth, pack_index, limits)?;
                 }
                 root_seen = true;
-                if !empty {
+                if empty {
+                    raw_namespaces.restore(scope);
+                } else {
                     depth = depth.checked_add(1).ok_or_else(|| {
                         arithmetic_error(pack_index, "icon XML nesting depth overflowed")
                     })?;
+                    raw_scopes.try_reserve(1).map_err(|_| {
+                        allocation_error(pack_index, "icon XML namespace scope allocation failed")
+                    })?;
+                    raw_scopes.push(scope);
                 }
                 observe(&mut projection, |xml| {
                     xml.finish_element(name, start..end, empty)
@@ -110,6 +124,10 @@ pub(super) fn admit_wrapped_fragment<'xml>(
                 depth = depth.checked_sub(1).ok_or_else(|| {
                     invalid_xml_error(pack_index, "icon body contains an unmatched end tag")
                 })?;
+                let scope = raw_scopes.pop().ok_or_else(|| {
+                    invalid_xml_error(pack_index, "icon body contains an unmatched end tag")
+                })?;
+                raw_namespaces.restore(scope);
                 if depth == 0 {
                     root_closed = true;
                 }
@@ -123,30 +141,27 @@ pub(super) fn admit_wrapped_fragment<'xml>(
                         "icon body contains a forbidden XML text terminator",
                     ));
                 }
-                let content = text.xml10_content();
-                validate_xml_chars(&content, pack_index, "icon body contains invalid XML text")?;
-                if let Some(xml) = projection.as_mut() {
+                validate_xml_chars(&text, pack_index, "icon body contains invalid XML text")?;
+                if let Ok(xml) = projection.as_mut() {
                     xml.text(start..end);
                 }
             }
             Event::CData(text) => {
                 ensure_inside_wrapper(depth, root_closed, pack_index)?;
-                let content = text.xml10_content();
-                validate_xml_chars(&content, pack_index, "icon body contains invalid CDATA")?;
-                observe(&mut projection, |xml| xml.cdata(start..end, content));
+                validate_xml_chars(&text, pack_index, "icon body contains invalid CDATA")?;
+                observe(&mut projection, |xml| xml.cdata(start..end));
             }
             Event::GeneralRef(reference) => {
                 ensure_inside_wrapper(depth, root_closed, pack_index)?;
                 validate_general_reference(&reference, pack_index)?;
-                if let Some(xml) = projection.as_mut() {
+                if let Ok(xml) = projection.as_mut() {
                     xml.text(start..end);
                 }
             }
             Event::Comment(comment) => {
                 ensure_inside_wrapper(depth, root_closed, pack_index)?;
-                let content = comment.xml10_content();
                 validate_xml_chars(
-                    &content,
+                    &comment,
                     pack_index,
                     "icon body contains an invalid XML comment",
                 )?;
@@ -184,109 +199,149 @@ pub(super) fn admit_wrapped_fragment<'xml>(
 }
 
 fn observe<'xml>(
-    projection: &mut Option<XmlProjection<'xml>>,
-    event: impl FnOnce(&mut XmlProjection<'xml>) -> Option<()>,
+    projection: &mut ProjectionResult<XmlProjection<'xml>>,
+    event: impl FnOnce(&mut XmlProjection<'xml>) -> ProjectionResult<()>,
 ) {
-    if let Some(xml) = projection
-        && event(xml).is_none()
+    if let Ok(xml) = projection
+        && let Err(error) = event(xml)
     {
-        *projection = None;
+        *projection = Err(error);
     }
+}
+
+fn collect_raw_namespaces<'xml>(
+    tag: &'xml str,
+    name_len: usize,
+    namespaces: &mut NamespaceScopes<'xml>,
+    pack_index: usize,
+    projection: &mut ProjectionResult<XmlProjection<'xml>>,
+) -> Result<(), IconRegistryBuildError> {
+    // NsReader has checked its raw declaration rules and active-binding ceiling. Reuse the
+    // same lexical iteration for source-backed keys and values. Raw names see the entire tag
+    // up to the first lexer error, even when a declaration follows the name that uses it.
+    for attribute in Attributes::new(tag, name_len).with_checks(false) {
+        let Ok(attribute) = attribute else { break };
+        let raw_binding = attribute.key.as_namespace_binding();
+        if raw_binding.is_some() {
+            observe(projection, XmlProjection::preflight_tag_item);
+        }
+        let prefix = match raw_binding {
+            Some(PrefixDeclaration::Default) => "",
+            Some(PrefixDeclaration::Named("xml")) | None => continue,
+            Some(PrefixDeclaration::Named(prefix)) => prefix,
+        };
+        namespaces.bind(prefix, attribute.value).map_err(|_| {
+            allocation_error(pack_index, "icon XML namespace index allocation failed")
+        })?;
+    }
+    Ok(())
+}
+
+fn resolve_raw_namespace(
+    namespaces: &NamespaceScopes<'_>,
+    prefix: Option<Prefix<'_>>,
+    use_default: bool,
+    pack_index: usize,
+) -> Result<Option<Namespace>, IconRegistryBuildError> {
+    let Some(prefix) = prefix else {
+        return Ok(if use_default {
+            namespaces
+                .lookup("")
+                .filter(|namespace| *namespace != Namespace::Empty)
+        } else {
+            None
+        });
+    };
+    let namespace = match prefix.into_inner() {
+        "xml" => Some(Namespace::Xml),
+        "xmlns" => Some(Namespace::Xmlns),
+        "" => None,
+        prefix => namespaces
+            .lookup(prefix)
+            .filter(|namespace| *namespace != Namespace::Empty),
+    };
+    namespace.map(Some).ok_or_else(|| {
+        invalid_xml_error(
+            pack_index,
+            if use_default {
+                "icon body uses an undeclared namespace prefix"
+            } else {
+                "icon body uses an undeclared attribute namespace prefix"
+            },
+        )
+    })
 }
 
 fn validate_element<'xml>(
     tag: &'xml str,
     name: &str,
-    namespace: ResolveResult<'_>,
-    resolver: &NamespaceResolver,
+    namespace: Option<Namespace>,
+    namespaces: &NamespaceScopes<'_>,
     is_wrapper: bool,
     pack_index: usize,
-    projection: &mut Option<XmlProjection<'xml>>,
+    projection: &mut ProjectionResult<XmlProjection<'xml>>,
 ) -> Result<bool, IconRegistryBuildError> {
-    let mut uses_xlink = matches!(
-        &namespace,
-        ResolveResult::Bound(namespace) if namespace.as_ref() == XLINK_NAMESPACE
-    ) && !is_wrapper;
+    let mut uses_xlink = namespace == Some(Namespace::Xlink) && !is_wrapper;
     match namespace {
-        ResolveResult::Unknown(_) => {
-            return Err(invalid_xml_error(
-                pack_index,
-                "icon body uses an undeclared namespace prefix",
-            ));
-        }
-        ResolveResult::Bound(namespace) if is_wrapper && namespace.as_ref() != SVG_NAMESPACE => {
+        Some(namespace) if is_wrapper && namespace != Namespace::Svg => {
             return Err(invalid_xml_error(
                 pack_index,
                 "icon XML wrapper uses a non-SVG namespace",
             ));
         }
-        ResolveResult::Unbound if is_wrapper => {
+        None if is_wrapper => {
             return Err(invalid_xml_error(
                 pack_index,
                 "icon XML wrapper is missing the SVG namespace",
             ));
         }
-        ResolveResult::Unbound | ResolveResult::Bound(_) => {}
+        _ => {}
     }
 
     validate_xml_qname(name, pack_index)?;
+    let mut raw_attributes = HashSet::new();
     let mut expanded_attributes = HashSet::new();
 
-    for attribute in Attributes::new(tag, name.len()) {
+    for attribute in Attributes::new(tag, name.len()).with_checks(false) {
         let attribute = attribute.map_err(|_| {
             invalid_xml_error(pack_index, "icon body contains an invalid XML attribute")
         })?;
-        validate_xml_qname(attribute.key.as_ref(), pack_index)?;
-        if attribute.value.contains('<') {
+        observe(projection, XmlProjection::preflight_tag_item);
+        raw_attributes.try_reserve(1).map_err(|_| {
+            allocation_error(pack_index, "icon XML attribute name allocation failed")
+        })?;
+        if !raw_attributes.insert(attribute.key.into_inner()) {
             return Err(invalid_xml_error(
                 pack_index,
-                "icon body contains an invalid XML attribute value",
+                "icon body contains an invalid XML attribute",
             ));
         }
-        let normalized =
-            match attribute.normalized_value_with(XmlVersion::Implicit1_0, 1, resolve_xml_entity) {
-                Ok(value) => value,
-                Err(_) => {
-                    // Cargo feature unification can enable HTML entities in the reader. Preserve
-                    // its streaming error order while rejecting those entities at the strict gate.
-                    *projection = None;
-                    attribute
-                        .normalized_value(XmlVersion::Implicit1_0)
-                        .map_err(|_| {
-                            invalid_xml_error(
-                                pack_index,
-                                "icon body contains an invalid XML attribute value",
-                            )
-                        })?
-                }
-            };
-        validate_xml_chars(
-            &normalized,
-            pack_index,
-            "icon body contains an invalid XML attribute value",
-        )?;
-        observe(projection, |xml| {
-            xml.attribute(attribute.key.into_inner(), &attribute.value, normalized)
-        });
+        validate_xml_qname(attribute.key.as_ref(), pack_index)?;
+        let Cow::Borrowed(raw_value) = attribute.value else {
+            // Attributes::new slices the original tag, including for empty values.
+            return Err(invalid_attribute_value(pack_index));
+        };
+        if validate_attribute_value(raw_value, pack_index)? {
+            observe(projection, |xml| {
+                xml.attribute(attribute.key.into_inner(), raw_value)
+            });
+        } else {
+            observe(projection, |_| Err(ProjectionError::InvalidXml));
+        }
 
         if attribute.key.as_namespace_binding().is_some() {
             continue;
         }
 
-        let (attribute_namespace, local_name) = resolver.resolve_attribute(attribute.key);
-        let attribute_namespace = match attribute_namespace {
-            ResolveResult::Unknown(_) => {
-                return Err(invalid_xml_error(
-                    pack_index,
-                    "icon body uses an undeclared attribute namespace prefix",
-                ));
-            }
-            ResolveResult::Bound(namespace) => {
-                uses_xlink |= namespace.as_ref() == XLINK_NAMESPACE;
-                Some(namespace.into_inner())
-            }
-            ResolveResult::Unbound => None,
-        };
+        let (local_name, prefix) = attribute.key.decompose();
+        let attribute_namespace = resolve_raw_namespace(namespaces, prefix, false, pack_index)?;
+        uses_xlink |= attribute_namespace == Some(Namespace::Xlink);
+        expanded_attributes.try_reserve(1).map_err(|_| {
+            allocation_error(
+                pack_index,
+                "icon XML expanded attribute name allocation failed",
+            )
+        })?;
         if !expanded_attributes.insert((attribute_namespace, local_name.into_inner())) {
             return Err(invalid_xml_error(
                 pack_index,
@@ -296,6 +351,52 @@ fn validate_element<'xml>(
     }
 
     Ok(uses_xlink)
+}
+
+fn invalid_attribute_value(pack_index: usize) -> IconRegistryBuildError {
+    invalid_xml_error(
+        pack_index,
+        "icon body contains an invalid XML attribute value",
+    )
+}
+
+/// Returns whether the value also passes the XML-only entity check. Raw admission
+/// needs validity, so it can leave whitespace unchanged and check references in place.
+fn validate_attribute_value(
+    mut raw: &str,
+    pack_index: usize,
+) -> Result<bool, IconRegistryBuildError> {
+    let valid_char = crate::xml_chars::is_xml_1_0_char;
+    if raw.contains('<') || !raw.chars().all(valid_char) {
+        return Err(invalid_attribute_value(pack_index));
+    }
+
+    let mut strict = true;
+    while let Some((_, after_amp)) = raw.split_once('&') {
+        let (reference, rest) = after_amp
+            .split_once(';')
+            .ok_or_else(|| invalid_attribute_value(pack_index))?;
+        if reference.starts_with('#') {
+            let character = BytesRef::new(reference)
+                .resolve_char_ref()
+                .map_err(|_| invalid_attribute_value(pack_index))?;
+            if !character.is_some_and(valid_char) {
+                return Err(invalid_attribute_value(pack_index));
+            }
+        } else if resolve_xml_entity(reference).is_none() {
+            // The reader supports HTML names when escape-html is unified. Its depth-one
+            // normalization only accepts replacement text that needs no further decoding.
+            strict = false;
+            let replacement = resolve_predefined_entity(reference)
+                .ok_or_else(|| invalid_attribute_value(pack_index))?;
+            if replacement.contains(['&', '\t', '\r', '\n']) || !replacement.chars().all(valid_char)
+            {
+                return Err(invalid_attribute_value(pack_index));
+            }
+        }
+        raw = rest;
+    }
+    Ok(strict)
 }
 
 fn record_element(

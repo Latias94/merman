@@ -1,6 +1,9 @@
 //! Connect admitted Flow-family artifacts to the family SVG renderer.
 
 use super::*;
+use crate::model::FlowchartLayout;
+#[cfg(any(test, feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+use crate::model::SwimlaneLayout;
 #[cfg(any(test, feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use merman_render_flow::svg::SwimlaneSvgLayout;
 use merman_render_flow::svg::{FlowchartSvgLayout, FlowchartSvgRoute, FlowchartSvgServices};

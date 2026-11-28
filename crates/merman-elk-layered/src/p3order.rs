@@ -44,9 +44,18 @@ pub(crate) fn initialize_crossing_minimization_port_ids(graph: &mut LGraph) {
 
 pub(crate) fn initialize_crossing_minimization_port_ids_hierarchy(graph: &mut LGraph) {
     initialize_crossing_minimization_port_ids(graph);
-    for node in &mut graph.layerless_nodes {
-        if let Some(nested_graph) = node.nested_graph.as_deref_mut() {
-            initialize_crossing_minimization_port_ids_hierarchy(nested_graph);
+    let mut nodes = graph.layerless_nodes.iter_mut();
+    // Resume the parent's node iterator after finishing each child subtree.
+    let mut parents = Vec::new();
+    loop {
+        if let Some(child) = nodes.find_map(|node| node.nested_graph.as_deref_mut()) {
+            initialize_crossing_minimization_port_ids(child);
+            parents.push(nodes);
+            nodes = child.layerless_nodes.iter_mut();
+        } else if let Some(parent) = parents.pop() {
+            nodes = parent;
+        } else {
+            break;
         }
     }
 }
@@ -1761,6 +1770,76 @@ mod tests {
             original_opposite_port: None,
             compound_segment: None,
         }
+    }
+
+    #[test]
+    fn crossing_port_ids_initialize_deep_hierarchy_on_a_small_stack() {
+        use crate::graph::LPort;
+
+        const GRAPH_COUNT: usize = 4_096;
+
+        fn graph_with_ports() -> LGraph {
+            let mut graph = LGraph::new("scope", LayeredOptions::default());
+            for (index, (id, port_count)) in [("owner", 1), ("late", 1), ("early", 2)]
+                .into_iter()
+                .enumerate()
+            {
+                let mut node = LNode::new(id, 1.0, 1.0, None);
+                for port_index in 0..port_count {
+                    let mut port = LPort::new(format!("{id}:{port_index}"), index, PortType::Input);
+                    port.crossing_minimization_id = Some(99);
+                    node.ports.push(port);
+                }
+                graph.layerless_nodes.push(node);
+            }
+            graph.set_node_layer(2, 0);
+            graph.set_node_layer(1, 1);
+            graph
+        }
+
+        fn assert_port_ids(graph: &LGraph) {
+            let nodes = &graph.layerless_nodes;
+            assert_eq!(
+                [
+                    nodes[0].ports[0].crossing_minimization_id,
+                    nodes[1].ports[0].crossing_minimization_id,
+                    nodes[2].ports[0].crossing_minimization_id,
+                    nodes[2].ports[1].crossing_minimization_id,
+                ],
+                [None, Some(2), Some(0), Some(1)],
+            );
+        }
+
+        let mut root = graph_with_ports();
+        for _ in 1..GRAPH_COUNT {
+            let mut parent = graph_with_ports();
+            parent.layerless_nodes[0].nested_graph = Some(Box::new(root));
+            root = parent;
+        }
+        root.layerless_nodes[1].nested_graph = Some(Box::new(graph_with_ports()));
+
+        let result = std::thread::scope(|scope| {
+            std::thread::Builder::new()
+                .stack_size(128 * 1024)
+                .spawn_scoped(scope, || {
+                    initialize_crossing_minimization_port_ids_hierarchy(&mut root);
+
+                    let mut current = &root;
+                    for _ in 1..GRAPH_COUNT {
+                        assert_port_ids(current);
+                        current = current.layerless_nodes[0].nested_graph.as_deref().unwrap();
+                    }
+                    assert_port_ids(current);
+                    assert!(current.layerless_nodes[0].nested_graph.is_none());
+                    let sibling = root.layerless_nodes[1].nested_graph.as_deref().unwrap();
+                    assert_port_ids(sibling);
+                })
+                .map(|worker| worker.join())
+        });
+        LNode::drop_nested_graphs(&mut root.layerless_nodes);
+        result
+            .expect("the small-stack worker should start")
+            .expect("crossing port IDs should be initialized on the small-stack worker");
     }
 
     #[test]

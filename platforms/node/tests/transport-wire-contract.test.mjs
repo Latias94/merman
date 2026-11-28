@@ -311,6 +311,34 @@ test("bounded JSON snapshots reject member, token, and string work before string
   }
 });
 
+test("bounded JSON snapshots give the string field limit priority over isolated surrogates", (context) => {
+  const stringify = context.mock.method(JSON, "stringify");
+  const limits = { ...NODE_TRANSPORT_LIMITS.binding_options, max_utf8_bytes: 32 };
+  for (const value of ["\ud800é", "é\udc00"]) {
+    for (const input of [value, { [value]: null }]) {
+      for (const [bytes, message] of [
+        [5, /isolated UTF-16 surrogate/i],
+        [4, /string exceeding the 4-byte field limit/i],
+        [1, /string exceeding the 1-byte field limit/i],
+      ]) {
+        assert.throws(
+          () => encodeTransportJson(input, "boundary", { ...limits, max_string_utf8_bytes: bytes }),
+          { code: "MERMAN_INVALID_TRANSPORT", message },
+        );
+      }
+    }
+  }
+  assert.throws(
+    () => encodeTransportJson("\u0000é\udc00", "boundary", {
+      ...limits,
+      max_utf8_bytes: 6,
+      max_string_utf8_bytes: 4,
+    }),
+    { code: "MERMAN_INVALID_TRANSPORT", message: /exceeds the 6-byte wire limit/i },
+  );
+  assert.equal(stringify.mock.callCount(), 0);
+});
+
 test("bounded JSON encoding counts expanded array elements in the member budget", () => {
   const shared = [null, null];
   const value = { first: shared, second: shared };

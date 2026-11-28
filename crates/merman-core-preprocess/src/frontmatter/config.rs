@@ -19,10 +19,11 @@ use crate::yaml::GridPlacementsSource;
 use crate::yaml::{YamlConfigKeyEvidence, YamlInsertOrder, YamlInsertOrderRequest};
 use crate::{MappedSource, SourceEdit};
 use merman_model::SourceSpan;
+use merman_model::config::MermaidConfig;
 use merman_model::family::FAMILY_CATALOG;
-use merman_model::json::drop_value_nonrecursive;
 #[cfg(feature = "yaml-editor")]
 use merman_model::json::ordered::OrderedJson;
+use merman_model::json::{clone_value_nonrecursive, drop_value_nonrecursive};
 use merman_model::{MAX_DIAGRAM_NESTING_DEPTH, OperationControl, OperationControlResult};
 use serde_json::{Map, Value};
 use std::borrow::Cow;
@@ -56,6 +57,30 @@ impl FrontmatterFields {
         self.fields
             .get("config")
             .filter(|value| frontmatter_truthy(value))
+    }
+
+    /// Projects Merman's root-level compatibility fields, then merges Mermaid's `config` value.
+    pub fn project_config_values(&self) -> MermaidConfig {
+        let mut config = MermaidConfig::empty_object();
+        for (namespace, value) in routed_frontmatter_values(|key| self.fields.get(key)) {
+            config.set_value(namespace, clone_value_nonrecursive(value));
+        }
+        if let Some(value) = self.config() {
+            config.deep_merge(value);
+        }
+        config
+    }
+
+    /// Projects authored order for root-level compatibility fields in an existing block.
+    #[cfg(feature = "yaml-editor")]
+    pub fn project_compatibility_order(fields: &OrderedJson) -> OrderedJson {
+        let mut order = OrderedJson::from(Value::Object(Map::new()));
+        let mut config = order.object_mut().expect("empty config object");
+        let fields = fields.view();
+        for (namespace, value) in routed_frontmatter_values(|key| fields.get(key)) {
+            config.insert(namespace.to_owned(), value.to_ordered());
+        }
+        order
     }
 }
 
@@ -189,7 +214,15 @@ fn decode_frontmatter_impl<'a>(
     }))
 }
 
-/// Root-level compatibility keys in assignment order. Explicit `config` is applied by the caller.
+fn routed_frontmatter_values<T>(
+    lookup: impl Fn(&str) -> Option<T>,
+) -> impl Iterator<Item = (&'static str, T)> {
+    frontmatter_config_routes()
+        .iter()
+        .filter_map(move |&(key, namespace)| lookup(key).map(|value| (namespace, value)))
+}
+
+/// Root-level compatibility keys in assignment order, before the explicit `config` merge.
 pub fn frontmatter_config_routes() -> &'static [(&'static str, &'static str)] {
     static ROUTES: OnceLock<Vec<(&'static str, &'static str)>> = OnceLock::new();
     ROUTES.get_or_init(|| {
@@ -442,6 +475,67 @@ pub fn parse_frontmatter_insert_order_json(json: &str) -> Option<OrderedJson> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn frontmatter_value_projection_replaces_aliases_before_merging_explicit_config() {
+        let input = concat!(
+            "---\n",
+            "flowchart: {keep: canonical, items: [a, {z: 1}]}\n",
+            "flowchart-elk: {elkOnly: true}\n",
+            "flowchart-v2: {v2Only: true}\n",
+            "config:\n",
+            "  flowchart: {items: [a, {z: 1}, b], curve: linear}\n",
+            "  fontFamily: Test Font\n",
+            "  gantt: {displayMode: configured}\n",
+            "displayMode: root\n",
+            "---\n",
+        );
+        let fields = decode_frontmatter_controlled(input, &OperationControl::new())
+            .unwrap()
+            .unwrap()
+            .result
+            .unwrap();
+        assert_eq!(
+            fields.project_config_values().as_value(),
+            &json!({
+                "flowchart": {"keep": "canonical", "items": ["a", {"z": 1}, {"z": 1}, "b"], "curve": "linear"},
+                "fontFamily": "Test Font",
+                "gantt": {"displayMode": "configured"},
+            })
+        );
+        assert_eq!(fields.display_mode.as_deref(), Some("root"));
+        assert_eq!(fields.fields["flowchart"]["items"], json!(["a", {"z": 1}]));
+    }
+
+    #[cfg(feature = "yaml-editor")]
+    #[test]
+    fn frontmatter_order_projection_keeps_winning_members_in_authored_order() {
+        let input = concat!(
+            "---\n",
+            "sequence: {actorMargin: 12}\n",
+            "flowchart: {z: true, a: false}\n",
+            "flowchart-elk: {elkOnly: true}\n",
+            "flowchart-v2: {v2Only: true}\n",
+            "config: {flowchart: {fromConfig: true}, theme: dark}\n",
+            "---\n",
+        );
+        let fields = read_ordered_frontmatter_controlled(
+            input,
+            MAX_DIRECTIVE_CONFIG_PARSE_BYTES,
+            MAX_CONFIG_REWRITE_DEPTH,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .flatten()
+        .unwrap();
+        let order = FrontmatterFields::project_compatibility_order(&fields);
+        assert_eq!(
+            serde_json::to_string(&order.view()).unwrap(),
+            r#"{"flowchart":{"z":true,"a":false},"sequence":{"actorMargin":12}}"#
+        );
+        assert_eq!(fields.value["config"]["theme"], "dark");
+    }
 
     #[test]
     fn grid_frontmatter_keeps_order_slots_and_indented_utf8_source_ranges() {
