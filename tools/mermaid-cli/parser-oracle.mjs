@@ -9,7 +9,7 @@ const require = createRequire(import.meta.url);
 const MAX_SOURCE_BYTES = 4096;
 const MAX_BATCH_CASES = 10064;
 const MAX_REQUEST_BYTES = 48 * 1024 * 1024;
-// The selected 12.4 package exports both label decoders from this shared chunk.
+// The selected 12.4.0 package exports these helpers from this shared chunk.
 // A changed selected package must admit its new seam explicitly instead of guessing a decoder.
 const decoderModule = "mermaid/dist/chunks/mermaid.core/chunk-OWCVCYLK.mjs";
 
