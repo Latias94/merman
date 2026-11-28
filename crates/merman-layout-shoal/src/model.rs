@@ -156,6 +156,10 @@ pub fn sweep_handle_fraction(across: f64, along: f64) -> f64 {
     (4.0 / (1.15 * ratio + 6.4)).clamp(0.25, 0.46)
 }
 
+/// The painter may shorten a wider sweep into a rounded crossbar.
+#[doc(hidden)]
+pub const STEEP_SWEEP_RATIO: f64 = 1.6;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct OrderHint {
     pub rank: i32,

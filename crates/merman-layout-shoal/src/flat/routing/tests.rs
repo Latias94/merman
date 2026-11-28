@@ -880,52 +880,31 @@ fn weighted_track_order_matches_an_all_pairs_oracle_including_ties_and_cycles() 
 }
 
 #[test]
-fn overlapping_nearby_s_curves_get_shelves_and_crossed_wide_curves_get_one_tall_gap() {
-    for (ends, tall) in [([60., 62.], false), ([300., -12.], true)] {
-        let x = if tall {
-            [0., 312., ends[0], ends[1]]
-        } else {
-            [0., 2., ends[0], ends[1]]
-        };
+fn nearby_and_opposing_wide_sweeps_use_distinct_shelves() {
+    for x in [[0., 2., 60., 62.], [0., 312., 300., -12.]] {
         let scene = Scene::new(&[10.; 4], &[&[0, 1], &[2, 3]], &[&[0, 2], &[1, 3]], &x);
         let drawing = scene.draw();
         let top = drawing.nodes[0].y + drawing.nodes[0].height;
         let bottom = drawing.nodes[2].y;
         for (_, edge) in &drawing.edges {
-            let diagonals: Vec<_> = edge
-                .points
-                .windows(2)
-                .filter(|p| p[0].x != p[1].x && p[0].y != p[1].y)
-                .collect();
-            for p in &diagonals {
-                assert!(p[0].y >= top && p[1].y <= bottom);
-                assert_eq!(p[1].axis, Axis::Vertical);
-            }
-            if tall {
-                assert_eq!(diagonals.len(), 1);
-                assert_eq!(bottom - top, 3.0 * scene.options.spacing.rank);
-                assert!(edge.points.iter().all(|p| p.axis == Axis::Vertical));
-                assert!(edge.points.iter().all(|p| p.kind == KnotKind::Free));
-            } else {
-                assert!(diagonals.is_empty());
-                assert!(top < level(&edge.points) && level(&edge.points) < bottom);
-                assert_eq!(
-                    edge.points.iter().map(|p| p.kind).collect::<Vec<_>>(),
-                    [
-                        KnotKind::GapBoundary,
-                        KnotKind::Free,
-                        KnotKind::Free,
-                        KnotKind::GapBoundary,
-                    ]
-                );
-            }
-        }
-        if !tall {
-            assert_ne!(
-                level(&drawing.edges[0].1.points),
-                level(&drawing.edges[1].1.points)
+            assert!(
+                edge.points
+                    .windows(2)
+                    .all(|pair| pair[0].x == pair[1].x || pair[0].y == pair[1].y)
+            );
+            assert!(top < level(&edge.points) && level(&edge.points) < bottom);
+            assert_eq!(
+                edge.points.iter().map(|p| p.kind).collect::<Vec<_>>(),
+                [
+                    KnotKind::GapBoundary,
+                    KnotKind::Free,
+                    KnotKind::Free,
+                    KnotKind::GapBoundary
+                ]
             );
         }
+        let pitch = (level(&drawing.edges[0].1.points) - level(&drawing.edges[1].1.points)).abs();
+        assert!(pitch >= scene.options.spacing.edge, "shelf pitch {pitch}");
     }
     let mut isolated = gap(&[(0., 10_000.), (12_000., 12_002.)]);
     isolated

@@ -21,6 +21,9 @@ const TERMINAL_TURN_RADIUS: f64 = 24.0;
 const MAX_CORNER_ARM: f64 = TERMINAL_TURN_RADIUS;
 const MAX_CORNER_ASPECT: f64 = 3.0;
 const QUARTER_CIRCLE_HANDLE: f64 = 0.552_284_749_830_793_6;
+#[cfg(feature = "layout-shoal")]
+use merman_layout_shoal::STEEP_SWEEP_RATIO;
+#[cfg(not(feature = "layout-shoal"))]
 const STEEP_SWEEP_RATIO: f64 = 1.6;
 const STEEP_SWEEP_MIN_ACROSS: f64 = 48.0;
 // Long fan spans keep their distributed curves instead of sharing a flat crossbar.

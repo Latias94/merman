@@ -18,8 +18,8 @@ use crate::scratch::{capacity_bytes, clear_reserve};
 use crate::work::{LayoutResult, Work, filled, push, reserved};
 use crate::{
     Axis, Direction, EdgeGeometry, Graph, KnotKind, LayoutError, MIN_MARKER_LEAD as LEAD,
-    MarkerMetrics, Options, Point, PortSideHint, Rect, RoutePoint, RoutingStyle, ShapeContourHint,
-    Side, Size, WorkError, sweep_handle_fraction,
+    MarkerMetrics, Options, Point, PortSideHint, Rect, RoutePoint, RoutingStyle, STEEP_SWEEP_RATIO,
+    ShapeContourHint, Side, Size, WorkError, sweep_handle_fraction,
 };
 use std::{cmp::Reverse, collections::BinaryHeap};
 
@@ -1084,7 +1084,10 @@ impl Gap {
                         .minimum
                         .max((3.0 * options.spacing.rank).min(widest * 0.5));
                     let inflated_room = (self.height.max(inflated_min) - guard).max(0.0);
-                    if inflated_room > 0.0 && widest_promotable <= inflated_room * MAX_SWEEP_ASPECT
+                    // A clear isolated span can be shortened by the painter, which has no
+                    // view of adjacent spans. Keep solver-owned tracks when a sweep could
+                    // otherwise acquire a crossbar at a peer's level.
+                    if inflated_room > 0.0 && widest_promotable <= inflated_room * STEEP_SWEEP_RATIO
                     {
                         self.minimum = inflated_min;
                         self.height = self.height.max(self.minimum);
