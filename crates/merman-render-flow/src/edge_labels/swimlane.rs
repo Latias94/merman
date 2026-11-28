@@ -228,7 +228,6 @@ impl<'a> SwimlaneEdgeLabel<'a> {
             &swimlane_svg_text_style,
             ctx.svg_font_fallback,
         );
-        let prepared = prepared.expect("prepared SVG label");
         if let Some(lines) = lines {
             write_svg_text_source_word_lines_with_style(
                 out,
@@ -240,7 +239,7 @@ impl<'a> SwimlaneEdgeLabel<'a> {
         } else {
             write_flowchart_svg_label_plan_with_style(
                 out,
-                &prepared,
+                prepared.as_ref().expect("prepared SVG label"),
                 true,
                 Some(swimlane_svg_text_style.as_ref()),
             );
