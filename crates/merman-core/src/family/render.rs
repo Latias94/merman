@@ -99,11 +99,7 @@ pub(super) fn render_class(
     Ok(result)
 }
 #[cfg(feature = "diagram-c4")]
-render_parser_controlled!(
-    render_c4,
-    crate::diagrams::c4::parse_c4_model_for_render_controlled,
-    RenderSemanticModel::C4
-);
+pub(super) use crate::diagrams::c4::parse_c4_with_rows_for_render_controlled as render_c4;
 #[cfg(feature = "diagram-cynefin")]
 render_parser_controlled!(
     render_cynefin,

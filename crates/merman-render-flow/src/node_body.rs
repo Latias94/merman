@@ -206,15 +206,15 @@ pub(crate) fn prepare_node_path(
 ) -> Option<RoughPathPair> {
     if geometry.hand_drawn {
         #[cfg(feature = "layout-shoal")]
-        let compact = geometry.compact_rough;
+        let hachure = RoughHachure::flowchart_path(geometry.compact_rough);
         #[cfg(not(feature = "layout-shoal"))]
-        let compact = false;
+        let hachure = RoughHachure::flowchart_path(false);
         prepare_hachure_svg_path(
             target,
             path,
             geometry.stroke_width,
             geometry.stroke_dasharray,
-            RoughHachure::flowchart_path(compact),
+            hachure,
             geometry.work_meter,
             geometry.randomness,
         )

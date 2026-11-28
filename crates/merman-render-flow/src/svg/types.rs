@@ -83,6 +83,13 @@ impl<'a> FlowchartLayoutEdgeRef<'a> {
     }
 }
 
+#[derive(Clone, Copy)]
+pub(in crate::svg) enum CurlyBracePaint {
+    Mermaid,
+    #[cfg(feature = "layout-shoal")]
+    ShoalHandDrawn,
+}
+
 pub struct FlowchartRenderCtx<'a> {
     pub(in crate::svg) prepared_nodes: &'a crate::node_inventory::FlowchartPreparedNodes,
     pub(in crate::svg) model: &'a crate::projection::FlowchartRenderModelRef<'a>,
@@ -160,6 +167,15 @@ pub struct FlowchartRenderCtx<'a> {
 }
 
 impl<'a> FlowchartRenderCtx<'a> {
+    pub(in crate::svg) fn curly_brace_paint(&self) -> CurlyBracePaint {
+        #[cfg(feature = "layout-shoal")]
+        if self.compatibility.look.is_hand_drawn() && self.layout.route_contract.is_canonical_axis()
+        {
+            return CurlyBracePaint::ShoalHandDrawn;
+        }
+        CurlyBracePaint::Mermaid
+    }
+
     pub(in crate::svg) fn svg_label_font_fallback(&self) -> Option<&str> {
         (self.layout.route_contract.is_canonical_axis() && self.diagram_type != "agentflow")
             .then_some(

@@ -967,6 +967,19 @@ fn opposing_sweeps_at_the_crossbar_span_limit_use_distinct_shelves() {
 }
 
 #[test]
+fn same_direction_sweeps_with_overlapping_crossbars_use_distinct_shelves() {
+    let mut gap = gap(&[(0.0, 180.0), (60.0, 240.0)]);
+    gap.height = 100.0;
+    gap.upper_guard = 10.0;
+    gap.lower_guard = 10.0;
+    gap.allow_local_sweeps = true;
+    gap.grade(&Options::default(), &mut Work::new(&mut NoopWorkControl))
+        .unwrap();
+    assert_eq!(gap.tracks, 2);
+    assert_ne!(gap.pieces[0].track, gap.pieces[1].track);
+}
+
+#[test]
 fn optical_label_shift_preserves_the_run_of_opposing_cubics() {
     let mut scene = Scene::new(
         &[10.; 4],

@@ -1,7 +1,5 @@
 //! C4 source projections and public diagnostic adaptation.
 
-#[cfg(feature = "presentation")]
-use crate::SourcePresentationMetadata;
 #[cfg(any(feature = "editor-facts", all(test, feature = "compat-json")))]
 use crate::SourceSpan;
 #[cfg(feature = "editor-facts")]
@@ -13,6 +11,8 @@ use crate::{
     EditorSemanticSymbol,
 };
 use crate::{Error, MermaidConfig, OperationControl, OperationControlResult, Result};
+#[cfg(feature = "presentation")]
+use crate::{SourcePresentationMetadata, presentation::diagram::RenderSemanticParseOutput};
 use merman_core_graph::c4::{C4Diagnostic, C4DiagnosticLocation, parse_c4_model_controlled};
 #[cfg(feature = "editor-facts")]
 use merman_core_graph::c4::{
@@ -221,7 +221,7 @@ pub(crate) fn parse_c4_model_for_render(
         .expect("a private parse control cannot be cancelled")
 }
 
-#[cfg(feature = "presentation")]
+#[cfg(all(feature = "presentation", feature = "compat-json"))]
 pub(crate) fn parse_c4_model_for_render_controlled(
     code: &str,
     meta: &SourcePresentationMetadata,
@@ -233,6 +233,24 @@ pub(crate) fn parse_c4_model_for_render_controlled(
         meta.effective_config.as_config(),
         control,
     )
+}
+
+#[cfg(feature = "presentation")]
+pub(crate) fn parse_c4_with_rows_for_render_controlled(
+    code: &str,
+    meta: &SourcePresentationMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<RenderSemanticParseOutput>> {
+    let (model, rows) = match merman_core_graph::c4::parse_c4_model_with_rows_controlled(
+        code,
+        meta.effective_config.as_config(),
+        control,
+    )? {
+        Ok(result) => result,
+        Err(diagnostic) => return Ok(Err(c4_error(&meta.diagram_type, diagnostic))),
+    };
+    control.checkpoint()?;
+    Ok(Ok(RenderSemanticParseOutput::c4(model, rows)))
 }
 
 #[cfg(all(feature = "compat-json", feature = "editor-facts"))]

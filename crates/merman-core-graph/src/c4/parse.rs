@@ -5,7 +5,7 @@ use super::{C4Diagnostic, C4Result};
 #[cfg(feature = "editor-facts")]
 use super::{C4EntityOccurrence, C4Observation, C4ObservedFailure};
 use merman_core_preprocess::scan::LineCursor;
-use merman_model::families::c4::C4DiagramModel;
+use merman_model::families::c4::{C4DiagramModel, C4RowPreferences};
 use merman_model::text::is_ecmascript_whitespace;
 use merman_model::{MermaidConfig, OperationControl, OperationControlResult, SourceSpan};
 
@@ -52,6 +52,15 @@ pub fn parse_c4_model_controlled(
     config: &MermaidConfig,
     control: &OperationControl,
 ) -> OperationControlResult<Result<C4DiagramModel, C4Diagnostic>> {
+    Ok(parse_c4_model_with_rows_controlled(code, config, control)?.map(|(model, _)| model))
+}
+
+/// Captures authored display preferences during the same parse as the semantic C4 model.
+pub fn parse_c4_model_with_rows_controlled(
+    code: &str,
+    config: &MermaidConfig,
+    control: &OperationControl,
+) -> OperationControlResult<Result<(C4DiagramModel, C4RowPreferences), C4Diagnostic>> {
     let outcome = construct_c4_source_controlled(
         code,
         config,
@@ -64,7 +73,8 @@ pub fn parse_c4_model_controlled(
     if let Some(issue) = outcome.issues.into_iter().next() {
         return Ok(Err(issue.diagnostic));
     }
-    Ok(outcome.db.into_model())
+    let rows = outcome.db.row_preferences;
+    Ok(outcome.db.into_model().map(|model| (model, rows)))
 }
 
 /// Observes C4 source facts during the same parse and returns all ordered source issues on error.

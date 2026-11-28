@@ -1398,18 +1398,14 @@ pub(crate) fn draw(
                 let early_gutters = card_grid && position(start.0) != position(end.0);
                 let labelled = part.labels.iter().any(Option::is_some);
                 has_captions |= labelled;
-                let fan = if !labelled {
-                    fan_channel(
+                let mut shortcut = if !labelled
+                    && let Some(fan) = fan_channel(
                         &router,
                         [start, end],
                         [from.lane, to.lane],
                         scope_bounds,
                         work,
-                    )?
-                } else {
-                    None
-                };
-                let ordinary = if let Some(fan) = fan {
+                    )? {
                     Some(copy_points(&fan)?)
                 } else if options.routing == crate::RoutingStyle::Polyline
                     && {
@@ -1426,8 +1422,16 @@ pub(crate) fn draw(
                     )?
                 {
                     Some(path)
-                } else if early_gutters
-                    && let Some(path) = card_channel(
+                } else {
+                    None
+                };
+                let try_gutters = early_gutters
+                    && match shortcut.as_deref() {
+                        None => true,
+                        Some(path) => !boundary_channels && !lanes.vacant(path, work)?,
+                    };
+                if try_gutters {
+                    shortcut = card_channel(
                         &router,
                         gutter_span,
                         scope_bounds,
@@ -1436,12 +1440,14 @@ pub(crate) fn draw(
                         options.spacing.port_pitch,
                         work,
                     )?
-                {
-                    Some(path)
+                    .or(shortcut);
+                }
+                let ordinary = if shortcut.is_some() {
+                    shortcut
                 } else {
-                    if boundary_channels {
-                        // The visibility search uses its own trail costs. Populate them only
-                        // when this scope needs that fallback, in the original route order.
+                    if card_grid {
+                        // Card channels consult LaneUse. Visibility trails are only needed
+                        // by the fallback, in the same order as the accepted routes.
                         for points in &routes[recorded..] {
                             work.visit(1)?;
                             router.record_route(points, work)?;
@@ -1455,24 +1461,6 @@ pub(crate) fn draw(
                         metrics.separation,
                         work,
                     )?
-                };
-                let ordinary = if early_gutters
-                    && !boundary_channels
-                    && let Some(path) = ordinary.as_ref()
-                    && !lanes.vacant(path, work)?
-                {
-                    card_channel(
-                        &router,
-                        gutter_span,
-                        scope_bounds,
-                        gutters.tracks(scope),
-                        &lanes,
-                        options.spacing.port_pitch,
-                        work,
-                    )?
-                    .or(ordinary)
-                } else {
-                    ordinary
                 };
                 let mut middle = match ordinary {
                     Some(points) => Some(points),
@@ -1543,7 +1531,7 @@ pub(crate) fn draw(
                 if card_grid {
                     lanes.record(&points, work)?;
                 }
-                if !boundary_channels {
+                if !card_grid {
                     router.record_route(&points, work)?;
                 }
                 routes.push(points);

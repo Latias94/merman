@@ -99,7 +99,25 @@ where
 }
 
 pub fn er_redux_color_id(border_colors: &[String], color_index: usize) -> Option<String> {
-    (!border_colors.is_empty()).then(|| format!("color-{}", color_index % border_colors.len()))
+    color_index
+        .checked_rem(border_colors.len())
+        .map(|slot| format!("color-{slot}"))
+}
+
+fn redux_background_at(background_colors: &[String], slot: usize) -> Option<&str> {
+    let index = slot.checked_rem(background_colors.len())?;
+    Some(background_colors[index].trim())
+}
+
+#[cfg(feature = "layout-shoal")]
+pub(super) fn er_redux_palette(
+    binding: &ErCssBinding,
+    color_index: usize,
+) -> Option<(&str, Option<&str>)> {
+    let slot = color_index.checked_rem(binding.redux_border_colors.len())?;
+    let border = binding.redux_border_colors[slot].trim();
+    let background = redux_background_at(&binding.redux_background_colors, slot);
+    Some((border, background.filter(|color| !color.is_empty())))
 }
 
 pub fn er_color_indices(model: &ErDiagramModel) -> HashMap<String, usize> {
@@ -129,14 +147,9 @@ fn write_er_redux_color_css(
     let diagram_id = escape_css_identifier(diagram_id);
     for (index, border_color) in border_colors.iter().enumerate() {
         let border_color = border_color.trim();
-        let fill = if background_colors.is_empty() {
-            String::new()
-        } else {
-            format!(
-                "fill:{};",
-                background_colors[index % background_colors.len()].trim()
-            )
-        };
+        let fill = redux_background_at(background_colors, index)
+            .map(|color| format!("fill:{color};"))
+            .unwrap_or_default();
         for shape in ["path", "rect"] {
             let _ = write!(out, "#{diagram_id} [data-look=")
                 .and_then(|()| cssparser::serialize_string(data_look, out))

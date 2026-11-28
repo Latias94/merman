@@ -142,6 +142,7 @@ impl Clearance {
             endpoints,
             terminal_contacts: None,
             label_bounds: None,
+            has_terminal_labels: false,
             paint_to_layout,
             stroke_outset,
             recovery: Recovery::None,
@@ -156,6 +157,7 @@ pub struct EdgeClearance<'a> {
     endpoints: (Endpoint, Endpoint),
     terminal_contacts: Option<[TerminalContact; 2]>,
     pub(super) label_bounds: Option<Rect>,
+    has_terminal_labels: bool,
     paint_to_layout: Vec2,
     stroke_outset: f64,
     recovery: Recovery,
@@ -173,6 +175,16 @@ impl EdgeClearance<'_> {
     pub fn with_label_bounds(mut self, bounds: Option<Rect>) -> Self {
         self.label_bounds = bounds;
         self
+    }
+
+    /// Keeps route shortcuts from moving the shaft away from its solver-placed end captions.
+    pub fn with_terminal_labels(mut self, present: bool) -> Self {
+        self.has_terminal_labels = present;
+        self
+    }
+
+    pub(super) fn can_shortcut_sweep(self) -> bool {
+        self.label_bounds.is_none() && !self.has_terminal_labels
     }
 
     pub(super) fn with_terminal_recovery(mut self, sides: (Side, Side)) -> Self {

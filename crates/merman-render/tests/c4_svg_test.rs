@@ -911,6 +911,59 @@ fn layout_c4_with_options(source: &str, options: &LayoutOptions) -> C4DiagramLay
     serde_json::from_value(projection["layout"]["C4Diagram"].clone()).expect("C4 layout projection")
 }
 
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn c4_shoal_uses_authored_columns_independently_of_mermaid_defaults() {
+    use std::fmt::Write as _;
+
+    let mut source = String::from("---\nconfig:\n  layout: shoal\n---\nC4Context\n");
+    for index in 0..12 {
+        writeln!(source, "System(s{index}, \"Service\")").unwrap();
+    }
+    let columns = |layout: &C4DiagramLayout| {
+        let first_row = layout.shapes[0].y;
+        layout
+            .shapes
+            .iter()
+            .filter(|shape| shape.parent_boundary == layout.shapes[0].parent_boundary)
+            .filter(|shape| (shape.y - first_row).abs() < 0.01)
+            .count()
+    };
+    let layout = |source: &str| layout_c4_with_options(source, &LayoutOptions::default());
+    let natural = columns(&layout(&source));
+    assert!((2..4).contains(&natural));
+
+    let explicit = format!("{source}UpdateLayoutConfig($c4ShapeInRow=\"4\")\n");
+    let flat = layout(&explicit);
+    assert_eq!(columns(&flat), 4);
+    assert!(flat.shapes[4].y > flat.shapes[0].y);
+    assert!((flat.shapes[11].y - flat.shapes[8].y).abs() < 0.01);
+
+    source.push_str(
+        "Boundary(one, \"Group\") {\n  System(a, \"Service\")\n}\n\
+         Boundary(two, \"Group\") {\n  System(b, \"Service\")\n}\n",
+    );
+    let both = layout(&format!(
+        "{source}UpdateLayoutConfig($c4ShapeInRow=\"4\", $c4BoundaryInRow=\"1\")\n"
+    ));
+    let boundary_only = layout(&format!(
+        "{source}UpdateLayoutConfig($c4BoundaryInRow=\"1\")\n"
+    ));
+    assert_eq!(columns(&both), 4);
+    assert_eq!(columns(&boundary_only), natural);
+    for mixed in [both, boundary_only] {
+        let boundary = |alias| {
+            mixed
+                .boundaries
+                .iter()
+                .find(|boundary| boundary.alias == alias)
+                .unwrap()
+        };
+        let first = boundary("one");
+        assert!(boundary("two").y > first.y + first.height);
+    }
+}
+
 fn svg_text_content(node: roxmltree::Node<'_, '_>) -> String {
     node.descendants()
         .filter(|descendant| descendant.is_text())

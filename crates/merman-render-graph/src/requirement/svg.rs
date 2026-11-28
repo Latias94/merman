@@ -9,8 +9,7 @@ use merman_render_core::{
     resources::OperationWorkMeter,
     root_svg,
     rough_svg::{
-        RoughRectSpec, constrained_rough_edge_path, controlled,
-        ops_to_svg_path_d as roughjs_ops_to_svg_path_d,
+        RoughRectSpec, constrained_rough_edge_path, ops_to_svg_path_d as roughjs_ops_to_svg_path_d,
         parse_hex_color_to_srgba as roughjs_parse_hex_color_to_srgba, roughjs_paths_for_rect,
     },
     svg_bounds::svg_path_bounds_from_d,
@@ -28,7 +27,11 @@ use merman_render_core::{
     xml::{escape_attr, escape_attr_display, escape_xml},
 };
 #[cfg(feature = "layout-shoal")]
-use merman_render_core::{LayoutEdge, svg_output::cutout};
+use merman_render_core::{
+    LayoutEdge,
+    rough_svg::{controlled, ops_to_compact_svg_path_d},
+    svg_output::cutout,
+};
 #[cfg(feature = "layout-layered")]
 use merman_render_core::{
     graph_layout::mermaid_layered::EdgeRouting,
@@ -36,7 +39,9 @@ use merman_render_core::{
     svg_edge_parity::layered_route::{self, Curve},
 };
 use merman_theme_contract::v2::{EdgeStyle, MarkerStyle};
-use roughr::core::{OpType, OptionsBuilder, RoughRandomness};
+use roughr::core::RoughRandomness;
+#[cfg(feature = "layout-shoal")]
+use roughr::core::{OpType, OptionsBuilder};
 use std::borrow::Cow;
 use std::fmt::Write as _;
 
@@ -56,6 +61,7 @@ struct RequirementPaintedEdge {
     canonical: Option<RequirementCanonicalEdge>,
 }
 
+#[cfg(feature = "layout-shoal")]
 fn shoal_hand_drawn_box(
     [left, top, right, bottom]: [f64; 4],
     divider_y: Option<f64>,
@@ -90,7 +96,7 @@ fn shoal_hand_drawn_box(
         outline
             .ops
             .retain(|op| std::mem::take(&mut first) || op.op != OpType::Move);
-        let mut d = roughjs_ops_to_svg_path_d(&outline);
+        let mut d = ops_to_compact_svg_path_d(&outline);
         d.push('Z');
 
         options.bowing = Some(1.0);
@@ -98,7 +104,7 @@ fn shoal_hand_drawn_box(
         let divider = divider_y
             .map(|y| {
                 roughr::renderer::line_with_control(left, y, right, y, &mut options, control)
-                    .map(|ops| roughjs_ops_to_svg_path_d(&ops))
+                    .map(|ops| ops_to_compact_svg_path_d(&ops))
             })
             .transpose()?;
         Ok((d, divider))
@@ -400,7 +406,6 @@ pub fn render_requirement_diagram_svg_model(
     let uses_canonical_routes = false;
     let look = render_settings.look;
     let look = look.as_str();
-    let shoal_hand_drawn = uses_canonical_routes && look == "handDrawn";
     let layered_hand_drawn =
         uses_layered && look == "handDrawn" && edge_style != Some(EdgeStyle::Sketch);
     let look_attr = format!(r#" data-look="{}""#, escape_attr_display(look));
@@ -1254,7 +1259,8 @@ pub fn render_requirement_diagram_svg_model(
         let x = -n.width / 2.0;
         let y = -n.height / 2.0;
         let divider_y = rendered_node.divider_y_offset.map(|offset| y + offset);
-        let drawn_box = if shoal_hand_drawn {
+        #[cfg(feature = "layout-shoal")]
+        let drawn_box = if uses_canonical_routes && look == "handDrawn" {
             let (outline, divider) = shoal_hand_drawn_box(
                 [x, y, x + n.width, y + n.height],
                 divider_y,
@@ -1326,12 +1332,7 @@ pub fn render_requirement_diagram_svg_model(
             }
             out.push_str("</g>");
         } else {
-            let (fill_path, stroke_path) = if let Some((outline, _)) = &drawn_box {
-                (
-                    Cow::Borrowed(outline.as_str()),
-                    Cow::Borrowed(outline.as_str()),
-                )
-            } else {
+            let legacy_paths = || {
                 let fill_path = format!(
                     "M{} {} L{} {} L{} {} L{} {}",
                     fmt(x),
@@ -1355,8 +1356,15 @@ pub fn render_requirement_diagram_svg_model(
                 })
                 .map(|(_, stroke_d)| stroke_d)
                 .unwrap_or_else(|| rough_rect_stroke_path_d(x, y, n.width, n.height));
-                (Cow::Owned(fill_path), Cow::Owned(stroke_path))
+                (Cow::from(fill_path), Cow::from(stroke_path))
             };
+            #[cfg(feature = "layout-shoal")]
+            let (fill_path, stroke_path) = drawn_box
+                .as_ref()
+                .map(|(outline, _)| (Cow::from(outline.as_str()), Cow::from(outline.as_str())))
+                .unwrap_or_else(legacy_paths);
+            #[cfg(not(feature = "layout-shoal"))]
+            let (fill_path, stroke_path) = legacy_paths();
 
             let _ = write!(
                 &mut out,
@@ -1576,23 +1584,21 @@ pub fn render_requirement_diagram_svg_model(
                     message: "Requirement divider terminal emission failed".to_string(),
                 })?;
             } else {
-                let divider_d = if let Some((_, Some(d))) = drawn_box {
-                    d
-                } else if let Some(stroke) = roughjs_parse_hex_color_to_srgba(geometry_stroke_color)
-                {
-                    if let Ok(mut opts) = roughr::core::OptionsBuilder::default()
-                        .randomness(hand_drawn_seed.clone())
-                        .roughness(0.0)
-                        .fill_style(roughr::core::FillStyle::Solid)
-                        .stroke(stroke)
-                        .stroke_width(stroke_width as f32)
-                        .stroke_line_dash(vec![0.0, 0.0])
-                        .stroke_line_dash_offset(0.0)
-                        .fill_line_dash(vec![0.0, 0.0])
-                        .fill_line_dash_offset(0.0)
-                        .disable_multi_stroke(false)
-                        .disable_multi_stroke_fill(false)
-                        .build()
+                let legacy_divider = || {
+                    if let Some(stroke) = roughjs_parse_hex_color_to_srgba(geometry_stroke_color)
+                        && let Ok(mut opts) = roughr::core::OptionsBuilder::default()
+                            .randomness(hand_drawn_seed.clone())
+                            .roughness(0.0)
+                            .fill_style(roughr::core::FillStyle::Solid)
+                            .stroke(stroke)
+                            .stroke_width(stroke_width as f32)
+                            .stroke_line_dash(vec![0.0, 0.0])
+                            .stroke_line_dash_offset(0.0)
+                            .fill_line_dash(vec![0.0, 0.0])
+                            .fill_line_dash_offset(0.0)
+                            .disable_multi_stroke(false)
+                            .disable_multi_stroke_fill(false)
+                            .build()
                     {
                         roughjs_ops_to_svg_path_d(&roughr::renderer::line::<f64>(
                             x,
@@ -1604,9 +1610,13 @@ pub fn render_requirement_diagram_svg_model(
                     } else {
                         rough_double_line_path_d(x, divider_y, x + n.width, divider_y)
                     }
-                } else {
-                    rough_double_line_path_d(x, divider_y, x + n.width, divider_y)
                 };
+                #[cfg(feature = "layout-shoal")]
+                let divider_d = drawn_box
+                    .and_then(|(_, divider)| divider)
+                    .unwrap_or_else(legacy_divider);
+                #[cfg(not(feature = "layout-shoal"))]
+                let divider_d = legacy_divider();
                 write!(
                 &mut out,
                 r##"<g class="divider" style="{style}"><path d="{d}" stroke="{stroke}" stroke-width="{stroke_width}" fill="none" stroke-dasharray="0 0"{style_attr}/></g>"##,

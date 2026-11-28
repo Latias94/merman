@@ -2848,66 +2848,119 @@ fn shoal_usecase_cuts_panel_captions_on_an_opaque_canvas() {
     use merman_render::theme::{Appearance, BuiltinPreset, Color, NativeTheme, ThemeCompiler};
 
     let source = "usecase-beta\ndirection TB\nsystemBoundary Panel(\"Payments\")\n  A(\"Authorize\")\n  B(\"Capture\")\nend\nA -- internal --> B\nC -- external --> D\n";
-    let theme = ThemeCompiler::new()
+    let compiler = ThemeCompiler::new();
+    let theme = compiler
         .compile_preset(BuiltinPreset::Studio, Some(Appearance::Dark))
         .unwrap();
-    for html in [false, true] {
-        let session = RenderEnvironment::deterministic()
-            .begin_session_with_native_theme(NativeTheme::new(theme.clone()))
+    let canvas = theme.roles().canvas.first_color().to_string();
+    let node = theme.roles().surface_node.first_color().to_string();
+    for (mode, authored_fill, expected_fill, auto_panel) in [
+        (Some("auto"), None, Some(canvas.as_str()), true),
+        (Some("canvas"), None, Some(canvas.as_str()), false),
+        (Some("pill"), None, Some(node.as_str()), false),
+        (None, None, None, true),
+        (None, Some("#7b315e"), Some("#7b315e"), false),
+        (None, Some("transparent"), Some("transparent"), false),
+    ] {
+        let native = mode.map(|mode| {
+            compiler
+                .compile_json(
+                    format!(r#"{{"schema_version":2,"extends":"studio","form":{{"edge_label_bg":"{mode}"}}}}"#)
+                        .as_bytes(),
+                    Some(Appearance::Dark),
+                )
+                .unwrap()
+        });
+        for html in [false, true] {
+            let case = format!("mode={mode:?}, authored_fill={authored_fill:?}, html={html}");
+            let mut config = json!({"layout":"shoal", "htmlLabels":html});
+            if let Some(fill) = authored_fill {
+                config["themeVariables"] = json!({"edgeLabelBackground": fill});
+            }
+            let environment = RenderEnvironment::deterministic();
+            let session = match &native {
+                Some(theme) => {
+                    environment.begin_session_with_native_theme(NativeTheme::new(theme.clone()))
+                }
+                None => environment.begin_session(),
+            }
             .unwrap();
-        let (_, svg) = render_config_with_session(
-            source,
-            json!({"layout":"shoal", "htmlLabels":html}),
-            session,
-        );
-        let document = roxmltree::Document::parse(&svg).unwrap();
-        if html {
+            let (_, svg) = render_config_with_session(source, config, session);
+            let document = roxmltree::Document::parse(&svg).unwrap();
             let css = document
                 .descendants()
                 .find(|node| node.has_tag_name("style"))
                 .unwrap()
                 .text()
                 .unwrap();
-            assert!(
-                css.contains(".edgeLabel.usecase-panel-caption p{background-color:transparent}")
-            );
-        }
-        for (id, on_panel) in [("edge-0", true), ("edge-1", false)] {
-            let path = document
-                .descendants()
-                .find(|node| {
-                    node.attribute("data-et") == Some("edge")
-                        && node.attribute("data-id") == Some(id)
-                })
-                .unwrap();
-            let caption = document
-                .descendants()
-                .find(|node| {
-                    node.attribute("class") == Some("label")
-                        && node.attribute("data-id") == Some(id)
-                })
-                .unwrap();
-            assert_eq!(path.attribute("clip-path").is_some(), on_panel, "{id}");
-            if !html {
-                let rect = caption
-                    .descendants()
-                    .find(|node| node.attribute("class") == Some("background"))
-                    .unwrap();
-                assert_eq!(
-                    rect.attribute("style"),
-                    Some(if on_panel { "fill:none" } else { "" })
+            if let Some(fill) = expected_fill {
+                let rule = if html {
+                    format!(".edgeLabel p{{background-color:{fill}}}")
+                } else {
+                    format!(".edgeLabel .label rect{{fill:{fill}}}")
+                };
+                assert!(css.contains(&rule), "{case}: missing {rule}");
+            }
+            if html && auto_panel {
+                assert!(
+                    css.contains(
+                        ".edgeLabel.usecase-panel-caption p{background-color:transparent}"
+                    ),
+                    "{case}"
                 );
             }
-            assert_eq!(
-                caption.parent_element().unwrap().attribute("class"),
-                Some(if on_panel {
-                    "edgeLabel usecase-panel-caption"
-                } else {
-                    "edgeLabel"
-                }),
-            );
+            for (id, panel_background) in [("edge-0", auto_panel), ("edge-1", false)] {
+                let path = document
+                    .descendants()
+                    .find(|node| {
+                        node.attribute("data-et") == Some("edge")
+                            && node.attribute("data-id") == Some(id)
+                    })
+                    .unwrap();
+                let caption = document
+                    .descendants()
+                    .find(|node| {
+                        node.attribute("class") == Some("label")
+                            && node.attribute("data-id") == Some(id)
+                    })
+                    .unwrap();
+                assert_eq!(
+                    path.attribute("clip-path").is_some(),
+                    panel_background || authored_fill == Some("transparent"),
+                    "{case}, {id}"
+                );
+                assert_eq!(
+                    caption
+                        .descendants()
+                        .any(|node| node.has_tag_name("foreignObject")),
+                    html,
+                    "{case}, {id}"
+                );
+                if !html {
+                    let rect = caption
+                        .descendants()
+                        .find(|node| node.attribute("class") == Some("background"))
+                        .unwrap();
+                    assert_eq!(
+                        rect.attribute("style"),
+                        Some(if panel_background { "fill:none" } else { "" }),
+                        "{case}, {id}"
+                    );
+                }
+                assert_eq!(
+                    caption.parent_element().unwrap().attribute("class"),
+                    Some(if panel_background {
+                        "edgeLabel usecase-panel-caption"
+                    } else {
+                        "edgeLabel"
+                    }),
+                    "{case}, {id}"
+                );
+            }
         }
+    }
 
+    for html in [false, true] {
         let session = RenderEnvironment::deterministic()
             .begin_session_with_native_theme(
                 NativeTheme::new(theme.clone()).with_background(Color::TRANSPARENT),

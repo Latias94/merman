@@ -100,6 +100,39 @@ fn card_and_boundary_columns_have_separate_limits() {
 }
 
 #[test]
+fn mixed_scopes_use_requested_columns_for_each_item_kind() {
+    let mut graph = cards(12);
+    graph.groups.extend((0..2).map(|seq| {
+        let mut group = GroupSpec::new(seq);
+        group.min_size = Size {
+            width: 120.0,
+            height: 60.0,
+        };
+        group
+    }));
+    let mut options = Options {
+        capture_node_ranks: true,
+        ..Options::default()
+    };
+    let hints = CardGridOptions::with_column_limits(Some(4), Some(1)).prefer_columns(true, true);
+    let wide = layout_with_hints(&graph, &options, hints, &mut NoopWorkControl).unwrap();
+    assert_eq!(wide.node_ranks, [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2]);
+    assert!(wide.groups[0].rect.y > wide.nodes[11].y + wide.nodes[11].height);
+    assert!(wide.groups[1].rect.y > wide.groups[0].rect.y + wide.groups[0].rect.height);
+
+    options.width_policy = WidthPolicy::FitWidth {
+        max_width: 280.0,
+        allow_turn: false,
+        turn_breakpoint: 0.0,
+        fold_wide_ranks: true,
+    };
+    let narrow = layout_with_hints(&graph, &options, hints, &mut NoopWorkControl).unwrap();
+    assert!(narrow.bounds.width <= 280.0);
+    assert_eq!(narrow.node_ranks, [0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5]);
+    assert!(narrow.groups[1].rect.y > narrow.groups[0].rect.y + narrow.groups[0].rect.height);
+}
+
+#[test]
 fn automatic_marker_leaves_room_for_a_fixed_contact_at_the_adjacent_corner() {
     let mut graph = cards(3);
     graph.nodes[0].anchor_y = Some(1.0);

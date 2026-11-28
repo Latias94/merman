@@ -400,6 +400,17 @@ impl RenderSemanticParseOutput {
         }
     }
 
+    #[cfg(feature = "diagram-c4")]
+    pub(crate) fn c4(
+        model: merman_model::families::c4::C4DiagramModel,
+        rows: merman_model::families::c4::C4RowPreferences,
+    ) -> Self {
+        Self {
+            model: RenderSemanticModel::C4(model),
+            context: PresentationContext::C4(rows),
+        }
+    }
+
     #[cfg(feature = "diagram-info")]
     pub(crate) fn info(
         model: merman_model::families::info::InfoDiagramModel,

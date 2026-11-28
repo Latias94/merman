@@ -36,6 +36,7 @@ struct AxisPath {
     sides: (Side, Side),
     markers: (Marker, Marker),
     label_bounds: Option<kurbo::Rect>,
+    has_terminal_labels: bool,
     knots: Vec<(Axis, KnotKind)>,
     stitches: Range<usize>,
     corridor_clearance: f64,
@@ -246,6 +247,7 @@ impl CanonicalRoutes {
                 sides: (start_side, end_side),
                 markers: (measured.start_marker, measured.end_marker),
                 label_bounds: edge.label.as_ref().map(label_bounds),
+                has_terminal_labels: edge.start_label.is_some() || edge.end_label.is_some(),
                 knots: edge.points.iter().map(|p| (p.axis, p.kind)).collect(),
                 stitches: start_stitch..next_stitch,
                 corridor_clearance: if (from, to) == (*first, *last) {
@@ -482,7 +484,8 @@ impl CanonicalRoutes {
                         stroke_outset,
                     )
                     .with_terminal_contacts(route.contacts)
-                    .with_label_bounds(route.label_bounds.map(|label| label + translation)),
+                    .with_label_bounds(route.label_bounds.map(|label| label + translation))
+                    .with_terminal_labels(route.has_terminal_labels),
             )
         };
         let path = route_paint::RoutePaintRequest {
@@ -564,4 +567,126 @@ fn obstacle_inventory(
         }
     }
     Ok(entries)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::graph_layout::ir::{Direction, MeasuredEdge, RoutingStyle, Size, SolvedEdge};
+    use crate::resources::RenderResourcePolicy;
+    use std::sync::Arc;
+
+    #[test]
+    fn terminal_captions_keep_the_solved_sweep_from_being_shortcut() {
+        let point = |x, y| RoutePoint::new(x, y, Axis::Vertical);
+        let points = [
+            (0.0, 0.0),
+            (0.0, 20.0),
+            (6.0, 50.0),
+            (0.0, 80.0),
+            (0.0, 100.0),
+        ];
+        let caption = LayoutLabel {
+            x: 0.0,
+            y: 50.0,
+            width: 2.0,
+            height: 8.0,
+        };
+        let source = Endpoint::Node(0);
+        let target = Endpoint::Node(1);
+        let node_rect = |y| Rect {
+            x: -10.0,
+            y,
+            width: 20.0,
+            height: 20.0,
+        };
+        let node_profile = ShapePortProfile::rectangle(20.0, 20.0);
+        let mut solved = SolvedGraph {
+            nodes: vec![node_rect(-20.0), node_rect(100.0)],
+            node_ranks: vec![],
+            groups: vec![],
+            edges: vec![SolvedEdge {
+                source,
+                target,
+                points: points.map(|(x, y)| point(x, y)).to_vec(),
+                ports: (Side::Bottom, Side::Top),
+                label: None,
+                start_label: None,
+                end_label: None,
+                corridor_clearance: 0.0,
+                reversed_for_ranking: false,
+            }],
+            border_stitches: vec![],
+            direction: Direction::Down,
+            bounds: Size {
+                width: 20.0,
+                height: 140.0,
+            },
+        };
+        let graph = MeasuredGraph {
+            direction: Direction::Down,
+            routing: RoutingStyle::Curved,
+            node_spacing: 20.0,
+            rank_spacing: 100.0,
+            component_spacing: 20.0,
+            inherit_crossed_group_direction: false,
+            nodes: vec![],
+            groups: vec![],
+            edges: vec![MeasuredEdge {
+                source,
+                target,
+                min_rank_span: 1,
+                weight: 1.0,
+                label: None,
+                start_label: None,
+                end_label: None,
+                start_marker: Marker {
+                    trim: 3.0,
+                    depth: 8.0,
+                    width: 10.0,
+                },
+                end_marker: Marker {
+                    trim: 4.0,
+                    depth: 8.0,
+                    width: 10.0,
+                },
+            }],
+        };
+        let meter = Arc::new(OperationWorkMeter::new(RenderResourcePolicy::constrained()));
+        let mut work = OperationLayoutWorkControl::new(Arc::clone(&meter));
+        let mut scratch = CanonicalPaintScratch::default();
+        for (start, end) in [(false, false), (true, false), (false, true)] {
+            solved.edges[0].start_label = start.then(|| caption.clone());
+            solved.edges[0].end_label = end.then(|| caption.clone());
+            let routes = CanonicalRoutes::from_solved(
+                &graph,
+                &solved,
+                &[node_profile.clone(), node_profile.clone()],
+                |_| 0.0,
+                ["edge"].into_iter(),
+                CaptionClearance::Avoid,
+                &mut work,
+            )
+            .unwrap();
+            let route = routes
+                .fill_paint_points("edge", points.into_iter(), Vec2::ZERO, &mut scratch.points)
+                .unwrap();
+            let painted = routes
+                .paint_geometry(
+                    "edge",
+                    route,
+                    Vec2::ZERO,
+                    0.5,
+                    RouteStyle::Curved,
+                    &meter,
+                    &mut scratch,
+                )
+                .unwrap();
+            if start || end {
+                assert!(painted.path.bounds.max_x >= 6.0, "{}", painted.path.d);
+            } else {
+                assert_eq!(painted.path.d, "M0,3L0,96");
+            }
+        }
+    }
 }

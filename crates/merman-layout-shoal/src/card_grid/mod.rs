@@ -12,12 +12,13 @@ use crate::{
     WorkControl,
 };
 
-/// Optional limits on the number of cards or child boundaries in a row.
+/// Optional column limits for cards and child boundaries.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct CardGridOptions {
     pub card_columns: Option<usize>,
     pub boundary_columns: Option<usize>,
+    preferred: [bool; 2],
 }
 
 impl CardGridOptions {
@@ -28,7 +29,22 @@ impl CardGridOptions {
         Self {
             card_columns,
             boundary_columns,
+            ..Self::default()
         }
+    }
+
+    /// Treats selected counts as row targets, subject to the available width.
+    /// In mixed scopes the two kinds then occupy separate grids, with cards first.
+    pub fn prefer_columns(mut self, cards: bool, boundaries: bool) -> Self {
+        self.preferred = [
+            cards && self.card_columns.is_some(),
+            boundaries && self.boundary_columns.is_some(),
+        ];
+        self
+    }
+
+    fn has_preferred_columns(self) -> bool {
+        self.preferred.contains(&true)
     }
 }
 
@@ -57,6 +73,9 @@ pub fn layout_with_hints(
         return Err(LayoutError::Unsupported("swimlanes on a card grid"));
     }
     let mut hierarchy = Hierarchy::new(graph, &mut work)?;
+    if hints.has_preferred_columns() {
+        place::group_items(&mut hierarchy, &mut work)?;
+    }
     let mut metrics = Metrics::new(options);
     let projections = hierarchy.edges(graph, &mut metrics, &mut work)?;
     let caption_demands =
@@ -119,7 +138,7 @@ fn facing(projection: Projection, drawing: &LayoutOutput) -> [Side; 2] {
             match (x_overlap, y_overlap) {
                 (true, false) => vertical,
                 (false, true) => horizontal,
-                // Only the bottom row can have an unused cell in a row-major grid.
+                // Diagonal relations leave toward the open row or column beside the target.
                 _ if source.y < target.y => [vertical[0], horizontal[1]],
                 _ => [horizontal[0], vertical[1]],
             }

@@ -1125,7 +1125,7 @@ fn draw_body<E>(
         }
         return Ok(());
     }
-    let shortcut_clearance = clearance.filter(|guard| guard.label_bounds.is_none());
+    let shortcut_clearance = clearance.filter(|guard| guard.can_shortcut_sweep());
     let mut merged_through = 0;
     for i in 1..body.len() {
         if i <= merged_through {

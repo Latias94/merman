@@ -17,6 +17,56 @@ pub(super) struct CaptionDemand {
     size: Size,
 }
 
+#[derive(Clone, Copy, Default)]
+struct CaptionRoom {
+    span: f64,
+    shelf: f64,
+    count: usize,
+}
+
+impl CaptionRoom {
+    fn include(&mut self, span: f64, shelf: f64) {
+        self.span = self.span.max(span);
+        self.shelf = self.shelf.max(shelf);
+        self.count = self.count.saturating_add(1);
+    }
+
+    fn gap(self, normal: f64, runway: f64) -> f64 {
+        if self.count == 0 {
+            normal
+        } else {
+            // Bound demand for neighboring caption shelves independently of multiplicity.
+            normal.max(self.span + runway + self.count.saturating_sub(1).min(3) as f64 * self.shelf)
+        }
+    }
+}
+
+pub(super) fn group_items(hierarchy: &mut Hierarchy, work: &mut Work<'_>) -> LayoutResult<()> {
+    let mut ordered = Vec::new();
+    for scope in &mut hierarchy.scopes {
+        let items = &mut scope.items;
+        work.visit(items.len())?;
+        let is_card = |item| item < hierarchy.node_count;
+        let cards = items.iter().filter(|&&item| is_card(item)).count();
+        if cards == 0 || cards == items.len() {
+            continue;
+        }
+        work.charge(items.len())?;
+        crate::scratch::clear_reserve(&mut ordered, items.len())?;
+        for cards_first in [true, false] {
+            work.visit(items.len())?;
+            ordered.extend(
+                items
+                    .iter()
+                    .copied()
+                    .filter(|&item| is_card(item) == cards_first),
+            );
+        }
+        std::mem::swap(items, &mut ordered);
+    }
+    Ok(())
+}
+
 pub(super) fn caption_demands(
     graph: &Graph,
     hierarchy: &Hierarchy,
@@ -86,8 +136,8 @@ fn caption_gaps(
     let len = nx.checked_add(ny).ok_or(WorkError::ArithmeticOverflow)?;
     work.charge(len.checked_mul(2).ok_or(WorkError::ArithmeticOverflow)?)?;
     let mut room = [
-        filled(nx, (0.0_f64, 0.0_f64, 0usize))?,
-        filled(ny, (0.0, 0.0, 0))?,
+        filled(nx, CaptionRoom::default())?,
+        filled(ny, CaptionRoom::default())?,
     ];
     work.visit(demands.len())?;
     for &CaptionDemand {
@@ -102,26 +152,14 @@ fn caption_gaps(
             if a != b {
                 // Each caption reserves a nearby crossing in its own scope. No caption can
                 // enlarge more than one row gap and one column gap.
-                let (widest, shelf_height, count) =
-                    &mut room[axis][a.min(b) + (a.abs_diff(b) - 1) / 2];
-                *widest = widest.max(span);
-                *shelf_height = shelf_height.max(shelf);
-                *count = count.saturating_add(1);
+                room[axis][a.min(b) + (a.abs_diff(b) - 1) / 2].include(span, shelf);
             }
         }
     }
     let mut gaps = [reserved(nx)?, reserved(ny)?];
     work.visit(len)?;
     for (axis, normal) in [gap.width, gap.height].into_iter().enumerate() {
-        gaps[axis].extend(room[axis].iter().map(|&(span, shelf, count)| {
-            if count == 0 {
-                normal
-            } else {
-                // A congested channel needs room for neighboring label shelves as well as
-                // the terminal lead-ins. Bound demand independently of relation multiplicity.
-                normal.max(span + runway + count.saturating_sub(1).min(3) as f64 * shelf)
-            }
-        }));
+        gaps[axis].extend(room[axis].iter().map(|room| room.gap(normal, runway)));
     }
     Ok(gaps)
 }
@@ -192,57 +230,57 @@ fn padding(graph: &Graph, scope: usize, margin: f64) -> Insets {
 )]
 fn cells(
     graph: &Graph,
-    scope: &Scope,
+    items: &[usize],
+    scope_caption: Size,
     demands: &[CaptionDemand],
     drawing: &mut LayoutOutput,
-    metrics: Metrics,
+    gap: Size,
+    margin: f64,
     available: f64,
     options: &Options,
     hints: CardGridOptions,
     work: &mut Work<'_>,
 ) -> LayoutResult<(Size, Gutters)> {
-    let items = &scope.items;
     if items.is_empty() {
         return Ok((Size::default(), Gutters::default()));
-    }
-    let margin = metrics.margin();
-    // One track beyond the opposing marker approaches leaves their elbows clear.
-    let min_gap = margin + options.spacing.edge;
-    let gap = Size {
-        width: options.spacing.node.max(min_gap),
-        height: options.spacing.rank.max(min_gap),
-    };
-    if !gap.width.is_finite() || !gap.height.is_finite() {
-        return Err(PRECISION);
     }
     let count = items.len();
     let mut average = Size::default();
     let mut widest: f64 = 0.0;
-    let mut kinds = [false; 2];
+    let mut present = [false; 2];
     for &item in items {
         work.visit(1)?;
         let card = rect(drawing, item);
         average.width += card.width / count as f64;
         average.height += card.height / count as f64;
         widest = widest.max(card.width);
-        kinds[usize::from(item >= graph.nodes.len())] = true;
+        present[usize::from(item >= graph.nodes.len())] = true;
     }
     let target = match options.packing {
         PackingPolicy::AspectTargeted { target_ratio }
         | PackingPolicy::BalancedAspect { target_ratio } => target_ratio,
         _ => 1.6,
     };
-    let natural =
-        ((average.height + gap.height) / (average.width + gap.width) * target * count as f64)
-            .sqrt()
-            .round() as usize;
-    let column_limit = [hints.card_columns, hints.boundary_columns]
+    let limit = [hints.card_columns, hints.boundary_columns]
         .into_iter()
-        .zip(kinds)
-        .filter_map(|(limit, present)| present.then_some(limit).flatten())
+        .zip(present)
+        .filter_map(|(limit, present)| limit.filter(|_| present))
         .fold(count, usize::min)
         .max(1);
-    let natural = natural.clamp(1, column_limit);
+    let natural = if hints
+        .preferred
+        .into_iter()
+        .zip(present)
+        .any(|(preferred, present)| preferred && present)
+    {
+        limit
+    } else {
+        let columns =
+            ((average.height + gap.height) / (average.width + gap.width) * target * count as f64)
+                .sqrt()
+                .round() as usize;
+        columns.clamp(1, limit)
+    };
     // The widest card gives a fitting column count without repeated trial layouts.
     // An oversized card gets its own row.
     let mut gaps = caption_gaps(count, natural, demands, gap, margin, work)?;
@@ -250,7 +288,7 @@ fn cells(
     if total_width > available && natural > 1 {
         let max_gap = gap
             .width
-            .max(scope.caption.width + margin + 3.0 * scope.caption.height);
+            .max(scope_caption.width + margin + 3.0 * scope_caption.height);
         let guaranteed_fit =
             (((available + max_gap) / (widest + max_gap)).floor() as usize).clamp(1, natural);
         if guaranteed_fit < natural {
@@ -314,6 +352,111 @@ fn cells(
             height: y,
         },
         gutters,
+    ))
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The scope shares the measured placement inputs across its rows."
+)]
+fn scope_cells(
+    graph: &Graph,
+    scope: &Scope,
+    demands: &[CaptionDemand],
+    drawing: &mut LayoutOutput,
+    metrics: Metrics,
+    available: f64,
+    options: &Options,
+    hints: CardGridOptions,
+    work: &mut Work<'_>,
+) -> LayoutResult<(Size, Gutters)> {
+    let margin = metrics.margin();
+    // One track beyond the opposing marker approaches leaves their elbows clear.
+    let min_gap = margin + options.spacing.edge;
+    let gap = Size {
+        width: options.spacing.node.max(min_gap),
+        height: options.spacing.rank.max(min_gap),
+    };
+    if !gap.width.is_finite() || !gap.height.is_finite() {
+        return Err(PRECISION);
+    }
+    let mut place_rows = |items: &[usize], demands: &[CaptionDemand], work: &mut Work<'_>| {
+        cells(
+            graph,
+            items,
+            scope.caption,
+            demands,
+            drawing,
+            gap,
+            margin,
+            available,
+            options,
+            hints,
+            work,
+        )
+    };
+    let items = scope.items.as_slice();
+    if !hints.has_preferred_columns()
+        || items.first().is_none_or(|&item| item >= graph.nodes.len())
+        || items[items.len() - 1] < graph.nodes.len()
+    {
+        return place_rows(items, demands, work);
+    }
+
+    work.visit(items.len().ilog2() as usize + 1)?;
+    let split = items.partition_point(|&item| item < graph.nodes.len());
+    let (cards, boundaries) = items.split_at(split);
+    let mut local = [Vec::new(), Vec::new()];
+    let mut seam = CaptionRoom::default();
+    for &demand in demands {
+        work.visit(1)?;
+        let [a, b] = demand.slots;
+        match (a < split, b < split) {
+            (true, true) => push(&mut local[0], demand)?,
+            (false, false) => push(
+                &mut local[1],
+                CaptionDemand {
+                    slots: [a - split, b - split],
+                    ..demand
+                },
+            )?,
+            _ => seam.include(demand.size.height, demand.size.height),
+        }
+    }
+    let (cards_size, [mut x, mut y]) = place_rows(cards, &local[0], work)?;
+    let (boundary_size, [bx, by]) = place_rows(boundaries, &local[1], work)?;
+    let separation = seam.gap(gap.height, margin);
+    let offset = cards_size.height + separation;
+    for &item in boundaries {
+        work.visit(1)?;
+        item_rect_mut(drawing, item).y += offset;
+    }
+    // Column gutters can differ between the two grids. The scoped router still checks
+    // each candidate against every wall, and the row gutter joins the grids below the cards.
+    x.pop();
+    work.charge(bx.len())?;
+    x.try_reserve(bx.len())
+        .map_err(|_| LayoutError::AllocationLimit)?;
+    x.extend_from_slice(&bx[1..bx.len() - 1]);
+    work.charge_sort(x.len() - 1)?;
+    x[1..].sort_unstable_by(f64::total_cmp);
+    work.check()?;
+    work.visit(x.len())?;
+    x.dedup();
+    push(&mut x, 0.0)?;
+    y.pop();
+    work.charge(by.len())?;
+    y.try_reserve(by.len())
+        .map_err(|_| LayoutError::AllocationLimit)?;
+    y.push(cards_size.height + separation / 2.0);
+    y.extend(by[1..by.len() - 1].iter().map(|track| track + offset));
+    y.push(0.0);
+    Ok((
+        Size {
+            width: cards_size.width.max(boundary_size.width),
+            height: offset + boundary_size.height,
+        },
+        [x, y],
     ))
 }
 
@@ -416,7 +559,7 @@ pub(super) fn place(
         work.visit(1)?;
         let scope = &hierarchy.scopes[id];
         let padding = padding(graph, id, margin);
-        let (content, tracks) = cells(
+        let (content, tracks) = scope_cells(
             graph,
             scope,
             &caption_demands[id],

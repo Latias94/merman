@@ -1,52 +1,59 @@
 //! State shape geometry for Mermaid parity and Shoal.
 
-use std::fmt::Write as _;
-
 use merman_model::OperationPhase;
-use roughr::core::{OpSet, OpType, Options, OptionsBuilder, RoughRandomness};
+use roughr::core::{OpSet, OpType, RoughRandomness};
+#[cfg(feature = "layout-shoal")]
+use roughr::core::{Options, OptionsBuilder};
 use roughr::{PathParser, PathSegment};
 
 use merman_render_core::rough_svg::{
-    RoughRectSpec, append_minor_circular_arc, closed_path_d_from_points, controlled,
-    mermaid_arc_points, ops_to_compact_svg_path_d, ops_to_svg_path_d, roughjs_circle_path_d,
-    roughjs_paths_for_rect,
+    RoughRectSpec, closed_path_d_from_points, mermaid_arc_points, ops_to_svg_path_d,
+    roughjs_circle_path_d, roughjs_paths_for_rect,
+};
+#[cfg(feature = "layout-shoal")]
+use merman_render_core::rough_svg::{
+    append_minor_circular_arc, controlled, ops_to_compact_svg_path_d,
 };
 
 use super::StateRenderCtx;
 
 // Match the roughness Mermaid uses for its hand-drawn node shapes.
+#[cfg(feature = "layout-shoal")]
 const SHOAL_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
 
 impl StateRenderCtx<'_> {
+    #[cfg(feature = "layout-shoal")]
     fn uses_shoal_hand_drawn(&self) -> bool {
         self.uses_canonical_routes() && self.style_plan.compatibility().is_hand_drawn()
     }
 
     pub(super) fn rough_circle_path(&self, diameter: f64) -> Option<String> {
-        if !self.uses_shoal_hand_drawn() {
-            return roughjs_circle_path_d(diameter, &self.hand_drawn_seed);
+        #[cfg(feature = "layout-shoal")]
+        if self.uses_shoal_hand_drawn() {
+            let mut options = shoal_hand_drawn_options(&self.hand_drawn_seed)?;
+            let outline = controlled::generate(self.work_meter, OperationPhase::Emit, |control| {
+                let ellipse = roughr::renderer::generate_ellipse_params_with_control(
+                    diameter,
+                    diameter,
+                    &mut options,
+                    control,
+                )?;
+                roughr::renderer::ellipse_with_params_with_control(
+                    0.0,
+                    0.0,
+                    &mut options,
+                    &ellipse,
+                    control,
+                )
+            })
+            .ok()?;
+            return Some(ops_to_compact_svg_path_d(&outline.opset));
         }
-        let mut options = shoal_hand_drawn_options(&self.hand_drawn_seed)?;
-        let outline = controlled::generate(self.work_meter, OperationPhase::Emit, |control| {
-            let ellipse = roughr::renderer::generate_ellipse_params_with_control(
-                diameter,
-                diameter,
-                &mut options,
-                control,
-            )?;
-            roughr::renderer::ellipse_with_params_with_control(
-                0.0,
-                0.0,
-                &mut options,
-                &ellipse,
-                control,
-            )
-        })
-        .ok()?;
-        Some(ops_to_compact_svg_path_d(&outline.opset))
+        roughjs_circle_path_d(diameter, &self.hand_drawn_seed)
     }
 
     pub(super) fn rough_leaf_rect_paths(&self, w: f64, h: f64) -> Option<(String, String)> {
+        #[cfg(feature = "layout-shoal")]
         if self.uses_shoal_hand_drawn() {
             return self.shoal_rough_shape_paths(&mermaid_rounded_rect_path_data(w, h, 0.0));
         }
@@ -68,6 +75,7 @@ impl StateRenderCtx<'_> {
         h: f64,
         radius: f64,
     ) -> Option<(String, String)> {
+        #[cfg(feature = "layout-shoal")]
         if self.uses_shoal_hand_drawn() {
             return self.shoal_rough_shape_paths(&shoal_rounded_rect_path_data(w, h, radius));
         }
@@ -85,6 +93,7 @@ impl StateRenderCtx<'_> {
         stroke_width: f32,
         stroke_dasharray: &str,
     ) -> Option<(String, String)> {
+        #[cfg(feature = "layout-shoal")]
         if self.uses_shoal_hand_drawn() {
             return self.shoal_rough_shape_paths(path);
         }
@@ -96,6 +105,7 @@ impl StateRenderCtx<'_> {
         )
     }
 
+    #[cfg(feature = "layout-shoal")]
     fn shoal_rough_shape_paths(&self, path: &str) -> Option<(String, String)> {
         let mut options = shoal_hand_drawn_options(&self.hand_drawn_seed)?;
         // These shapes have one closed contour. Preserve its joins and perturb the curves.
@@ -126,6 +136,7 @@ impl StateRenderCtx<'_> {
     }
 }
 
+#[cfg(feature = "layout-shoal")]
 fn shoal_hand_drawn_options(randomness: &RoughRandomness) -> Option<Options> {
     OptionsBuilder::default()
         .randomness(randomness.clone())
@@ -151,7 +162,10 @@ pub(super) fn normalized_rounded_rect_radius(w: f64, h: f64, radius: f64) -> f64
     }
 }
 
+#[cfg(feature = "layout-shoal")]
 fn shoal_rounded_rect_path_data(w: f64, h: f64, radius: f64) -> String {
+    use std::fmt::Write as _;
+
     let radius = normalized_rounded_rect_radius(w, h, radius);
     if radius == 0.0 {
         return mermaid_rounded_rect_path_data(w, h, 0.0);
