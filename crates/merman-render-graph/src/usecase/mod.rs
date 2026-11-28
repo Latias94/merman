@@ -361,6 +361,54 @@ pub(crate) fn create_text_source(text: &str, kind: UsecaseLabelType) -> std::bor
     }
 }
 
+fn shoal_html_labels(config: &PresentationConfig) -> bool {
+    cfg!(feature = "layout-shoal")
+        && config.get_str("layout") == Some("shoal")
+        && config.as_value().get("htmlLabels").and_then(Value::as_bool) != Some(false)
+}
+
+fn label_source(
+    text: &str,
+    kind: UsecaseLabelType,
+    authored_html: bool,
+) -> std::borrow::Cow<'_, str> {
+    if authored_html && kind == UsecaseLabelType::Text {
+        std::borrow::Cow::Borrowed(text)
+    } else {
+        create_text_source(text, kind)
+    }
+}
+
+/// Reserializes admitted HTML as XHTML without interpreting entity-authored tags as markup.
+fn html_text_label_fragment(
+    sanitized: &str,
+    charge: &mut impl FnMut(usize) -> Result<()>,
+) -> Result<String> {
+    charge(sanitized.len().max(1))?;
+    let text = normalize_plain_label_line_breaks(sanitized);
+    let paragraph = format!("<p>{}</p>", text.replace('\n', "<br/>"));
+    charge(paragraph.len())?;
+    Ok(merman_markup::sanitize::html_fragment_to_xhtml(&paragraph).unwrap_or_default())
+}
+
+fn accessible_html_text(
+    sanitized: &str,
+    mut charge: impl FnMut(usize) -> Result<()>,
+) -> Result<String> {
+    charge(sanitized.len().max(1))?;
+    if !sanitized.contains(['<', '&', '\n']) && !sanitized.contains("\\n") {
+        return Ok(sanitized.to_owned());
+    }
+    let fragment = html_text_label_fragment(sanitized, &mut charge)?;
+    charge(fragment.len().max(1))?;
+    let lines = merman_render_core::text::line_break::mermaid_html_breaks_to_newlines(&fragment);
+    Ok(
+        merman_render_core::text::mermaid_xhtml_label_text_content(&lines)
+            .unwrap_or_default()
+            .replace('\n', " "),
+    )
+}
+
 fn sanitize_source_label(
     text: &str,
     kind: UsecaseLabelType,
@@ -370,6 +418,7 @@ fn sanitize_source_label(
     if cfg!(feature = "layout-shoal")
         && config.get_str("layout") == Some("shoal")
         && kind == UsecaseLabelType::Text
+        && !shoal_html_labels(config)
         && let std::borrow::Cow::Owned(decoded) =
             merman_render_core::entities::decode_svg_text_content_entities(&text)
     {
@@ -385,9 +434,13 @@ pub fn requires_math(
     if config.as_value().get("htmlLabels").and_then(Value::as_bool) == Some(false) {
         return false;
     }
-    let has_math = |(text, kind): (&str, UsecaseLabelType)| {
+    let has_math = |text: &str, kind, authored_html| {
         let sanitized = merman_markup::sanitize::sanitize_text(text, config.as_config());
-        merman_render_core::math::contains_delimited_math(&create_text_source(&sanitized, kind))
+        merman_render_core::math::contains_delimited_math(&label_source(
+            &sanitized,
+            kind,
+            authored_html,
+        ))
     };
     let mut labels = model
         .nodes
@@ -416,7 +469,8 @@ pub fn requires_math(
                 .as_deref()
                 .map(|text| (text, edge.label_type.unwrap_or_default()))
         }));
-    if labels.any(has_math) {
+    let authored_html = shoal_html_labels(config);
+    if labels.any(|(text, kind)| has_math(text, kind, authored_html)) {
         return true;
     }
     // JSON cells show the complete leaf path, not each object key in isolation.
@@ -425,10 +479,11 @@ pub fn requires_math(
         .iter()
         .map(|node| (node, &node.value, String::new()))
         .collect();
+    let literal_has_math = |text: &str| has_math(text, UsecaseLabelType::Text, false);
     while let Some((node, value, path)) = pending.pop() {
         let display_has_math = |text: &str| {
             node.display_string(text)
-                .is_ok_and(|text| has_math((&text, UsecaseLabelType::Text)))
+                .is_ok_and(|text| literal_has_math(&text))
         };
         match value {
             Value::Array(values)
@@ -437,7 +492,7 @@ pub fn requires_math(
                         .iter()
                         .all(|value| !value.is_array() && !value.is_object()) =>
             {
-                if has_math((&path, UsecaseLabelType::Text))
+                if literal_has_math(&path)
                     || values
                         .iter()
                         .filter_map(Value::as_str)
@@ -466,9 +521,7 @@ pub fn requires_math(
                 }));
             }
             _ => {
-                if has_math((&path, UsecaseLabelType::Text))
-                    || value.as_str().is_some_and(display_has_math)
-                {
+                if literal_has_math(&path) || value.as_str().is_some_and(display_has_math) {
                     return true;
                 }
             }

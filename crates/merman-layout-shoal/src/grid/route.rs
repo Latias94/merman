@@ -624,7 +624,8 @@ impl Routing<'_> {
         let mut marked = [0.0_f64; 4];
         while cursor < indices.len() {
             let first = sites[indices[cursor]];
-            let on_card = card_grid && first.owner < self.hierarchy.node_count;
+            let on_node = first.owner < self.hierarchy.node_count;
+            let on_card = card_grid && on_node;
             if on_card && card != Some(first.owner) {
                 card = Some(first.owner);
                 marked.fill(0.0);
@@ -643,6 +644,7 @@ impl Routing<'_> {
             let mut next = cursor + 1;
             let mut inner = first.inner;
             let mut reach = first.marker.length;
+            let mut marker_width = first.marker.width;
             let mut count = usize::from(first.offset.is_none());
             while let Some(&i) = indices.get(next) {
                 let site = sites[i];
@@ -652,6 +654,7 @@ impl Routing<'_> {
                 }
                 inner |= site.inner;
                 reach = reach.max(site.marker.length);
+                marker_width = marker_width.max(site.marker.width);
                 count += usize::from(site.offset.is_none());
                 next += 1;
             }
@@ -664,7 +667,7 @@ impl Routing<'_> {
             // targeting Inventory:L), the farther edge must detour around the closer one.
             // Nudge the farther edge toward the open scope interior so it takes the side port
             // matching its detour gutter instead of crossing the direct neighbor's straight line.
-            if first.owner < self.hierarchy.node_count && count >= 2 {
+            if on_node && count >= 2 {
                 work.visit(next - cursor)?;
                 let min_dist = indices[cursor..next]
                     .iter()
@@ -729,9 +732,15 @@ impl Routing<'_> {
             let [face_lo, face_hi] = [bounds.x, bounds.y][1 - axis];
             let face_center = face_lo.midpoint(face_hi);
             let span = count.saturating_sub(1) as f64;
-            let mut measured_pitch = self.options.spacing.port_pitch;
+            let marker_pitch = if on_card {
+                marked[first.side as usize]
+            } else if on_node {
+                marker_width
+            } else {
+                0.0
+            };
+            let measured_pitch = self.options.spacing.port_pitch.max(marker_pitch);
             let [lo, hi] = if on_card {
-                measured_pitch = measured_pitch.max(marked[first.side as usize]);
                 card_face_room(
                     first.side,
                     marked,
@@ -747,7 +756,7 @@ impl Routing<'_> {
             // If a single unpinned site on a node face is aligned with the face center,
             // anchor it at `center` so straight direct connections avoid an unnecessary jog.
             let mut anchored_start = None;
-            if first.owner < self.hierarchy.node_count && count >= 2 {
+            if on_node && count >= 2 {
                 work.visit(next - cursor)?;
                 let mut aligned_slot = None;
                 let mut aligned_count = 0usize;

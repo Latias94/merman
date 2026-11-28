@@ -40,6 +40,7 @@ struct Face<'a> {
     segments: Vec<usize>,
     local: Vec<usize>,
     count: Vec<usize>,
+    max_multiplicity: usize,
     peer: &'a [u32],
     peer_offset: &'a [f64],
 }
@@ -60,6 +61,7 @@ impl<'a> Face<'a> {
             segments: reserved(m)?,
             local: filled(m, 0)?,
             count: filled(n, 0)?,
+            max_multiplicity: 0,
             peer,
             peer_offset,
         };
@@ -78,19 +80,24 @@ impl<'a> Face<'a> {
             let edges = &mut face.segments[first..];
             if let Some(&head) = edges.first() {
                 let mut count = 1;
+                let mut multiplicity = edges.len();
+                work.visit(edges.len())?;
                 if edges.iter().any(|&e| offset[e] != offset[head]) {
                     work.sort(edges, |&a, &b| {
                         numeric_cmp(offset[a], offset[b]).then(a.cmp(&b))
                     })?;
-                    let mut previous = offset[edges[0]];
-                    for &e in edges.iter() {
-                        if offset[e] != previous {
-                            count += 1;
+                    work.visit(edges.len())?;
+                    multiplicity = 0;
+                    count = 0;
+                    for group in edges.chunk_by(|&a, &b| offset[a] == offset[b]) {
+                        multiplicity = multiplicity.max(group.len());
+                        for &e in group {
+                            face.local[e] = count;
                         }
-                        face.local[e] = count - 1;
-                        previous = offset[e];
+                        count += 1;
                     }
                 }
+                face.max_multiplicity = face.max_multiplicity.max(multiplicity);
                 face.count[v] = count;
             }
         }
@@ -325,12 +332,58 @@ impl Fenwick {
     }
 
     fn charge_entries(&self, count: usize, work: &mut Work<'_>) -> LayoutResult<()> {
-        let levels = self.tree.len().ilog2() as usize + 1;
-        work.visit(
-            count
-                .checked_mul(2 * levels)
-                .ok_or(WorkError::ArithmeticOverflow)?,
-        )
+        charge_crossing_entries(count, self.tree.len().ilog2() as usize + 1, work)
+    }
+}
+
+fn charge_crossing_entries(count: usize, levels: usize, work: &mut Work<'_>) -> LayoutResult<()> {
+    work.visit(
+        count
+            .checked_mul(2 * levels)
+            .ok_or(WorkError::ArithmeticOverflow)?,
+    )
+}
+
+enum RankCounter<'a> {
+    Narrow(&'a mut [u64]),
+    Wide(&'a mut Fenwick),
+}
+
+impl RankCounter<'_> {
+    fn greater(&self, slot: usize) -> u64 {
+        match self {
+            Self::Wide(tree) => tree.greater(slot),
+            Self::Narrow(planes) => {
+                let suffix = !1u64 << slot;
+                planes
+                    .iter()
+                    .enumerate()
+                    .map(|(bit, &plane)| u64::from((plane & suffix).count_ones()) << bit)
+                    .sum()
+            }
+        }
+    }
+
+    fn insert(&mut self, slot: usize) {
+        match self {
+            Self::Wide(tree) => tree.insert(slot),
+            Self::Narrow(planes) => {
+                let mut carry = 1u64 << slot;
+                for plane in planes.iter_mut() {
+                    let next = *plane & carry;
+                    *plane ^= carry;
+                    carry = next;
+                }
+                debug_assert_eq!(carry, 0);
+            }
+        }
+    }
+
+    fn charge_entries(&self, count: usize, work: &mut Work<'_>) -> LayoutResult<()> {
+        match self {
+            Self::Narrow(planes) => charge_crossing_entries(count, planes.len(), work),
+            Self::Wide(tree) => tree.charge_entries(count, work),
+        }
     }
 }
 
@@ -343,30 +396,54 @@ fn crossings(
     let mut count = 0;
     for r in 1..order.ranks() {
         work.visit(1)?;
-        let north = &order.ids[order.range(r - 1)];
-        let south = &order.ids[order.range(r)];
-        let (Some(&n), Some(&s)) = (north.last(), south.last()) else {
-            continue;
-        };
-        let slots = order.place[s as usize].target + ports.target.count[s as usize];
-        if slots < 2 || order.place[n as usize].source + ports.source.count[n as usize] < 2 {
+        count += rank_crossings(r, order, ports, tree, work)?;
+    }
+    Ok(count)
+}
+
+fn rank_crossings(
+    rank: usize,
+    order: &Order,
+    ports: &Ports<'_>,
+    tree: &mut Fenwick,
+    work: &mut Work<'_>,
+) -> LayoutResult<u64> {
+    let north = &order.ids[order.range(rank - 1)];
+    let south = &order.ids[order.range(rank)];
+    let (Some(&n), Some(&s)) = (north.last(), south.last()) else {
+        return Ok(0);
+    };
+    let slots = order.place[s as usize].target + ports.target.count[s as usize];
+    if slots < 2 || order.place[n as usize].source + ports.source.count[n as usize] < 2 {
+        return Ok(0);
+    }
+    let mut planes = [0; 2];
+    let bits = ports.target.max_multiplicity.max(1).ilog2() as usize + 1;
+    let mut seen = if slots <= u64::BITS as usize && bits <= planes.len() {
+        work.visit(bits)?;
+        RankCounter::Narrow(&mut planes[..bits])
+    } else {
+        tree.reset(slots, work)?;
+        RankCounter::Wide(tree)
+    };
+    let target =
+        |e: usize| order.place[ports.source.peer[e] as usize].target + ports.target.local[e];
+    let mut count = 0;
+    for &v in north {
+        work.visit(1)?;
+        let edges = ports.source.at(v);
+        if edges.is_empty() {
             continue;
         }
-        tree.reset(slots, work)?;
-        let target =
-            |e: usize| order.place[ports.source.peer[e] as usize].target + ports.target.local[e];
-        for &v in north {
-            let edges = ports.source.at(v);
-            tree.charge_entries(edges.len(), work)?;
-            // Batch queries before insertion: segments sharing the same source port never
-            // contribute an inversion amongst themselves, whatever their destination order.
-            for group in edges.chunk_by(|&a, &b| ports.source.local[a] == ports.source.local[b]) {
-                for &e in group {
-                    count += tree.greater(target(e));
-                }
-                for &e in group {
-                    tree.insert(target(e));
-                }
+        seen.charge_entries(edges.len(), work)?;
+        // Batch queries before insertion: segments sharing the same source port never
+        // contribute an inversion amongst themselves, whatever their destination order.
+        for group in edges.chunk_by(|&a, &b| ports.source.local[a] == ports.source.local[b]) {
+            for &e in group {
+                count += seen.greater(target(e));
+            }
+            for &e in group {
+                seen.insert(target(e));
             }
         }
     }
@@ -498,6 +575,7 @@ fn editor_seed(
 struct Sweep {
     mean: Vec<f64>,
     moving: Vec<usize>,
+    gap_crossings: Vec<Option<u64>>,
 }
 
 #[derive(Default)]
@@ -561,6 +639,37 @@ impl Rules<'_> {
 }
 
 impl Sweep {
+    fn invalidate_crossings(&mut self, rank: usize) {
+        for count in self
+            .gap_crossings
+            .iter_mut()
+            .skip(rank.saturating_sub(1))
+            .take(1 + usize::from(rank > 0))
+        {
+            *count = None;
+        }
+    }
+
+    fn crossings(
+        &mut self,
+        order: &Order,
+        ports: &Ports<'_>,
+        tree: &mut Fenwick,
+        work: &mut Work<'_>,
+    ) -> LayoutResult<u64> {
+        let mut total = 0;
+        for (gap, count) in self.gap_crossings.iter_mut().enumerate() {
+            work.visit(1)?;
+            let exact = match *count {
+                Some(value) => value,
+                None => rank_crossings(gap + 1, order, ports, tree, work)?,
+            };
+            *count = Some(exact);
+            total += exact;
+        }
+        Ok(total)
+    }
+
     fn run<const LIMITED: bool>(
         &mut self,
         g: &Expanded,
@@ -615,6 +724,7 @@ impl Sweep {
             if LIMITED && let Some(groups) = &mut rules.groups {
                 if groups.arrange(&mut order.ids[row], &order.place, |v| self.mean[v], work)? {
                     order.reindex(rank, ports, work)?;
+                    self.invalidate_crossings(rank);
                     changed = true;
                 }
                 continue;
@@ -645,6 +755,7 @@ impl Sweep {
             }
             if row_changed {
                 order.reindex(rank, ports, work)?;
+                self.invalidate_crossings(rank);
                 changed = true;
             }
         }
@@ -883,6 +994,7 @@ impl OrderScratch {
             + capacity_bytes(&self.best)
             + capacity_bytes(&self.sweep.mean)
             + capacity_bytes(&self.sweep.moving)
+            + capacity_bytes(&self.sweep.gap_crossings)
             + self
                 .neighbors
                 .iter()
@@ -907,7 +1019,11 @@ fn search<const LIMITED: bool, const EDITOR: bool>(
         sweep,
         neighbors,
     } = scratch;
-    let initial_count = crossings(order, ports, tree, work)?;
+    let gaps = order.ranks().saturating_sub(1);
+    work.charge(gaps)?;
+    clear_reserve(&mut sweep.gap_crossings, gaps)?;
+    sweep.gap_crossings.resize(gaps, None);
+    let initial_count = sweep.crossings(order, ports, tree, work)?;
     if !EDITOR && initial_count == 0 {
         return Ok((std::mem::take(&mut order.ids), (0, 0)));
     }
@@ -933,6 +1049,8 @@ fn search<const LIMITED: bool, const EDITOR: bool>(
     for attempt in 0..if small { 2 } else { 1 } {
         if attempt != 0 {
             order.restore(initial, ports, work)?;
+            work.visit(gaps)?;
+            sweep.gap_crossings.fill(None);
             work.charge(initial.len())?;
             best.copy_from_slice(initial);
         }
@@ -943,7 +1061,7 @@ fn search<const LIMITED: bool, const EDITOR: bool>(
             let down = (i % 2) == attempt;
             let changed = sweep.run::<LIMITED>(g, order, ports, (down, i % 4 >= 2), rules, work)?;
             if changed {
-                count = crossings(order, ports, tree, work)?;
+                count = sweep.crossings(order, ports, tree, work)?;
             }
             stale = if count < best_score.0 { 0 } else { stale + 1 };
             // An unchanged order keeps its last count and cannot improve the best score again.

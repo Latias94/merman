@@ -97,11 +97,17 @@ pub fn ops_to_compact_svg_path_d(opset: &roughr::core::OpSet<f64>) -> String {
         };
         out.push(command);
         for (index, &coordinate) in op.data.iter().enumerate() {
-            if index != 0 {
+            let fixed = coordinate.abs() < i64::MAX as f64 / 1000.0;
+            let coordinate = if fixed {
+                (coordinate * 100.0).round() / 100.0
+            } else {
+                coordinate
+            };
+            if index != 0 && !(coordinate.is_finite() && coordinate < 0.0) {
                 out.push(' ');
             }
-            if coordinate.abs() < i64::MAX as f64 / 1000.0 {
-                fmt_path_into(&mut out, (coordinate * 100.0).round() / 100.0);
+            if fixed {
+                fmt_path_into(&mut out, coordinate);
             } else {
                 let _ = write!(out, "{}", number(coordinate));
             }
@@ -141,9 +147,13 @@ mod tests {
             "M0 2 C0 2.5, -3 4, 5.123456 6 L7 8"
         );
         #[cfg(feature = "svg-edge-parity")]
-        assert_eq!(
-            ops_to_compact_svg_path_d(&operations),
-            "M0 2C0 2.5 -3 4 5.12 6L7 8"
-        );
+        {
+            let compact = ops_to_compact_svg_path_d(&operations);
+            assert_eq!(compact, "M0 2C0 2.5-3 4 5.12 6L7 8");
+            assert_eq!(
+                kurbo::BezPath::from_svg(&compact).unwrap(),
+                kurbo::BezPath::from_svg("M0 2C0 2.5 -3 4 5.12 6L7 8").unwrap()
+            );
+        }
     }
 }

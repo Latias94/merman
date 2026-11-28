@@ -79,6 +79,31 @@ fn include_ink(bounds: &mut Bounds, ink: &Bounds, stroke_outset: f64) {
     bounds.max_y = bounds.max_y.max(ink.max_y + stroke_outset);
 }
 
+fn rect_ink(rect: Rect) -> Bounds {
+    Bounds {
+        min_x: rect.x,
+        min_y: rect.y,
+        max_x: rect.x + rect.width,
+        max_y: rect.y + rect.height,
+    }
+}
+
+fn frame_walls(rect: Rect, outset: f64) -> [kurbo::Rect; 4] {
+    let Bounds {
+        min_x,
+        min_y,
+        max_x,
+        max_y,
+    } = rect_ink(rect);
+    [
+        kurbo::Rect::new(min_x, min_y, max_x, min_y),
+        kurbo::Rect::new(min_x, max_y, max_x, max_y),
+        kurbo::Rect::new(min_x, min_y, min_x, max_y),
+        kurbo::Rect::new(max_x, min_y, max_x, max_y),
+    ]
+    .map(|wall| wall.inflate(outset, outset))
+}
+
 fn marker_ink(edge: &CanonicalPaintedEdge) -> [Option<Bounds>; 2] {
     let ends = &edge.marker_points;
     [
@@ -317,6 +342,7 @@ pub(crate) fn layout_c4_shoal(
     let mut labels = Vec::with_capacity(relation_count);
     let mut ids = Vec::with_capacity(relation_count);
     let fit_width = execution.adaptation == LayoutAdaptation::FitWidth;
+    let fit_ink_width = fit_width.then(|| conf.ink_width_for_viewport(execution.container_width));
     let paint_style = match route_style {
         // Bound the bend within the card grid's right-angle channels.
         RouteStyle::Curved => RouteStyle::Rounded(5.0),
@@ -366,9 +392,9 @@ pub(crate) fn layout_c4_shoal(
         &mut work,
     )?;
     let input = Placement {
-        width: if fit_width {
+        width: if let Some(max_width) = fit_ink_width {
             WidthPolicy::FitWidth {
-                max_width: execution.container_width,
+                max_width,
                 allow_turn: false,
                 turn_breakpoint: 0.0,
                 fold_wide_ranks: true,
@@ -434,6 +460,25 @@ pub(crate) fn layout_c4_shoal(
         max_x: solved.bounds.width,
         max_y: solved.bounds.height,
     };
+    let card_outset = execution
+        .family
+        .native_theme()
+        .map_or(1.0, |theme| theme.form.stroke_width / 2.0);
+    if fit_width {
+        let rectangles = solved
+            .nodes
+            .iter()
+            .copied()
+            .chain(solved.groups.iter().map(|group| group.rect));
+        work.charge_adapter(work.checked_add(solved.nodes.len(), solved.groups.len())?)?;
+        let mut rectangles = rectangles.peekable();
+        if let Some(&first) = rectangles.peek() {
+            bounds = rect_ink(first);
+            for rect in rectangles {
+                include_ink(&mut bounds, &rect_ink(rect), card_outset);
+            }
+        }
+    }
     let mut painted_routes = Vec::with_capacity(relation_count);
     let mut shafts = Vec::new();
     let check_labels = labels.iter().any(Option::is_some);
@@ -530,16 +575,13 @@ pub(crate) fn layout_c4_shoal(
             }
         }
         if check_labels {
-            let obstacle_count = work.checked_add(solved.nodes.len(), solved.groups.len())?;
+            let wall_count = work.checked_mul(solved.groups.len(), 5)?;
+            let obstacle_count = work.checked_add(solved.nodes.len(), wall_count)?;
             work.charge_adapter(obstacle_count)?;
             let mut obstacles = Vec::new();
             obstacles.try_reserve_exact(obstacle_count).map_err(|_| {
                 work.map_shoal_error(merman_layout_shoal::LayoutError::AllocationLimit)
             })?;
-            let card_outset = execution
-                .family
-                .native_theme()
-                .map_or(1.0, |theme| theme.form.stroke_width / 2.0);
             obstacles.extend(solved.nodes.iter().map(|node| {
                 let ink =
                     kurbo::Rect::new(node.x, node.y, node.x + node.width, node.y + node.height)
@@ -559,11 +601,32 @@ pub(crate) fn layout_c4_shoal(
                         )
                     }),
             );
-            if labels::reseat(&mut painted_routes, &shafts, obstacles, &mut work)? {
+            let frame_outset = card_outset + conf.look.hand_drawn_outset();
+            obstacles.extend(
+                solved
+                    .groups
+                    .iter()
+                    .zip(&group_ids)
+                    .filter(|&(_, &alias)| alias != ROOT)
+                    .flat_map(|(group, _)| frame_walls(group.rect, frame_outset)),
+            );
+            let horizontal = fit_ink_width.map(|width| {
+                let center = bounds.min_x.midpoint(bounds.max_x);
+                let half = width.max(bounds.max_x - bounds.min_x) / 2.0;
+                [center - half, center + half]
+            });
+            if labels::reseat(
+                &mut painted_routes,
+                &shafts,
+                obstacles,
+                horizontal,
+                &mut work,
+            )? {
                 labels::place_exterior(
                     &mut painted_routes,
                     &relations,
                     &bounds,
+                    horizontal,
                     &measure,
                     &mut work,
                 )?;

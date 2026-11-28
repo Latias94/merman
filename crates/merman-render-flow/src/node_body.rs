@@ -81,6 +81,39 @@ impl NodeBodyGeometry<'_> {
         }
         paths.into_svg_paths(self.work_meter)
     }
+
+    fn rough_circle(
+        &self,
+        target: RoughGeometryTarget,
+        diameter: f64,
+        stroke_width: f32,
+        roughness: f32,
+    ) -> Option<RoughPathPair> {
+        use merman_render_core::rough_svg::paths::roughjs_prepare_paths_for_circle_with_roughness;
+
+        #[cfg(feature = "layout-shoal")]
+        if self.compact_rough {
+            return merman_render_core::rough_svg::paths::prepare_backed_circle(
+                target,
+                diameter,
+                stroke_width,
+                self.stroke_dasharray,
+                roughness,
+                self.work_meter,
+                self.randomness,
+            );
+        }
+        roughjs_prepare_paths_for_circle_with_roughness(
+            target,
+            diameter,
+            stroke_width,
+            self.stroke_dasharray,
+            true,
+            roughness,
+            self.work_meter,
+            self.randomness,
+        )
+    }
 }
 
 /// Resolved body paint and the caller's shape timing counters.

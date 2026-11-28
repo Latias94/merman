@@ -19,15 +19,22 @@ fn render(source: &str, shoal: bool) -> (Value, String) {
 }
 
 fn render_with_studio(source: &str, appearance: Option<Appearance>) -> (Value, String) {
+    render_with_preset(source, appearance.map(|mode| (BuiltinPreset::Studio, mode)))
+}
+
+fn render_with_preset(
+    source: &str,
+    preset: Option<(BuiltinPreset, Appearance)>,
+) -> (Value, String) {
     let diagram = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
         .unwrap()
         .into_presentation();
     let environment = RenderEnvironment::deterministic();
-    let session = if let Some(appearance) = appearance {
+    let session = if let Some((preset, appearance)) = preset {
         let theme = ThemeCompiler::new()
-            .compile_preset(BuiltinPreset::Studio, Some(appearance))
+            .compile_preset(preset, Some(appearance))
             .unwrap();
         environment.begin_session_with_native_theme(NativeTheme::new(theme))
     } else {
@@ -270,21 +277,122 @@ fn enabled_block_grid_keeps_a_label_attached_and_routes_the_other_edge_around_it
 }
 
 #[test]
-fn enabled_block_grid_falls_back_when_an_anchored_label_is_blocked() {
+fn enabled_block_grid_reseats_a_blocked_caption_on_its_own_clear_route() {
     let source = "block\n  columns 5\n  A space X space B\n  A --\"Over X\"--> B\n";
     let (layout, svg) = render(source, true);
     let (legacy_layout, legacy_svg) = render(source, false);
-    assert_eq!(layout, legacy_layout);
+    for field in ["nodes", "shapeGeometries", "bounds"] {
+        assert_eq!(layout[field], legacy_layout[field], "fixed grid {field}");
+    }
     let doc = Document::parse(&svg).unwrap();
     let legacy = Document::parse(&legacy_svg).unwrap();
-    assert_eq!(
-        doc.root_element().attribute("viewBox"),
-        legacy.root_element().attribute("viewBox")
-    );
+    let blocker = svg_rect(&doc, "X");
+    let caption = |layout: &Value| {
+        let label = &layout["edges"][0]["label"];
+        let read = |key: &str| label[key].as_f64().unwrap();
+        Rect::from_center_size((read("x"), read("y")), (read("width"), read("height")))
+    };
+    assert!(blocker.contains(caption(&legacy_layout).center()));
+    let caption = caption(&layout);
     let path = edge(&doc, "-A-B");
-    let legacy_path = edge(&legacy, "-A-B");
-    for attribute in ["d", "data-points", "marker-end"] {
-        assert_eq!(path.attribute(attribute), legacy_path.attribute(attribute));
+    let shaft = axis_path(path);
+    assert!(!hits(&shaft, blocker));
+    assert!(hits(&shaft, caption));
+    assert_eq!(caption.intersect(blocker).area(), 0.0);
+    assert!(svg.contains("Over X"));
+    assert_eq!(
+        path.attribute("marker-end"),
+        edge(&legacy, "-A-B").attribute("marker-end")
+    );
+}
+
+#[test]
+fn enabled_block_grid_recovers_wide_parallel_captions_without_crossing_a_block() {
+    let source = r#"---
+config:
+  layout: shoal
+  htmlLabels: false
+---
+block
+  columns 3
+  A X B
+  A -- "WWWWWWWWW1" --> B
+  A -- "WWWWWWWWW2" --> B
+  A -- "WWWWWWWWW3" --> B
+"#;
+    let (layout, svg) =
+        render_with_preset(source, Some((BuiltinPreset::Monograph, Appearance::Light)));
+    let doc = Document::parse(&svg).unwrap();
+    let blocker = svg_rect(&doc, "X");
+    for (index, id) in ["1-A-B", "2-A-B", "3-A-B"].into_iter().enumerate() {
+        let shaft = edge(&doc, id);
+        let path = axis_path(shaft);
+        assert!(!hits(&path, blocker), "{id} crosses X");
+        let caption = doc
+            .descendants()
+            .find(|node| {
+                node.attribute("class") == Some("label") && node.attribute("data-id") == Some(id)
+            })
+            .unwrap();
+        let center = translate(caption.parent_element().unwrap());
+        let label = &layout["edges"][index]["label"];
+        let expected = Point::new(label["x"].as_f64().unwrap(), label["y"].as_f64().unwrap());
+        assert!((center - expected).hypot() < 1e-6);
+        assert!(
+            hits(&path, Rect::from_center_size(center, (0.02, 0.02))),
+            "{id} misses its published caption"
+        );
+        let data = base64::engine::general_purpose::STANDARD
+            .decode(shaft.attribute("data-points").unwrap())
+            .unwrap();
+        let points: Vec<LayoutPoint> = serde_json::from_slice(&data).unwrap();
+        let published: Vec<LayoutPoint> =
+            serde_json::from_value(layout["edges"][index]["points"].clone()).unwrap();
+        assert_eq!(points.len(), published.len());
+        for (point, published) in points.iter().zip(published) {
+            assert!((point.x - published.x).abs() < 1e-10 && (point.y - published.y).abs() < 1e-10);
+        }
+        assert!(shaft.attribute("marker-end").is_some());
+    }
+}
+
+#[test]
+fn enabled_block_grid_rolls_back_captions_with_their_clear_grid_routes() {
+    let source = r#"---
+config:
+  layout: shoal
+  htmlLabels: false
+---
+block
+  columns 2
+  A B
+  A -- "WWW1" --> B
+  A -- "WWW2" --> B
+  A -- "WWW3" --> B
+  A -- "WWW4" --> B
+  A -- "WWW5" --> B
+"#;
+    let preset = Some((BuiltinPreset::Monograph, Appearance::Light));
+    let (layout, svg) = render_with_preset(source, preset);
+    let (grid, grid_svg) =
+        render_with_preset(&source.replace("layout: shoal", "layout: dagre"), preset);
+    let doc = Document::parse(&svg).unwrap();
+    let grid_doc = Document::parse(&grid_svg).unwrap();
+    assert_ne!(layout["edges"][0]["label"], grid["edges"][0]["label"]);
+    for (index, id) in [(3, "4-A-B"), (4, "5-A-B")] {
+        assert_eq!(
+            edge(&doc, id).attribute("d"),
+            edge(&grid_doc, id).attribute("d"),
+            "{id} should keep its safe grid shaft"
+        );
+        assert_eq!(
+            layout["edges"][index]["label"],
+            grid["edges"][index]["label"]
+        );
+        assert_eq!(
+            layout["edges"][index]["points"],
+            grid["edges"][index]["points"]
+        );
     }
 }
 

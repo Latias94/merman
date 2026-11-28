@@ -333,16 +333,20 @@ pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
             write_diagram_node_id(out, diagram_id, &junction.id);
             checkpoints.checkpoint()?;
             #[cfg(feature = "layout-shoal")]
-            if let Some(node) = ctx.shoal.and_then(|_| ctx.layout_nodes.get(_node_index))
-                && node.id == junction.id
-                && node.width < settings.icon_size_px
+            if let Some(size) = ctx.shoal.and_then(|geometry| {
+                geometry.junction_diameter(_node_index).or_else(|| {
+                    let node = ctx.layout_nodes.get(_node_index)?;
+                    (node.id == junction.id && node.width < settings.icon_size_px)
+                        .then_some(node.width)
+                })
+            }) && size > 0.0
             {
                 let _ = write!(
                     out,
                     r#"" width="{size}" height="{size}" rx="{radius}" fill="{}"/></g></g>"#,
                     escape_attr_display(ctx.junction_dot_color),
-                    size = fmt(node.width),
-                    radius = fmt(node.width / 2.0),
+                    size = fmt(size),
+                    radius = fmt(size / 2.0),
                 );
                 out.checkpoint()?;
                 continue;

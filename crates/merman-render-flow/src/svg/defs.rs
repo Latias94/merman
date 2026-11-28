@@ -94,15 +94,17 @@ pub(super) fn prepare_flowchart_markers<'a>(
         .map_or(MarkerStyle::Classic, |native| native.form.marker_style);
     let edges = hierarchy.ordered_edges().iter().copied().map(|edge| {
         bind_marker_path_sources_for(ctx, hierarchy, edge.key)?;
-        let source_color = ctx
-            .edge_style_plan
-            .edge_for(edge.key)?
-            .edge_marker_color(hand_drawn);
+        let style = ctx.edge_style_plan.edge_for(edge.key)?;
+        let canonical = ctx.layout.route_contract.is_canonical_axis();
+        let authored_ink = canonical
+            .then(|| style.source_edge_stroke(hand_drawn))
+            .flatten()
+            .and_then(|stroke| merman_theme_contract::v2::Color::parse(stroke.trim()).ok());
         let margin = ctx.edge_style_plan.marker_uses_margin_for(edge.key, neo)?;
         Ok(FlowchartEdgeMarkers {
             edge,
-            source_color,
-            adaptive_ink: fill_plan.ink(edge.key),
+            source_color: style.edge_marker_color(hand_drawn),
+            adaptive_ink: fill_plan.ink(edge.key).or(authored_ink),
             surfaces: fill_plan.layers(edge.key),
             margin,
         })

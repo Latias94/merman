@@ -809,7 +809,7 @@ pub(super) fn root(
         &drawing,
         graph,
         &wires,
-        &owners,
+        (&owners, &placed),
         &mut shells,
         ctx.options,
         work,
@@ -817,7 +817,9 @@ pub(super) fn root(
     if widened {
         for (column, shell) in columns.iter_mut().zip(&shells) {
             work.visit(1)?;
-            *column = shell.column(axes);
+            if !shell.boundary_only {
+                column.padding = axes.cross.map(|side| shell.padding[side as usize]);
+            }
         }
         (drawing, placed) = flat::lanes::run(
             graph,

@@ -508,7 +508,7 @@ style N3 fill:#FFFBEB,stroke:#D97706";
 #[cfg(feature = "layout-shoal")]
 #[test]
 fn shoal_swimlane_rough_edge_label_reseats_clear_of_foreign_ink() {
-    use kurbo::{BezPath, Line, ParamCurve, Point, Rect};
+    use kurbo::{BezPath, Line, ParamCurve, PathSeg, Point, Rect};
     use merman_render::model::SwimlaneLayout;
 
     let source = "swimlane-beta RL
@@ -563,7 +563,17 @@ E[Dispatch the result before validation]";
         };
         let host = element("edge4", "edge");
         let d = host.attribute("d").unwrap();
-        assert!(d.contains('C') && !d.contains('L'), "{look}: {d}");
+        let host_shaft = BezPath::from_svg(d).unwrap();
+        assert!(
+            host_shaft.segments().any(|segment| {
+                let PathSeg::Cubic(curve) = segment else {
+                    return false;
+                };
+                let axis = curve.p3 - curve.p0;
+                axis.cross(curve.eval(0.5) - curve.p0).abs() > axis.hypot() * 0.02
+            }),
+            "{look}: expected visibly rough ink between the straight terminal shafts",
+        );
         let foreign = element("edge5", "edge");
         let shaft = BezPath::from_svg(foreign.attribute("d").unwrap()).unwrap();
         let plate = element("edge4", "edge-label")

@@ -107,9 +107,6 @@ fn layout_impl(
     let mut frame = scratch.frame();
     let mut work = work::Work::new(control);
     work.charge(1)?;
-    if !graph.lane_order.is_empty() && options.width_policy != WidthPolicy::Natural {
-        return Err(LayoutError::Unsupported("width fitting for swimlanes"));
-    }
     let reuse_components = options.reuse_unchanged_components
         && options.width_policy == WidthPolicy::Natural
         && graph.groups.is_empty();
@@ -173,7 +170,11 @@ fn layout_impl(
     } else {
         output
     };
-    orthogonal::refine(graph, &mut output, options, &mut work)?;
+    if let Some(trial) = width_trial.filter(|_| !graph.lane_order.is_empty()) {
+        trial.refine_lanes(graph, &mut output, &mut work)?;
+    } else {
+        orthogonal::refine(graph, &mut output, options, &mut work)?;
+    }
     work.finish()?;
     if keep_components {
         frame.commit_components(&output);

@@ -186,6 +186,193 @@ fn shoal_block_cuts_transparent_captions_on_the_owning_shaft() {
 }
 
 #[test]
+fn shoal_block_s61_separates_shapes_routes_and_transparent_captions() {
+    use kurbo::Line;
+    use merman_layout_shoal::Side;
+    use merman_render::model::{BlockDiagramLayout, LayoutPoint};
+    use merman_render::theme::{Appearance, BuiltinPreset};
+
+    let source = r#"---
+config:
+  layout: shoal
+  look: handDrawn
+  htmlLabels: false
+---
+block-beta
+  columns 4
+  A(("Start Circle")) space B{"Decision<br/>Diamond"} C(["Stadium"])
+  space:4
+  D{{"Hexagon"}} E[/"Trapezoid"\] F[("Primary<br/>Cylinder")] G((("Double<br/>Circle")))
+  A -- "fwd" --> B
+  B -- "rev" --> A
+  B -- "p1" --> C
+  B -- "p2" --> C
+  A -- "fan1" --> F
+  D -- "fan2" --> F
+  E -- "fan3" --> F
+  F -- "sync" --> G
+  C -- "loop" --> G
+"#;
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let theme = ThemeCompiler::new()
+        .compile_preset(BuiltinPreset::Studio, Some(Appearance::Dark))
+        .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_native_theme(NativeTheme::new(theme))
+        .unwrap()
+        .with_canvas_background(Color::TRANSPARENT);
+    let artifact = family::prepare(
+        parsed.presentation(),
+        &LayoutOptions::headless_svg_defaults(),
+        session,
+    )
+    .unwrap();
+    let layout: BlockDiagramLayout = serde_json::from_value(
+        artifact.layout_geometry_json().unwrap()["layout"]["BlockDiagram"].clone(),
+    )
+    .unwrap();
+    let svg = artifact
+        .render_svg(&SvgRenderOptions::default(), &Default::default())
+        .unwrap();
+    let document = Document::parse(svg.svg()).unwrap();
+    let view_box: Vec<f64> = document
+        .root_element()
+        .attribute("viewBox")
+        .unwrap()
+        .split_ascii_whitespace()
+        .map(|number| number.parse().unwrap())
+        .collect();
+    let viewport = Rect::from_origin_size((view_box[0], view_box[1]), (view_box[2], view_box[3]));
+    let [a, b, c, d, e, f, g] = layout.nodes.as_slice() else {
+        panic!("expected the seven S61 blocks");
+    };
+    assert_eq!([a.x, b.x, c.x], [d.x, f.x, g.x]);
+    assert_eq!([a.y, b.y, c.y], [a.y; 3]);
+    assert_eq!([d.y, e.y, f.y, g.y], [d.y; 4]);
+    let outlines: Vec<_> = layout
+        .shape_geometries
+        .iter()
+        .map(|shape| {
+            let (x0, y0, x1, y1) = shape.rendered_extents();
+            let outline = Rect::new(x0, y0, x1, y1);
+            let slot = shape.allocated;
+            let slot = Rect::from_center_size((slot.x, slot.y), (slot.width, slot.height));
+            assert!(
+                slot.inflate(0.01, 0.01).contains_rect(outline),
+                "{} exceeds its slot",
+                shape.id
+            );
+            assert!(viewport.contains_rect(outline));
+            (shape.id.as_str(), outline)
+        })
+        .collect();
+    for (i, (id, outline)) in outlines.iter().enumerate() {
+        for (other, bounds) in &outlines[..i] {
+            assert_eq!(
+                outline.intersect(*bounds).area(),
+                0.0,
+                "{id} overlaps {other}"
+            );
+        }
+    }
+
+    assert_eq!(layout.edges.len(), 9);
+    let captions: Vec<_> = layout
+        .edges
+        .iter()
+        .map(|link| caption_bounds(edge(&document, &link.id), false))
+        .collect();
+    let point = |p: &LayoutPoint| Point::new(p.x, p.y);
+    for (i, (link, &caption)) in layout.edges.iter().zip(&captions).enumerate() {
+        let shaft = edge(&document, &link.id);
+        let path = BezPath::from_svg(shaft.attribute("d").unwrap()).unwrap();
+        let enters = |rect: Rect| {
+            let interior = rect.inflate(-0.01, -0.01);
+            path.segments().any(|seg| {
+                interior.contains(seg.start())
+                    || interior.path_segments(0.0).any(|edge| {
+                        let border = Line::new(edge.start(), edge.end());
+                        !seg.intersect_line(border).is_empty()
+                    })
+            })
+        };
+        assert!(viewport.contains_rect(path.bounding_box()));
+        assert!(viewport.contains_rect(caption));
+        assert!(enters(caption), "{} shaft misses its caption", link.id);
+        assert!(definition(shaft, "clip-path").has_tag_name("clipPath"));
+        assert!(definition(shaft, "marker-end").has_tag_name("marker"));
+        for (id, outline) in &outlines {
+            assert_eq!(
+                caption.intersect(*outline).area(),
+                0.0,
+                "{} caption overlaps {id}",
+                link.id
+            );
+            if *id != link.from && *id != link.to {
+                assert!(!enters(*outline), "{} crosses {id}", link.id);
+            }
+        }
+        for (j, &peer) in captions.iter().enumerate().filter(|(j, _)| *j != i) {
+            assert_eq!(
+                caption.intersect(peer).area(),
+                0.0,
+                "{} caption overlaps its peer",
+                link.id
+            );
+            assert!(
+                !enters(peer),
+                "{} crosses caption {}",
+                link.id,
+                layout.edges[j].id
+            );
+        }
+        let points = &link.points;
+        let last = points.len() - 1;
+        for (id, contact, next) in [(&link.from, 0, 1), (&link.to, last, last - 1)] {
+            let at = point(&points[contact]);
+            let offset = point(&points[next]) - at;
+            let (side, across) = match (offset.x, offset.y) {
+                (0.0, y) if y < 0.0 => (Side::Top, at.x),
+                (0.0, y) if y > 0.0 => (Side::Bottom, at.x),
+                (x, 0.0) if x < 0.0 => (Side::Left, at.y),
+                (x, 0.0) if x > 0.0 => (Side::Right, at.y),
+                _ => panic!("{} has no straight terminal lead at {id}", link.id),
+            };
+            let shape = layout
+                .shape_geometries
+                .iter()
+                .find(|shape| &shape.id == id)
+                .unwrap();
+            let expected = shape.face_contact(side, across).unwrap();
+            assert!(
+                (point(&expected) - at).hypot() < 1e-6,
+                "{} misses the contour of {id}",
+                link.id
+            );
+        }
+    }
+    for (left, right, reverse) in [(0, 1, true), (2, 3, false)] {
+        let ends = |i: usize| {
+            let points = &layout.edges[i].points;
+            [point(&points[0]), point(points.last().unwrap())]
+        };
+        let mut peer = ends(right);
+        if reverse {
+            peer.reverse();
+        }
+        for (a, b) in ends(left).into_iter().zip(peer) {
+            assert!(
+                (a - b).hypot() >= 8.0,
+                "coincident contacts at {a:?} and {b:?}"
+            );
+        }
+    }
+}
+
+#[test]
 fn shoal_block_routes_both_markers_clear_of_an_opaque_caption() {
     let svg = render(
         "block\n  A B\n  A -- \"sync\" <--> B\n",

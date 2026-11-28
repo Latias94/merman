@@ -1,8 +1,8 @@
 //! Mermaid 12 Usecase paint over its prepared graph and measured labels.
 
 use super::{
-    UsecaseLabelPlan, UsecaseNodePlan, UsecasePrepared, create_text_source, package_tab_geometry,
-    sanitize_source_label,
+    UsecaseLabelPlan, UsecaseNodePlan, UsecasePrepared, accessible_html_text, create_text_source,
+    package_tab_geometry, sanitize_source_label, shoal_html_labels,
 };
 use base64::Engine as _;
 #[cfg(feature = "layout-shoal")]
@@ -16,6 +16,7 @@ use merman_model::runtime::OperationContext;
 use merman_render_core::{
     Bounds, Error, LayoutLabel, LayoutNode, Result,
     config::{config_f64, config_string, json_bool, value_at},
+    html::html_label_overflow_attr,
     icon_registry::IconRegistry,
     number_format::canonical_number as fmt,
     resources::OperationWorkMeter,
@@ -121,10 +122,6 @@ fn element_role_classes(plan: &UsecaseNodePlan, business: bool) -> String {
     )
 }
 
-fn accessible_label(label: &UsecaseLabelPlan) -> String {
-    accessible_text(&label.text, label.label_type)
-}
-
 fn accessible_text(text: &str, kind: UsecaseLabelType) -> String {
     match kind {
         UsecaseLabelType::Text => text.to_owned(),
@@ -146,6 +143,7 @@ struct UsecaseLabelRenderContext<'a> {
     config: &'a merman_model::presentation::PresentationConfig,
     measurer: &'a dyn TextMeasurer,
     inline_svg_font: bool,
+    allow_html_overflow: bool,
 }
 
 enum UsecaseLabelKind<'a> {
@@ -174,6 +172,7 @@ fn write_label(
         config,
         measurer,
         inline_svg_font,
+        allow_html_overflow,
     } = context;
     let html = config_bool(config.as_value(), &["htmlLabels"]).unwrap_or(true);
     let font_family = plan.style.font_family.as_deref().unwrap_or("sans-serif");
@@ -291,14 +290,25 @@ fn write_label(
     }
     if html {
         let content = plan.html.as_ref().map_or("", |label| label.xhtml.as_str());
+        let measured_without_soft_wrap = allow_html_overflow
+            && plan.label_type == UsecaseLabelType::Text
+            && plan
+                .max_width
+                .is_none_or(|width| width <= 0.0 || plan.text_metrics.width < width);
+        let text_layout = if measured_without_soft_wrap {
+            "display:flex;justify-content:center;white-space:nowrap;"
+        } else {
+            "display:inline-block;white-space:normal;"
+        };
         if !is_edge_label && !is_boundary {
             out.push_str("<rect/>");
         }
         let _ = write!(
             out,
-            r#"<foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml"{} style="{}display:inline-block;white-space:normal;line-height:1.5;text-align:center;width:{}px"><span class="{}" style="{}">{}</span></div></foreignObject>"#,
+            r#"<foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml"{} style="{}{text_layout}line-height:1.5;text-align:center;width:{}px"><span class="{}" style="{}">{}</span></div></foreignObject>"#,
             fmt(plan.metrics.width),
             fmt(plan.metrics.height),
+            html_label_overflow_attr(allow_html_overflow, plan.metrics.width, plan.metrics.height),
             if is_edge_label {
                 r#" class="labelBkg""#
             } else {
@@ -591,6 +601,7 @@ pub fn render_usecase_diagram_svg_model(
         .iter()
         .map(|node| (node.id.as_str(), node))
         .collect();
+    #[cfg(any(feature = "layout-grid", feature = "layout-layered"))]
     let plans: HashMap<_, _> = prepared
         .measured
         .nodes
@@ -627,15 +638,34 @@ pub fn render_usecase_diagram_svg_model(
         .iter()
         .map(|edge| (edge.id.as_str(), edge))
         .collect();
-    let source_labels: HashMap<_, _> = plans
+    let authored_html = shoal_html_labels(config);
+    let accessible_source = |text: &str, kind| -> Result<String> {
+        if authored_html && kind == UsecaseLabelType::Text {
+            accessible_html_text(text, |units| {
+                options.work_meter.charge_emit_work(units)?;
+                Ok(())
+            })
+        } else {
+            Ok(accessible_text(text, kind))
+        }
+    };
+    let source_labels: HashMap<_, _> = prepared
+        .measured
+        .nodes
         .iter()
-        .map(|(&id, plan)| {
+        .map(|plan| -> Result<_> {
+            let id = plan.id.as_str();
             let kind = source_nodes
                 .get(id)
                 .map_or(plan.label.label_type, |node| node.label_type);
-            (id, accessible_text(&plan.source_label, kind))
+            let label = if plan.table.is_some() {
+                accessible_text(&plan.source_label, kind)
+            } else {
+                accessible_source(&plan.source_label, kind)?
+            };
+            Ok((id, label))
         })
-        .collect();
+        .collect::<Result<_>>()?;
     let padding = config_f64(cfg, &["usecase", "diagramPadding"]).unwrap_or(20.0);
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
@@ -758,6 +788,7 @@ pub fn render_usecase_diagram_svg_model(
         config,
         measurer,
         inline_svg_font: uses_canonical || native.is_some(),
+        allow_html_overflow: uses_canonical,
     };
     if let Some(title) = title {
         let style = css_binding
@@ -939,7 +970,7 @@ pub fn render_usecase_diagram_svg_model(
                 accessible_text(&plan.source_label, boundary.label_type)
             )
         } else {
-            format!("{kind} system boundary {}", accessible_label(&plan.label))
+            format!("{kind} system boundary {}", source_labels[plan.id.as_str()])
         };
         let appearance = theme::appearance_attributes(css_binding, Some(color_index));
         let canonical_attributes = if uses_canonical {
@@ -1237,28 +1268,35 @@ pub fn render_usecase_diagram_svg_model(
         let relation = relationships
             .get(plan.original_id.as_deref().unwrap_or(&plan.id))
             .copied();
-        let label = relation.map(|edge| match edge.relationship_type {
-            UsecaseRelationshipType::Association => {
-                let label = if uses_grid {
-                    edge.label
-                        .as_deref()
-                        .filter(|label| !label.is_empty())
-                        .map(|label| {
-                            let kind = edge.label_type.unwrap_or_default();
-                            accessible_text(&sanitize_source_label(label, kind, config), kind)
-                        })
-                } else {
-                    plan.label.as_ref().map(accessible_label)
-                };
-                label.map_or_else(
-                    || "association".into(),
-                    |label| format!("association {label}"),
-                )
-            }
-            UsecaseRelationshipType::Include => "include".into(),
-            UsecaseRelationshipType::Extend => "extend".into(),
-            UsecaseRelationshipType::Generalization => "generalization".into(),
-        });
+        let label = if let Some(edge) = relation {
+            Some(match edge.relationship_type {
+                UsecaseRelationshipType::Association => {
+                    let label = if uses_grid {
+                        edge.label
+                            .as_deref()
+                            .filter(|label| !label.is_empty())
+                            .map(|label| {
+                                let kind = edge.label_type.unwrap_or_default();
+                                accessible_text(&sanitize_source_label(label, kind, config), kind)
+                            })
+                    } else {
+                        plan.label
+                            .as_ref()
+                            .map(|label| accessible_source(&label.text, label.label_type))
+                            .transpose()?
+                    };
+                    label.map_or_else(
+                        || "association".into(),
+                        |label| format!("association {label}"),
+                    )
+                }
+                UsecaseRelationshipType::Include => "include".into(),
+                UsecaseRelationshipType::Extend => "extend".into(),
+                UsecaseRelationshipType::Generalization => "generalization".into(),
+            })
+        } else {
+            None
+        };
         let relation_kind = relation.map_or("note", |edge| match edge.relationship_type {
             UsecaseRelationshipType::Association => "association",
             UsecaseRelationshipType::Include => "include",
@@ -1460,12 +1498,14 @@ pub fn render_usecase_diagram_svg_model(
             let stereotype = source
                 .stereotype
                 .as_ref()
-                .map(|value| {
-                    format!(
+                .map(|value| -> Result<_> {
+                    let text = sanitize_source_label(value, UsecaseLabelType::Text, config);
+                    Ok(format!(
                         ", stereotype {}",
-                        sanitize_source_label(value, UsecaseLabelType::Text, config)
-                    )
+                        accessible_source(&text, UsecaseLabelType::Text)?
+                    ))
                 })
+                .transpose()?
                 .unwrap_or_default();
             let business = if source.business { "business " } else { "" };
             let actor = source.kind == UsecaseNodeKind::Actor;
@@ -1490,7 +1530,7 @@ pub fn render_usecase_diagram_svg_model(
                 format!(
                     "Note for {}: {}",
                     source_labels[note.target.as_str()],
-                    accessible_label(&plan.label)
+                    source_labels[plan.id.as_str()]
                 ),
                 [].as_slice(),
             )

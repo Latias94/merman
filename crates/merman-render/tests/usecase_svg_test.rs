@@ -62,6 +62,15 @@ fn render_config_with_session(
     config: serde_json::Value,
     session: RenderSession,
 ) -> (merman_model::ManagedJson, String) {
+    let (layout, rendered) = render_with_session(source, config, session);
+    (layout, rendered.svg().to_owned())
+}
+
+fn render_with_session(
+    source: &str,
+    config: serde_json::Value,
+    session: RenderSession,
+) -> (merman_model::ManagedJson, family::RenderedFamilySvg) {
     let engine = MermaidEngine::new()
         .with_site_config(merman_core::presentation::SourcePresentationConfig::from_value(config));
     let parsed = engine
@@ -80,9 +89,7 @@ fn render_config_with_session(
             },
             &SvgDebugOptions::default(),
         )
-        .expect("render Usecase")
-        .svg()
-        .to_owned();
+        .expect("render Usecase");
     (projection, svg)
 }
 
@@ -1993,7 +2000,7 @@ mod theme {
         }
     }
 
-    fn stylesheet_property(
+    pub(super) fn stylesheet_property(
         document: &roxmltree::Document<'_>,
         selector: &str,
         key: &str,
@@ -2603,11 +2610,69 @@ fn usecase_svg_accepts_exact_output_byte_limit() {
 
 #[cfg(feature = "layout-shoal")]
 #[test]
+fn usecase_shoal_charges_html_accessible_names_during_emission() {
+    use merman_render::{
+        Error,
+        resources::{RenderResourcePolicy, ResourceLimitId},
+    };
+
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(
+            json!({"layout": "shoal", "htmlLabels": true}),
+        ),
+    );
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(
+            "usecase-beta\nactor Dev(\"<b>Ops</b><br>Admin\")\nTask(\"<i>Deploy</i>\")\nDev -- <b>owns</b> --> Task\n",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap();
+    let render = |policy| {
+        let session = RenderEnvironment::deterministic()
+            .with_resource_policy(policy)
+            .begin_session()
+            .unwrap();
+        family::prepare(
+            parsed.presentation(),
+            &LayoutOptions::headless_svg_defaults(),
+            session,
+        )
+        .expect("the budget still admits layout")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .map(|rendered| {
+            let svg = rendered.svg().to_owned();
+            let work = rendered
+                .into_completion()
+                .report()
+                .session_report()
+                .layout_work_units();
+            (svg, work)
+        })
+    };
+    let policy = RenderResourcePolicy::unbounded_for_trusted_input();
+    let (svg, work) = render(policy).unwrap();
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    assert!(document.descendants().any(|node| {
+        node.attribute("aria-label") == Some("association owns from Ops Admin to Deploy")
+    }));
+    let limit = ResourceLimitId::MaxLayoutWorkUnits;
+    let exact = policy.with_limit(limit, work).unwrap();
+    assert_eq!(render(exact).unwrap(), (svg, work));
+    let below = policy.with_limit(limit, work - 1).unwrap();
+    assert!(matches!(
+        render(below),
+        Err(Error::ResourceLimitExceeded(error)) if error.limit == limit.as_str()
+    ));
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
 fn usecase_shoal_decodes_plain_entities_once_for_labels_and_accessibility() {
     let source = r#"usecase-beta
 direction TB
 actor Dev("Developer") <<Human>>
-systemBoundary Auth("Auth &amp; SSO")@{type:package}
+systemBoundary Auth("Auth &amp; SSO &lt;b&gt;")@{type:package}
   Login("Sign in &amp; verify &amp;lt;MFA&amp;gt;")@{business:true}
 end
 json Claims@{"literal":"&amp;"}
@@ -2638,7 +2703,9 @@ Claims -- Login
             login.attribute("aria-label").unwrap(),
             format!("business use case {expected}")
         );
-        assert!(visible(find("Auth")).contains("Auth & SSO"));
+        let auth = find("Auth");
+        assert!(visible(auth).contains("Auth & SSO <b>"));
+        assert!(!auth.descendants().any(|node| node.has_tag_name("b")));
         assert!(visible(find("Claims")).contains("&amp;"));
         assert!(visible(doc.root_element()).contains("status & security"));
         if !html_labels {
@@ -2647,6 +2714,267 @@ Claims -- Login
                 .find(|n| n.attribute("class") == Some("label usecase-stereotype"))
                 .unwrap();
             assert!(stereotype.descendants().any(|n| n.has_tag_name("text") && n.attribute("text-anchor") == Some("middle")));
+        }
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn usecase_shoal_preserves_rich_labels_and_package_clearance_in_both_svg_outputs() {
+    use kurbo::{BezPath, ParamCurve, PathSeg, Rect, Shape};
+    use merman_render::svg::SvgPipeline;
+    use merman_render::theme::{Appearance, NativeTheme, ThemeCompiler};
+
+    let source = r#"usecase-beta
+direction TB
+actor Cust("<b>Customer</b><br/>Mobile")@{type:hollow}
+actor Ops("<b>Ops Admin</b>")
+systemBoundary Core("Checkout Core")@{type:package}
+  UC1("Create <b>Order</b>")
+  UC2("Authorize <i>Card</i>")
+  UC3("Issue Receipt")
+end
+systemBoundary Platform("Payment Platform")@{type:package}
+  UC4("Audit Ledger")
+end
+Cust --> UC1
+UC1 ..> : include UC2
+UC2 ..> : include UC3
+UC3 ..> : extend UC4
+Ops --> UC4
+Ops --> UC2
+"#;
+    let theme = ThemeCompiler::new()
+        .compile_json(
+            br#"{"schema_version":2,"extends":"studio","form":{"edge_label_bg":"pill"}}"#,
+            Some(Appearance::Dark),
+        )
+        .unwrap();
+    let pill = theme.roles().surface_node.first_color().to_string();
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_native_theme(NativeTheme::new(theme))
+        .unwrap();
+    let (_, rendered) = render_with_session(
+        source,
+        json!({"layout":"shoal", "htmlLabels":true}),
+        session,
+    );
+    let compatible = rendered.svg().to_owned();
+    let lowered = rendered.finalize_resvg(&SvgPipeline::resvg_safe()).unwrap();
+    for (svg, html) in [(compatible.as_str(), true), (lowered.svg().as_str(), false)] {
+        let doc = roxmltree::Document::parse(svg).unwrap();
+        let element = |id| {
+            doc.descendants()
+                .find(|node| node.attribute("data-usecase-id") == Some(id))
+                .unwrap()
+        };
+        let has_class = |node: roxmltree::Node<'_, '_>, class| {
+            node.attribute("class")
+                .unwrap_or_default()
+                .split_whitespace()
+                .any(|value| value == class)
+        };
+        let visible = |node: roxmltree::Node<'_, '_>| {
+            node.descendants()
+                .filter(roxmltree::Node::is_text)
+                .filter_map(|text| text.text())
+                .collect::<String>()
+        };
+        let customer = element("Cust");
+        assert!(has_class(customer, "usecase-actor-hollow"));
+        assert_eq!(
+            customer.attribute("aria-label"),
+            Some("hollow actor Customer Mobile")
+        );
+        assert!(has_class(element("Ops"), "usecase-actor-normal"));
+        assert_eq!(
+            element("Ops").attribute("aria-label"),
+            Some("actor Ops Admin")
+        );
+        let number = |node: roxmltree::Node<'_, '_>, name| {
+            node.attribute(name).unwrap().parse::<f64>().unwrap()
+        };
+        let lower_label = |label: roxmltree::Node<'_, '_>| {
+            let instance = label
+                .descendants()
+                .find(|node| node.has_tag_name("use"))
+                .unwrap();
+            let id = instance
+                .attribute("href")
+                .unwrap()
+                .strip_prefix('#')
+                .unwrap();
+            doc.descendants()
+                .find(|node| node.attribute("id") == Some(id))
+                .unwrap()
+        };
+        let label_tag = if html { "foreignObject" } else { "text" };
+        assert_eq!(
+            doc.descendants()
+                .any(|node| node.has_tag_name("foreignObject")),
+            html
+        );
+        for (id, tag, run, text) in [
+            ("Cust", "b", "Customer", "Customer\nMobile"),
+            ("Ops", "b", "Ops Admin", "Ops Admin"),
+            ("UC1", "b", "Order", "Create Order"),
+            ("UC2", "i", "Card", "Authorize Card"),
+        ] {
+            let owner = element(id);
+            let label = if html { owner } else { lower_label(owner) };
+            let rows: Vec<_> = label
+                .descendants()
+                .filter(|node| node.has_tag_name(label_tag))
+                .collect();
+            let styled = |node: &roxmltree::Node<'_, '_>| node.text() == Some(run);
+            if html {
+                let [object] = rows[..] else {
+                    panic!("expected one HTML label on {id}")
+                };
+                assert_eq!(visible(object), text.replace('\n', ""), "{id}");
+                assert!(
+                    object
+                        .descendants()
+                        .filter(styled)
+                        .any(|node| { node.has_tag_name(("http://www.w3.org/1999/xhtml", tag)) }),
+                    "missing XHTML {tag} for {id}"
+                );
+                assert_eq!(
+                    object
+                        .descendants()
+                        .filter(|node| node.has_tag_name("br"))
+                        .count(),
+                    usize::from(id == "Cust"),
+                    "{id}"
+                );
+                assert_eq!(object.attribute("style"), Some("overflow: visible;"));
+                let wrapper = object
+                    .first_element_child()
+                    .unwrap()
+                    .attribute("style")
+                    .unwrap();
+                assert!(wrapper.contains("white-space:nowrap"), "{id}: {wrapper}");
+                assert!(
+                    wrapper.contains("justify-content:center"),
+                    "{id}: {wrapper}"
+                );
+            } else {
+                let lines = rows.iter().copied().map(visible).collect::<Vec<_>>();
+                assert_eq!(lines.join("\n"), text, "{id}");
+                if id == "Cust" {
+                    let [first, second] = [number(rows[0], "y"), number(rows[1], "y")];
+                    let viewport = label
+                        .descendants()
+                        .find(|node| node.has_tag_name("svg"))
+                        .unwrap();
+                    assert!(0.0 < first && first < second && second < number(viewport, "height"));
+                }
+                let styled = label
+                    .descendants()
+                    .filter(styled)
+                    .find(|node| node.has_tag_name("tspan") || node.has_tag_name("text"))
+                    .unwrap();
+                let weight_or_style = if tag == "b" {
+                    "font-weight:700"
+                } else {
+                    "font-style:italic"
+                };
+                let style = styled.attribute("style").unwrap();
+                assert!(
+                    style
+                        .split(';')
+                        .any(|value| value.trim_end_matches(" !important") == weight_or_style)
+                );
+            }
+        }
+
+        let stroke_width = |selector| {
+            theme::stylesheet_property(&doc, selector, "stroke-width")
+                .unwrap()
+                .trim_end_matches("px")
+                .parse::<f64>()
+                .unwrap()
+        };
+        let clearance = (stroke_width("#usecase-test .relationship")
+            + stroke_width("#usecase-test .system-boundary-package-tab"))
+            / 2.0;
+        let rect = |node: roxmltree::Node<'_, '_>| {
+            Rect::from_origin_size(
+                (number(node, "x"), number(node, "y")),
+                (number(node, "width"), number(node, "height")),
+            )
+        };
+        for (id, boundary) in [
+            ("edge-0", "Core"),
+            ("edge-3", "Platform"),
+            ("edge-4", "Platform"),
+            ("edge-5", "Core"),
+        ] {
+            let boundary = element(boundary);
+            let shape = |class| {
+                boundary
+                    .children()
+                    .find(|node| has_class(*node, class))
+                    .unwrap()
+            };
+            let tab = rect(shape("boundary-tab"));
+            let panel = rect(shape("boundary-body"));
+            let guard = tab.inflate(clearance, clearance);
+            let border = guard.to_path(0.0);
+            let edge = element(id);
+            let path = BezPath::from_svg(edge.attribute("d").unwrap()).unwrap();
+            assert!(edge.attribute("marker-end").is_some());
+            assert!(!panel.contains(path.segments().next().unwrap().start()));
+            assert!(panel.contains(path.segments().last().unwrap().end()));
+            assert!(
+                path.segments().all(|segment| {
+                    !guard.contains(segment.start())
+                        && !guard.contains(segment.end())
+                        && border.segments().all(|side| match side {
+                            PathSeg::Line(side) => segment.intersect_line(side).is_empty(),
+                            _ => unreachable!("rectangle sides are straight"),
+                        })
+                }),
+                "{id} crosses the painted tab: {path:?}, {guard:?}"
+            );
+        }
+
+        if html {
+            assert_eq!(
+                theme::stylesheet_property(&doc, "#usecase-test .edgeLabel p", "background-color")
+                    .as_deref(),
+                Some(pill.as_str())
+            );
+        }
+        for (id, text) in [
+            ("edge-1", "«include»"),
+            ("edge-2", "«include»"),
+            ("edge-3", "«extend»"),
+        ] {
+            assert_eq!(element(id).attribute("clip-path"), None, "{id}");
+            let caption = doc
+                .descendants()
+                .find(|node| {
+                    node.attribute("class") == Some("label")
+                        && node.attribute("data-id") == Some(id)
+                })
+                .unwrap();
+            assert_eq!(
+                caption.parent_element().unwrap().attribute("class"),
+                Some("edgeLabel")
+            );
+            let caption = if html {
+                caption
+            } else {
+                let label = lower_label(caption);
+                assert!(
+                    label.descendants().any(|node| node.has_tag_name("rect")
+                        && node.attribute("fill") == Some(pill.as_str())),
+                    "missing painted Pill on {id}"
+                );
+                label
+            };
+            assert_eq!(visible(caption), text, "{id}");
         }
     }
 }

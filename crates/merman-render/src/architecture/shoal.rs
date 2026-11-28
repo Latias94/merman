@@ -43,6 +43,7 @@ pub(crate) struct ArchitectureShoalGeometry {
     pub(crate) routes: CanonicalRoutes,
     pub(crate) groups: Vec<ArchitectureShoalGroup>,
     pub(crate) service_titles: Vec<Option<ArchitectureShoalTitle>>,
+    pub(crate) junction_diameters: Vec<f64>,
     pub(crate) edge_labels: Vec<Option<ArchitectureShoalText>>,
     pub(crate) edge_stroke_outset: f64,
     pub(crate) route_style: RouteStyle,
@@ -231,6 +232,7 @@ pub(crate) fn layout_architecture_shoal(
         RouteStyle::from_theme(style.edge_style())
     });
     let edge_stroke_outset = binding.edge_stroke_outset();
+    let marker_port_width = arrow + 2.0 * edge_stroke_outset.max(1.0);
     // The deterministic measurer can supply a neutral middle baseline. Leave half an em for
     // differences in the browser's x-height and keep the visible shaft outside that allowance.
     let label_clearance = (style.font_size / 2.0 + edge_stroke_outset).max(TEXT_CLEARANCE);
@@ -336,8 +338,8 @@ pub(crate) fn layout_architecture_shoal(
     let mut bottom_degree = vec![0usize; n];
     let mut has_top_port = vec![false; n];
     let mut has_bottom_marker = vec![false; n];
-    let mut junction_degree = vec![0usize; n];
-    let mut junction_has_incoming = vec![false; n];
+    let face_index = |side: Side| side as usize;
+    let mut junction_faces = vec![[(0usize, false); 4]; n];
     for edge in &model.edges {
         work.charge_adapter(work.checked_add(edge.lhs_id.len(), edge.rhs_id.len())?)?;
         let source = endpoint(
@@ -366,8 +368,9 @@ pub(crate) fn layout_architecture_shoal(
                     Side::Left | Side::Right => {}
                 }
                 if model.nodes[index].node_type == ArchitectureNodeKind::Junction {
-                    junction_degree[index] += 1;
-                    junction_has_incoming[index] |= arrow == Some(true);
+                    let (degree, marked) = &mut junction_faces[index][face_index(port)];
+                    *degree += 1;
+                    *marked |= arrow == Some(true);
                 }
             }
         }
@@ -408,9 +411,29 @@ pub(crate) fn layout_architecture_shoal(
     let mut titles = Vec::with_capacity(n);
     let mut bottom_pitch = vec![None; n];
     let mut bottom_ordinal = vec![0; n];
-    let junction_radius = (arrow * 0.3).min(4.0);
-    let junction_diameter = 2.0 * junction_radius;
-    let show_junction = |index| junction_degree[index] >= 3 || junction_has_incoming[index];
+    let junction_pitch = merman_layout_shoal::Spacing::default()
+        .port_pitch
+        .max(marker_port_width);
+    let junction_diameters: Vec<_> = junction_faces
+        .iter()
+        .map(|faces| {
+            let shared = faces
+                .iter()
+                .filter_map(|&(degree, marked)| marked.then_some(degree))
+                .max()
+                .unwrap_or_default()
+                .saturating_sub(1);
+            let degree = faces.iter().map(|face| face.0).sum::<usize>();
+            if degree >= 3 || faces.iter().any(|face| face.1) {
+                (2.0 * (arrow * 0.3).min(4.0)).max(
+                    shared as f64 * junction_pitch
+                        / merman_render_core::graph_layout::contour::ROUNDED_PORT_FRACTION,
+                )
+            } else {
+                0.0
+            }
+        })
+        .collect();
     for (index, node) in model.nodes.iter().enumerate() {
         work.charge_adapter(1)?;
         let junction = node.node_type == ArchitectureNodeKind::Junction;
@@ -426,15 +449,13 @@ pub(crate) fn layout_architecture_shoal(
         );
         // Keep the measured routing box for junction leads and clip visible junction contacts
         // to the dot.
-        let profile = if show_junction(index) {
-            ShapePortProfile::rounded_rectangle(
-                junction_diameter,
-                junction_diameter,
-                junction_radius,
-                junction_radius,
-            )
-        } else if junction {
-            ShapePortProfile::rectangle(0.0, 0.0)
+        let diameter = junction_diameters[index];
+        let profile = if junction {
+            if diameter == 0.0 {
+                ShapePortProfile::rectangle(0.0, 0.0)
+            } else {
+                ShapePortProfile::ellipse(diameter, diameter)
+            }
         } else {
             ShapePortProfile::rounded_rectangle(icon, icon, radius, radius)
         };
@@ -450,7 +471,7 @@ pub(crate) fn layout_architecture_shoal(
                 &mut work,
             )?
         };
-        let half = icon / 2.0;
+        let half = icon.max(diameter) / 2.0;
         let mut w = half;
         let mut h = half;
         let title = title.map(|text| {
@@ -507,7 +528,12 @@ pub(crate) fn layout_architecture_shoal(
             if let Endpoint::Node(id) = endpoint {
                 let index = id as usize;
                 if model.nodes[index].node_type == ArchitectureNodeKind::Junction {
-                    return PortSideHint::FixedOffset { side, offset: 0.0 };
+                    let (degree, marked) = junction_faces[index][face_index(side)];
+                    return if marked && degree > 1 {
+                        PortSideHint::Side(side)
+                    } else {
+                        PortSideHint::FixedOffset { side, offset: 0.0 }
+                    };
                 }
                 if side == Side::Bottom
                     && let Some(pitch) = bottom_pitch[index]
@@ -559,7 +585,15 @@ pub(crate) fn layout_architecture_shoal(
     let mut options = input.options_for(&graph);
     options.spacing.edge = options.spacing.edge.max(2.0 * edge_stroke_outset);
     options.spacing.end_label_across = label_clearance;
-    let measured = project_input(&graph, &input, &mut work)?;
+    let mut measured = project_input(&graph, &input, &mut work)?;
+    for edge in &mut measured.edges {
+        work.charge_adapter(1)?;
+        for marker in [&mut edge.start_marker, &mut edge.end_marker] {
+            if marker.width > 0.0 {
+                marker.width = marker_port_width;
+            }
+        }
+    }
     let geometry = crate::layout_work::measure_layout_solve!(grid::layout_with_control(
         &measured,
         &alignments,
@@ -576,10 +610,8 @@ pub(crate) fn layout_architecture_shoal(
         .zip(&titles)
         .enumerate()
         .map(|(index, ((node, &body), title))| {
-            let size = if show_junction(index) {
-                junction_diameter
-            } else if node.node_type == ArchitectureNodeKind::Junction {
-                0.0
+            let size = if node.node_type == ArchitectureNodeKind::Junction {
+                junction_diameters[index]
             } else {
                 icon
             };
@@ -632,8 +664,10 @@ pub(crate) fn layout_architecture_shoal(
             title.anchor.y += center.y;
             retained = work.checked_add(retained, title.text.checked_retained_bytes(&work)?)?;
         }
-        let size = if show_junction(index) {
-            junction_diameter
+        let size = if node.node_type == ArchitectureNodeKind::Junction
+            && junction_diameters[index] > 0.0
+        {
+            junction_diameters[index]
         } else {
             icon
         };
@@ -776,12 +810,17 @@ pub(crate) fn layout_architecture_shoal(
         retained,
         work.checked_mul(groups.capacity(), size_of::<ArchitectureShoalGroup>())?,
     )?;
+    let retained = work.checked_add(
+        retained,
+        work.checked_mul(junction_diameters.capacity(), size_of::<f64>())?,
+    )?;
     Ok((
         layout,
         ArchitectureShoalGeometry {
             routes,
             groups,
             service_titles: titles,
+            junction_diameters,
             edge_labels,
             edge_stroke_outset,
             route_style,

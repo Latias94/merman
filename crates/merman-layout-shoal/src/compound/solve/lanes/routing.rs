@@ -16,7 +16,7 @@ pub(super) struct Lanes<'a> {
 }
 
 pub(super) struct LaneReservations {
-    rails: Vec<[Option<f64>; 2]>,
+    rails: Vec<[Option<(Side, f64)>; 2]>,
     padding: Vec<[f64; 4]>,
     depth_padding: [f64; 2],
 }
@@ -78,7 +78,7 @@ pub(super) fn reserve_feedback(
     drawing: &LayoutOutput,
     graph: &Graph,
     wires: &[Wire],
-    owners: &[usize],
+    (owners, columns): (&[usize], &[[f64; 2]]),
     shells: &mut [Shell],
     options: &Options,
     work: &mut Work<'_>,
@@ -92,6 +92,7 @@ pub(super) fn reserve_feedback(
         .max(options.spacing.edge)
         .max(1.0);
     let mut next_rail = filled(shells.len(), [pitch * 0.5; 2])?;
+    let mut alternatives = Vec::new();
     let mut widened = false;
     let mut routes = drawing.edges.iter();
     for (id, wire) in wires.iter().enumerate() {
@@ -108,19 +109,32 @@ pub(super) fn reserve_feedback(
         }
         let [start, end] = wire.spec.marker_runways();
         let stem = runway(start.max(end), &options.spacing)?;
-        for (i, side) in axes.cross.into_iter().enumerate() {
-            if wire
-                .ends
+        let [low, high] = columns[lane];
+        let [from, to] = [a, b].map(|slot| cross(axes.start, drawing.nodes[slot].center()));
+        let near = usize::from(from.midpoint(to) > low.midpoint(high));
+        let mut sides = [near, 1 - near].into_iter().filter(|&i| {
+            wire.ends
                 .iter()
-                .any(|end| named(end.port()).is_some_and(|hint| hint != side))
-            {
-                continue;
-            }
-            let at = &mut next_rail[lane][i];
-            feedback[id][i] = Some(*at);
-            let required = finite(*at + stem + pitch * 0.5)?;
-            widened |= shells[lane].padding[side as usize] < required;
-            shells[lane].reserve(side, required);
+                .all(|end| named(end.port()).is_none_or(|hint| hint == axes.cross[i]))
+        });
+        let Some(i) = sides.next() else { continue };
+        let side = axes.cross[i];
+        let at = &mut next_rail[lane][i];
+        feedback[id][0] = Some((side, *at));
+        let required = finite(*at + stem + pitch * 0.5)?;
+        widened |= shells[lane].padding[side as usize] < required;
+        shells[lane].reserve(side, required);
+        *at = finite(*at + pitch)?;
+        if let Some(alternate) = sides.next() {
+            push(&mut alternatives, (id, lane, alternate, stem))?;
+        }
+    }
+    for (id, lane, i, stem) in alternatives {
+        work.visit(1)?;
+        let at = &mut next_rail[lane][i];
+        let side = axes.cross[i];
+        if finite(*at + stem + pitch * 0.5)? <= shells[lane].padding[side as usize] {
+            feedback[id][1] = Some((side, *at));
             *at = finite(*at + pitch)?;
         }
     }
@@ -590,21 +604,14 @@ impl Scene<'_> {
         let axes = lanes.axes;
         let shell = lanes.rects[lanes.owners[slots[0]]].0;
         let border = |side| cross(axes.start, face(shell, side, 0.0));
-        let center = cross(axes.start, self.nodes[slots[0]].center())
-            .midpoint(cross(axes.start, self.nodes[slots[1]].center()));
-        let right = center > cross(axes.start, shell.center());
-        for i in [usize::from(right), usize::from(!right)] {
-            let Some(inset) = lanes.feedback.rails[id][i] else {
-                continue;
-            };
-            let side = axes.cross[i];
+        for (side, inset) in lanes.feedback.rails[id].into_iter().flatten() {
             let [Some(source), Some(target)] = [
                 self.contact(wire, 0, slots[0], side),
                 self.contact(wire, 1, slots[1], side),
             ] else {
                 continue;
             };
-            let track = border(side) + if i == 0 { inset } else { -inset };
+            let track = border(side) + if side == axes.cross[0] { inset } else { -inset };
             let corners =
                 [source, target].map(|contact| axes.physical(track, axes.along(contact.at)));
             if let Some(candidate) = self.propose(
@@ -638,7 +645,7 @@ pub(super) fn improve(
             continue;
         };
         let [a, b] = slots.map(|slot| lanes.owners[slot]);
-        if a != b || lanes.feedback.rails[id].iter().any(Option::is_some) {
+        if a != b || lanes.feedback.rails[id][0].is_some() {
             push(&mut candidates, (id, slots, a == b))?;
         }
     }

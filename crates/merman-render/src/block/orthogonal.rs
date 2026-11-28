@@ -25,6 +25,7 @@ use merman_render_structured::block::BlockEdgeMarkerGeometry;
 use merman_theme_contract::v2::EdgeStyle;
 use std::{collections::HashMap, sync::Arc};
 
+mod captions;
 mod fallback;
 
 #[cfg(test)]
@@ -68,6 +69,23 @@ impl Wall {
         Self {
             rect,
             owner: ObstacleOwner::Marker(edge, TerminalContact::new(Endpoint::Node(body), contact)),
+        }
+    }
+
+    fn label(label: &LayoutLabel, edge: usize) -> Self {
+        Self {
+            rect: label_box(label),
+            owner: ObstacleOwner::EdgeLabel(edge),
+        }
+    }
+
+    fn obstacle(self) -> Obstacle {
+        let rect = self.rect;
+        Obstacle {
+            x: rect.x0,
+            y: rect.y0,
+            width: rect.width(),
+            height: rect.height(),
         }
     }
 }
@@ -593,7 +611,9 @@ fn spread_face_terminals(
     for (request, edge) in requests.iter().enumerate() {
         for (slot, end) in edge.ends.iter().enumerate() {
             let peer = &shapes[edge.placement.bodies[1 - slot] as usize].allocated;
-            let peer = Point::new(peer.x, peer.y);
+            let peer = edge
+                .label
+                .map_or(Point::new(peer.x, peer.y), |pass| pass.bridge().center());
             let contact = knot_point(end.contact);
             let peer_across = across_coordinate(peer, end.side);
             let peer_distance = (peer - contact).dot(normal(end.side));
@@ -693,7 +713,6 @@ fn fixed_walls(
     model: &BlockDiagramRenderModel,
     layout: &BlockDiagramLayout,
     bounds: &[Rect],
-    edge_indices: &HashMap<&str, usize>,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<Option<Vec<Wall>>> {
     work.charge_adapter(model.blocks_flat.len())?;
@@ -706,6 +725,7 @@ fn fixed_walls(
         .enumerate()
     {
         work.charge_adapter(1)?;
+        let body = u32::try_from(index).map_err(|_| work.record_arithmetic_overflow())?;
         if !matches!(
             shape.boundary,
             BlockShapeBoundary::Rectangle {
@@ -715,9 +735,7 @@ fn fixed_walls(
         ) {
             walls.push(Wall {
                 rect: bounds[index],
-                owner: ObstacleOwner::Node(
-                    u32::try_from(index).map_err(|_| work.record_arithmetic_overflow())?,
-                ),
+                owner: ObstacleOwner::Node(body),
             });
         }
         if let Some(source) = sources.get(node.id.as_str())
@@ -728,28 +746,68 @@ fn fixed_walls(
             let x = node.x + shape.label_offset_x(source.block_type);
             walls.push(Wall {
                 rect: Rect::from_center_size((x, node.y), (width, height)),
-                owner: ObstacleOwner::GroupTitle(0),
-            });
-        }
-    }
-    for (occurrence, edge) in model.edges.iter().enumerate() {
-        work.charge_adapter(1)?;
-        let Some(&index) = edge_indices.get(edge.id.as_str()) else {
-            continue;
-        };
-        let edge_layout = &layout.edges[index];
-        if let Some(label) = &edge_layout.label {
-            walls.push(Wall {
-                rect: label_box(label),
-                owner: ObstacleOwner::EdgeLabel(occurrence),
+                owner: ObstacleOwner::GroupTitle(body),
             });
         }
     }
     // Some compatibility-only grid constructions have nonfinite slot geometry.
-    if walls.iter().any(|wall| !wall.rect.is_finite()) {
+    if walls.iter().any(|wall| !wall.rect.is_finite())
+        || layout
+            .edges
+            .iter()
+            .filter_map(|edge| edge.label.as_ref())
+            .any(|label| !label_box(label).is_finite())
+    {
         return Ok(None);
     }
     Ok(Some(walls))
+}
+
+fn solve_requests(
+    requests: Vec<Request>,
+    walls: &[Wall],
+    edge_sep: f64,
+    route_style: RouteStyle,
+    solved: &mut [Option<SolvedRequest>],
+    work: &mut OperationLayoutWorkControl,
+) -> Result<()> {
+    if requests.is_empty() {
+        return Ok(());
+    }
+    work.charge_adapter(work.checked_add(walls.len(), work.checked_mul(requests.len(), 2)?)?)?;
+    let walls: Vec<_> = walls
+        .iter()
+        .copied()
+        .chain(requests.iter().flat_map(Request::marker_walls).flatten())
+        .map(Wall::obstacle)
+        .collect();
+    let spans: Vec<_> = requests.iter().flat_map(Request::spans).collect();
+    let mut paths = route_fixed_spans(
+        &walls,
+        None,
+        edge_sep,
+        &spans,
+        route_style.routing_style(),
+        work,
+    )
+    .map_err(|error| work.map_shoal_error(error))?
+    .into_iter();
+    for request in requests {
+        let first = paths.next().flatten();
+        let second = if request.label.is_some() {
+            paths.next().flatten()
+        } else {
+            Some(Vec::new())
+        };
+        if let (Some(first), Some(second)) = (first, second) {
+            work.charge_adapter(
+                work.checked_add(work.checked_add(first.len(), second.len())?, 2)?,
+            )?;
+            let occurrence = request.placement.occurrence;
+            solved[occurrence] = Some(request.solve(first.into_iter().chain(second)));
+        }
+    }
+    Ok(())
 }
 
 pub(super) fn prepare(
@@ -772,11 +830,6 @@ pub(super) fn prepare(
             Ok((r.id.as_str(), index))
         })
         .collect::<Result<_>>()?;
-    let geometries: HashMap<_, _> = layout
-        .shape_geometries
-        .iter()
-        .map(|r| (r.id.as_str(), r))
-        .collect();
     let edge_indices: HashMap<_, _> = layout
         .edges
         .iter()
@@ -787,6 +840,22 @@ pub(super) fn prepare(
     if bodies.len() != layout.nodes.len() || edge_indices.len() != layout.edges.len() {
         return Ok(Vec::new());
     }
+    work.charge_adapter(model.edges.len())?;
+    let placements: Vec<_> = model
+        .edges
+        .iter()
+        .enumerate()
+        .filter_map(|(occurrence, edge)| {
+            Some(EdgePlacement {
+                occurrence,
+                index: *edge_indices.get(edge.id.as_str())?,
+                bodies: [
+                    *bodies.get(edge.start.as_str())?,
+                    *bodies.get(edge.end.as_str())?,
+                ],
+            })
+        })
+        .collect();
     let edge_style = typography.native().map(|style| style.form.edge_style);
     let route_style = match edge_style {
         Some(EdgeStyle::Curved) => RouteStyle::Rounded(CORNER_RADIUS),
@@ -801,7 +870,7 @@ pub(super) fn prepare(
             Ok(shape_box(shape))
         })
         .collect::<Result<Vec<_>>>()?;
-    let Some(walls) = fixed_walls(model, layout, &bounds, &edge_indices, &mut work)? else {
+    let Some(mut walls) = fixed_walls(model, layout, &bounds, &mut work)? else {
         return Ok(Vec::new());
     };
     let stroke_width = typography
@@ -814,18 +883,31 @@ pub(super) fn prepare(
         return Ok(Vec::new());
     }
     let margin = edge_sep / 2.0;
-    let fallback = fallback::markers(
+    let node_wall_count = walls.len();
+    work.charge_adapter(model.edges.len())?;
+    let mut captions = vec![None; model.edges.len()];
+    for &placement in &placements {
+        work.charge_adapter(1)?;
+        let edge_layout = &layout.edges[placement.index];
+        let proposed = captions::seat(edge_layout, placement, &bounds, &walls, margin, &mut work)?;
+        if let Some(label) = proposed.as_ref().or(edge_layout.label.as_ref()) {
+            walls.push(Wall::label(label, placement.occurrence));
+        }
+        captions[placement.occurrence] = proposed;
+    }
+    let grid = fallback::grid_edges(
         model,
         layout,
-        &edge_indices,
-        &geometries,
-        &bodies,
+        &placements,
+        &walls[..node_wall_count],
+        &captions,
         edge_style,
         &mut work,
     )?;
     let choose_request = |placement: EdgePlacement,
                           walls: &[Wall],
                           reserved: Option<&Reservations>,
+                          recovery: bool,
                           work: &mut OperationLayoutWorkControl|
      -> Result<Option<Request>> {
         let EdgePlacement {
@@ -834,7 +916,9 @@ pub(super) fn prepare(
             bodies,
         } = placement;
         let edge = &model.edges[occurrence];
-        let label = layout.edges[index].label.as_ref();
+        let label = captions[occurrence]
+            .as_ref()
+            .or(layout.edges[index].label.as_ref());
         let centers = bodies.map(|i| {
             let shape = &layout.shape_geometries[i as usize];
             Point::new(shape.allocated.x, shape.allocated.y)
@@ -843,9 +927,17 @@ pub(super) fn prepare(
             [Point::new(label.x, label.y); 2]
         });
         let bounds = bodies.map(|node| bounds[node as usize]);
+        let face_preference = if label.is_some() {
+            bounds
+        } else {
+            bodies.map(|body| {
+                let slot = &layout.shape_geometries[body as usize].allocated;
+                Rect::from_center_size((slot.x, slot.y), (slot.width, slot.height))
+            })
+        };
         let facing = facing_sides(
             [targets[0] - centers[0], targets[1] - centers[1]],
-            bounds,
+            face_preference,
             label.is_some(),
         );
         let mut label_passes = Vec::new();
@@ -874,10 +966,16 @@ pub(super) fn prepare(
             let inset = (half_width + margin).max(minimum_pitch(margin) / 2.0);
             let pitch = (2.0 * half_width + margin).max(minimum_pitch(margin));
             for side in SIDES {
-                let retry = reserved
+                let face = face_span(bounds, side);
+                let retry = (reserved.is_some() || recovery)
+                    .then(|| retry_contacts(face, inset, pitch))
                     .into_iter()
-                    .flat_map(|_| retry_contacts(face_span(bounds, side), inset, pitch));
-                for across in std::iter::once(None).chain(retry.map(Some)) {
+                    .flatten();
+                let corners = recovery
+                    .then_some([face[0].next_up(), face[1].next_down()])
+                    .into_iter()
+                    .flatten();
+                for across in std::iter::once(None).chain(retry.chain(corners).map(Some)) {
                     work.charge_adapter(contact_work(shape))?;
                     if let Some(terminal) =
                         Terminal::new(shape, bounds, side, marker, margin, across)
@@ -946,42 +1044,22 @@ pub(super) fn prepare(
     };
     let mut requests = Vec::new();
     let mut candidate = vec![false; model.edges.len()];
-    for (occurrence, edge) in model.edges.iter().enumerate() {
+    for &placement in &placements {
         work.charge_adapter(1)?;
-        let (Some(&index), Some(&from), Some(&to)) = (
-            edge_indices.get(edge.id.as_str()),
-            bodies.get(edge.start.as_str()),
-            bodies.get(edge.end.as_str()),
-        ) else {
-            continue;
-        };
+        let [from, to] = placement.bodies;
         if from != to
-            && let Some(request) = choose_request(
-                EdgePlacement {
-                    occurrence,
-                    index,
-                    bodies: [from, to],
-                },
-                &walls,
-                None,
-                &mut work,
-            )?
+            && let Some(request) = choose_request(placement, &walls, None, false, &mut work)?
         {
-            candidate[occurrence] = true;
+            candidate[placement.occurrence] = true;
             requests.push(request);
         }
     }
-    if requests.is_empty() {
-        return Ok(Vec::new());
-    }
     let mut seating_walls = walls;
-    let fixed_count = seating_walls.len();
     seating_walls.extend(
-        fallback
-            .iter()
+        grid.iter()
             .zip(candidate)
             .filter(|(_, candidate)| !candidate)
-            .flat_map(|(markers, _)| markers.iter().flatten().copied()),
+            .flat_map(|(grid, _)| grid.walls()),
     );
     spread_face_terminals(
         &mut requests,
@@ -1007,17 +1085,13 @@ pub(super) fn prepare(
             original.placement,
             &seating_walls,
             Some(&reserved),
+            false,
             &mut work,
         )? {
             reserved.reserve(&request, margin, &mut work)?;
             admitted.push(request);
         } else {
-            seating_walls.extend(
-                fallback[original.placement.occurrence]
-                    .iter()
-                    .flatten()
-                    .copied(),
-            );
+            seating_walls.extend(grid[original.placement.occurrence].walls());
         }
     }
     // Inner branches take their short corridors first. A farther branch can then leave the
@@ -1029,67 +1103,86 @@ pub(super) fn prepare(
             .total_cmp(&b.score())
             .then_with(|| a.placement.occurrence.cmp(&b.placement.occurrence))
     });
-    if admitted.is_empty() {
-        return Ok(Vec::new());
-    }
-    work.charge_adapter(
-        work.checked_add(seating_walls.len(), work.checked_mul(admitted.len(), 2)?)?,
-    )?;
-    let walls: Vec<_> = seating_walls
-        .iter()
-        .copied()
-        .chain(admitted.iter().flat_map(Request::marker_walls).flatten())
-        .map(|Wall { rect, .. }| Obstacle {
-            x: rect.x0,
-            y: rect.y0,
-            width: rect.width(),
-            height: rect.height(),
-        })
-        .collect();
-    let spans: Vec<_> = admitted.iter().flat_map(Request::spans).collect();
-    let mut paths = route_fixed_spans(
-        &walls,
-        None,
-        edge_sep,
-        &spans,
-        route_style.routing_style(),
-        &mut work,
-    )
-    .map_err(|error| work.map_shoal_error(error))?
-    .into_iter();
     work.charge_adapter(model.edges.len())?;
     let mut solved: Vec<_> = (0..model.edges.len()).map(|_| None).collect();
-    for request in admitted {
-        let first = paths.next().flatten();
-        let second = if request.label.is_some() {
-            paths.next().flatten()
-        } else {
-            Some(Vec::new())
-        };
-        if let (Some(first), Some(second)) = (first, second) {
-            work.charge_adapter(
-                work.checked_add(work.checked_add(first.len(), second.len())?, 2)?,
-            )?;
-            let occurrence = request.placement.occurrence;
-            solved[occurrence] = Some(request.solve(first.into_iter().chain(second)));
+    solve_requests(
+        admitted,
+        &seating_walls,
+        edge_sep,
+        route_style,
+        &mut solved,
+        &mut work,
+    )?;
+    fallback::restore(&mut solved, &grid, margin, &mut work)?;
+    let rounded = matches!(route_style, RouteStyle::Rounded(_));
+    work.charge_adapter(solved.len())?;
+    let needs_repair = solved
+        .iter()
+        .zip(&grid)
+        .any(|(route, grid)| route.is_none() && grid.blocked);
+    let (mut final_walls, fixed_count) = if rounded || needs_repair {
+        work.charge_adapter(
+            work.checked_add(node_wall_count, work.checked_mul(solved.len(), 3)?)?,
+        )?;
+        let mut walls = seating_walls[..node_wall_count].to_vec();
+        walls.extend(placements.iter().filter_map(|placement| {
+            let occurrence = placement.occurrence;
+            let mut label = layout.edges[placement.index].label.as_ref();
+            if solved[occurrence].is_some() || grid[occurrence].blocked {
+                label = captions[occurrence].as_ref().or(label);
+            }
+            label.map(|label| Wall::label(label, occurrence))
+        }));
+        let fixed_count = walls.len();
+        walls.extend(solved.iter().zip(&grid).flat_map(|(route, grid)| {
+            route
+                .as_ref()
+                .map_or(grid.markers, |route| route.request.marker_walls())
+                .into_iter()
+                .flatten()
+        }));
+        (walls, fixed_count)
+    } else {
+        (Vec::new(), 0)
+    };
+    if needs_repair {
+        work.charge_adapter(placements.len())?;
+        for &placement in &placements {
+            let occurrence = placement.occurrence;
+            if solved[occurrence].is_some() || !grid[occurrence].blocked {
+                continue;
+            }
+            for count in [final_walls.len(), fixed_count] {
+                if let Some(request) =
+                    choose_request(placement, &final_walls[..count], None, true, &mut work)?
+                {
+                    solve_requests(
+                        vec![request],
+                        &final_walls[..count],
+                        edge_sep,
+                        route_style,
+                        &mut solved,
+                        &mut work,
+                    )?;
+                }
+                if solved[occurrence].is_some() {
+                    break;
+                }
+            }
+            let route = solved[occurrence]
+                .as_ref()
+                .ok_or_else(|| crate::Error::InvalidModel {
+                    message: format!(
+                        "Block edge {} has no clear grid fallback",
+                        model.edges[occurrence].id
+                    ),
+                })?;
+            final_walls.extend(route.request.marker_walls().into_iter().flatten());
         }
     }
-    fallback::restore(&mut solved, &fallback, margin, &mut work)?;
-    let clearance = if matches!(route_style, RouteStyle::Rounded(_)) {
-        work.charge_adapter(work.checked_add(fixed_count, work.checked_mul(solved.len(), 2)?)?)?;
-        let markers = solved
-            .iter()
-            .zip(fallback)
-            .flat_map(|(route, grid)| {
-                route
-                    .as_ref()
-                    .map_or(grid, |route| route.request.marker_walls())
-            })
-            .flatten();
-        let walls: Vec<_> = seating_walls[..fixed_count]
-            .iter()
-            .copied()
-            .chain(markers)
+    let clearance = if rounded {
+        let walls: Vec<_> = final_walls
+            .into_iter()
             .map(|wall| (wall.rect, wall.owner))
             .collect();
         let levels = walls.len().checked_ilog2().map_or(0, |n| n as usize + 1);
@@ -1124,12 +1217,20 @@ pub(super) fn prepare(
             .into_iter()
             .map(|point| layout_point(knot_point(point)))
             .collect();
-        updates.push((placement.index, points));
+        updates.push((
+            placement.index,
+            points,
+            captions[placement.occurrence].take(),
+        ));
         routes[placement.occurrence] = Some(route);
     }
     work.charge_adapter(updates.len())?;
-    for (index, points) in updates {
-        layout.edges[index].points = points;
+    for (index, points, caption) in updates {
+        let edge = &mut layout.edges[index];
+        edge.points = points;
+        if let Some(caption) = caption {
+            edge.label = Some(caption);
+        }
     }
     Ok(routes)
 }

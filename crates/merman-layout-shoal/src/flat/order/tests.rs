@@ -221,6 +221,23 @@ fn brute_order(g: &Expanded, order: &Order) -> u64 {
 }
 
 #[test]
+fn packed_rank_counts_match_fenwick_with_shared_ports_at_both_limits() {
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    let mut wide = Fenwick::default();
+    wide.reset(64, &mut work).unwrap();
+    let mut planes = [0; 2];
+    let mut narrow = RankCounter::Narrow(&mut planes);
+    for slot in [63, 0, 31, 62, 63, 0, 32, 0, 63, 31] {
+        narrow.insert(slot);
+        wide.insert(slot);
+        for cut in 0..64 {
+            assert_eq!(narrow.greater(cut), wide.greater(cut), "{slot} at {cut}");
+        }
+    }
+}
+
+#[test]
 fn both_two_pointer_scores_match_quadratic_pairs_with_multiplicities() {
     let mut random = Random(0x5aa1);
     for i in 0..160 {
@@ -379,6 +396,7 @@ fn weighted_barycenters_use_neighbor_offsets_and_hold_only_unconnected_slots() {
     let mut sweep = Sweep {
         mean: vec![0.; 6],
         moving: Vec::new(),
+        ..Default::default()
     };
     sweep
         .run::<false>(
@@ -406,6 +424,59 @@ fn weighted_barycenters_use_neighbor_offsets_and_hold_only_unconnected_slots() {
         )
         .unwrap();
     assert_eq!(order.ids[order.range(1)], [5, 3, 4, 2]);
+}
+
+#[test]
+fn crossing_cache_refreshes_both_gaps_of_a_changed_rank() {
+    let (graph, nodes) = graph(
+        &[2, 2, 2, 2],
+        &[
+            (0, 3, 0.0, 0.0, 1.0),
+            (1, 2, 0.0, 0.0, 1.0),
+            (2, 4, 0.0, 0.0, 1.0),
+            (3, 5, 0.0, 0.0, 1.0),
+            (4, 7, 0.0, 0.0, 1.0),
+            (5, 6, 0.0, 0.0, 1.0),
+        ],
+    );
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    let ports = ports(&graph, &mut work);
+    let (mut order, _, _) = initial_order(&graph, &nodes, &ports, &mut work).unwrap();
+    let mut sweep = Sweep {
+        gap_crossings: vec![None; 3],
+        ..Default::default()
+    };
+    let mut tree = Fenwick::default();
+    for rank in [0, 2, 3, 1] {
+        let exact = crossings(&order, &ports, &mut tree, &mut work).unwrap();
+        assert_eq!(
+            sweep
+                .crossings(&order, &ports, &mut tree, &mut work)
+                .unwrap(),
+            exact
+        );
+        let row = order.range(rank);
+        order.ids[row].reverse();
+        order.reindex(rank, &ports, &mut work).unwrap();
+        sweep.invalidate_crossings(rank);
+        assert_eq!(
+            sweep
+                .gap_crossings
+                .iter()
+                .map(Option::is_none)
+                .collect::<Vec<_>>(),
+            (0..3)
+                .map(|gap| rank == gap || rank == gap + 1)
+                .collect::<Vec<_>>()
+        );
+    }
+    assert_eq!(
+        sweep
+            .crossings(&order, &ports, &mut tree, &mut work)
+            .unwrap(),
+        crossings(&order, &ports, &mut tree, &mut work).unwrap()
+    );
 }
 
 #[test]

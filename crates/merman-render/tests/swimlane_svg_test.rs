@@ -22,6 +22,22 @@ fn try_render_swimlane_with_layout(
     diagram_id: &str,
     policy: RenderResourcePolicy,
 ) -> merman_render::Result<(String, SwimlaneLayout, usize)> {
+    let (svg, layout, work, _) =
+        render_swimlane_options(source, diagram_id, policy, &LayoutOptions::default())?;
+    Ok((svg, layout, work))
+}
+
+fn render_swimlane_options(
+    source: &str,
+    diagram_id: &str,
+    policy: RenderResourcePolicy,
+    options: &LayoutOptions,
+) -> merman_render::Result<(
+    String,
+    SwimlaneLayout,
+    usize,
+    Option<merman_render::LayoutAdaptationObservation>,
+)> {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse swimlane")
@@ -31,7 +47,7 @@ fn try_render_swimlane_with_layout(
         .with_resource_policy(policy)
         .begin_session()
         .unwrap();
-    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)?;
+    let artifact = family::prepare(&parsed, options, session)?;
     let layout =
         serde_json::from_value(artifact.layout_json()?["layout"]["SwimlaneDiagram"].clone())
             .unwrap();
@@ -42,8 +58,15 @@ fn try_render_swimlane_with_layout(
         },
         &SvgDebugOptions::default(),
     )?;
-    let (svg, report) = svg.into_completion().into_output_and_report();
-    Ok((svg, layout, report.session_report().layout_work_units()))
+    let completion = svg.into_completion();
+    let adaptation = completion.layout_adaptation();
+    let (svg, report) = completion.into_output_and_report();
+    Ok((
+        svg,
+        layout,
+        report.session_report().layout_work_units(),
+        adaptation,
+    ))
 }
 
 fn render_swimlane(source: &str, diagram_id: &str) -> String {
@@ -81,7 +104,7 @@ fn explicit_shoal_swimlane_retains_the_family_and_checks_capability() {
         );
         assert_eq!(
             plan.supported_layout_adaptations(),
-            &[LayoutAdaptation::None]
+            &[LayoutAdaptation::None, LayoutAdaptation::FitWidth]
         );
         let options = LayoutOptions::default().with_shoal_layout_frame(None);
         let result = family::prepare(&parsed, &options, session);
@@ -108,6 +131,187 @@ fn explicit_shoal_swimlane_retains_the_family_and_checks_capability() {
             ));
         }
     }
+}
+
+#[cfg(feature = "layout-shoal")]
+fn render_constrained_shoal_swimlane(
+    source: &str,
+    options: &LayoutOptions,
+) -> (
+    String,
+    SwimlaneLayout,
+    Option<merman_render::LayoutAdaptationObservation>,
+) {
+    let policy = RenderResourcePolicy::constrained();
+    let (svg, layout, work, observation) =
+        render_swimlane_options(source, "shoal-fit-width", policy, options).unwrap();
+    let limit = policy.value(ResourceLimitId::MaxLayoutWorkUnits).unwrap();
+    assert!(work <= limit, "layout used {work} of {limit} work units");
+    (svg, layout, observation)
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_swimlane_fit_width_turns_the_grid_with_full_titles_and_captions() {
+    let options = LayoutOptions::default();
+    let fit = options
+        .clone()
+        .with_adaptation(merman_render::LayoutAdaptation::FitWidth)
+        .with_container_size(500.0, 600.0);
+    for direction in ["LR", "RL"] {
+        let source = format!(
+            r#"---
+config:
+  layout: shoal
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+swimlane-beta {direction}
+  subgraph customer[Customer Center]
+    A[Open Request] --> B[Add details] --> C[Review response]
+  end
+  subgraph operator[Review Team]
+    D[Accept] --> E[Assess] --> F[Complete]
+  end
+  C handoff@-->|Send to reviewers| D
+"#
+        );
+        let (_, natural, _) = render_constrained_shoal_swimlane(&source, &options);
+        let (svg, fitted, observation) = render_constrained_shoal_swimlane(&source, &fit);
+        let observation = observation.unwrap();
+        let width = |bounds: &merman_render::model::Bounds| bounds.max_x - bounds.min_x;
+        assert_eq!(fitted.direction, SwimlaneDirection::Tb);
+        assert_eq!(observation.requested_width(), 500.0);
+        assert!(!observation.overflowed());
+        assert!(width(natural.bounds.as_ref().unwrap()) > 500.0);
+        assert!((width(fitted.bounds.as_ref().unwrap()) - observation.actual_width()).abs() < 1e-7);
+        assert_eq!(fitted.lanes.len(), 2);
+        assert_eq!(fitted.nodes.len(), natural.nodes.len());
+        assert_eq!(fitted.edges.len(), natural.edges.len());
+
+        let rank_order = |layout: &SwimlaneLayout, horizontal: bool| {
+            let mut lanes: Vec<_> = layout.lanes.iter().collect();
+            let cross = |lane: &merman_render::model::SwimlaneLaneLayout| {
+                if horizontal { lane.y } else { lane.x }
+            };
+            lanes.sort_by(|a, b| cross(a).total_cmp(&cross(b)));
+            lanes
+                .into_iter()
+                .map(|lane| lane.id.clone())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(rank_order(&natural, true), rank_order(&fitted, false));
+        for (before, after) in natural.nodes.iter().zip(&fitted.nodes) {
+            assert_eq!(before.id, after.id);
+            assert_eq!((before.width, before.height), (after.width, after.height));
+            assert_eq!(
+                (before.label_width, before.label_height),
+                (after.label_width, after.label_height)
+            );
+        }
+        let doc = roxmltree::Document::parse(&svg).unwrap();
+        let svg_width: f64 = doc
+            .root_element()
+            .attribute("viewBox")
+            .unwrap()
+            .split_ascii_whitespace()
+            .nth(2)
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert!(svg_width <= observation.requested_width());
+        for lane in &fitted.lanes {
+            let title = lane.title_rect.as_ref().unwrap();
+            let cluster = semantic_element(&doc, &lane.id, "cluster");
+            assert!(text_content(cluster).contains(lane.title.as_str()));
+            assert!((title.right - title.left - lane.title_label_width).abs() < 1e-7);
+            assert!((title.bottom - title.top - lane.title_label_height).abs() < 1e-7);
+            assert!(title.left > lane.x - lane.width / 2.0);
+            assert!(title.right < lane.x + lane.width / 2.0);
+            assert!(
+                fitted
+                    .edges
+                    .iter()
+                    .flat_map(|edge| &edge.points)
+                    .all(|p| p.y > title.bottom)
+            );
+            assert!(fitted.nodes.iter().all(|node| {
+                let height = if node.is_edge_label {
+                    node.label_height
+                } else {
+                    node.height
+                };
+                node.y - height / 2.0 > title.bottom
+            }));
+        }
+        for edge in &fitted.edges {
+            assert!(
+                semantic_element(&doc, &edge.id, "edge")
+                    .attribute("marker-end")
+                    .is_some()
+            );
+        }
+        assert_eq!(
+            text_content(semantic_element(&doc, "handoff", "edge-label")),
+            "Send to reviewers"
+        );
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_swimlane_fit_width_reports_irreducible_claims_layout_under_constrained_budget() {
+    let source = r#"---
+config:
+  layout: shoal
+  htmlLabels: false
+---
+swimlane-beta LR
+  subgraph Customer["Customer Portal"]
+    C1[Submit Claim]
+    C2[Upload Extra Docs]
+    C3[Receive Payout Notice]
+  end
+  subgraph Triage["Automated Triage"]
+    T1{Risk Score?}
+    T2[Auto Approve]
+  end
+  subgraph Adjuster["Claims Adjuster"]
+    A1[Manual Inspection]
+    A2[Escalate Fraud Team]
+  end
+  subgraph Treasury["Treasury & Settlement"]
+    P1[Disburse Wire]
+    P2[(Audit Ledger)]
+  end
+  C1 -->|initial payload| T1
+  T1 -->|low risk| T2
+  T1 -->|medium risk| A1
+  T1 -->|high risk| A2
+  A1 -->|need proof| C2
+  C2 -->|resubmit| A1
+  A1 -->|approved| P1
+  T2 -->|instant pay| P1
+  P1 -->|record| P2
+  P1 -->|notify| C3
+  A2 -.->|reject| C3
+"#;
+    let options = LayoutOptions::default();
+    let (_, natural, _) = render_constrained_shoal_swimlane(source, &options);
+    let fit = options
+        .with_adaptation(merman_render::LayoutAdaptation::FitWidth)
+        .with_container_size(500.0, 600.0);
+    let (_svg, fitted, observation) = render_constrained_shoal_swimlane(source, &fit);
+    let observation = observation.unwrap();
+    assert_eq!(observation.requested_width(), 500.0);
+    assert!(observation.overflowed());
+    let natural = natural.bounds.unwrap();
+    assert!(observation.actual_width() < natural.max_x - natural.min_x);
+    let fitted_bounds = fitted.bounds.unwrap();
+    assert!(observation.actual_width() >= fitted_bounds.max_x - fitted_bounds.min_x - 1e-7);
+    assert_eq!(fitted.lanes.len(), 4);
+    assert_eq!(fitted.edges.len(), 11);
 }
 
 #[cfg(feature = "layout-shoal")]

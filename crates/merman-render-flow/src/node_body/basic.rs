@@ -8,11 +8,7 @@ use merman_render_core::{
     mermaid_style::parse_safe_style_decl,
     rough_svg::{
         closed_path_d_from_points as path_from_points,
-        paths::{
-            RoughGeometryTarget, roughjs_hachure_paths_for_svg_path, roughjs_paths_for_circle,
-            roughjs_paths_for_circle_with_roughness, roughjs_prepare_hachure_paths_for_svg_path,
-            roughjs_prepare_paths_for_circle_with_roughness,
-        },
+        paths::{RoughGeometryTarget, prepare_hachure_svg_path},
     },
     svg_output::SvgOutput,
 };
@@ -54,16 +50,20 @@ pub fn write_diamond(
         // hand-drawn silhouette centered instead of visually skewing into a parallelogram.
         let path_data = diamond_path(w, h);
         if let Some((fill_d, stroke_d)) = body.timed_rough(|geometry| {
-            roughjs_hachure_paths_for_svg_path(
+            prepare_hachure_svg_path(
+                RoughGeometryTarget::Svg,
                 &path_data,
                 geometry.stroke_width,
                 geometry.stroke_dasharray,
-                FLOWCHART_DIAMOND_HAND_DRAWN_FILL_WEIGHT,
-                FLOWCHART_DIAMOND_HAND_DRAWN_HACHURE_GAP,
-                FLOWCHART_DIAMOND_HAND_DRAWN_ROUGHNESS,
+                geometry.hachure(
+                    FLOWCHART_DIAMOND_HAND_DRAWN_FILL_WEIGHT,
+                    FLOWCHART_DIAMOND_HAND_DRAWN_HACHURE_GAP,
+                    FLOWCHART_DIAMOND_HAND_DRAWN_ROUGHNESS,
+                ),
                 geometry.work_meter,
                 geometry.randomness,
             )
+            .and_then(|paths| geometry.write_rough_paths(paths))
         }) {
             let _ = write!(
                 out,
@@ -117,14 +117,14 @@ pub fn write_circle(
     let r = (w.min(h) / 2.0).max(0.5);
     if body.geometry.hand_drawn {
         let paths = body.timed_rough(|geometry| {
-            roughjs_paths_for_circle(
-                r * 2.0,
-                geometry.stroke_width,
-                geometry.stroke_dasharray,
-                true,
-                geometry.work_meter,
-                geometry.randomness,
-            )
+            geometry
+                .rough_circle(
+                    RoughGeometryTarget::Svg,
+                    r * 2.0,
+                    geometry.stroke_width,
+                    0.7,
+                )
+                .and_then(|paths| geometry.write_rough_paths(paths))
         });
         body.geometry.work_meter.checkpoint(OperationPhase::Emit)?;
         if let Some(paths) = paths {
@@ -171,27 +171,15 @@ pub fn write_double_circle(
     if body.geometry.hand_drawn {
         // Mermaid doubleCircle.ts overrides even user stroke widths for each ring.
         let outer = body.timed_rough(|geometry| {
-            roughjs_paths_for_circle_with_roughness(
-                rings.outer_radius * 2.0,
-                2.5,
-                geometry.stroke_dasharray,
-                true,
-                0.2,
-                geometry.work_meter,
-                geometry.randomness,
-            )
+            geometry
+                .rough_circle(RoughGeometryTarget::Svg, rings.outer_radius * 2.0, 2.5, 0.2)
+                .and_then(|paths| geometry.write_rough_paths(paths))
         });
         body.geometry.work_meter.checkpoint(OperationPhase::Emit)?;
         let inner = body.timed_rough(|geometry| {
-            roughjs_paths_for_circle_with_roughness(
-                rings.inner_radius * 2.0,
-                1.5,
-                geometry.stroke_dasharray,
-                true,
-                0.2,
-                geometry.work_meter,
-                geometry.randomness,
-            )
+            geometry
+                .rough_circle(RoughGeometryTarget::Svg, rings.inner_radius * 2.0, 1.5, 0.2)
+                .and_then(|paths| geometry.write_rough_paths(paths))
         });
         body.geometry.work_meter.checkpoint(OperationPhase::Emit)?;
         if let (Some(outer), Some(inner)) = (outer, inner) {
@@ -307,14 +295,16 @@ pub fn advance_basic_rough_geometry(
     match shape {
         FlowchartShape::Diamond => {
             let path = diamond_path(geometry.width.max(1.0), geometry.height.max(1.0));
-            let _ = roughjs_prepare_hachure_paths_for_svg_path(
+            let _ = prepare_hachure_svg_path(
                 RoughGeometryTarget::Query,
                 &path,
                 geometry.stroke_width,
                 geometry.stroke_dasharray,
-                FLOWCHART_DIAMOND_HAND_DRAWN_FILL_WEIGHT,
-                FLOWCHART_DIAMOND_HAND_DRAWN_HACHURE_GAP,
-                FLOWCHART_DIAMOND_HAND_DRAWN_ROUGHNESS,
+                geometry.hachure(
+                    FLOWCHART_DIAMOND_HAND_DRAWN_FILL_WEIGHT,
+                    FLOWCHART_DIAMOND_HAND_DRAWN_HACHURE_GAP,
+                    FLOWCHART_DIAMOND_HAND_DRAWN_ROUGHNESS,
+                ),
                 geometry.work_meter,
                 geometry.randomness,
             );
@@ -325,40 +315,28 @@ pub fn advance_basic_rough_geometry(
                 .max(1.0)
                 .min(geometry.height.max(1.0))
                 .max(1.0);
-            let _ = roughjs_prepare_paths_for_circle_with_roughness(
+            let _ = geometry.rough_circle(
                 RoughGeometryTarget::Query,
                 diameter,
                 geometry.stroke_width,
-                geometry.stroke_dasharray,
-                true,
                 0.7,
-                geometry.work_meter,
-                geometry.randomness,
             );
         }
         FlowchartShape::DoubleCircle => {
             let rings =
                 DoubleCircleGeometry::from_outer_diameter(geometry.width.min(geometry.height), neo);
-            let _ = roughjs_prepare_paths_for_circle_with_roughness(
+            let _ = geometry.rough_circle(
                 RoughGeometryTarget::Query,
                 rings.outer_radius * 2.0,
                 2.5,
-                geometry.stroke_dasharray,
-                true,
                 0.2,
-                geometry.work_meter,
-                geometry.randomness,
             );
             geometry.work_meter.checkpoint(OperationPhase::Layout)?;
-            let _ = roughjs_prepare_paths_for_circle_with_roughness(
+            let _ = geometry.rough_circle(
                 RoughGeometryTarget::Query,
                 rings.inner_radius * 2.0,
                 1.5,
-                geometry.stroke_dasharray,
-                true,
                 0.2,
-                geometry.work_meter,
-                geometry.randomness,
             );
             geometry.work_meter.checkpoint(OperationPhase::Layout)?;
         }

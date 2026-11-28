@@ -896,7 +896,13 @@ fn native_font_options(
     let mut options = NativeFontOptions::default().with_system_fonts(use_system);
     if let Some(maximum) = args.max_bytes {
         options.limits.max_bytes = maximum;
-    } else if cfg!(target_os = "macos") && use_system && profile == ResourceProfile::TrustedNative {
+    } else if cfg!(target_os = "macos")
+        && use_system
+        && matches!(
+            profile,
+            ResourceProfile::TrustedNative | ResourceProfile::UnboundedForTrustedInput
+        )
+    {
         // Apple Color Emoji and a CJK collection can exceed 256 MiB together.
         options.limits.max_bytes = 384 * 1024 * 1024;
     }
@@ -1110,7 +1116,7 @@ fn render_input_limit(raw_svg: bool, resources: &ResolvedResourcePolicy) -> Inpu
 
 #[cfg(all(test, feature = "native-fonts"))]
 mod font_policy_tests {
-    use super::{ResourceProfile, prepare_font_context};
+    use super::{ResourceProfile, native_font_options, prepare_font_context};
     use crate::cli::{FontCliArgs, FontMeasurementKind, FontSystemKind};
 
     #[cfg(feature = "platform-system-font-query")]
@@ -1160,6 +1166,24 @@ mod font_policy_tests {
                 "deterministic layout must not acquire fonts"
             );
         }
+    }
+
+    #[test]
+    fn unbounded_profile_keeps_the_trusted_system_font_allowance() {
+        let cwd = std::env::current_dir().unwrap();
+        let trusted = native_font_options(
+            &FontCliArgs::default(),
+            &cwd,
+            ResourceProfile::TrustedNative,
+            true,
+        );
+        let unbounded = native_font_options(
+            &FontCliArgs::default(),
+            &cwd,
+            ResourceProfile::UnboundedForTrustedInput,
+            true,
+        );
+        assert_eq!(trusted.limits.max_bytes, unbounded.limits.max_bytes);
     }
 }
 

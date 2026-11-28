@@ -13,7 +13,7 @@ pub fn constrained_rough_edge_path(
     meter: &OperationWorkMeter,
     randomness: &RoughRandomness,
 ) -> crate::Result<String> {
-    let stroke = constrained_rough_edge_stroke(path, markers, meter, randomness)?;
+    let stroke = constrained_rough_edge_stroke(path, markers, meter, randomness, false)?;
     Ok(ops_to_svg_path_d(&stroke))
 }
 
@@ -28,7 +28,7 @@ pub fn constrained_rough_edge_with_geometry(
     use crate::number_format::canonicalize_number;
     use kurbo::PathEl;
 
-    let mut stroke = constrained_rough_edge_stroke(path, markers, meter, randomness)?;
+    let mut stroke = constrained_rough_edge_stroke(path, markers, meter, randomness, true)?;
     meter.charge_emit_work(stroke.ops.len())?;
     let invalid = || crate::Error::InvalidModel {
         message: "invalid rough edge geometry".into(),
@@ -39,10 +39,15 @@ pub fn constrained_rough_edge_with_geometry(
         .map_err(|_| crate::Error::InvalidModel {
             message: "could not allocate rough edge geometry".into(),
         })?;
-    for op in &mut stroke.ops {
-        for coordinate in &mut op.data {
+    let count = stroke.ops.len();
+    for (index, op) in stroke.ops.iter_mut().enumerate() {
+        let interior = (4..count.saturating_sub(4)).contains(&index);
+        for (component, coordinate) in op.data.iter_mut().enumerate() {
             if !coordinate.is_finite() {
                 return Err(invalid());
+            }
+            if interior && op.op == OpType::BCurveTo && component < 4 && coordinate.abs() < 1e12 {
+                *coordinate = (*coordinate * 100.0).round() / 100.0;
             }
             *coordinate = canonicalize_number(*coordinate);
         }
@@ -62,11 +67,38 @@ pub fn constrained_rough_edge_with_geometry(
     ))
 }
 
+#[cfg(all(test, feature = "layout-shoal"))]
+#[test]
+fn compact_edge_keeps_exact_contacts_and_matches_its_painted_geometry() {
+    use crate::resources::RenderResourcePolicy;
+    use kurbo::{BezPath, ParamCurve, PathSeg};
+    use roughr::core::{RoughJsSeed, RoughMathRandom};
+
+    let meter = OperationWorkMeter::new(RenderResourcePolicy::constrained());
+    let randomness = RoughRandomness::new(RoughJsSeed::new(7.0), RoughMathRandom::new(3));
+    let route = "M3.1234 5.7891L12.1234 5.7891L20.4321 5.7891L20.4321 40.9765L35.7654 40.9765L45.7654 40.9765";
+    let (svg, geometry) =
+        constrained_rough_edge_with_geometry(route, Default::default(), &meter, &randomness)
+            .unwrap();
+    assert_eq!(BezPath::from_svg(&svg).unwrap(), geometry);
+    let start = geometry.segments().next().unwrap();
+    let end = geometry.segments().last().unwrap();
+    assert_eq!(start.start(), Point::new(3.1234, 5.7891));
+    assert_eq!(end.end(), Point::new(45.7654, 40.9765));
+    for (segment, y) in [(start, 5.7891), (end, 40.9765)] {
+        let PathSeg::Line(line) = segment else {
+            panic!("expected a straight terminal shaft");
+        };
+        assert_eq!([line.p0.y, line.p1.y], [y; 2]);
+    }
+}
+
 fn constrained_rough_edge_stroke(
     path: &str,
     markers: (Marker, Marker),
     meter: &OperationWorkMeter,
     randomness: &RoughRandomness,
+    compact: bool,
 ) -> crate::Result<OpSet<f64>> {
     controlled::generate(meter, merman_model::OperationPhase::Emit, |control| {
         let mut segments = roughr::points_on_path::normalized_path_with_control(path, control)?;
@@ -86,7 +118,7 @@ fn constrained_rough_edge_stroke(
         match segments.get(1) {
             Some(PathSegment::LineTo { .. }) => {
                 for pass in passes.iter_mut().take(2) {
-                    straighten_shaft(pass)?;
+                    straighten_shaft(pass, compact)?;
                 }
             }
             Some(PathSegment::CurveTo { x1, y1, .. }) => {
@@ -99,7 +131,7 @@ fn constrained_rough_edge_stroke(
         match segments.last() {
             Some(PathSegment::LineTo { .. }) => {
                 for pass in passes.iter_mut().rev().take(2) {
-                    straighten_shaft(pass)?;
+                    straighten_shaft(pass, compact)?;
                 }
             }
             Some(PathSegment::CurveTo { x2, y2, .. }) => {
@@ -147,10 +179,13 @@ fn split_direct_shaft(segments: &mut Vec<PathSegment>, markers: (Marker, Marker)
     segments.push(line(end));
 }
 
-fn straighten_shaft(pass: &mut [Op<f64>]) -> Result<(), WorkError> {
+fn straighten_shaft(pass: &mut [Op<f64>], compact: bool) -> Result<(), WorkError> {
     let [start, curve] = pass else {
         return Err(WorkError::InvalidGeometry);
     };
+    if compact && start.op == OpType::Move && curve.op == OpType::LineTo && curve.data.len() == 2 {
+        return Ok(());
+    }
     let ([from_x, from_y], [first_x, first_y, second_x, second_y, end_x, end_y]) =
         (start.data.as_slice(), curve.data.as_mut_slice())
     else {
@@ -158,6 +193,12 @@ fn straighten_shaft(pass: &mut [Op<f64>]) -> Result<(), WorkError> {
     };
     if start.op != OpType::Move || curve.op != OpType::BCurveTo {
         return Err(WorkError::InvalidGeometry);
+    }
+    if compact {
+        curve.op = OpType::LineTo;
+        (*first_x, *first_y) = (*end_x, *end_y);
+        curve.data.truncate(2);
+        return Ok(());
     }
     let start = Point::new(*from_x, *from_y);
     let end = Point::new(*end_x, *end_y);

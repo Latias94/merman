@@ -40,9 +40,11 @@ impl<'a> BlockConfigView<'a> {
 
     fn shape_settings(&self, native: Option<&super::BlockNativeStyle>) -> BlockShapeSettings {
         let neo_square = self.effective_config.get("look").and_then(Value::as_str) == Some("neo");
+        let shoal = self.effective_config.get("layout").and_then(Value::as_str) == Some("shoal");
         if let Some(style) = native {
             return BlockShapeSettings {
                 neo_square,
+                shoal,
                 round_radius: style.form.radius,
                 native_radii: Some((style.form.radius, style.form.container_radius)),
             };
@@ -58,6 +60,7 @@ impl<'a> BlockConfigView<'a> {
             .unwrap_or(5.0);
         BlockShapeSettings {
             neo_square,
+            shoal,
             round_radius,
             native_radii: None,
         }
@@ -76,6 +79,7 @@ pub(crate) struct BlockLayoutSettings {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct BlockShapeSettings {
     pub(crate) neo_square: bool,
+    pub(super) shoal: bool,
     pub(crate) round_radius: f64,
     pub(super) native_radii: Option<(f64, f64)>,
 }

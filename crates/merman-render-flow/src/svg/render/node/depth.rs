@@ -33,6 +33,7 @@ pub(in crate::svg) fn render_flowchart_node_depth(
     node_id: &str,
     origin_x: f64,
     origin_y: f64,
+    filters: &mut merman_render_core::theme_svg::elevation::DepthFilters,
 ) -> merman_render_core::Result<()> {
     let Some(native) = ctx.native else {
         return Ok(());
@@ -41,14 +42,21 @@ pub(in crate::svg) fn render_flowchart_node_depth(
         && let Some(silhouette) = native_silhouette(ctx, node)
         && let Some(id) = ctx.document_ids().node(node_id)
     {
-        write_native_node_depth(
-            out,
-            &native.elevation,
-            id,
-            &silhouette,
-            (node.x + ctx.tx - origin_x, node.y + ctx.ty - origin_y),
-            ctx.work_meter,
-        )?;
+        let center = (node.x + ctx.tx - origin_x, node.y + ctx.ty - origin_y);
+        if ctx.layout.route_contract.is_canonical_axis() {
+            ctx.work_meter.charge(silhouette.elements().len())?;
+            let _ =
+                filters.write_depth(out, &native.elevation, &id.to_string(), &silhouette, center);
+        } else {
+            write_native_node_depth(
+                out,
+                &native.elevation,
+                id,
+                &silhouette,
+                center,
+                ctx.work_meter,
+            )?;
+        }
     }
     out.checkpoint()
 }

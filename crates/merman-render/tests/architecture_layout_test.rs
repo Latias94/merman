@@ -45,6 +45,27 @@ fn node_center(layout: &ArchitectureDiagramLayout, id: &str) -> (f64, f64) {
     (node.x + node.width / 2.0, node.y + node.height / 2.0)
 }
 
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_architecture_separates_marked_arrivals_on_one_junction_face() {
+    let layout = layout_architecture(
+        "---\nconfig:\n  layout: shoal\n---\narchitecture-beta\n\
+         service first[First]\nservice second[Second]\njunction join\n\
+         first:R -[Events]-> L:join\nsecond:R -[Retries]-> L:join\n",
+    );
+    let center = node_center(&layout, "join");
+    let junction = layout.nodes.iter().find(|node| node.id == "join").unwrap();
+    let mut contacts = Vec::new();
+    for edge in &layout.edges {
+        let contact = edge.points.last().unwrap();
+        assert!(contact.x < center.0, "{edge:?}");
+        assert!((contact.y - center.1).abs() <= junction.height / 2.0);
+        contacts.push(contact.y);
+    }
+    assert_eq!(contacts.len(), 2);
+    assert!((contacts[0] - contacts[1]).abs() >= 12.0, "{contacts:?}");
+}
+
 fn center_distance(layout: &ArchitectureDiagramLayout, a: &str, b: &str) -> f64 {
     let (ax, ay) = node_center(layout, a);
     let (bx, by) = node_center(layout, b);

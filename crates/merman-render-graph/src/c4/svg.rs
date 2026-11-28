@@ -17,7 +17,7 @@ use merman_render_core::{
     root_svg::{self, RootViewportContext},
     rough_svg::{
         closed_path_d_from_points, operation_randomness,
-        paths::roughjs_hand_drawn_stroke_path_for_svg_path,
+        paths::{RoughGeometryTarget, roughjs_prepare_hand_drawn_stroke_path_for_svg_path},
     },
     svg_css::{PreparedLookDefs, SvgId, available_local_svg_id, scoped_svg_id, scoped_svg_url},
     svg_output::{BoundedSvgOutput, SvgOutput, XmlTextOutput},
@@ -585,7 +585,7 @@ fn c4_write_unified_section(
 
 const C4_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
 
-fn c4_rounded_rect_path_d(width: f64, height: f64, radius: f64) -> String {
+fn c4_rounded_rect_path_d(width: f64, height: f64, radius: f64, canonical: bool) -> String {
     let width = width.max(1.0);
     let height = height.max(1.0);
     let radius = radius.min(width / 2.0).min(height / 2.0).max(0.0);
@@ -593,6 +593,33 @@ fn c4_rounded_rect_path_d(width: f64, height: f64, radius: f64) -> String {
     let right = width / 2.0;
     let top = -height / 2.0;
     let bottom = height / 2.0;
+    #[cfg(feature = "layout-shoal")]
+    if canonical {
+        if radius == 0.0 {
+            return format!(
+                "M{} {}H{}V{}H{}Z",
+                fmt(left),
+                fmt(top),
+                fmt(right),
+                fmt(bottom),
+                fmt(left),
+            );
+        }
+        return format!(
+            "M{inset_left} {top}H{inset_right}A{r} {r} 0 0 1 {right} {inset_top}V{inset_bottom}A{r} {r} 0 0 1 {inset_right} {bottom}H{inset_left}A{r} {r} 0 0 1 {left} {inset_bottom}V{inset_top}A{r} {r} 0 0 1 {inset_left} {top}Z",
+            left = fmt(left),
+            right = fmt(right),
+            top = fmt(top),
+            bottom = fmt(bottom),
+            inset_left = fmt(left + radius),
+            inset_right = fmt(right - radius),
+            inset_top = fmt(top + radius),
+            inset_bottom = fmt(bottom - radius),
+            r = fmt(radius),
+        );
+    }
+    #[cfg(not(feature = "layout-shoal"))]
+    let _ = canonical;
     let mut points = vec![(left + radius, top), (right - radius, top)];
 
     let mut append_arc = |cx: f64, cy: f64, start: f64, end: f64| {
@@ -635,29 +662,53 @@ fn c4_hand_drawn_stroke(
     path_data: &str,
     work_meter: &OperationWorkMeter,
     randomness: &roughr::core::RoughRandomness,
+    compact: bool,
 ) -> Result<String> {
-    let path = roughjs_hand_drawn_stroke_path_for_svg_path(
+    let operations = roughjs_prepare_hand_drawn_stroke_path_for_svg_path(
+        RoughGeometryTarget::Svg,
         path_data,
         C4_HAND_DRAWN_ROUGHNESS,
         work_meter,
         randomness,
     );
     work_meter.checkpoint(merman_model::OperationPhase::Emit)?;
-    path.ok_or_else(|| Error::InvalidModel {
+    let operations = operations.ok_or_else(|| Error::InvalidModel {
         message: "c4: failed to generate handDrawn stroke geometry".to_string(),
-    })
+    })?;
+    #[cfg(feature = "layout-shoal")]
+    if compact {
+        return Ok(merman_render_core::rough_svg::ops_to_compact_svg_path_d(
+            &operations,
+        ));
+    }
+    #[cfg(not(feature = "layout-shoal"))]
+    let _ = compact;
+    Ok(merman_render_core::rough_svg::ops_to_svg_path_d(
+        &operations,
+    ))
+}
+
+#[derive(Clone, Copy)]
+struct C4ShapePaint<'a> {
+    fill: &'a str,
+    stroke: &'a str,
+    stroke_width: f64,
 }
 
 fn c4_write_hand_drawn_shape(
     out: &mut impl SvgOutput,
     silhouette: &str,
-    fill: &str,
-    stroke: &str,
-    stroke_width: f64,
+    paint: C4ShapePaint<'_>,
     work_meter: &OperationWorkMeter,
     randomness: &roughr::core::RoughRandomness,
+    compact: bool,
 ) -> Result<()> {
-    let outline = c4_hand_drawn_stroke(silhouette, work_meter, randomness)?;
+    let outline = c4_hand_drawn_stroke(silhouette, work_meter, randomness, compact)?;
+    let C4ShapePaint {
+        fill,
+        stroke,
+        stroke_width,
+    } = paint;
     let _ = write!(
         out,
         r#"<path class="rough-fill" d="{}" fill="{}" stroke="none"/><path class="rough-stroke" d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="stroke-width:{}px !important"/>"#,
@@ -685,6 +736,7 @@ fn c4_write_unified_shape(
     work_meter: &OperationWorkMeter,
     randomness: &roughr::core::RoughRandomness,
     native: Option<&C4NativeStyle>,
+    compact: bool,
 ) -> Result<()> {
     let width = shape.width.max(1.0);
     let height = shape.height.max(1.0);
@@ -692,36 +744,25 @@ fn c4_write_unified_shape(
     let stroke_width = native.map_or(2.0, |theme| theme.shape_width);
 
     if look.is_hand_drawn() {
+        let paint = C4ShapePaint {
+            fill,
+            stroke,
+            stroke_width,
+        };
         match node_shape {
             C4NodeShape::Rounded => {
-                let path = c4_rounded_rect_path_d(width, height, radius);
+                let path = c4_rounded_rect_path_d(width, height, radius, compact);
                 out.push_str(r#"<g class="basic label-container">"#);
                 out.checkpoint()?;
-                c4_write_hand_drawn_shape(
-                    out,
-                    &path,
-                    fill,
-                    stroke,
-                    stroke_width,
-                    work_meter,
-                    randomness,
-                )?;
+                c4_write_hand_drawn_shape(out, &path, paint, work_meter, randomness, compact)?;
                 out.push_str("</g>");
                 return out.checkpoint();
             }
             C4NodeShape::Framed => {
-                let path = c4_rounded_rect_path_d(width, height, radius);
+                let path = c4_rounded_rect_path_d(width, height, radius, compact);
                 out.push_str(r#"<g class="basic label-container">"#);
                 out.checkpoint()?;
-                c4_write_hand_drawn_shape(
-                    out,
-                    &path,
-                    fill,
-                    stroke,
-                    stroke_width,
-                    work_meter,
-                    randomness,
-                )?;
+                c4_write_hand_drawn_shape(out, &path, paint, work_meter, randomness, compact)?;
                 let frame_x = width / 2.0 - C4_FRAMED_FRAME_WIDTH;
                 let frame_path = format!(
                     "M{} {} L{} {} M{} {} L{} {}",
@@ -734,7 +775,7 @@ fn c4_write_unified_shape(
                     fmt(frame_x),
                     fmt(height / 2.0),
                 );
-                let frame_d = c4_hand_drawn_stroke(&frame_path, work_meter, randomness)?;
+                let frame_d = c4_hand_drawn_stroke(&frame_path, work_meter, randomness, compact)?;
                 let _ = write!(
                     out,
                     r#"<path class="rough-frame" d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="stroke-width:{}px !important"/>"#,
@@ -757,7 +798,7 @@ fn c4_write_unified_shape(
                 } = C4PersonOutline::new(width, height);
                 // The path helper is centered, so translate the body into the person silhouette
                 // after generation instead of baking the offset into the shape's layout box.
-                let body_path = c4_rounded_rect_path_d(width, body_height, body_radius);
+                let body_path = c4_rounded_rect_path_d(width, body_height, body_radius, compact);
                 let head_path = format!(
                     "M{r},0 A{r},{r} 0,0,1 {left},0 A{r},{r} 0,0,1 {r},0 Z",
                     r = fmt(head_radius),
@@ -771,27 +812,11 @@ fn c4_write_unified_shape(
                     fmt(body_top + body_height / 2.0)
                 );
                 out.checkpoint()?;
-                c4_write_hand_drawn_shape(
-                    out,
-                    &body_path,
-                    fill,
-                    stroke,
-                    stroke_width,
-                    work_meter,
-                    randomness,
-                )?;
+                c4_write_hand_drawn_shape(out, &body_path, paint, work_meter, randomness, compact)?;
                 out.push_str("</g>");
                 let _ = write!(out, r#"<g transform="translate(0,{})">"#, fmt(head_y));
                 out.checkpoint()?;
-                c4_write_hand_drawn_shape(
-                    out,
-                    &head_path,
-                    fill,
-                    stroke,
-                    stroke_width,
-                    work_meter,
-                    randomness,
-                )?;
+                c4_write_hand_drawn_shape(out, &head_path, paint, work_meter, randomness, compact)?;
                 out.push_str("</g></g>");
                 return out.checkpoint();
             }
@@ -822,16 +847,8 @@ fn c4_write_unified_shape(
                     fmt(-(body_height / 2.0 + ry))
                 );
                 out.checkpoint()?;
-                c4_write_hand_drawn_shape(
-                    out,
-                    &body_path,
-                    fill,
-                    stroke,
-                    stroke_width,
-                    work_meter,
-                    randomness,
-                )?;
-                let rim = c4_hand_drawn_stroke(&rim_path, work_meter, randomness)?;
+                c4_write_hand_drawn_shape(out, &body_path, paint, work_meter, randomness, compact)?;
+                let rim = c4_hand_drawn_stroke(&rim_path, work_meter, randomness, compact)?;
                 let _ = write!(
                     out,
                     r#"<path class="rough-stroke" d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="fill:none !important;stroke:{} !important;stroke-width:{}px !important"/>"#,
@@ -867,16 +884,8 @@ fn c4_write_unified_shape(
                 out.push_str(r#"<g class="basic label-container" transform="translate("#);
                 let _ = write!(out, "{}, {})\">", fmt(-width / 2.0), fmt(h / 2.0));
                 out.checkpoint()?;
-                c4_write_hand_drawn_shape(
-                    out,
-                    &body_path,
-                    fill,
-                    stroke,
-                    stroke_width,
-                    work_meter,
-                    randomness,
-                )?;
-                let rim = c4_hand_drawn_stroke(&rim_path, work_meter, randomness)?;
+                c4_write_hand_drawn_shape(out, &body_path, paint, work_meter, randomness, compact)?;
+                let rim = c4_hand_drawn_stroke(&rim_path, work_meter, randomness, compact)?;
                 let _ = write!(
                     out,
                     r#"<path class="rough-stroke" d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="fill:none !important;stroke:{} !important;stroke-width:{}px !important"/>"#,
@@ -1112,7 +1121,7 @@ pub fn render_c4_diagram_svg_typed(
     } else {
         -(diagram_margin_y + extra_vert_for_title)
     };
-    let hand_drawn_outset = if look.is_hand_drawn() { 8.0 } else { 0.0 };
+    let hand_drawn_outset = look.hand_drawn_outset();
     let root_bounds = root_svg::DiagramBounds::from_view_box(
         viewbox_x - hand_drawn_outset,
         viewbox_y - hand_drawn_outset,
@@ -1246,7 +1255,9 @@ pub fn render_c4_diagram_svg_typed(
         out.push_str("</defs>");
         out.checkpoint()?;
     }
-    write_c4_base_defs(&mut out, diagram_id)?;
+    if !is_shoal || !look.is_hand_drawn() {
+        write_c4_base_defs(&mut out, diagram_id)?;
+    }
 
     let mut shape_meta: std::collections::HashMap<&str, &C4SvgModelShape> =
         std::collections::HashMap::new();
@@ -1358,6 +1369,7 @@ pub fn render_c4_diagram_svg_typed(
                     context.work_meter,
                     &hand_drawn_randomness,
                     native,
+                    is_shoal,
                 )?;
 
                 let sections = [
@@ -1475,11 +1487,12 @@ pub fn render_c4_diagram_svg_typed(
                 };
                 if is_shoal && look.is_hand_drawn() {
                     let radius = boundary_radius_attr.parse().unwrap_or(2.5);
-                    let silhouette = c4_rounded_rect_path_d(b.width, b.height, radius);
+                    let silhouette = c4_rounded_rect_path_d(b.width, b.height, radius, true);
                     let outline = c4_hand_drawn_stroke(
                         &silhouette,
                         context.work_meter,
                         &hand_drawn_randomness,
+                        true,
                     )?;
                     let _ = write!(
                         &mut out,

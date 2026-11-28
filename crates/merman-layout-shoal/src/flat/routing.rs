@@ -24,6 +24,7 @@ use crate::{
 };
 use std::{cmp::Reverse, collections::BinaryHeap};
 
+const IN_LINE: f64 = 0.5;
 const LEVEL_CLEAR: f64 = 8.0;
 const LEVEL_TOUCH: f64 = 4.0;
 const SHELF_MARGIN: f64 = 28.0;
@@ -133,7 +134,7 @@ impl Span {
         self.lo() <= x && x <= self.hi()
     }
     fn mates(self, other: Self) -> bool {
-        self.from == other.from || self.to == other.to
+        (self.from - other.from).abs() < IN_LINE || (self.to - other.to).abs() < IN_LINE
     }
     fn clashes(self, other: Self) -> bool {
         !self.mates(other) && self.lo().max(other.lo()) < self.hi().min(other.hi())
@@ -149,6 +150,13 @@ impl Span {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Track {
+    Row(usize),
+    Shelf { offset: f64, previous: f64 },
+    Sweep { after: f64, before: f64 },
+}
+
 struct Piece {
     span: Span,
     occupied: Span,
@@ -157,7 +165,7 @@ struct Piece {
     keep_landing_runway: bool,
     lower: usize,
     parallel: Option<(u32, u32)>,
-    track: Option<usize>,
+    track: Option<Track>,
 }
 
 #[derive(Default)]
@@ -549,15 +557,30 @@ fn sample(span: Span, height: f64) -> [Point; SAMPLES + 1] {
     })
 }
 
-fn reaches(points: &[Point], line: &[Point], limit: f64) -> bool {
+fn reaches(
+    points: &[Point; SAMPLES + 1],
+    line: &[Point; SAMPLES + 1],
+    limit: f64,
+    work: &mut Work<'_>,
+) -> LayoutResult<bool> {
+    let direction = |samples: &[Point; SAMPLES + 1]| samples[0].x <= samples[SAMPLES].x;
+    let forward = direction(line);
+    let across = |point: Point| if forward { point.x } else { -point.x };
+    let same_direction = direction(points) == forward;
     let mut first = 0;
-    for p in points {
-        while first + 1 < line.len() && p.y - line[first + 1].y >= limit {
+    for &p in points {
+        work.visit(1)?;
+        while first + 1 < line.len()
+            && (p.y - line[first + 1].y >= limit
+                || (same_direction && across(p) - across(line[first + 1]) >= limit))
+        {
+            work.visit(1)?;
             first += 1;
         }
         for segment in line[first..].windows(2) {
+            work.visit(1)?;
             let (a, b) = (segment[0], segment[1]);
-            if a.y - p.y >= limit {
+            if a.y - p.y >= limit || across(a) - across(p) >= limit {
                 break;
             }
             if a.x.min(b.x) - p.x >= limit || p.x - a.x.max(b.x) >= limit {
@@ -573,11 +596,11 @@ fn reaches(points: &[Point], line: &[Point], limit: f64) -> bool {
             let (px, py) = (p.x - a.x, p.y - a.y);
             let along = (px * ux + py * uy).clamp(0.0, length);
             if (px - along * ux).hypot(py - along * uy) < limit {
-                return true;
+                return Ok(true);
             }
         }
     }
-    false
+    Ok(false)
 }
 
 /// Maximum horizontal-to-vertical aspect ratio allowed for an unpromoted single cubic S-curve
@@ -587,13 +610,20 @@ fn reaches(points: &[Point], line: &[Point], limit: f64) -> bool {
 const MAX_SWEEP_ASPECT: f64 = 6.0;
 const MAX_PROMOTABLE_SPAN_RANKS: f64 = 16.0;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CurveLevel {
+    Free,
+    Beside,
+    Shelf,
+}
+
 fn curved_levels(
     pieces: &[Piece],
     ids: &[usize],
     height: f64,
     room: f64,
     max_promotable_span: f64,
-    promoted: &mut [bool],
+    levels: &mut [CurveLevel],
     work: &mut Work<'_>,
 ) -> LayoutResult<bool> {
     work.charge(
@@ -630,9 +660,13 @@ fn curved_levels(
         };
         let shared_crossbar = (wide_a || run < steep_sweep_run_limit(a.width()))
             && (wide_b || run < steep_sweep_run_limit(b.width()));
-        promoted[left] |= wide_a || shared_crossbar;
-        promoted[right] |= wide_b || shared_crossbar;
-        if promoted[left] && promoted[right] || opposing {
+        if wide_a || shared_crossbar {
+            levels[left] = CurveLevel::Shelf;
+        }
+        if wide_b || shared_crossbar {
+            levels[right] = CurveLevel::Shelf;
+        }
+        if levels[left] == CurveLevel::Shelf && levels[right] == CurveLevel::Shelf || opposing {
             return Ok(());
         }
         let crossing = (a.from < b.from) != (a.to < b.to);
@@ -641,13 +675,12 @@ fn curved_levels(
         } else {
             LEVEL_TOUCH
         };
-        work.visit(2 * SAMPLES * (SAMPLES + 1))?;
         if crossing
-            || reaches(&curves[left], &curves[right], limit)
-            || reaches(&curves[right], &curves[left], limit)
+            || reaches(&curves[left], &curves[right], limit, work)?
+            || reaches(&curves[right], &curves[left], limit, work)?
         {
-            promoted[left] = true;
-            promoted[right] = true;
+            levels[left] = CurveLevel::Shelf;
+            levels[right] = CurveLevel::Shelf;
         }
         Ok(())
     })?;
@@ -658,19 +691,22 @@ fn curved_levels(
             if peers[slot].is_none() {
                 let width = pieces[id].span.width();
                 if width > room * MAX_SWEEP_ASPECT && width <= max_promotable_span {
-                    promoted[slot] = true;
+                    levels[slot] = CurveLevel::Shelf;
                 }
             }
         }
     }
     work.visit(ids.len())?;
-    if promoted.iter().any(|&shelf| shelf) {
+    if levels.contains(&CurveLevel::Shelf) {
         // A promotion elsewhere in the gap can make a previously short sweep eligible.
         // Give every overlapping candidate a solver-owned track in the same grading pass.
         for (slot, &id) in ids.iter().enumerate() {
             work.visit(1)?;
-            promoted[slot] |= peers[slot] == Some(true)
-                && shelf_run < steep_sweep_run_limit(pieces[id].span.width());
+            if peers[slot] == Some(true)
+                && shelf_run < steep_sweep_run_limit(pieces[id].span.width())
+            {
+                levels[slot] = CurveLevel::Shelf;
+            }
         }
     }
     // Overlapping lanes of a parallel bundle must use the same curve family. A
@@ -678,7 +714,7 @@ fn curved_levels(
     let mut bundles = Vec::new();
     for (i, &id) in ids.iter().enumerate() {
         work.visit(1)?;
-        if promoted[i]
+        if levels[i] == CurveLevel::Shelf
             && let Some(bundle) = pieces[id].parallel
         {
             push(&mut bundles, bundle)?;
@@ -690,22 +726,33 @@ fn curved_levels(
         work.check()?;
         for (i, &id) in ids.iter().enumerate() {
             work.visit(bundles.len().ilog2() as usize + 1)?;
-            promoted[i] |= pieces[id]
+            if pieces[id]
                 .parallel
-                .is_some_and(|bundle| bundles.binary_search(&bundle).is_ok());
+                .is_some_and(|bundle| bundles.binary_search(&bundle).is_ok())
+            {
+                levels[i] = CurveLevel::Shelf;
+            }
         }
     }
     let (mut crossed, mut alongside) = (0u64, 0u64);
     meetings(pieces, ids, work, |left, right, _| {
-        if promoted[left] && promoted[right] {
-            let (a, b) = (pieces[ids[left]].span, pieces[ids[right]].span);
-            if a.clashes(b) {
+        let (a, b) = (pieces[ids[left]].span, pieces[ids[right]].span);
+        let left_shelf = levels[left] == CurveLevel::Shelf;
+        let right_shelf = levels[right] == CurveLevel::Shelf;
+        match (left_shelf, right_shelf) {
+            (true, true) if a.clashes(b) => {
                 if (a.from < b.from) != (a.to < b.to) {
                     crossed += 1;
                 } else {
                     alongside += 1;
                 }
             }
+            (true, false) | (false, true)
+                if !a.mates(b) && a.crossings_above(b) != b.crossings_above(a) =>
+            {
+                levels[if left_shelf { right } else { left }] = CurveLevel::Beside;
+            }
+            _ => {}
         }
         Ok(())
     })?;
@@ -816,7 +863,7 @@ fn weighed_tracks(pieces: &mut [Piece], ids: &[usize], work: &mut Work<'_>) -> L
         return Ok(0);
     }
     if let [only] = ids {
-        pieces[*only].track = Some(0);
+        pieces[*only].track = Some(Track::Row(0));
         return Ok(1);
     }
     work.charge(count.checked_mul(5).ok_or(WorkError::ArithmeticOverflow)?)?;
@@ -867,21 +914,23 @@ fn weighed_tracks(pieces: &mut [Piece], ids: &[usize], work: &mut Work<'_>) -> L
     let mut taken = filled(count, usize::MAX)?;
     let mut rows = 0;
     for turn in 0..count {
+        work.visit(1)?;
         let current = ready.first();
         ready.mark(current, waiting[current], false);
         for contact in &neighbors[current] {
             work.visit(1)?;
             if contact.clash
-                && let Some(track) = pieces[ids[contact.other]].track
+                && let Some(Track::Row(track)) = pieces[ids[contact.other]].track
             {
                 taken[track] = turn;
             }
         }
         let mut track = floor[current];
         while taken[track] == turn {
+            work.visit(1)?;
             track += 1;
         }
-        pieces[ids[current]].track = Some(track);
+        pieces[ids[current]].track = Some(Track::Row(track));
         rows = rows.max(track + 1);
         for &Meeting { other, above, .. } in &neighbors[current] {
             work.visit(1)?;
@@ -894,6 +943,97 @@ fn weighed_tracks(pieces: &mut [Piece], ids: &[usize], work: &mut Work<'_>) -> L
         }
     }
     Ok(rows)
+}
+
+/// Schedule touching intervals together, then center each cluster's shelves and cubic runs.
+fn curved_tracks(
+    pieces: &mut [Piece],
+    ids: &mut Vec<usize>,
+    levels: &mut Vec<CurveLevel>,
+    edge_sep: f64,
+    work: &mut Work<'_>,
+) -> LayoutResult<(usize, f64)> {
+    if !levels.contains(&CurveLevel::Shelf) {
+        return Ok((0, 0.0));
+    }
+    work.charge(
+        ids.len()
+            .checked_mul(2)
+            .ok_or(WorkError::ArithmeticOverflow)?,
+    )?;
+    let mut roles = levels.iter();
+    ids.retain(|_| roles.next().is_some_and(|&level| level != CurveLevel::Free));
+    levels.retain(|&role| role != CurveLevel::Free);
+    let (margin, pitch, _) = track_metrics(RoutingStyle::Curved, edge_sep);
+    let mut max_tracks = 0;
+    let mut max_height = 0.0_f64;
+    let mut first = 0;
+    let mut rows = Vec::new();
+    while first < ids.len() {
+        let mut reach = pieces[ids[first]].span.hi();
+        let mut last = first + 1;
+        while last < ids.len() && pieces[ids[last]].span.lo() <= reach {
+            work.visit(1)?;
+            reach = reach.max(pieces[ids[last]].span.hi());
+            last += 1;
+        }
+        let cluster = &ids[first..last];
+        let levels = &levels[first..last];
+        let tracks = weighed_tracks(pieces, cluster, work)?;
+        work.charge(tracks)?;
+        clear_reserve(&mut rows, tracks)?;
+        rows.resize(tracks, [0.0_f64; 2]);
+        for (&id, &level) in cluster.iter().zip(levels) {
+            work.visit(1)?;
+            if level == CurveLevel::Beside
+                && let Some(Track::Row(row)) = pieces[id].track
+            {
+                let crossbar_limit = steep_sweep_run_limit(pieces[id].span.width());
+                let cubic_run = crossbar_limit.max(LEAD) + LEAD;
+                rows[row][1] = rows[row][1].max(cubic_run);
+            }
+        }
+        let tail = (margin - rows[tracks - 1][1] * 0.5).max(0.0);
+        let mut next = (margin - rows[0][1] * 0.5).max(0.0);
+        for (i, row) in rows.iter_mut().enumerate() {
+            work.visit(1)?;
+            *row = [next, advance(next, row[1])?];
+            next = advance(row[1], if i + 1 == tracks { tail } else { pitch })?;
+        }
+        let center = next * 0.5;
+        for (&id, &level) in cluster.iter().zip(levels) {
+            work.visit(1)?;
+            let Some(Track::Row(row)) = pieces[id].track else {
+                unreachable!("weighted tracks assign every member a row");
+            };
+            let [top, bottom] = rows[row];
+            pieces[id].track = Some(if level == CurveLevel::Shelf {
+                Track::Shelf {
+                    offset: top.midpoint(bottom) - center,
+                    previous: row.checked_sub(1).map_or(f64::NEG_INFINITY, |i| {
+                        rows[i][0].midpoint(rows[i][1]) - center
+                    }),
+                }
+            } else {
+                Track::Sweep {
+                    after: if row == 0 {
+                        f64::NEG_INFINITY
+                    } else {
+                        top - center
+                    },
+                    before: if row + 1 == tracks {
+                        f64::INFINITY
+                    } else {
+                        bottom - center
+                    },
+                }
+            });
+        }
+        max_tracks = max_tracks.max(tracks);
+        max_height = max_height.max(next);
+        first = last;
+    }
+    Ok((max_tracks, max_height))
 }
 
 fn greedy_tracks(pieces: &mut [Piece], ids: &[usize], work: &mut Work<'_>) -> LayoutResult<usize> {
@@ -964,7 +1104,7 @@ fn greedy_tracks(pieces: &mut [Piece], ids: &[usize], work: &mut Work<'_>) -> La
         ));
     }
     for (i, &bus) in owner.iter().enumerate() {
-        pieces[ids[i]].track = track[bus];
+        pieces[ids[i]].track = track[bus].map(Track::Row);
     }
     Ok(rows)
 }
@@ -1083,7 +1223,10 @@ impl Gap {
         if curved && ids.len() == 1 {
             // An isolated ultra-wide sweep promotes straight to a single horizontal track rather
             // than flattening into a pancake cubic.
-            self.pieces[ids[0]].track = Some(0);
+            self.pieces[ids[0]].track = Some(Track::Shelf {
+                offset: 0.0,
+                previous: f64::NEG_INFINITY,
+            });
             self.tracks = 1;
         } else if ids.len() > options.caps.max_weighed_gap_pieces {
             if curved {
@@ -1099,14 +1242,14 @@ impl Gap {
                     .then(a.cmp(&b))
             })?;
             if curved {
-                let mut promoted = filled(ids.len(), false)?;
+                let mut levels = filled(ids.len(), CurveLevel::Free)?;
                 if curved_levels(
                     &self.pieces,
                     ids,
                     self.height,
                     room,
                     max_promotable_span,
-                    &mut promoted,
+                    &mut levels,
                     work,
                 )? {
                     let inflated_min = self
@@ -1123,22 +1266,30 @@ impl Gap {
                     }
                 }
                 let mut protected_run = 0.0_f64;
-                let mut flags = promoted.into_iter();
-                ids.retain(|&id| {
-                    let shelf = flags.next() == Some(true);
-                    if !shelf {
+                for (&id, &level) in ids.iter().zip(&levels) {
+                    work.visit(1)?;
+                    if level == CurveLevel::Free {
                         let limit = steep_sweep_run_limit(self.pieces[id].span.width());
                         if limit <= room {
                             protected_run = protected_run.max(limit);
                         }
                     }
-                    shelf
-                });
+                }
                 // Optical label shifts can borrow spare gap height. Retain the run on which
                 // these untracked sweeps stay outside the painter's crossbar range.
                 self.minimum = self.minimum.max(advance(guard, protected_run)?);
+                let (tracks, height) = curved_tracks(
+                    &mut self.pieces,
+                    ids,
+                    &mut levels,
+                    options.spacing.edge,
+                    work,
+                )?;
+                self.tracks = tracks;
+                self.minimum = self.minimum.max(advance(guard, height)?);
+            } else {
+                self.tracks = weighed_tracks(&mut self.pieces, ids, work)?;
             }
-            self.tracks = weighed_tracks(&mut self.pieces, ids, work)?;
         }
         if options.routing == RoutingStyle::Polyline && self.tracks == 1 {
             // One shelf offers no separation. Leave independent runs on their original chords.
@@ -1432,23 +1583,44 @@ fn draw_piece(
             guides[1] = guides[1].min(piece.leads[1]);
         }
     }
-    let start = advance(upper.bottom, guides[0])?;
-    let end = -advance(-lower.top, guides[1])?;
+    let mut start = advance(upper.bottom, guides[0])?;
+    let mut end = -advance(-lower.top, guides[1])?;
+    let midpoint = start.midpoint(end);
+    let shelf = match piece.track {
+        Some(Track::Row(track)) => {
+            let (margin, _, spread) = track_metrics(options.routing, options.spacing.edge);
+            let steps = (gap.tracks - 1) as f64;
+            let pitch = if steps > 0.0 {
+                spread.min((end - start - 2.0 * margin) / steps)
+            } else {
+                0.0
+            };
+            let level = |track: usize| midpoint + (track as f64 - steps * 0.5) * pitch;
+            let shelf = finite(level(track))?;
+            if track > 0 && level(track - 1) >= shelf {
+                return Err(PRECISION);
+            }
+            Some(shelf)
+        }
+        Some(Track::Shelf { offset, previous }) => {
+            let shelf = finite(midpoint + offset)?;
+            if shelf <= midpoint + previous {
+                return Err(PRECISION);
+            }
+            Some(shelf)
+        }
+        Some(Track::Sweep { after, before }) => {
+            start = start.max(midpoint + after);
+            end = end.min(midpoint + before);
+            None
+        }
+        None => None,
+    };
     if end <= start {
         return Err(PRECISION);
     }
-    if let Some(track) = piece.track {
-        let (margin, _, spread) = track_metrics(options.routing, options.spacing.edge);
-        let steps = (gap.tracks - 1) as f64;
-        let pitch = if steps > 0.0 {
-            spread.min((end - start - 2.0 * margin) / steps)
-        } else {
-            0.0
-        };
-        let midpoint = start.midpoint(end);
-        let level = |track: usize| midpoint + (track as f64 - steps * 0.5) * pitch;
-        let shelf = finite(level(track))?;
-        if shelf <= start || shelf >= end || track > 0 && level(track - 1) >= shelf {
+    if let Some(shelf) = shelf {
+        if shelf <= start || shelf >= end {
             return Err(PRECISION);
         }
         knot(
@@ -1457,6 +1629,12 @@ fn draw_piece(
         );
         knot(points, RoutePoint::new(from, shelf, Axis::Vertical));
         knot(points, RoutePoint::new(to, shelf, Axis::Horizontal));
+        knot(points, RoutePoint::gap_boundary(to, end, Axis::Vertical));
+    } else if piece.track.is_some() {
+        knot(
+            points,
+            RoutePoint::gap_boundary(from, start, Axis::Vertical),
+        );
         knot(points, RoutePoint::gap_boundary(to, end, Axis::Vertical));
     } else {
         knot(points, RoutePoint::new(from, start, Axis::Vertical));
@@ -1765,12 +1943,10 @@ fn route_ranked(
             for gap in &gaps[a..b] {
                 work.visit(1)?;
                 let piece = &gap.pieces[gap.cursor];
-                let bends = if piece.span.from == piece.span.to {
-                    0
-                } else if piece.track.is_none() {
-                    2
-                } else {
-                    4
+                let bends = match piece.track {
+                    Some(Track::Row(_) | Track::Shelf { .. }) => 4,
+                    _ if piece.span.from != piece.span.to => 2,
+                    _ => 0,
                 };
                 let guards = if piece.lower == last {
                     0

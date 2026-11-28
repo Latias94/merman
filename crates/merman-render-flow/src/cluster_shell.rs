@@ -75,6 +75,26 @@ impl ClusterHandDrawn<'_> {
         self.stroke_dasharray.unwrap_or("0 0")
     }
 
+    fn outline_path(&self, path: &str) -> Option<String> {
+        #[cfg(feature = "layout-shoal")]
+        if self.solid_backing {
+            return roughjs_prepare_hand_drawn_stroke_path_for_svg_path(
+                RoughGeometryTarget::Svg,
+                path,
+                ROUGHNESS,
+                self.work_meter,
+                self.randomness,
+            )
+            .map(|ops| merman_render_core::rough_svg::ops_to_compact_svg_path_d(&ops));
+        }
+        roughjs_hand_drawn_stroke_path_for_svg_path(
+            path,
+            ROUGHNESS,
+            self.work_meter,
+            self.randomness,
+        )
+    }
+
     /// Advance the ordinary container's Rough state for a geometry-only query.
     /// The caller owns eligibility, frame resolution, and its surrounding Layout checkpoints.
     pub fn advance_cluster(&self, frame: PaintedClusterFrame, agentflow: bool) {
@@ -120,14 +140,8 @@ fn write_cluster_shell(
             radius,
             stroke_width,
         } => {
-            let outline = rough.and_then(|rough| {
-                roughjs_hand_drawn_stroke_path_for_svg_path(
-                    &rounded_rect_path_d(origin, size, radius),
-                    ROUGHNESS,
-                    rough.work_meter,
-                    rough.randomness,
-                )
-            });
+            let outline = rough
+                .and_then(|rough| rough.outline_path(&rounded_rect_path_d(origin, size, radius)));
             let _ = write!(
                 out,
                 r#"<rect x="{}" y="{}" width="{}" height="{}" rx="{}" style="fill:{};stroke:{};stroke-width:{}px"#,
@@ -185,12 +199,7 @@ fn write_agentflow_shell(
 ) {
     if let Some(rough) = rough {
         let path = rounded_rect_path_d(origin, size, 10.0);
-        if let Some(stroke_d) = roughjs_hand_drawn_stroke_path_for_svg_path(
-            &path,
-            ROUGHNESS,
-            rough.work_meter,
-            rough.randomness,
-        ) {
+        if let Some(stroke_d) = rough.outline_path(&path) {
             out.push_str("<g>");
             if rough.solid_backing {
                 let _ = write!(

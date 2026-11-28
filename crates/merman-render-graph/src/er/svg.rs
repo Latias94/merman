@@ -911,7 +911,7 @@ pub fn render_er_diagram_svg_model(
             neo_stroke_width: binding.neo_marker_stroke_width,
             main_bkg: &marker_background,
         },
-        uses_canonical_routes && model.direction.trim().eq_ignore_ascii_case("BT"),
+        uses_canonical_routes,
     )?;
 
     let mut entity_by_id: std::collections::HashMap<&str, &ErEntity> =

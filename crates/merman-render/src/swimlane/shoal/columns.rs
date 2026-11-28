@@ -9,11 +9,23 @@ struct Header {
     padding: f64,
 }
 
+impl Header {
+    fn band(&self, horizontal: bool) -> f64 {
+        let depth = if horizontal {
+            self.size.width
+        } else {
+            self.size.height
+        };
+        depth + 2.0 * self.padding
+    }
+}
+
 #[derive(Clone, Copy, Default)]
 struct ColumnMinimum {
     span: f64,
     columns: usize,
     extra_per_column: f64,
+    header_depth: f64,
 }
 
 pub(super) struct Columns {
@@ -23,6 +35,7 @@ pub(super) struct Columns {
     on_grid: Vec<bool>,
     expanded: Vec<bool>,
     headers: Vec<Option<Header>>,
+    pub(super) horizontal_header_width: f64,
     flow: Direction,
 }
 
@@ -111,12 +124,17 @@ impl Columns {
             on_grid,
             expanded,
             headers: (0..root).map(|_| None).collect(),
+            horizontal_header_width: 0.0,
             flow,
         })
     }
 
     pub(super) fn is_column(&self, id: usize) -> bool {
         self.on_grid[id]
+    }
+
+    pub(super) fn has_expanded_shells(&self) -> bool {
+        self.expanded.contains(&true)
     }
 
     pub(super) fn solver_parent(&self, id: usize) -> Option<u32> {
@@ -132,7 +150,7 @@ impl Columns {
         graph: &mut MeasuredGraph,
         work: &mut OperationLayoutWorkControl,
     ) -> Result<()> {
-        if !self.expanded.contains(&true) {
+        if !self.has_expanded_shells() {
             return Ok(());
         }
         work.charge_adapter(graph.nodes.len())?;
@@ -170,7 +188,11 @@ impl Columns {
             if self.expanded[id] {
                 let padding = group.padding.x0;
                 if let Some(size) = group.title.take() {
-                    self.headers[id] = Some(Header { size, padding });
+                    let header = Header { size, padding };
+                    if horizontal {
+                        minimum.header_depth += header.band(true);
+                    }
+                    self.headers[id] = Some(header);
                 }
                 let title_span = self.headers[id]
                     .as_ref()
@@ -190,13 +212,19 @@ impl Columns {
                 minimum.span += cross(group.min_size).max(1.0);
                 minimum.columns += 1;
             }
-            if !minimum.span.is_finite() {
+            if !minimum.span.is_finite() || !minimum.header_depth.is_finite() {
                 return Err(work.record_arithmetic_overflow().into());
             }
             if let Some(parent) = self.parents[id] {
                 let child = *minimum;
-                minima[parent as usize].span += child.span;
-                minima[parent as usize].columns += child.columns;
+                let parent = &mut minima[parent as usize];
+                parent.span += child.span;
+                parent.columns += child.columns;
+                // Each ancestor adds its band beyond the widest protruding child.
+                parent.header_depth = parent.header_depth.max(child.header_depth);
+            } else {
+                self.horizontal_header_width =
+                    self.horizontal_header_width.max(minimum.header_depth);
             }
         }
 
@@ -228,7 +256,7 @@ impl Columns {
         graph: &MeasuredGraph,
         work: &mut OperationLayoutWorkControl,
     ) -> Result<Vec<(PortSideHint, PortSideHint)>> {
-        if !self.expanded.contains(&true) {
+        if !self.has_expanded_shells() {
             return Ok(Vec::new());
         }
         let outer_face = if self.horizontal() {
@@ -253,7 +281,7 @@ impl Columns {
         solved: &mut SolvedGraph,
         work: &mut OperationLayoutWorkControl,
     ) -> Result<()> {
-        if !self.expanded.contains(&true) {
+        if !self.has_expanded_shells() {
             return Ok(());
         }
         work.charge_adapter(solved.groups.len())?;
@@ -269,12 +297,7 @@ impl Columns {
                 shell = shell.union(contents);
                 if let Some(header) = &self.headers[id] {
                     let size = header.size;
-                    let along = if self.horizontal() {
-                        size.width
-                    } else {
-                        size.height
-                    };
-                    let band = along + 2.0 * header.padding;
+                    let band = header.band(self.horizontal());
                     // Put the outer heading beyond the shared rank grid's routed extent.
                     // A route or marker using an exterior rail cannot intersect the new band.
                     let center = match self.flow {

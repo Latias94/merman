@@ -100,7 +100,6 @@ impl RoughPathPair {
         self.serialize(work_meter, ops_to_svg_path_d)
     }
 
-    #[cfg(feature = "layout-shoal")]
     pub fn into_compact_svg_paths(
         self,
         work_meter: &OperationWorkMeter,
@@ -1228,6 +1227,54 @@ pub fn roughjs_prepare_paths_for_circle_with_roughness(
     work_meter: &OperationWorkMeter,
     randomness: &RoughRandomness,
 ) -> Option<RoughPathPair> {
+    prepare_circle(
+        target,
+        diameter,
+        stroke_width,
+        stroke_dasharray,
+        hand_drawn,
+        roughness,
+        false,
+        work_meter,
+        randomness,
+    )
+}
+
+#[cfg(feature = "layout-shoal")]
+pub fn prepare_backed_circle(
+    target: RoughGeometryTarget,
+    diameter: f64,
+    stroke_width: f32,
+    stroke_dasharray: &str,
+    roughness: f32,
+    work_meter: &OperationWorkMeter,
+    randomness: &RoughRandomness,
+) -> Option<RoughPathPair> {
+    prepare_circle(
+        target,
+        diameter,
+        stroke_width,
+        stroke_dasharray,
+        true,
+        roughness,
+        true,
+        work_meter,
+        randomness,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prepare_circle(
+    target: RoughGeometryTarget,
+    diameter: f64,
+    stroke_width: f32,
+    stroke_dasharray: &str,
+    hand_drawn: bool,
+    roughness: f32,
+    backed: bool,
+    work_meter: &OperationWorkMeter,
+    randomness: &RoughRandomness,
+) -> Option<RoughPathPair> {
     let reservation = if hand_drawn {
         admit_hand_drawn_circle(target, diameter, roughness, work_meter)?
     } else {
@@ -1245,14 +1292,14 @@ pub fn roughjs_prepare_paths_for_circle_with_roughness(
             roughr::core::FillStyle::Solid
         })
         .fill_weight(CIRCLE_HAND_DRAWN_FILL_WEIGHT)
-        .hachure_gap(CIRCLE_HACHURE_GAP)
+        .hachure_gap(if backed { 2.8 } else { CIRCLE_HACHURE_GAP })
         .stroke_width(stroke_width)
         .stroke_line_dash(vec![dash0, dash1])
         .stroke_line_dash_offset(0.0)
         .fill_line_dash(vec![0.0, 0.0])
         .fill_line_dash_offset(0.0)
         .disable_multi_stroke(false)
-        .disable_multi_stroke_fill(false)
+        .disable_multi_stroke_fill(backed)
         .build()
         .ok()?;
 

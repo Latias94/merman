@@ -224,6 +224,7 @@ pub fn render_parity(
                         label_cutouts: &label_cutouts,
                         edge_labels: &mut edge_labels,
                         step_badges: &step_badges,
+                        depth_filters: Default::default(),
                     };
                     paint.write_graph(out, &mut graph_timings)?;
                     Ok(ctx.steps.emitted())
