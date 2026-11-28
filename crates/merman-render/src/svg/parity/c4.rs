@@ -41,6 +41,7 @@ pub(super) fn render_c4_diagram_svg_typed(
         C4SvgContext {
             diagram_id,
             viewport: options.root_viewport(DiagramFamilyId::C4, diagram_id),
+            canvas_background: options.family.session().canvas_background(),
             work_meter: options.work_meter(),
             operation: options.family.session().operation_context(),
             #[cfg(feature = "layout-shoal")]

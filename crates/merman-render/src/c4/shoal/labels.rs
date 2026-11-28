@@ -434,6 +434,9 @@ impl SeatScene<'_> {
                 for offset in [normal, Vec2::ZERO, -normal] {
                     work.charge_adapter(1)?;
                     let shift = anchor + offset - preferred;
+                    if !shift.is_finite() {
+                        continue;
+                    }
                     let caption = ink + shift;
                     if self.overlap_area(caption, false, work)? == 0.0
                         && !self.foreign_shaft_blocks(
@@ -533,7 +536,7 @@ impl SeatScene<'_> {
                 .map(|segment| segment.path.nearest(center, 1e-3).distance_sq)
                 .fold(f64::INFINITY, f64::min)
                 .sqrt();
-            if !self.foreign_shaft_blocks(edge, caption, distance, work)? {
+            if !self.foreign_shaft_blocks(edge, caption, distance + OWNERSHIP_CLEARANCE, work)? {
                 if area == 0.0 {
                     return Ok(Some(seat.shift));
                 }
@@ -723,7 +726,7 @@ mod tests {
             bounds: own.bounds,
             segments: vec![own],
         };
-        let rival = ShaftSegment::new(PathSeg::Line(Line::new((-20.0, -3.5), (30.0, -3.5))));
+        let rival = ShaftSegment::new(PathSeg::Line(Line::new((-20.0, -4.5), (30.0, -4.5))));
         let foreign = build_index(vec![(1, &rival)], |(_, shaft)| shaft.bounds, &mut work).unwrap();
         let obstacle = Rect::new(-30.0, -2.0, 30.0, 4.0);
         let occupied = build_index(vec![obstacle], |rect| *rect, &mut work).unwrap();
@@ -752,5 +755,48 @@ mod tests {
                 .unwrap();
         assert_eq!(caption.center().y, 3.5);
         assert_eq!(scene.overlap_area(caption, true, &mut work).unwrap(), 6.0);
+    }
+
+    #[test]
+    fn c4_overlap_fallback_keeps_the_ownership_clearance() {
+        let mut work = OperationLayoutWorkControl::new(Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::constrained(),
+        )));
+        let own = ShaftSegment::new(PathSeg::Line(Line::new((0.0, 0.0), (10.0, 0.0))));
+        let host = PaintedShaft {
+            bounds: own.bounds,
+            segments: vec![own],
+        };
+        let rival = ShaftSegment::new(PathSeg::Line(Line::new((-20.0, -6.0), (30.0, -6.0))));
+        let foreign = build_index(vec![(1, &rival)], |(_, shaft)| shaft.bounds, &mut work).unwrap();
+        let wall = Rect::new(-30.0, -2.7, 40.0, 7.0);
+        let occupied = build_index(vec![wall], |rect| *rect, &mut work).unwrap();
+        let scene = SeatScene {
+            occupied: &occupied,
+            placed: &BoundsIndex::default(),
+            foreign: &foreign,
+            stroke_outset: 0.5,
+        };
+        let ink = Rect::new(3.0, -3.0, 7.0, -2.5);
+        let mut candidates = Vec::new();
+        assert!(
+            scene
+                .find_seat(0, ink, &host, &mut candidates, false, &mut work)
+                .unwrap()
+                .is_none()
+        );
+        let caption = ink
+            + scene
+                .find_seat(0, ink, &host, &mut candidates, true, &mut work)
+                .unwrap()
+                .unwrap();
+        let center = caption.center();
+        let own = host.segments[0]
+            .path
+            .nearest(center, 1e-3)
+            .distance_sq
+            .sqrt();
+        let foreign = rival.path.nearest(center, 1e-3).distance_sq.sqrt();
+        assert!(foreign > own + OWNERSHIP_CLEARANCE);
     }
 }
