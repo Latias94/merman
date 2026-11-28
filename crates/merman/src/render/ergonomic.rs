@@ -80,9 +80,10 @@ fn input_policy_is_unbounded(policy: InputResourcePolicy) -> bool {
 /// Configures site defaults and the zero-configuration methods on [`Renderer`].
 ///
 /// Site configuration and the default layout apply to the renderer's parser and presentation
-/// engine. One-argument typed methods use the configured target and input defaults. To keep the
-/// target defaults when supplying an explicit request, start from the renderer's default request
-/// for that target. `*_with` and [`Renderer::render`] take their target settings from the request.
+/// engine. All typed helpers apply the configured input policy. The one-argument methods also use
+/// the configured target defaults. To keep the target defaults with `*_with`, start from the
+/// renderer's default request for that target. [`Renderer::render`] supports a per-operation
+/// input policy and takes target settings from the request.
 #[derive(Debug, Default)]
 #[must_use]
 pub struct RendererBuilder {
@@ -142,8 +143,10 @@ impl RendererBuilder {
         self
     }
 
-    /// Sets input admission for the one-argument methods and `render_ascii_with`.
+    /// Sets input admission for all typed render helpers, including `*_with`.
     /// This policy takes precedence over the default graphical target environment.
+    /// Graphical `*_with` methods also enforce stricter ceilings from the supplied target and
+    /// [`Renderer::with_resource_policy`].
     #[cfg(any(feature = "svg", feature = "ascii"))]
     pub fn with_input_resource_policy(mut self, policy: InputResourcePolicy) -> Self {
         self.input_resources = Some(policy);
@@ -306,6 +309,19 @@ impl Renderer {
         &self,
         mut request: RenderRequest<'_>,
     ) -> Result<RenderOutput, RenderError> {
+        if request.resources.is_none()
+            && let Some(policy) = self.configured_input_policy()
+        {
+            #[cfg(feature = "svg")]
+            let policy = match request.target.svg_input_resource_policy() {
+                Some(target) if self.resources_explicit => {
+                    policy.meet(&self.resources).meet(&target)
+                }
+                Some(target) => policy.meet(&target),
+                None => policy,
+            };
+            request.resources = Some(policy);
+        }
         request.allow_missing_diagram = true;
         self.render(request)
     }
@@ -407,11 +423,11 @@ impl Renderer {
         request: AsciiRequest,
         control: OperationControl,
     ) -> Result<AsciiOutput, RenderError> {
-        let mut operation = RenderRequest::ascii(source, control, request);
-        if let Some(policy) = self.configured_input_policy() {
-            operation = operation.with_resource_policy(policy);
-        }
-        require_output!(self.render_typed_target(operation), Ascii, "ascii")
+        require_output!(
+            self.render_typed_target(RenderRequest::ascii(source, control, request)),
+            Ascii,
+            "ascii"
+        )
     }
 
     /// Renders PNG with bounded graphical and raster export defaults.

@@ -152,7 +152,7 @@ mod graphical {
     }
 
     #[test]
-    fn renderer_builder_limits_only_default_targets_and_explicit_control_keeps_precedence() {
+    fn renderer_builder_keeps_input_limits_and_allows_explicit_graphical_targets() {
         let render_policy = RenderResourcePolicy::constrained()
             .with_override("max_source_bytes", 1)
             .unwrap()
@@ -171,11 +171,17 @@ mod graphical {
             .with_input_resource_policy(input)
             .build()
             .unwrap();
-        assert!(matches!(
-            renderer.render_svg(&format!("{FLOWCHART}\n")),
-            Err(RenderError::ResourceLimitExceeded(error))
-                if error.id == "max_source_bytes" && error.maximum == FLOWCHART.len() as u64
-        ));
+        let oversized = format!("{FLOWCHART}\n");
+        for result in [
+            renderer.render_svg(&oversized),
+            renderer.render_svg_with(&oversized, SvgRequest::default(), OperationControl::new()),
+        ] {
+            assert!(matches!(
+                result,
+                Err(RenderError::ResourceLimitExceeded(error))
+                    if error.id == "max_source_bytes" && error.maximum == FLOWCHART.len() as u64
+            ));
+        }
         assert!(matches!(
             renderer.render_svg(FLOWCHART),
             Err(RenderError::ResourceLimitExceeded(error))
@@ -188,6 +194,11 @@ mod graphical {
             environment: SvgEnvironment::deterministic().with_resource_policy(render_policy),
             ..SvgRequest::default()
         };
+        assert!(matches!(
+            renderer.render_svg_with(FLOWCHART, request.clone(), OperationControl::new()),
+            Err(RenderError::ResourceLimitExceeded(error))
+                if error.id == "max_source_bytes" && error.maximum == 1
+        ));
         let control = OperationControl::new();
         control.cancel();
         assert!(matches!(
@@ -199,6 +210,23 @@ mod graphical {
                 .render_svg_with(FLOWCHART, SvgRequest::default(), OperationControl::new())
                 .is_ok()
         );
+        let expert = RenderRequest::svg(&oversized, OperationControl::new(), SvgRequest::default())
+            .with_resource_policy(InputResourcePolicy::default());
+        assert!(matches!(
+            renderer.render(expert),
+            Ok(RenderOutput::Svg(Some(_)))
+        ));
+
+        let renderer = renderer.with_resource_policy(
+            InputResourcePolicy::default()
+                .with_limit(InputResourceLimitId::MaxSourceBytes, 2)
+                .unwrap(),
+        );
+        assert!(matches!(
+            renderer.render_svg_with(FLOWCHART, SvgRequest::default(), OperationControl::new()),
+            Err(RenderError::ResourceLimitExceeded(error))
+                if error.id == "max_source_bytes" && error.maximum == 2
+        ));
     }
 
     #[test]
@@ -404,6 +432,58 @@ mod graphical {
             renderer.render_pdf(""),
             Err(RenderError::NoDiagram)
         ));
+    }
+
+    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+    #[test]
+    fn renderer_builder_binary_with_inherits_input_limits() {
+        let maximum = FLOWCHART.len() - 1;
+        let input = InputResourcePolicy::default()
+            .with_limit(InputResourceLimitId::MaxSourceBytes, maximum)
+            .unwrap();
+        let renderer = builder().with_input_resource_policy(input).build().unwrap();
+        let errors = [
+            #[cfg(feature = "png")]
+            renderer
+                .render_png_with(
+                    FLOWCHART,
+                    merman::PngRequest {
+                        svg: SvgRequest::default(),
+                        options: Default::default(),
+                    },
+                    OperationControl::new(),
+                )
+                .err(),
+            #[cfg(feature = "jpeg")]
+            renderer
+                .render_jpeg_with(
+                    FLOWCHART,
+                    merman::JpegRequest {
+                        svg: SvgRequest::default(),
+                        options: Default::default(),
+                    },
+                    OperationControl::new(),
+                )
+                .err(),
+            #[cfg(feature = "pdf")]
+            renderer
+                .render_pdf_with(
+                    FLOWCHART,
+                    merman::PdfRequest {
+                        svg: SvgRequest::default(),
+                        options: Default::default(),
+                    },
+                    OperationControl::new(),
+                )
+                .err(),
+        ];
+        for error in errors {
+            assert!(matches!(
+                error,
+                Some(RenderError::ResourceLimitExceeded(error))
+                    if error.id == "max_source_bytes" && error.maximum == maximum as u64
+            ));
+        }
     }
 }
 
