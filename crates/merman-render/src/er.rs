@@ -17,8 +17,8 @@ use crate::layout_backend::GraphLayoutBackend;
 #[cfg(any(all(test, feature = "all-diagrams"), feature = "layout-shoal"))]
 pub(crate) use merman_render_graph::er::ErCssBinding;
 pub(crate) use merman_render_graph::er::{
-    ErBoxLabel, ErConfigView, ErEntityThemePlan, ErLayoutSettings, ErNativeStyle, ErPreparedLabels,
-    ErSwimlanePaintLayout, swimlane_relationship_html_source,
+    ErConfigView, ErEntityThemePlan, ErLayoutSettings, ErNativeStyle, ErPreparedLabels,
+    ErSwimlanePaintLayout,
 };
 use merman_render_graph::er::{
     ErPreparedRelationshipLabel, er_layout_bounds, er_subgraph_title_metrics,

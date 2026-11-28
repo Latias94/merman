@@ -206,6 +206,66 @@ impl BindingEngineServices {
     }
 }
 
+/// Checks a transport's measured JSON length and returns the next aggregate byte count.
+/// The transport can validate the registration name before committing that count.
+#[cfg(feature = "svg")]
+pub fn preflight_icon_pack_json_bytes(
+    pack_index: usize,
+    json_bytes: usize,
+    input_bytes: usize,
+) -> Result<usize, BindingError> {
+    use crate::IconRegistryResourceLimitId::{MaxInputBytes, MaxPackBytes};
+
+    let pack_bytes = u64::try_from(json_bytes).unwrap_or(u64::MAX);
+    if pack_bytes > MaxPackBytes.fixed_value() {
+        return Err(BindingError::icon_registry_resource_limit(
+            MaxPackBytes,
+            pack_bytes,
+            Some(pack_index),
+            "icon pack bytes exceed the fixed per-pack ceiling",
+        ));
+    }
+
+    let next_input_bytes = input_bytes.checked_add(json_bytes).ok_or_else(|| {
+        BindingError::icon_registry_resource_limit(
+            MaxInputBytes,
+            u64::MAX,
+            Some(pack_index),
+            "aggregate icon pack byte accounting overflowed",
+        )
+    })?;
+    let total_bytes = u64::try_from(next_input_bytes).unwrap_or(u64::MAX);
+    if total_bytes > MaxInputBytes.fixed_value() {
+        return Err(BindingError::icon_registry_resource_limit(
+            MaxInputBytes,
+            total_bytes,
+            Some(pack_index),
+            "aggregate icon pack bytes exceed the fixed registry ceiling",
+        ));
+    }
+    Ok(next_input_bytes)
+}
+
+/// Checks the registration-name byte length obtained by the transport.
+#[cfg(feature = "svg")]
+pub fn preflight_icon_pack_registration_name_bytes(
+    pack_index: usize,
+    registration_name_bytes: usize,
+) -> Result<(), BindingError> {
+    use crate::IconRegistryResourceLimitId::MaxPrefixBytes;
+
+    let prefix_bytes = u64::try_from(registration_name_bytes).unwrap_or(u64::MAX);
+    if prefix_bytes > MaxPrefixBytes.fixed_value() {
+        return Err(BindingError::icon_registry_resource_limit(
+            MaxPrefixBytes,
+            prefix_bytes,
+            Some(pack_index),
+            "icon registry registration name exceeds the fixed byte ceiling",
+        ));
+    }
+    Ok(())
+}
+
 /// Builds one immutable registry through the canonical binding error-mapping seam.
 #[cfg(feature = "svg")]
 pub fn build_icon_registry<'a>(

@@ -20,7 +20,9 @@ available with `svg-output` for families that consume routes without the solver.
 `paint-scene` provides an internal typed scene and bounded SVG writer for resolved geometry and
 paint. The writer does not select an output profile or replace terminal SVG admission.
 `svg-parse` provides lexical scanning, XML stylesheet decoding, and SVG structure
-validation for postprocessing. `svg-safety` provides the bounded CSS and attribute sanitizers
+validation for postprocessing. `svg-css-postprocess` rewrites scoped CSS, declaration priority,
+and root background styles under the operation's resource meter. The facade registers these
+transformations in its SVG pipeline. `svg-safety` provides the bounded CSS and attribute sanitizers
 and the inline raster URL policy used by terminal SVG validation.
 `svg-validation` checks native and known-host inline SVG and rebases document IDs using the
 operation's resource meter.
@@ -31,9 +33,11 @@ The facade selects the pipeline and seals the selected bytes.
 `svg-bounds` measures emitted SVG shape and path bounds for parity viewports.
 `svg-identity` rewrites Mermaid marker selectors for the native SVG CSS engine.
 `css-style` provides presentation lookups, Mermaid CSS value parsing, and the shared `TextMeasurer`
-trait and its value types. `text-layout` provides font stacks, deterministic measurement, and
-line breaking. With `resources`, it also provides host measurement routing and provenance for one
-operation. `theme-svg` writes resolved canvas paint, markers, and categorical patterns to SVG.
+trait and its value types. `native-typography` checks source CSS and, with `svg-parse`, retained
+XHTML for styles that native measurement cannot represent. `text-layout` provides font stacks,
+deterministic measurement, and line breaking. With `resources`, it also provides host measurement
+routing and provenance for one operation. `theme-svg` writes resolved canvas paint, markers, and
+categorical patterns to SVG.
 `xhtml-labels` provides XHTML label font measurement and plain-paragraph projection.
 `markdown-labels` adds Markdown source words, bounded HTML projection, and shared wrapping for
 HTML and SVG label terminals.

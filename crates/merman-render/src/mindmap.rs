@@ -3,10 +3,10 @@
 use merman_model::{
     families::mindmap::MindmapDiagramRenderModel, presentation::PresentationConfig,
 };
+pub(crate) use merman_render_graph::mindmap::MindmapPreparedArtifact;
 use merman_render_graph::mindmap::{
     MindmapLayoutBackend, MindmapLayoutContext, MindmapSwimlaneGeometry, prepare_mindmap_diagram,
 };
-pub(crate) use merman_render_graph::mindmap::{MindmapPreparedArtifact, native_html_label_source};
 use std::sync::Arc;
 
 use crate::{

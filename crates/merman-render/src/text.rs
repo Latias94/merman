@@ -1,3 +1,4 @@
+#[cfg(test)]
 mod metrics;
 
 pub use line_break::split_html_br_lines;
@@ -11,8 +12,6 @@ use merman_render_core::text::line_break;
 pub use merman_render_core::text::measure_markdown_with_inline_styles;
 #[cfg(all(test, feature = "markdown-labels"))]
 pub(crate) use merman_render_core::text::measure_wrapped_markdown_with_inline_styles;
-#[cfg(any(feature = "diagram-er", feature = "diagram-requirement"))]
-pub(crate) use merman_render_core::text::mermaid_markdown_to_xhtml_label_fragment;
 pub use merman_render_core::text::replace_fontawesome_icons;
 pub use merman_render_core::text::{
     DeterministicTextMeasurer, TextMeasurer, WrappedTextLayout, try_measure_wrapped_text,
@@ -29,15 +28,13 @@ pub use merman_render_core::text::{
 pub(crate) use merman_render_core::text::{
     mermaid_markdown_contains_html_tags, mermaid_markdown_to_html_label_fragment,
 };
-#[cfg(feature = "diagram-flowchart")]
-pub(crate) use metrics::flowchart_label_xhtml_for_typography_admission;
 #[doc(hidden)]
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-agentflow"
 ))]
-pub use metrics::unsupported_html_label_style;
+pub use merman_render_flow::typography::unsupported_html_label_style;
 
 #[cfg(all(
     test,

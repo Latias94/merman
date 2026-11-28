@@ -3100,6 +3100,26 @@ fn overlap_separation_treats_nearly_equal_centers_as_equal() {
 }
 
 #[test]
+fn overlap_separation_uses_cached_centers_for_slope_only() {
+    let a = node_at(0.0, 0.0, 12.0, 4.0);
+    let b = node_at(4.0, -1.0, 6.0, 8.0);
+
+    // The live centers are (6, 2) and (7, 3). Reversing the cached center order
+    // varies the slope while both direction signs still come from the live centers.
+    for (cached_b_x, cached_b_y, expected_x, expected_y) in
+        [(5.0, 0.0, 1.5_f64, 2.75_f64), (4.0, 1.0, 4.25, 2.25)]
+    {
+        let (dx, dy) = super::calc_separation_amount_with_centers(
+            &a, &b, 0.25, 6.0, 2.0, cached_b_x, cached_b_y,
+        );
+        assert_eq!(
+            (dx.to_bits(), dy.to_bits()),
+            (expected_x.to_bits(), expected_y.to_bits())
+        );
+    }
+}
+
+#[test]
 fn constraint_handler_preserves_group_port_second_run_tiny_gap() {
     // Browser evidence for `stress_architecture_group_port_edges_017`, run=1:
     // Cytoscape/cose-base constraint handling leaves a 7.1e-15 positive gap between the

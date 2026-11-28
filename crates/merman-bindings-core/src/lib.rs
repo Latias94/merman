@@ -123,6 +123,9 @@ pub use service_contract::{
 pub use services::BindingEngineServices;
 #[cfg(feature = "svg")]
 pub use services::{BindingIconRegistry, build_icon_registry, build_icon_registry_from_json};
+#[cfg(feature = "svg")]
+#[doc(hidden)]
+pub use services::{preflight_icon_pack_json_bytes, preflight_icon_pack_registration_name_bytes};
 pub use svg_plan::{SVG_PLAN_SCHEMA_VERSION, SvgPlanPayload, svg_plan_json};
 
 /// Parses Mermaid into the canonical semantic JSON model without requiring any render backend.

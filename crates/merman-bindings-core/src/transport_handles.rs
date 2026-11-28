@@ -75,6 +75,37 @@ impl<T> HandleRegistry<T> {
 
 pub type OperationControlRegistry = HandleRegistry<OperationControl>;
 
+/// Why an operation control is unavailable for acquisition or retirement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OperationControlHandleError {
+    NeverIssued,
+    Retired,
+}
+
+impl HandleRegistry<OperationControl> {
+    /// Clones the live control so that it can be used after unlocking the registry.
+    pub fn acquire(&self, handle: u64) -> Result<OperationControl, OperationControlHandleError> {
+        self.get(handle)
+            .cloned()
+            .ok_or_else(|| self.inactive_control_handle(handle))
+    }
+
+    /// Removes the registry's control without cancelling acquired clones. The caller owns the
+    /// returned control and can drop it after unlocking the registry.
+    pub fn retire(&mut self, handle: u64) -> Result<OperationControl, OperationControlHandleError> {
+        self.remove(handle)
+            .ok_or_else(|| self.inactive_control_handle(handle))
+    }
+
+    fn inactive_control_handle(&self, handle: u64) -> OperationControlHandleError {
+        if self.was_issued(handle) {
+            OperationControlHandleError::Retired
+        } else {
+            OperationControlHandleError::NeverIssued
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -111,11 +142,27 @@ mod tests {
         let mut registry = OperationControlRegistry::new(1);
         let control = OperationControl::new();
         let handle = registry.try_insert(control.clone()).unwrap();
-        let acquired = registry.get(handle).unwrap().clone();
-        drop(registry.remove(handle));
+        let acquired = registry.acquire(handle).unwrap();
+        drop(registry.retire(handle).unwrap());
 
-        assert!(registry.get(handle).is_none());
+        assert!(!acquired.is_cancelled());
         control.cancel();
         assert!(acquired.is_cancelled());
+    }
+
+    #[test]
+    fn operation_control_handles_distinguish_never_issued_from_retired() {
+        let mut registry = OperationControlRegistry::new(2);
+        let handle = registry.try_insert(OperationControl::new()).unwrap();
+        drop(registry.retire(handle).unwrap());
+
+        for (handle, expected) in [
+            (0, OperationControlHandleError::NeverIssued),
+            (handle, OperationControlHandleError::Retired),
+            (handle + 1, OperationControlHandleError::NeverIssued),
+        ] {
+            assert_eq!(registry.acquire(handle).unwrap_err(), expected);
+            assert_eq!(registry.retire(handle).unwrap_err(), expected);
+        }
     }
 }

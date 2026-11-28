@@ -36,6 +36,7 @@ mod native_theme;
 mod source_typography;
 mod svg;
 mod theme;
+mod typography_admission;
 
 pub use config::RequirementConfigView;
 pub use css_binding::RequirementCssBinding;
@@ -52,6 +53,7 @@ pub use source_typography::RequirementNodeTypography;
 pub use svg::{RequirementCanonicalEdge, RequirementCanonicalEdgePainter};
 pub use svg::{RequirementSvgContext, render_requirement_diagram_svg_model};
 pub use theme::RequirementPaintThemePlan;
+pub use typography_admission::{unsupported_html_style, unsupported_text_style};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RequirementDiagramLayout {

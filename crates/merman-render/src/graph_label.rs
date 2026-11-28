@@ -20,9 +20,7 @@ use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
 use merman_model::presentation::PresentationConfig;
 use merman_render_core::mermaid_style::HtmlTextGeometryDeclarations;
 #[cfg(feature = "markdown-labels")]
-pub(crate) use merman_render_core::text::create_text_html::{
-    FlowchartLabelMetricsRequest, flowchart_label_html_source,
-};
+pub(crate) use merman_render_core::text::create_text_html::FlowchartLabelMetricsRequest;
 #[cfg(all(
     test,
     any(
@@ -38,6 +36,7 @@ pub(crate) use merman_render_core::text::html_label_layout::flowchart_label_plai
 #[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
 use merman_render_flow::node_geometry::flowchart_node_label_min_width;
 
+#[cfg(any(feature = "layout-shoal", test))]
 pub(crate) fn flowchart_label_is_empty_for_render(label: &str) -> bool {
     // Mermaid admits an edge label whenever FlowDB's already-trimmed label string is non-empty.
     // Do not infer emptiness from extracted text: image-, icon-, and math-only HTML labels still
@@ -59,9 +58,6 @@ pub(crate) fn flowchart_label_metrics_for_layout(
         )),
     )
 }
-
-#[cfg(feature = "markdown-labels")]
-pub(crate) use merman_render_core::text::create_text_html::flowchart_label_sanitize_config;
 
 /// Measures the exact sanitized XHTML retained for the corresponding HTML-label terminal.
 #[cfg(all(test, feature = "markdown-labels"))]
@@ -288,6 +284,8 @@ mod tests {
 
     #[test]
     fn incomplete_image_tag_uses_final_plain_text_measurement() {
+        use merman_render_core::text::create_text_html::flowchart_label_html_source;
+
         let config = crate::test_support::presentation_config(
             serde_json::json!({ "securityLevel": "strict" }),
         );

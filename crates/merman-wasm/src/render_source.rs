@@ -159,13 +159,11 @@ impl WasmPreparedSource {
     }
 
     fn with_operation<T>(&self, run: impl FnOnce() -> Result<T, JsValue>) -> Result<T, JsValue> {
-        if self.active.replace(true) {
-            return Err(binding_error_to_js(BindingError::reentrant_call(
-                "a prepared source cannot be re-entered from its text measurement callback",
-            )));
-        }
-        let _guard = ActiveOperation(&self.active);
-        run()
+        crate::render_operation::with_active(
+            &self.active,
+            "a prepared source cannot be re-entered from its text measurement callback",
+            run,
+        )
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -178,12 +176,5 @@ impl WasmPreparedSource {
             run(BindingEngineServices::new()
                 .with_host_text_measurer(std::sync::Arc::new(crate::WasmHostTextMeasurer)))
         })
-    }
-}
-
-struct ActiveOperation<'a>(&'a Cell<bool>);
-impl Drop for ActiveOperation<'_> {
-    fn drop(&mut self) {
-        self.0.set(false);
     }
 }

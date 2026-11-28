@@ -232,12 +232,14 @@ fn registered_operation_control(
     token: MermanNativeOperationControlToken,
 ) -> Option<OperationControl> {
     operation_control_registry()
-        .get(token >> MERMAN_NATIVE_TOKEN_COUNTER_SHIFT)
-        .cloned()
+        .acquire(token >> MERMAN_NATIVE_TOKEN_COUNTER_SHIFT)
+        .ok()
 }
 
 fn retire_operation_control(token: MermanNativeOperationControlToken) -> Option<OperationControl> {
-    operation_control_registry().remove(token >> MERMAN_NATIVE_TOKEN_COUNTER_SHIFT)
+    operation_control_registry()
+        .retire(token >> MERMAN_NATIVE_TOKEN_COUNTER_SHIFT)
+        .ok()
 }
 
 fn runtime_catalog_bytes() -> Result<&'static [u8], NativeFailure> {

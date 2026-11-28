@@ -1,13 +1,15 @@
 //! Mindmap labels, layout projections, theme binding, and balanced SVG emission.
 
 use merman_model::presentation::PresentationConfig;
+use merman_model::{OperationControl, OperationControlResult};
 use merman_render_core::config::config_f64_css_px;
 use merman_render_core::{
     Bounds, Error, LayoutCluster, LayoutEdge, LayoutNode, LayoutPoint, RenderCapability, Result,
     SwimlaneLaneLayout, config, html,
     layout_work::OperationLayoutWorkControl,
     math::{self, MathRenderer},
-    resources::{self, OperationWorkMeter},
+    mermaid_style::native_typography::unsupported_retained_html_style,
+    resources::{self, OperationWorkMeter, RenderResourcePolicy},
     text::{
         self, TextMeasurer, TextStyle, WrapMode, create_text_html::FlowchartLabelMetricsRequest,
     },
@@ -298,20 +300,43 @@ impl MindmapPreparedLabel {
     }
 }
 
-/// Native admission uses the same Markdown, entity and sanitizer path as prepared labels.
-pub fn native_html_label_source(
-    text: &str,
+/// Inspects retained Mindmap labels using the same preparation as the SVG writer.
+pub fn unsupported_html_style(
+    model: &MindmapModel,
     config: &PresentationConfig,
-    work_meter: &Arc<resources::OperationWorkMeter>,
-) -> Result<String> {
-    MindmapPreparedLabel::prepare_at_phase(
-        "",
-        text,
-        config,
-        work_meter,
-        merman_model::OperationPhase::Semantic,
-    )
-    .map(|label| label.xhtml)
+    control: &OperationControl,
+) -> OperationControlResult<Option<String>> {
+    if !config::config_effective_html_labels(config) {
+        return Ok(None);
+    }
+    let work = Arc::new(OperationWorkMeter::new_with_control(
+        RenderResourcePolicy::unbounded_for_trusted_input(),
+        control.clone(),
+    ));
+    for node in &model.nodes {
+        control.checkpoint()?;
+        if math::contains_delimited_math(&node.label) {
+            // Math owns its projected HTML and native capability admission separately.
+            continue;
+        }
+        let html = match MindmapPreparedLabel::prepare_at_phase(
+            "",
+            &node.label,
+            config,
+            &work,
+            merman_model::OperationPhase::Semantic,
+        )
+        .map(|label| label.xhtml)
+        {
+            Ok(html) => html,
+            Err(Error::Cancelled(error)) => return Err(error),
+            Err(_) => return Ok(Some("Mindmap HTML label normalization".into())),
+        };
+        if let Some(property) = unsupported_retained_html_style(&html, control)? {
+            return Ok(Some(property));
+        }
+    }
+    Ok(None)
 }
 
 pub(crate) fn single_image_paragraph_inner(fragment: &str) -> Option<&str> {

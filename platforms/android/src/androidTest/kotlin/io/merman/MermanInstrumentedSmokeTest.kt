@@ -30,6 +30,42 @@ class MermanInstrumentedSmokeTest {
     }
 
     @Test
+    fun iconPackPreflightPreservesByteAndUtf16ErrorOrder() {
+        val json = """{"prefix":"test","icons":{}}"""
+        val oversizedName = "\u00e9".repeat(32) + "x"
+        val unpairedSurrogate = '\uD800'
+
+        fun constructionError(vararg packs: MermanIconPack): MermanException {
+            val services = MermanEngineServices(iconPackSet = MermanIconPackSet.fromPacks(packs.toList()))
+            val error = runCatching { MermanEngine(services = services).close() }.exceptionOrNull()
+            check(error is MermanException) { "Expected JNI constructor failure, got $error" }
+            return error
+        }
+
+        val invalidName = constructionError(MermanIconPack(json, oversizedName + unpairedSurrogate))
+        check(invalidName.codeName == "MERMAN_UTF8_ERROR")
+        check(invalidName.message == "icon registry registration name contains an unpaired UTF-16 surrogate")
+        check(invalidName.resourceDetails == null)
+        check(invalidName.iconRegistryDetails == MermanIconRegistryErrorDetails("invalid_utf8", 0L, null))
+
+        val byteLimit = constructionError(
+            MermanIconPack(json, oversizedName),
+            MermanIconPack(unpairedSurrogate.toString()),
+        )
+        check(byteLimit.codeName == "MERMAN_RESOURCE_LIMIT_EXCEEDED")
+        check(byteLimit.message == "icon registry registration name exceeds the fixed byte ceiling")
+        check(byteLimit.resourceDetails == MermanResourceErrorDetails(
+            cause = "ceiling",
+            limitId = "max_icon_registry_prefix_bytes",
+            phase = "icon_registry_parse",
+            actual = 65,
+            max = 64,
+            profile = "constructor-fixed",
+        ))
+        check(byteLimit.iconRegistryDetails == MermanIconRegistryErrorDetails("resource_limit_exceeded", 0L, null))
+    }
+
+    @Test
     fun rejectsCoercedOrIncompatibleRuntimeCatalogHandshakeFields() {
         val canonical = Merman.runtimeCatalogJson()
         val transportVersion = Merman.TRANSPORT_API_VERSION

@@ -97,6 +97,14 @@ pub mod svg;
 #[doc(hidden)]
 pub mod svg_label;
 
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
+#[doc(hidden)]
+pub mod typography;
+
 #[cfg(feature = "layout-dagre")]
 #[doc(hidden)]
 pub mod dagre;

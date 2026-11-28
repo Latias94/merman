@@ -14,10 +14,7 @@ use serde_json::Value;
 #[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 use std::sync::Arc;
 
-pub(crate) use graph::{
-    RequirementConfigView, RequirementNodeTypography, RequirementPaintThemePlan,
-    element_node_label_sources, requirement_node_label_sources, sanitize_label_with_sink,
-};
+pub(crate) use graph::RequirementPaintThemePlan;
 
 #[cfg(all(test, feature = "layout-dagre"))]
 mod native_theme;

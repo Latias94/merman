@@ -1,4 +1,6 @@
-use merman_bindings_core::transport_handles::OperationControlRegistry;
+use merman_bindings_core::transport_handles::{
+    OperationControlHandleError, OperationControlRegistry,
+};
 use merman_bindings_core::{BindingError, OperationControl};
 use std::time::Duration;
 
@@ -21,26 +23,25 @@ impl JniOperationControlRegistry {
     }
 
     pub(crate) fn acquire(&self, token: u64) -> Result<OperationControl, BindingError> {
-        self.validate_issued(token)?;
-        self.0.get(token).cloned().ok_or_else(|| {
-            BindingError::invalid_argument(
-                "Android operation-control token is unknown or has already been released",
-            )
-        })
+        self.0.acquire(token).map_err(control_handle_error)
     }
 
     pub(crate) fn release(&mut self, token: u64) -> Result<Option<OperationControl>, BindingError> {
-        self.validate_issued(token)?;
-        Ok(self.0.remove(token))
-    }
-
-    fn validate_issued(&self, token: u64) -> Result<(), BindingError> {
-        if self.0.was_issued(token) {
-            Ok(())
-        } else {
-            Err(BindingError::invalid_argument(
-                "Android operation-control token is zero or was never issued",
-            ))
+        match self.0.retire(token) {
+            Ok(control) => Ok(Some(control)),
+            Err(OperationControlHandleError::Retired) => Ok(None),
+            Err(error) => Err(control_handle_error(error)),
         }
     }
+}
+
+fn control_handle_error(error: OperationControlHandleError) -> BindingError {
+    BindingError::invalid_argument(match error {
+        OperationControlHandleError::NeverIssued => {
+            "Android operation-control token is zero or was never issued"
+        }
+        OperationControlHandleError::Retired => {
+            "Android operation-control token is unknown or has already been released"
+        }
+    })
 }
