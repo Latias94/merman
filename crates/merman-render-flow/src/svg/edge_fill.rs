@@ -84,7 +84,7 @@ mod shoal {
     use super::*;
     use kurbo::{BezPath, Line, ParamCurve, ParamCurveExtrema, PathSeg, Point, Rect, Shape, Vec2};
     use merman_model::css_color::{RgbaChannels, hsl_to_rgb, rgb_to_hsl};
-    use merman_model::families::flowchart::{FlowEdge, FlowEdgeVisibility};
+    use merman_model::families::flowchart::FlowEdgeVisibility;
     use merman_render_core::graph_layout::spatial::{Bounds as SpatialBounds, Bvh, BvhEntry};
     use merman_render_core::theme_svg::edge_label_background::{literal_fill, literal_opacity};
     use merman_theme_contract::v2::Texture;
@@ -364,7 +364,12 @@ mod shoal {
                     message: format!("could not read painted Shoal edge path: {error}"),
                 })?;
                 let offset = Vec2::new(cached.origin_x - ctx.tx, cached.origin_y - ctx.ty);
-                let ink = EdgeInk::new(&shaft, edge.edge, &cached.geom, offset, half_width);
+                let markers = ctx.edge_style_plan.marker_metrics_for(
+                    edge.key,
+                    edge.edge,
+                    ctx.compatibility.look.is_neo(),
+                )?;
+                let ink = EdgeInk::new(&shaft, markers, &cached.geom, offset, half_width);
                 surfaces.touches(&ink, &mut hits, ctx)?;
                 let background = hits
                     .first()
@@ -509,12 +514,14 @@ mod shoal {
     impl<'a> EdgeInk<'a> {
         pub(in crate::svg) fn new(
             shaft: &'a BezPath,
-            edge: &FlowEdge,
+            (start, end): (
+                merman_render_core::route_types::Marker,
+                merman_render_core::route_types::Marker,
+            ),
             geom: &FlowchartEdgePathGeom,
             offset: Vec2,
             half_width: f64,
         ) -> Self {
-            let (start, end) = flowchart_marker_metrics(edge);
             let mut segments = shaft.segments();
             let first = segments.next();
             let last = segments.last().or(first);

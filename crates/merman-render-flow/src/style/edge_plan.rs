@@ -617,6 +617,10 @@ impl FlowchartEdgeStylePlan {
         Ok(self.occurrence(key)?.animation)
     }
 
+    pub(crate) fn marker_uses_margin_for(&self, key: FlowchartEdgeKey, neo: bool) -> Result<bool> {
+        Ok(neo && !self.animation_for(key)?.is_active())
+    }
+
     pub fn edge_label_text_style_for<'a>(
         &'a self,
         key: FlowchartEdgeKey,

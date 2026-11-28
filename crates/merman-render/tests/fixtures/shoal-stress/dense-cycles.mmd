@@ -1,0 +1,29 @@
+---
+config:
+  layout: shoal
+  htmlLabels: false
+  flowchart: { htmlLabels: false }
+  class: { htmlLabels: false }
+  state: { htmlLabels: false }
+  er: { htmlLabels: false }
+  usecase: { htmlLabels: false }
+  architecture: { htmlLabels: false }
+  requirement: { htmlLabels: false }
+---
+flowchart LR
+  A[Node A] -->|a-b| B[Node B]
+  A -->|a-c| C[Node C]
+  A -->|a-d| D[Node D]
+  B -->|b-c| C
+  B -->|b-e| E[Node E]
+  B -.->|b-a back| A
+  C -->|c-d| D
+  C -->|c-f| F[Node F]
+  C -.->|c-a back| A
+  D -->|d-e| E
+  D -->|d-f| F
+  D -.->|d-b back| B
+  E -->|e-f| F
+  E -.->|e-c back| C
+  F -.->|f-a loop| A
+  F -.->|f-d loop| D

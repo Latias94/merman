@@ -183,7 +183,12 @@ pub(in crate::svg) fn reseat(
                 shafts.entry(key).or_insert_with(Vec::new).push(line);
             }
         };
-        let ink = EdgeInk::new(&shaft, edge.edge, geom, offset, outset);
+        let markers = ctx.edge_style_plan.marker_metrics_for(
+            key,
+            edge.edge,
+            ctx.compatibility.look.is_neo(),
+        )?;
+        let ink = EdgeInk::new(&shaft, markers, geom, offset, outset);
         inks.extend(ink.marker_bounds().map(|bounds| Ink {
             bounds: bounds.inflate(outset, outset),
             kind: Obstacle::Solid,

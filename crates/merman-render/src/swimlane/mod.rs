@@ -204,7 +204,7 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
                     .routing_style(),
             ),
             execution,
-            svg_label_sidecar,
+            (svg_label_sidecar, edge_style_plan),
         )?)
     } else {
         None

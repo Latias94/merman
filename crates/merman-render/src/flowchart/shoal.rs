@@ -79,7 +79,15 @@ pub(crate) fn layout(
     );
     let fit_width = execution.adaptation == LayoutAdaptation::FitWidth;
     let native = execution.native_family_theme();
-    let (graph, bindings) = measure(view, &measurement, config, native, fit_width, &mut work)?;
+    let (graph, bindings) = measure(
+        view,
+        &measurement,
+        config,
+        edge_styles,
+        native,
+        fit_width,
+        &mut work,
+    )?;
     let (solved, placement) = placement::solve(
         &graph,
         bindings.nodes.iter().map(|node| node.id.as_str()),
@@ -157,6 +165,7 @@ fn measure(
     view: FlowchartRenderModelRef<'_>,
     measurement: &FlowchartMeasurement<'_>,
     config: &PresentationConfig,
+    edge_styles: &crate::svg::FlowchartEdgeStylePlan,
     native: Option<&crate::theme::FamilyTheme>,
     fit_width: bool,
     work: &mut OperationLayoutWorkControl,
@@ -314,7 +323,8 @@ fn measure(
         work.charge_adapter(1)?;
         let edge = projected.semantic;
         let label = measurement.edge_label(edge, key)?;
-        let (start_marker, end_marker) = crate::svg::flowchart_marker_metrics(edge);
+        let markers = edge_styles.marker_metrics_for(key, edge, look_is_neo)?;
+        let (start_marker, end_marker) = edge_styles.reserve_marker_stroke(key, markers)?;
         graph.edges.push(MeasuredEdge {
             source: endpoint(projected.from)?,
             target: endpoint(projected.to)?,

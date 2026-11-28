@@ -485,16 +485,16 @@ impl CanonicalRoutes {
                     .with_label_bounds(route.label_bounds.map(|label| label + translation)),
             )
         };
-        let path = route_paint::build_svg_path_with_scratch(
+        let path = route_paint::RoutePaintRequest {
             points,
-            route.sides,
+            sides: route.sides,
             style,
-            route.markers,
-            route_paint::CurveTerminals::Smooth,
+            markers: route.markers,
+            curve_terminals: route_paint::CurveTerminals::Smooth,
             stitches,
             clearance,
-            &mut scratch.route,
-        )
+        }
+        .paint_solved_svg(&mut scratch.route)
         .map_err(|error| Error::InvalidModel {
             message: format!("Could not paint canonical edge `{edge_id}`: {error}"),
         })?;

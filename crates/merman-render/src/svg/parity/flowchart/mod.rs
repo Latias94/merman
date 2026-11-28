@@ -17,7 +17,7 @@ pub(crate) use merman_render_flow::node_inventory::{
     FlowchartNodeLayoutView, FlowchartPreparedNodes,
 };
 pub(crate) use merman_render_flow::style::FlowchartEdgeStylePlan;
-#[cfg(feature = "layout-shoal")]
+#[cfg(all(test, feature = "layout-shoal"))]
 pub(crate) use merman_render_flow::svg::flowchart_marker_metrics;
 
 #[cfg(all(
