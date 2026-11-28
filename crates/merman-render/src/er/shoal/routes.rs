@@ -110,6 +110,7 @@ fn align_parallel(
     }
     work.charge_adapter(solved.edges.len())?;
     let mut proposals = Vec::new();
+    let mut banks = Vec::new();
     let mut stitches = solved.border_stitches.iter().peekable();
     for (index, edge) in solved.edges.iter().enumerate() {
         work.charge_adapter(0)?;
@@ -132,15 +133,16 @@ fn align_parallel(
                 continue;
             }
             work.charge_adapter(edge.points.len())?;
-            if let Some(alignment) = Alignment::propose(edge, from)
-                && (!alignment.shaft
-                    || [a, b]
-                        .into_iter()
-                        .all(|node| alignment.on_face(solved.nodes[node as usize])))
-            {
-                proposals.try_reserve(1).map_err(|_| {
-                    work.map_shoal_error(merman_layout_shoal::LayoutError::AllocationLimit)
-                })?;
+            let bodies = [a, b].map(|node| solved.nodes[node as usize]);
+            if let Some(alignment) = Alignment::propose(edge, from, bodies) {
+                proposals
+                    .try_reserve(1)
+                    .and_then(|()| banks.try_reserve(1))
+                    .map_err(|_| {
+                        work.map_shoal_error(merman_layout_shoal::LayoutError::AllocationLimit)
+                    })?;
+                let bank = if a < b { (a, from) } else { (b, to) };
+                banks.push(((bank.0, bank.1 as usize), proposals.len()));
                 proposals.push((index, alignment));
             }
         }
@@ -150,38 +152,49 @@ fn align_parallel(
     }
 
     let mut clearance = Clearance::new(graph, solved, &proposals, shaft_outset, work)?;
-    'proposals: for (index, alignment) in proposals {
-        work.charge_adapter(1)?;
-        let edge = &mut solved.edges[index];
-        let [first, .., last] = edge.points.as_slice() else {
-            continue;
-        };
-        let shaft = alignment.shaft.then(|| {
-            let start = point(alignment.port(*first));
-            let end = point(alignment.port(*last));
-            (
-                Part::Shaft,
-                Rect::from_points(start, end).inflate(shaft_outset, shaft_outset),
-            )
-        });
-        let spec = &graph.edges[index];
-        let boxes = route_boxes(edge, spec, Some(alignment))
-            .into_iter()
-            .zip(route_boxes(edge, spec, None))
-            .filter_map(|((part, next), (_, previous))| {
-                next.filter(|&rect| Some(rect) != previous)
-                    .map(|rect| (part, rect))
-            });
-        for (part, area) in shaft.into_iter().chain(boxes) {
-            if !clearance.permits(index, edge, part, area, work)? {
-                continue 'proposals;
+    work.charge_adapter(work.checked_mul(banks.len(), banks.len().ilog2() as usize + 3)?)?;
+    banks.sort_unstable();
+    for bank in banks.chunk_by(|a, b| a.0 == b.0) {
+        let alignments = || bank.iter().map(|&(_, proposal)| proposals[proposal]);
+        // Markers that already occupy their full pitch can move together. Validate the
+        // proposed bank as a unit before trying individual moves against the old routes.
+        let mut clear = bank.len() > 1;
+        if clear {
+            for (index, _) in alignments() {
+                clearance.accepted[index] = true;
+            }
+            for (index, alignment) in alignments() {
+                if !clearance.permits_alignment(
+                    index,
+                    &solved.edges[index],
+                    &graph.edges[index],
+                    alignment,
+                    work,
+                )? {
+                    clear = false;
+                    break;
+                }
+            }
+            if !clear {
+                for (index, _) in alignments() {
+                    clearance.accepted[index] = false;
+                }
             }
         }
-        if alignment.shaft {
-            work.charge_adapter(edge.points.len())?;
+        for (index, alignment) in alignments() {
+            let edge = &mut solved.edges[index];
+            if clear
+                || clearance.permits_alignment(index, edge, &graph.edges[index], alignment, work)?
+            {
+                work.charge_adapter(if alignment.shaft {
+                    edge.points.len()
+                } else {
+                    1
+                })?;
+                alignment.apply(edge);
+                clearance.accepted[index] = true;
+            }
         }
-        alignment.apply(edge);
-        clearance.accepted[index] = true;
     }
     Ok(())
 }
@@ -202,7 +215,7 @@ fn coordinates(axis: Axis, x: f64, y: f64) -> (f64, f64) {
 }
 
 impl Alignment {
-    fn propose(edge: &SolvedEdge, from: Side) -> Option<Self> {
+    fn propose(edge: &SolvedEdge, from: Side, bodies: [NodeRect; 2]) -> Option<Self> {
         let [first, .., last] = edge.points.as_slice() else {
             return None;
         };
@@ -218,7 +231,18 @@ impl Alignment {
         {
             return None;
         }
-        let center = start.midpoint(end);
+        let [[a_min, a_max], [b_min, b_max]] = bodies.map(|body| {
+            let lo = coordinates(axis, body.x, body.y).1;
+            let span = coordinates(axis, body.width, body.height).1;
+            [lo, lo + span]
+        });
+        let (lo, hi) = (a_min.max(b_min), a_max.min(b_max));
+        if !lo.is_finite() || !hi.is_finite() || lo > hi {
+            return None;
+        }
+        // A partly shared face can exclude the midpoint even when the two terminals are
+        // within one pixel. Use the nearest legal shared row before checking the ink.
+        let center = start.midpoint(end).clamp(lo, hi);
         let mut previous = start_along;
         let mut shaft = false;
         for p in &edge.points {
@@ -248,12 +272,6 @@ impl Alignment {
             Axis::Horizontal => *y = self.center,
             Axis::Vertical => *x = self.center,
         }
-    }
-
-    fn on_face(self, node: NodeRect) -> bool {
-        let start = coordinates(self.axis, node.x, node.y).1;
-        let span = coordinates(self.axis, node.width, node.height).1;
-        (start..=start + span).contains(&self.center)
     }
 
     fn port(self, mut port: RoutePoint) -> RoutePoint {
@@ -477,6 +495,41 @@ impl Clearance {
             accepted,
             shaft_outset,
         })
+    }
+
+    fn permits_alignment(
+        &self,
+        index: usize,
+        edge: &SolvedEdge,
+        spec: &MeasuredEdge,
+        alignment: Alignment,
+        work: &mut OperationLayoutWorkControl,
+    ) -> Result<bool> {
+        work.charge_adapter(1)?;
+        let [first, .., last] = edge.points.as_slice() else {
+            return Ok(false);
+        };
+        let shaft = alignment.shaft.then(|| {
+            let start = point(alignment.port(*first));
+            let end = point(alignment.port(*last));
+            (
+                Part::Shaft,
+                Rect::from_points(start, end).inflate(self.shaft_outset, self.shaft_outset),
+            )
+        });
+        let boxes = route_boxes(edge, spec, Some(alignment))
+            .into_iter()
+            .zip(route_boxes(edge, spec, None))
+            .filter_map(|((part, next), (_, previous))| {
+                next.filter(|&rect| Some(rect) != previous)
+                    .map(|rect| (part, rect))
+            });
+        for (part, area) in shaft.into_iter().chain(boxes) {
+            if !self.permits(index, edge, part, area, work)? {
+                return Ok(false);
+            }
+        }
+        Ok(true)
     }
 
     fn permits(
