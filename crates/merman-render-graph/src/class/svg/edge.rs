@@ -30,7 +30,7 @@ use merman_render_core::svg_edge_parity::path_numbers::json_stringify_points_int
 use rustc_hash::FxHashMap;
 
 const CLASS_HAND_DRAWN_EDGE_STROKE: &str = "#000";
-const CLASS_HAND_DRAWN_EDGE_STROKE_WIDTH: &str = "1";
+const CLASS_HAND_DRAWN_EDGE_STROKE_WIDTH: f64 = 1.0;
 
 pub(super) struct ClassEdgeGroupsRenderContext<'a> {
     pub edges: &'a [LayoutEdge],
@@ -587,21 +587,33 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
                 ));
             }
             if uses_canonical_routes {
-                let shaft =
+                let stroke_outset = if ctx.look == "handDrawn" {
+                    stroke_outset.max(CLASS_HAND_DRAWN_EDGE_STROKE_WIDTH / 2.0)
+                } else {
+                    stroke_outset
+                };
+                let shaft_bounds =
                     kurbo::Rect::new(bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y)
-                        .inflate(path_paint_outset, path_paint_outset);
-                for (gap, terminal) in gaps[1..]
-                    .iter_mut()
-                    .zip([&e.start_label_right, &e.end_label_left])
-                {
-                    if let Some(label) = terminal {
+                        .inflate(stroke_outset, stroke_outset);
+                let terminals = [&e.start_label_right, &e.end_label_left].map(|label| {
+                    label.as_ref().and_then(|label| {
+                        if label.width <= 0.0 || label.height <= 0.0 {
+                            return None;
+                        }
                         let center = ctx.translated_label_center(label);
                         let rect = kurbo::Rect::from_center_size(
                             (center.x, center.y),
                             (label.width, label.height),
                         );
-                        if rect.intersect(shaft).area() > 0.0 {
-                            *gap = Some(rect);
+                        (rect.intersect(shaft_bounds).area() > 0.0).then_some(rect)
+                    })
+                });
+                if terminals.iter().any(Option::is_some) {
+                    ctx.work_meter.charge_emit_work(render_d.len())?;
+                    if let Ok(shaft) = kurbo::BezPath::from_svg(render_d) {
+                        for (gap, terminal) in gaps[1..].iter_mut().zip(terminals) {
+                            *gap = terminal
+                                .and_then(|rect| terminal_label_gap(&shaft, rect, stroke_outset));
                         }
                     }
                 }
@@ -633,7 +645,7 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
         let _ = write!(out, r#"<path d="{}""#, escape_attr_display(render_d));
         if let Some(ordinal) = label_cutout {
             let id = ctx.diagram_id;
-            let _ = write!(out, r#" clip-path="url(#{id}_class-edge-label-{ordinal})""#);
+            cutout::write_reference(out, format_args!("{id}_class-edge-label-{ordinal}"));
         }
         if ctx.look == "handDrawn" {
             let _ = write!(
@@ -743,6 +755,34 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
         ordered_edges,
         label_centers: edge_label_centers,
     })
+}
+
+fn terminal_label_gap(
+    shaft: &kurbo::BezPath,
+    rect: kurbo::Rect,
+    stroke_outset: f64,
+) -> Option<kurbo::Rect> {
+    use kurbo::ParamCurve as _;
+
+    let ink = rect.inflate(stroke_outset, stroke_outset);
+    let corners = [
+        ink.origin(),
+        (ink.x1, ink.y0).into(),
+        (ink.x1, ink.y1).into(),
+        (ink.x0, ink.y1).into(),
+    ];
+    let sides =
+        std::array::from_fn::<_, 4, _>(|i| kurbo::Line::new(corners[i], corners[(i + 1) % 4]));
+    shaft
+        .segments()
+        .any(|segment| {
+            ink.contains(segment.start())
+                || ink.contains(segment.end())
+                || sides
+                    .iter()
+                    .any(|side| !segment.intersect_line(*side).is_empty())
+        })
+        .then(|| rect.inflate(4.0, 2.0))
 }
 
 fn write_class_edge_label_cutout(
@@ -1264,6 +1304,19 @@ pub(super) fn class_edge_render_order<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn class_terminal_gap_covers_ink_only_when_the_painted_shaft_hits_it() {
+        let shaft = kurbo::BezPath::from_svg("M0 0H30V30").unwrap();
+        let in_corner = kurbo::Rect::new(7.0, 9.0, 23.0, 14.0);
+        assert_eq!(terminal_label_gap(&shaft, in_corner, 1.0), None);
+
+        let on_shaft = kurbo::Rect::new(7.0, -1.0, 23.0, 4.0);
+        assert_eq!(
+            terminal_label_gap(&shaft, on_shaft, 1.0),
+            Some(kurbo::Rect::new(3.0, -3.0, 27.0, 6.0))
+        );
+    }
 
     fn label_at(x: f64, y: f64) -> LayoutLabel {
         LayoutLabel {

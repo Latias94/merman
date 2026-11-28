@@ -2785,7 +2785,7 @@ fn usecase_native_theme_paints_sketch_with_a_cutout_on_the_labeled_edge() {
 #[cfg(feature = "layout-shoal")]
 #[test]
 fn shoal_usecase_cuts_panel_captions_on_an_opaque_canvas() {
-    use merman_render::theme::{Appearance, BuiltinPreset, NativeTheme, ThemeCompiler};
+    use merman_render::theme::{Appearance, BuiltinPreset, Color, NativeTheme, ThemeCompiler};
 
     let source = "usecase-beta\ndirection TB\nsystemBoundary Panel(\"Payments\")\n  A(\"Authorize\")\n  B(\"Capture\")\nend\nA -- internal --> B\nC -- external --> D\n";
     let theme = ThemeCompiler::new()
@@ -2817,6 +2817,16 @@ fn shoal_usecase_cuts_panel_captions_on_an_opaque_canvas() {
                 })
                 .unwrap();
             assert_eq!(path.attribute("clip-path").is_some(), on_panel, "{id}");
+            if !html {
+                let rect = caption
+                    .descendants()
+                    .find(|node| node.attribute("class") == Some("background"))
+                    .unwrap();
+                assert_eq!(
+                    rect.attribute("style"),
+                    Some(if on_panel { "fill:none" } else { "" })
+                );
+            }
             assert_eq!(
                 caption.parent_element().unwrap().attribute("class"),
                 Some(if on_panel {
@@ -2825,6 +2835,58 @@ fn shoal_usecase_cuts_panel_captions_on_an_opaque_canvas() {
                     "edgeLabel"
                 }),
             );
+        }
+
+        let session = RenderEnvironment::deterministic()
+            .begin_session_with_native_theme(
+                NativeTheme::new(theme.clone()).with_background(Color::TRANSPARENT),
+            )
+            .unwrap();
+        let (_, svg) = render_config_with_session(
+            source,
+            json!({"layout":"shoal", "htmlLabels":html}),
+            session,
+        );
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        for (id, exposed) in [("edge-0", false), ("edge-1", true)] {
+            let caption = document
+                .descendants()
+                .find(|node| {
+                    node.attribute("class") == Some("label")
+                        && node.attribute("data-id") == Some(id)
+                })
+                .unwrap();
+            let plate = caption
+                .parent_element()
+                .unwrap()
+                .children()
+                .find(|node| node.attribute("class") == Some("merman-edge-label-background"));
+            assert_eq!(plate.is_some(), exposed, "{id}");
+            if let Some(plate) = plate {
+                let parse = |paint| {
+                    let [r, g, b, a] = merman_model::css_color::parse(paint)
+                        .unwrap()
+                        .rgba
+                        .to_rgba8();
+                    Color::rgba(r, g, b, a)
+                };
+                let fill = parse(plate.attribute("fill").unwrap());
+                assert_eq!(fill.channels()[3], 255);
+                let css = document
+                    .descendants()
+                    .find(|node| node.has_tag_name("style"))
+                    .unwrap()
+                    .text()
+                    .unwrap();
+                let (_, ink) = css.split_once(".edgeLabel{color:").unwrap();
+                let ink = parse(ink.split('}').next().unwrap());
+                assert!(ink.contrast(fill) >= 4.5);
+            }
+            assert!(document.descendants().any(|path| {
+                path.attribute("data-et") == Some("edge")
+                    && path.attribute("data-id") == Some(id)
+                    && path.attribute("clip-path").is_some()
+            }));
         }
     }
 }

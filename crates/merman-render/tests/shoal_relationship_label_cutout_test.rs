@@ -149,3 +149,64 @@ fn requirement_shoal_cuts_a_transparent_caption_and_keeps_its_marker() {
         }
     }
 }
+
+fn compatibility_clip(source: &str, variables: &str, html: bool) -> bool {
+    let source = format!(
+        "---\nconfig: {{\"layout\":\"shoal\",\"theme\":\"base\",\"htmlLabels\":{html},\"themeVariables\":{variables}}}\n---\n{source}"
+    );
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let rendered = family::prepare(parsed.presentation(), &LayoutOptions::default(), session)
+        .unwrap()
+        .render_svg(&SvgRenderOptions::default(), &Default::default())
+        .unwrap();
+    let document = Document::parse(rendered.svg()).unwrap();
+    let edge = document
+        .descendants()
+        .find(|node| node.attribute("data-et") == Some("edge"))
+        .unwrap();
+    assert_eq!(
+        document
+            .descendants()
+            .any(|node| node.has_tag_name("foreignObject")
+                && node
+                    .ancestors()
+                    .any(|parent| parent.attribute("class") == Some("edgeLabel"))),
+        html
+    );
+    edge.attribute("clip-path").is_some()
+}
+
+#[cfg(feature = "diagram-er")]
+#[test]
+fn er_shoal_keeps_the_shaft_under_a_translucent_html_caption() {
+    let source = "erDiagram\ndirection LR\nA ||--|| B : owns\n";
+    let variables = r#"{"edgeLabelBackground":"transparent"}"#;
+    assert!(compatibility_clip(source, variables, false));
+    assert!(!compatibility_clip(source, variables, true));
+}
+
+#[cfg(feature = "diagram-requirement")]
+#[test]
+fn requirement_shoal_cuts_html_captions_when_both_backgrounds_are_transparent() {
+    let source = "requirementDiagram\n\
+        requirement req1 {\n id: 1\n text: Body\n risk: high\n verifymethod: analysis\n}\n\
+        element elem1 {\n type: simulation\n}\nreq1 - satisfies -> elem1\n";
+    for (outer, inner, cutout) in [
+        ("transparent", "transparent", true),
+        ("rgba(255,255,255,0.5)", "transparent", false),
+        ("transparent", "rgba(255,255,255,0.5)", false),
+    ] {
+        let variables = format!(
+            r#"{{"edgeLabelBackground":"{inner}","requirementEdgeLabelBackground":"{outer}"}}"#
+        );
+        assert_eq!(
+            compatibility_clip(source, &variables, true),
+            cutout,
+            "{variables}"
+        );
+    }
+}
