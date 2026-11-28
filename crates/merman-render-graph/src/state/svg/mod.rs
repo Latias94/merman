@@ -11,9 +11,6 @@ use merman_render_core::{
     number_format::canonical_number as fmt,
     resources::OperationWorkMeter,
     root_svg,
-    rough_svg::{
-        RoughRectSpec as StateRoughRectSpec, roughjs_circle_path_d, roughjs_paths_for_rect,
-    },
     svg_css::{CssSelectorDiagramId, SvgDiagramIdValue, SvgId as SvgDiagramId, scoped_drop_shadow},
     svg_output::{BoundedSvgOutput, SvgOutput, timing},
     text::{TextMeasurer, WrapMode},
@@ -43,10 +40,6 @@ mod rough_cache;
 mod roughjs;
 mod style;
 mod viewport;
-
-use roughjs::{
-    mermaid_choice_diamond_path_data, mermaid_rounded_rect_path_data, roughjs_paths_for_svg_path,
-};
 
 #[cfg(feature = "layout-shoal")]
 pub use style::state_canonical_marker;

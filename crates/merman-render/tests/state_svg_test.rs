@@ -120,6 +120,101 @@ fn shoal_state_centers_plain_leaf_text_in_classic_and_hand_drawn_looks() {
 
 #[cfg(feature = "layout-shoal")]
 #[test]
+fn shoal_hand_drawn_state_keeps_cjk_shapes_rough_and_compact() {
+    use kurbo::{BezPath, ParamCurve, Rect, Shape, Vec2};
+
+    let source = include_str!("fixtures/state_shoal_hand_drawn_cjk.mmd");
+    let svg = render_state_svg_from_text(source);
+    assert!(svg.len() < 140_000, "State SVG is {} bytes", svg.len());
+    assert_eq!(svg, render_state_svg_from_text(source));
+
+    let doc = roxmltree::Document::parse(&svg).unwrap();
+    let viewport: Vec<f64> = doc
+        .root_element()
+        .attribute("viewBox")
+        .unwrap()
+        .split_whitespace()
+        .map(|coordinate| coordinate.parse().unwrap())
+        .collect();
+    let [x, y, width, height] = viewport[..] else {
+        panic!("invalid State viewBox: {viewport:?}");
+    };
+    let viewport = Rect::from_origin_size((x, y), (width, height));
+    let state = doc
+        .descendants()
+        .find(|node| node.attribute("data-id") == Some("待支付"))
+        .unwrap();
+    let outline = state
+        .descendants()
+        .find(|elem| elem.has_tag_name("path") && elem.attribute("fill") == Some("none"))
+        .unwrap();
+    let outline = BezPath::from_svg(outline.attribute("d").unwrap()).unwrap();
+    let deviation = outline
+        .segments()
+        .filter(|segment| {
+            let delta = segment.end() - segment.start();
+            delta.y == 0.0 && delta.x.abs() > 10.0
+        })
+        .flat_map(|segment| {
+            (1..16)
+                .map(move |step| (segment.eval(f64::from(step) / 16.0).y - segment.start().y).abs())
+        })
+        .fold(0.0, f64::max);
+    assert!(deviation > 0.2, "outline normal deviation is {deviation}px");
+
+    for path in doc.descendants().filter(|node| {
+        node.has_tag_name("path")
+            && node
+                .ancestors()
+                .any(|ancestor| matches!(ancestor.attribute("data-et"), Some("node" | "cluster")))
+    }) {
+        let translation = path
+            .ancestors()
+            .filter_map(|node| node.attribute("transform"))
+            .map(|value| {
+                let (x, y) = value
+                    .strip_prefix("translate(")
+                    .and_then(|value| value.strip_suffix(')'))
+                    .and_then(|value| value.split_once(','))
+                    .unwrap();
+                Vec2::new(x.trim().parse().unwrap(), y.trim().parse().unwrap())
+            })
+            .fold(Vec2::ZERO, |sum, part| sum + part);
+        let stroke_outset = path
+            .attribute("stroke-width")
+            .map_or(0.0, |value| value.parse::<f64>().unwrap() / 2.0);
+        let bounds = BezPath::from_svg(path.attribute("d").unwrap())
+            .unwrap()
+            .bounding_box()
+            .inflate(stroke_outset, stroke_outset)
+            + translation;
+        assert_eq!(
+            viewport.union(bounds),
+            viewport,
+            "clipped outline: {path:?}"
+        );
+    }
+
+    let text: String = doc
+        .descendants()
+        .filter(|node| node.is_text())
+        .filter_map(|node| {
+            node.ancestors()
+                .any(|ancestor| ancestor.has_tag_name("text"))
+                .then(|| node.text().unwrap())
+        })
+        .collect();
+    for label in [
+        "支付处理中",
+        "风险评分通过",
+        "支持微信、支付宝与银联多通道切换",
+    ] {
+        assert!(text.contains(label), "missing State label: {label}");
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
 fn shoal_state_cross_boundary_route_clears_the_painted_title() {
     use kurbo::{Affine, BezPath, ParamCurve, Rect, Shape, Vec2};
 
