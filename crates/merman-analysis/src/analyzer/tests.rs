@@ -2481,6 +2481,72 @@ fn analysis_rule_config_can_disable_git_graph_warning_rules() {
     assert!(payload.diagnostics.is_empty());
 }
 
+#[cfg(feature = "diagram-c4")]
+#[test]
+fn c4_dynamic_overwritten_relations_warn_at_later_calls() {
+    const RULE_ID: &str = "merman.c4-dynamic-overwritten-relation";
+    let source = concat!(
+        "---\r\ntitle: 跨境支付\r\n---\r\nC4Dynamic\r\n",
+        "  Person(a, \"Caller\")\r\n",
+        "  System(b, \"Bank\")\r\n",
+        "  System(c, \"Gateway\")\r\n",
+        "  Rel(a, b)\r\n",
+        "  Rel(a, b, \"Authorise\")\r\n",
+        "  Rel(b, a, \"Receipt\")\r\n",
+        "  UpdateRelStyle(a, b, $from=\"c\")\r\n",
+        "  Rel(a, b, \"Reconcile\")\r\n",
+        "  RelIndex(7, \" c \", b, \"结算\r\n回执\") %% comment\r\n",
+        "  Rel(c, b, \"Final\")\r\n",
+    );
+    let analyzer = Analyzer::new();
+    let payload = analyzer.analyze(source);
+    assert!(payload.valid, "{:?}", payload.diagnostics);
+    assert_eq!(payload.diagnostics.len(), 2, "{:?}", payload.diagnostics);
+    assert_eq!(
+        analyzer.analyze_facts(source).diagnostics,
+        payload.diagnostics
+    );
+    for (diagnostic, statement) in payload.diagnostics.iter().zip([
+        "RelIndex(7, \" c \", b, \"结算\r\n回执\")",
+        "Rel(c, b, \"Final\")",
+    ]) {
+        assert_eq!(diagnostic.id, RULE_ID);
+        assert_eq!(diagnostic.category, DiagnosticCategory::Semantic);
+        assert_eq!(diagnostic.severity, DiagnosticSeverity::Warning);
+        assert_eq!(diagnostic.diagram_type.as_deref(), Some("c4"));
+        let span = diagnostic
+            .span
+            .as_ref()
+            .expect("overwriting relationship span");
+        assert_eq!(&source[span.byte_start..span.byte_end], statement);
+    }
+
+    #[cfg(feature = "compat-json")]
+    {
+        let compatibility = Analyzer::with_mermaid_engine(
+            merman_core::presentation::MermaidEngine::new(),
+            AnalysisOptions::default(),
+        );
+        assert_eq!(
+            compatibility.analyze(source).diagnostics,
+            payload.diagnostics
+        );
+    }
+
+    let context = analyzer.analyze(&source.replacen("C4Dynamic", "C4Context", 1));
+    assert!(context.valid, "{:?}", context.diagnostics);
+    assert!(context.diagnostics.is_empty());
+
+    let disabled = Analyzer::with_options(
+        AnalysisOptions::default().with_rule_config(
+            AnalysisRuleConfig::default()
+                .with_rule_disabled(RULE_ID)
+                .unwrap(),
+        ),
+    );
+    assert!(disabled.analyze(source).diagnostics.is_empty());
+}
+
 #[test]
 fn analysis_rule_config_can_override_git_graph_warning_severity() {
     let analyzer = Analyzer::with_options(
