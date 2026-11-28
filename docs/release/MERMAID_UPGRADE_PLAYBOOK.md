@@ -178,6 +178,10 @@ reading an installed package version cannot establish this. Published Mermaid bu
 own sanitizer and must not substitute for the owned artifact. Baseline provenance records the
 artifact digest and compiler identity, and promotion rejects package or artifact drift.
 
+After installing the selected Puppeteer Chromium headless shell, run
+`node --test tools/mermaid-cli/parser-oracle.test.mjs`. The oracle imports the Flowchart label
+decoders from the selected Mermaid package. Confirm their exported chunk when the package changes.
+
 Only after reviewed browser/reference evidence demonstrates that the new graph produced the intended
 baselines may the primary SVG provenance be regenerated:
 

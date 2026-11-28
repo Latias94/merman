@@ -1,16 +1,16 @@
 # Choosing Merman capabilities
 
 This guide describes the current source, including [Theme v2](rendering/custom-diagram-themes.md)
-and Mermaid `12.3.0` compatibility. Use the [host guide](release/PREBUILT_PRODUCTS.md) for
+and Mermaid `12.4.0` compatibility. Use the [host guide](release/PREBUILT_PRODUCTS.md) for
 published channel versions and the [upgrade index](release/README.md) for migration steps. Workspace
 path snippets are for source development. See the [Rust embedding guide](rendering/RUST_EMBEDDING.md)
 for host integration.
 
-The source candidate selects Mermaid `12.3.0`, with the exact `elkjs 0.12.1` behavior oracle,
+The source candidate selects Mermaid `12.4.0`, with the exact `elkjs 0.12.1` behavior oracle,
 Cytoscape `3.34.4`, and reference CLI `12.2.0`. The selected
 [reference graph](../tools/upstreams/MERMAID_REFERENCE_BUNDLE.json) and its generated constants
 own these reference identities; older artifacts retain their release baseline. See the
-[Mermaid 12.3 migration](migrations/mermaid-12-3.md) for its Rust and SVG changes.
+[Mermaid 12.4 migration](migrations/mermaid-12-4.md) for its Rust and SVG changes.
 
 Choose the diagram families your application accepts and the operations it performs. Positive
 `diagram-*` Cargo features select data, source parsers, or output handlers at the owning package. Selected
