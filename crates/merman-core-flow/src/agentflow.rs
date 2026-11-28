@@ -1987,12 +1987,13 @@ fn matching_brace(value: &str, start: usize) -> Option<usize> {
     None
 }
 
+type ParsedMetadata = (Map<String, Value>, InlineGridNonfinite);
+
 fn parse_metadata(
     body: &str,
     use_grid: bool,
     control: &OperationControl,
-) -> OperationControlResult<std::result::Result<(Map<String, Value>, InlineGridNonfinite), String>>
-{
+) -> OperationControlResult<Result<ParsedMetadata, String>> {
     let normalized = normalize_metadata_quoted_newlines(body);
     let body = normalized.as_str();
     let decode = |input: &str| {
