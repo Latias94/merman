@@ -37,21 +37,17 @@ pub(super) fn markers(
             work.charge_adapter(contact_work(&layout.shape_geometries[body as usize]))?;
         }
         let points = block_render_edge_points(edge, edge_layout, geometries, style).rendered_points;
-        for (slot, (marker, first, next, body)) in [
-            (start, points.first(), points.get(1), from),
-            (end, points.last(), points.iter().rev().nth(1), to),
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            let (Some(marker), Some(first), Some(next)) = (marker, first, next) else {
+        for (slot, (marker, body)) in [(start, from), (end, to)].into_iter().enumerate() {
+            let Some(marker) = marker else {
                 continue;
             };
-            let first = to_point(first);
-            let delta = to_point(next) - first;
-            let distance = delta.hypot();
-            if distance.is_finite() && distance > 0.0 {
-                let outward = delta / distance;
+            work.charge_adapter(points.len())?;
+            let terminal = if slot == 0 {
+                marker_tangent(points.iter().map(to_point))
+            } else {
+                marker_tangent(points.iter().rev().map(to_point))
+            };
+            if let Some((first, outward)) = terminal {
                 let rect = marker_bounds(marker, first, outward);
                 if rect.is_finite() {
                     // The grid path can approach diagonally, so it has no orthogonal face.
@@ -67,6 +63,29 @@ pub(super) fn markers(
         }
     }
     Ok(fallback)
+}
+
+fn marker_tangent(mut points: impl Iterator<Item = Point>) -> Option<(Point, kurbo::Vec2)> {
+    let first = points.next()?;
+    // SVG takes the tangent of the first nonzero segment at a repeated endpoint.
+    let next = points.find(|&point| point != first)?;
+    let delta = next - first;
+    let distance = delta.hypot();
+    (distance.is_finite() && distance > 0.0).then(|| (first, delta / distance))
+}
+
+#[cfg(test)]
+#[test]
+fn fallback_markers_use_the_first_nonzero_tangent_at_each_end() {
+    let start = Point::new(20.0, 4.0);
+    let end = Point::new(25.0, 4.0);
+    let points = [start, start, end, end];
+    let direction = kurbo::Vec2::new(1.0, 0.0);
+    assert_eq!(marker_tangent(points.into_iter()), Some((start, direction)));
+    assert_eq!(
+        marker_tangent(points.into_iter().rev()),
+        Some((end, -direction))
+    );
 }
 
 enum Footprint {

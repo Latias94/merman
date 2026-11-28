@@ -226,10 +226,10 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
             .and(width_binding.paint_width())
             .or(uses_canonical_routes.then_some(1.0));
         let stroke_outset = relation_stroke_width.map_or(0.0, |width| f64::from(width) / 2.0);
-        let start_marker_name =
-            relation.and_then(|relation| class_marker_name(relation.relation.type1, true));
-        let end_marker_name =
-            relation.and_then(|relation| class_marker_name(relation.relation.type2, false));
+        let mut shaft_markers = [
+            relation.and_then(|relation| class_marker_name(relation.relation.type1, true)),
+            relation.and_then(|relation| class_marker_name(relation.relation.type2, false)),
+        ];
         let start_marker_paint = relation
             .and_then(|rel| class_marker_paint_spec(rel.relation.type1, true, ctx.look == "neo"));
         let end_marker_paint = relation
@@ -564,6 +564,7 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
         }
         edge_class_buf.push_str(" relation");
 
+        let mut separate_markers = [None; 2];
         let label_cutout = if let (Some(bounds), Some(&ordinal)) =
             (&path_bounds, ctx.relation_index_by_id.get(e.id.as_str()))
         {
@@ -620,18 +621,34 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
             }
             if gaps.iter().any(Option::is_some) {
                 let width = relation_stroke_width.map_or(1.0, f64::from);
-                let outset = [start_marker_paint, end_marker_paint]
-                    .into_iter()
-                    .flatten()
-                    .map(|marker| marker.conservative_radius(width))
-                    .fold(width, f64::max);
-                write_class_edge_label_cutout(
+                let radii = [start_marker_paint, end_marker_paint]
+                    .map(|marker| marker.map_or(0.0, |marker| marker.conservative_radius(width)));
+                let outset = radii.into_iter().fold(width, f64::max);
+                let mut holes = [kurbo::Rect::ZERO; 3];
+                let mut count = 0;
+                for gap in gaps.into_iter().flatten() {
+                    holes[count] = gap;
+                    count += 1;
+                }
+                let holes = &holes[..count];
+                if uses_canonical_routes {
+                    separate_markers = separate_class_edge_markers(
+                        holes,
+                        marker_points,
+                        radii,
+                        &mut shaft_markers,
+                    );
+                }
+                let paint =
+                    kurbo::Rect::new(bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y)
+                        .inflate(outset, outset);
+                let id = ctx.diagram_id;
+                cutout::write_defs(
                     out,
-                    ctx.diagram_id,
-                    ordinal,
-                    bounds,
-                    &gaps,
-                    outset,
+                    format_args!("{id}_class-edge-label-{ordinal}"),
+                    paint,
+                    1.0,
+                    holes,
                     ctx.work_meter,
                 )?;
                 Some(ordinal)
@@ -666,30 +683,7 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
             edge_points_b64_buf,
         );
         let _ = write!(out, r#" data-look="{}""#, escape_attr_display(ctx.look));
-        if let Some(name) = start_marker_name {
-            out.push_str(r#" marker-start="url(#"#);
-            let _ = write!(out, "{}", ctx.diagram_id);
-            ctx.emit.checkpoint()?;
-            let _ = write!(
-                out,
-                r#"_{}-{}{})""#,
-                escape_attr_display(ctx.diagram_marker_class),
-                name,
-                if ctx.look == "neo" { "-margin" } else { "" },
-            );
-        }
-        if let Some(name) = end_marker_name {
-            out.push_str(r#" marker-end="url(#"#);
-            let _ = write!(out, "{}", ctx.diagram_id);
-            ctx.emit.checkpoint()?;
-            let _ = write!(
-                out,
-                r#"_{}-{}{})""#,
-                escape_attr_display(ctx.diagram_marker_class),
-                name,
-                if ctx.look == "neo" { "-margin" } else { "" },
-            );
-        }
+        write_class_marker_references(out, ctx, shaft_markers)?;
         edge_style_buf.clear();
         if use_neo_mask {
             #[cfg(feature = "layout-shoal")]
@@ -743,6 +737,16 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
             let _ = write!(out, r#" style="{}""#, escape_attr_display(&path_style));
         }
         out.push_str("/>");
+        if separate_markers.iter().any(Option::is_some) {
+            ctx.work_meter.charge_emit_work(render_d.len())?;
+            let _ = write!(
+                out,
+                r#"<path d="{}" fill="none" stroke="none""#,
+                escape_attr_display(render_d),
+            );
+            write_class_marker_references(out, ctx, separate_markers)?;
+            out.push_str("/>");
+        }
         out.checkpoint()?;
     }
     out.push_str("</g>");
@@ -785,26 +789,45 @@ fn terminal_label_gap(
         .then(|| rect.inflate(4.0, 2.0))
 }
 
-fn write_class_edge_label_cutout(
+fn separate_class_edge_markers(
+    holes: &[kurbo::Rect],
+    points: &[LayoutPoint],
+    radii: [f64; 2],
+    shaft_markers: &mut [Option<&'static str>; 2],
+) -> [Option<&'static str>; 2] {
+    // SVG applies the shaft clip to its markers too. Keep intersecting markers on
+    // a separate carrier with the same path geometry and marker orientations.
+    std::array::from_fn(|end| {
+        let point = [points.first(), points.last()][end]?;
+        let diameter = 2.0 * radii[end];
+        let ink = kurbo::Rect::from_center_size((point.x, point.y), (diameter, diameter));
+        if holes.iter().any(|hole| hole.intersect(ink).area() > 0.0) {
+            shaft_markers[end].take()
+        } else {
+            None
+        }
+    })
+}
+
+fn write_class_marker_references(
     out: &mut impl SvgOutput,
-    id: SvgDiagramId<'_>,
-    ordinal: usize,
-    bounds: &SvgPathBounds,
-    gaps: &[Option<kurbo::Rect>],
-    outset: f64,
-    work_meter: &merman_render_core::resources::OperationWorkMeter,
+    ctx: &ClassEdgeGroupsRenderContext<'_>,
+    markers: [Option<&'static str>; 2],
 ) -> merman_render_core::Result<()> {
-    let paint = kurbo::Rect::new(bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y)
-        .inflate(outset, outset);
-    let holes = gaps.iter().flatten().copied().collect::<Vec<_>>();
-    cutout::write_defs(
-        out,
-        format_args!("{id}_class-edge-label-{ordinal}"),
-        paint,
-        1.0,
-        &holes,
-        work_meter,
-    )
+    for (attribute, name) in ["marker-start", "marker-end"].into_iter().zip(markers) {
+        if let Some(name) = name {
+            let _ = write!(out, r#" {attribute}="url(#{}"#, ctx.diagram_id);
+            ctx.emit.checkpoint()?;
+            let _ = write!(
+                out,
+                r#"_{}-{}{})""#,
+                escape_attr_display(ctx.diagram_marker_class),
+                name,
+                if ctx.look == "neo" { "-margin" } else { "" },
+            );
+        }
+    }
+    Ok(())
 }
 
 pub(super) fn render_class_edge_labels<O: SvgOutput>(
@@ -1316,6 +1339,22 @@ mod tests {
             terminal_label_gap(&shaft, on_shaft, 1.0),
             Some(kurbo::Rect::new(3.0, -3.0, 27.0, 6.0))
         );
+    }
+
+    #[test]
+    fn class_terminal_gap_padding_keeps_the_marker_on_an_unclipped_carrier() {
+        let shaft = kurbo::BezPath::from_svg("M0 0H50").unwrap();
+        let label = kurbo::Rect::new(18.0, -5.0, 25.0, 5.0);
+        let gap = terminal_label_gap(&shaft, label, 0.5).unwrap();
+        let points = [
+            LayoutPoint { x: 0.0, y: 0.0 },
+            LayoutPoint { x: 50.0, y: 0.0 },
+        ];
+        let mut shaft_markers = [Some("compositionStart"), Some("dependencyEnd")];
+        let carriers =
+            separate_class_edge_markers(&[gap], &points, [17.0, 8.0], &mut shaft_markers);
+        assert_eq!(carriers, [Some("compositionStart"), None]);
+        assert_eq!(shaft_markers, [None, Some("dependencyEnd")]);
     }
 
     fn label_at(x: f64, y: f64) -> LayoutLabel {

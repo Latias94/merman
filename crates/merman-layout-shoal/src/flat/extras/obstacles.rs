@@ -269,10 +269,10 @@ impl Obstacles {
                 break;
             }
             if at < hi {
-                if limit.is_some_and(|limit| hi >= limit) {
+                if limit.is_some_and(|limit| hi > limit) {
                     return Ok(None);
                 }
-                at = finite(hi.next_up())?;
+                at = finite(hi.next_up().min(limit.unwrap_or(f64::INFINITY)))?;
             }
         }
         let center = match side {
@@ -281,6 +281,17 @@ impl Obstacles {
             Side::Left => Point { x: -at, ..origin },
             Side::Right => Point { x: at, ..origin },
         };
+        if limit == Some(at) && at != start {
+            // The furthest permitted seat has no ULP buffer. Check the actual box,
+            // since projecting the obstacle and reconstructing the label can round differently.
+            let label = Bounds::checked_centered(center, size)?;
+            for (owner, wall) in self.iter() {
+                work.visit(1)?;
+                if blocks(owner) && wall.intersects_label(label) {
+                    return Ok(None);
+                }
+            }
+        }
         Ok(Some((center, finite(at - start)?)))
     }
 }

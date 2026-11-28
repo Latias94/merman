@@ -359,6 +359,38 @@ fn terminal_labels_clear_later_markers_middle_labels_nodes_and_one_another() {
 }
 
 #[test]
+fn bounded_end_label_slide_admits_the_touching_seat_at_its_limit() {
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    let mut walls = Obstacles::new();
+    walls
+        .add(
+            Owner::Node,
+            Bounds::checked_rect(rect(-1.0, -1.0, 11.0, 2.0)).unwrap(),
+            &mut work,
+        )
+        .unwrap();
+    let origin = Point { x: 0.0, y: 0.0 };
+    let slide = |limit, work: &mut Work<'_>| {
+        walls
+            .slide(
+                origin,
+                size(2.0, 2.0),
+                Side::Right,
+                Some(limit),
+                |_| true,
+                work,
+            )
+            .unwrap()
+    };
+    assert_eq!(
+        slide(11.0, &mut work),
+        Some((Point { x: 11.0, y: 0.0 }, 11.0))
+    );
+    assert_eq!(slide(11.0_f64.next_down(), &mut work), None);
+}
+
+#[test]
 fn bounded_end_label_slide_rejects_a_seat_across_a_long_obstacle() {
     let mut control = NoopWorkControl;
     let mut work = Work::new(&mut control);

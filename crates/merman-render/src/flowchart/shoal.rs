@@ -328,6 +328,7 @@ fn measure(
     } else {
         0.0
     };
+    let mut painted_edges = Vec::with_capacity(view.edges.len());
     for (key, projected) in view.projected_edges() {
         let endpoint = |id: &str| {
             endpoints
@@ -345,6 +346,7 @@ fn measure(
         let label = measurement.edge_label(edge, key)?;
         let markers = edge_styles.marker_metrics_for(key, edge, look_is_neo)?;
         let (start_marker, end_marker) = edge_styles.reserve_marker_stroke(key, markers)?;
+        painted_edges.push(edge.visibility == FlowEdgeVisibility::Visible);
         graph.edges.push(MeasuredEdge {
             source: endpoint(projected.from)?,
             target: endpoint(projected.to)?,
@@ -361,10 +363,13 @@ fn measure(
             end_marker,
         });
     }
-    let painted_edges = view
-        .projected_edges()
-        .map(|(_, edge)| edge.semantic.visibility == FlowEdgeVisibility::Visible);
-    bindings.reserve_parallel_faces(&mut graph, &parallel_faces, painted_edges, fit_width, work)?;
+    bindings.reserve_parallel_faces(
+        &mut graph,
+        &parallel_faces,
+        painted_edges.into_iter(),
+        fit_width,
+        work,
+    )?;
 
     Ok((graph, bindings))
 }

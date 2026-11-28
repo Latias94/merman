@@ -260,9 +260,13 @@ impl Seating {
             let near = preferred_along.min(lead_limit);
             let far = (near + 8.0).min(lead_limit);
             // Preserve the close, shaft-owned seat whenever there is room beside the lead.
-            for offset in offsets {
-                for distance in [near, past_marker.clamp(near, far), far] {
-                    if distance.hypot(offset) > radius {
+            let distances = [near, past_marker.clamp(near, far), far];
+            for (index, &offset) in offsets.iter().enumerate() {
+                if offsets[..index].contains(&offset) {
+                    continue;
+                }
+                for (index, &distance) in distances.iter().enumerate() {
+                    if distances[..index].contains(&distance) || distance.hypot(offset) > radius {
                         continue;
                     }
                     let mut best = None::<(Rect, f64)>;
@@ -274,6 +278,9 @@ impl Seating {
                             && best.is_none_or(|(_, previous)| clearance.nearest_shaft > previous)
                         {
                             best = Some((rect, clearance.nearest_shaft));
+                            if clearance.nearest_shaft.is_infinite() {
+                                break;
+                            }
                         }
                     }
                     if let Some((rect, _)) = best {
@@ -287,12 +294,16 @@ impl Seating {
         // hard, and prefer covering our own shaft (which SVG clips under the label) to a peer's.
         let mut best = None::<(Rect, [f64; 4])>;
         let mut consider = |center: Point, offset: f64, work: &mut OperationLayoutWorkControl| {
+            let distance = center.distance(port);
+            if best.is_some_and(|(_, rank)| rank <= [0.0, 0.0, 0.0, distance]) {
+                return Ok(());
+            }
             if let Some((rect, clearance)) = assess(center, offset, work)? {
                 let rank = [
                     clearance.foreign_shaft_overlap,
                     clearance.overlap,
                     (offset - clearance.nearest_shaft).max(0.0),
-                    center.distance(port),
+                    distance,
                 ];
                 if best.is_none_or(|(_, previous)| rank < previous) {
                     best = Some((rect, rank));
@@ -353,6 +364,7 @@ impl Seating {
             foreign_shaft_overlap: 0.0,
             nearest_shaft: f64::INFINITY,
         };
+        let mut nearest_sq = f64::INFINITY;
         let result = self.fixed.visit(|entry| -> Result<_> {
             work.charge_adapter(1)?;
             let obstacle = match entry {
@@ -371,9 +383,7 @@ impl Seating {
             let blocked = match obstacle {
                 Obstacle::Shaft(edge, line) => {
                     if edge != owner.0 {
-                        clearance.nearest_shaft = clearance
-                            .nearest_shaft
-                            .min(line.nearest(center, 0.0).distance_sq.sqrt());
+                        nearest_sq = nearest_sq.min(line.nearest(center, 0.0).distance_sq);
                     }
                     let hits = shaft_ink.contains(line.p0)
                         || shaft_ink.contains(line.p1)
@@ -412,6 +422,7 @@ impl Seating {
         {
             return Ok(None);
         }
+        clearance.nearest_shaft = nearest_sq.sqrt();
         Ok(Some(clearance))
     }
 }
