@@ -36,15 +36,15 @@ impl JourneyStyle {
     }
 
     fn resolve_mermaid(config: &PresentationConfig) -> Self {
-        let config_view = JourneyConfigView::new(config.as_value());
-        let font_size_px = config_theme_font_size_css_or_root_number_px_opt(config.as_value())
+        let config_view = JourneyConfigView::new(config);
+        let font_size_px = config_theme_font_size_css_or_root_number_px_opt(config)
             .filter(|size| *size >= 0.0)
             .unwrap_or(16.0)
             .max(0.0);
         Self {
-            appearance: JourneyAppearance::Mermaid(JourneyCssBinding::new(config.as_value())),
+            appearance: JourneyAppearance::Mermaid(JourneyCssBinding::new(config)),
             common_css: PreparedCommonCss::with_resolved_typography(
-                config.as_value(),
+                config,
                 config_font_family_css(config),
                 format!("{font_size_px}px"),
             ),
@@ -55,7 +55,7 @@ impl JourneyStyle {
     }
 
     fn resolve_native(config: &PresentationConfig, theme: &FamilyTheme) -> Self {
-        let config_view = JourneyConfigView::new(config.as_value());
+        let config_view = JourneyConfigView::new(config);
         let typography = &theme.typography;
         let family = font_family_css(typography.stack(typography.body_family));
         let font_size_px = typography.base_size_px;
@@ -63,7 +63,7 @@ impl JourneyStyle {
         let layout_settings = config_view.layout_settings(Some(&native));
         let render_settings = config_view.native_render_settings(theme, &family, font_size_px);
         let common_css = PreparedCommonCss::with_resolved_typography(
-            config.as_value(),
+            config,
             family,
             format!("{font_size_px}px"),
         )

@@ -1180,36 +1180,54 @@ fn every_analysis_operation_propagates_caller_cancellation_during_analysis() {
 }
 
 #[cfg(feature = "analysis")]
+const ANALYSIS_REQUESTS: [BindingOperationRequest<'static>; 5] = {
+    const DIAGRAM: &[u8] = b"flowchart\nA-->B\n";
+    const DOCUMENT: &[u8] = b"```mermaid\nflowchart\nA-->B\n```\n";
+    const URI: &[u8] = b"file:///diagram.md";
+    [
+        BindingOperationRequest::new("analysis-json", DIAGRAM),
+        BindingOperationRequest::new("analysis-facts-json", DIAGRAM),
+        BindingOperationRequest::new("validation-json", DIAGRAM),
+        BindingOperationRequest::new("document-analysis-json", DOCUMENT).with_uri(URI),
+        BindingOperationRequest::new("document-analysis-facts-json", DOCUMENT).with_uri(URI),
+    ]
+};
+
+#[cfg(all(feature = "analysis", feature = "diagram-flowchart"))]
+#[test]
+fn reusable_analysis_operations_match_cached_and_overlay_dtos() {
+    const OPTIONS: &[u8] = br#"{"lint":{"profile":"recommended"}}"#;
+    let base = BindingEngine::new(b"").unwrap();
+    let configured = BindingEngine::new(OPTIONS).unwrap();
+
+    for request in ANALYSIS_REQUESTS {
+        let operation_id = request.operation_id();
+        let cached = configured.execute_data(request.clone()).unwrap();
+        if operation_id == "analysis-json" {
+            assert_ne!(
+                base.execute_data(request.clone()).unwrap(),
+                cached,
+                "the directionless Flowchart must exercise the lint override"
+            );
+        }
+        let overlay = base
+            .execute_data(request.with_options_json(OPTIONS))
+            .unwrap();
+        assert_eq!(overlay, cached, "{operation_id}");
+    }
+}
+
+#[cfg(feature = "analysis")]
 #[test]
 fn every_analysis_operation_preserves_caller_deadline_reason() {
     let engine = BindingEngine::from_options(b"").unwrap();
-    for operation_id in [
-        "analysis-json",
-        "analysis-facts-json",
-        "validation-json",
-        "document-analysis-json",
-        "document-analysis-facts-json",
-    ] {
+    for request in ANALYSIS_REQUESTS {
+        let operation = request.resolve_operation().unwrap().key();
+        let operation_id = request.operation_id();
         let expired = OperationControl::new().with_deadline(std::time::Duration::ZERO);
-        let result = match operation_id {
-            "analysis-json" => engine.analyze_json_data(b"flowchart TD\nA --> B", &expired),
-            "analysis-facts-json" => {
-                engine.analysis_facts_json_data(b"flowchart TD\nA --> B", &expired)
-            }
-            "validation-json" => engine.validate_json_data(b"flowchart TD\nA --> B", &expired),
-            "document-analysis-json" => engine.analyze_document_json_data(
-                b"```mermaid\nflowchart TD\nA --> B\n```\n",
-                b"file:///diagram.md",
-                &expired,
-            ),
-            "document-analysis-facts-json" => engine.analyze_document_facts_json_data(
-                b"```mermaid\nflowchart TD\nA --> B\n```\n",
-                b"file:///diagram.md",
-                &expired,
-            ),
-            _ => unreachable!(),
-        };
-        let error = result.expect_err("an expired caller deadline must stop analysis");
+        let error = engine
+            .execute_cached_analysis(operation, request.source(), request.uri(), &expired)
+            .expect_err("an expired caller deadline must stop analysis");
         assert_eq!(error.status(), BindingStatus::Cancelled, "{operation_id}");
         assert_eq!(
             error.cancellation_details(),

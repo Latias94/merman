@@ -42,11 +42,11 @@ use container::ContainerMode;
 pub use diagnostics::SourcePhaseDiagnostics;
 use merman_elk_layered as source_port;
 pub use model::*;
-use source_port::LGraph;
 pub use source_port::{
     GraphExecution, HierarchySweepDebugTrace, HierarchySweepNodeDebug, LayeredPhase,
     NoopWorkControl, ProcessorKind, WorkControl, WorkError,
 };
+use source_port::{LGraph, OwnedLGraph};
 
 /// The nonzero random seed captured by the owner of one render/layout operation.
 ///
@@ -297,6 +297,7 @@ fn layout_scopes(
                 work_control,
             ),
         }
+        .map(OwnedLGraph::new)
         .map_err(Error::SourceImport)?;
         if source_graph_requires_compound_pipeline(&lgraph) {
             source_port::execute_ported_compound_processors_with_work_control(

@@ -1353,7 +1353,7 @@ def _load_fixture_contracts(
     head_metadata = {fixture.name: fixture for fixture in head_corpus.fixtures}
 
     if filter_expr:
-        exact_filters = expand_filter_to_exact_benches(filter_expr)
+        exact_filters = list(dict.fromkeys(expand_filter_to_exact_benches(filter_expr)))
         requested: list[tuple[str, str, str]] = []
         for exact in exact_filters:
             _, name = split_exact_bench(exact)

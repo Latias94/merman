@@ -5,16 +5,20 @@
 
 use super::RequirementDiagramLayout;
 use super::{
-    RequirementEdgeLabels, RequirementMeasurements, RequirementNodeRenderPlan,
-    RequirementPreparedArtifact, bounds_for_nodes_edges, measure_requirement_relationship,
-    requirement_layout_node_from_center, validate_relationship_endpoints,
+    MeasuredRequirementEdge, RequirementEdgeLabels, RequirementMeasurements,
+    RequirementNodeRenderPlan, RequirementPreparedArtifact, bounds_for_nodes_edges,
+    measure_requirement_relationship, requirement_layout_node_from_center,
+    validate_relationship_endpoints,
 };
 use indexmap::IndexMap;
 use merman_layout_elk as elk;
 use merman_model::families::requirement::RequirementRelationship;
 use merman_render_core::config::config_bool;
 use merman_render_core::elk_adapter::{
-    apply_cyclic_entry_constraints, feedback_edges::orient_feedback_edges, options::layout_options,
+    apply_cyclic_entry_constraints,
+    arrowheads::{Arrowhead, EdgeArrowheads},
+    feedback_edges::orient_feedback_edges_with_arrowheads,
+    options::layout_options,
 };
 use merman_render_core::elk_edge_geometry::{self, Outline, Shape};
 use merman_render_core::graph_layout::{Direction, Size, elk_terminal_jogs};
@@ -100,7 +104,7 @@ pub fn layout(
         spacing: elk::Spacing::default(),
         options: elk::LayoutOptions::default(),
     };
-    let placed = solve(&mut input, config, algorithm, operation_seed, work)?;
+    let placed = solve(&mut input, &edges, config, algorithm, operation_seed, work)?;
 
     let mut node_slots: IndexMap<_, _> = input
         .nodes
@@ -207,6 +211,7 @@ pub fn layout(
 
 fn solve(
     input: &mut elk::Graph,
+    edges: &[MeasuredRequirementEdge<'_>],
     config: &Value,
     algorithm: elk::Algorithm,
     operation_seed: elk::ElkOperationSeed,
@@ -224,7 +229,16 @@ fn solve(
         )?;
     }
     work.charge_adapter(input.nodes.len().saturating_add(input.edges.len()))?;
-    let oriented = orient_feedback_edges(input, config, &mut Some(&mut *work))?;
+    let oriented =
+        orient_feedback_edges_with_arrowheads(input, config, &mut Some(&mut *work), |index, _| {
+            let plan = &edges[index].plan;
+            // Both Requirement markers use Mermaid's fallback marker extent.
+            Ok(EdgeArrowheads {
+                start: plan.marker_start.then_some(Arrowhead::Other),
+                end: plan.marker_end.then_some(Arrowhead::Other),
+                margin: false,
+            })
+        })?;
     let solved = {
         #[cfg(feature = "benchmark-stages")]
         let _stage = merman_model::benchmark_stages::enter(

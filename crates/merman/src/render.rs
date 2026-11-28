@@ -1414,6 +1414,7 @@ impl PresentationArtifact {
                 merman_render::__private::unsupported_native_html_style_with_config(
                     self.parsed(),
                     config,
+                    request.environment.capability_policy(),
                     self.control(),
                 )?
             {

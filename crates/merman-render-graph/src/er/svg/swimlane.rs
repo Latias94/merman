@@ -2,6 +2,7 @@
 
 use super::*;
 use line_hops::{LineHopConfig, LineHopEdge, LineHopStyle};
+use merman_render_core::config::{ConfigLookup, value_at};
 use merman_render_core::{LayoutLabel, SwimlaneDirection, SwimlaneLaneLayout};
 use std::collections::HashMap;
 
@@ -360,7 +361,7 @@ pub(super) fn relationship_label_dom_id(edge: &LayoutEdge, dom_id: &str) -> Stri
 }
 
 pub(super) fn line_hop_paths<'a>(
-    config: &serde_json::Value,
+    config: &(impl ConfigLookup + ?Sized),
     edges: &[LineHopEdge<'a>],
     work_meter: &OperationWorkMeter,
 ) -> Result<HashMap<&'a str, String>> {
@@ -368,8 +369,7 @@ pub(super) fn line_hop_paths<'a>(
         edges,
         LineHopConfig {
             jump_radius: 6.0,
-            jump_style: if config
-                .pointer("/swimlane/lineHops")
+            jump_style: if value_at(config, &["swimlane", "lineHops"])
                 .and_then(serde_json::Value::as_str)
                 == Some("gap")
             {

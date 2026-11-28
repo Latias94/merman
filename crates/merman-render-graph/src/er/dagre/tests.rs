@@ -1,6 +1,7 @@
 use super::{ErDagreLayout, layout};
 use crate::er::{ErConfigView, ErPreparedLabels};
 use merman_core::{MermaidEngine, ParseOptions};
+use merman_model::MermaidConfig;
 use merman_model::families::er::{ErDiagramModel, ErEntity, ErRelationship, ErSubgraph};
 use merman_model::presentation::RenderSemanticModel;
 use merman_render_core::layout_work::OperationLayoutWorkControl;
@@ -17,8 +18,9 @@ fn solve(model: &ErDiagramModel, config: &Value) -> Result<ErDagreLayout> {
         RenderResourcePolicy::unbounded_for_trusted_input(),
     ));
     let mut work = OperationLayoutWorkControl::new(Arc::clone(&meter));
+    let config = MermaidConfig::from_value(config.clone());
     let labels =
-        ErPreparedLabels::prepare_for_layout(model, &measurer, &settings, config, false, &meter)?;
+        ErPreparedLabels::prepare_for_layout(model, &measurer, &settings, &config, false, &meter)?;
     layout(model, &measurer, settings, &labels, &mut work)
 }
 

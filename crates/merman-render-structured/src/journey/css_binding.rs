@@ -1,4 +1,4 @@
-use merman_render_core::config::config_string;
+use merman_render_core::config::{ConfigLookup, config_string};
 
 #[derive(Debug)]
 pub(crate) struct JourneyCssBinding {
@@ -16,7 +16,7 @@ pub(crate) struct JourneyCssBinding {
 }
 
 impl JourneyCssBinding {
-    pub(super) fn new(config: &serde_json::Value) -> Self {
+    pub(super) fn new(config: &(impl ConfigLookup + ?Sized)) -> Self {
         let color = |key: &str, fallback: &str| {
             config_string(config, &["themeVariables", key]).unwrap_or_else(|| fallback.to_owned())
         };

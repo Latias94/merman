@@ -256,7 +256,10 @@ fn data_execution_preserves_resource_limits_and_reusable_output() {
 #[test]
 fn data_execution_preserves_admission_and_service_error_order() {
     let measurer = CountingTextMeasurer::new();
-    let reusable = callback_engine(None, measurer.clone());
+    let admission = BindingEngineAdmission::new(BindingEngineAdmissionMode::HostCallback);
+    let services = MermanEngineServices::new().with_text_measurer(measurer.clone());
+    let reusable =
+        MermanEngine::from_services(None, Some(&services), Arc::clone(&admission)).unwrap();
     let cancelled = MermanOperationControl::new(None);
     cancelled.cancel();
     let mut request = operation_request(
@@ -283,9 +286,9 @@ fn data_execution_preserves_admission_and_service_error_order() {
     request.operation_id = "unknown-operation".to_string();
     request.options_json = Some("{".to_string());
     {
-        let _operation = reusable.admission.enter_operation().unwrap();
+        let _operation = admission.enter_operation().unwrap();
         for callback_active in [false, true] {
-            let _callback = callback_active.then(|| reusable.admission.enter_callback().unwrap());
+            let _callback = callback_active.then(|| admission.enter_callback().unwrap());
             let data_error = reusable.execute_data(request.clone()).unwrap_err();
             let full_error = reusable.execute(request.clone()).unwrap_err();
             assert_eq!(format!("{data_error:?}"), format!("{full_error:?}"));

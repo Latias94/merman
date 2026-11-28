@@ -127,6 +127,7 @@ fn before_ports_feedback_sort_admits_snapshot_reverse_work() {
             &[first, second],
             &graph.layers[0].nodes,
             true,
+            PortRanks::default(),
             &mut work,
         ),
         Ok(vec![second, first])
@@ -135,6 +136,51 @@ fn before_ports_feedback_sort_admits_snapshot_reverse_work() {
     assert_eq!(work.rejected, None);
     assert_eq!(work.remaining, 0);
     assert_eq!(graph, before);
+}
+
+#[test]
+fn model_order_rank_projection_handles_same_layer_feedback_in_both_node_sorts() {
+    let (mut graph, first, second) = feedback_graph();
+    let mut second_edge = graph.edges[0].clone();
+    graph.detach_edge(0).unwrap();
+    second_edge.source = graph
+        .add_port(1, PortType::Output, PortSide::East, LPoint::default())
+        .unwrap();
+    second_edge.source_node_id = graph.layerless_nodes[1].id.clone();
+    second_edge.model_order = Some(1);
+    graph.add_edge(second_edge).unwrap();
+    graph.edges[2].model_order = Some(5);
+
+    let mut immediate = graph.clone();
+    assert!(immediate.reorder_node_ports(1, [0, 2, 1]));
+    let mut pending = PendingPortRemap::default();
+    pending.reorder(&mut graph, 1, vec![0, 2, 1]);
+    let compare = |graph: &LGraph, before_ports, port_ranks| {
+        let mut comparator = ModelOrderNodeComparator::new(
+            graph,
+            &graph.layers[0].nodes,
+            OrderingStrategy::NodesAndEdges,
+        );
+        comparator.before_ports = before_ports;
+        comparator.port_ranks = port_ranks;
+        comparator.compare_with_work(first, second, &mut crate::work::NoopWorkControl)
+    };
+    for before_ports in [false, true] {
+        assert_eq!(
+            compare(&immediate, before_ports, PortRanks::default()),
+            Ok(Ordering::Greater)
+        );
+        assert_eq!(
+            compare(&graph, before_ports, PortRanks(Some(&pending))),
+            Ok(Ordering::Greater)
+        );
+        assert_eq!(
+            compare(&graph, before_ports, PortRanks::default()),
+            Ok(Ordering::Less)
+        );
+    }
+    pending.apply(&mut graph);
+    assert_eq!(graph, immediate);
 }
 
 #[test]

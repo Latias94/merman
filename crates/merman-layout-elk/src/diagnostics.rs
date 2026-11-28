@@ -4,7 +4,7 @@ use super::{
     Algorithm, ElkOperationSeed, Error, Graph, GraphExecution, HierarchySweepDebugTrace,
     LayeredPhase, ProcessorKind, Result, input::graph_to_source_input, source_port,
 };
-use source_port::{LGraph, LNodeKind};
+use source_port::{LGraph, LNodeKind, OwnedLGraph};
 use std::fmt::Write as _;
 
 /// A guarded diagnostic session for inspecting the source-backed layered pipeline.
@@ -19,13 +19,7 @@ use std::fmt::Write as _;
 /// use merman_layout_elk::source_port;
 /// ```
 pub struct SourcePhaseDiagnostics {
-    graph: LGraph,
-}
-
-impl Drop for SourcePhaseDiagnostics {
-    fn drop(&mut self) {
-        detach_source_graph_hierarchy_for_drop(&mut self.graph);
-    }
+    graph: OwnedLGraph,
 }
 
 impl SourcePhaseDiagnostics {
@@ -58,6 +52,7 @@ impl SourcePhaseDiagnostics {
             ),
             None => source_port::import_graph(&input),
         }
+        .map(OwnedLGraph::new)
         .map_err(Error::SourceImport)?;
         Ok(Self { graph: lgraph })
     }
@@ -133,24 +128,6 @@ fn write_source_graph_dump(output: &mut String, graph: &LGraph, depth: usize) ->
         );
     }
     Ok(())
-}
-
-/// Detaches nested graphs before their owners are dropped so deeply nested diagnostics do not
-/// recurse through `Box<LGraph>` destruction on small worker stacks.
-fn detach_source_graph_hierarchy_for_drop(graph: &mut LGraph) {
-    let mut pending = graph
-        .layerless_nodes
-        .iter_mut()
-        .filter_map(|node| node.nested_graph.take())
-        .collect::<Vec<_>>();
-    while let Some(mut nested) = pending.pop() {
-        pending.extend(
-            nested
-                .layerless_nodes
-                .iter_mut()
-                .filter_map(|node| node.nested_graph.take()),
-        );
-    }
 }
 
 fn write_source_graph_dump_frame(

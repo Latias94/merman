@@ -91,7 +91,6 @@ impl ErEntityThemePlan {
             entity_indices.insert(entity.id.clone(), index);
             entity_source_styles.push(measurement.source_style.clone());
         }
-        let config = config.as_value();
         let css_binding = match native {
             Some((theme, native)) => ErCssBinding::from_native(theme, native, config),
             None => ErCssBinding::resolve(config),

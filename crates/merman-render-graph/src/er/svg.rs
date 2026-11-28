@@ -661,7 +661,6 @@ pub fn render_er_diagram_svg_model(
         // The backing beneath a zero marker can be a subgraph or a lane rather than the canvas.
         std::borrow::Cow::Borrowed("none")
     };
-    let effective_config = effective_config.as_value();
     let native = binding.native.as_ref();
     let sketch = native.is_some_and(|style| style.edge_style == EdgeStyle::Sketch);
     let er_render_settings = &binding.render_settings;
@@ -969,11 +968,14 @@ pub fn render_er_diagram_svg_model(
         && !sketch
         && options.include_edges
         && effective_config
-            .pointer(if is_swimlane_layout {
-                "/swimlane/lineHops"
-            } else {
-                "/elk/lineHops"
-            })
+            .get_path(&[
+                if is_swimlane_layout {
+                    "swimlane"
+                } else {
+                    "elk"
+                },
+                "lineHops",
+            ])
             .and_then(serde_json::Value::as_bool)
             != Some(false);
     let shifted_hop_points: Vec<Vec<LayoutPoint>> = if line_hops_enabled {

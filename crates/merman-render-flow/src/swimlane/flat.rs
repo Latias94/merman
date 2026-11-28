@@ -7,9 +7,9 @@ use indexmap::IndexMap;
 use merman_model::presentation::PresentationConfig;
 use merman_render_core::resources::OperationWorkMeter;
 use merman_render_core::{
-    Error, LayoutEdge, LayoutNode, Result, SwimlaneDirection, config::config_bool,
+    Error, LayoutEdge, LayoutNode, Result, SwimlaneDirection,
+    config::{ConfigLookup, config_bool},
 };
-use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -60,7 +60,7 @@ pub fn layout_compound(
     measured: &[MeasuredNode<'_>],
     edges: &[LayoutEdge],
     direction: SwimlaneDirection,
-    config: &Value,
+    config: &(impl ConfigLookup + ?Sized),
     spacing: (f64, f64),
     use_bpmn_drawn_size: bool,
     work_meter: Arc<OperationWorkMeter>,

@@ -6,7 +6,7 @@ use merman_model::{OperationControl, OperationControlResult};
 #[cfg(feature = "svg-parse")]
 mod retained_html;
 #[cfg(feature = "svg-parse")]
-pub use retained_html::unsupported_retained_html_style;
+pub use retained_html::{unsupported_measurable_html_style, unsupported_retained_html_style};
 
 /// Properties whose geometry needs dedicated support in the native layout path.
 pub const UNSUPPORTED_NATIVE_TEXT_STYLES: &[&str] = &[

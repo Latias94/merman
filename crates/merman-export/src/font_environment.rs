@@ -191,12 +191,16 @@ impl FinalTreeFontEvidence {
         control: &OperationControl,
     ) -> Result<Self> {
         export_checkpoint(control)?;
+        #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
         let mut system_faces = BTreeSet::new();
+        #[cfg(not(all(feature = "system-fonts", not(target_family = "wasm"))))]
+        let system_faces = BTreeSet::new();
         let mut caller_faces = BTreeSet::new();
         if let Some(faces) = observer.admitted_faces() {
             for (&id, source) in faces.iter() {
                 export_checkpoint(control)?;
                 match source {
+                    #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
                     crate::fonts::NativeExportFontSource::System => {
                         system_faces.insert(id);
                     }

@@ -58,9 +58,10 @@ target request and `OperationControl`, or use `Renderer::render(RenderRequest)` 
 optional-output contract.
 Start from `renderer.default_svg_request()` or `renderer.default_ascii_request()` to keep the
 builder's target settings when you supply a control or per-call override. A fresh `SvgRequest`
-or `AsciiRequest` takes its own target defaults. Both ASCII helpers use the builder's configured
-input policy. Use `Renderer::render` with `RenderRequest::with_resource_policy` to choose an
-input policy for a specific operation.
+or `AsciiRequest` supplies its own target settings. All typed helpers apply the builder's
+configured input policy. Graphical `*_with` methods also enforce stricter input ceilings from
+the supplied SVG environment and `Renderer::with_resource_policy`. Use `Renderer::render` with
+`RenderRequest::with_resource_policy` to choose an input policy for a specific operation.
 
 For a defaults-off build that previously depended on Dagre, add `layout-dagre`. With a host allowlist,
 include `RenderCapabilityPolicy::deny_all().with_allowed(RenderCapability::LayoutDagre)` in the

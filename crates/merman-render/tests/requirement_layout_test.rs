@@ -79,6 +79,60 @@ fn requirement_registered_layout_keeps_direction_nodes_and_relationship_labels()
 
 #[cfg(feature = "layout-elk")]
 #[test]
+fn requirement_elk_spreads_ports_only_on_the_marked_side() {
+    const NODES: &str = "requirementDiagram
+direction LR
+element Hub {
+  type: device
+}
+element Leaf {
+  type: device
+}
+";
+    const RELATIONSHIPS: usize = 11;
+    for (relationship, marker_at_start) in [("contains", true), ("satisfies", false)] {
+        let line = format!("Hub - {relationship} -> Leaf\n");
+        let source = format!("{NODES}{}", line.repeat(RELATIONSHIPS));
+        let (layout, svg) = render_with_config(
+            &source,
+            json!({"layout": "elk", "look": "classic", "htmlLabels": false,
+                "elk": {"orientFeedbackEdges": false}}),
+            &SvgRenderOptions::default(),
+        );
+        let edges = layout["edges"].as_array().unwrap();
+        assert_eq!(edges.len(), RELATIONSHIPS);
+        let port_span = |start| {
+            let mut positions = edges.iter().map(|edge| {
+                let points = edge["points"].as_array().unwrap();
+                let port = if start { points.first() } else { points.last() };
+                port.unwrap()["y"].as_f64().unwrap()
+            });
+            let first = positions.next().unwrap();
+            let (min, max) =
+                positions.fold((first, first), |(min, max), y| (min.min(y), max.max(y)));
+            max - min
+        };
+        let marked = port_span(marker_at_start);
+        let open = port_span(!marker_at_start);
+        assert!(
+            marked > open + 1.0,
+            "{relationship}: marked={marked}, open={open}"
+        );
+
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let path = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("path") && node.attribute("data-id") == Some("Hub-Leaf-0")
+            })
+            .unwrap();
+        assert_eq!(path.attribute("marker-start").is_some(), marker_at_start);
+        assert_eq!(path.attribute("marker-end").is_some(), !marker_at_start);
+    }
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
 fn requirement_elk_self_loop_keeps_one_semantic_edge() {
     let source = format!("{SOURCE}safety - refines -> safety\n");
     let (dagre, _) = render(&source, "dagre");

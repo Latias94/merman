@@ -3,10 +3,11 @@
 use super::{LGraph, PortRef, ReorderNodePortsWorkContext, remap_self_loop_holder_ports};
 use crate::work::{WorkControl, WorkError, checked_mul, checked_sum};
 
-/// Composes original-to-current port slots during a pass that reads only port records.
+/// Composes original-to-current port slots during a port-order pass.
 /// Edge endpoints and all other external port references are restored together before the
-/// pass returns, including after an interruption. Stable node slots key the maps. The sorter
-/// admits deferred permutations only after checking all reference indices against fixed sizes.
+/// pass returns, including after an interruption. Until then local references identify ports
+/// by their original slots. Compare their current order through `current_rank`. Stable node
+/// slots key the maps. Deferral requires checking reference indices against fixed sizes.
 #[derive(Default)]
 pub(crate) enum PendingPortRemap {
     #[default]
@@ -19,6 +20,17 @@ pub(crate) enum PendingPortRemap {
 }
 
 impl PendingPortRemap {
+    pub(crate) fn current_rank(&self, reference: PortRef) -> usize {
+        match self {
+            Self::Single { owner, slots } if *owner == reference.node => slots[reference.port],
+            Self::Multiple(owners) => owners
+                .get(reference.node)
+                .and_then(Option::as_ref)
+                .map_or(reference.port, |slots| slots[reference.port]),
+            _ => reference.port,
+        }
+    }
+
     pub(crate) fn reorder_work(
         &self,
         owner: usize,
@@ -45,6 +57,10 @@ impl PendingPortRemap {
         let Some((old_to_new, true)) = graph.permute_node_ports(owner, order) else {
             return;
         };
+        self.record_order(graph.layerless_nodes.len(), owner, old_to_new);
+    }
+
+    fn record_order(&mut self, node_count: usize, owner: usize, old_to_new: Vec<usize>) {
         match self {
             Self::Empty => {
                 *self = Self::Single {
@@ -61,7 +77,7 @@ impl PendingPortRemap {
                 slots,
             } => {
                 let mut owners = Vec::new();
-                owners.resize_with(graph.layerless_nodes.len(), || None);
+                owners.resize_with(node_count, || None);
                 owners[*first] = Some(std::mem::take(slots));
                 owners[owner] = Some(old_to_new);
                 *self = Self::Multiple(owners);
@@ -90,6 +106,107 @@ impl PendingPortRemap {
                     owners.get(owner).and_then(Option::as_deref)
                 });
             }
+        }
+    }
+}
+
+/// PortListSorter keeps the active owner's records in their original slots while it
+/// reads them by rank. The inverse maps for eventual reference repair are separate.
+#[derive(Default)]
+pub(crate) struct PortListStorage {
+    active: Option<StablePortOrder>,
+}
+
+struct StablePortOrder {
+    owner: usize,
+    ids_by_rank: Box<[usize]>,
+}
+
+impl StablePortOrder {
+    fn install(mut self, graph: &mut LGraph) {
+        let ports = &mut graph.layerless_nodes[self.owner].ports;
+        // Consume the already validated permutation by cycles. The scratch space for the
+        // visited marks is the order itself, so an interrupted pass can install it in Drop.
+        const INSTALLED: usize = usize::MAX;
+        for start in 0..self.ids_by_rank.len() {
+            if self.ids_by_rank[start] == INSTALLED {
+                continue;
+            }
+            let mut rank = start;
+            loop {
+                let id = std::mem::replace(&mut self.ids_by_rank[rank], INSTALLED);
+                if id != start {
+                    ports.swap(rank, id);
+                }
+                ports[rank].node = self.owner;
+                if id == start {
+                    break;
+                }
+                rank = id;
+            }
+        }
+    }
+}
+
+impl PortListStorage {
+    pub(crate) fn port_id_at_rank(&self, owner: usize, rank: usize) -> usize {
+        self.active
+            .as_ref()
+            .filter(|order| order.owner == owner)
+            .map_or(rank, |order| order.ids_by_rank[rank])
+    }
+
+    pub(crate) fn stage_order(
+        &mut self,
+        graph: &mut LGraph,
+        pending: &mut PendingPortRemap,
+        owner: usize,
+        mut order: Vec<usize>,
+    ) {
+        let Some(node) = graph.layerless_nodes.get_mut(owner) else {
+            return;
+        };
+        if order.len() != node.ports.len() {
+            return;
+        }
+        // The inverse table doubles as the duplicate check. Validate before replacing any
+        // staged order, and keep fixed-size storage for the one active owner.
+        let mut old_to_new = vec![usize::MAX; order.len()];
+        let mut identity = true;
+        for (rank, &old_rank) in order.iter().enumerate() {
+            let Some(slot) = old_to_new.get_mut(old_rank) else {
+                return;
+            };
+            if *slot != usize::MAX {
+                return;
+            }
+            *slot = rank;
+            identity &= rank == old_rank;
+        }
+        if identity {
+            for port in &mut node.ports {
+                port.node = owner;
+            }
+            return;
+        }
+
+        if let Some(active) = self.active.as_ref().filter(|active| active.owner == owner) {
+            for slot in &mut order {
+                *slot = active.ids_by_rank[*slot];
+            }
+        } else if let Some(previous) = self.active.take() {
+            previous.install(graph);
+        }
+        self.active = Some(StablePortOrder {
+            owner,
+            ids_by_rank: order.into_boxed_slice(),
+        });
+        pending.record_order(graph.layerless_nodes.len(), owner, old_to_new);
+    }
+
+    pub(crate) fn install(self, graph: &mut LGraph) {
+        if let Some(active) = self.active {
+            active.install(graph);
         }
     }
 }

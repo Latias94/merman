@@ -3,7 +3,7 @@
 use merman_model::{OperationPhase, families::er::ErDiagramModel};
 use merman_render_core::{
     Bounds, Error, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, Result,
-    config::config_f64,
+    config::{ConfigLookup, config_f64},
     graph_layout::{
         Size,
         mermaid_grid::{
@@ -15,7 +15,6 @@ use merman_render_core::{
     text::TextMeasurer,
 };
 use rustc_hash::FxHashMap;
-use serde_json::Value;
 
 use super::{
     ErLayoutSettings, ErPreparedLabels, er_layout_bounds, er_marker_id, er_subgraph_title_metrics,
@@ -36,7 +35,7 @@ pub struct ErGridLayout {
 
 pub fn layout(
     model: &ErDiagramModel,
-    config: &Value,
+    config: &(impl ConfigLookup + ?Sized),
     measurer: &dyn TextMeasurer,
     settings: &ErLayoutSettings,
     prepared_labels: &ErPreparedLabels,
@@ -176,7 +175,7 @@ fn project(
     items: &[GridMeasuredItem<'_>],
     edges: &[GridMeasuredEdge<'_>],
     prepared: &PreparedGrid<'_>,
-    config: &Value,
+    config: &(impl ConfigLookup + ?Sized),
     work: &OperationWorkMeter,
 ) -> Result<ErGridLayout> {
     let routes = prepared.route_edges(work)?;

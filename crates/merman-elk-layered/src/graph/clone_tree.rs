@@ -24,10 +24,18 @@ impl Clone for LNode {
     }
 }
 
-/// An internal validation snapshot may own a deep hierarchy even on the flat pipeline entry.
-pub(crate) struct ValidationGraphCopy(LGraph);
+/// Owns a layered graph for a layout or diagnostic operation and releases its hierarchy
+/// without recursing through nested nodes.
+#[doc(hidden)]
+pub struct OwnedLGraph(LGraph);
 
-impl Deref for ValidationGraphCopy {
+impl OwnedLGraph {
+    pub fn new(graph: LGraph) -> Self {
+        Self(graph)
+    }
+}
+
+impl Deref for OwnedLGraph {
     type Target = LGraph;
 
     fn deref(&self) -> &LGraph {
@@ -35,13 +43,13 @@ impl Deref for ValidationGraphCopy {
     }
 }
 
-impl DerefMut for ValidationGraphCopy {
+impl DerefMut for OwnedLGraph {
     fn deref_mut(&mut self) -> &mut LGraph {
         &mut self.0
     }
 }
 
-impl Drop for ValidationGraphCopy {
+impl Drop for OwnedLGraph {
     fn drop(&mut self) {
         LNode::drop_nested_graphs(&mut self.0.layerless_nodes);
     }
@@ -136,8 +144,8 @@ impl LGraph {
     }
 
     /// Copies a detached validation snapshot whose scoped references still target the source domains.
-    pub(crate) fn copy_preserving_reference_domains(&self) -> ValidationGraphCopy {
-        ValidationGraphCopy(self.copy_tree(GraphReferenceDomain::clone))
+    pub(crate) fn copy_preserving_reference_domains(&self) -> OwnedLGraph {
+        OwnedLGraph::new(self.copy_tree(GraphReferenceDomain::clone))
     }
 
     fn copy_without_nodes(&self, domain: GraphReferenceDomain) -> Self {
@@ -280,7 +288,7 @@ mod tests {
         std::thread::Builder::new()
             .stack_size(128 * 1024)
             .spawn(|| {
-                let mut root = ValidationGraphCopy(LGraph::new("same", LayeredOptions::default()));
+                let mut root = OwnedLGraph::new(LGraph::new("same", LayeredOptions::default()));
                 let origin = root.scoped_port(PortRef { node: 0, port: 0 });
                 let mut graph: &mut LGraph = &mut root;
                 for level in 0..DEPTH {
@@ -309,7 +317,7 @@ mod tests {
 
                 let owner = &root.layerless_nodes[0];
                 let mut node_copy = owner.copy_preserving_reference_domains();
-                let nested_copy = ValidationGraphCopy(*node_copy.nested_graph.take().unwrap());
+                let nested_copy = OwnedLGraph::new(*node_copy.nested_graph.take().unwrap());
                 assert!(
                     node_copy.ports[0]
                         .port_dummy

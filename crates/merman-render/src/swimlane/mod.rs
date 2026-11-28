@@ -82,7 +82,7 @@ pub(crate) fn layout_compound(
     measured: &[MeasuredNode<'_>],
     edges: &[LayoutEdge],
     direction: SwimlaneDirection,
-    config: &serde_json::Value,
+    config: &(impl crate::config::ConfigLookup + ?Sized),
     spacing: (f64, f64),
     work_meter: Arc<OperationWorkMeter>,
 ) -> Result<SwimlaneLayout> {

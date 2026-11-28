@@ -5,9 +5,13 @@ use super::{
     compile_er_entity_source_style,
 };
 use crate::label_rect::LabelRect;
+use merman_model::MermaidConfig;
 use merman_model::families::er::{ErEntity, ErSubgraph};
+#[cfg(feature = "layout-layered")]
+use merman_render_core::config::ConfigLookup;
 use merman_render_core::{
     Bounds, Error, Result,
+    config::config_bool,
     resources::{OperationWorkMeter, PreparedTextRetainedReservation},
     text::{
         self, MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, TextMeasurer, TextMetrics, TextStyle, WrapMode,
@@ -17,6 +21,7 @@ use merman_render_core::{
     },
     xml::escape_xml,
 };
+#[cfg(test)]
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -569,7 +574,8 @@ enum ErRelationshipLabelTerminal {
 
 #[derive(Clone, Copy)]
 struct ErLabelRectPreparation<'a> {
-    config: &'a merman_model::MermaidConfig,
+    config: &'a MermaidConfig,
+    wrapping_width: f64,
     html_labels: bool,
     grid: bool,
 }
@@ -671,15 +677,13 @@ impl ErPreparedRelationshipLabel {
         style: &TextStyle,
         preparation: ErLabelRectPreparation<'_>,
     ) -> Self {
-        let wrapping_width =
-            ErConfigView::new(preparation.config.as_value()).swimlane_relationship_wrapping_width();
         let label = LabelRect::prepare(
             text,
             measurer,
             style,
             preparation.html_labels,
             preparation.config,
-            wrapping_width,
+            preparation.wrapping_width,
             preparation.grid,
         );
         Self {
@@ -704,28 +708,23 @@ impl ErPreparedLabels {
         model: &merman_model::families::er::ErDiagramModel,
         measurer: &dyn TextMeasurer,
         settings: &ErLayoutSettings,
-        config: &Value,
+        config: &MermaidConfig,
         swimlane: bool,
         work_meter: &Arc<OperationWorkMeter>,
     ) -> Result<Self> {
-        let sanitize_config = swimlane.then(|| {
-            merman_model::MermaidConfig::from_value(merman_model::json::clone_value_nonrecursive(
-                config,
-            ))
+        let label_rect = swimlane.then(|| ErLabelRectPreparation {
+            config,
+            wrapping_width: ErConfigView::new(config).swimlane_relationship_wrapping_width(),
+            html_labels: settings.relationship_html_labels,
+            grid: false,
         });
         Self::prepare_with_provider(
             model,
             model.entities.values(),
             measurer,
             settings,
-            merman_render_core::config::config_bool(config, &["markdownAutoWrap"]).unwrap_or(true),
-            sanitize_config
-                .as_ref()
-                .map(|config| ErLabelRectPreparation {
-                    config,
-                    html_labels: settings.relationship_html_labels,
-                    grid: false,
-                }),
+            config_bool(config, &["markdownAutoWrap"]).unwrap_or(true),
+            label_rect,
             work_meter,
         )
     }
@@ -735,15 +734,12 @@ impl ErPreparedLabels {
         model: &merman_model::families::er::ErDiagramModel,
         measurer: &dyn TextMeasurer,
         settings: &ErLayoutSettings,
-        config: &Value,
+        config: &MermaidConfig,
         work_meter: &Arc<OperationWorkMeter>,
     ) -> Result<Self> {
         // Grid creates a plain labelRect before measurement. Its labelHelper follows root
         // htmlLabels, while ordinary ER cluster titles keep the existing effective HTML setting.
-        let html_labels = ErConfigView::new(config).relationship_html_labels(true);
-        let sanitize_config = merman_model::MermaidConfig::from_value(
-            merman_model::json::clone_value_nonrecursive(config),
-        );
+        let view = ErConfigView::new(config);
         Self::prepare_with_provider(
             model,
             model.entities.values(),
@@ -751,8 +747,9 @@ impl ErPreparedLabels {
             settings,
             true,
             Some(ErLabelRectPreparation {
-                config: &sanitize_config,
-                html_labels,
+                config,
+                wrapping_width: view.swimlane_relationship_wrapping_width(),
+                html_labels: view.relationship_html_labels(true),
                 grid: true,
             }),
             work_meter,
@@ -762,7 +759,7 @@ impl ErPreparedLabels {
     #[cfg(feature = "layout-layered")]
     pub(super) fn prepare_for_layered<'a>(
         model: &merman_model::families::er::ErDiagramModel,
-        config: &Value,
+        config: &(impl ConfigLookup + ?Sized),
         measurer: &dyn TextMeasurer,
         settings: &ErLayoutSettings,
         entities: impl Iterator<Item = &'a ErEntity>,
@@ -773,7 +770,7 @@ impl ErPreparedLabels {
             entities,
             measurer,
             settings,
-            merman_render_core::config::config_bool(config, &["markdownAutoWrap"]).unwrap_or(true),
+            config_bool(config, &["markdownAutoWrap"]).unwrap_or(true),
             None,
             work_meter,
         )
@@ -912,6 +909,7 @@ pub(super) fn prepare_er_labels(
     swimlane: bool,
 ) -> Arc<ErPreparedLabels> {
     let settings = test_layout_settings(effective_config, &model.direction, swimlane);
+    let config = MermaidConfig::from_value(effective_config.clone());
     let work_meter = Arc::new(OperationWorkMeter::new(
         merman_render_core::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
     ));
@@ -920,7 +918,7 @@ pub(super) fn prepare_er_labels(
             model,
             measurer,
             &settings,
-            effective_config,
+            &config,
             swimlane,
             &work_meter,
         )
@@ -995,7 +993,7 @@ pub fn er_subgraph_title_metrics(
 #[cfg(feature = "layout-layered")]
 pub(super) fn er_layered_title_size(
     group: &ErSubgraph,
-    config: &Value,
+    config: &(impl ConfigLookup + ?Sized),
     measurer: &dyn TextMeasurer,
     settings: &ErLayoutSettings,
 ) -> merman_render_core::graph_layout::Size {
@@ -1010,8 +1008,7 @@ pub(super) fn er_layered_title_size(
     let metrics = if group.label_type == "markdown" {
         let width = Some(view.swimlane_relationship_wrapping_width());
         if html {
-            let auto_wrap = merman_render_core::config::config_bool(config, &["markdownAutoWrap"])
-                .unwrap_or(true);
+            let auto_wrap = config_bool(config, &["markdownAutoWrap"]).unwrap_or(true);
             let fragment = text::mermaid_markdown_to_xhtml_label_fragment(&group.title, auto_wrap);
             text::measure_xhtml_label_fragment_with_terminal_fonts(
                 measurer,

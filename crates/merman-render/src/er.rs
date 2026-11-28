@@ -3,7 +3,9 @@ use crate::model::ErDiagramLayout;
 use crate::resources::OperationWorkMeter;
 use crate::text::TextMeasurer;
 use crate::{Error, Result};
+use merman_model::MermaidConfig;
 use merman_render_graph::er::er_marker_id;
+#[cfg(test)]
 use serde_json::Value;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -50,6 +52,7 @@ pub(crate) fn prepare_er_labels(
     swimlane: bool,
 ) -> Arc<ErPreparedLabels> {
     let settings = test_layout_settings(effective_config, &model.direction, swimlane);
+    let config = MermaidConfig::from_value(effective_config.clone());
     let work_meter = Arc::new(OperationWorkMeter::new(
         crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
     ));
@@ -58,7 +61,7 @@ pub(crate) fn prepare_er_labels(
             model,
             measurer,
             &settings,
-            effective_config,
+            &config,
             swimlane,
             &work_meter,
         )
@@ -78,7 +81,7 @@ pub(crate) struct ErPreparedLayout {
 )]
 pub(crate) fn layout_er_diagram_typed(
     model: &merman_model::families::er::ErDiagramModel,
-    effective_config: &Value,
+    effective_config: &MermaidConfig,
     backend: GraphLayoutBackend,
     measurer: &dyn TextMeasurer,
     #[cfg(feature = "layout-elk")] operation_seed: merman_layout_elk::ElkOperationSeed,
@@ -336,11 +339,12 @@ mod tests {
             ..Default::default()
         });
         let config = serde_json::json!({"layout": "shoal", "htmlLabels": false});
+        let layout_config = merman_model::MermaidConfig::from_value(config.clone());
         let prepare = |measurer: &dyn TextMeasurer, meter| {
             let settings = super::test_layout_settings(&config, &model.direction, false);
             super::layout_er_diagram_typed(
                 &model,
-                &config,
+                &layout_config,
                 super::GraphLayoutBackend::Shoal,
                 measurer,
                 #[cfg(feature = "layout-elk")]

@@ -268,6 +268,7 @@ fn port_scoring_and_sorting_only_charge_the_visited_reference_prefix() {
             reference_width,
             &graph.layers[0].nodes,
             &HashMap::new(),
+            PortRanks::default(),
             &mut sorting,
         ),
         Ok(vec![1, 0])

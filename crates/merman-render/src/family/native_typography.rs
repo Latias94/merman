@@ -1,3 +1,4 @@
+use crate::RenderCapabilityPolicy;
 use merman_model::presentation::{PresentationConfig, PresentationDiagram, RenderSemanticModel};
 use merman_model::{OperationControl, OperationControlResult, OperationPhase};
 
@@ -296,7 +297,12 @@ pub fn unsupported_native_html_style(
     parsed: &PresentationDiagram,
     control: &OperationControl,
 ) -> OperationControlResult<Option<String>> {
-    unsupported_native_html_style_with_config(parsed, &parsed.metadata().effective_config, control)
+    unsupported_native_html_style_with_config(
+        parsed,
+        &parsed.metadata().effective_config,
+        RenderCapabilityPolicy::unrestricted(),
+        control,
+    )
 }
 
 pub fn unsupported_native_html_style_with_config(
@@ -306,6 +312,11 @@ pub fn unsupported_native_html_style_with_config(
         reason = "Only families with HTML labels consult render configuration."
     )]
     config: &PresentationConfig,
+    #[allow(
+        unused_variables,
+        reason = "ER relationship labels depend on Grid capability admission."
+    )]
+    capability_policy: RenderCapabilityPolicy,
     control: &OperationControl,
 ) -> OperationControlResult<Option<String>> {
     let control = control.for_phase(OperationPhase::Semantic);
@@ -331,7 +342,9 @@ pub fn unsupported_native_html_style_with_config(
         }
         #[cfg(feature = "diagram-er")]
         RenderSemanticModel::Er(model) => {
-            merman_render_graph::er::unsupported_html_style(model, config, &control)
+            let grid_available = crate::layout_grid_available()
+                && capability_policy.allows(crate::RenderCapability::LayoutGrid);
+            merman_render_graph::er::unsupported_html_style(model, config, grid_available, &control)
         }
         #[cfg(feature = "diagram-requirement")]
         RenderSemanticModel::Requirement(model) => {

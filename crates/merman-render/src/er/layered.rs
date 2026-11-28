@@ -1,12 +1,13 @@
 use super::*;
 use crate::graph_layout::RouteContract;
 use merman_model::{OperationPhase, families::er::ErDiagramModel};
+use merman_render_core::config::ConfigLookup;
 use merman_render_graph::er::{ErLayeredError, ErLayeredLabels, layout_layered};
 
 /// `None` requests a fresh Dagre attempt. All first-attempt owners have already dropped.
 pub(super) fn prepare(
     model: &ErDiagramModel,
-    config: &Value,
+    config: &(impl ConfigLookup + ?Sized),
     measurer: &dyn TextMeasurer,
     settings: &ErLayoutSettings,
     work: &Arc<OperationWorkMeter>,
@@ -82,12 +83,13 @@ mod tests {
         }
         let config = serde_json::json!({"htmlLabels":false,
             "flowchart":{"subGraphTitleMargin":{"top":1.7e308,"bottom":1.7e308}}});
+        let layout_config = MermaidConfig::from_value(config.clone());
         let text = DeterministicTextMeasurer::default();
         let execute = |backend, meter: &Arc<OperationWorkMeter>, allow_retry| {
             let settings = test_layout_settings(&config, &model.direction, false);
             layout_er_diagram_typed(
                 &model,
-                &config,
+                &layout_config,
                 backend,
                 &text,
                 #[cfg(feature = "layout-elk")]

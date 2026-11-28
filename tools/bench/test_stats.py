@@ -3,10 +3,91 @@
 
 from __future__ import annotations
 
+from contextlib import redirect_stdout
+import io
+import json
 import math
+from pathlib import Path
+from subprocess import CompletedProcess
+from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
+from merman_bench import ab
 from merman_bench import stats as stats
+
+
+class CompareSelfCliContractsTest(unittest.TestCase):
+    def test_repeated_filter_alternative_counts_once_per_paired_round(self) -> None:
+        checkout = Path(__file__).resolve().parents[2]
+        fixtures = ["mindmap_medium", "flowchart_small"]
+        receipts = {
+            f"end_to_end/{name}": {
+                "schema_version": 1,
+                "benchmark": f"end_to_end/{name}",
+                "output_kind": "svg",
+                "output_bytes": 64,
+                "output_sha256": "a" * 64,
+                "svg_elements": 1,
+            }
+            for name in fixtures
+        }
+        calls = []
+
+        def prepare_runner(recipe, **options):
+            provenance = {"discovery": {"preflight_receipts": receipts}}
+            runner = ab.PreparedRunner(
+                recipe, recipe.target_dir / "criterion.exe", recipe.label,
+                set(receipts), {}, provenance, {},
+            )
+            return runner, provenance, []
+
+        def measure(command, **options):
+            side, benchmark = Path(command[0]).parent.name, command[-1]
+            calls.append((side, benchmark))
+            point = 1_000_000 if side == "base" else 1_120_000
+            return CompletedProcess(
+                command, 0, f"{benchmark} time: [{point} ns {point} ns {point} ns]\n",
+                f"[bench][preflight] {json.dumps(receipts[benchmark])}\n"
+                f"[bench][postflight] {benchmark}\n",
+            )
+
+        with TemporaryDirectory() as temp:
+            output = Path(temp)
+            json_path = output / "report.json"
+            with (
+                patch.object(ab, "_prepare_runner", side_effect=prepare_runner),
+                patch.object(ab, "_run_process", side_effect=measure),
+                patch.object(ab, "_verification_errors", return_value=[]),
+                patch.object(ab, "best_effort_cpu_model", return_value="synthetic"),
+                patch.object(ab, "rustc_verbose", return_value="synthetic"),
+                redirect_stdout(io.StringIO()),
+            ):
+                code = ab.main([
+                    "--base-dir", str(checkout), "--head-dir", str(checkout),
+                    "--base-target-dir", str(output / "base"),
+                    "--head-target-dir", str(output / "head"),
+                    "--filter", "end_to_end/(mindmap_medium|flowchart_small|mindmap_medium)",
+                    "--start-side", "head", "--pairs", "2", "--bootstrap-resamples", "16",
+                    "--out", str(output / "report.md"), "--json-out", str(json_path),
+                ])
+            report = json.loads(json_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(code, 0, report["contract_errors"])
+        self.assertEqual([row["fixture"] for row in report["rows"]], fixtures)
+        self.assertEqual([row["order"] for row in report["raw_rounds"]], ["BA", "AB"])
+        self.assertEqual(calls, [
+            (side, benchmark)
+            for order in (("head", "base"), ("base", "head"))
+            for benchmark in receipts
+            for side in order
+        ])
+        for row in report["rows"]:
+            self.assertEqual(row["pair_count"], 2)
+            self.assertEqual(row["raw_pairs"], [
+                round_["benchmarks"][row["fixture"]] for round_ in report["raw_rounds"]
+            ])
+            self.assertEqual(row["bounds"]["absolute_ns"]["estimate"], 120_000)
 
 
 class CompareSelfStatisticsContractsTest(unittest.TestCase):

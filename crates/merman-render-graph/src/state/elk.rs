@@ -11,7 +11,7 @@ use super::measure::{
     edge_label_metrics, state_fork_join_painted_dimensions, state_node_dimensions,
     title_label_metrics,
 };
-use super::{StateDiagramLayout, StateLabelSidecarBuilder, StateStylePlan};
+use super::{StateDiagramLayout, StateLabelSidecarBuilder, StateStylePlan, transition_end_barb};
 use merman_layout_elk as elk;
 use merman_model::families::state::StateDiagramRenderModel as StateDiagramModel;
 use merman_render_core::config::config_bool;
@@ -232,7 +232,7 @@ pub fn layout(
             inside_self_loops_yo: false,
         });
         // State transitions use barb markers, with no start marker. A note edge still takes a port.
-        end_markers.push(!matches!(edge.arrow_type_end.as_str(), "" | "none"));
+        end_markers.push(transition_end_barb(&edge.arrow_type_end).is_some());
         source_edges.insert(edge.id.as_str(), edge);
     }
     let mut graph = elk::Graph {
@@ -512,7 +512,12 @@ fn prepare_paint_paths(
         if !edge.points.is_empty()
             && let Some(source_edge) = source_edges.get(edge.id.as_str())
         {
-            geometry::marker_segment(&mut points, end, Some(&source_edge.arrow_type_end), false);
+            geometry::marker_segment(
+                &mut points,
+                end,
+                transition_end_barb(&source_edge.arrow_type_end),
+                false,
+            );
         }
         paths.push(points);
     }

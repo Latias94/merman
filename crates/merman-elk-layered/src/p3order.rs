@@ -14,8 +14,8 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
 use crate::graph::{
-    FlatPortRemap, GraphNodeRef, LGraph, LNodeKind, PendingPortRemap, PortRef, PortSide,
-    ReorderNodePortsWorkContext,
+    FlatPortRemap, GraphNodeRef, LGraph, LNodeKind, LPort, PendingPortRemap, PortListStorage,
+    PortOrderDeferral, PortRef, PortSide, ReorderNodePortsWorkContext,
 };
 use crate::options::{OrderingStrategy, PortConstraints, PortSortingStrategy};
 use crate::work::{WorkControl, WorkError, ceil_log2, checked_add, checked_mul, checked_sum};
@@ -383,25 +383,43 @@ pub fn sort_port_lists_with_work_control(
     graph: &mut LGraph,
     work: &mut dyn WorkControl,
 ) -> Result<(), WorkError> {
-    // The sorter reads port records and edge reversal flags without consulting port references.
-    // Reconcile the admitted prefix whenever the pass exits.
-    let mut pass = PortListSort {
-        graph,
-        context: PortOrderContext {
-            census: None,
-            pending: Some(PendingPortRemap::default()),
-        },
-    };
+    // The sorter reads ports by rank and edge reversal flags without consulting endpoints.
+    // Install the admitted order and reconcile its references whenever the pass exits.
+    let mut pass = PortOrderPass::for_sorter(graph);
     sort_port_lists_impl(pass.graph, work, &mut pass.context)
 }
 
-struct PortListSort<'a> {
+struct PortOrderPass<'a> {
     graph: &'a mut LGraph,
     context: PortOrderContext,
 }
 
-impl Drop for PortListSort<'_> {
+impl<'a> PortOrderPass<'a> {
+    fn for_sorter(graph: &'a mut LGraph) -> Self {
+        let mut pass = Self::new(graph, PortOrderDeferral::AllowDescendants);
+        pass.context.sorter_storage = Some(PortListStorage::default());
+        pass
+    }
+
+    fn new(graph: &'a mut LGraph, deferral: PortOrderDeferral) -> Self {
+        Self {
+            graph,
+            context: PortOrderContext {
+                census: None,
+                pending: (!matches!(deferral, PortOrderDeferral::Immediate))
+                    .then(PendingPortRemap::default),
+                deferral,
+                sorter_storage: None,
+            },
+        }
+    }
+}
+
+impl Drop for PortOrderPass<'_> {
     fn drop(&mut self) {
+        if let Some(storage) = self.context.sorter_storage.take() {
+            storage.install(self.graph);
+        }
         if let Some(pending) = self.context.pending.take() {
             pending.apply(self.graph);
         }
@@ -424,14 +442,18 @@ fn sort_port_lists_impl(
         if constraints.is_order_fixed() {
             let mut order = (0..graph.layerless_nodes[node].ports.len()).collect::<Vec<_>>();
             order.sort_by(|left, right| {
-                compare_combined_ports(graph, node, *left, *right, constraints)
+                compare_combined_ports(
+                    reorder_context.port_at_rank(graph, node, *left),
+                    reorder_context.port_at_rank(graph, node, *right),
+                    constraints,
+                )
             });
             apply_port_order(graph, node, order, work, reorder_context)?;
         } else if constraints.is_side_fixed() {
             let keys = (0..graph.layerless_nodes[node].ports.len())
                 .map(|port| {
                     (
-                        port_side_order(graph.layerless_nodes[node].ports[port].side),
+                        port_side_order(reorder_context.port_at_rank(graph, node, port).side),
                         port,
                     )
                 })
@@ -441,7 +463,10 @@ fn sort_port_lists_impl(
 
             if graph.options.port_sorting_strategy == PortSortingStrategy::PortDegree {
                 let keys = (0..graph.layerless_nodes[node].ports.len())
-                    .map(|port| (port_degree_east_west_key(graph, node, port), port))
+                    .map(|rank| {
+                        let port = reorder_context.port_at_rank(graph, node, rank);
+                        (port_degree_east_west_key(graph, port, rank), rank)
+                    })
                     .collect::<Vec<_>>();
                 reorder_by_keys(graph, node, keys, work, reorder_context)?;
             }
@@ -454,7 +479,17 @@ pub fn sort_by_input_model(
     graph: &mut LGraph,
     work: &mut dyn WorkControl,
 ) -> Result<(), WorkError> {
-    let mut reorder_context = PortOrderContext::default();
+    // The comparators project the ranks of local endpoints as they read them. Graphs with
+    // attached children keep their immediate cross-domain origin repair schedule.
+    let mut pass = PortOrderPass::new(graph, PortOrderDeferral::Flat);
+    sort_by_input_model_impl(pass.graph, work, &mut pass.context)
+}
+
+fn sort_by_input_model_impl(
+    graph: &mut LGraph,
+    work: &mut dyn WorkControl,
+    reorder_context: &mut PortOrderContext,
+) -> Result<(), WorkError> {
     let mut layer_index = 0usize;
     while layer_index < graph.layers.len() {
         let previous_layer_index = if layer_index == 0 { 0 } else { layer_index - 1 };
@@ -464,6 +499,7 @@ pub fn sort_by_input_model(
             &graph.layers[layer_index].nodes,
             &previous_layer,
             true,
+            PortRanks(reorder_context.pending.as_ref()),
             work,
         )?;
         graph.layers[layer_index].nodes = layer_nodes.clone();
@@ -484,9 +520,10 @@ pub fn sort_by_input_model(
                     node,
                     &previous_layer,
                     &target_orders,
+                    PortRanks(reorder_context.pending.as_ref()),
                     work,
                 )?;
-                apply_port_order(graph, node, port_order, work, &mut reorder_context)?;
+                apply_port_order(graph, node, port_order, work, reorder_context)?;
             }
         }
 
@@ -495,6 +532,7 @@ pub fn sort_by_input_model(
             &graph.layers[layer_index].nodes,
             &previous_layer,
             false,
+            PortRanks(reorder_context.pending.as_ref()),
             work,
         )?;
         graph.layers[layer_index].nodes = node_order;
@@ -507,6 +545,30 @@ pub fn sort_by_input_model(
 struct PortOrderContext {
     census: Option<ReorderNodePortsWorkContext>,
     pending: Option<PendingPortRemap>,
+    deferral: PortOrderDeferral,
+    sorter_storage: Option<PortListStorage>,
+}
+
+impl PortOrderContext {
+    fn port_at_rank<'a>(&self, graph: &'a LGraph, node: usize, rank: usize) -> &'a LPort {
+        let id = self
+            .sorter_storage
+            .as_ref()
+            .map_or(rank, |storage| storage.port_id_at_rank(node, rank));
+        &graph.layerless_nodes[node].ports[id]
+    }
+}
+
+/// Read current order from a local endpoint. The port records are already in rank order,
+/// but references can still carry the identity assigned before the deferred permutations.
+#[derive(Clone, Copy, Default)]
+struct PortRanks<'a>(Option<&'a PendingPortRemap>);
+
+impl PortRanks<'_> {
+    fn rank(self, reference: PortRef) -> usize {
+        self.0
+            .map_or(reference.port, |pending| pending.current_rank(reference))
+    }
 }
 
 fn apply_port_order(
@@ -517,18 +579,20 @@ fn apply_port_order(
     context: &mut PortOrderContext,
 ) -> Result<(), WorkError> {
     work.check(0)?;
+    let ports = &mut graph.layerless_nodes[node].ports;
+    let identity = order.iter().copied().eq(0..ports.len());
+    if identity && context.sorter_storage.is_some() {
+        for port in ports {
+            port.node = node;
+        }
+        return Ok(());
+    }
+
     let mut check_edge_slots = false;
-    if !order
-        .iter()
-        .copied()
-        .eq(0..graph.layerless_nodes[node].ports.len())
-    {
+    if !identity {
         if context.census.is_none() {
-            let (census, can_defer) = ReorderNodePortsWorkContext::new_with_work_control(
-                graph,
-                work,
-                context.pending.is_some(),
-            )?;
+            let (census, can_defer) =
+                ReorderNodePortsWorkContext::new_with_work_control(graph, work, context.deferral)?;
             context.census = Some(census);
             check_edge_slots = can_defer;
             if !can_defer {
@@ -551,7 +615,11 @@ fn apply_port_order(
             context.pending = None;
         }
     } else if let Some(pending) = &mut context.pending {
-        pending.reorder(graph, node, order);
+        if let Some(storage) = &mut context.sorter_storage {
+            storage.stage_order(graph, pending, node, order);
+        } else {
+            pending.reorder(graph, node, order);
+        }
     } else {
         graph.reorder_node_ports(node, order);
     }
@@ -576,14 +644,10 @@ fn reorder_by_keys<K: Ord>(
 }
 
 fn compare_combined_ports(
-    graph: &LGraph,
-    node: usize,
-    first: usize,
-    second: usize,
+    first_port: &LPort,
+    second_port: &LPort,
     constraints: PortConstraints,
 ) -> Ordering {
-    let first_port = &graph.layerless_nodes[node].ports[first];
-    let second_port = &graph.layerless_nodes[node].ports[second];
     let side_order = port_side_order(first_port.side).cmp(&port_side_order(second_port.side));
     if side_order != Ordering::Equal || !constraints.is_order_fixed() {
         return side_order;
@@ -633,8 +697,8 @@ fn reverse_side_range(
     work: &mut dyn WorkControl,
     context: &mut PortOrderContext,
 ) -> Result<(), WorkError> {
-    let ports = &graph.layerless_nodes[node].ports;
-    if ports.is_empty() {
+    let port_count = graph.layerless_nodes[node].ports.len();
+    if port_count == 0 {
         return Ok(());
     }
 
@@ -644,50 +708,40 @@ fn reverse_side_range(
     // must inspect the reordered list. A conventional side range changes routes.
     let lower_bound = port_side_order(side);
     let upper_bound = lower_bound + 1;
-    let mut current_side = port_side_order(ports[0].side);
+    let side_at_rank = |rank| port_side_order(context.port_at_rank(graph, node, rank).side);
+    let mut current_side = side_at_rank(0);
     let mut low = 0;
-    while low < ports.len() - 1 && current_side < lower_bound {
+    while low < port_count - 1 && current_side < lower_bound {
         low += 1;
-        current_side = port_side_order(ports[low].side);
+        current_side = side_at_rank(low);
     }
     let mut high = low;
-    while high < ports.len() - 1 && current_side < upper_bound {
+    while high < port_count - 1 && current_side < upper_bound {
         high += 1;
-        current_side = port_side_order(ports[low].side);
+        current_side = side_at_rank(low);
     }
     if high <= low + 2 {
         return Ok(());
     }
 
-    let mut order = (0..ports.len()).collect::<Vec<_>>();
+    let mut order = (0..port_count).collect::<Vec<_>>();
     order[low..high].reverse();
     apply_port_order(graph, node, order, work, context)
 }
 
-fn port_degree_east_west_key(graph: &LGraph, node: usize, port: usize) -> (u8, i64, usize) {
-    let port_data = &graph.layerless_nodes[node].ports[port];
-    let degree_key = match port_data.side {
-        PortSide::East => -(real_out_degree(graph, node, port) as i64),
-        PortSide::West => real_in_degree(graph, node, port) as i64,
+fn port_degree_east_west_key(graph: &LGraph, port: &LPort, rank: usize) -> (u8, i64, usize) {
+    let real_degree = |edges: &[usize]| {
+        edges
+            .iter()
+            .filter(|edge| !graph.edges[**edge].reversed)
+            .count() as i64
+    };
+    let degree_key = match port.side {
+        PortSide::East => -real_degree(&port.outgoing_edges),
+        PortSide::West => real_degree(&port.incoming_edges),
         _ => 0,
     };
-    (port_side_order(port_data.side), degree_key, port)
-}
-
-fn real_in_degree(graph: &LGraph, node: usize, port: usize) -> usize {
-    graph.layerless_nodes[node].ports[port]
-        .incoming_edges
-        .iter()
-        .filter(|edge| !graph.edges[**edge].reversed)
-        .count()
-}
-
-fn real_out_degree(graph: &LGraph, node: usize, port: usize) -> usize {
-    graph.layerless_nodes[node].ports[port]
-        .outgoing_edges
-        .iter()
-        .filter(|edge| !graph.edges[**edge].reversed)
-        .count()
+    (port_side_order(port.side), degree_key, rank)
 }
 
 fn port_side_order(side: PortSide) -> u8 {
@@ -762,6 +816,7 @@ fn sorted_ports_by_model_order(
     node: usize,
     previous_layer: &[usize],
     target_node_model_order: &HashMap<usize, usize>,
+    port_ranks: PortRanks<'_>,
     work: &mut dyn WorkControl,
 ) -> Result<Vec<usize>, WorkError> {
     let mut order = (0..graph.layerless_nodes[node].ports.len()).collect::<Vec<_>>();
@@ -776,6 +831,7 @@ fn sorted_ports_by_model_order(
         target_node_model_order,
         graph.options.consider_model_order_port_model_order,
     );
+    comparator.port_ranks = port_ranks;
     sort_model_order(&mut order, |left, right| {
         comparator.compare_with_work(left, right, work)
     })?;
@@ -787,6 +843,7 @@ fn sorted_nodes_by_model_order(
     nodes: &[usize],
     previous_layer: &[usize],
     before_ports: bool,
+    port_ranks: PortRanks<'_>,
     work: &mut dyn WorkControl,
 ) -> Result<Vec<usize>, WorkError> {
     let scalar_order = nodes.len() > 1
@@ -803,7 +860,7 @@ fn sorted_nodes_by_model_order(
     if scalar_order {
         return sorted_scalar_model_order_nodes(graph, nodes, work);
     }
-    sorted_nodes_with_relation_state(graph, nodes, previous_layer, before_ports, work)
+    sorted_nodes_with_relation_state(graph, nodes, previous_layer, before_ports, port_ranks, work)
 }
 
 fn sorted_scalar_model_order_nodes(
@@ -838,6 +895,7 @@ fn sorted_nodes_with_relation_state(
     nodes: &[usize],
     previous_layer: &[usize],
     before_ports: bool,
+    port_ranks: PortRanks<'_>,
     work: &mut dyn WorkControl,
 ) -> Result<Vec<usize>, WorkError> {
     let mut order = nodes.to_vec();
@@ -848,6 +906,7 @@ fn sorted_nodes_with_relation_state(
         graph.options.consider_model_order_strategy,
     );
     comparator.before_ports = before_ports;
+    comparator.port_ranks = port_ranks;
     for index in 1..order.len() {
         let node = order[index];
         let mut cursor = index;
@@ -1074,6 +1133,7 @@ struct ModelOrderNodeComparator<'a> {
     previous_layer: &'a [usize],
     ordering_strategy: OrderingStrategy,
     before_ports: bool,
+    port_ranks: PortRanks<'a>,
     long_edge_strategy: crate::options::LongEdgeOrderingStrategy,
     relations: ModelOrderRelations,
 }
@@ -1112,6 +1172,7 @@ impl<'a> ModelOrderNodeComparator<'a> {
             previous_layer,
             ordering_strategy,
             before_ports: false,
+            port_ranks: PortRanks::default(),
             long_edge_strategy: graph.options.consider_model_order_long_edge_strategy,
             relations: ModelOrderRelations::default(),
         }
@@ -1167,12 +1228,14 @@ impl<'a> ModelOrderNodeComparator<'a> {
 
             if let (Some(p1), Some(p2)) = (p1_source_port, p2_source_port) {
                 if p1.node == p2.node {
+                    let first_rank = self.port_ranks.rank(p1);
+                    let second_rank = self.port_ranks.rank(p2);
                     for port_index in 0..self.graph.layerless_nodes[p1.node].ports.len() {
-                        if port_index == p1.port {
+                        if port_index == first_rank {
                             self.update_bigger_smaller(n2, n1, work)?;
                             return Ok(NodeComparison::Order(Ordering::Less));
                         }
-                        if port_index == p2.port {
+                        if port_index == second_rank {
                             self.update_bigger_smaller(n1, n2, work)?;
                             return Ok(NodeComparison::Order(Ordering::Greater));
                         }
@@ -1339,7 +1402,12 @@ impl<'a> ModelOrderNodeComparator<'a> {
                             &orders,
                             second_target_feedback,
                         );
-                        comparator.compare_with_work(first_source.port, second_source.port, work)?
+                        comparator.port_ranks = self.port_ranks;
+                        comparator.compare_with_work(
+                            self.port_ranks.rank(first_source),
+                            self.port_ranks.rank(second_source),
+                            work,
+                        )?
                     } else if first_source_feedback && second_target_feedback {
                         Ordering::Greater
                     } else if first_target_feedback && second_source_feedback {
@@ -1356,7 +1424,8 @@ impl<'a> ModelOrderNodeComparator<'a> {
                 }
                 if first_source.node == first_reference
                     && (second_source.node != first_reference
-                        || first_source.port <= second_source.port)
+                        || self.port_ranks.rank(first_source)
+                            <= self.port_ranks.rank(second_source))
                 {
                     self.update_bigger_smaller(second, first, work)?;
                     return Ok(Some(NodeComparison::Order(Ordering::Less)));
@@ -1402,6 +1471,7 @@ struct ModelOrderPortComparator<'a> {
     target_node_model_order: &'a HashMap<usize, usize>,
     target_nodes: Option<&'a [Option<usize>]>,
     port_model_order: bool,
+    port_ranks: PortRanks<'a>,
     relations: ModelOrderRelations,
 }
 
@@ -1422,6 +1492,7 @@ impl<'a> ModelOrderPortComparator<'a> {
             target_node_model_order,
             target_nodes: None,
             port_model_order,
+            port_ranks: PortRanks::default(),
             relations: ModelOrderRelations::default(),
         }
     }
@@ -1473,7 +1544,11 @@ impl<'a> ModelOrderPortComparator<'a> {
             if p1_node == p2_node {
                 let source1 = self.incoming_source_port(p1).unwrap();
                 let source2 = self.incoming_source_port(p2).unwrap();
-                return Ok(self.order_ports(p1, p2, source1.port.cmp(&source2.port), reverse));
+                let order = self
+                    .port_ranks
+                    .rank(source1)
+                    .cmp(&self.port_ranks.rank(source2));
+                return Ok(self.order_ports(p1, p2, order, reverse));
             }
             if let (Some(source1), Some(source2)) = (p1_node, p2_node) {
                 let first = &self.graph.layerless_nodes[source1];
@@ -2510,7 +2585,14 @@ mod tests {
             } else {
                 sorted_nodes_by_model_order
             };
-            let result = sort(graph, nodes, previous_layer, before_ports, &mut work);
+            let result = sort(
+                graph,
+                nodes,
+                previous_layer,
+                before_ports,
+                PortRanks::default(),
+                &mut work,
+            );
             (result, work.admissions)
         };
         let expected = run(true, None);
@@ -2551,6 +2633,7 @@ mod tests {
                             nodes,
                             previous_layer,
                             before_ports,
+                            PortRanks::default(),
                             &mut crate::work::NoopWorkControl,
                         ),
                         sorted_nodes_with_relation_state(
@@ -2558,6 +2641,7 @@ mod tests {
                             nodes,
                             previous_layer,
                             before_ports,
+                            PortRanks::default(),
                             &mut crate::work::NoopWorkControl,
                         ),
                     );
@@ -2638,6 +2722,7 @@ mod tests {
                 &[2, 3],
                 &[0, 1],
                 false,
+                PortRanks::default(),
                 &mut crate::work::NoopWorkControl,
             ),
             Ok(vec![3, 2]),

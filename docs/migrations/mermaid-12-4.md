@@ -37,9 +37,10 @@ using a local variant. [Node source builds](../../platforms/node/README.md#local
 
 ## Revised SVG geometry
 
-Mermaid 12.4 spreads crowded ELK arrowheads. Flowchart routes and State transitions can meet
-their nodes at different coordinates when several edges share one side. Aligned Swimlane routes
-can use a straight shaft while keeping their label and node outline contacts.
+Mermaid 12.4 spreads crowded ELK arrowheads. When markers overlap on one side of a node, the
+ELK adapters for Flowchart, State, Class, ER, Requirement, and Usecase can spread the port
+contacts. Mindmap edges remain unmarked. Aligned Swimlane routes can use a straight shaft while
+keeping their label and node outline contacts.
 
 The refreshed SVG reference manifests record the capture environment. Browser label wrapping can
 vary with the font probe even when the Mermaid versions emit identical SVG on the same host.

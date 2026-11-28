@@ -56,6 +56,56 @@ mod er_native_regressions {
             .unwrap()
     }
 
+    #[cfg(feature = "layout-grid")]
+    #[test]
+    fn er_native_grid_label_admission_respects_the_host_layout_policy() {
+        use merman::RenderError;
+        use merman::svg::{RenderCapability, RenderCapabilityPolicy};
+
+        let source = "\
+---
+config:
+  layout: grid
+  htmlLabels: true
+---
+erDiagram
+A ||--|| B : \"<span style='letter-spacing:20px'>AAAA</span>\"
+";
+        let renderer = Renderer::new();
+        let request = request(single_font_context());
+        let denied = SvgRequest {
+            environment: request.environment.clone().with_capability_policy(
+                RenderCapabilityPolicy::unrestricted().with_denied(RenderCapability::LayoutGrid),
+            ),
+            ..request.clone()
+        };
+        let plan = renderer
+            .render(RenderRequest::svg_plan(
+                source,
+                OperationControl::new(),
+                denied.clone(),
+            ))
+            .unwrap();
+        let RenderOutput::SvgPlan(Some(plan)) = plan else {
+            panic!("expected a capability plan");
+        };
+        assert_eq!(plan.missing_capabilities(), [RenderCapability::LayoutGrid]);
+        assert!(matches!(
+            renderer.render(RenderRequest::svg(source, OperationControl::new(), denied)),
+            Err(RenderError::Svg(
+                merman::svg::RenderError::MissingCapability {
+                    capability: RenderCapability::LayoutGrid,
+                    ..
+                }
+            ))
+        ));
+        let error = renderer
+            .render(RenderRequest::svg(source, OperationControl::new(), request))
+            .unwrap_err();
+        assert!(matches!(error, RenderError::NativeFont(_)));
+        assert!(error.to_string().contains("letter-spacing"));
+    }
+
     #[test]
     fn er_native_rejects_retained_relationship_geometry_before_measurement() {
         let request = request(single_font_context());

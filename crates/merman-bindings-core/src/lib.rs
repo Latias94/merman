@@ -72,6 +72,8 @@ pub use common::{
 pub use engine::BindingEngine;
 #[cfg(feature = "svg")]
 pub use engine::BindingPreparedSource;
+#[doc(hidden)]
+pub use lifecycle::BindingEngineSlot;
 pub use lifecycle::{
     BindingCallbackAdmission, BindingEngineAdmission, BindingEngineAdmissionError,
     BindingEngineAdmissionMode, BindingOperationAdmission,

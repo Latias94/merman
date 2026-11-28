@@ -11,7 +11,10 @@ use super::{
 use merman_layout_elk as elk;
 use merman_model::presentation::PresentationConfig;
 use merman_render_core::elk_adapter::{
-    self, feedback_edges, options::layout_options as class_elk_layout_options,
+    self,
+    arrowheads::{Arrowhead, EdgeArrowheads},
+    feedback_edges,
+    options::layout_options as class_elk_layout_options,
 };
 use merman_render_core::elk_edge_geometry::{self as geometry, Outline, Shape};
 use merman_render_core::graph_layout::{Direction, elk_geometry, elk_terminal_jogs};
@@ -66,8 +69,9 @@ pub fn layout(
         effective_config: effective_config.as_value(),
     };
     let mut elk_graph = class_measured_to_elk_graph(&measured, &settings, &mut Some(work_control))?;
-    let orientation = feedback_edges::orient_feedback_edges(
+    let orientation = orient_class_elk_graph(
         &mut elk_graph,
+        &measured,
         settings.effective_config,
         &mut Some(work_control),
     )?;
@@ -94,6 +98,27 @@ pub fn layout(
         &mut Some(work_control),
     )?;
     Ok((layout, prepared_labels))
+}
+
+fn orient_class_elk_graph<'a>(
+    graph: &'a mut elk::Graph,
+    measured: &MeasuredClassDiagram,
+    config: &Value,
+    work: &mut Option<&mut OperationLayoutWorkControl>,
+) -> Result<feedback_edges::FeedbackOrientation<'a>> {
+    feedback_edges::orient_feedback_edges_with_arrowheads(graph, config, work, |index, _| {
+        // class_measured_to_elk_graph emits provider edges in this same IndexMap order.
+        let terminals = measured.graph.edges[index].terminals.as_ref();
+        Ok(EdgeArrowheads {
+            start: terminals
+                .and_then(|meta| meta.start_arrow_type)
+                .map(|_| Arrowhead::Other),
+            end: terminals
+                .and_then(|meta| meta.end_arrow_type)
+                .map(|_| Arrowhead::Other),
+            ..Default::default()
+        })
+    })
 }
 
 struct ClassElkLayoutSettings<'a> {

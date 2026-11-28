@@ -35,6 +35,8 @@ pub use common::networksimplex::NetworkSimplexError;
 pub use common::nodespacing::inside_top_center_micro_layout;
 pub use components::ComponentError;
 pub use configurator::{LayeredSpacings, configure_graph_properties, configured_options};
+#[doc(hidden)]
+pub use graph::OwnedLGraph;
 pub use graph::{
     CompoundEdgeSegment, CrossHierarchyEdge, EdgeLabelPlacement, GraphProperties, LGraph, LLabel,
     LMargin, LNode, LNodeKind, LPadding, LPoint, LPort, LSize, LabelSide, Layer, LayeredEdge,

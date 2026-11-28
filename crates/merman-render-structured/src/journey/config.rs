@@ -1,4 +1,6 @@
-use merman_render_core::config::{config_bool, config_f64, config_string, config_string_vec};
+use merman_render_core::config::{
+    ConfigLookup, config_bool, config_f64, config_string, config_string_vec,
+};
 use merman_render_core::mermaid_style::font_family_css;
 use merman_render_core::text::TextStyle;
 use merman_theme_contract::v2::FamilyTheme;
@@ -39,7 +41,7 @@ pub(crate) enum JourneyTextPlacement {
 }
 
 impl<'a> JourneyConfigView<'a> {
-    pub(crate) fn new(effective_config: &'a Value) -> Self {
+    pub(crate) fn new(effective_config: &'a (impl ConfigLookup + ?Sized)) -> Self {
         Self {
             journey_config: effective_config.get("journey").unwrap_or(&Value::Null),
         }
@@ -273,7 +275,7 @@ mod tests {
             .compile_preset(merman_theme_contract::v2::BuiltinPreset::Studio, None)
             .unwrap();
         let style = JourneyNativeStyle::new(theme.family("journey"), &config);
-        let view = JourneyConfigView::new(config.as_value());
+        let view = JourneyConfigView::new(&config);
         let mermaid = view.layout_settings(None);
         let native = view.layout_settings(Some(&style));
 

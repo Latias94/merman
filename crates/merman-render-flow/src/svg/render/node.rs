@@ -191,9 +191,8 @@ pub fn render_flowchart_node(
     let compiled_styles = &prepared.source;
     let selection = &prepared.selection;
     let style = selection
-        .inline_style
-        .as_deref()
-        .unwrap_or(&prepared.source.node_style);
+        .inline_style()
+        .unwrap_or(&compiled_styles.node_style);
     if let Some(s) = style_start {
         details.node_style_compile += s.elapsed();
     }
@@ -241,7 +240,7 @@ pub fn render_flowchart_node(
         style,
         junction_style: selection.junction_style.as_deref().unwrap_or(style),
         effect_filter_style,
-        theme_style: &selection.theme_style,
+        theme_style: selection.theme_style(),
         rough_group_style: &prepared.rough_group_style,
         solid_rough_fill: ctx.layout.route_contract.is_canonical_axis(),
         fill_color,
