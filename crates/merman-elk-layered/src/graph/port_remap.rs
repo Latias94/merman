@@ -3,10 +3,11 @@
 use super::{LGraph, PortRef, ReorderNodePortsWorkContext, remap_self_loop_holder_ports};
 use crate::work::{WorkControl, WorkError, checked_mul, checked_sum};
 
-/// Composes original-to-current port slots during a pass that reads only port records.
+/// Composes original-to-current port slots during a pass that moves port records.
 /// Edge endpoints and all other external port references are restored together before the
-/// pass returns, including after an interruption. Stable node slots key the maps. The sorter
-/// admits deferred permutations only after checking all reference indices against fixed sizes.
+/// pass returns, including after an interruption. Until then local references identify ports
+/// by their original slots. Compare their current order through `current_rank`. Stable node
+/// slots key the maps. Deferral requires checking reference indices against fixed sizes.
 #[derive(Default)]
 pub(crate) enum PendingPortRemap {
     #[default]
@@ -19,6 +20,17 @@ pub(crate) enum PendingPortRemap {
 }
 
 impl PendingPortRemap {
+    pub(crate) fn current_rank(&self, reference: PortRef) -> usize {
+        match self {
+            Self::Single { owner, slots } if *owner == reference.node => slots[reference.port],
+            Self::Multiple(owners) => owners
+                .get(reference.node)
+                .and_then(Option::as_ref)
+                .map_or(reference.port, |slots| slots[reference.port]),
+            _ => reference.port,
+        }
+    }
+
     pub(crate) fn reorder_work(
         &self,
         owner: usize,

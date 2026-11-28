@@ -21,6 +21,14 @@ mod clone_tree;
 mod port_remap;
 pub(crate) use port_remap::{FlatPortRemap, PendingPortRemap};
 
+#[derive(Clone, Copy, Default)]
+pub(crate) enum PortOrderDeferral {
+    #[default]
+    Immediate,
+    Flat,
+    AllowDescendants,
+}
+
 pub(crate) struct ReorderNodePortsWorkContext {
     shared_reference_work: usize,
     self_loop_holder_scan_work: usize,
@@ -30,14 +38,16 @@ pub(crate) struct ReorderNodePortsWorkContext {
 
 impl ReorderNodePortsWorkContext {
     pub(crate) fn new(graph: &LGraph) -> Result<Self, WorkError> {
-        Self::new_with_work_control(graph, &mut NoopWorkControl, false).map(|(context, _)| context)
+        Self::new_with_work_control(graph, &mut NoopWorkControl, PortOrderDeferral::Immediate)
+            .map(|(context, _)| context)
     }
 
     pub(crate) fn new_with_work_control(
         graph: &LGraph,
         work: &mut dyn WorkControl,
-        mut can_defer: bool,
+        deferral: PortOrderDeferral,
     ) -> Result<(Self, bool), WorkError> {
+        let mut can_defer = !matches!(deferral, PortOrderDeferral::Immediate);
         let initial_work = checked_add(graph.layerless_nodes.len(), graph.self_loop_holders.len())?;
         work.check(initial_work)?;
         work.charge(initial_work)?;
@@ -95,6 +105,7 @@ impl ReorderNodePortsWorkContext {
                 node.nested_graph.as_deref()
             })
             .collect::<Vec<_>>();
+        can_defer &= !matches!(deferral, PortOrderDeferral::Flat) || stack.is_empty();
         while let Some(current) = stack.pop() {
             let scan_work = checked_add(1, current.layerless_nodes.len())?;
             work.check(scan_work)?;
