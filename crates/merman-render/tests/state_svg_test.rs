@@ -198,11 +198,11 @@ fn shoal_hand_drawn_state_keeps_cjk_shapes_rough_and_compact() {
     let text: String = doc
         .descendants()
         .filter(|node| node.is_text())
-        .filter_map(|node| {
+        .filter(|node| {
             node.ancestors()
                 .any(|ancestor| ancestor.has_tag_name("text"))
-                .then(|| node.text().unwrap())
         })
+        .map(|node| node.text().unwrap())
         .collect();
     for label in [
         "支付处理中",
