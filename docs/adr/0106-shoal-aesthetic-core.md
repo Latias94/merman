@@ -127,7 +127,8 @@ Keep one public Shoal IR, `WorkControl`, DDLT verifier, and `route_paint` contra
   both the obstacle inventory and the corner control curves. The painter classifies the offset
   after applying the terminal lead distances, so ordinary sweeps can retain their corridor proof.
   Long fan spans keep their distributed sweeps. Architecture reserves the full size of relationship
-  label backings during placement and measures visible service shapes separately from routing boxes.
+  label backings and their clearance during placement. It measures visible service shapes
+  separately from routing boxes.
 - Compound crossing comparisons index line and curve bounds before sampling overlapping curves.
   Geometry-only solves skip the statistic when it cannot affect route selection. Orthogonal
   refinement shares projected segments and route bounds, and the visibility router combines

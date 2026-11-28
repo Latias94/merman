@@ -375,9 +375,11 @@ pub(crate) fn layout_architecture_shoal(
         let label = text.as_ref().map(|text| {
             let size = text.size();
             let (pad_x, pad_y) = ARCHITECTURE_SHOAL_CAPTION_PADDING;
+            // Grid seating can use the entire slot beside a fork. Reserve the backplate and
+            // empty space around it so the painted box has a gap even in a tight slot.
             Size {
-                width: size.width + 2.0 * pad_x,
-                height: size.height + 2.0 * pad_y,
+                width: size.width + 2.0 * (pad_x + TEXT_CLEARANCE),
+                height: size.height + 2.0 * (pad_y + TEXT_CLEARANCE),
             }
         });
         edge_labels.push(text);
@@ -701,7 +703,13 @@ pub(crate) fn layout_architecture_shoal(
                 .into_iter()
                 .map(|p| LayoutPoint { x: p.x, y: p.y })
                 .collect(),
-            label: solved_edge.label.clone(),
+            label: solved_edge.label.clone().map(|mut placed| {
+                if let Some(text) = label {
+                    let size = text.size();
+                    (placed.width, placed.height) = (size.width, size.height);
+                }
+                placed
+            }),
             start_label_left: None,
             start_label_right: None,
             end_label_left: None,
