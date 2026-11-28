@@ -20,6 +20,12 @@ use std::fs;
 #[cfg(not(target_family = "wasm"))]
 use std::io::Read;
 use std::path::{Path, PathBuf};
+#[cfg(any(
+    feature = "png",
+    feature = "jpeg",
+    feature = "pdf",
+    all(not(target_family = "wasm"), any(test, feature = "system-fonts"))
+))]
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 
@@ -262,6 +268,12 @@ pub struct NativeFontContext(Arc<FontContextInner>);
 ///
 /// This tracks the admission provenance for the exact font database used by one export parse.
 /// Initial context faces are caller-owned; the discovery resolver records later admissions.
+#[cfg(any(
+    feature = "png",
+    feature = "jpeg",
+    feature = "pdf",
+    all(not(target_family = "wasm"), any(test, feature = "system-fonts"))
+))]
 #[derive(Clone)]
 pub(crate) struct NativeExportFontObserver {
     admitted_faces: Arc<Mutex<BTreeMap<usvg::fontdb::ID, NativeExportFontSource>>>,
@@ -269,13 +281,32 @@ pub(crate) struct NativeExportFontObserver {
     glyph_fallback: Arc<AtomicBool>,
 }
 
+#[cfg(any(
+    feature = "png",
+    feature = "jpeg",
+    feature = "pdf",
+    all(not(target_family = "wasm"), any(test, feature = "system-fonts"))
+))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum NativeExportFontSource {
     Caller,
+    #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
     System,
 }
 
+#[cfg(any(
+    feature = "png",
+    feature = "jpeg",
+    feature = "pdf",
+    all(not(target_family = "wasm"), any(test, feature = "system-fonts"))
+))]
 impl NativeExportFontObserver {
+    #[cfg(any(
+        feature = "png",
+        feature = "jpeg",
+        feature = "pdf",
+        all(test, not(target_family = "wasm"))
+    ))]
     fn new(database: &usvg::fontdb::Database) -> Self {
         Self {
             admitted_faces: Arc::new(Mutex::new(
@@ -289,6 +320,7 @@ impl NativeExportFontObserver {
         }
     }
 
+    #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
     pub(crate) fn admit(&self, id: usvg::fontdb::ID, source: NativeExportFontSource) {
         if let Ok(mut faces) = self.admitted_faces.lock() {
             // A system catalog can point at an already-explicit face. Its caller ownership wins.
@@ -296,6 +328,12 @@ impl NativeExportFontObserver {
         }
     }
 
+    #[cfg(any(
+        feature = "png",
+        feature = "jpeg",
+        feature = "pdf",
+        all(test, not(target_family = "wasm"))
+    ))]
     pub(crate) fn admitted_faces(
         &self,
     ) -> Option<std::sync::MutexGuard<'_, BTreeMap<usvg::fontdb::ID, NativeExportFontSource>>> {
@@ -306,6 +344,12 @@ impl NativeExportFontObserver {
         self.family_fallback.store(true, Ordering::Relaxed);
     }
 
+    #[cfg(any(
+        feature = "png",
+        feature = "jpeg",
+        feature = "pdf",
+        all(test, feature = "system-fonts", not(target_family = "wasm"))
+    ))]
     pub(crate) fn family_fallback_used(&self) -> bool {
         self.family_fallback.load(Ordering::Relaxed)
     }
@@ -314,6 +358,12 @@ impl NativeExportFontObserver {
         self.glyph_fallback.store(true, Ordering::Relaxed);
     }
 
+    #[cfg(any(
+        feature = "png",
+        feature = "jpeg",
+        feature = "pdf",
+        all(test, not(target_family = "wasm"))
+    ))]
     pub(crate) fn glyph_fallback_used(&self) -> bool {
         self.glyph_fallback.load(Ordering::Relaxed)
     }
@@ -513,6 +563,12 @@ impl NativeFontContext {
     }
 
     /// Installs this context once for export and returns evidence from that same resolver.
+    #[cfg(any(
+        feature = "png",
+        feature = "jpeg",
+        feature = "pdf",
+        all(test, not(target_family = "wasm"))
+    ))]
     pub(crate) fn apply_to_usvg_options_for_export(
         &self,
         options: &mut usvg::Options<'_>,
@@ -544,6 +600,12 @@ impl NativeFontContext {
     /// The caller must still install the matching resolver through
     /// [`Self::apply_to_usvg_options_controlled`]; this accessor exists only so the receipt can
     /// classify faces from that same parse, never from a second font database.
+    #[cfg(any(
+        feature = "png",
+        feature = "jpeg",
+        feature = "pdf",
+        all(test, feature = "system-fonts", not(target_family = "wasm"))
+    ))]
     pub(crate) fn fontdb_for_export(&self) -> Arc<usvg::fontdb::Database> {
         Arc::clone(&self.0.database)
     }
@@ -673,6 +735,12 @@ impl FontContextInner {
     }
 }
 
+#[cfg(any(
+    feature = "png",
+    feature = "jpeg",
+    feature = "pdf",
+    all(test, not(target_family = "wasm"))
+))]
 fn native_export_font_resolver(
     observer: NativeExportFontObserver,
     selection: Arc<FontSelectionPolicy>,

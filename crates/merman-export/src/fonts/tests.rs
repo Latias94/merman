@@ -191,6 +191,10 @@ fn native_export_glyph_fallback_filters_symbols_and_records_the_outcome() {
                 .iter()
                 .flat_map(|span| &span.positioned_glyphs)
                 .collect();
+            let admitted = observer.admitted_faces().unwrap();
+            assert!(glyphs.iter().all(|glyph| {
+                admitted.get(&glyph.font) == Some(&NativeExportFontSource::Caller)
+            }));
             let selected: BTreeSet<_> = glyphs
                 .iter()
                 .map(|glyph| {
