@@ -2801,6 +2801,17 @@ fn shoal_usecase_cuts_panel_captions_on_an_opaque_canvas() {
             session,
         );
         let document = roxmltree::Document::parse(&svg).unwrap();
+        if html {
+            let css = document
+                .descendants()
+                .find(|node| node.has_tag_name("style"))
+                .unwrap()
+                .text()
+                .unwrap();
+            assert!(
+                css.contains(".edgeLabel.usecase-panel-caption p{background-color:transparent}")
+            );
+        }
         for (id, on_panel) in [("edge-0", true), ("edge-1", false)] {
             let path = document
                 .descendants()

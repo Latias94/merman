@@ -73,7 +73,7 @@ pub(super) fn write_css(
         let _ = write!(css, "#{id} .edgeLabel{{color:{text}}}");
         let _ = write!(
             css,
-            "#{id} .edgeLabel.usecase-panel-caption,#{id} .usecase-panel-caption .labelBkg,#{id} .usecase-panel-caption .edgeLabel,#{id} .usecase-panel-caption p{{background-color:transparent}}"
+            "#{id} .edgeLabel.usecase-panel-caption,#{id} .usecase-panel-caption .labelBkg,#{id} .usecase-panel-caption .edgeLabel,#{id} .edgeLabel.usecase-panel-caption p{{background-color:transparent}}"
         );
     }
     #[cfg(feature = "layout-grid")]
