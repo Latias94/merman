@@ -9,6 +9,7 @@ use merman_model::{
 };
 use merman_render_core::{
     Bounds, Error, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, Result,
+    config::{ConfigLookup, value_at},
     graph_layout::{
         Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode,
         RoutingStyle, Size, SolvedEdge, SolvedGraph, TitlePosition, direction_from_rank,
@@ -87,7 +88,7 @@ pub struct ErLayeredLabels<'a> {
 impl<'a> ErLayeredLabels<'a> {
     pub fn prepare(
         model: &'a ErDiagramModel,
-        config: &Value,
+        config: &(impl ConfigLookup + ?Sized),
         measurer: &dyn TextMeasurer,
         settings: &ErLayoutSettings,
         work: &Arc<OperationWorkMeter>,
@@ -166,7 +167,7 @@ pub(super) struct ErLayeredRoutes {
 
 pub fn layout(
     model: &ErDiagramModel,
-    config: &Value,
+    config: &(impl ConfigLookup + ?Sized),
     settings: &ErLayoutSettings,
     labels: &ErLayeredLabels<'_>,
     work: &OperationWorkMeter,
@@ -190,7 +191,7 @@ struct Input<'a> {
 impl<'a> Input<'a> {
     fn new(
         model: &'a ErDiagramModel,
-        config: &Value,
+        config: &(impl ConfigLookup + ?Sized),
         settings: &ErLayoutSettings,
         labels: &ErLayeredLabels<'a>,
         work: &OperationWorkMeter,
@@ -581,11 +582,8 @@ fn rank(direction: Direction) -> &'static str {
     }
 }
 
-fn routing(config: &Value) -> (RoutingStyle, Curve) {
-    match config
-        .pointer("/layered/edgeRouting")
-        .and_then(Value::as_str)
-    {
+fn routing(config: &(impl ConfigLookup + ?Sized)) -> (RoutingStyle, Curve) {
+    match value_at(config, &["layered", "edgeRouting"]).and_then(Value::as_str) {
         Some("curved") => (RoutingStyle::Curved, Curve::Curved),
         Some("stepped") => (RoutingStyle::Orthogonal, Curve::Step),
         Some("straight") => (RoutingStyle::Polyline, Curve::Linear),
@@ -593,7 +591,7 @@ fn routing(config: &Value) -> (RoutingStyle, Curve) {
     }
 }
 
-fn spacing(config: &Value, key: &str, er_default: f64) -> f64 {
+fn spacing(config: &(impl ConfigLookup + ?Sized), key: &str, er_default: f64) -> f64 {
     // The ER renderer overwrites Flowchart spacing with `er[key] || erDefault`.
     // Layered then accepts only finite positive numbers and otherwise uses 50.
     match config.get("er").and_then(|er| er.get(key)) {
@@ -607,10 +605,8 @@ fn spacing(config: &Value, key: &str, er_default: f64) -> f64 {
     }
 }
 
-fn title_margin(config: &Value, key: &str) -> f64 {
-    config
-        .pointer("/flowchart/subGraphTitleMargin")
-        .and_then(|margins| margins.get(key))
+fn title_margin(config: &(impl ConfigLookup + ?Sized), key: &str) -> f64 {
+    value_at(config, &["flowchart", "subGraphTitleMargin", key])
         .and_then(Value::as_f64)
         .unwrap_or(0.0)
 }

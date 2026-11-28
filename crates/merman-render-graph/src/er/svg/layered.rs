@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use merman_render_core::{
     LayoutEdge, LayoutPoint, Result,
+    config::{ConfigLookup, value_at},
     graph_layout::SolvedEdge,
     resources::OperationWorkMeter,
     route_types::Axis,
@@ -21,10 +22,10 @@ use super::super::layered::{ErLayeredRoutes, allocation_error, invalid_projectio
 pub(super) fn line_hop_paths<'a>(
     edges: &'a [LayoutEdge],
     routes: &ErLayeredRoutes,
-    config: &Value,
+    config: &(impl ConfigLookup + ?Sized),
     work: &OperationWorkMeter,
 ) -> Result<HashMap<&'a str, String>> {
-    let style = match config.pointer("/layered/lineHops") {
+    let style = match value_at(config, &["layered", "lineHops"]) {
         Some(Value::Bool(false)) => return Ok(HashMap::new()),
         Some(Value::String(style)) if style == "gap" => LineHopStyle::Gap,
         _ => LineHopStyle::Arc,

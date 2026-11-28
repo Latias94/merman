@@ -4,6 +4,7 @@
 //! eligibility rule and keep their original SVG paths wherever no override is emitted.
 
 use crate::LayoutPoint;
+use crate::config::{ConfigLookup, value_at};
 use crate::resources::OperationWorkMeter;
 #[cfg(test)]
 use crate::resources::{RenderResourcePolicy, ResourceLimitId};
@@ -386,11 +387,11 @@ pub(crate) fn line_hop_overrides_with_radii(
 /// original paths for labels, marker placement, and all non-crossing edges.
 /// Curve eligibility applies after intersection discovery, as in Mermaid.
 pub fn elk_line_hop_paths<'a>(
-    config: &serde_json::Value,
+    config: &(impl ConfigLookup + ?Sized),
     edges: &[LineHopEdge<'a>],
     work_meter: &OperationWorkMeter,
 ) -> crate::Result<HashMap<&'a str, String>> {
-    let line_hops = config.pointer("/elk/lineHops");
+    let line_hops = value_at(config, &["elk", "lineHops"]);
     if line_hops.and_then(serde_json::Value::as_bool) == Some(false) {
         return Ok(HashMap::new());
     }

@@ -5,11 +5,11 @@ use std::borrow::Cow;
 use merman_model::families::er::ErRelationship;
 #[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 use merman_render_core::LayoutPoint;
+use merman_render_core::config::{ConfigLookup, config_bool};
 use merman_render_core::graph_layout::{elk_geometry, elk_terminal_jogs};
 use merman_render_core::resources::OperationWorkMeter;
 use merman_render_core::{Bounds, LayoutCluster, LayoutEdge, LayoutNode, Result};
 use rustc_hash::{FxHashMap, FxHashSet};
-use serde_json::Value;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErSvgRouteKind {
@@ -58,7 +58,7 @@ impl<'a> ErSvgGeometry<'a> {
         layout: ErSvgLayoutView<'a>,
         route_kind: ErSvgRouteKind,
         relationships: &[ErRelationship],
-        effective_config: &Value,
+        effective_config: &(impl ConfigLookup + ?Sized),
         work_meter: &OperationWorkMeter,
     ) -> Result<Self> {
         if route_kind.has_projected_geometry() {
@@ -156,11 +156,7 @@ impl<'a> ErSvgGeometry<'a> {
             for edge in &edges {
                 work_meter.charge(edge.points.len().saturating_add(2))?;
             }
-            if effective_config
-                .pointer("/elk/straightenEdges")
-                .and_then(serde_json::Value::as_bool)
-                != Some(false)
-            {
+            if config_bool(effective_config, &["elk", "straightenEdges"]) != Some(false) {
                 elk_terminal_jogs::straighten_edge_terminals(&mut edges, |units| {
                     work_meter.charge(units).map_err(Into::into)
                 })?;

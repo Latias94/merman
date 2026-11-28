@@ -10,6 +10,12 @@ impl ConfigLookup for Value {
     }
 }
 
+impl ConfigLookup for merman_model::MermaidConfig {
+    fn get(&self, key: &str) -> Option<&Value> {
+        Self::get(self, key)
+    }
+}
+
 impl ConfigLookup for merman_model::presentation::PresentationConfig {
     fn get(&self, key: &str) -> Option<&Value> {
         Self::get(self, key)

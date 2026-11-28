@@ -16,7 +16,7 @@ pub fn unsupported_html_style(
     config: &PresentationConfig,
     control: &OperationControl,
 ) -> OperationControlResult<Option<String>> {
-    let view = ErConfigView::new(config.as_value());
+    let view = ErConfigView::new(config);
     let mut subgraph_ids = HashSet::with_capacity(model.subgraphs.len());
     for group in &model.subgraphs {
         control.checkpoint()?;

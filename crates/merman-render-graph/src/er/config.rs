@@ -1,5 +1,5 @@
 use merman_render_core::config::{
-    self, config_bool, config_diagram_look, config_f64, config_f64_css_px,
+    self, ConfigLookup, config_bool, config_diagram_look, config_f64, config_f64_css_px,
 };
 use merman_render_core::graph_layout::{Direction, direction_from_rank};
 use merman_render_core::text::{TextStyle, WrapMode};
@@ -15,14 +15,14 @@ const DEFAULT_FONT_SIZE: f64 = 16.0;
 const DEFAULT_RELATIONSHIP_FONT_SIZE: f64 = 14.0;
 const DEFAULT_TITLE_TOP_MARGIN: f64 = 25.0;
 
-pub struct ErConfigView<'a> {
-    effective_config: &'a Value,
+pub struct ErConfigView<'a, C: ConfigLookup + ?Sized = Value> {
+    effective_config: &'a C,
     er_config: &'a Value,
     flowchart_config: &'a Value,
 }
 
-impl<'a> ErConfigView<'a> {
-    pub fn new(effective_config: &'a Value) -> Self {
+impl<'a, C: ConfigLookup + ?Sized> ErConfigView<'a, C> {
+    pub fn new(effective_config: &'a C) -> Self {
         Self {
             effective_config,
             er_config: effective_config.get("er").unwrap_or(&Value::Null),

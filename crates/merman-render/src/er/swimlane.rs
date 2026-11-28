@@ -14,13 +14,13 @@ use crate::swimlane::{MeasuredNode, layout_compound};
 use crate::text::{TextMeasurer, WrapMode};
 use crate::{Error, Result};
 use merman_model::families::er::ErDiagramModel;
-use serde_json::Value;
+use merman_render_core::config::ConfigLookup;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 pub(super) fn layout_er_diagram_swimlane_typed(
     model: &ErDiagramModel,
-    config: &Value,
+    config: &(impl ConfigLookup + ?Sized),
     measurer: &dyn TextMeasurer,
     settings: &ErLayoutSettings,
     prepared_labels: Arc<ErPreparedLabels>,
@@ -324,7 +324,7 @@ pub(super) fn layout_er_diagram_swimlane_typed(
     })
 }
 
-fn renderer_spacing(config: &Value, key: &str, fallback: f64) -> f64 {
+fn renderer_spacing(config: &(impl ConfigLookup + ?Sized), key: &str, fallback: f64) -> f64 {
     config
         .get("er")
         .and_then(|er| er.get(key))

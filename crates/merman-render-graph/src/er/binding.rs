@@ -1,7 +1,8 @@
 use super::{ErConfigView, ErNativeStyle, ErRenderSettings};
 use merman_markup::theme_color::{ColorChannel, ColorError, ThemeColor, rgba};
 use merman_render_core::config::{
-    self, config_bool, config_diagram_look, config_f64_css_px, config_string, config_string_vec,
+    self, ConfigLookup, config_bool, config_diagram_look, config_f64_css_px, config_string,
+    config_string_vec, value_at,
 };
 use merman_render_core::svg_css::PreparedCommonCss;
 use merman_theme_contract::v2::FamilyTheme;
@@ -39,7 +40,7 @@ impl ErCssBinding {
     pub fn from_native(
         theme: &FamilyTheme,
         native: ErNativeStyle,
-        config: &serde_json::Value,
+        config: &(impl ConfigLookup + ?Sized),
     ) -> Self {
         let roles = &theme.roles;
         let render_settings = ErConfigView::new(config).render_settings_with_resolved_typography(
@@ -96,7 +97,7 @@ impl ErCssBinding {
         }
     }
 
-    fn title_color_source(config: &serde_json::Value) -> (Option<&'static str>, &str) {
+    fn title_color_source(config: &(impl ConfigLookup + ?Sized)) -> (Option<&'static str>, &str) {
         config::selected_config_string(
             config,
             &["themeVariables.titleColor", "themeVariables.textColor"],
@@ -104,18 +105,18 @@ impl ErCssBinding {
         .map_or((None, "#333"), |(path, color)| (Some(path), color))
     }
 
-    fn node_text_color_source(config: &serde_json::Value) -> Option<&str> {
-        config["themeVariables"]["nodeTextColor"]
-            .as_str()
+    fn node_text_color_source(config: &(impl ConfigLookup + ?Sized)) -> Option<&str> {
+        value_at(config, &["themeVariables", "nodeTextColor"])
+            .and_then(serde_json::Value::as_str)
             .filter(|color| !color.is_empty())
-            .or_else(|| config["themeVariables"]["textColor"].as_str())
+            .or_else(|| value_at(config, &["themeVariables", "textColor"])?.as_str())
     }
 
     pub(super) fn source_fill_owns_odd_rows(&self) -> bool {
         self.source_fill_owns_odd_rows
     }
 
-    pub fn resolve(config: &serde_json::Value) -> Self {
+    pub fn resolve(config: &(impl ConfigLookup + ?Sized)) -> Self {
         let option = |key: &str| config_string(config, &["themeVariables", key]);
         let color = |key: &str, fallback: &str| option(key).unwrap_or_else(|| fallback.to_owned());
         let theme_name = config_string(config, &["theme"]).unwrap_or_else(|| "default".into());

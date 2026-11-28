@@ -6,6 +6,7 @@ use super::{
 };
 use merman_layout_elk as elk;
 use merman_model::families::er::{ErDiagramModel, ErEntity, ErSubgraph};
+use merman_render_core::config::ConfigLookup;
 use merman_render_core::elk_adapter::{
     self,
     arrowheads::{Arrowhead, EdgeArrowheads},
@@ -18,7 +19,6 @@ use merman_render_core::text::TextMeasurer;
 use merman_render_core::{
     Bounds, Error, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, Result,
 };
-use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 
 /// Solved ELK geometry in ER's layout projection. The SVG writer also uses these edges.
@@ -36,7 +36,7 @@ pub struct ErElkLayout {
 )]
 pub fn layout(
     model: &ErDiagramModel,
-    effective_config: &Value,
+    effective_config: &(impl ConfigLookup + ?Sized),
     algorithm: elk::Algorithm,
     measurer: &dyn TextMeasurer,
     settings: ErLayoutSettings,
@@ -245,7 +245,7 @@ pub fn layout(
 fn orient_er_elk_graph<'a>(
     graph: &'a mut elk::Graph,
     model: &ErDiagramModel,
-    config: &Value,
+    config: &(impl ConfigLookup + ?Sized),
     work: &mut Option<&mut OperationLayoutWorkControl>,
 ) -> Result<feedback_edges::FeedbackOrientation<'a>> {
     let arrowhead = |cardinality: &str| {
@@ -266,7 +266,7 @@ fn orient_er_elk_graph<'a>(
 
 fn er_elk_graph(
     model: &ErDiagramModel,
-    effective_config: &Value,
+    effective_config: &(impl ConfigLookup + ?Sized),
     algorithm: elk::Algorithm,
     measurer: &dyn TextMeasurer,
     settings: &ErLayoutSettings,

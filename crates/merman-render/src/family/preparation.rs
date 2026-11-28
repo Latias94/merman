@@ -798,7 +798,7 @@ fn prepare_er_family<'parsed>(
         )
     });
     let font_family = crate::config::config_font_family_css(&meta.effective_config);
-    let config = crate::er::ErConfigView::new(meta.effective_config.as_value());
+    let config = crate::er::ErConfigView::new(&meta.effective_config);
     let backend = execution.layout_backend();
     let relationship_html_labels =
         config.relationship_html_labels(backend == GraphLayoutBackend::Swimlane);
@@ -813,7 +813,7 @@ fn prepare_er_family<'parsed>(
         route_contract,
     } = crate::er::layout_er_diagram_typed(
         model,
-        meta.effective_config.as_value(),
+        meta.effective_config.as_config(),
         backend,
         execution.text_measurer(),
         #[cfg(feature = "layout-elk")]
