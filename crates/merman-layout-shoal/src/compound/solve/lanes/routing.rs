@@ -5,6 +5,9 @@ use crate::geom::{Bounds, Bvh, BvhEntry};
 use crate::{MIN_MARKER_LEAD, MarkerMetrics, Spacing};
 use std::ops::ControlFlow;
 
+mod align;
+pub(super) use align::align;
+
 pub(super) struct Lanes<'a> {
     pub(super) axes: Axes,
     pub(super) owners: &'a [usize],
@@ -38,6 +41,17 @@ fn items(wire: &Wire, graph: &Graph) -> Option<[usize; 2]> {
 
 pub(super) fn runway(distance: f64, spacing: &Spacing) -> LayoutResult<f64> {
     finite(distance.max(MIN_MARKER_LEAD) + spacing.edge * 0.5)
+}
+
+fn fits_runway(contact: Contact, next: Point, length: f64) -> bool {
+    let limit = towards(contact.at, contact.side, length);
+    cross(contact.side, next) == cross(contact.side, contact.at)
+        && match contact.side {
+            Side::Top => next.y < limit.y,
+            Side::Right => next.x > limit.x,
+            Side::Bottom => next.y > limit.y,
+            Side::Left => next.x < limit.x,
+        }
 }
 
 pub(super) fn reserve_feedback(
@@ -246,6 +260,15 @@ impl Proposal {
             .map(|leg| Bounds::between(point(leg[0]), point(leg[1])))
             .chain(self.ink.iter().copied().flatten())
     }
+
+    fn apply(self, wire: &mut Wire) {
+        wire.contacts = self.contacts.map(Some);
+        let route = wire.route.as_mut().expect("resolved lane route");
+        route.ports = (self.contacts[0].side, self.contacts[1].side);
+        route.points = self.points;
+        route.label_center = self.label;
+        route.corridor_clearance = 0.0;
+    }
 }
 
 struct Scene<'a> {
@@ -334,7 +357,7 @@ impl Scene<'_> {
         &self,
         id: usize,
         wire: &Wire,
-        slots: [usize; 2],
+        (slots, rects): ([usize; 2], [Rect; 2]),
         contacts: [Contact; 2],
         corners: &[Point],
         work: &mut Work<'_>,
@@ -352,23 +375,15 @@ impl Scene<'_> {
             .enumerate()
         {
             let contact = contacts[end];
-            let side = contact.side;
             let required = runway(runways[end], self.spacing)?;
-            let limit = towards(contact.at, side, required);
-            let past = match side {
-                Side::Top => next.y < limit.y,
-                Side::Right => next.x > limit.x,
-                Side::Bottom => next.y > limit.y,
-                Side::Left => next.x < limit.x,
-            };
-            if !past || cross(side, next) != cross(side, contact.at) {
+            if !fits_runway(contact, next, required) {
                 return Ok(None);
             }
             let slot = slots[end];
             if let Some(footprint) = marker(
                 contact,
                 metrics[end],
-                Some((&self.graph.nodes[slot], self.nodes[slot])),
+                Some((&self.graph.nodes[slot], rects[end])),
             ) {
                 if !footprint.finite()
                     || !clear(
@@ -485,9 +500,14 @@ impl Scene<'_> {
                     y: target.at.y,
                 }
             };
-            if let Some(candidate) =
-                self.propose(id, wire, slots, [source, target], &[turn], work)?
-            {
+            if let Some(candidate) = self.propose(
+                id,
+                wire,
+                (slots, slots.map(|slot| self.nodes[slot])),
+                [source, target],
+                &[turn],
+                work,
+            )? {
                 return Ok(Some(candidate));
             }
         }
@@ -522,9 +542,14 @@ impl Scene<'_> {
             let track = border(side) + if i == 0 { inset } else { -inset };
             let corners =
                 [source, target].map(|contact| axes.physical(track, axes.along(contact.at)));
-            if let Some(candidate) =
-                self.propose(id, wire, slots, [source, target], &corners, work)?
-            {
+            if let Some(candidate) = self.propose(
+                id,
+                wire,
+                (slots, slots.map(|slot| self.nodes[slot])),
+                [source, target],
+                &corners,
+                work,
+            )? {
                 return Ok(Some(candidate));
             }
         }
@@ -598,13 +623,8 @@ pub(super) fn improve(
         }
         if safe {
             accepted[proposal.id] = true;
-            let wire = &mut wires[proposal.id];
-            wire.contacts = proposal.contacts.map(Some);
-            let route = wire.route.as_mut().expect("resolved lane route");
-            route.ports = (proposal.contacts[0].side, proposal.contacts[1].side);
-            route.points = proposal.points;
-            route.label_center = proposal.label;
-            route.corridor_clearance = 0.0;
+            let id = proposal.id;
+            proposal.apply(&mut wires[id]);
         }
     }
     Ok(())

@@ -1,5 +1,6 @@
 //! Width trials share a work meter and reuse the same component scratch.
 
+use crate::compound::{self, Topology};
 use crate::flat::{self, Expanded};
 use crate::validate;
 use crate::work::{LayoutResult, Work, reserved};
@@ -89,10 +90,27 @@ fn candidates(
         tight_groups: false,
         fold_at: None,
     };
-    let solve = |graph: &Graph, options: &Options, expanded: &mut Expanded, work: &mut Work<'_>| {
-        crate::solve(graph, options, expanded, detail, work)
+    let prepare = |graph: &Graph, options: &Options, work: &mut Work<'_>| {
+        (!graph.groups.is_empty())
+            .then(|| Topology::new(graph, options, work))
+            .transpose()
     };
-    let mut best = (solve(graph, &wrapped, expanded, work)?, original);
+    let solve = |graph: &Graph,
+                 options: &Options,
+                 topology: Option<&Topology>,
+                 expanded: &mut Expanded,
+                 work: &mut Work<'_>| {
+        if let Some(topology) = topology {
+            compound::run_with_topology(graph, options, topology, expanded, detail, work)
+        } else {
+            crate::solve(graph, options, expanded, detail, work)
+        }
+    };
+    let topology = prepare(graph, &wrapped, work)?;
+    let mut best = (
+        solve(graph, &wrapped, topology.as_ref(), expanded, work)?,
+        original,
+    );
     if best.0.bounds.width <= max_width {
         return Ok(best);
     }
@@ -101,11 +119,13 @@ fn candidates(
     tight.spacing.node *= 0.5;
     tight.spacing.rank *= 0.75;
     let compact = if graph.groups.is_empty() {
-        solve(graph, &tight, expanded, work)
+        solve(graph, &tight, None, expanded, work)
     } else {
         let mut compact = copy_graph(graph, work)?;
         tighten_groups(&mut compact.groups, work)?;
-        solve(&compact, &tight, expanded, work)
+        // Tightening changes only padding and spacing. Topology owns the validated
+        // hierarchy and semantic port sides, which are the same for both widths.
+        solve(&compact, &tight, topology.as_ref(), expanded, work)
     };
     let compact_trial = WidthTrial {
         options: tight,
@@ -121,10 +141,18 @@ fn candidates(
         && max_width < turn_breakpoint
         && matches!(graph.direction, Direction::Right | Direction::Left)
     {
+        drop(topology);
         let mut turned = copy_graph(graph, work)?;
         turn_down(&mut turned, &wrapped, work)?;
         wrapped.group_policy.inherit_crossed_direction = false;
         tight.group_policy.inherit_crossed_direction = false;
+        let topology = match prepare(&turned, &wrapped, work) {
+            Ok(topology) => topology,
+            // Tightening only decreases already-valid padding and spacing. It cannot repair
+            // an invalid transformed hierarchy or port, and compound graphs cannot fold ranks.
+            Err(LayoutError::InvalidInput(_)) => return Ok(best),
+            Err(error) => return Err(error),
+        };
         let turn_trial = WidthTrial {
             options: wrapped,
             turned: true,
@@ -132,7 +160,7 @@ fn candidates(
         };
         let turned_kept = try_narrower(
             &mut best,
-            solve(&turned, &wrapped, expanded, work),
+            solve(&turned, &wrapped, topology.as_ref(), expanded, work),
             turn_trial,
         )?;
         if best.0.bounds.width <= max_width {
@@ -146,7 +174,7 @@ fn candidates(
         };
         let tight_turn_kept = try_narrower(
             &mut best,
-            solve(&turned, &tight, expanded, work),
+            solve(&turned, &tight, topology.as_ref(), expanded, work),
             tight_turn_trial,
         )?;
         if fold_wide_ranks && best.0.bounds.width > max_width {

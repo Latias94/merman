@@ -14,6 +14,8 @@ use crate::flat::{
 use crate::work::push;
 use crate::{Direction, GroupSpec, LayoutOutput, Options};
 
+const ROTATED_TITLE_MARGIN: f64 = 12.0;
+
 #[derive(Clone, Copy)]
 struct Axes {
     start: Side,
@@ -108,7 +110,11 @@ impl Shell {
         }
         let padding = axes.cross.map(|side| self.padding[side as usize]);
         let title_width = self.title.map_or(0.0, |title| {
-            across(axes.start, title) + 2.0 * padding[0].max(padding[1])
+            let mut margin = padding[0].max(padding[1]);
+            if axes.start.axis() == Axis::Horizontal {
+                margin = margin.max(ROTATED_TITLE_MARGIN);
+            }
+            across(axes.start, title) + 2.0 * margin
         });
         Column {
             min_width: across(axes.start, self.min).max(title_width).max(1.0),
@@ -607,7 +613,7 @@ impl Extent {
 fn finish(
     ctx: &Pass<'_>,
     graph: &Graph,
-    drawing: LayoutOutput,
+    mut drawing: LayoutOutput,
     lane_geometry: routing::Lanes<'_>,
     frames: &[Option<Frame>],
     mut wires: Vec<Wire>,
@@ -685,6 +691,15 @@ fn finish(
         &mut wires,
         work,
     )?;
+    routing::align(
+        ctx,
+        graph,
+        &mut drawing.nodes,
+        &lane_geometry,
+        frames,
+        &mut wires,
+        work,
+    )?;
     let mut legs = reserved(wires.len())?;
     for mut wire in wires {
         work.visit(1)?;
@@ -752,6 +767,32 @@ pub(super) fn root(
         work.visit(1)?;
         *column = shell.column(axes);
     }
+    work.charge(columns.len())?;
+    let mut occupied = filled(columns.len(), false)?;
+    for &owner in &owners {
+        work.visit(1)?;
+        occupied[owner] = true;
+    }
+    // Edge waypoints participate in rank placement between occupied lanes. An empty shell
+    // stays in the physical lane order but needs no column for synthetic routing vertices.
+    let rank_order = if columns
+        .iter()
+        .zip(&occupied)
+        .any(|(column, occupied)| column.min_width > 0.0 && !occupied)
+    {
+        let mut occupied_columns = reserved(columns.len())?;
+        for (&column, occupied) in columns.iter().zip(occupied) {
+            work.visit(1)?;
+            occupied_columns.push(Column {
+                min_width: if occupied { column.min_width } else { 0.0 },
+                ..column
+            });
+        }
+        Some(ColumnOrder::new(&occupied_columns, &owners, work)?)
+    } else {
+        None
+    };
+    let rank_order = rank_order.as_ref().unwrap_or(&order);
     let mut rank_options = *ctx.options;
     // Lane compaction moves complete rank bands and needs their membership.
     rank_options.capture_node_ranks |= rank_options.compact_ranks;
@@ -761,7 +802,7 @@ pub(super) fn root(
         expanded,
         &owners,
         &columns,
-        &order,
+        rank_order,
         work,
     )?;
     let (feedback, widened) = routing::reserve_feedback(
@@ -784,7 +825,7 @@ pub(super) fn root(
             expanded,
             &owners,
             &columns,
-            &order,
+            rank_order,
             work,
         )?;
     }

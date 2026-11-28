@@ -590,6 +590,10 @@ fn automatic_top_title_keeps_a_clear_trunk_and_reroutes_an_obstructed_one() {
     let points = &drawing.edges[0].points[seam.point..];
     let title = centered(frame.title_center.unwrap(), graph.groups[0].title.unwrap());
     assert!(
+        (points[0].x - drawing.nodes[0].center().x).abs() < 1e-8,
+        "an automatic title reservation should leave the only entrance on its trunk: {points:?}"
+    );
+    assert!(
         points[0].x <= title.x - TITLE_CLEAR || points[0].x >= title.x + title.width + TITLE_CLEAR
     );
     assert!(
@@ -757,7 +761,10 @@ fn fixed_contacts_under_a_title_do_not_consume_either_clear_port_run() {
         route: None,
         contacts: [None; 2],
     });
-    let title = centered(Point { x: 50., y: 15. }, size(60., 18.));
+    let title = centered(
+        Point { x: 50., y: 15. },
+        size(2. * (36. - TITLE_CLEAR), 18.),
+    );
     ports::beside_title(
         &wires,
         &mut points,
@@ -768,7 +775,14 @@ fn fixed_contacts_under_a_title_do_not_consume_either_clear_port_run() {
         &mut work,
     )
     .unwrap();
-    assert_eq!(points.map(|point| point.x), [40., 14., 86.]);
+    assert_eq!(
+        points.map(|point| point.x),
+        [
+            40.,
+            title.x - TITLE_CLEAR,
+            title.x + title.width + TITLE_CLEAR
+        ]
+    );
 }
 
 #[test]
