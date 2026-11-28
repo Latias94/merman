@@ -98,6 +98,7 @@ pub(super) fn prepare_edges(
             path,
             points: geometry.data_points,
             markers,
+            paint_bounds,
         });
     }
     Ok(Some(painted))

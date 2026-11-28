@@ -213,6 +213,103 @@ Gateway ..> PostgresRepo : healthcheck
 
 #[cfg(feature = "layout-shoal")]
 #[test]
+fn shoal_class_keeps_six_parallel_cardinalities_near_their_ports() {
+    use kurbo::{Point, Rect};
+    use merman_render::theme::{Appearance, BuiltinPreset, NativeTheme, ThemeCompiler};
+
+    let parsed = parse_class(
+        r#"---
+config:
+  layout: shoal
+  htmlLabels: false
+  class:
+    htmlLabels: false
+---
+classDiagram
+direction LR
+class OrderEngine {
+  +submit(Order o) void
+  +cancel(UUID id) void
+}
+class PaymentGateway {
+  +authorize(Money m) AuthToken
+  +capture(AuthToken t) Receipt
+  +refund(Receipt r) void
+}
+class BaseGateway {
+  <<abstract>>
+  +health() Status
+}
+BaseGateway <|-- PaymentGateway
+OrderEngine "1" --> "0..1" PaymentGateway : authorize
+OrderEngine "1" --> "0..*" PaymentGateway : capture
+OrderEngine "1" ..> "0..*" PaymentGateway : refund
+OrderEngine "0..*" <-- "1" PaymentGateway : webhook
+OrderEngine "1" *-- "1" PaymentGateway : circuitBreaker
+OrderEngine "1" o-- "0..*" PaymentGateway : fallbackPool
+"#,
+    );
+    let theme = ThemeCompiler::new()
+        .compile_preset(BuiltinPreset::Studio, Some(Appearance::Dark))
+        .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_native_theme(NativeTheme::new(theme))
+        .unwrap();
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .expect("Shoal Class layout");
+    let projection = artifact.layout_json().unwrap();
+    let layout: ClassDiagramLayout =
+        serde_json::from_value(projection["layout"]["ClassDiagramV2"].clone()).unwrap();
+    let mut terminals = 0;
+    for edge in layout
+        .edges
+        .iter()
+        .filter(|edge| edge.from == "OrderEngine")
+    {
+        let point = |p: &merman_render::model::LayoutPoint| Point::new(p.x, p.y);
+        let start = point(&edge.points[0]);
+        let end = point(edge.points.last().unwrap());
+        let limit = (0.35 * start.distance(end)).min(56.0);
+        for (label, contact) in [
+            (&edge.start_label_right, start),
+            (&edge.end_label_left, end),
+        ] {
+            let label = label.as_ref().expect("authored cardinality");
+            let center = Point::new(label.x, label.y);
+            assert!(
+                center.distance(contact) <= limit + 1e-6,
+                "{}: {center:?} vs {contact:?}",
+                edge.id
+            );
+            let ink = Rect::from_center_size(center, (label.width, label.height));
+            for node in &layout.nodes {
+                let bounds = Rect::from_center_size((node.x, node.y), (node.width, node.height));
+                assert!(
+                    ink.intersect(bounds).area() <= 1e-6,
+                    "{}: {}",
+                    edge.id,
+                    node.id
+                );
+            }
+            terminals += 1;
+        }
+    }
+    assert_eq!(terminals, 12);
+    let svg = artifact
+        .render_svg(&Default::default(), &Default::default())
+        .expect("Shoal Class SVG");
+    let document = roxmltree::Document::parse(svg.svg()).unwrap();
+    assert_eq!(
+        document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("edgeTerminals"))
+            .count(),
+        terminals,
+    );
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
 fn shoal_class_spreads_four_labelled_routes_over_both_facing_sides() {
     let parsed = parse_class(
         r#"---

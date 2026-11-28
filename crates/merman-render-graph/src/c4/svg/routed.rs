@@ -8,9 +8,10 @@ use kurbo::Rect;
 use merman_render_core::{
     Error, LayoutPoint, Result,
     number_format::canonical_number as fmt,
+    resources::OperationWorkMeter,
     root_svg,
-    svg_css::{SvgId, scoped_svg_id, scoped_svg_url},
-    svg_output::SvgOutput,
+    svg_css::{SvgId, scoped_svg_id},
+    svg_output::{SvgOutput, cutout},
     xml::escape_attr_display,
 };
 use merman_theme_contract::v2::Color;
@@ -28,34 +29,24 @@ pub(super) fn open_shaft(
     diagram_id: SvgId<'_>,
     clip: Option<(&str, root_svg::DiagramBounds)>,
     points: &mut Vec<u8>,
+    work_meter: &OperationWorkMeter,
 ) -> Result<()> {
     let clip = clip.zip(route.shaft_cutout);
     if let Some(((id, viewport), gap)) = clip {
-        let outer = Rect::new(
+        let bounds = Rect::new(
             viewport.min_x,
             viewport.min_y,
             viewport.min_x + viewport.width,
             viewport.min_y + viewport.height,
-        )
-        .union(gap)
-        .inflate(1.0, 1.0);
-        // The relation's text blocks share one ink box, so the hole never toggles in an overlap.
-        let _ = write!(
-            out,
-            r#"<defs><clipPath id="{}"><path clip-rule="evenodd" d="M{} {}H{}V{}H{}ZM{} {}V{}H{}V{}Z"/></clipPath></defs>"#,
-            escape_attr_display(scoped_svg_id(diagram_id, id)),
-            fmt(outer.x0),
-            fmt(outer.y0),
-            fmt(outer.x1),
-            fmt(outer.y1),
-            fmt(outer.x0),
-            fmt(gap.x0),
-            fmt(gap.y0),
-            fmt(gap.y1),
-            fmt(gap.x1),
-            fmt(gap.y0),
         );
-        out.checkpoint()?;
+        cutout::write_defs(
+            out,
+            scoped_svg_id(diagram_id, id),
+            bounds,
+            1.0,
+            &[gap],
+            work_meter,
+        )?;
     }
     let clip_id = clip.map(|((id, _), _)| id);
     if let Some((outline, width)) = paint.outline {
@@ -89,11 +80,7 @@ pub(super) fn open_shaft(
 
 fn write_shaft_clip(out: &mut impl SvgOutput, diagram_id: SvgId<'_>, id: Option<&str>) {
     if let Some(id) = id {
-        let _ = write!(
-            out,
-            r#" clip-path="{}""#,
-            escape_attr_display(scoped_svg_url(diagram_id, id))
-        );
+        cutout::write_reference(out, scoped_svg_id(diagram_id, id));
     }
 }
 
@@ -178,6 +165,9 @@ mod tests {
                 root_svg::DiagramBounds::from_view_box(0.0, 0.0, 30.0, 30.0),
             )),
             &mut Vec::new(),
+            &OperationWorkMeter::new(
+                merman_render_core::resources::RenderResourcePolicy::constrained(),
+            ),
         )
         .unwrap();
         svg.push_str("/></svg>");
@@ -189,7 +179,10 @@ mod tests {
         assert_eq!(clip.attribute("id"), Some("c4-caption"));
         let hole = clip.first_element_child().unwrap();
         assert_eq!(hole.attribute("clip-rule"), Some("evenodd"));
-        assert!(hole.attribute("d").unwrap().ends_with("M10 12V18H20V12Z"));
+        let region = kurbo::BezPath::from_svg(hole.attribute("d").unwrap()).unwrap();
+        use kurbo::Shape as _;
+        assert_eq!(region.winding((15.0, 15.0).into()) % 2, 0);
+        assert_ne!(region.winding((7.0, 15.0).into()) % 2, 0);
         let routes: Vec<_> = document
             .root_element()
             .children()

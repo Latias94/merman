@@ -138,12 +138,27 @@ pub(super) fn render_native_label_background(
         } else {
             Some(ctx.edge_style_plan.edge_for(key)?)
         };
-        let ink = label_style
-            .and_then(crate::style::compiled::FlowchartCompiledStyles::source_label_color)
-            .and_then(literal_fill)
-            .or_else(|| literal_fill(&ctx.compatibility.text_color));
         const LIGHT: Color = Color::rgb(255, 255, 255);
         const DARK: Color = Color::rgb(15, 23, 42);
+        let default_ink = literal_fill(&ctx.compatibility.text_color);
+        let authored_ink = label_style
+            .and_then(crate::style::compiled::FlowchartCompiledStyles::source_label_color)
+            .and_then(literal_fill);
+        let ink = authored_ink.or(default_ink);
+        let known_ink = if label_style.is_some_and(|style| style.has_source_label_foreground()) {
+            authored_ink
+        } else {
+            default_ink
+        };
+        let readable_on_light = |ink: Color| ink.composite(LIGHT, 1.0).contrast(LIGHT) >= 4.5;
+        if matches!(ctx.diagram_type, "flowchart" | "flowchart-v2")
+            && default_ink.is_some_and(readable_on_light)
+            && known_ink.is_some_and(readable_on_light)
+        {
+            // The shaft cutout already provides room for readable ink on a light host.
+            out.checkpoint()?;
+            return Ok(Some(fill));
+        }
         let (plate, host) = if ink.is_some_and(|ink| ink.contrast(DARK) >= ink.contrast(LIGHT)) {
             (DARK, LIGHT)
         } else {

@@ -150,6 +150,7 @@ fn render_block_direct_with_policy(
         work_meter: &work_meter,
         text_measurer: &measurer,
         operation: &operation,
+        canvas_background: None,
         shoal: false,
     };
     let node_bindings = BlockNodeBindings::prepare(model, &layout, &layout_meter)?;
@@ -342,6 +343,7 @@ fn diagram_id_terminal_precedes_later_block_model_validation() {
         work_meter: &work_meter,
         text_measurer: &measurer,
         operation: &operation,
+        canvas_background: None,
         shoal: false,
     };
     let layout = BlockDiagramLayout {
@@ -369,7 +371,7 @@ fn diagram_id_terminal_precedes_later_block_model_validation() {
     };
 
     let config = &parsed.metadata().effective_config;
-    let typography = BlockTypographyThemePlan::resolve(config.as_value()).unwrap();
+    let typography = BlockTypographyThemePlan::resolve(config).unwrap();
     let error = render_block_diagram_svg_model_with_theme(
         &layout,
         model,

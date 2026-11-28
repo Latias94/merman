@@ -18,6 +18,46 @@ pub(super) struct GroupBindings<'a> {
     pub(super) directions: Vec<Direction>,
 }
 
+/// A crossed group inherits its parent's flow. A width trial can also turn the root
+/// and the authored horizontal groups. Reserve each physical axis those solves can use.
+pub(super) fn bundle_faces(
+    graph: &MeasuredGraph,
+    fit_width: bool,
+    work: &mut OperationLayoutWorkControl,
+) -> Result<Vec<[bool; 2]>> {
+    let horizontal = |direction| matches!(direction, Direction::Left | Direction::Right);
+    let root_horizontal = horizontal(graph.direction);
+    let root = [!root_horizontal || fit_width, root_horizontal];
+    work.charge_adapter(graph.groups.len())?;
+    let mut faces = vec![None; graph.groups.len()];
+    let mut visited = vec![false; graph.groups.len()];
+    let mut path = Vec::new();
+    for index in 0..faces.len() {
+        let mut next = Some(index);
+        let mut inherited = loop {
+            let Some(group) = next else { break root };
+            if let Some(axes) = faces[group] {
+                break axes;
+            }
+            if visited[group] {
+                // The solver rejects cyclic containment.
+                break [true, true];
+            }
+            work.charge_adapter(1)?;
+            visited[group] = true;
+            path.push(group);
+            next = graph.groups[group].parent.map(|parent| parent as usize);
+        };
+        for group in path.drain(..).rev() {
+            if let Some(direction) = graph.groups[group].direction {
+                inherited[usize::from(horizontal(direction))] = true;
+            }
+            faces[group] = Some(inherited);
+        }
+    }
+    Ok(faces.into_iter().map(|face| face.unwrap_or(root)).collect())
+}
+
 fn title_position(raw: &str) -> Option<TitlePosition> {
     Some(match raw {
         "top-left" => TitlePosition::TopLeft,

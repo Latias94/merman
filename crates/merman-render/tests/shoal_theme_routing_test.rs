@@ -125,7 +125,10 @@ fn assert_styles(diagram: &str, config: &str, count: usize) -> (Vec<Edge>, Vec<E
                 .iter()
                 .zip(&orthogonal)
                 .any(|(a, b)| a.points != b.points),
-        "{diagram}: routing must affect layout geometry"
+        "{diagram}: routing must affect layout geometry (curved: {}, orthogonal: {}, straight: {})",
+        curved[0].path.to_svg(),
+        orthogonal[0].path.to_svg(),
+        straight[0].path.to_svg(),
     );
     assert!(
         straight

@@ -3,6 +3,9 @@ use std::ops::Range;
 
 use crate::resources::{OperationWorkMeter, SvgByteBudget};
 
+#[cfg(any(feature = "route-paint", feature = "svg-edge-parity"))]
+#[doc(hidden)]
+pub mod cutout;
 #[doc(hidden)]
 pub mod timing;
 

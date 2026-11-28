@@ -1,6 +1,7 @@
 use std::{borrow::Cow, fmt::Write as _};
 
 use base64::Engine as _;
+use kurbo::Rect;
 use merman_render_core::{
     Bounds, Error, LayoutEdge, LayoutPoint, Result,
     config::DiagramLook,
@@ -18,7 +19,7 @@ use merman_render_core::{
         markers::{self, BaseEdgeMarkerKind},
         path_numbers::json_stringify_points,
     },
-    svg_output::{BoundedSvgOutput, SvgOutput, XmlTextOutput},
+    svg_output::{BoundedSvgOutput, SvgOutput, XmlTextOutput, cutout},
     text::{literal_label::flowchart_non_markdown_svg_plain_text, svg_label as label},
     xml::{escape_attr, escape_attr_into},
 };
@@ -175,27 +176,26 @@ fn block_marker_extent_radius(marker: &str) -> Option<f64> {
     Some(radius + stroke_width * scale_x.max(scale_y) / 2.0)
 }
 
-fn include_block_marker_bounds(
-    bounds: &mut Option<(f64, f64, f64, f64)>,
-    point: &LayoutPoint,
-    marker: &str,
-) {
-    let Some(radius) = block_marker_extent_radius(marker) else {
-        return;
-    };
-    let candidate = (
+fn block_marker_bounds(point: &LayoutPoint, kind: BaseEdgeMarkerKind) -> Option<Rect> {
+    let radius = block_marker_extent_radius(kind.suffix())?;
+    Some(Rect::new(
         point.x - radius,
         point.y - radius,
         point.x + radius,
         point.y + radius,
-    );
-    if let Some(existing) = bounds.as_mut() {
-        existing.0 = existing.0.min(candidate.0);
-        existing.1 = existing.1.min(candidate.1);
-        existing.2 = existing.2.max(candidate.2);
-        existing.3 = existing.3.max(candidate.3);
-    } else {
-        *bounds = Some(candidate);
+    ))
+}
+
+fn write_block_marker_references(
+    out: &mut impl SvgOutput,
+    diagram_id: SvgDiagramId<'_>,
+    kinds: [Option<BaseEdgeMarkerKind>; 2],
+) {
+    for (position, kind) in ["start", "end"].into_iter().zip(kinds) {
+        if let Some(kind) = kind {
+            let url = format!("url(#{diagram_id}_block-{})", kind.suffix());
+            let _ = write!(out, r#" marker-{position}="{}""#, escape_attr(&url));
+        }
     }
 }
 
@@ -354,14 +354,6 @@ pub fn render_block_diagram_svg_model_with_theme(
         .map(|geometry| (geometry.id.as_str(), geometry))
         .collect();
     let layout_edges_by_id = BlockLayoutEdgeIndex::new(&layout.edges);
-    fn marker_id(diagram_id: SvgDiagramId<'_>, marker: &str) -> String {
-        format!("{diagram_id}_block-{marker}")
-    }
-
-    fn marker_url(diagram_id: SvgDiagramId<'_>, marker: &str) -> String {
-        format!("url(#{})", marker_id(diagram_id, marker))
-    }
-
     fn dom_id(diagram_id: SvgDiagramId<'_>, raw_id: &str) -> String {
         if diagram_id.semantic_str().is_empty() {
             raw_id.to_string()
@@ -419,6 +411,7 @@ pub fn render_block_diagram_svg_model_with_theme(
         out: &mut impl SvgOutput,
         diagram_id: SvgDiagramId<'_>,
         typography_theme: &BlockTypographyThemePlan,
+        cutout_labels: bool,
         options: &BlockSvgContext<'_>,
     ) -> Result<()> {
         let theme = typography_theme.css_binding();
@@ -433,7 +426,11 @@ pub fn render_block_diagram_svg_model_with_theme(
         let line_color = theme.line_color.as_str();
         let arrowhead_color = theme.arrowhead_color.as_str();
         let stroke_width = theme.stroke_width.as_str();
-        let edge_label_background = &theme.edge_label_background;
+        let edge_label_background = if cutout_labels {
+            "transparent"
+        } else {
+            theme.edge_label_background.as_str()
+        };
         let cluster_bkg = theme.cluster_bkg.as_str();
         let cluster_border = theme.cluster_border.as_str();
         let native = typography_theme.native();
@@ -560,6 +557,7 @@ pub fn render_block_diagram_svg_model_with_theme(
     let native = typography_theme.native();
     let palette_size = typography_theme.css_binding().palette.len();
     let look = DiagramLook::from_raw(Some(&typography_theme.css_binding().look));
+    let shoal_hand_drawn = options.shoal && look.is_hand_drawn();
     let hand_drawn_seed = operation_randomness(
         options.operation,
         typography_theme
@@ -569,6 +567,8 @@ pub fn render_block_diagram_svg_model_with_theme(
         "render.block.roughjs",
     );
     let node_theme = typography_theme.css_binding();
+    let cutout_labels =
+        options.shoal && typography_theme.transparent_edge_labels(options.canvas_background);
     let html_labels = node_theme.html_labels;
     let node_fill_color = node_theme.main_bkg.as_str();
     let node_stroke_color = node_theme.node_border.as_str();
@@ -623,6 +623,7 @@ pub fn render_block_diagram_svg_model_with_theme(
         &mut XmlTextOutput::new(&mut out),
         diagram_id,
         typography_theme,
+        cutout_labels,
         options,
     )?;
     out.push_str("</style><g/>");
@@ -753,13 +754,36 @@ pub fn render_block_diagram_svg_model_with_theme(
         }
         out.push('>');
 
-        match &geometry.boundary {
-            BlockShapeBoundary::Rectangle {
-                width,
-                height,
-                radius,
-                kind,
-            } => {
+        let sketch = if shoal_hand_drawn {
+            super::native::hand_drawn_shape_path(geometry, &hand_drawn_seed, options)?
+        } else {
+            None
+        };
+        match (sketch, &geometry.boundary) {
+            (Some(d), boundary) => {
+                let class = match boundary {
+                    BlockShapeBoundary::Rectangle {
+                        kind: BlockRectangleKind::Composite,
+                        ..
+                    } => "basic cluster composite label-container",
+                    _ => "basic label-container outer-path",
+                };
+                let _ = write!(
+                    out,
+                    r#"<path d="{}" class="{class}" style="{}"/>"#,
+                    escape_attr(&d),
+                    escape_attr(node_box_style),
+                );
+            }
+            (
+                None,
+                BlockShapeBoundary::Rectangle {
+                    width,
+                    height,
+                    radius,
+                    kind,
+                },
+            ) => {
                 let class = match kind {
                     BlockRectangleKind::Basic => "basic label-container",
                     BlockRectangleKind::Composite => "basic cluster composite label-container",
@@ -777,7 +801,7 @@ pub fn render_block_diagram_svg_model_with_theme(
                     fmt(*height)
                 );
             }
-            BlockShapeBoundary::Circle { radius, .. } => {
+            (None, BlockShapeBoundary::Circle { radius, .. }) => {
                 let _ = write!(
                     &mut out,
                     r#"<circle class="basic label-container" style="{}" r="{}" cx="0" cy="0"/>"#,
@@ -785,11 +809,14 @@ pub fn render_block_diagram_svg_model_with_theme(
                     fmt(*radius),
                 );
             }
-            BlockShapeBoundary::DoubleCircle {
-                outer_radius,
-                inner_radius,
-                ..
-            } => {
+            (
+                None,
+                BlockShapeBoundary::DoubleCircle {
+                    outer_radius,
+                    inner_radius,
+                    ..
+                },
+            ) => {
                 let circle_style = if options.shoal {
                     let mut style = String::new();
                     merman_render_core::mermaid_style::visit_parsed_style_declarations(
@@ -820,7 +847,7 @@ pub fn render_block_diagram_svg_model_with_theme(
                     fmt(*inner_radius),
                 );
             }
-            BlockShapeBoundary::Stadium { width, height } => {
+            (None, BlockShapeBoundary::Stadium { width, height }) => {
                 let points = block_stadium_points(*width, *height);
                 let path_data = closed_path_d_from_points(
                     &points
@@ -858,12 +885,15 @@ pub fn render_block_diagram_svg_model_with_theme(
                     );
                 }
             }
-            BlockShapeBoundary::Cylinder {
-                width,
-                body_height,
-                radius_x,
-                radius_y,
-            } => {
+            (
+                None,
+                BlockShapeBoundary::Cylinder {
+                    width,
+                    body_height,
+                    radius_x,
+                    radius_y,
+                },
+            ) => {
                 let _ = write!(
                     &mut out,
                     r#"<path d="{}" class="basic label-container outer-path" style="{}" transform="translate({}, {})"/>"#,
@@ -873,10 +903,13 @@ pub fn render_block_diagram_svg_model_with_theme(
                     fmt(-(body_height / 2.0 + radius_y))
                 );
             }
-            BlockShapeBoundary::Polygon {
-                points,
-                translation,
-            } => {
+            (
+                None,
+                BlockShapeBoundary::Polygon {
+                    points,
+                    translation,
+                },
+            ) => {
                 let odd_shape = matches!(node.block_type, "odd" | "rect_left_inv_arrow");
                 let points_as_tuples: Vec<(f64, f64)> =
                     points.iter().map(|point| (point.x, point.y)).collect();
@@ -992,14 +1025,14 @@ pub fn render_block_diagram_svg_model_with_theme(
         let fallback_points;
         let fallback_d;
         let route = edge_routes.get(edge_index).and_then(Option::as_ref);
-        let (d, points, marker_refs) = 'geometry: {
+        let (d, points, marker_refs, mut path_bounds) = 'geometry: {
             if let Some(route) = route {
                 let b = &route.bounds;
-                union_block_bounds(&mut content_bounds, (b.min_x, b.min_y, b.max_x, b.max_y));
                 break 'geometry (
                     route.path.as_str(),
                     le.points.as_slice(),
                     [Some(&route.marker_refs[0]), Some(&route.marker_refs[1])],
+                    Some(Rect::new(b.min_x, b.min_y, b.max_x, b.max_y)),
                 );
             }
             fallback_points = block_render_edge_points(e, le, &shape_geometries_by_id, edge_style);
@@ -1012,9 +1045,6 @@ pub fn render_block_diagram_svg_model_with_theme(
                 }
             };
             fallback_d = d;
-            if let Some(b) = bounds {
-                union_block_bounds(&mut content_bounds, (b.min_x, b.min_y, b.max_x, b.max_y));
-            }
             (
                 fallback_d.as_str(),
                 fallback_points.data_points.as_slice(),
@@ -1022,13 +1052,15 @@ pub fn render_block_diagram_svg_model_with_theme(
                     fallback_points.rendered_points.first(),
                     fallback_points.rendered_points.last(),
                 ],
+                bounds.map(|b| Rect::new(b.min_x, b.min_y, b.max_x, b.max_y)),
             )
         };
         let marker_kinds = [
             BaseEdgeMarkerKind::from_arrow(e.arrow_type_start.as_deref(), true),
             BaseEdgeMarkerKind::from_arrow(e.arrow_type_end.as_deref(), false),
         ];
-        let rough_d = if edge_style == Some(EdgeStyle::Sketch) && points.len() >= 2 {
+        let sketch = edge_style == Some(EdgeStyle::Sketch) || (shoal_hand_drawn && route.is_some());
+        let rough_d = if sketch && points.len() >= 2 {
             let markers = route.map_or_else(
                 || {
                     let [start, end] = marker_kinds.map(|kind| {
@@ -1042,17 +1074,24 @@ pub fn render_block_diagram_svg_model_with_theme(
             );
             let d = constrained_rough_edge_path(d, markers, options.work_meter, &hand_drawn_seed)?;
             options.work_meter.charge(d.len())?;
-            if let Some(bounds) = svg_path_bounds_from_d(&d) {
-                union_block_bounds(
-                    &mut content_bounds,
-                    (bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y),
-                );
+            if let Some(b) = svg_path_bounds_from_d(&d) {
+                let rough_bounds = Rect::new(b.min_x, b.min_y, b.max_x, b.max_y);
+                path_bounds = Some(path_bounds.map_or(rough_bounds, |b| b.union(rough_bounds)));
             }
             Some(d)
         } else {
             None
         };
         let d = rough_d.as_deref().unwrap_or(d);
+        if let Some(b) = path_bounds {
+            union_block_bounds(&mut content_bounds, (b.x0, b.y0, b.x1, b.y1));
+        }
+        let marker_rects =
+            [0, 1].map(|end| block_marker_bounds(marker_refs[end]?, marker_kinds[end]?));
+        for b in marker_rects.iter().flatten() {
+            let extents = (b.x0, b.y0, b.x1, b.y1);
+            union_block_bounds(marker_bounds.get_or_insert(extents), extents);
+        }
         has_rendered_edge |= !points.is_empty();
         let data_points =
             base64::engine::general_purpose::STANDARD.encode(json_stringify_points(points));
@@ -1068,6 +1107,51 @@ pub fn render_block_diagram_svg_model_with_theme(
             let data_id = dom_id(diagram_id, &e.id);
             let path_id = dom_id(diagram_id, &data_id);
             (path_id, Cow::Owned(data_id))
+        };
+        let label_gap = le
+            .label
+            .as_ref()
+            .filter(|label| {
+                cutout_labels
+                    && !e.label.trim().is_empty()
+                    && label.width > 0.0
+                    && label.height > 0.0
+            })
+            .map(|label| Rect::from_center_size((label.x, label.y), (label.width, label.height)))
+            .filter(|gap| gap.is_finite());
+        let mut shaft_markers = marker_kinds;
+        let mut separate_markers = [None; 2];
+        let cutout_id = if let Some((gap, mut paint_bounds)) = label_gap.zip(path_bounds) {
+            for (end, rect) in marker_rects.into_iter().enumerate() {
+                if let Some(rect) = rect {
+                    if gap.intersect(rect).area() > 0.0 {
+                        // SVG clips attached markers together with their shaft. Paint this marker
+                        // on an unpainted copy so the hole can cover the full caption.
+                        separate_markers[end] = shaft_markers[end].take();
+                    } else {
+                        paint_bounds = paint_bounds.union(rect);
+                    }
+                }
+            }
+            let stroke_width = match (native, thickness) {
+                (Some(style), "thick") => style.form.connector_width * 2.0,
+                (Some(style), _) => style.form.connector_width,
+                (None, "thick") => 3.5,
+                (None, _) => node_theme.edge_stroke_width_px.unwrap_or(1.0).abs(),
+            };
+            let id = format!("{path_id}-label-cutout");
+            // Include the stroke at joins, up to the default SVG miter limit of four half-widths.
+            cutout::write_defs(
+                &mut out,
+                &id,
+                paint_bounds,
+                stroke_width * 2.0 + 1.0,
+                &[gap],
+                options.work_meter,
+            )?;
+            Some(id)
+        } else {
+            None
         };
         let _ = write!(
             &mut out,
@@ -1089,28 +1173,21 @@ pub fn render_block_diagram_svg_model_with_theme(
         escape_attr_into(&mut out, &data_id);
         let _ = write!(&mut out, r#"" data-points="{data_points}""#);
 
-        if let Some(kind) = marker_kinds[0] {
-            if let Some(point) = marker_refs[0] {
-                include_block_marker_bounds(&mut marker_bounds, point, kind.suffix());
-            }
-            let _ = write!(
-                &mut out,
-                r#" marker-start="{}""#,
-                escape_attr(&marker_url(diagram_id, kind.suffix()))
-            );
-        }
-        if let Some(kind) = marker_kinds[1] {
-            if let Some(point) = marker_refs[1] {
-                include_block_marker_bounds(&mut marker_bounds, point, kind.suffix());
-            }
-            let _ = write!(
-                &mut out,
-                r#" marker-end="{}""#,
-                escape_attr(&marker_url(diagram_id, kind.suffix()))
-            );
+        write_block_marker_references(&mut out, diagram_id, shaft_markers);
+        if let Some(id) = cutout_id {
+            cutout::write_reference(&mut out, id);
         }
         options.checkpoint_emit()?;
         out.push_str("/>");
+        if separate_markers.iter().any(Option::is_some) {
+            let _ = write!(
+                &mut out,
+                r#"<path d="{}" fill="none" stroke="none""#,
+                escape_attr(d),
+            );
+            write_block_marker_references(&mut out, diagram_id, separate_markers);
+            out.push_str("/>");
+        }
         out.checkpoint()?;
     }
 

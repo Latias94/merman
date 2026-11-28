@@ -3,13 +3,14 @@ use crate::graph_layout::canonical::{CanonicalRoutes, CaptionClearance};
 use crate::graph_layout::contour::{ShapePortProfile, shoal_contour, usecase_actor};
 use crate::graph_layout::ir::{
     Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, Side, Size,
-    SolvedGroup, TitlePosition,
+    SolvedEdge, SolvedGroup, TitlePosition,
 };
 use crate::graph_layout::placement;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{Bounds, LayoutLabel, LayoutPoint};
 use crate::{Error, LayoutExecution, Result};
-use kurbo::Insets;
+use kurbo::{Insets, Rect};
+use merman_layout_shoal::geom::{Bounds as ShoalBounds, Bvh, BvhEntry};
 use merman_model::families::usecase::{UsecaseDiagramModel, UsecaseNodeKind};
 use merman_render_graph::usecase::{
     UsecaseLabelPlan, UsecaseMeasured, configured_usecase_spacing,
@@ -19,6 +20,7 @@ use merman_render_graph::usecase::{
 use rustc_hash::FxHashMap;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::ops::ControlFlow::{Break, Continue};
 
 const BOUNDARY_PADDING: f64 = 20.0;
 
@@ -26,6 +28,7 @@ const BOUNDARY_PADDING: f64 = 20.0;
 pub(super) struct UsecaseCanonicalLayout {
     pub(super) titles: HashMap<String, LayoutLabel>,
     pub(super) boundary_order: Vec<(usize, usize)>,
+    pub(super) panel_captions: Vec<bool>,
 }
 
 fn dimensions(label: &UsecaseLabelPlan) -> (f64, f64) {
@@ -77,6 +80,58 @@ fn boundary_paint_order(
         next += 1;
     }
     Ok(order)
+}
+
+fn panel_captions(
+    groups: &[SolvedGroup],
+    edges: &[SolvedEdge],
+    work: &mut OperationLayoutWorkControl,
+) -> Result<Vec<bool>> {
+    if groups.is_empty() {
+        return Ok(Vec::new());
+    }
+    work.charge_adapter(edges.len())?;
+    if !edges.iter().any(|edge| edge.label.is_some()) {
+        return Ok(Vec::new());
+    }
+    work.charge_adapter(work.checked_add(groups.len(), edges.len())?)?;
+    let panels = Bvh::build_controlled(
+        groups
+            .iter()
+            .map(|group| {
+                let rect = group.rect;
+                Rect::new(rect.x, rect.y, rect.x + rect.width, rect.y + rect.height)
+            })
+            .collect(),
+        |panel| ShoalBounds {
+            x: [panel.x0, panel.x1],
+            y: [panel.y0, panel.y1],
+        },
+        work,
+    )
+    .map_err(|error| work.map_shoal_error(error))?;
+    edges
+        .iter()
+        .map(|edge| {
+            let Some(label) = &edge.label else {
+                return Ok(false);
+            };
+            let ink = Rect::from_center_size((label.x, label.y), (label.width, label.height));
+            let found = panels.visit(|entry| -> Result<_> {
+                work.charge_adapter(1)?;
+                Ok(match entry {
+                    BvhEntry::Node(bounds) => {
+                        let [left, right] = bounds.x;
+                        let [top, bottom] = bounds.y;
+                        Continue(Rect::new(left, top, right, bottom).intersect(ink).area() > 0.0)
+                    }
+                    BvhEntry::Item(bounds) if bounds.intersect(ink).area() > 0.0 => Break(()),
+                    BvhEntry::Item(_) => Continue(true),
+                })
+            })?;
+            Ok(found.is_break())
+        })
+        .collect()
 }
 
 pub(super) fn layout(
@@ -283,6 +338,7 @@ pub(super) fn layout(
         work,
     )?;
     let boundary_order = boundary_paint_order(&solved.groups, &boundary_plans, work)?;
+    let panel_captions = panel_captions(&solved.groups, &solved.edges, work)?;
     work.charge_adapter(work.checked_add(plans.len(), edge_plans.len())?)?;
     let mut nodes = Vec::with_capacity(plans.len());
     let mut titles = HashMap::with_capacity(solved.groups.len());
@@ -367,6 +423,7 @@ pub(super) fn layout(
         UsecaseCanonicalLayout {
             titles,
             boundary_order,
+            panel_captions,
         },
         routes,
     ))

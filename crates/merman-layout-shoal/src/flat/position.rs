@@ -242,6 +242,10 @@ fn spread_face(
         (1.0, 1.0, all)
     } else if span / half_tails >= spacing.min_port_pitch {
         (0.5, 1.0, half_tails)
+    } else if span / all >= 2.5 {
+        // Retain separate contacts when the face can support a visible gap, even if
+        // the preferred spacing cannot fit. Very dense hubs still use the side-port pass.
+        (1.0, 1.0, all)
     } else {
         (0.0, 0.0, mixed as f64)
     };

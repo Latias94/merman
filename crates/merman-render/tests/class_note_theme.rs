@@ -117,6 +117,31 @@ fn classic_notes_keep_their_paints_and_markup_in_both_label_modes() {
     }
 }
 
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_neo_note_uses_the_dotted_connector_style() {
+    let mut config = config(false);
+    config["layout"] = json!("shoal");
+    config["look"] = json!("neo");
+    let rendered = render(SOURCE, config).unwrap();
+    let svg = rendered.svg();
+    let document = roxmltree::Document::parse(svg).unwrap();
+    let note = document
+        .descendants()
+        .find(|node| node.has_tag_name("path") && node.attribute("data-id") == Some("edgeNote0"))
+        .expect("note connector");
+    assert_eq!(note.attribute("data-look"), Some("neo"));
+    assert!(has_class(note, "edge-pattern-dotted"));
+    assert!(svg.contains(".edge-pattern-dotted{stroke-dasharray:2;}"));
+    assert_eq!(note.attribute("stroke-dasharray"), None);
+    assert!(
+        !note
+            .attribute("style")
+            .unwrap_or_default()
+            .contains("stroke-dash")
+    );
+}
+
 #[test]
 fn hand_drawn_class_and_note_have_backings_and_a_single_group_opacity() {
     let mut config = config(false);

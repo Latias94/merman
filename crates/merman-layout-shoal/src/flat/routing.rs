@@ -17,14 +17,16 @@ use super::{
 use crate::scratch::{capacity_bytes, clear_reserve};
 use crate::work::{LayoutResult, Work, filled, push, reserved};
 use crate::{
-    Axis, Direction, EdgeGeometry, Graph, KnotKind, LayoutError, MIN_MARKER_LEAD as LEAD,
-    MarkerMetrics, Options, Point, PortSideHint, Rect, RoutePoint, RoutingStyle, ShapeContourHint,
-    Side, Size, WorkError, sweep_handle_fraction,
+    Axis, Direction, EdgeGeometry, Graph, KnotKind, LayoutError, MIN_CROSSBAR_ARM,
+    MIN_MARKER_LEAD as LEAD, MarkerMetrics, Options, Point, PortSideHint, Rect, RoutePoint,
+    RoutingStyle, ShapeContourHint, Side, Size, WorkError, steep_sweep_run_limit,
+    sweep_handle_fraction,
 };
 use std::{cmp::Reverse, collections::BinaryHeap};
 
 const LEVEL_CLEAR: f64 = 8.0;
 const LEVEL_TOUCH: f64 = 4.0;
+const SHELF_MARGIN: f64 = 28.0;
 const SAMPLES: usize = 16;
 const MAX_SWEEP_GAPS: usize = 12;
 const MAX_SWEEP_PEERS: usize = 32;
@@ -177,7 +179,9 @@ struct Gap {
 fn track_metrics(style: RoutingStyle, edge_sep: f64) -> (f64, f64, f64) {
     match style {
         RoutingStyle::Orthogonal => (18.0, edge_sep, edge_sep),
-        _ => (28.0, edge_sep, edge_sep),
+        // Distinct curved shelves still need room to separate at zero edge spacing.
+        RoutingStyle::Curved if edge_sep == 0.0 => (SHELF_MARGIN, LEVEL_TOUCH, LEVEL_TOUCH),
+        _ => (SHELF_MARGIN, edge_sep, edge_sep),
     }
 }
 
@@ -611,9 +615,24 @@ fn curved_levels(
         }
         let wide_a = a.width() * 0.5 > height;
         let wide_b = b.width() * 0.5 > height;
-        promoted[left] |= wide_a;
-        promoted[right] |= wide_b;
-        if promoted[left] && promoted[right] || (a.from < a.to) != (b.from < b.to) {
+        let opposing = (a.from < a.to) != (b.from < b.to);
+        // Opposing sweeps are not sampled for proximity, but they can still acquire
+        // the same painter crossbar. A shelf already required by either sweep adds
+        // runway before painting, which can make the other sweep ineligible.
+        let shared_crossbar = opposing && {
+            let run = if wide_a || wide_b {
+                room.max(2.0 * SHELF_MARGIN)
+            } else {
+                room
+            };
+            let paints_crossbar = |span: Span| {
+                (2.0 * MIN_CROSSBAR_ARM..steep_sweep_run_limit(span.width())).contains(&run)
+            };
+            (wide_a || paints_crossbar(a)) && (wide_b || paints_crossbar(b))
+        };
+        promoted[left] |= wide_a || shared_crossbar;
+        promoted[right] |= wide_b || shared_crossbar;
+        if promoted[left] && promoted[right] || opposing {
             return Ok(());
         }
         let crossing = (a.from < b.from) != (a.to < b.to);
@@ -1013,18 +1032,18 @@ impl Gap {
         let guard = finite(self.upper_guard + self.lower_guard)?;
         self.minimum = finite(guard + if ids.is_empty() { 0.0 } else { 2.0 * LEAD })?;
         let max_promotable_span = options.spacing.rank * MAX_PROMOTABLE_SPAN_RANKS;
-        let (widest, widest_promotable) = ids.iter().fold((0.0_f64, 0.0_f64), |(all, prom), &i| {
-            let w = self.pieces[i].span.width();
-            (
-                all.max(w),
-                if w <= max_promotable_span {
-                    prom.max(w)
-                } else {
-                    prom
-                },
-            )
-        });
+        let mut widest = 0.0_f64;
+        let mut widest_promotable = 0.0_f64;
+        let mut crossbar_run_limit = 0.0_f64;
         if curved && !ids.is_empty() {
+            for &i in ids.iter() {
+                let width = self.pieces[i].span.width();
+                widest = widest.max(width);
+                if width <= max_promotable_span {
+                    widest_promotable = widest_promotable.max(width);
+                }
+                crossbar_run_limit = crossbar_run_limit.max(steep_sweep_run_limit(width));
+            }
             // Guarantee enough net vertical room for wide curved sweeps when guards (such as
             // ER crow's-foot runways) or inserted-label slits squeeze a gap below healthy
             // curvature, without inflating ordinary flat rank gaps or extreme synthetic spans.
@@ -1084,15 +1103,30 @@ impl Gap {
                         .minimum
                         .max((3.0 * options.spacing.rank).min(widest * 0.5));
                     let inflated_room = (self.height.max(inflated_min) - guard).max(0.0);
-                    if inflated_room > 0.0 && widest_promotable <= inflated_room * MAX_SWEEP_ASPECT
-                    {
-                        self.minimum = inflated_min;
+                    // A clear isolated span can be shortened by the painter, which has no
+                    // view of adjacent spans. Keep solver-owned tracks when a sweep could
+                    // otherwise acquire a crossbar at a peer's level.
+                    if inflated_room >= crossbar_run_limit {
+                        self.minimum = inflated_min.max(advance(guard, crossbar_run_limit)?);
                         self.height = self.height.max(self.minimum);
                         return Ok(());
                     }
                 }
+                let mut protected_run = 0.0_f64;
                 let mut flags = promoted.into_iter();
-                ids.retain(|_| flags.next() == Some(true));
+                ids.retain(|&id| {
+                    let shelf = flags.next() == Some(true);
+                    if !shelf {
+                        let limit = steep_sweep_run_limit(self.pieces[id].span.width());
+                        if limit <= room {
+                            protected_run = protected_run.max(limit);
+                        }
+                    }
+                    shelf
+                });
+                // Optical label shifts can borrow spare gap height. Retain the run on which
+                // these untracked sweeps stay outside the painter's crossbar range.
+                self.minimum = self.minimum.max(advance(guard, protected_run)?);
             }
             self.tracks = weighed_tracks(&mut self.pieces, ids, work)?;
         }
@@ -1109,8 +1143,8 @@ impl Gap {
             self.minimum = self.minimum.max(finite(
                 guard + 2.0 * margin + (self.tracks - 1) as f64 * pitch,
             )?);
-            self.height = self.height.max(self.minimum);
         }
+        self.height = self.height.max(self.minimum);
         Ok(())
     }
 }
