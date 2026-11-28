@@ -33,6 +33,8 @@ pub use dagre::{
 pub use elk::layout as layout_elk;
 use geometry::RectWithTitleGeometry;
 pub use geometry::StateDiagramLayout;
+#[cfg(feature = "layout-shoal")]
+pub use layout_input::note_group_container;
 pub use layout_input::{
     HiddenPrefixMatcher, note_group_owner_id, state_hidden_prefixes, state_layout_adapter_work,
     validate_state_parent_cycles,

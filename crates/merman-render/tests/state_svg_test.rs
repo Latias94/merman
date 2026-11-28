@@ -86,6 +86,113 @@ fn state_digit_prefixed_classes_are_css_identifiers() {
 
 #[cfg(feature = "layout-shoal")]
 #[test]
+fn shoal_state_centers_plain_leaf_text_in_classic_and_hand_drawn_looks() {
+    for look in ["classic", "handDrawn"] {
+        let svg = render_state_svg_from_text(&format!(
+            "---\nconfig:\n  layout: shoal\n  look: {look}\n  htmlLabels: false\n---\nstateDiagram-v2\nIdle --> Ready\n"
+        ));
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let idle = document
+            .descendants()
+            .find(|node| node.attribute("data-id") == Some("Idle"))
+            .unwrap();
+        let label = idle
+            .children()
+            .find(|node| node.attribute("class") == Some("label"))
+            .unwrap();
+        assert!(
+            label
+                .attribute("transform")
+                .unwrap()
+                .starts_with("translate(0,")
+        );
+        let text = label
+            .children()
+            .find(|node| node.has_tag_name("text"))
+            .unwrap();
+        assert_eq!(text.attribute("text-anchor"), Some("middle"));
+        assert_eq!(
+            text.first_element_child().unwrap().attribute("x"),
+            Some("0")
+        );
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_state_cross_boundary_route_clears_the_painted_title() {
+    use kurbo::{Affine, BezPath, ParamCurve, Rect, Shape, Vec2};
+
+    let svg = render_state_svg_from_text(
+        "---\nconfig:\n  layout: shoal\n  htmlLabels: true\n---\nstateDiagram-v2\n\
+         [*] --> Boot\nstate Platform {\n  state Pipeline {\n    [*] --> Ingest\n\
+         Ingest --> Drain\n  }\n}\nBoot --> Ingest: cold entry\n",
+    );
+    let doc = roxmltree::Document::parse(&svg).unwrap();
+    let translation = |node: roxmltree::Node<'_, '_>| {
+        node.ancestors()
+            .filter_map(|item| item.attribute("transform"))
+            .map(|value| {
+                let t = value
+                    .strip_prefix("translate(")
+                    .unwrap()
+                    .strip_suffix(')')
+                    .unwrap();
+                let (x, y) = t.split_once(',').unwrap();
+                Vec2::new(x.trim().parse().unwrap(), y.trim().parse().unwrap())
+            })
+            .fold(Vec2::ZERO, |sum, part| sum + part)
+    };
+    let title = doc
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("foreignObject")
+                && node
+                    .parent()
+                    .is_some_and(|parent| parent.attribute("class") == Some("cluster-label"))
+                && node
+                    .descendants()
+                    .any(|text| text.text() == Some("Pipeline"))
+        })
+        .unwrap();
+    assert!(title.descendants().any(|node| {
+        node.attribute("style")
+            .is_some_and(|style| style.contains("text-align: center;"))
+    }));
+    let dimension = |name| title.attribute(name).unwrap().parse::<f64>().unwrap();
+    let protected = Rect::from_origin_size((0.0, 0.0), (dimension("width"), dimension("height")))
+        .inflate(8.0, 0.0)
+        + translation(title);
+    let edge_label = doc
+        .descendants()
+        .find(|node| {
+            node.attribute("class") == Some("label")
+                && node.attribute("data-id").is_some()
+                && node
+                    .descendants()
+                    .any(|text| text.text() == Some("cold entry"))
+        })
+        .unwrap();
+    let edge = doc
+        .descendants()
+        .find(|node| {
+            node.attribute("data-et") == Some("edge")
+                && node.attribute("data-id") == edge_label.attribute("data-id")
+        })
+        .unwrap();
+    let path = Affine::translate(translation(edge))
+        * BezPath::from_svg(edge.attribute("d").unwrap()).unwrap();
+    assert!(path.bounding_box().y0 < protected.y0 && path.bounding_box().y1 > protected.y1);
+    assert!(
+        path.segments().all(|segment| {
+            (0..=128).all(|step| !protected.contains(segment.eval(f64::from(step) / 128.0)))
+        }),
+        "transition crosses the Pipeline title band: {protected:?}"
+    );
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
 fn shoal_state_html_labels_allow_ink_overhang_and_composites_share_a_bottom_edge() {
     let svg = render_state_svg_from_text(
         "---\nconfig:\n  layout: shoal\n  htmlLabels: true\n---\nstateDiagram-v2\n\
