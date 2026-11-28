@@ -5,7 +5,9 @@ use super::{
     sanitize_source_label,
 };
 use base64::Engine as _;
-use kurbo::{Ellipse, Rect, Shape, Vec2};
+#[cfg(feature = "layout-shoal")]
+use kurbo::Vec2;
+use kurbo::{Ellipse, Rect, Shape};
 use merman_markup::theme_color::ThemeColor;
 use merman_model::families::usecase::{
     UsecaseActorType, UsecaseAnimation, UsecaseDiagramModel, UsecaseLabelType, UsecaseNodeKind,
@@ -43,6 +45,7 @@ mod grid;
 #[cfg(feature = "layout-layered")]
 mod layered;
 mod shapes;
+#[cfg(feature = "layout-shoal")]
 mod sketch;
 mod theme;
 
@@ -682,12 +685,14 @@ pub fn render_usecase_diagram_svg_model(
     #[cfg(feature = "layout-shoal")]
     let sketch_shapes =
         (uses_canonical && css_binding.look == "handDrawn").then(|| sketch::UsecaseSketch {
-            options,
-            seed: css_binding.hand_drawn_seed,
+            work_meter: options.work_meter,
+            randomness: operation_randomness(
+                options.operation,
+                css_binding.hand_drawn_seed,
+                "usecase-shape",
+            ),
             bounds: Default::default(),
         });
-    #[cfg(not(feature = "layout-shoal"))]
-    let sketch_shapes: Option<sketch::UsecaseSketch<'_>> = None;
     let labels = UsecaseLabelRenderContext {
         config,
         measurer,
@@ -767,7 +772,8 @@ pub fn render_usecase_diagram_svg_model(
     ];
     chrome.custom_properties = &font_properties;
     let mut out = BoundedSvgOutput::new(options.work_meter);
-    let mut document = if sketch_shapes.is_some() {
+    #[cfg(feature = "layout-shoal")]
+    let document = if sketch_shapes.is_some() {
         options.viewport.begin_document(
             &mut out,
             root_svg::DeferredRootSpec::mermaid(use_max_width),
@@ -776,6 +782,8 @@ pub fn render_usecase_diagram_svg_model(
     } else {
         options.viewport.write_open(&mut out, spec, chrome)?
     };
+    #[cfg(not(feature = "layout-shoal"))]
+    let document = options.viewport.write_open(&mut out, spec, chrome)?;
     if let Some(title) = &model.acc_title {
         let _ = write!(
             out,
@@ -917,7 +925,9 @@ pub fn render_usecase_diagram_svg_model(
                     (tab_left, top),
                     (tab_width, tab_height),
                     &plan.source_style,
+                    #[cfg(feature = "layout-shoal")]
                     sketch_shapes.as_ref(),
+                    #[cfg(feature = "layout-shoal")]
                     Vec2::ZERO,
                 )?;
             }
@@ -933,7 +943,9 @@ pub fn render_usecase_diagram_svg_model(
             (left, top + body_inset),
             (node.width, height - body_inset),
             &plan.source_style,
+            #[cfg(feature = "layout-shoal")]
             sketch_shapes.as_ref(),
+            #[cfg(feature = "layout-shoal")]
             Vec2::ZERO,
         )?;
         if uses_canonical {
@@ -1442,6 +1454,7 @@ pub fn render_usecase_diagram_svg_model(
                 diagram_id,
                 options,
                 canonical: uses_canonical,
+                #[cfg(feature = "layout-shoal")]
                 sketch: sketch_shapes.as_ref(),
             },
         )?;
@@ -1472,7 +1485,8 @@ pub fn render_usecase_diagram_svg_model(
             escape_xml(title)
         );
     }
-    if let Some(sketch) = &sketch_shapes {
+    #[cfg(feature = "layout-shoal")]
+    let document = if let Some(sketch) = &sketch_shapes {
         let viewport = if let Some(rough) = sketch.bounds.get() {
             root_svg::DiagramBounds::from_extents(
                 viewport_bounds.min_x.min(rough.x0),
@@ -1484,12 +1498,14 @@ pub fn render_usecase_diagram_svg_model(
         } else {
             viewport
         };
-        document = options.viewport.finish_document(
+        options.viewport.finish_document(
             &mut out,
             document,
             root_svg::RootViewportSpec::mermaid(viewport, use_max_width),
-        )?;
-    }
+        )?
+    } else {
+        document
+    };
     out.push_str("</svg>");
     document.complete(out.finish()?)
 }

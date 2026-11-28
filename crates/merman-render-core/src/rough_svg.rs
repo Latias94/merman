@@ -9,14 +9,16 @@ pub mod controlled;
 #[cfg(feature = "svg-edge-parity")]
 #[doc(hidden)]
 pub mod paths;
+#[doc(hidden)]
+pub use roughr::core::RoughRandomness;
 
 /// Selects the RoughJS numeric seed and the operation's dedicated fallback random stream.
 pub fn operation_randomness(
     operation: &merman_model::runtime::OperationContext,
     configured_seed: f64,
     owner_domain: &str,
-) -> roughr::core::RoughRandomness {
-    use roughr::core::{RoughJsSeed, RoughMathRandom, RoughRandomness};
+) -> RoughRandomness {
+    use roughr::core::{RoughJsSeed, RoughMathRandom};
 
     let resolved_seed = if configured_seed == 0.0 {
         operation.derive_nonzero_u64("render.root", 0).get() as f64

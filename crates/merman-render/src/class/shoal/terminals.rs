@@ -90,9 +90,11 @@ pub(super) fn seat(
     let fixed = Bvh::build_controlled(obstacles, |obstacle| bounds(obstacle.bounds()), work)
         .map_err(|error| work.map_shoal_error(error))?;
     let drawing = Rect::new(0.0, 0.0, solved.bounds.width, solved.bounds.height);
+    work.charge_adapter(solved.edges.len())?;
     let mut seating = Seating {
         fixed,
         occupied: BoundsIndex::default(),
+        placed: vec![[false; 2]; solved.edges.len()],
         drawing,
         shaft_outset,
     };
@@ -142,6 +144,8 @@ pub(super) fn seat(
 struct Seating {
     fixed: Bvh<Obstacle>,
     occupied: BoundsIndex,
+    // A placed label's current box belongs to `occupied`.
+    placed: Vec<[bool; 2]>,
     drawing: Rect,
     shaft_outset: f64,
 }
@@ -192,12 +196,7 @@ impl Seating {
                 for sign in [preferred, -preferred] {
                     let center = port + outward * distance + across * (sign * offset);
                     let rect = Rect::from_center_size(center, (label.width, label.height));
-                    if self.drawing.intersect(rect) != rect
-                        || self
-                            .occupied
-                            .any_overlap(bounds(rect.inflate(1.0, 1.0)), work)
-                            .map_err(|error| work.map_shoal_error(error))?
-                    {
+                    if self.drawing.intersect(rect) != rect {
                         continue;
                     }
                     if let Some(clearance) = self.clearance(rect, owner, offset, work)?
@@ -208,11 +207,15 @@ impl Seating {
                     }
                 }
                 if let Some((center, _)) = best {
+                    self.occupied
+                        .insert(
+                            bounds(Rect::from_center_size(center, (label.width, label.height))),
+                            work,
+                        )
+                        .map_err(|error| work.map_shoal_error(error))?;
+                    self.placed[owner.0][usize::from(owner.1)] = true;
                     label.x = center.x;
                     label.y = center.y;
-                    self.occupied
-                        .insert(bounds(label_rect(label)), work)
-                        .map_err(|error| work.map_shoal_error(error))?;
                     return Ok(());
                 }
             }
@@ -227,6 +230,14 @@ impl Seating {
         own_distance: f64,
         work: &mut OperationLayoutWorkControl,
     ) -> Result<Option<f64>> {
+        let terminal_ink = rect.inflate(1.0, 1.0);
+        if self
+            .occupied
+            .any_overlap(bounds(terminal_ink), work)
+            .map_err(|error| work.map_shoal_error(error))?
+        {
+            return Ok(None);
+        }
         let center = rect.center();
         let shaft_ink = rect.inflate(self.shaft_outset, self.shaft_outset);
         // A competing shaft can be nearer to a wide label's center without nearing its ink.
@@ -261,7 +272,9 @@ impl Seating {
                                 .any(|side| !side.intersect_line(line).is_empty()))
                 }
                 Obstacle::Terminal(terminal, ink) => {
-                    terminal != owner && rect.intersect(ink).area() > 0.0
+                    terminal != owner
+                        && !self.placed[terminal.0][usize::from(terminal.1)]
+                        && terminal_ink.intersect(ink).area() > 0.0
                 }
                 Obstacle::Box(ink) => rect.intersect(ink).area() > 0.0,
             };
@@ -345,6 +358,7 @@ mod tests {
         let mut seating = Seating {
             fixed,
             occupied: BoundsIndex::default(),
+            placed: vec![[false; 2]; 2],
             drawing: Rect::new(0.0, 0.0, 400.0, 400.0),
             shaft_outset: 0.5,
         };
@@ -360,5 +374,63 @@ mod tests {
             )
             .unwrap();
         assert_eq!(label.x, 281.5);
+    }
+
+    #[test]
+    fn terminal_clearance_follows_the_label_and_also_protects_unseated_labels() {
+        let mut work = OperationLayoutWorkControl::new(Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::constrained(),
+        )));
+        let make_label = |x, y| LayoutLabel {
+            x,
+            y,
+            width: 8.0,
+            height: 8.0,
+        };
+        let mut moving = make_label(20.0, 40.0);
+        let mut unseated = make_label(60.0, 40.0);
+        let old_ink = label_rect(&moving);
+        let fixed = Bvh::build_controlled(
+            vec![
+                Obstacle::Terminal((0, true), old_ink),
+                Obstacle::Terminal((0, false), label_rect(&unseated)),
+            ],
+            |obstacle| bounds(obstacle.bounds()),
+            &mut work,
+        )
+        .unwrap();
+        let mut seating = Seating {
+            fixed,
+            occupied: BoundsIndex::default(),
+            placed: vec![[false; 2]; 2],
+            drawing: Rect::new(0.0, 0.0, 150.0, 100.0),
+            shaft_outset: 0.5,
+        };
+        for (start, label, lead) in [(true, &mut moving, 40.0), (false, &mut unseated, 0.0)] {
+            seating
+                .place(
+                    label,
+                    (0, start),
+                    Point::new(90.0, 40.0),
+                    outward(Side::Right),
+                    lead,
+                    Marker::default(),
+                    &mut work,
+                )
+                .unwrap();
+        }
+
+        let mut can_place = |ink| {
+            seating
+                .clearance(ink, (1, true), 0.0, &mut work)
+                .unwrap()
+                .is_some()
+        };
+        assert!(can_place(old_ink));
+        for current in [&moving, &unseated] {
+            let ink = label_rect(current);
+            assert!(!can_place(ink + Vec2::new(8.5, 0.0)));
+            assert!(can_place(ink + Vec2::new(9.0, 0.0)));
+        }
     }
 }

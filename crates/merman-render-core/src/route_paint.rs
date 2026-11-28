@@ -491,36 +491,51 @@ fn corner_curve(
     )
 }
 
-fn spans_crossbar(across: f64) -> bool {
-    across > STEEP_SWEEP_MIN_ACROSS && across <= STEEP_SWEEP_MAX_ACROSS
+fn steep_offset(from: Point, end: RoutePoint) -> Option<(f64, f64)> {
+    let (run, across) = match end.axis {
+        Axis::Vertical => (end.y - from.y, end.x - from.x),
+        Axis::Horizontal => (end.x - from.x, end.y - from.y),
+    };
+    (run.abs() >= 2.0 * MIN_TURN_ARM
+        && across.abs() > STEEP_SWEEP_MIN_ACROSS
+        && across.abs() <= STEEP_SWEEP_MAX_ACROSS
+        && across.abs() > run.abs() * STEEP_SWEEP_RATIO)
+        .then_some((run, across))
 }
 
 /// A cubic corridor certificate cannot cover an alternate crossbar. Layout bridges use this
 /// inexpensive preflight to retain obstacle queries when one could be substituted.
 #[doc(hidden)]
-pub fn may_use_rounded_crossbar(points: &[RoutePoint]) -> bool {
-    points.windows(2).any(|pair| {
-        let (a, b) = (pair[0], pair[1]);
-        let across = match b.axis {
-            Axis::Vertical => b.x - a.x,
-            Axis::Horizontal => b.y - a.y,
-        };
-        spans_crossbar(across.abs())
+pub fn may_use_rounded_crossbar(
+    points: &[RoutePoint],
+    sides: (Side, Side),
+    markers: (Marker, Marker),
+    scratch: &mut RoutePaintScratch,
+) -> bool {
+    let [first, .., last] = points else {
+        return false;
+    };
+    let start = Terminal::new(*first, sides.0, markers.0, true);
+    let end = Terminal::new(*last, sides.1, markers.1, true);
+    let route = &mut scratch.knots;
+    route.clear();
+    route.reserve(points.len());
+    for &point in points {
+        push_knot(route, point);
+    }
+    if route.len() < 2 {
+        return false;
+    }
+    prepare_body(route, &mut scratch.body, (Some(&start), Some(&end)));
+    scratch.body.windows(2).any(|pair| {
+        pair[0].kind != KnotKind::ContourDeparture
+            && steep_offset(position(pair[0]), pair[1]).is_some()
     })
 }
 
 fn steep_crossbar(from: Point, end: RoutePoint, guard: EdgeClearance<'_>) -> Option<[CubicBez; 2]> {
     let to = position(end);
-    let (run, span) = match end.axis {
-        Axis::Vertical => (to.y - from.y, to.x - from.x),
-        Axis::Horizontal => (to.x - from.x, to.y - from.y),
-    };
-    if run.abs() < 2.0 * MIN_TURN_ARM
-        || !spans_crossbar(span.abs())
-        || span.abs() <= run.abs() * STEEP_SWEEP_RATIO
-    {
-        return None;
-    }
+    let (run, span) = steep_offset(from, end)?;
     let (u, v) = match end.axis {
         Axis::Vertical => (Vec2::new(0.0, run.signum()), Vec2::new(span.signum(), 0.0)),
         Axis::Horizontal => (Vec2::new(run.signum(), 0.0), Vec2::new(0.0, span.signum())),
@@ -1067,6 +1082,15 @@ impl Marker {
 }
 
 impl Terminal {
+    fn new(knot: RoutePoint, side: Side, marker: Marker, smooth: bool) -> Self {
+        Self {
+            tip: position(knot),
+            normal: outward(side),
+            marker,
+            smooth,
+        }
+    }
+
     fn shaft_end(&self) -> Point {
         self.tip + self.normal * self.marker.trim
     }
@@ -1087,12 +1111,7 @@ impl Terminal {
 }
 
 pub fn marker_lead(port: RoutePoint, side: Side, marker: Marker) -> (LayoutPoint, LayoutPoint) {
-    let terminal = Terminal {
-        tip: position(port),
-        normal: outward(side),
-        marker,
-        smooth: false,
-    };
+    let terminal = Terminal::new(port, side, marker, false);
     let point = |p: Point| LayoutPoint { x: p.x, y: p.y };
     (point(terminal.shaft_end()), point(terminal.lead_end()))
 }
@@ -1285,18 +1304,8 @@ impl RoutePaintRequest<'_> {
         let last = points.len() - 1;
         let smooth =
             style == RouteStyle::Curved && matches!(curve_terminals, CurveTerminals::Smooth);
-        let start = Terminal {
-            tip: position(points[0]),
-            normal: outward(sides.0),
-            marker: markers.0,
-            smooth,
-        };
-        let end = Terminal {
-            tip: position(points[last]),
-            normal: outward(sides.1),
-            marker: markers.1,
-            smooth,
-        };
+        let start = Terminal::new(points[0], sides.0, markers.0, smooth);
+        let end = Terminal::new(points[last], sides.1, markers.1, smooth);
         let mut pen = Pen::new(
             start.shaft_end(),
             smooth,
@@ -1412,6 +1421,28 @@ fn draw_section<E>(
         }
     }
 
+    prepare_body(route, body, terminals);
+    // With different endpoint sides, inserting a normal shaft can create an offset leg even
+    // on a previously orthogonal route. Step renderers must still emit only axis-aligned legs.
+    if style.stepped() && has_offset_leg(body) {
+        steps(route, style, body, (None, None), clearance);
+        std::mem::swap(route, body);
+    }
+    pen.start_path(body.len(), style)?;
+    pen.line(position(body[0]))?;
+    draw_body(pen, body, style, terminals, clearance)?;
+    if let Some(end) = terminals.1 {
+        pen.line(end.shaft_end())?;
+    }
+    Ok(())
+}
+
+fn prepare_body(
+    route: &[RoutePoint],
+    body: &mut Vec<RoutePoint>,
+    terminals: (Option<&Terminal>, Option<&Terminal>),
+) {
+    let last = route.len() - 1;
     body.clear();
     body.reserve(route.len());
     push_knot(
@@ -1435,19 +1466,6 @@ fn draw_section<E>(
             .1
             .map_or(route[last], |end| at(end.lead_end(), route[last].axis)),
     );
-    // With different endpoint sides, inserting a normal shaft can create an offset leg even
-    // on a previously orthogonal route. Step renderers must still emit only axis-aligned legs.
-    if style.stepped() && has_offset_leg(body) {
-        steps(route, style, body, (None, None), clearance);
-        std::mem::swap(route, body);
-    }
-    pen.start_path(body.len(), style)?;
-    pen.line(position(body[0]))?;
-    draw_body(pen, body, style, terminals, clearance)?;
-    if let Some(end) = terminals.1 {
-        pen.line(end.shaft_end())?;
-    }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -2082,6 +2100,45 @@ mod tests {
         let fallback = paint(Some(&blocked));
         assert_eq!(fallback.d, paint(None).d);
         assert!(!samples_inside(&fallback, outside.inflate(1., 1.)));
+    }
+
+    #[test]
+    fn crossbar_preflight_checks_the_sweep_after_marker_trimming() {
+        let sides = (Side::Right, Side::Left);
+        let mut scratch = RoutePaintScratch::default();
+        let plain = (Marker::default(), Marker::default());
+        assert!(!may_use_rounded_crossbar(
+            &[h(0., 0.), h(200., 60.)],
+            sides,
+            plain,
+            &mut scratch,
+        ));
+
+        let mut points = [h(0., 0.), h(140., 200.)];
+        assert!(!may_use_rounded_crossbar(
+            &points,
+            sides,
+            plain,
+            &mut scratch
+        ));
+        let marker = Marker {
+            depth: 10.,
+            trim: 5.,
+            width: 5.,
+        };
+        assert!(may_use_rounded_crossbar(
+            &points,
+            sides,
+            (marker, marker),
+            &mut scratch,
+        ));
+        points[0].kind = KnotKind::ContourDeparture;
+        assert!(!may_use_rounded_crossbar(
+            &points,
+            sides,
+            (marker, marker),
+            &mut scratch,
+        ));
     }
 
     #[test]

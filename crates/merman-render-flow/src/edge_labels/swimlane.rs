@@ -136,19 +136,16 @@ impl<'a> SwimlaneEdgeLabel<'a> {
                 FlowchartSvgWidthMode::Bbox,
             )
         });
-        let lines = prepared
-            .as_ref()
-            .filter(|_| paint.canonical)
-            .map(FlowchartSvgLabelRenderPlan::wrapped_lines);
-        let centered = lines.as_ref().is_some_and(|lines| lines.len() > 1);
-        let (text_x, text_y) = if let Some(label) = prepared.as_ref().filter(|_| centered) {
-            let bbox_y = ctx
-                .measurer
-                .measure_svg_create_text_bbox_y_offset_px(label.plain_text(), label_text_style);
-            (0.0, -height / 2.0 - bbox_y)
-        } else {
-            (-width / 2.0, -height / 2.0)
-        };
+        let (text_x, text_y, centered_lines) =
+            if let Some(label) = prepared.as_ref().filter(|_| paint.canonical) {
+                let lines = label.wrapped_lines();
+                let bbox_y = ctx
+                    .measurer
+                    .measure_svg_create_text_bbox_y_offset_px(label.plain_text(), label_text_style);
+                (0.0, -height / 2.0 - bbox_y, Some(lines))
+            } else {
+                (-width / 2.0, -height / 2.0, None)
+            };
         let _ = write!(
             out,
             r#"<g class="label edgeLabel" id="{}" data-id="{}" data-et="edge-label" transform="translate({}, {})"><rect width="0.1" height="0.1"/><g class="label"{} transform="translate({}, {})"><rect/>"#,
@@ -228,12 +225,12 @@ impl<'a> SwimlaneEdgeLabel<'a> {
             &swimlane_svg_text_style,
             ctx.svg_font_fallback,
         );
-        if let Some(lines) = lines {
+        if let Some(lines) = centered_lines {
             write_svg_text_source_word_lines_with_style(
                 out,
                 &lines,
                 &swimlane_svg_text_style,
-                centered,
+                true,
                 None,
             );
         } else {
@@ -313,7 +310,116 @@ fn swimlane_svg_edge_label_text_style(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::edge_labels::ordinary::flowchart_svg_edge_label_text_style;
+    use crate::{
+        class_style::FlowchartClassDefinitions, document::FlowchartDocumentIdRequest,
+        edge_labels::ordinary::flowchart_svg_edge_label_text_style, projection::FlowchartEdgeKey,
+        style::FlowchartEdgeStylePlan,
+    };
+    use merman_model::{families::flowchart::FlowchartModel, presentation::PresentationConfig};
+    use merman_render_core::{
+        LayoutNode,
+        resources::{OperationWorkMeter, RenderResourcePolicy},
+        svg_css::SvgId,
+        text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics},
+    };
+    use serde_json::json;
+
+    struct OffsetMeasurer(DeterministicTextMeasurer);
+
+    impl TextMeasurer for OffsetMeasurer {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            self.0.measure(text, style)
+        }
+
+        fn measure_svg_create_text_bbox_y_offset_px(&self, _text: &str, _style: &TextStyle) -> f64 {
+            4.0
+        }
+    }
+
+    #[test]
+    fn svg_rows_center_on_the_canonical_anchor_using_the_measured_bbox_origin() {
+        let model: FlowchartModel = serde_json::from_value(json!({
+            "nodes": [],
+            "edges": [{"id": "handoff", "from": "a", "to": "b", "length": 1, "label": "Caption"}],
+        }))
+        .unwrap();
+        let edge = FlowchartRenderEdgeRef {
+            key: FlowchartEdgeKey::new(0),
+            edge: &model.edges[0],
+        };
+        let config = PresentationConfig::default();
+        let class_defs = FlowchartClassDefinitions::new(&model.class_defs);
+        let work = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let styles = FlowchartEdgeStylePlan::prepare_with_class_definitions(
+            &model,
+            &config,
+            true,
+            &class_defs,
+            &work,
+        )
+        .unwrap();
+        let text_style = TextStyle::default();
+        styles.bind_terminal_typography(&text_style, true).unwrap();
+        let ids = FlowchartDocumentIds::prepare(FlowchartDocumentIdRequest {
+            diagram_id: SvgId::new("swimlane").unwrap(),
+            edge_order: &[edge],
+            node_dom_index: &Default::default(),
+            subgraph_index_by_id: &Default::default(),
+            layout_nodes: &[LayoutNode {
+                id: "label".into(),
+                x: 0.0,
+                y: 0.0,
+                width: 80.0,
+                height: 20.0,
+                is_cluster: false,
+                label_width: None,
+                label_height: None,
+            }],
+            swimlane_nodes: None,
+            swimlane_lanes: None,
+        });
+        let measurer = OffsetMeasurer(DeterministicTextMeasurer::default());
+        for (label, rows) in [("Caption", 1), ("Caption<br/>Details", 2)] {
+            for (canonical, transform) in
+                [(true, "translate(0, -14)"), (false, "translate(-40, -10)")]
+            {
+                let text = FlowchartEdgeLabelText {
+                    edge_style_plan: &styles,
+                    svg_label_sidecar: None,
+                    measurer: &measurer,
+                    math_renderer: None,
+                    text_style: &text_style,
+                    svg_font_fallback: None,
+                    config: &config,
+                    default_text_color: "black",
+                };
+                let mut svg = String::new();
+                SwimlaneEdgeLabel::bind(text, edge, label, &[])
+                    .unwrap()
+                    .write(
+                        &mut svg,
+                        SwimlaneEdgeLabelPaint {
+                            node_id: "label",
+                            document_ids: &ids,
+                            position: LayoutPoint { x: 0.0, y: 0.0 },
+                            size: Size::new(80.0, 20.0),
+                            sampled_backdrop: None,
+                            html_labels: false,
+                            canonical,
+                            wrap_mode: WrapMode::SvgLike,
+                            wrapping_width: 200.0,
+                        },
+                    )
+                    .unwrap();
+                assert!(
+                    svg.contains(&format!(r#"transform="{transform}"><rect/>"#)),
+                    "{svg}"
+                );
+                assert_eq!(svg.matches("row text-outer-tspan").count(), rows, "{svg}");
+                assert_eq!(svg.contains(r#"text-anchor="middle""#), canonical, "{svg}");
+            }
+        }
+    }
 
     #[test]
     fn cssparser_label_style_rewrites_preserve_quoted_semicolons_and_avoid_double_semicolons() {

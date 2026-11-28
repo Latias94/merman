@@ -5,6 +5,7 @@ use super::{
     write_architecture_edge_id_attr,
 };
 use crate::architecture::ArchitectureDiagramLayout;
+use crate::architecture::metrics::ARCHITECTURE_SHOAL_CAPTION_PADDING;
 use base64::Engine as _;
 use merman_render_core::xml::escape_attr_into;
 use merman_render_core::{Bounds, Error, Result};
@@ -102,13 +103,14 @@ impl<'a> Shaft<'a> {
     ) -> Option<ArchitectureEdgeLabelPlan<'text>> {
         let text = geometry.edge_label(ordinal, self.edge.label.as_ref())?;
         let anchor = text.anchor;
+        let (pad_x, pad_y) = ARCHITECTURE_SHOAL_CAPTION_PADDING;
         let rect = kurbo::Rect::new(
             text.bounds.min_x,
             text.bounds.min_y,
             text.bounds.max_x,
             text.bounds.max_y,
         )
-        .inflate(4.0, 2.0);
+        .inflate(pad_x, pad_y);
         Some(ArchitectureEdgeLabelPlan {
             lines: Cow::Borrowed(text.lines),
             bounds: bounds_from_rect(rect.x0, rect.y0, rect.width(), rect.height()),

@@ -12,8 +12,11 @@ use merman_render_core::{
     resources::OperationWorkMeter,
     svg_output::SvgOutput,
     text::{
-        TextMeasurer, TextMetrics, literal_label::FlowchartSvgWidthMode,
-        svg_label::write_measured_svg_title,
+        TextMeasurer, TextMetrics,
+        literal_label::FlowchartSvgWidthMode,
+        svg_label::{
+            write_measured_svg_title, write_svg_text_markdown_from_create_text_source_with_style,
+        },
     },
     theme_svg::edge_label_background::literal_fill,
     xml::escape_attr_display,
@@ -531,6 +534,12 @@ impl FlowchartClusterTitle<'_> {
                             Some(markdown_wrap_width),
                         );
                     }
+                } else if canonical_group_title {
+                    write_svg_text_markdown_from_create_text_source_with_style(
+                        out,
+                        render_title,
+                        Some(svg_text_style.as_ref()),
+                    );
                 } else {
                     write_flowchart_svg_text_markdown(out, render_title, true);
                 }

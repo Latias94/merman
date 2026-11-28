@@ -2,7 +2,10 @@ mod geometry;
 mod measure;
 
 use super::ArchitectureGroupThemePlan;
-use crate::architecture_metrics::{ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX, extend_bounds};
+use crate::architecture_metrics::{
+    ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX, ARCHITECTURE_SHOAL_CAPTION_PADDING,
+    extend_bounds,
+};
 use crate::config::config_f64;
 use crate::graph_layout::Marker;
 use crate::graph_layout::canonical::{CanonicalRoutes, CaptionClearance};
@@ -369,7 +372,14 @@ pub(crate) fn layout_architecture_shoal(
             &style,
             &mut work,
         )?;
-        let label = text.as_ref().map(ArchitectureShoalText::size);
+        let label = text.as_ref().map(|text| {
+            let size = text.size();
+            let (pad_x, pad_y) = ARCHITECTURE_SHOAL_CAPTION_PADDING;
+            Size {
+                width: size.width + 2.0 * pad_x,
+                height: size.height + 2.0 * pad_y,
+            }
+        });
         edge_labels.push(text);
         edges.push(MeasuredEdge {
             source,

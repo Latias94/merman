@@ -96,15 +96,16 @@ pub(super) fn parallel_ports(
         let last = &members[count - 1];
         let (a, b) = solved.edges[first.edge].ports;
         let sides = if first.reversed { [b, a] } else { [a, b] };
+        let usable = [0, 1].map(|end| profiles[nodes[end]].port_span(sides[end]));
+        if usable.iter().any(|&span| !span.is_finite() || span <= 0.0) {
+            continue;
+        }
         let steps = (count - 1) as f64;
         let ink = members
             .iter()
             .map(|member| member.ink_width)
             .fold(0.0, f64::max);
-        let spans = [0, 1].map(|end| {
-            let usable = profiles[nodes[end]].port_span(sides[end]);
-            (steps * ink).clamp(usable * 0.6, usable * 0.75)
-        });
+        let spans = usable.map(|span| (steps * ink).clamp(span * 0.6, span * 0.75));
         if (0..2).any(|end| spans[end] <= last.ports[end] - first.ports[end]) {
             continue;
         }
@@ -128,5 +129,105 @@ fn across(side: Side, point: RoutePoint) -> f64 {
     match side.axis() {
         Axis::Horizontal => point.y,
         Axis::Vertical => point.x,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::graph_layout::ir::{
+        Direction, MeasuredEdge, MeasuredNode, RoutingStyle, Size, SolvedEdge,
+    };
+    use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+    use std::sync::Arc;
+
+    #[test]
+    fn parallel_ports_require_a_finite_positive_span_at_both_ends() {
+        let source = Endpoint::Node(0);
+        let target = Endpoint::Node(1);
+        let size = Size {
+            width: 80.0,
+            height: 80.0,
+        };
+        let graph = MeasuredGraph {
+            direction: Direction::Right,
+            routing: RoutingStyle::Orthogonal,
+            node_spacing: 0.0,
+            rank_spacing: 0.0,
+            component_spacing: 0.0,
+            inherit_crossed_group_direction: false,
+            nodes: vec![
+                MeasuredNode::new(size, 0, None),
+                MeasuredNode::new(size, 1, None),
+            ],
+            groups: Vec::new(),
+            edges: (0..3)
+                .map(|_| MeasuredEdge {
+                    source,
+                    target,
+                    min_rank_span: 1,
+                    weight: 1.0,
+                    label: Some(Size {
+                        width: 24.0,
+                        height: 10.0,
+                    }),
+                    start_label: None,
+                    end_label: None,
+                    start_marker: Default::default(),
+                    end_marker: Default::default(),
+                })
+                .collect(),
+        };
+        let solved = SolvedGraph {
+            direction: graph.direction,
+            bounds: Default::default(),
+            nodes: Vec::new(),
+            node_ranks: Vec::new(),
+            groups: Vec::new(),
+            edges: (0..3)
+                .map(|i| SolvedEdge {
+                    source,
+                    target,
+                    points: vec![
+                        RoutePoint::new(80.0, f64::from(i), Axis::Horizontal),
+                        RoutePoint::new(160.0, f64::from(i), Axis::Horizontal),
+                    ],
+                    ports: (Side::Right, Side::Left),
+                    label: None,
+                    start_label: None,
+                    end_label: None,
+                    corridor_clearance: 0.0,
+                    reversed_for_ranking: false,
+                })
+                .collect(),
+            border_stitches: Vec::new(),
+        };
+        let profile = ShapePortProfile::rectangle(size.width, size.height);
+        let mut work = OperationLayoutWorkControl::new(Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::constrained(),
+        )));
+        let hints = parallel_ports(
+            &graph,
+            &[profile.clone(), profile.clone()],
+            &solved,
+            &mut work,
+        )
+        .unwrap();
+        assert_eq!(hints.len(), 3);
+        assert!(hints.iter().all(|(start, end)| {
+            matches!(start, PortSideHint::FixedOffset { offset, .. } if offset.is_finite())
+                && matches!(end, PortSideHint::FixedOffset { offset, .. } if offset.is_finite())
+        }));
+        for span in [0.0, -5.0, f64::NAN, f64::INFINITY] {
+            for (end, side) in [(0, Side::Right), (1, Side::Left)] {
+                let mut profiles = [profile.clone(), profile.clone()];
+                profiles[end] = profile.clone().with_port_span(side, span);
+                assert!(
+                    parallel_ports(&graph, &profiles, &solved, &mut work)
+                        .unwrap()
+                        .is_empty()
+                );
+            }
+        }
     }
 }

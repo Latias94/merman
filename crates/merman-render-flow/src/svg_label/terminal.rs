@@ -41,6 +41,14 @@ pub(crate) fn with_svg_font_fallback<'a>(style: &'a str, fallback: Option<&str>)
     } else {
         "sans-serif"
     };
+    let mut parser = cssparser::Parser::new(fallback);
+    let mut family_start = true;
+    let mut ends_in_sans_serif = false;
+    while let Ok(token) = parser.next() {
+        ends_in_sans_serif = family_start
+            && matches!(token, cssparser::Token::Ident(name) if name.eq_ignore_ascii_case("sans-serif"));
+        family_start = matches!(token, cssparser::Token::Comma);
+    }
     let mut rewritten = String::new();
     let mut changed = false;
     visit_style_declaration_boundaries(style, |boundary| {
@@ -59,7 +67,7 @@ pub(crate) fn with_svg_font_fallback<'a>(style: &'a str, fallback: Option<&str>)
                 decl.value(),
                 fallback,
             );
-            if !fallback.ends_with("sans-serif") {
+            if !ends_in_sans_serif {
                 rewritten.push_str(", sans-serif");
             }
             if decl.important() {
@@ -204,4 +212,24 @@ pub fn write_flowchart_svg_text_markdown_wrapped_with_style(
         max_width_px,
         false,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::with_svg_font_fallback;
+
+    #[test]
+    fn svg_font_fallback_recognizes_only_a_generic_family_at_the_tail() {
+        for (fallback, expected) in [
+            ("Inter, Sans-Serif", "Inter, Sans-Serif"),
+            ("Custom sans-serif", "Custom sans-serif, sans-serif"),
+            (r#""sans-serif""#, r#""sans-serif", sans-serif"#),
+            (r"Custom\,sans-serif", r"Custom\,sans-serif, sans-serif"),
+        ] {
+            assert_eq!(
+                with_svg_font_fallback("font-family:Author !important", Some(fallback)),
+                format!("font-family:Author, {expected} !important"),
+            );
+        }
+    }
 }

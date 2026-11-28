@@ -109,6 +109,7 @@ fn prepare<'a>(
     request: FlowchartEdgePathGeomRequest<'a>,
     axis: &'a AxisRoutes,
     points: &'a mut Vec<RoutePoint>,
+    scratch: &mut route_paint::RoutePaintScratch,
 ) -> Result<Option<CanonicalEdgePaint<'a>>> {
     let FlowchartEdgePathGeomRequest {
         ctx,
@@ -215,11 +216,13 @@ fn prepare<'a>(
         ctx.edge_corner_radius,
     );
     let stroke_outset = ctx.edge_style_plan.stroke_outset_for(key)?;
+    let sides = (source_lead, target_lead);
+    let markers = super::super::flowchart_marker_metrics(edge);
     let clearance = if style == route_paint::RouteStyle::Curved
         && stroke_outset.is_some_and(|outset| route.corridor_clearance > outset)
         && (points[0], points[last]) == box_contacts
         && stitches.is_empty()
-        && !route_paint::may_use_rounded_crossbar(points)
+        && !route_paint::may_use_rounded_crossbar(points, sides, markers, scratch)
     {
         None
     } else {
@@ -255,9 +258,9 @@ fn prepare<'a>(
     Ok(Some(CanonicalEdgePaint {
         route: route_paint::RoutePaintRequest {
             points,
-            sides: (source_lead, target_lead),
+            sides,
             style,
-            markers: super::super::flowchart_marker_metrics(edge),
+            markers,
             curve_terminals: route_paint::CurveTerminals::Smooth,
             stitches,
             clearance,
@@ -271,8 +274,12 @@ pub(super) fn paint(
     axis: &AxisRoutes,
     scratch: &mut FlowchartEdgeDataPointsScratch,
 ) -> Result<Option<FlowchartEdgePathGeom>> {
-    let Some(CanonicalEdgePaint { route, solved }) =
-        prepare(request, axis, &mut scratch.canonical_points)?
+    let Some(CanonicalEdgePaint { route, solved }) = prepare(
+        request,
+        axis,
+        &mut scratch.canonical_points,
+        &mut scratch.canonical_paint,
+    )?
     else {
         return Ok(None);
     };
@@ -359,7 +366,13 @@ pub(in crate::svg) fn paint_commands(
     scratch: &mut FlowchartEdgeDataPointsScratch,
     write: impl FnMut(route_paint::RouteCommand) -> Result<()>,
 ) -> Result<Option<merman_render_core::Bounds>> {
-    let Some(prepared) = prepare(request, axis, &mut scratch.canonical_points)? else {
+    let Some(prepared) = prepare(
+        request,
+        axis,
+        &mut scratch.canonical_points,
+        &mut scratch.canonical_paint,
+    )?
+    else {
         return Ok(None);
     };
     let bounds = prepared

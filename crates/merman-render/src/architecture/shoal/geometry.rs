@@ -72,6 +72,10 @@ fn top_jog(points: &[RoutePoint], reverse: bool, max_step: f64) -> Option<Range<
     if last == 2 || last + 2 >= points.len() || drop.y != lead.y || drop.x != at(last).x {
         return None;
     }
+    let next = at(last + 2);
+    if next.y == drop.y && (next.x - drop.x) * direction < 0.0 {
+        return None;
+    }
     Some(if reverse {
         points.len() - 1 - last..points.len() - 2
     } else {
@@ -293,6 +297,32 @@ mod tests {
     };
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
     use std::sync::Arc;
+
+    #[test]
+    fn top_corridor_preserves_the_jog_when_flattening_would_double_back() {
+        for direction in [-1.0, 1.0] {
+            for reverse in [false, true] {
+                let knot = |x, y| RoutePoint::new(direction * x, y, Axis::Vertical);
+                let mut points = [
+                    knot(30.0, 30.0),
+                    knot(30.0, 10.0),
+                    knot(30.0, 0.0),
+                    knot(100.0, 0.0),
+                    knot(100.0, 10.0),
+                    knot(70.0, 10.0),
+                ];
+                let next = if reverse {
+                    points.reverse();
+                    0
+                } else {
+                    points.len() - 1
+                };
+                assert!(top_jog(&points, reverse, 12.0).is_none());
+                points[next] = knot(130.0, 10.0);
+                assert!(top_jog(&points, reverse, 12.0).is_some());
+            }
+        }
+    }
 
     #[test]
     fn top_corridor_keeps_a_jog_when_only_an_arrow_wing_blocks_the_new_lane() {

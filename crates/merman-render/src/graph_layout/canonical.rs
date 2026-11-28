@@ -464,8 +464,12 @@ impl CanonicalRoutes {
         let clearance = if style == RouteStyle::Curved
             && route.corridor_clearance > stroke_outset
             && stitches.is_empty()
-            && !route_paint::may_use_rounded_crossbar(points)
-        {
+            && !route_paint::may_use_rounded_crossbar(
+                points,
+                route.sides,
+                route.markers,
+                &mut scratch.route,
+            ) {
             None
         } else {
             Some(
