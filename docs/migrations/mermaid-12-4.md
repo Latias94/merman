@@ -39,8 +39,8 @@ using a local variant. [Node source builds](../../platforms/node/README.md#local
 
 Mermaid 12.4 spreads crowded ELK arrowheads. When markers overlap on one side of a node, the
 ELK adapters for Flowchart, State, Class, ER, Requirement, and Usecase can spread the port
-contacts. Aligned Swimlane routes can use a straight shaft while keeping their label and node
-outline contacts.
+contacts. Mindmap edges remain unmarked. Aligned Swimlane routes can use a straight shaft while
+keeping their label and node outline contacts.
 
 The refreshed SVG reference manifests record the capture environment. Browser label wrapping can
 vary with the font probe even when the Mermaid versions emit identical SVG on the same host.
