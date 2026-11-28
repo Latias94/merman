@@ -1,0 +1,17 @@
+---
+config:
+  layout: shoal
+  htmlLabels: false
+---
+flowchart TD
+  subgraph 接入层["🌐 统一开放网关与签名验签层（多语言混排测试）"]
+    A["🚀 商户下单入口<br/>POST https://payments.internal.example.com/v2/orders/{order_id}/settlements"] -->|校验 HMAC-SHA256 与幂等键| B{"是否命中风控<br/>灰名单策略？"}
+    B -->|命中高危规则| C["🛡️ 人工复核工单中心<br/>SLA <= 15分钟"]
+    B -->|通过自动放行| D["💳 核心清算引擎<br/>支持人民币/USD/EUR 多币种实时记账"]
+  end
+  subgraph 账务落盘层["📒 复式记账与对账归档"]
+    D ==>|同步写主账本| E[("分布式账务库<br/>ledger_entries_2026_q4")]
+    C -.->|复核通过补单| D
+    C -.->|驳回并触发退款通知| F["📩 异步回调推送<br/>https://merchant-callback.example.org/hooks/refund-status?retry=3"]
+    E -->|T+1 批量对账文件| F
+  end

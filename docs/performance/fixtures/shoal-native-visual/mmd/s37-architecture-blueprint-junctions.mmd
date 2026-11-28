@@ -1,0 +1,27 @@
+---
+config:
+  layout: shoal
+  htmlLabels: false
+---
+architecture-beta
+  group org(cloud)[Enterprise Platform]
+    group edge(server)[DMZ Edge] in org
+      group ingress(server)[Ingress] in edge
+      service cdn(internet)[Edge CDN] in edge
+      service gw(server)[API Gateway] in ingress
+    group mesh(server)[Service Mesh] in org
+      service auth(server)[AuthN] in mesh
+      service pay(server)[Payments] in mesh
+      junction j1 in mesh
+      junction j2 in mesh
+    group data(database)[Storage Tier] in org
+      service pg(database)[Ledger DB] in data
+      service redis(disk)[Cache] in data
+  cdn:R -[HTTPS/3]-> L:gw
+  gw:R -[mTLS]-> L:j1
+  j1:T -[JWT]-> B:auth
+  j1:R -[gRPC]-> L:pay
+  j1:B -[sync]-> T:j2
+  pay:B -[SQL]-> T:pg
+  j2:R -[WAL]-> L:pg
+  auth:R -[RESP3]-> L:redis

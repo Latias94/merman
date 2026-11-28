@@ -1,0 +1,22 @@
+---
+config:
+  layout: shoal
+  htmlLabels: true
+---
+flowchart TD
+  subgraph Outer["Outer Container With Very Long Explanatory Title For Multi-Wrap Stress"]
+    subgraph Mid["Middle Empty Shell"]
+      subgraph Deep["Deepest Empty Shell"]
+      end
+    end
+    subgraph Active["Active Markdown Card"]
+      M1["`**Bold Heading**
+      *Italic note* with inline_code
+      Line 3 summary`"]
+      M2["Single"]
+      M1 -->|labeled| M2
+    end
+  end
+  Island1[Isolated Alpha]
+  Island2((X))
+  Outer -->|from outer| Island1

@@ -1,0 +1,42 @@
+---
+config:
+  layout: shoal
+  look: neo
+  htmlLabels: false
+---
+stateDiagram-v2
+  direction LR
+  [*] --> Bootstrap
+  Bootstrap : Load config & TLS certs
+  Bootstrap : Warm connection pools
+  Bootstrap --> Operational : ready
+  state Operational {
+    [*] --> Primary
+    Primary : Serving live traffic
+    Primary --> Failover : quorum lost
+    Failover --> Primary : leader elected
+    --
+    [*] --> MetricsIdle
+    MetricsIdle --> Scraping : interval tick
+    Scraping --> MetricsIdle : flushed
+    --
+    [*] --> CompactionIdle
+    CompactionIdle --> Compacting : threshold hit
+    Compacting --> CompactionIdle : manifest swapped
+  }
+  state Check <<choice>>
+  state FanOut <<fork>>
+  state FanIn <<join>>
+  Operational --> Check : shutdown signal
+  Check --> FanOut : graceful drain
+  Check --> Halted : immediate kill
+  FanOut --> DrainHTTP
+  FanOut --> FlushWAL
+  DrainHTTP --> FanIn
+  FlushWAL --> FanIn
+  FanIn --> Halted
+  Halted --> [*]
+  note right of Bootstrap : Must finish within 5s startup probe
+  note left of Failover : Triggers PagerDuty P1 incident
+  note right of Operational : 3 concurrent background supervisors
+  note left of FlushWAL : fsync before releasing lease

@@ -1,0 +1,38 @@
+---
+config:
+  layout: shoal
+  htmlLabels: false
+---
+C4Context
+  title Crossing Mesh on a Transparent Canvas
+  UpdateLayoutConfig($c4ShapeInRow="4")
+  System(a1, "Alpha 1", "Row 1 Col 1")
+  System(a2, "Alpha 2", "Row 1 Col 2")
+  System(a3, "Alpha 3", "Row 1 Col 3")
+  System(a4, "Alpha 4", "Row 1 Col 4")
+  System(b1, "Beta 1", "Row 2 Col 1")
+  System(b2, "Beta 2", "Row 2 Col 2")
+  System(b3, "Beta 3", "Row 2 Col 3")
+  System(b4, "Beta 4", "Row 2 Col 4")
+  System(c1, "Gamma 1", "Row 3 Col 1")
+  System(c2, "Gamma 2", "Row 3 Col 2")
+  System(c3, "Gamma 3", "Row 3 Col 3")
+  System(c4, "Gamma 4", "Row 3 Col 4")
+  Rel(a1, b2, "Cross R1-1 to R2-2", "gRPC")
+  Rel(a1, b3, "Long diagonal to R2-3", "HTTPS")
+  Rel(a2, b1, "Reverse cross to R2-1", "gRPC")
+  Rel(a2, b4, "Long jump to R2-4", "Kafka")
+  Rel(a3, b1, "Wide sweep to R2-1", "AMQP")
+  Rel(a3, b4, "Short hop to R2-4", "gRPC")
+  Rel(a4, b2, "Back diagonal to R2-2", "HTTPS")
+  Rel(a4, b3, "Down-left to R2-3", "gRPC")
+  Rel(b1, c3, "Lower cross to R3-3", "SQL")
+  Rel(b1, c4, "Full span to R3-4", "Kafka")
+  Rel(b2, c1, "Down-left to R3-1", "gRPC")
+  Rel(b2, c4, "Diagonal to R3-4", "HTTPS")
+  Rel(b3, c1, "Wide cross to R3-1", "AMQP")
+  Rel(b3, c2, "Adjacent drop to R3-2", "gRPC")
+  Rel(b4, c2, "Cross back to R3-2", "HTTPS")
+  Rel(b4, c3, "Step left to R3-3", "gRPC")
+  Rel(a1, c4, "Corner-to-corner backbone", "TLS")
+  Rel(a4, c1, "Counter-diagonal backbone", "TLS")

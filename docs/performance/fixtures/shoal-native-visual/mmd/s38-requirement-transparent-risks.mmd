@@ -1,0 +1,32 @@
+---
+config:
+  layout: shoal
+  htmlLabels: false
+---
+requirementDiagram
+  requirement R1 {
+    id: REQ-1
+    text: Zero-downtime key rotation across all active shards
+    risk: high
+    verifymethod: demonstration
+  }
+  functionalRequirement R2 {
+    id: REQ-2
+    text: Dual-key verification window must last at least 15 minutes
+    risk: medium
+    verifymethod: test
+  }
+  designConstraint R3 {
+    id: REQ-3
+    text: Private key material never leaves HSM boundary
+    risk: low
+    verifymethod: inspection
+  }
+  element KMS {
+    type: service
+    docRef: "docs/kms.md"
+  }
+  R1 - contains -> R2
+  R2 - refines -> R3
+  KMS - satisfies -> R1
+  KMS - verifies -> R2

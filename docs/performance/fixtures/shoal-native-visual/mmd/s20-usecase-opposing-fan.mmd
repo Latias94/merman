@@ -1,0 +1,39 @@
+---
+config:
+  layout: shoal
+  htmlLabels: false
+---
+usecase-beta
+  direction TB
+  actor A1("End User")
+  actor A2("Support Agent")
+  actor A3("Tenant Admin")
+  actor A4("External Webhook")@{type:hollow}
+  systemBoundary B1("Identity & Billing")@{type:package}
+    U1("Sign Up & Verify Email")
+    U2("Manage Subscription Plan")
+    U3("Issue Partial Refund")
+    U4("Rotate API Keys")
+  end
+  systemBoundary B2("Core Workspace")@{type:package}
+    U5("Create Project")
+    U6("Run Batch Export")
+    U7("Inspect Audit Log")
+  end
+  A1 --> U1
+  A1 --> U2
+  A1 --> U5
+  A2 --> U3
+  A2 --> U7
+  A3 --> U2
+  A3 --> U4
+  A3 --> U5
+  A3 --> U6
+  A3 --> U7
+  A4 --> U3
+  A4 --> U6
+  U2 ..> : include U1
+  U3 ..> : extend U2
+  U6 ..> : include U7
+  note for U4 "Requires MFA step-up"
+  note for U6 "Rate limited to 10 req/min"

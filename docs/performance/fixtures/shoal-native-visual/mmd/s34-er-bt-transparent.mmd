@@ -1,0 +1,32 @@
+---
+config:
+  layout: shoal
+  htmlLabels: false
+---
+erDiagram
+  direction BT
+  TENANT {
+    uuid tenant_id PK
+    varchar slug UK "unique org slug"
+  }
+  USER {
+    uuid tenant_id PK,FK
+    uuid user_id PK
+    varchar email UK
+  }
+  API_KEY {
+    uuid key_id PK
+    uuid user_id FK
+    varchar prefix
+  }
+  AUDIT_EVENT {
+    bigint seq PK
+    uuid tenant_id FK
+    uuid actor_id FK
+    jsonb payload
+  }
+  TENANT ||--|{ USER : "owns_members"
+  USER |o--o{ API_KEY : "issues_keys"
+  TENANT ||..o{ AUDIT_EVENT : "logs_tenant"
+  USER }o..|{ AUDIT_EVENT : "triggers_events"
+  API_KEY }|--o| AUDIT_EVENT : "authenticates"

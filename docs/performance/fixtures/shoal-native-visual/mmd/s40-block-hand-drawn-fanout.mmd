@@ -1,0 +1,24 @@
+---
+config:
+  layout: shoal
+  look: handDrawn
+  handDrawnSeed: 42
+  htmlLabels: false
+---
+block-beta
+  columns 6
+  A["Gateway"]:2 space B["Router"]:2 space
+  space:6
+  block:workers:4
+    columns 2
+    W1["Worker A"] W2["Worker B"]
+    W3["Worker C"] W4["Worker D"]
+  end
+  DB[("Shared DB")]:2
+  A -- "route" --> B
+  B -- "fanout 1" --> W1
+  B -- "fanout 2" --> W2
+  W1 --> DB
+  W2 --> DB
+  W3 --> DB
+  W4 --> DB

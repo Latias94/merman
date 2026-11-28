@@ -1,0 +1,20 @@
+---
+config:
+  layout: shoal
+  htmlLabels: false
+---
+swimlane-beta BT
+  subgraph LaneA["Customer Portal & Self Service"]
+    A1[Submit Claim] -->|Initial Payload Validation & Schema Check| B1
+    A1 -.->|Duplicate Idempotency Probe| B1
+    A1 -->|Self Draft Save| A1
+  end
+  subgraph LaneB["Automated Underwriting Engine"]
+    B1[Evaluate Policy Rules] -->|Approved Automatically| C1
+    B1 -->|Escalate To Senior Adjuster| C2
+  end
+  subgraph LaneC["Claims Settlement & Payout"]
+    C1[Disburse Funds] -->|Receipt Confirmation Webhook| A1
+    C2[Manual Override Review] -->|Request Additional Evidence| A1
+    C2 --> C1
+  end

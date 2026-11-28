@@ -1,0 +1,27 @@
+---
+config:
+  layout: shoal
+  htmlLabels: false
+---
+classDiagram
+  direction LR
+  class OrderEngine {
+    +submit(Order o) void
+    +cancel(UUID id) void
+  }
+  class PaymentGateway {
+    +authorize(Money m) AuthToken
+    +capture(AuthToken t) Receipt
+    +refund(Receipt r) void
+  }
+  class BaseGateway {
+    <<abstract>>
+    +health() Status
+  }
+  BaseGateway <|-- PaymentGateway
+  OrderEngine "1" --> "0..1" PaymentGateway : authorize
+  OrderEngine "1" --> "0..*" PaymentGateway : capture
+  OrderEngine "1" ..> "0..*" PaymentGateway : refund
+  OrderEngine "0..*" <-- "1" PaymentGateway : webhook
+  OrderEngine "1" *-- "1" PaymentGateway : circuitBreaker
+  OrderEngine "1" o-- "0..*" PaymentGateway : fallbackPool
