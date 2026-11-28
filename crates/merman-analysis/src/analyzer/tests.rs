@@ -1969,6 +1969,11 @@ fn policy_neutral_candidate_corpus_covers_available_backend_rules() {
             analyzer: Analyzer::new(),
             source: "classDiagram\ntitle Ignored\nclass A\n",
         },
+        CorpusCase {
+            name: "overwritten C4Dynamic step",
+            analyzer: Analyzer::new(),
+            source: "C4Dynamic\nSystem(a, \"A\")\nSystem(b, \"B\")\nRel(a, b, \"First\")\nRel(a, b, \"Second\")\n",
+        },
     ];
 
     let mut strict_rules = AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Strict);
