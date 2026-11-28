@@ -351,18 +351,7 @@ impl PlannedSegment<'_> {
         selections: &[GridPortalSelection],
         work: &OperationWorkMeter,
     ) -> crate::Result<[Terminal; 2]> {
-        let terminal = |index: usize| {
-            attachments::resolve(
-                context,
-                view,
-                self.container,
-                self.endpoints[index],
-                self.indices[index],
-                self.modes[index],
-                selections,
-                work,
-            )
-        };
+        let terminal = |index| attachments::resolve(context, view, &self, index, selections, work);
         Ok([terminal(0)?, terminal(1)?])
     }
 }

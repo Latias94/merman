@@ -170,10 +170,7 @@ impl<'a> Constraints<'a> {
                 }
             }
         }
-        if avoid_occupied && self.foreign_conflict(&[arc], work)? {
-            return Ok(false);
-        }
-        Ok(true)
+        Ok(!(avoid_occupied && self.foreign_conflict(&[arc], work)?))
     }
 
     pub(super) fn validates(

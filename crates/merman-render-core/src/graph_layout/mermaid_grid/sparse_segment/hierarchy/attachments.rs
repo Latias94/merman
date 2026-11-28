@@ -1,4 +1,6 @@
-use super::{AttachmentContext, GridHierarchyEnd, GridPortalSelection, invalid, reserved};
+use super::{
+    AttachmentContext, GridHierarchyEnd, GridPortalSelection, PlannedSegment, invalid, reserved,
+};
 use crate::Result;
 use crate::graph_layout::{Axis, Side};
 use crate::resources::OperationWorkMeter;
@@ -86,14 +88,16 @@ impl Terminal {
 pub(super) fn resolve(
     context: AttachmentContext<'_>,
     view: GridRoutingView<'_>,
-    container: usize,
-    reference: EndpointRef<'_>,
-    index: usize,
-    mode: AttachmentMode,
+    plan: &PlannedSegment<'_>,
+    terminal_index: usize,
     selections: &[GridPortalSelection],
     work: &OperationWorkMeter,
 ) -> Result<Terminal> {
     work.charge(1)?;
+    let container = plan.container;
+    let reference = plan.endpoints[terminal_index];
+    let index = plan.indices[terminal_index];
+    let mode = plan.modes[terminal_index];
     let end = reference.plan.chain[index];
     let geometry = context
         .prepared
