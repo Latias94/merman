@@ -5,7 +5,7 @@ use super::IconIdScope;
 use super::error::{IconRegistryBuildError, IconRegistryBuildErrorKind};
 use super::limits::{IconRegistryBuildLimits, IconRegistryResourceLimitId};
 use admission::admit_wrapped_fragment;
-use projection::{AttributeKind, RewriteAttribute, RewriteSources};
+use projection::{AttributeKind, ProjectionError, RewriteAttribute, RewriteSources};
 use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::mem::size_of;
@@ -105,7 +105,10 @@ impl ParsedIconBody {
             .checked_add(body.len())
             .and_then(|length| length.checked_add(WRAPPER_SUFFIX.len()))
             .ok_or_else(|| arithmetic_error(pack_index, "icon XML wrapper length overflowed"))?;
-        let mut wrapped = String::with_capacity(wrapped_len);
+        let mut wrapped = String::new();
+        wrapped
+            .try_reserve_exact(wrapped_len)
+            .map_err(|_| allocation_error(pack_index, "icon XML wrapper allocation failed"))?;
         wrapped.push_str(WRAPPER_PREFIX);
         wrapped.push_str(body);
         wrapped.push_str(WRAPPER_SUFFIX);
@@ -125,15 +128,22 @@ impl ParsedIconBody {
             limits,
             "icon XML structure exceeds the build work budget",
         )?;
-        let planning_work_start = build_work_units_used
+        let work_after_structure = build_work_units_used
             .checked_add(structure_work)
             .ok_or_else(|| arithmetic_error(pack_index, "icon XML work accounting overflowed"))?;
-        let sources = sources.ok_or_else(|| {
-            invalid_xml_error(
-                pack_index,
-                "icon body could not be represented as strict XML",
-            )
-        })?;
+        let sources = sources
+            .map_err(|error| projection_error(error, work_after_structure, pack_index, limits))?;
+        let projection_work = sources.work_units;
+        ensure_build_work(
+            work_after_structure,
+            projection_work,
+            pack_index,
+            limits,
+            "icon XML projection exceeds the build work budget",
+        )?;
+        let planning_work_start = work_after_structure
+            .checked_add(projection_work)
+            .ok_or_else(|| arithmetic_error(pack_index, "icon XML work accounting overflowed"))?;
         let (mut edits, defs) = plan_rewrites(
             body,
             sources,
@@ -187,9 +197,12 @@ impl ParsedIconBody {
             },
             XmlAdmissionUsage {
                 retained_plan_bytes,
-                build_work_units: structure_work.checked_add(plan_work).ok_or_else(|| {
-                    arithmetic_error(pack_index, "icon XML work accounting overflowed")
-                })?,
+                build_work_units: structure_work
+                    .checked_add(projection_work)
+                    .and_then(|work| work.checked_add(plan_work))
+                    .ok_or_else(|| {
+                        arithmetic_error(pack_index, "icon XML work accounting overflowed")
+                    })?,
             },
         ))
     }
@@ -458,7 +471,7 @@ fn plan_rewrites(
         limits,
         retained_plan_bytes_used,
     )?;
-    let mut id_indexes = HashMap::<String, usize>::new();
+    let mut id_indexes = HashMap::<&str, usize>::new();
     let mut edits = Vec::new();
 
     for attribute in sources
@@ -473,7 +486,10 @@ fn plan_rewrites(
         };
         let id = attribute.value.as_ref();
         let next_index = id_indexes.len();
-        if id_indexes.insert(id.to_owned(), next_index).is_some() {
+        id_indexes
+            .try_reserve(1)
+            .map_err(|_| allocation_error(pack_index, "icon XML ID index allocation failed"))?;
+        if id_indexes.insert(id, next_index).is_some() {
             return Err(invalid_xml_error(
                 pack_index,
                 "icon body contains duplicate unnamespaced id values",
@@ -882,7 +898,7 @@ struct SemanticEdit {
 
 fn attribute_reference_edits(
     attribute: &RewriteAttribute<'_>,
-    id_indexes: &HashMap<String, usize>,
+    id_indexes: &HashMap<&str, usize>,
     base_count: usize,
     maximum: usize,
     pack_index: usize,
@@ -907,7 +923,7 @@ fn attribute_reference_edits(
 
 fn fragment_reference_edits(
     value: &str,
-    id_indexes: &HashMap<String, usize>,
+    id_indexes: &HashMap<&str, usize>,
     base_count: usize,
     maximum: usize,
     pack_index: usize,
@@ -934,7 +950,7 @@ fn fragment_reference_edits(
 
 fn idref_list_edits(
     value: &str,
-    id_indexes: &HashMap<String, usize>,
+    id_indexes: &HashMap<&str, usize>,
     base_count: usize,
     maximum: usize,
     pack_index: usize,
@@ -969,7 +985,7 @@ fn idref_list_edits(
 
 fn smil_reference_edits(
     value: &str,
-    id_indexes: &HashMap<String, usize>,
+    id_indexes: &HashMap<&str, usize>,
     base_count: usize,
     maximum: usize,
     pack_index: usize,
@@ -1011,7 +1027,7 @@ fn smil_reference_edits(
 
 fn url_reference_edits(
     value: &str,
-    id_indexes: &HashMap<String, usize>,
+    id_indexes: &HashMap<&str, usize>,
     base_count: usize,
     maximum: usize,
     pack_index: usize,
@@ -1421,6 +1437,38 @@ fn ensure_build_work(
     Ok(())
 }
 
+fn projection_error(
+    error: ProjectionError,
+    work_after_structure: usize,
+    pack_index: usize,
+    limits: &IconRegistryBuildLimits,
+) -> IconRegistryBuildError {
+    match error {
+        ProjectionError::InvalidXml => invalid_xml_error(
+            pack_index,
+            "icon body could not be represented as strict XML",
+        ),
+        ProjectionError::AllocationFailed => {
+            allocation_error(pack_index, "icon XML projection allocation failed")
+        }
+        ProjectionError::WorkOverflow => {
+            arithmetic_error(pack_index, "icon XML work accounting overflowed")
+        }
+        ProjectionError::WorkLimit(attempted) => {
+            let Some(actual) = work_after_structure.checked_add(attempted) else {
+                return arithmetic_error(pack_index, "icon XML work accounting overflowed");
+            };
+            limit_error(
+                pack_index,
+                IconRegistryResourceLimitId::MaxBuildWorkUnits,
+                actual,
+                limits.max_build_work_units,
+                "icon XML projection exceeds the build work budget",
+            )
+        }
+    }
+}
+
 fn checked_sort_work(count: usize, pack_index: usize) -> Result<usize, IconRegistryBuildError> {
     if count < 2 {
         return Ok(0);
@@ -1650,7 +1698,7 @@ mod tests {
         let limits = IconRegistryBuildLimits::fixed();
         let (body, usage) = ParsedIconBody::parse_with_usage(source, 7, &limits, 0, 0).unwrap();
         assert_eq!(usage.retained_plan_bytes, 0);
-        assert_eq!(usage.build_work_units, 2);
+        assert_eq!(usage.build_work_units, 5);
         for placement in [IconDefsPlacement::Inline, IconDefsPlacement::Hoisted] {
             let output = body.rewrite_ids(scope("diagram-a"), placement).unwrap();
             assert_eq!(output.untrusted_xml_parts(), ("", source));
@@ -1659,9 +1707,12 @@ mod tests {
 
     #[test]
     fn defs_without_ids_use_strict_namespace_resolution() {
-        let foreign = r#"<g xmlns:m="urn:metadata" m:xmlns="urn:other"><defs><rect/></defs></g>"#;
+        let foreign = concat!(
+            r#"<g xmlns="urn:other"><defs><rect/></defs></g>"#,
+            r#"<g xmlns=""><defs><rect/></defs></g>"#,
+        );
         let source = format!(
-            r#"<s:defs xmlns:s="http://www.w3.org/2000/sv&#x67;"><path/></s:defs>{foreign}"#
+            r#"<s:defs xmlns:s="http://www.w3.org/2000/sv&#x67;"><path/></s:defs>{foreign}<defs><circle/></defs>"#
         );
         let body = parse(&source).unwrap();
         let output = body
@@ -1669,9 +1720,49 @@ mod tests {
             .unwrap();
         assert_eq!(
             output.untrusted_xml_parts(),
-            ("<defs><path/></defs>", foreign)
+            ("<defs><path/><circle/></defs>", foreign)
         );
         assert_eq!(body.edit_count(), 0);
+    }
+
+    #[test]
+    fn qualified_xmlns_attributes_are_ordinary_expanded_names() {
+        let source = r#"<g xmlns:m="urn:metadata" m:xmlns="urn:other"><defs><rect/></defs></g>"#;
+        let body = parse(source).unwrap();
+        let output = body
+            .rewrite_ids(scope("diagram-a"), IconDefsPlacement::Hoisted)
+            .unwrap();
+        assert_eq!(
+            output.untrusted_xml_parts(),
+            (
+                "<defs><rect/></defs>",
+                r#"<g xmlns:m="urn:metadata" m:xmlns="urn:other"></g>"#,
+            ),
+        );
+
+        let duplicate = r#"<g xmlns:a="urn:meta" xmlns:b="urn:met&#97;" a:xmlns="1" b:xmlns="2"/>"#;
+        assert_eq!(
+            parse(duplicate).unwrap_err(),
+            invalid_xml_error(7, "icon body could not be represented as strict XML"),
+        );
+    }
+
+    #[test]
+    fn builtin_xml_prefix_resolves_for_elements_without_a_declaration() {
+        let source = concat!(
+            r##"<xml:style xml:lang="en">.a{fill:url(#p)}</xml:style>"##,
+            r##"<path id="p"/><use xlink:href="#p"/>"##,
+        );
+        let body = parse(source).unwrap();
+        assert!(body.uses_xlink());
+        let id = scoped_id("diagram-a", 0);
+        let expected = format!(
+            r##"<xml:style xml:lang="en">.a{{fill:url(#p)}}</xml:style><path id="{id}"/><use xlink:href="#{id}"/>"##
+        );
+        assert_eq!(
+            rewrite_inline(&body, "diagram-a").untrusted_xml_parts(),
+            ("", expected.as_str()),
+        );
     }
 
     #[test]
@@ -1847,7 +1938,14 @@ mod tests {
             limits.max_build_work_units = 2;
             let error = ParsedIconBody::parse(source, 7, &limits).unwrap_err();
             assert_eq!(
-                error,
+                error.limit(),
+                Some(IconRegistryResourceLimitId::MaxBuildWorkUnits)
+            );
+            assert_eq!(error.actual(), Some(3));
+            assert_eq!(error.maximum(), Some(2));
+
+            assert_eq!(
+                parse(source).unwrap_err(),
                 invalid_xml_error(7, "icon body could not be represented as strict XML")
             );
         }
@@ -1860,13 +1958,150 @@ mod tests {
         );
 
         let source = format!(r#"<defs><path id="p"/></defs>{aliases}"#);
-        limits.max_build_work_units = 4;
+        limits.max_build_work_units = IconRegistryBuildLimits::fixed().max_build_work_units;
         limits.max_retained_xml_plan_bytes = 0;
         let error = ParsedIconBody::parse(&source, 7, &limits).unwrap_err();
         assert_eq!(
             error,
             invalid_xml_error(7, "icon body could not be represented as strict XML")
         );
+    }
+
+    #[test]
+    fn raw_attribute_name_errors_keep_their_order_with_projection_disabled() {
+        let mut limits = IconRegistryBuildLimits::fixed();
+        limits.max_build_work_units = 1;
+        for (source, error) in [
+            (
+                r#"<g title="ok" title="&unknown;"/>"#,
+                "icon body contains an invalid XML attribute",
+            ),
+            (
+                r#"<g a:title="1" b:title="2" xmlns:a="urn:metadata" xmlns:b="urn:metadata"/>"#,
+                "icon body contains duplicate expanded XML attributes",
+            ),
+            (
+                r#"<g a:title="1" xmlns:a=""/>"#,
+                "icon body uses an undeclared attribute namespace prefix",
+            ),
+        ] {
+            assert_eq!(
+                ParsedIconBody::parse(source, 7, &limits).unwrap_err(),
+                invalid_xml_error(7, error),
+            );
+        }
+    }
+
+    #[test]
+    fn normalized_reserved_namespaces_keep_the_raw_and_strict_gates() {
+        let valid = r#"<g xmlns:xml="http://www.w3.org/XML/1998/namespace" xml:lang="en"/>"#;
+        let body = parse(valid).unwrap();
+        assert_eq!(
+            rewrite_inline(&body, "diagram-a").untrusted_xml_parts(),
+            ("", valid)
+        );
+
+        for source in [
+            r#"<g xmlns:m="http://www.w3.org/XML/1998/namespac&#101;"/>"#,
+            r#"<g xmlns:m="http://www.w3.org/2000/xmlns&#47;"/>"#,
+            r#"<g xmlns="http://www.w3.org/2000/xmlns&#47;"/>"#,
+        ] {
+            assert_eq!(
+                parse(source).unwrap_err(),
+                invalid_xml_error(7, "icon body could not be represented as strict XML"),
+            );
+        }
+        assert_eq!(
+            parse(r#"<g xmlns:xml="http://www.w3.org/XML/1998/namespac&#101;"/>"#).unwrap_err(),
+            invalid_xml_error(7, "icon body is not well-formed XML"),
+        );
+    }
+
+    #[test]
+    fn empty_named_bindings_fail_after_raw_namespace_errors() {
+        let empty = r#"<g xmlns:m=""/>"#;
+        assert_eq!(
+            parse(empty).unwrap_err(),
+            invalid_xml_error(7, "icon body could not be represented as strict XML"),
+        );
+        assert_eq!(
+            parse(r#"<g xmlns:m=""><m:path/></g>"#).unwrap_err(),
+            invalid_xml_error(7, "icon body uses an undeclared namespace prefix"),
+        );
+        let later_raw_error = format!(r#"{empty}<g xmlns:xml="urn:wrong"/>"#);
+        assert_eq!(
+            parse(&later_raw_error).unwrap_err(),
+            invalid_xml_error(7, "icon body is not well-formed XML"),
+        );
+    }
+
+    #[test]
+    fn indexed_xml_projection_uses_the_shared_work_budget_at_exact_boundaries() {
+        let source = concat!(
+            r#"<g xmlns:m="urn:metadata" m:title="A &amp; B">"#,
+            "<style>.a { fill: red }\r\n<![CDATA[.a { stroke: red }]]></style></g>",
+        );
+        let prior_work = 7;
+        let mut limits = IconRegistryBuildLimits::fixed();
+        let (_, usage) =
+            ParsedIconBody::parse_with_usage(source, 7, &limits, 0, prior_work).unwrap();
+        assert_eq!(usage.build_work_units, 8);
+        assert_eq!(usage.retained_plan_bytes, 0);
+
+        let exact = prior_work + usage.build_work_units;
+        limits.max_build_work_units = exact;
+        let (body, exact_usage) =
+            ParsedIconBody::parse_with_usage(source, 7, &limits, 0, prior_work).unwrap();
+        assert_eq!(exact_usage, usage);
+        assert_eq!(
+            rewrite_inline(&body, "diagram-a").untrusted_xml_parts(),
+            ("", source)
+        );
+
+        limits.max_build_work_units -= 1;
+        let error =
+            ParsedIconBody::parse_with_usage(source, 7, &limits, 0, prior_work).unwrap_err();
+        assert_eq!(
+            error.limit(),
+            Some(IconRegistryResourceLimitId::MaxBuildWorkUnits)
+        );
+        assert_eq!(error.actual(), Some(exact as u64));
+        assert_eq!(error.maximum(), Some((exact - 1) as u64));
+    }
+
+    #[test]
+    fn wide_tag_charges_each_attribute_and_declaration_once() {
+        const METADATA_ATTRIBUTES: usize = 1_024;
+        let namespace = format!("urn:example:{}", "metadata".repeat(32));
+        let mut source = format!(r#"<g xmlns:m="{namespace}""#);
+        for index in 0..METADATA_ATTRIBUTES {
+            write!(&mut source, r#" m:field{index}="{index}""#).unwrap();
+        }
+        source.push_str("/>");
+
+        let prior_work = 7;
+        let xml_work = 2 + (METADATA_ATTRIBUTES + 1) + 1;
+        let exact = prior_work + xml_work;
+        let mut limits = IconRegistryBuildLimits::fixed();
+        limits.max_build_work_units = exact;
+        let (body, usage) =
+            ParsedIconBody::parse_with_usage(&source, 7, &limits, 0, prior_work).unwrap();
+        assert_eq!(usage.build_work_units, xml_work);
+        assert_eq!(usage.retained_plan_bytes, 0);
+        assert_eq!(
+            rewrite_inline(&body, "diagram-a").untrusted_xml_parts(),
+            ("", source.as_str()),
+        );
+
+        limits.max_build_work_units -= 1;
+        let error =
+            ParsedIconBody::parse_with_usage(&source, 7, &limits, 0, prior_work).unwrap_err();
+        assert_eq!(
+            error.limit(),
+            Some(IconRegistryResourceLimitId::MaxBuildWorkUnits),
+        );
+        assert_eq!(error.actual(), Some(exact as u64));
+        assert_eq!(error.maximum(), Some((exact - 1) as u64));
     }
 
     #[test]
@@ -1943,14 +2178,49 @@ mod tests {
     }
 
     #[test]
-    fn style_rewrites_reject_unmappable_strict_text_spans() {
-        for text in ["<![CDATA[]]>.a{fill:url(#p)}", ".a{fill:url(#p)}&#97;\r"] {
+    fn style_rewrites_reject_unmappable_adjacent_text_and_cdata_spans() {
+        for text in [
+            "<![CDATA[]]>.a{fill:url(#p)}",
+            ".a{fill:url(#p)}<![CDATA[/* comment */]]>",
+        ] {
             let source = format!("<path id='p'/><style>{text}</style>");
             assert_eq!(
                 parse(&source).unwrap_err(),
                 invalid_xml_error(7, "icon body contains unmappable SVG style text")
             );
         }
+    }
+
+    #[test]
+    fn style_rewrites_preserve_crlf_and_mapped_character_references() {
+        let source =
+            "<path id='p'/><style>\r\n.a{fill:url(&#35;p)}\r\n/* café &amp;\r\n tea */</style>";
+        let body = parse(source).unwrap();
+        let id = scoped_id("diagram-a", 0);
+        let expected = format!(
+            "<path id='{id}'/><style>\r\n.a{{fill:url(&#35;{id})}}\r\n/* café &amp;\r\n tea */</style>"
+        );
+        assert_eq!(
+            rewrite_inline(&body, "diagram-a").untrusted_xml_parts(),
+            ("", expected.as_str())
+        );
+    }
+
+    #[test]
+    fn style_rewrites_preserve_source_line_endings_around_character_references() {
+        let source = concat!(
+            "<path id='p'/><style>/* A&#xD;\nB\r&#xA;C&amp;\r\nD */\r",
+            ".a{fill:url(&#35;p)}&#97;\r</style>",
+        );
+        let body = parse(source).unwrap();
+        let id = scoped_id("diagram-a", 0);
+        let expected = format!(
+            "<path id='{id}'/><style>/* A&#xD;\nB\r&#xA;C&amp;\r\nD */\r.a{{fill:url(&#35;{id})}}&#97;\r</style>"
+        );
+        assert_eq!(
+            rewrite_inline(&body, "diagram-a").untrusted_xml_parts(),
+            ("", expected.as_str()),
+        );
     }
 
     #[test]
@@ -1990,6 +2260,11 @@ mod tests {
         let linked = parse(r##"<use xlink:href="#target"/><path id="target"/>"##)
             .expect("wrapper supplies the standard xlink namespace");
         assert!(linked.uses_xlink());
+
+        let shadowed = r##"<g xmlns:xlink="urn:metadata"><use xlink:href="#target"/></g>"##;
+        assert!(!parse(shadowed).unwrap().uses_xlink());
+        let sibling = format!(r##"{shadowed}<use xlink:href="#target"/>"##);
+        assert!(parse(&sibling).unwrap().uses_xlink());
     }
 
     #[test]

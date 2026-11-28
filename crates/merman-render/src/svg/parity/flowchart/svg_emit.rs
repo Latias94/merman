@@ -1,3 +1,4 @@
+use crate::model::EdgePaintGeometry;
 use merman_render_flow::svg::{self, FlowchartSvgModelRequest};
 
 use super::*;

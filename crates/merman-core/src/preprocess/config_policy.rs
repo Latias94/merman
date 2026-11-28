@@ -33,9 +33,7 @@ use merman_core_preprocess::directives::{
 };
 #[cfg(feature = "editor-facts")]
 use merman_core_preprocess::frontmatter::decode_frontmatter_with_evidence_controlled;
-use merman_core_preprocess::frontmatter::{
-    FrontmatterByteSpan, decode_frontmatter_controlled, frontmatter_config_routes,
-};
+use merman_core_preprocess::frontmatter::{FrontmatterByteSpan, decode_frontmatter_controlled};
 use merman_core_preprocess::yaml::GridPlacementsSource;
 #[cfg(feature = "editor-facts")]
 use merman_core_preprocess::yaml::YamlConfigKeyEvidence;
@@ -675,11 +673,7 @@ pub(super) fn process_frontmatter_controlled(
         FrontmatterInsertOrder::from_yaml_capture(order, parsed.display_mode.as_deref())
     });
 
-    let mut config = MermaidConfig::empty_object();
-    merge_top_level_frontmatter_diagram_configs(&parsed.fields, &mut config);
-    if let Some(v) = parsed.config() {
-        config.deep_merge(v);
-    }
+    let mut config = parsed.project_config_values();
     crate::config::mirror_legacy_font_family_into_theme_variables(&mut config);
     if let Some(dm) = parsed.display_mode {
         config.set_value("gantt.displayMode", Value::String(dm));
@@ -719,20 +713,4 @@ pub(super) fn process_frontmatter_controlled(
         #[cfg(feature = "editor-facts")]
         insert_order,
     })
-}
-
-fn merge_top_level_frontmatter_diagram_configs(
-    parsed_obj: &serde_json::Map<String, Value>,
-    config: &mut MermaidConfig,
-) {
-    // Mermaid upstream only consumes `config`, but users commonly read docs examples as allowing
-    // diagram config namespaces at the YAML root. Keep this compatibility narrow and explicit.
-    for &(key, namespace) in frontmatter_config_routes() {
-        if let Some(value) = parsed_obj.get(key) {
-            config.set_value(
-                namespace,
-                crate::json_value::clone_value_nonrecursive(value),
-            );
-        }
-    }
 }

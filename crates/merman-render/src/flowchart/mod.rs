@@ -14,6 +14,12 @@ use merman_render_flow::measured;
 #[cfg(feature = "layout-shoal")]
 pub(crate) mod shoal;
 
+#[cfg(any(
+    test,
+    feature = "layout-dagre",
+    feature = "layout-grid",
+    feature = "layout-layered"
+))]
 pub(crate) use merman_model::families::flowchart::{FlowchartModel, FlowchartRenderContext};
 
 pub(crate) use class_style::FlowchartClassDefinitions;

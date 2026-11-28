@@ -624,6 +624,25 @@ fn analyze_flowchart_parse_failure_deduplicates_matching_recovery_diagnostic() {
 }
 
 #[test]
+fn flowchart_first_line_diagnostic_keeps_the_original_bom_offset() {
+    let source = "\u{feff}flowchart LR; A[unterminated";
+    let payload = Analyzer::new().analyze(source);
+    let diagnostic = payload
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.id == crate::rules::DIAGRAM_PARSE_RULE_ID)
+        .expect("parse error diagnostic");
+    let span = diagnostic.span.as_ref().expect("exact parse span");
+    let label_opening = source.find('[').unwrap();
+    assert_eq!(span.byte_start, label_opening);
+    assert_eq!(span.lsp_range.start.line, 0);
+    assert_eq!(
+        span.lsp_range.start.character,
+        source[..label_opening].encode_utf16().count()
+    );
+}
+
+#[test]
 fn analyze_parse_failure_remaps_frontmatter_spans_and_deduplicates_recovery() {
     let source = "---\ntitle: T\n---\nflowchart TD\nA-->\n";
     assert_single_remapped_flowchart_parse_error(source, 5, 5);

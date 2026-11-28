@@ -77,7 +77,8 @@ The renderer publishes transport-neutral constructor limits through
 32 MiB aggregate encoded input, 32,768 direct icons, 32,768 aliases, 65,536 total entries, 256 KiB
 for one decoded SVG body, and 32 MiB aggregate retained bodies. JSON structure, identifier length,
 alias graph, XML structure, rewrite-plan memory, coordinate magnitude, and total build work have
-additional fixed ceilings.
+additional fixed ceilings. Build work accounts for decoded body bytes, XML elements, attributes,
+namespace declarations, and SVG style text processed for ID rewriting.
 
 Defaults and hard maxima are identical and `caller_configurable` is false. A transport may expose a
 tighter host/CLI acquisition policy, but it must not present a way to loosen the shared constructor.

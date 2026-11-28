@@ -399,6 +399,7 @@ function addJsonWireToken(budget, limits) {
 }
 
 function addJsonStringWireBytes(value, label, limits, budget) {
+  const maxStringUtf8Bytes = limits.max_string_utf8_bytes;
   let utf8Bytes = 0;
   addJsonWireBytes(budget, 1);
   for (let index = 0; index < value.length; index += 1) {
@@ -407,9 +408,16 @@ function addJsonStringWireBytes(value, label, limits, budget) {
     let wireBytes = characterBytes;
     if (codeUnit <= 0x7f) {
       wireBytes = jsonAsciiByteLength(codeUnit);
-    } else if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+    } else if (codeUnit >= 0xd800 && codeUnit <= 0xdfff) {
       const low = value.charCodeAt(index + 1);
-      if (!(low >= 0xdc00 && low <= 0xdfff)) {
+      if (codeUnit > 0xdbff || !(low >= 0xdc00 && low <= 0xdfff)) {
+        // Count replacement bytes for the field ceiling, keeping the wire budget in traversal order.
+        if (
+          value.length > maxStringUtf8Bytes ||
+          (value.length > maxStringUtf8Bytes / 3 && Buffer.byteLength(value, "utf8") > maxStringUtf8Bytes)
+        ) {
+          throw jsonStringFieldLimitError(label, maxStringUtf8Bytes);
+        }
         throw new MermanInvalidTransportError(
           `Merman transport ${label} contains an isolated UTF-16 surrogate.`,
         );
@@ -417,20 +425,20 @@ function addJsonStringWireBytes(value, label, limits, budget) {
       characterBytes = 4;
       wireBytes = 4;
       index += 1;
-    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
-      throw new MermanInvalidTransportError(
-        `Merman transport ${label} contains an isolated UTF-16 surrogate.`,
-      );
     }
     utf8Bytes += characterBytes;
-    if (utf8Bytes > limits.max_string_utf8_bytes) {
-      throw new MermanInvalidTransportError(
-        `Merman transport ${label} contains a string exceeding the ${limits.max_string_utf8_bytes}-byte field limit.`,
-      );
+    if (utf8Bytes > maxStringUtf8Bytes) {
+      throw jsonStringFieldLimitError(label, maxStringUtf8Bytes);
     }
     addJsonWireBytes(budget, wireBytes);
   }
   addJsonWireBytes(budget, 1);
+}
+
+function jsonStringFieldLimitError(label, maxUtf8Bytes) {
+  return new MermanInvalidTransportError(
+    `Merman transport ${label} contains a string exceeding the ${maxUtf8Bytes}-byte field limit.`,
+  );
 }
 
 function addJsonWireBytes(budget, bytes) {

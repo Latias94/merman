@@ -1,10 +1,8 @@
 # Diagram Admission Inventory
 
-Status: Active
-Selected reference: Mermaid `@12.3.0` at `2086904e76c692331e34a45d7cc3bc30860d040e`
-Last reviewed: 2026-11-04
-
-The 37-family primary matrix and its upstream SVG manifests select Mermaid `@12.3.0`. A pinned reference and refreshed evidence do not by themselves certify the strict parity gates on the final release commit; retain their run-specific results separately.
+The 37-family primary matrix uses the [selected development reference](STATUS.md#selected-baseline).
+The upstream SVG manifests record the reference and capture environment for each family.
+Strict parity results apply to the revision and environment recorded by the run.
 
 The admission consistency checks live in
 [`admission.rs`](../../crates/xtask/src/cmd/admission.rs).
