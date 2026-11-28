@@ -1,4 +1,5 @@
 use super::*;
+use crate::state::transition_end_barb;
 use base64::Engine as _;
 #[cfg(feature = "layout-shoal")]
 use merman_render_core::svg_bounds::svg_path_bounds_from_d;
@@ -947,23 +948,20 @@ pub(super) fn render_state_edge_path(
 
     let mut marker_end_buf = std::mem::take(&mut scratch.marker_end);
     marker_end_buf.clear();
-    let has_marker_end = match edge.arrow_type_end.trim() {
-        "arrow_barb" | "arrow_barb_neo" => {
-            let neo = if ctx.uses_canonical_routes() || ctx.uses_flat_routes() {
-                ctx.style_plan.compatibility().is_neo()
-            } else {
-                state_data_look(ctx) == "neo"
-            };
-            let suffix = if neo { "-margin" } else { "" };
-            let _ = write!(
-                marker_end_buf,
-                "url(#{}_stateDiagram-barbEnd{suffix})",
-                ctx.diagram_id
-            );
-            true
-        }
-        _ => false,
-    };
+    let arrow_type_end = transition_end_barb(&edge.arrow_type_end);
+    if arrow_type_end.is_some() {
+        let neo = if ctx.uses_canonical_routes() || ctx.uses_flat_routes() {
+            ctx.style_plan.compatibility().is_neo()
+        } else {
+            state_data_look(ctx) == "neo"
+        };
+        let suffix = if neo { "-margin" } else { "" };
+        let _ = write!(
+            marker_end_buf,
+            "url(#{}_stateDiagram-barbEnd{suffix})",
+            ctx.diagram_id
+        );
+    }
 
     let result = write_state_edge_path(
         out,
@@ -971,8 +969,8 @@ pub(super) fn render_state_edge_path(
         le,
         edge.id.as_str(),
         &classes,
-        has_marker_end.then_some(marker_end_buf.as_str()),
-        Some(edge.arrow_type_end.as_str()),
+        arrow_type_end.map(|_| marker_end_buf.as_str()),
+        arrow_type_end,
         origin_x,
         origin_y,
         scratch,
@@ -1225,7 +1223,7 @@ pub(super) fn render_state_edge_label(
         let geometry = state_edge_prepare_geometry(
             ctx,
             le,
-            Some(edge.arrow_type_end.as_str()),
+            transition_end_barb(&edge.arrow_type_end),
             origin_x,
             origin_y,
         );

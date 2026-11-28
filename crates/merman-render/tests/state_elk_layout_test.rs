@@ -1,12 +1,13 @@
 use merman_core::{MermaidEngine, ParseOptions};
+use merman_model::presentation::PresentationDiagram;
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use serde_json::{Value, json};
 
-fn render(source: &str, backend: &str) -> (Value, String) {
-    let parsed = MermaidEngine::new()
+fn parse(source: &str, backend: &str) -> PresentationDiagram {
+    MermaidEngine::new()
         .with_site_config(
             merman_core::presentation::SourcePresentationConfig::from_value(json!({
                 "layout": backend, "htmlLabels": false, "look": "classic",
@@ -16,11 +17,18 @@ fn render(source: &str, backend: &str) -> (Value, String) {
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse State")
         .expect("detect State")
-        .into_presentation();
+        .into_presentation()
+}
+
+fn render(source: &str, backend: &str) -> (Value, String) {
+    render_presentation(&parse(source, backend))
+}
+
+fn render_presentation(parsed: &PresentationDiagram) -> (Value, String) {
     let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("session");
-    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare State");
     let layout = artifact.layout_json().expect("layout")["layout"]["StateDiagramV2"].clone();
     let svg = artifact
@@ -921,4 +929,45 @@ fn state_elk_spreads_crowded_transition_ports_on_the_final_state() {
     for pair in ports.windows(2) {
         assert!((pair[1] - pair[0] - 2.0).abs() < 1e-9, "{ports:?}");
     }
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn state_elk_crowding_uses_the_svg_marker_admission_for_typed_edges() {
+    use merman_model::OperationControl;
+    use merman_model::presentation::RenderSemanticModel;
+    use merman_model::resources::InputResourcePolicy;
+
+    let parsed = parse(
+        include_str!("../../../fixtures/state/upstream_pkgtests_statediagram_spec_020.mmd"),
+        "elk",
+    );
+    let render_with_marker = |marker: &str| {
+        let (metadata, mut model, context) = parsed.clone().into_parts();
+        let RenderSemanticModel::State(state) = &mut model else {
+            panic!("expected State presentation");
+        };
+        for edge in state.edges.iter_mut().filter(|edge| edge.end == "root_end") {
+            marker.clone_into(&mut edge.arrow_type_end);
+        }
+        let presentation = PresentationDiagram::try_from_frozen(
+            metadata,
+            model,
+            context,
+            &InputResourcePolicy::default(),
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+        render_presentation(&presentation)
+    };
+
+    let unmarked = render_with_marker("none");
+    let marked = render_with_marker("arrow_barb");
+    assert_ne!(
+        unmarked.0, marked.0,
+        "the fixture must crowd the terminal markers"
+    );
+    assert_eq!(render_with_marker(" none "), unmarked);
+    assert_eq!(render_with_marker(" arrow_barb "), marked);
 }

@@ -72,3 +72,8 @@ pub use label_svg::{
     state_measured_svg_text_label, state_native_svg_text_label, state_node_label_html_with_style,
     state_node_label_plain_html, state_node_label_text, state_svg_text_label,
 };
+
+fn transition_end_barb(arrow_type: &str) -> Option<&str> {
+    let arrow_type = arrow_type.trim();
+    matches!(arrow_type, "arrow_barb" | "arrow_barb_neo").then_some(arrow_type)
+}
