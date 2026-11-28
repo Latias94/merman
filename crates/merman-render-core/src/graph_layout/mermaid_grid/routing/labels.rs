@@ -11,9 +11,16 @@ use kurbo::{Point, Rect};
 use merman_model::OperationPhase;
 use std::collections::HashSet;
 
+pub(in crate::graph_layout::mermaid_grid) mod detour;
+pub(in crate::graph_layout::mermaid_grid) mod foreign;
+
 const LABEL_CLEARANCE: f64 = 6.0;
 const MARKER_LENGTH: f64 = 12.0;
 const MARKER_HALF_WIDTH: f64 = 7.0;
+const GUTTER: f64 = 14.0;
+const GUTTER_STEP: f64 = 18.0;
+const GUTTER_STEPS: u8 = 16;
+const MAX_LANES: usize = 128;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct GridLabelMarkers {
@@ -39,6 +46,7 @@ pub(in crate::graph_layout::mermaid_grid) struct LabelCollisionView<'a> {
     pub foreign_segments: [&'a [GridSegment]; 2],
 }
 
+#[derive(Debug)]
 pub(in crate::graph_layout::mermaid_grid) enum LabelSearchError {
     Layout(crate::Error),
     WorkLimit,
@@ -56,7 +64,31 @@ impl From<OperationWorkError> for LabelSearchError {
     }
 }
 
-type SearchResult<T> = std::result::Result<T, LabelSearchError>;
+pub(in crate::graph_layout::mermaid_grid) type SearchResult<T> =
+    std::result::Result<T, LabelSearchError>;
+
+pub(in crate::graph_layout::mermaid_grid) struct LabelRouteProposal {
+    pub points: Vec<Point>,
+    pub segments: Vec<GridSegment>,
+}
+
+impl LabelRouteProposal {
+    fn materialize(
+        start: Point,
+        segments: Vec<GridSegment>,
+        work: &mut LabelSearchWork<'_>,
+    ) -> SearchResult<Self> {
+        let count = segments
+            .len()
+            .checked_add(1)
+            .ok_or_else(|| work.meter.arithmetic_overflow())?;
+        work.charge(count)?;
+        let mut points = reserve_vec(count)?;
+        points.push(start);
+        points.extend(segments.iter().map(|segment| segment.end));
+        Ok(Self { points, segments })
+    }
+}
 
 pub(in crate::graph_layout::mermaid_grid) struct LabelSearchWork<'a> {
     meter: &'a OperationWorkMeter,
@@ -71,7 +103,10 @@ impl<'a> LabelSearchWork<'a> {
         Self { meter, remaining }
     }
 
-    fn charge(&mut self, units: usize) -> SearchResult<()> {
+    pub(in crate::graph_layout::mermaid_grid) fn charge(
+        &mut self,
+        units: usize,
+    ) -> SearchResult<()> {
         let next = self
             .remaining
             .and_then(|remaining| remaining.checked_sub(units));
@@ -82,6 +117,18 @@ impl<'a> LabelSearchWork<'a> {
         self.meter.charge(units)?;
         self.remaining = next;
         Ok(())
+    }
+
+    pub(in crate::graph_layout::mermaid_grid) fn charge_sort(
+        &mut self,
+        count: usize,
+        key_bytes: usize,
+    ) -> SearchResult<()> {
+        let comparisons = count
+            .checked_mul(count.checked_ilog2().unwrap_or(0) as usize + 1)
+            .and_then(|cost| cost.checked_mul(key_bytes.max(1)))
+            .ok_or_else(|| self.meter.arithmetic_overflow())?;
+        self.charge(comparisons)
     }
 }
 
@@ -127,6 +174,18 @@ pub(in crate::graph_layout::mermaid_grid) fn place_label_on_segments(
     obstacles: LabelCollisionView<'_>,
     work: &mut LabelSearchWork<'_>,
 ) -> SearchResult<Option<Point>> {
+    visit_label_centers(segments, size, markers, obstacles, work, |_, _| Ok(true))
+}
+
+/// Visits centers which passed the supplied obstacle checks, in placement order.
+pub(in crate::graph_layout::mermaid_grid) fn visit_label_centers(
+    segments: &[GridSegment],
+    size: Size,
+    markers: GridLabelMarkers,
+    obstacles: LabelCollisionView<'_>,
+    work: &mut LabelSearchWork<'_>,
+    mut accept: impl FnMut(Rect, &mut LabelSearchWork<'_>) -> SearchResult<bool>,
+) -> SearchResult<Option<Point>> {
     let (Some(first), Some(last)) = (segments.first(), segments.last()) else {
         return Ok(None);
     };
@@ -155,7 +214,9 @@ pub(in crate::graph_layout::mermaid_grid) fn place_label_on_segments(
     })?;
     for segment in candidates {
         work.charge(1)?;
-        if let Some(anchor) = place_on_segment(segment, size, obstacles, &marker_rects, work)? {
+        if let Some(anchor) =
+            place_on_segment(segment, size, obstacles, &marker_rects, work, &mut accept)?
+        {
             return Ok(Some(anchor));
         }
     }
@@ -229,6 +290,18 @@ fn length(segment: GridSegment) -> f64 {
     high - low
 }
 
+fn segment_contains_anchor(segment: GridSegment, center: Point) -> bool {
+    let (along, cross) = match segment.axis {
+        Axis::Horizontal => (center.x, center.y),
+        Axis::Vertical => (center.y, center.x),
+    };
+    let (low, high) = segment.span();
+    high - low > POINT_EPSILON
+        && (cross - segment.fixed()).abs() <= POINT_EPSILON
+        && along >= low - POINT_EPSILON
+        && along <= high + POINT_EPSILON
+}
+
 fn marker_rect(tip: Point, inner: Point) -> Option<Rect> {
     let leg = GridSegment::new(tip, inner)?;
     Some(match leg.axis {
@@ -283,6 +356,7 @@ fn place_on_segment(
     obstacles: LabelCollisionView<'_>,
     markers: &[Option<Rect>; 2],
     work: &mut LabelSearchWork<'_>,
+    accept: &mut impl FnMut(Rect, &mut LabelSearchWork<'_>) -> SearchResult<bool>,
 ) -> SearchResult<Option<Point>> {
     let (along_size, cross_size) = match segment.axis {
         Axis::Horizontal => (size.width, size.height),
@@ -349,10 +423,7 @@ fn place_on_segment(
     }
 
     let count = blocked.len();
-    let sort_work = count
-        .checked_mul(count.checked_ilog2().unwrap_or(0) as usize + 1)
-        .ok_or_else(|| work.meter.arithmetic_overflow())?;
-    work.charge(sort_work)?;
+    work.charge_sort(count, 1)?;
     blocked.sort_unstable_by(|a, b| {
         a.low
             .total_cmp(&b.low)
@@ -406,7 +477,8 @@ fn place_on_segment(
             Axis::Horizontal => Point::new(candidate.along, fixed),
             Axis::Vertical => Point::new(fixed, candidate.along),
         };
-        if label_is_clear(label_rect_at(center, size), obstacles, solids(), work)? {
+        let label = label_rect_at(center, size);
+        if label_is_clear(label, obstacles, solids(), work)? && accept(label, work)? {
             return Ok(Some(center));
         }
     }
@@ -496,6 +568,48 @@ fn rounded_center_key(center: f64) -> u64 {
     } / 1e6;
     // JavaScript Set treats both signed zeros as one key.
     if rounded == 0.0 { 0 } else { rounded.to_bits() }
+}
+
+#[derive(Default)]
+struct RankedCoordinates {
+    values: Vec<f64>,
+    seen: HashSet<u64>,
+}
+
+impl RankedCoordinates {
+    fn push(&mut self, coordinate: f64, work: &mut LabelSearchWork<'_>) -> SearchResult<()> {
+        work.charge(1)?;
+        if coordinate.is_finite() {
+            self.seen
+                .try_reserve(1)
+                .map_err(|_| super::allocation_failed())?;
+            if self.seen.insert(rounded_center_key(coordinate)) {
+                self.values
+                    .try_reserve(1)
+                    .map_err(|_| super::allocation_failed())?;
+                self.values.push(coordinate);
+            }
+        }
+        Ok(())
+    }
+
+    fn into_ranked(
+        mut self,
+        anchor: f64,
+        limit: usize,
+        work: &mut LabelSearchWork<'_>,
+    ) -> SearchResult<Vec<f64>> {
+        stable_rank(&mut self.values, work, |a, b| {
+            let delta = (*a - anchor).abs() - (*b - anchor).abs();
+            if delta.abs() > POINT_EPSILON {
+                delta < 0.0
+            } else {
+                a < b
+            }
+        })?;
+        self.values.truncate(limit);
+        Ok(self.values)
+    }
 }
 
 fn stable_rank<T>(

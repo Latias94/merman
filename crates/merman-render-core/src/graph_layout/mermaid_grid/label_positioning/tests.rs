@@ -104,7 +104,6 @@ fn degrades_the_whole_batch_on_a_soft_limit_or_an_exhausted_existing_segment() {
     ];
     let prepared = prepare_grid(&items, &edges, None, &meter()).unwrap();
 
-    let mut first_anchor = [None; 3];
     let mut solids: Vec<_> = (0..items.len())
         .map(|slot| {
             let bounds = prepared.item_bounds(slot).unwrap();
@@ -127,23 +126,21 @@ fn degrades_the_whole_batch_on_a_soft_limit_or_an_exhausted_existing_segment() {
     append_segments(&mut segments, &points[1].points, &search_meter).unwrap();
     let before = search_meter.used();
     assert_eq!(
-        search_existing_segments(
-            &[PendingLabel {
-                slot: 0,
-                label: edges[0].label.unwrap(),
-                segments: first
-            }],
-            &segments,
-            &mut solids,
-            &[],
-            &mut first_anchor,
+        place_label_on_segments(
+            &segments[first.clone()],
+            edges[0].label.unwrap().size,
+            GridLabelMarkers::default(),
+            LabelCollisionView {
+                solids: &solids,
+                group_borders: &[],
+                foreign_segments: [&segments[..first.start], &segments[first.end..]],
+            },
             &mut LabelSearchWork::new(&search_meter, None),
         )
         .unwrap(),
-        LabelPassOutcome::ExistingSegments
+        Some(Point::new(120.0, 100.0))
     );
     let first_search = search_meter.used() - before;
-    assert_eq!(first_anchor[0], Some(Point::new(120.0, 100.0)));
     for (last_x, limit, expected) in [
         (310.0, 0, LabelPassOutcome::SearchWorkLimit),
         (310.0, first_search, LabelPassOutcome::SearchWorkLimit),
@@ -268,4 +265,257 @@ fn rejects_a_route_slice_with_missing_occurrences() {
         Err(Error::InvalidModel { .. })
     ));
     assert_eq!(placed[0].label_center, before);
+}
+
+#[test]
+fn foreign_route_keeps_its_prior_label_and_terminal_rays_by_occurrence() {
+    let items = items();
+    let edges = [label("shared-id", 20.0), label("shared-id", 40.0)];
+    let work = meter();
+    let prepared = prepare_grid(&items, &edges, None, &work).unwrap();
+    let mut placed = [
+        route(&[(160.0, -50.0), (160.0, 150.0)]),
+        route(&[(10.0, 100.0), (310.0, 100.0)]),
+    ];
+    assert_eq!(
+        prepared
+            .position_labels_with_limit(&mut placed, MAX_LABEL_SEARCH_WORK, &work)
+            .unwrap(),
+        LabelPassOutcome::ForeignReroutes
+    );
+    assert_eq!(
+        centers(&placed),
+        [
+            Some(Point::new(160.0, 50.0)),
+            Some(Point::new(160.0, 100.0))
+        ]
+    );
+    let expected = route(&[
+        (160.0, -50.0),
+        (160.0, 84.0),
+        (126.0, 84.0),
+        (126.0, 116.0),
+        (160.0, 116.0),
+        (160.0, 150.0),
+    ]);
+    assert_eq!(placed[0].points, expected.points);
+    assert_eq!(
+        placed[1].points,
+        route(&[(10.0, 100.0), (310.0, 100.0)]).points
+    );
+}
+
+#[test]
+fn foreign_route_proposals_discard_edits_when_a_label_cannot_be_placed() {
+    let items = items();
+    let unlabeled = GridMeasuredEdge {
+        label: None,
+        ..label("foreign", 0.0)
+    };
+    let edges = [label("owner", 40.0), unlabeled, label("short", 80.0)];
+    let work = meter();
+    let prepared = prepare_grid(&items, &edges, None, &work).unwrap();
+    let original = || {
+        [
+            route(&[(10.0, 100.0), (310.0, 100.0)]),
+            route(&[(160.0, 50.0), (160.0, 150.0)]),
+            route(&[(200.0, 160.0), (250.0, 160.0)]),
+        ]
+    };
+    let mut placed = original();
+    assert_eq!(
+        prepared
+            .position_labels_with_limit(&mut placed, MAX_LABEL_SEARCH_WORK, &work)
+            .unwrap(),
+        LabelPassOutcome::ExistingSegmentsExhausted
+    );
+    assert_points_equal(&placed, &original());
+    assert_eq!(
+        centers(&placed),
+        [
+            Some(Point::new(160.0, 100.0)),
+            None,
+            Some(Point::new(225.0, 160.0))
+        ]
+    );
+
+    let mut earlier = label("earlier", 20.0);
+    earlier.label.as_mut().unwrap().size.height = 2.0;
+    let edges = [earlier, label("owner", 40.0)];
+    let prepared = prepare_grid(&items, &edges, None, &work).unwrap();
+    let original = || {
+        [
+            route(&[(160.0, 22.0), (160.0, 150.0)]),
+            route(&[(10.0, 100.0), (310.0, 100.0)]),
+        ]
+    };
+    let mut placed = original();
+    assert_eq!(
+        prepared
+            .position_labels_with_limit(&mut placed, MAX_LABEL_SEARCH_WORK, &work)
+            .unwrap(),
+        LabelPassOutcome::ExistingSegmentsExhausted
+    );
+    assert_points_equal(&placed, &original());
+    assert_eq!(
+        centers(&placed),
+        [
+            Some(Point::new(160.0, 86.0)),
+            Some(Point::new(160.0, 100.0))
+        ]
+    );
+
+    let self_loop = GridMeasuredEdge {
+        source: 0,
+        target: 0,
+        label: None,
+        ..label("z-loop", 0.0)
+    };
+    let edges = [label("owner", 40.0), unlabeled, self_loop];
+    let prepared = prepare_grid(&items, &edges, None, &work).unwrap();
+    let original = || {
+        [
+            route(&[(10.0, 100.0), (310.0, 100.0)]),
+            route(&[(160.0, 50.0), (160.0, 150.0)]),
+            route(&[(165.0, 50.0), (165.0, 150.0)]),
+        ]
+    };
+    let mut placed = original();
+    assert_eq!(
+        prepared
+            .position_labels_with_limit(&mut placed, MAX_LABEL_SEARCH_WORK, &work)
+            .unwrap(),
+        LabelPassOutcome::ExistingSegmentsExhausted
+    );
+    assert_points_equal(&placed, &original());
+}
+
+#[test]
+fn foreign_route_proposals_share_the_original_meter_and_publish_atomically() {
+    let items = items();
+    let edges = [
+        label("owner", 40.0),
+        GridMeasuredEdge {
+            label: None,
+            ..label("foreign", 0.0)
+        },
+    ];
+    let original = || {
+        [
+            route(&[(10.0, 100.0), (310.0, 100.0)]),
+            route(&[(160.0, 50.0), (160.0, 150.0)]),
+        ]
+    };
+    let work = meter();
+    let prepared = prepare_grid(&items, &edges, None, &work).unwrap();
+    let prior = work.used();
+    let mut placed = original();
+    prepared.position_labels(&mut placed, &work).unwrap();
+    let total = work.used();
+    assert_eq!(placed[1].points.len(), 6);
+
+    let mut result = original();
+    let with_limit = |limit| {
+        OperationWorkMeter::new(
+            policy()
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, limit)
+                .unwrap(),
+        )
+    };
+    let exact = with_limit(total);
+    exact.charge(prior).unwrap();
+    prepared.position_labels(&mut result, &exact).unwrap();
+    assert_points_equal(&result, &placed);
+    assert_eq!(centers(&result), centers(&placed));
+
+    let short = with_limit(total - 1);
+    short.charge(prior).unwrap();
+    let mut rejected = original();
+    assert!(matches!(
+        prepared.position_labels(&mut rejected, &short),
+        Err(Error::ResourceLimitExceeded(_))
+    ));
+    assert_points_equal(&rejected, &original());
+    assert_eq!(centers(&rejected), centers(&original()));
+
+    let control = OperationControl::new();
+    control.cancel_after_checkpoints(30);
+    let cancelled = OperationWorkMeter::new_with_control(policy(), control);
+    assert!(matches!(
+        prepared.position_labels(&mut rejected, &cancelled),
+        Err(Error::Cancelled(error)) if error.phase == OperationPhase::Layout
+    ));
+    assert_points_equal(&rejected, &original());
+    assert_eq!(centers(&rejected), centers(&original()));
+
+    let soft = meter();
+    assert_eq!(
+        prepared
+            .position_labels_with_limit(&mut rejected, 60, &soft)
+            .unwrap(),
+        LabelPassOutcome::SearchWorkLimit
+    );
+    assert_points_equal(&rejected, &original());
+    assert_eq!(centers(&rejected), [Some(Point::new(160.0, 100.0)), None]);
+    soft.checkpoint(OperationPhase::Layout).unwrap();
+}
+
+#[test]
+fn short_owner_detour_publishes_its_route_and_label_together() {
+    let items = items();
+    let work = meter();
+    let edges = [label("short", 80.0)];
+    let prepared = prepare_grid(&items, &edges, None, &work).unwrap();
+    let preparation_work = work.used();
+    let original = || [route(&[(200.0, 160.0), (250.0, 160.0)])];
+    let mut placed = original();
+    assert_eq!(
+        prepared
+            .position_labels_with_limit(&mut placed, MAX_LABEL_SEARCH_WORK, &work)
+            .unwrap(),
+        LabelPassOutcome::OwnerDetour
+    );
+    assert_eq!(
+        placed[0].points,
+        [
+            (200.0, 160.0),
+            (212.0, 160.0),
+            (212.0, 120.0),
+            (179.0, 120.0),
+            (179.0, 136.0),
+            (271.0, 136.0),
+            (271.0, 120.0),
+            (238.0, 120.0),
+            (238.0, 160.0),
+            (250.0, 160.0),
+        ]
+        .map(Point::from)
+    );
+    assert_eq!(centers(&placed), [Some(Point::new(225.0, 136.0))]);
+
+    let limit = work.used();
+    let with_limit = |maximum| {
+        OperationWorkMeter::new(
+            policy()
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, maximum)
+                .unwrap(),
+        )
+    };
+    let exact = with_limit(limit);
+    exact.charge(preparation_work).unwrap();
+    let mut result = original();
+    prepared.position_labels(&mut result, &exact).unwrap();
+    assert_points_equal(&result, &placed);
+    assert_eq!(centers(&result), centers(&placed));
+
+    let short = with_limit(limit - 1);
+    short.charge(preparation_work).unwrap();
+    let mut rejected = original();
+    assert!(matches!(
+        prepared.position_labels(&mut rejected, &short),
+        Err(Error::ResourceLimitExceeded(_))
+    ));
+    assert_eq!(short.used(), limit - 1);
+    assert_points_equal(&rejected, &original());
+    assert_eq!(centers(&rejected), centers(&original()));
 }
