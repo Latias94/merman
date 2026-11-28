@@ -334,7 +334,8 @@ pub(crate) fn layout_architecture_shoal(
     let mut sides = Vec::with_capacity(m);
     let mut edge_labels = Vec::with_capacity(m);
     let mut bottom_degree = vec![0usize; n];
-    let mut junction_marker_axes = vec![[false; 2]; n];
+    let mut junction_degree = vec![0usize; n];
+    let mut junction_has_incoming = vec![false; n];
     for edge in &model.edges {
         work.charge_adapter(work.checked_add(edge.lhs_id.len(), edge.rhs_id.len())?)?;
         let source = endpoint(
@@ -357,10 +358,9 @@ pub(crate) fn layout_architecture_shoal(
                 if port == Side::Bottom {
                     bottom_degree[index] += 1;
                 }
-                if arrow == Some(true)
-                    && model.nodes[index].node_type == ArchitectureNodeKind::Junction
-                {
-                    junction_marker_axes[index][usize::from(port.axis() == Axis::Vertical)] = true;
+                if model.nodes[index].node_type == ArchitectureNodeKind::Junction {
+                    junction_degree[index] += 1;
+                    junction_has_incoming[index] |= arrow == Some(true);
                 }
             }
         }
@@ -402,7 +402,8 @@ pub(crate) fn layout_architecture_shoal(
     let mut bottom_pitch = vec![None; n];
     let mut bottom_ordinal = vec![0; n];
     let junction_radius = (arrow * 0.3).min(4.0);
-    let has_junction_room = |index| junction_marker_axes[index] == [true, true];
+    let junction_diameter = 2.0 * junction_radius;
+    let show_junction = |index| junction_degree[index] >= 3 || junction_has_incoming[index];
     for (index, node) in model.nodes.iter().enumerate() {
         work.charge_adapter(1)?;
         let junction = node.node_type == ArchitectureNodeKind::Junction;
@@ -416,13 +417,12 @@ pub(crate) fn layout_architecture_shoal(
             },
             |style| style.radius,
         );
-        // Perpendicular markers need separate tips at the junction. Keep its measured routing
-        // box for the leads and clip the canonical contacts to the small visible junction.
-        let profile = if junction && has_junction_room(index) {
-            let diameter = 2.0 * junction_radius;
+        // Keep the measured routing box for junction leads and clip visible junction contacts
+        // to the dot.
+        let profile = if show_junction(index) {
             ShapePortProfile::rounded_rectangle(
-                diameter,
-                diameter,
+                junction_diameter,
+                junction_diameter,
                 junction_radius,
                 junction_radius,
             )
@@ -553,8 +553,8 @@ pub(crate) fn layout_architecture_shoal(
         .zip(&titles)
         .enumerate()
         .map(|(index, ((node, &body), title))| {
-            let size = if has_junction_room(index) {
-                2.0 * junction_radius
+            let size = if show_junction(index) {
+                junction_diameter
             } else if node.node_type == ArchitectureNodeKind::Junction {
                 0.0
             } else {
@@ -609,8 +609,8 @@ pub(crate) fn layout_architecture_shoal(
             title.anchor.y += center.y;
             retained = work.checked_add(retained, title.text.checked_retained_bytes(&work)?)?;
         }
-        let size = if has_junction_room(index) {
-            2.0 * junction_radius
+        let size = if show_junction(index) {
+            junction_diameter
         } else {
             icon
         };

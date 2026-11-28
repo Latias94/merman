@@ -730,6 +730,15 @@ where
         r#"#{} [data-look="neo"].statediagram-cluster rect{{fill:{};stroke:{};stroke-width:{};}}"#,
         id, main_bkg, neo_cluster_stroke, neo_stroke_width
     );
+    #[cfg(feature = "layout-shoal")]
+    if theme.is_neo() {
+        // Shoal tags region groups with data-et. Keep their Neo stroke and palette precedence.
+        let _ = write!(
+            &mut css,
+            r#"#{} [data-et="divider"][data-look="neo"] rect.divider{{fill:{};}}"#,
+            id, alt_background
+        );
+    }
     let _ = write!(
         &mut css,
         r#"#{} [data-look="neo"].statediagram-cluster rect.outer{{rx:{}px;ry:{}px;filter:{};}}"#,

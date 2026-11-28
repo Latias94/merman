@@ -4,7 +4,10 @@ use merman_model::OperationPhase;
 use merman_render_core::{
     rough_svg::{
         RoughRectSpec, closed_path_d_from_points as path_from_points,
-        paths::{RoughGeometryTarget, roughjs_prepare_paths_for_svg_path},
+        paths::{
+            RoughGeometryTarget, roughjs_paths_for_circle, roughjs_prepare_paths_for_circle,
+            roughjs_prepare_paths_for_svg_path,
+        },
         roughjs_circle_operations, roughjs_circle_path_d, roughjs_paths_for_rect,
         roughjs_rect_operations,
     },
@@ -16,7 +19,12 @@ use crate::{
     document::FlowchartDocumentScope, shapes::FlowchartShape, theme::FlowchartCompatibilityBinding,
 };
 
-use super::{NodeBodyGeometry, NodeBodySvg, escape_attr, fmt};
+use super::{
+    NodeBodyGeometry, NodeBodySvg, basic::write_rough_circle_paths, circle_outline, escape_attr,
+    fmt, write_raw_filled_stroked_path,
+};
+
+const SMALL_CIRCLE_DIAMETER: f64 = 14.0;
 
 // stateStart.ts/stateEnd.ts apply the small filter independently of the general node filter.
 fn write_small_state_shadow_attr(
@@ -76,6 +84,38 @@ pub fn try_write_no_label(
         // Flowchart v2 "rendering-elements" aliases for state diagram start/end nodes.
         // Mermaid ignores `node.label` for these shapes and does not emit a label group.
         "sm-circ" | "small-circle" | "start" => {
+            if body.geometry.hand_drawn && body.rough_fill_opacity.is_some() {
+                let radius = SMALL_CIRCLE_DIAMETER / 2.0;
+                let paths = body.timed_rough(|geometry| {
+                    roughjs_paths_for_circle(
+                        SMALL_CIRCLE_DIAMETER,
+                        geometry.stroke_width,
+                        geometry.stroke_dasharray,
+                        true,
+                        geometry.work_meter,
+                        geometry.randomness,
+                    )
+                });
+                if let Some(paths) = paths {
+                    let _ = write!(
+                        out,
+                        r#"<g class="state-start" style="{}">"#,
+                        escape_attr(body.hand_drawn_group_style()),
+                    );
+                    write_rough_circle_paths(
+                        out,
+                        &body,
+                        &paths,
+                        body.geometry.stroke_width,
+                        radius,
+                    );
+                    out.push_str("</g>");
+                } else {
+                    write_raw_filled_stroked_path(out, &circle_outline(radius), &body);
+                }
+                return true;
+            }
+
             out.push_str(r#"<circle class="state-start" r="7" width="14" height="14""#);
             write_small_state_shadow_attr(
                 out,
@@ -324,6 +364,7 @@ pub fn advance_no_label_rough_geometry(
     shape: FlowchartShape,
     geometry: NodeBodyGeometry<'_>,
     crossed_circle_radius: f64,
+    canonical_axis: bool,
 ) {
     match shape {
         FlowchartShape::Anchor => {
@@ -332,6 +373,17 @@ pub fn advance_no_label_rough_geometry(
         FlowchartShape::FramedCircle => {
             let _ = roughjs_circle_operations(14.0, geometry.randomness);
             let _ = roughjs_circle_operations(5.0, geometry.randomness);
+        }
+        FlowchartShape::SmallCircle if canonical_axis && geometry.hand_drawn => {
+            let _ = roughjs_prepare_paths_for_circle(
+                RoughGeometryTarget::Query,
+                SMALL_CIRCLE_DIAMETER,
+                geometry.stroke_width,
+                geometry.stroke_dasharray,
+                true,
+                geometry.work_meter,
+                geometry.randomness,
+            );
         }
         FlowchartShape::ForkJoin => {
             let (w, h) = fork_dimensions(&geometry);

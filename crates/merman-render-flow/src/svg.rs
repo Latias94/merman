@@ -25,6 +25,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 #[cfg(any(feature = "canonical-edge-paint", test))]
 use crate::markers::{flowchart_edge_marker_end_base, flowchart_edge_marker_start_base};
+#[cfg(any(feature = "canonical-edge-paint", test))]
+use crate::projection::FlowchartEdgeKey;
 use crate::{
     document as document_ids, edge_svg::flowchart_neo_mask_uses_dash_pairs,
     layout_config as render_config, style::FlowchartEdgeStylePlan,
@@ -124,10 +126,21 @@ fn escape_attr(text: &str) -> merman_render_core::xml::EscapeAttrDisplay<&str> {
     escape_attr_display(text)
 }
 
-/// The marker length and width used by both layout and SVG geometry.
+/// The classic marker geometry, for callers that do not have a prepared edge style.
 #[cfg(any(feature = "canonical-edge-paint", test))]
 pub fn flowchart_marker_metrics(
     edge: &FlowEdge,
+) -> (
+    merman_render_core::route_types::Marker,
+    merman_render_core::route_types::Marker,
+) {
+    flowchart_marker_variant_metrics(edge, false)
+}
+
+#[cfg(any(feature = "canonical-edge-paint", test))]
+fn flowchart_marker_variant_metrics(
+    edge: &FlowEdge,
+    margin: bool,
 ) -> (
     merman_render_core::route_types::Marker,
     merman_render_core::route_types::Marker,
@@ -137,12 +150,58 @@ pub fn flowchart_marker_metrics(
         defs::measure_marker(
             flowchart_edge_marker_start_base(edge),
             edge_path::marker_offset_for(start),
+            margin,
         ),
         defs::measure_marker(
             flowchart_edge_marker_end_base(edge),
             edge_path::marker_offset_for(end),
+            margin,
         ),
     )
+}
+
+#[cfg(any(feature = "canonical-edge-paint", test))]
+impl FlowchartEdgeStylePlan {
+    #[doc(hidden)]
+    pub fn marker_metrics_for(
+        &self,
+        key: FlowchartEdgeKey,
+        edge: &FlowEdge,
+        neo: bool,
+    ) -> Result<(
+        merman_render_core::route_types::Marker,
+        merman_render_core::route_types::Marker,
+    )> {
+        Ok(flowchart_marker_variant_metrics(
+            edge,
+            self.marker_uses_margin_for(key, neo)?,
+        ))
+    }
+
+    #[cfg(feature = "layout-shoal")]
+    #[doc(hidden)]
+    pub fn reserve_marker_stroke(
+        &self,
+        key: FlowchartEdgeKey,
+        markers: (
+            merman_render_core::route_types::Marker,
+            merman_render_core::route_types::Marker,
+        ),
+    ) -> Result<(
+        merman_render_core::route_types::Marker,
+        merman_render_core::route_types::Marker,
+    )> {
+        let stroke_width = 2.0 * self.stroke_outset_for(key)?.unwrap_or_default();
+        let reserve = |mut marker: merman_render_core::route_types::Marker| {
+            if marker.width > 0.0 {
+                // The viewport already includes the marker stroke. The shaft and marker
+                // share a centerline, so either footprint can set the transverse demand.
+                marker.width = marker.width.max(stroke_width);
+            }
+            marker
+        };
+        Ok((reserve(markers.0), reserve(markers.1)))
+    }
 }
 
 /// Services borrowed from the same admitted render operation as the layout and label sidecars.

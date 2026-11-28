@@ -1,5 +1,5 @@
 use super::RoutePaintError;
-use crate::route_types::{Endpoint, RoutePoint};
+use crate::route_types::{Endpoint, RoutePoint, Side};
 use kurbo::{CubicBez, Line, ParamCurve, PathSeg, Point, Rect, Vec2};
 #[cfg(feature = "layout-shoal")]
 use merman_layout_shoal::geom::{Bounds, Bvh, BvhEntry};
@@ -41,6 +41,7 @@ pub enum ObstacleOwner {
 pub struct TerminalContact {
     endpoint: Endpoint,
     coordinates: [u64; 2],
+    side: Option<Side>,
 }
 
 impl TerminalContact {
@@ -49,7 +50,22 @@ impl TerminalContact {
         Self {
             endpoint,
             coordinates: [point.x, point.y].map(coordinate_key),
+            side: None,
         }
+    }
+
+    pub(super) fn on_side(mut self, side: Side) -> Self {
+        self.side = Some(side);
+        self
+    }
+
+    fn same_position(self, other: Self) -> bool {
+        self.endpoint == other.endpoint && self.coordinates == other.coordinates
+    }
+
+    fn point(self) -> Point {
+        let [x, y] = self.coordinates.map(f64::from_bits);
+        Point::new(x, y)
     }
 }
 
@@ -60,6 +76,7 @@ impl Hash for TerminalContact {
             Endpoint::Node(id) | Endpoint::Group(id) => id.hash(state),
         }
         self.coordinates.hash(state);
+        self.side.map(|side| side as u8).hash(state);
     }
 }
 
@@ -105,6 +122,7 @@ impl Clearance {
             label_bounds: None,
             paint_to_layout,
             stroke_outset,
+            recovery: Recovery::None,
         }
     }
 }
@@ -118,12 +136,33 @@ pub struct EdgeClearance<'a> {
     pub(super) label_bounds: Option<Rect>,
     paint_to_layout: Vec2,
     stroke_outset: f64,
+    recovery: Recovery,
+}
+
+#[derive(Clone, Copy)]
+enum Recovery {
+    None,
+    TerminalSiblings,
+    HardObstacles,
 }
 
 impl EdgeClearance<'_> {
     /// Supplies the painted caption envelope for alternate route segments.
     pub fn with_label_bounds(mut self, bounds: Option<Rect>) -> Self {
         self.label_bounds = bounds;
+        self
+    }
+
+    pub(super) fn with_terminal_recovery(mut self, sides: (Side, Side)) -> Self {
+        self.terminal_contacts = self
+            .terminal_contacts
+            .map(|[a, b]| [a.on_side(sides.0), b.on_side(sides.1)]);
+        self.recovery = Recovery::TerminalSiblings;
+        self
+    }
+
+    pub(super) fn hard_obstacles_only(mut self) -> Self {
+        self.recovery = Recovery::HardObstacles;
         self
     }
 
@@ -161,21 +200,33 @@ impl EdgeClearance<'_> {
             if let Some(budget) = budget.as_deref_mut() {
                 budget.visit()?;
             }
+            if !overlaps(rect, query) {
+                return Ok(Continue(false));
+            }
             let own = owner.is_some_and(|owner| match owner {
                 ObstacleOwner::Node(id) => {
                     self.endpoints.0 == Endpoint::Node(id) || self.endpoints.1 == Endpoint::Node(id)
                 }
-                ObstacleOwner::EdgeLabel(edge) => edge == self.edge,
+                ObstacleOwner::EdgeLabel(edge) => {
+                    edge == self.edge || matches!(self.recovery, Recovery::HardObstacles)
+                }
                 ObstacleOwner::Marker(edge, contact) => {
-                    // Shafts joining at one fixed contour point share its marker footprint.
                     edge == self.edge
-                        || self
-                            .terminal_contacts
-                            .is_some_and(|ends| ends.contains(&contact))
+                        || matches!(self.recovery, Recovery::HardObstacles)
+                        || self.terminal_contacts.is_some_and(|ends| {
+                            ends.into_iter().any(|end| {
+                                end.same_position(contact)
+                                    || (matches!(self.recovery, Recovery::TerminalSiblings)
+                                        && end.endpoint == contact.endpoint
+                                        && end.side == contact.side
+                                        && contact.side.is_some()
+                                        && rect.inflate(outset, outset).contains(end.point()))
+                            })
+                        })
                 }
                 ObstacleOwner::GroupTitle(_) => false,
             });
-            if own || !overlaps(rect, query) || !near_curve(rect) {
+            if own || !near_curve(rect) {
                 return Ok(Continue(false));
             }
             if owner.is_some() && enters((rect - self.paint_to_layout).inflate(outset, outset)) {

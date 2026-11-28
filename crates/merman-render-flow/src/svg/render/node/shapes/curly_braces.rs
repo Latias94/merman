@@ -3,6 +3,7 @@
 use crate::node_geometry::brace::{circle_points, curly_brace_comment_intersection_points};
 
 use crate::svg::escape_attr;
+use crate::svg::path_bounds::svg_path_bounds_from_d;
 use crate::svg::{fmt, fmt_display};
 
 use super::super::geom::path_from_points;
@@ -251,6 +252,8 @@ pub(in crate::svg::render::node) fn render_curly_brace_comment(
         merman_render_core::config::mermaid_config_diagram_look(ctx.config).is_neo(),
     );
     label.dx = geometry.label_dx;
+    let compact_bounds =
+        common.look_is_hand_drawn() && ctx.layout.route_contract.is_canonical_axis();
 
     let mut stroke_d = |d: &str| {
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
@@ -271,6 +274,20 @@ pub(in crate::svg::render::node) fn render_curly_brace_comment(
         fmt(geometry.group_tx),
     );
     for path in geometry.paths {
+        if compact_bounds && !path.visible {
+            // The contact polygon sets the hidden bounds. Only the braces need RoughJS paint.
+            if let Some(bounds) = svg_path_bounds_from_d(&path.d) {
+                let _ = write!(
+                    out,
+                    r#"<rect x="{}" y="{}" width="{}" height="{}" fill="none" stroke="none" visibility="hidden"/>"#,
+                    fmt(bounds.min_x),
+                    fmt(bounds.min_y),
+                    fmt(bounds.max_x - bounds.min_x),
+                    fmt(bounds.max_y - bounds.min_y),
+                );
+            }
+            continue;
+        }
         let d = stroke_d(&path.d);
         if path.visible {
             out.push_str("<g>");
@@ -312,7 +329,12 @@ pub(super) fn advance_rough_geometry(
         ctx.node_padding,
         merman_render_core::config::mermaid_config_diagram_look(ctx.config).is_neo(),
     );
+    let compact_bounds =
+        common.look_is_hand_drawn() && ctx.layout.route_contract.is_canonical_axis();
     for path in geometry.paths {
+        if compact_bounds && !path.visible {
+            continue;
+        }
         let _ = super::super::roughjs::roughjs_prepare_stroke_path_for_svg_path(
             super::super::roughjs::RoughGeometryTarget::Query,
             &path.d,

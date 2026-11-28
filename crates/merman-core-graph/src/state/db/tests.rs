@@ -11,6 +11,60 @@ fn parse_document(source: &str, control: &OperationControl) -> StateDocumentScra
 }
 
 #[test]
+fn composite_state_upgrades_prior_transition_target_to_choice_fork_join() {
+    let source = "\
+stateDiagram-v2
+state Root {
+  state Nested {
+    [*] --> Triage
+    state Triage <<choice>>
+    Triage --> Split
+    state Split <<fork>>
+    Split --> Left
+    Split --> Right
+    Left --> Merge
+    Right --> Merge
+    state Merge <<join>>
+    Merge --> [*]
+  }
+}
+";
+    let control = OperationControl::new();
+    let parse = || {
+        StateSyntax::lex(source, &control)
+            .unwrap()
+            .into_source(&control)
+            .unwrap()
+            .unwrap()
+    };
+
+    for (config, shapes) in [
+        (
+            MermaidConfig::from_value(json!({"layout": "shoal"})),
+            ["choice", "fork", "join"],
+        ),
+        (MermaidConfig::empty_object(), ["rect"; 3]),
+    ] {
+        let semantic = parse()
+            .into_semantic_model_controlled(&config, &control)
+            .unwrap()
+            .unwrap();
+        let render = parse()
+            .into_render_model_controlled(&config, &control)
+            .unwrap()
+            .unwrap();
+        for (id, shape) in ["Triage", "Split", "Merge"].into_iter().zip(shapes) {
+            let node = semantic.nodes.iter().find(|node| node.id == id).unwrap();
+            let rendered = render.nodes.iter().find(|node| node.id == id).unwrap();
+            assert_eq!(node.shape, shape, "{id}");
+            assert_eq!(node.parent_id.as_deref(), Some("Nested"), "{id}");
+            assert_eq!(rendered.shape, node.shape, "{id}");
+            assert_eq!(rendered.parent_id, node.parent_id, "{id}");
+        }
+    }
+}
+
+#[test]
 fn state_consuming_projection_moves_owned_payloads_without_copying() {
     let source = concat!(
         "stateDiagram-v2\ndirection LR\naccTitle: Owned title\naccDescr: Owned description\n",

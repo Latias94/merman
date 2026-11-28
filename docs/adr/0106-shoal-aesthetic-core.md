@@ -42,11 +42,18 @@ Eliminate solver-painter guesswork across crate boundaries:
   marker turn distance. Render adapters pass the painter's contact-to-turn distance alongside the
   footprint. A direct layout caller can specify these distances with `EdgeSpec::set_marker_runways`.
   The solver sizes a shared face against its longest runway and emits the turn-start points.
+  Flowchart, Swimlane, and Agentflow bind the emitted marker variant from the prepared edge style.
+  Their transverse face demand covers the wider of the marker viewport and the shaft stroke.
 - **Non-Inverting Curve Tension**: replace `sweep_handle_fraction` with a monotone function bounded in `[0.25, 0.48]` (stable near `0.46–0.48` on ordinary spans, relaxing toward `0.25` on wide fan-outs; never exceeding `0.50`).
 - **Sibling Departure Symmetry**: remove the `KnotKind::Free` vs. `GapBoundary` tangent split for shared-face sibling branches, and prevent `super_gap` from stretching one twin branch past a sibling's landing horizon when both leave the same face into adjacent corridors.
 - **Corridor Safety Proof**. Record a proved clearance radius in `corridor_clearance`, in drawing
   units. The canonical painter can use it for a curved edge when the stroke outset is known and
   smaller than the radius, the box and contour contacts coincide, and the edge has no stitches.
+- **Solved-Route Recovery**. If a paint-time obstacle traps a solved route, the painter tries a
+  guarded polyline that can skip trapped interior knots while preserving border stitches and
+  terminal runways. It first relaxes overlapping markers at the same node face, then tests node
+  bodies and group titles alone. The solved polyline is the last fallback. All attempts share the
+  same detour budget, and invalid geometry, allocation, and output errors remain terminal.
 
 ### 3. Single Evolving Native Default and Print-Grade Polish
 

@@ -43,6 +43,7 @@ pub(crate) use er::er_canonical_marker;
 ))]
 mod flowchart;
 #[cfg(all(
+    test,
     feature = "layout-shoal",
     any(
         feature = "diagram-flowchart",

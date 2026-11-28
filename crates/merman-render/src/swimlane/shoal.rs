@@ -20,6 +20,7 @@ use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{LayoutNode, LayoutPoint, SwimlaneDirection, SwimlaneTitleRect};
 use crate::{Error, LayoutExecution, Result};
 use merman_model::presentation::PresentationConfig;
+use merman_render_core::route_types::Marker;
 use merman_render_flow::node_geometry::contour as flow_contour;
 use merman_render_flow::projection::{FlowchartEdgeKey, ProjectedFlowchartEdge};
 use rustc_hash::FxHashMap;
@@ -37,7 +38,13 @@ struct Bindings {
     node_slots: Vec<usize>,
     group_slots: Vec<usize>,
     profiles: Vec<ShapePortProfile>,
+    markers: Vec<(Marker, Marker)>,
 }
+
+type PaintInputs<'a> = (
+    Option<&'a FlowchartSvgLabelSidecarBuilder>,
+    &'a crate::svg::FlowchartEdgeStylePlan,
+);
 
 fn direction(value: SwimlaneDirection) -> Direction {
     match value {
@@ -74,7 +81,7 @@ pub(super) fn solve(
     effective_config: &PresentationConfig,
     (config, routing): (SwimlaneConfig, RoutingStyle),
     execution: &LayoutExecution<'_>,
-    labels: Option<&FlowchartSvgLabelSidecarBuilder>,
+    paint: PaintInputs<'_>,
 ) -> Result<SwimlaneShoal> {
     let mut work = OperationLayoutWorkControl::new(execution.work_meter());
     let (graph, columns, bindings) = measure(
@@ -83,7 +90,7 @@ pub(super) fn solve(
         visible_edges,
         effective_config,
         (config, routing),
-        labels,
+        paint,
         &mut work,
     )?;
     let ids = |&slot: &usize| working.nodes[slot].id.as_str();
@@ -118,7 +125,7 @@ fn measure(
     visible_edges: &[(FlowchartEdgeKey, ProjectedFlowchartEdge<'_>)],
     effective_config: &PresentationConfig,
     (config, routing): (SwimlaneConfig, RoutingStyle),
-    labels: Option<&FlowchartSvgLabelSidecarBuilder>,
+    (labels, edge_styles): PaintInputs<'_>,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<(MeasuredGraph, columns::Columns, Bindings)> {
     work.charge_adapter(working.nodes.len())?;
@@ -298,7 +305,8 @@ fn measure(
         profiles.push(profile);
     }
     columns.reserve_shell_titles(&mut graph, work)?;
-    for ((_, edge), binding) in visible_edges.iter().zip(&working.original_edges) {
+    let mut markers = Vec::with_capacity(visible_edges.len());
+    for ((key, edge), binding) in visible_edges.iter().zip(&working.original_edges) {
         work.charge_adapter(1)?;
         let endpoint = |id: &str| {
             endpoints
@@ -307,7 +315,9 @@ fn measure(
                 .ok_or_else(|| invalid_endpoint(id))
         };
         let label = binding.label_node_id.as_ref().map(|id| &working.nodes[id]);
-        let (start_marker, end_marker) = crate::svg::flowchart_marker_metrics(edge.semantic);
+        let paint = edge_styles.marker_metrics_for(*key, edge.semantic, neo)?;
+        markers.push(paint);
+        let (start_marker, end_marker) = edge_styles.reserve_marker_stroke(*key, paint)?;
         graph.edges.push(MeasuredEdge {
             source: endpoint(edge.from)?,
             target: endpoint(edge.to)?,
@@ -331,6 +341,7 @@ fn measure(
             node_slots,
             group_slots,
             profiles,
+            markers,
         },
     ))
 }
@@ -383,6 +394,7 @@ impl Bindings {
             node_slots,
             group_slots,
             profiles,
+            markers,
         } = self;
         let horizontal = matches!(
             working.direction,
@@ -451,16 +463,16 @@ impl Bindings {
         }
         work.charge_adapter(semantic_edge_count)?;
         let mut routes = vec![None; semantic_edge_count];
-        for ((binding, route), (owner, source)) in working
+        for (((binding, route), (owner, _)), (start, end)) in working
             .original_edges
             .iter_mut()
             .zip(solved.edges)
             .zip(visible_edges)
+            .zip(markers)
         {
             work.charge_adapter(work.checked_add(route.points.len(), 2)?)?;
             let edge = owner.semantic_index();
             if let [first, .., last] = route.points.as_slice() {
-                let (start, end) = crate::svg::flowchart_marker_metrics(source.semantic);
                 obstacles.extend(marker_obstacle(
                     edge,
                     route.source,

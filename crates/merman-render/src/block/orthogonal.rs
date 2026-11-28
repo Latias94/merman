@@ -16,7 +16,7 @@ use merman_layout_shoal::{OrthogonalSpan, Rect as Obstacle, RoutePoint, Side, ro
 use merman_model::families::block::{BlockDiagramRenderModel, BlockEdge};
 use merman_render_core::graph_layout::{Endpoint, Marker};
 use merman_render_core::route_paint::{
-    self, Clearance, CurveTerminals, EdgeClearance, ObstacleOwner, RoutePaintError, RouteStyle,
+    self, Clearance, CurveTerminals, EdgeClearance, ObstacleOwner, RouteStyle,
 };
 use merman_render_structured::block::BlockEdgeMarkerGeometry;
 use merman_theme_contract::v2::EdgeStyle;
@@ -235,26 +235,19 @@ impl Request {
             end.marker.map(|marker| marker.routing).unwrap_or_default()
         };
         let markers = (marker(a), marker(b));
-        let paint = |style, clearance| {
-            route_paint::build_svg_path(
-                &points,
-                (a.side, b.side),
-                style,
-                markers,
-                CurveTerminals::Fixed,
-                &[],
-                clearance,
-            )
-        };
-        let path = paint(style, clearance)
-            .or_else(|error| match error {
-                // The router already admitted the orthogonal spans before curve paint.
-                RoutePaintError::NoClearDetour => paint(RouteStyle::Linear, None),
-                _ => Err(error),
-            })
-            .map_err(|error| crate::Error::InvalidModel {
-                message: format!("Block route {}: {error}", self.occurrence),
-            })?;
+        let path = route_paint::RoutePaintRequest {
+            points: &points,
+            sides: (a.side, b.side),
+            style,
+            markers,
+            curve_terminals: CurveTerminals::Fixed,
+            stitches: &[],
+            clearance: clearance.map(|guard| guard.with_terminal_contacts((a.contact, b.contact))),
+        }
+        .paint_solved_svg(&mut route_paint::RoutePaintScratch::default())
+        .map_err(|error| crate::Error::InvalidModel {
+            message: format!("Block route {}: {error}", self.occurrence),
+        })?;
         let route = BlockOrthogonalRoute {
             path: path.d,
             bounds: path.bounds,
