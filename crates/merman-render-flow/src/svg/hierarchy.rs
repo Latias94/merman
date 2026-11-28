@@ -12,7 +12,7 @@ pub(super) fn prepare_flowchart_hierarchy<'a>(
 ) -> merman_render_core::Result<FlowchartHierarchyPlan<'a>> {
     FlowchartHierarchyPlan::prepare(
         FlowchartHierarchyInputs {
-            uses_elk_adapter_dom: ctx.uses_elk_adapter_dom,
+            uses_flat_adapter_dom: ctx.layout.route_contract.dom().is_flat(),
             node_schedule,
             edge_order: &ctx.edge_order,
             subgraphs_by_id: &ctx.subgraphs_by_id,
@@ -25,6 +25,7 @@ pub(super) fn prepare_flowchart_hierarchy<'a>(
             tx: ctx.tx,
             ty: ctx.ty,
             work_meter: ctx.work_meter,
+            work_phase: ctx.work_phase,
         },
         ctx.prepared_nodes.cluster_ids(),
     )

@@ -22,7 +22,10 @@ use super::FlowchartEdgeLabelText;
 use crate::{
     document::FlowchartDocumentIds,
     projection::FlowchartRenderEdgeRef,
-    style::{compiled::FlowchartCompiledStyles, flowchart_is_source_spelled_label_style_key},
+    style::{
+        compiled::FlowchartCompiledStyles, first_label_rect_style,
+        flowchart_is_source_spelled_label_style_key,
+    },
     svg_label::{
         FlowchartSvgLabelOwner, FlowchartSvgLabelRenderPlan, OptionalStyleAttr,
         write_flowchart_svg_label_plan_with_style,
@@ -57,11 +60,9 @@ impl<'a> SwimlaneEdgeLabel<'a> {
         label_text: &'a str,
         default_edge_style: &'a [String],
     ) -> Result<Self> {
-        let first_label_style = default_edge_style
-            .first()
-            .or_else(|| edge.edge.style.first());
-        let compiled_label_styles = ctx.edge_style_plan.swimlane_label_for(edge.key)?;
-        let first_label_style = first_label_style.map_or("", String::as_str);
+        let first_label_style =
+            first_label_rect_style(default_edge_style, &edge.edge.style).map_or("", String::as_str);
+        let compiled_label_styles = ctx.edge_style_plan.label_rect_for(edge.key)?;
         let label_text_style = ctx.metrics_style(edge.key, label_text.is_empty())?;
         Ok(Self {
             ctx,

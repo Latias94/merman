@@ -276,6 +276,20 @@
     "titleTopMargin": 25,
     "useMaxWidth": true
   },
+  "grid": {
+    "cellGap": 20,
+    "columnGap": 50,
+    "columns": 0,
+    "containerPadding": 20,
+    "curve": "rounded",
+    "edgeCornerRadius": 5,
+    "horizontalAlign": "center",
+    "lineHops": "arc",
+    "placements": {},
+    "rowGap": 50,
+    "titleGap": 8,
+    "verticalAlign": "center"
+  },
   "handDrawnSeed": 0,
   "ishikawa": {
     "diagramPadding": 20,
@@ -330,6 +344,10 @@
     "sectionWidth": 200,
     "ticketBaseUrl": "",
     "useMaxWidth": true
+  },
+  "layered": {
+    "edgeRouting": "rounded",
+    "lineHops": true
   },
   "layout": "elk",
   "legacyMathML": false,

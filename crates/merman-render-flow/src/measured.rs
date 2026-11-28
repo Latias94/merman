@@ -1,6 +1,10 @@
 //! Measured leaf shapes and edge labels shared by Flowchart graph adapters.
 
-#[cfg(feature = "layout-shoal")]
+#[cfg(any(
+    feature = "layout-grid",
+    feature = "layout-layered",
+    feature = "layout-shoal"
+))]
 use merman_model::families::flowchart::FlowSubgraph;
 use merman_model::{
     families::flowchart::{FlowEdge, FlowNode},
@@ -15,9 +19,21 @@ use merman_render_core::{
         literal_label::FlowchartSvgWidthMode, measure_wrapped_markdown_with_inline_styles,
     },
 };
-#[cfg(feature = "layout-shoal")]
+#[cfg(any(
+    feature = "layout-grid",
+    feature = "layout-layered",
+    feature = "layout-shoal"
+))]
 use merman_render_core::{config::config_diagram_look, text::TextMetrics};
 
+#[cfg(feature = "layout-shoal")]
+use crate::node_geometry::PreparedFlowchartNodeGeometry;
+#[cfg(any(
+    feature = "layout-grid",
+    feature = "layout-layered",
+    feature = "layout-shoal"
+))]
+use crate::style::flowchart_effective_text_style_for_classes_with_provenance;
 use crate::{
     bpmn,
     class_style::{
@@ -37,11 +53,6 @@ use crate::{
         measure_flowchart_svg_label_for_layout_with_metrics_and_source_style,
         measure_flowchart_svg_label_for_layout_with_source_style,
     },
-};
-#[cfg(feature = "layout-shoal")]
-use crate::{
-    node_geometry::PreparedFlowchartNodeGeometry,
-    style::flowchart_effective_text_style_for_classes_with_provenance,
 };
 
 pub struct MeasuredLabel {
@@ -111,6 +122,15 @@ impl<'a> FlowchartMeasurement<'a> {
         }
     }
 
+    #[cfg(feature = "layout-layered")]
+    pub(crate) fn layered_spacing_scale(&self) -> f64 {
+        self.svg_label_sidecar
+            .and_then(FlowchartSvgLabelSidecarBuilder::native_density)
+            .map_or(1.0, |density| {
+                crate::layout_config::density_scales(density).1
+            })
+    }
+
     #[cfg(feature = "layout-shoal")]
     pub fn subgraph_title(
         &self,
@@ -118,7 +138,6 @@ impl<'a> FlowchartMeasurement<'a> {
         index: usize,
         charge: impl FnMut(usize) -> Result<()>,
     ) -> Result<TextMetrics> {
-        let title = self.model.subgraph_title_for_render(index, group);
         let label_type = group.label_type.as_deref().unwrap_or("text");
         let collapsed = self.model.is_subgraph_collapsed(&group.id);
         let mode = if collapsed {
@@ -126,6 +145,73 @@ impl<'a> FlowchartMeasurement<'a> {
         } else {
             self.settings.cluster_wrap_mode
         };
+        let max_width_px = if collapsed {
+            Some(self.settings.wrapping_width)
+        } else {
+            (label_type == "markdown").then_some(self.settings.cluster_title_wrapping_width)
+        };
+        self.measure_subgraph_title(group, index, mode, max_width_px, charge)
+    }
+
+    #[cfg(any(feature = "layout-grid", feature = "layout-layered"))]
+    pub(crate) fn check_measurement<T>(&self, result: Result<T>) -> Result<T> {
+        if let Some(labels) = self.svg_label_sidecar {
+            labels.check_prepared_label_errors()?;
+        }
+        result
+    }
+
+    #[cfg(feature = "layout-grid")]
+    pub(crate) fn grid_subgraph_title(
+        &self,
+        group: &FlowSubgraph,
+        index: usize,
+        charge: impl FnMut(usize) -> Result<()>,
+    ) -> Result<TextMetrics> {
+        // Grid uses createGraph's default measureGroupLabel and the normal labelHelper width.
+        self.measure_subgraph_title(
+            group,
+            index,
+            self.settings.node_wrap_mode,
+            Some(self.settings.wrapping_width),
+            charge,
+        )
+    }
+
+    #[cfg(feature = "layout-layered")]
+    pub(crate) fn layered_subgraph_title(
+        &self,
+        group: &FlowSubgraph,
+        index: usize,
+        charge: impl FnMut(usize) -> Result<()>,
+    ) -> Result<TextMetrics> {
+        let collapsed = self.model.is_subgraph_collapsed(&group.id);
+        let mode = if collapsed {
+            self.settings.node_wrap_mode
+        } else {
+            self.settings.cluster_wrap_mode
+        };
+        let max_width_px = (collapsed || group.label_type.as_deref() == Some("markdown"))
+            .then_some(self.settings.wrapping_width);
+        self.measure_subgraph_title(group, index, mode, max_width_px, charge)
+    }
+
+    #[cfg(any(
+        feature = "layout-grid",
+        feature = "layout-layered",
+        feature = "layout-shoal"
+    ))]
+    fn measure_subgraph_title(
+        &self,
+        group: &FlowSubgraph,
+        index: usize,
+        mode: WrapMode,
+        max_width_px: Option<f64>,
+        charge: impl FnMut(usize) -> Result<()>,
+    ) -> Result<TextMetrics> {
+        let title = self.model.subgraph_title_for_render(index, group);
+        let label_type = group.label_type.as_deref().unwrap_or("text");
+        let collapsed = self.model.is_subgraph_collapsed(&group.id);
         let (classes, styles) = self.model.effective_subgraph_css(index, group);
         let structural = collapsed
             .then(|| {
@@ -158,11 +244,6 @@ impl<'a> FlowchartMeasurement<'a> {
         if let Some(structural) = structural {
             structural.apply_to_content(&mut style.style);
         }
-        let max_width_px = if collapsed {
-            Some(self.settings.wrapping_width)
-        } else {
-            (label_type == "markdown").then_some(self.settings.cluster_title_wrapping_width)
-        };
         let mut metrics = measure_flowchart_svg_label_for_layout_with_source_style(
             self.svg_label_sidecar,
             Some(FlowchartSvgLabelOwner::SubgraphTitle(index)),
@@ -191,6 +272,60 @@ impl<'a> FlowchartMeasurement<'a> {
             );
         }
         Ok(metrics)
+    }
+
+    #[cfg(feature = "layout-grid")]
+    pub(crate) fn grid_edge_label(
+        &self,
+        edge: &FlowEdge,
+        key: FlowchartEdgeKey,
+    ) -> Result<Option<MeasuredLabel>> {
+        let Some(label) = self
+            .model
+            .edge_label_for_render(key.semantic_index(), edge)
+            .filter(|label| !label.is_empty())
+        else {
+            return Ok(None);
+        };
+        // Grid turns an edge label into its own labelRect node. It inherits node label mode and
+        // wrapping width. The helper has no labelType field or ordinary edge-label padding.
+        let mode = self.settings.node_wrap_mode;
+        let html_class_defs = (mode == WrapMode::HtmlLike && self.settings.edge_html_labels)
+            .then_some(self.class_defs);
+        let style = self.edge_style_plan.grid_label_rect_text_style_for(
+            key,
+            self.label_base_style(mode),
+            mode,
+            html_class_defs,
+        )?;
+        let metrics_style = if mode == WrapMode::SvgLike {
+            self.edge_style_plan
+                .grid_label_rect_svg_bbox_style(key, style.as_ref())?
+        } else {
+            std::borrow::Cow::Borrowed(style.as_ref())
+        };
+        let metrics = measure_flowchart_svg_label_for_layout_with_metrics_and_source_style(
+            self.svg_label_sidecar,
+            Some(FlowchartSvgLabelOwner::Edge(key.semantic_index())),
+            Some(edge.id.as_str()),
+            FlowchartLabelMetricsRequest {
+                measurer: self.measurer,
+                raw_label: label,
+                label_type: "text",
+                style: style.as_ref(),
+                max_width_px: Some(self.settings.wrapping_width),
+                wrap_mode: mode,
+                config: self.effective_config,
+                math_renderer: self.math_renderer,
+            },
+            &metrics_style,
+            Some(&style),
+            FlowchartSvgWidthMode::Bbox,
+        );
+        Ok(Some(MeasuredLabel {
+            width: metrics.width.max(0.1),
+            height: metrics.height.max(0.1),
+        }))
     }
 
     pub fn node(
@@ -311,6 +446,29 @@ impl<'a> FlowchartMeasurement<'a> {
         edge: &FlowEdge,
         key: FlowchartEdgeKey,
     ) -> Result<Option<MeasuredLabel>> {
+        self.measure_edge_label(edge, key, false).map(|label| {
+            label.map(|label| MeasuredLabel {
+                width: label.width.max(1.0),
+                height: label.height.max(1.0),
+            })
+        })
+    }
+
+    #[cfg(feature = "layout-layered")]
+    pub(crate) fn layered_edge_label(
+        &self,
+        edge: &FlowEdge,
+        key: FlowchartEdgeKey,
+    ) -> Result<Option<MeasuredLabel>> {
+        self.measure_edge_label(edge, key, true)
+    }
+
+    fn measure_edge_label(
+        &self,
+        edge: &FlowEdge,
+        key: FlowchartEdgeKey,
+        reserve_nonblank_only: bool,
+    ) -> Result<Option<MeasuredLabel>> {
         let owner = FlowchartSvgLabelOwner::Edge(key.semantic_index());
         let label_text = self
             .model
@@ -374,13 +532,16 @@ impl<'a> FlowchartMeasurement<'a> {
                 )
             };
 
+        if reserve_nonblank_only
+            && merman_render_core::text::trim_ecmascript_whitespace(label_text).is_empty()
+        {
+            return Ok(None);
+        }
+        // The SVG label's background extends its measured ink by two units on each side.
         let (width, height) = if self.settings.edge_html_labels {
-            (metrics.width.max(1.0), metrics.height.max(1.0))
+            (metrics.width, metrics.height)
         } else {
-            (
-                (metrics.width + 4.0).max(1.0),
-                (metrics.height + 4.0).max(1.0),
-            )
+            (metrics.width + 4.0, metrics.height + 4.0)
         };
 
         Ok(Some(MeasuredLabel { width, height }))

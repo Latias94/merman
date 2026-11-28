@@ -101,11 +101,33 @@ impl FlowchartEdgeTerminal<'_> {
         geometry: FlowchartEdgeSvgGeometry<'_>,
         scratch: &mut FlowchartEdgeSvgScratch,
     ) -> Result<()> {
+        self.append_with_route_overrides(
+            out,
+            geometry,
+            None,
+            #[cfg(feature = "layout-layered")]
+            None,
+            scratch,
+        )
+    }
+
+    pub(crate) fn append_with_route_overrides(
+        self,
+        out: &mut impl SvgOutput,
+        geometry: FlowchartEdgeSvgGeometry<'_>,
+        after_paint_d: Option<&str>,
+        #[cfg(feature = "layout-layered")] axes: Option<&[merman_render_core::route_types::Axis]>,
+        scratch: &mut FlowchartEdgeSvgScratch,
+    ) -> Result<()> {
         let ctx = &self.context;
         let FlowchartRenderEdgeRef { key, edge } = self.edge_ref;
         let data_look = ctx.compatibility.look;
         let hand_drawn = data_look.is_hand_drawn();
-        let data_points_b64 = scratch.data_points.encode(geometry.data_points);
+        let data_points_b64 = scratch.data_points.encode(
+            geometry.data_points,
+            #[cfg(feature = "layout-layered")]
+            axes,
+        );
         let neo_edge_mask = if data_look.is_neo()
             && !self.animation.is_active()
             && let Some(path_length) = geometry.neo_edge_path_length(edge)
@@ -119,7 +141,9 @@ impl FlowchartEdgeTerminal<'_> {
         } else {
             None
         };
-        let d = geometry.emitted_d_for_label.unwrap_or(geometry.d);
+        let d = after_paint_d
+            .or(geometry.emitted_d_for_label)
+            .unwrap_or(geometry.d);
 
         scratch.class_attr.clear();
         write_flowchart_edge_class_attr(
@@ -159,7 +183,11 @@ impl FlowchartEdgeTerminal<'_> {
             repeat_inline,
             adaptive_ink: ctx.adaptive_ink,
             neo_edge_mask,
-            line_hop_applied: geometry.line_hop_applied,
+            line_hop_phase: if after_paint_d.is_some() {
+                Some(OperationPhase::Emit)
+            } else {
+                geometry.line_hop_applied.then_some(OperationPhase::Layout)
+            },
         };
         ctx.work_meter.checkpoint(OperationPhase::Emit)?;
         let rewritten_style = path.append_to(out, source_style_svg_bytes, ctx.work_meter)?;

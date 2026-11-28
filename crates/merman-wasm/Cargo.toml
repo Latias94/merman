@@ -277,6 +277,8 @@ svg = ["dep:js-sys", "merman-bindings-core/svg"]
 layout-cytoscape = ["svg", "merman-bindings-core/layout-cytoscape"]
 layout-dagre = ["svg", "merman-bindings-core/layout-dagre"]
 layout-elk = ["svg", "merman-bindings-core/layout-elk"]
+layout-grid = ["svg", "merman-bindings-core/layout-grid"]
+layout-layered = ["svg", "merman-bindings-core/layout-layered"]
 layout-shoal = ["svg", "merman-bindings-core/layout-shoal"]
 editor = [
     "analysis",

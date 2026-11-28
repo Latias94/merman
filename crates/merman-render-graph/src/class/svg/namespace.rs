@@ -57,10 +57,10 @@ pub(super) fn class_namespace_ids<'a>(
     ids
 }
 
-pub(super) fn render_class_namespace_cluster_group(
+pub(super) fn render_class_namespace_cluster_group<'a>(
     out: &mut impl SvgOutput,
     content_bounds: &mut Option<Bounds>,
-    clusters: &[LayoutCluster],
+    clusters: impl IntoIterator<Item = &'a LayoutCluster>,
     ctx: ClassNamespaceClusterGroupContext<'_>,
 ) -> merman_render_core::Result<std::time::Duration> {
     let clusters_start = ctx.timing.start();

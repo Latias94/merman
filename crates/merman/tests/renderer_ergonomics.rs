@@ -273,24 +273,29 @@ mod graphical {
             .value(InputResourceLimitId::MaxSourceBytes)
             .unwrap();
         let source = " ".repeat(maximum + 1);
-        let renderer = builder()
-            .build()
-            .unwrap()
-            .with_parse_options(ParseOptions::lenient())
-            .with_resource_policy(unbounded);
-        assert!(matches!(
-            renderer.render_svg(&source),
-            Err(RenderError::ResourceLimitExceeded(error))
-                if error.id == "max_source_bytes" && error.maximum == maximum as u64
-        ));
-        assert!(matches!(
-            renderer.render(RenderRequest::svg(
-                &source,
-                OperationControl::new(),
-                SvgRequest::default()
-            )),
-            Ok(RenderOutput::Svg(None))
-        ));
+        let unbounded_override = InputResourcePolicy::default()
+            .with_limit(InputResourceLimitId::MaxSourceBytes, usize::MAX)
+            .unwrap();
+        for policy in [unbounded, unbounded_override] {
+            let renderer = builder()
+                .build()
+                .unwrap()
+                .with_parse_options(ParseOptions::lenient())
+                .with_resource_policy(policy);
+            assert!(matches!(
+                renderer.render_svg(&source),
+                Err(RenderError::ResourceLimitExceeded(error))
+                    if error.id == "max_source_bytes" && error.maximum == maximum as u64
+            ));
+            assert!(matches!(
+                renderer.render(RenderRequest::svg(
+                    &source,
+                    OperationControl::new(),
+                    SvgRequest::default()
+                )),
+                Ok(RenderOutput::Svg(None))
+            ));
+        }
     }
 
     #[test]

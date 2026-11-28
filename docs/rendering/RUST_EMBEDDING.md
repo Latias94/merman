@@ -264,6 +264,21 @@ A widened core dependency can have more parsers than a locally selected SVG or A
 
 For ordinary graph diagrams, a missing ELK loader falls back to Dagre when `layout-dagre` is compiled. If neither is available, an ELK request reports missing `layout-elk`. Mindmap uses its own registered fallback chain through Cytoscape and Dagre. Architecture requires Cytoscape for its default layout and `layout-shoal` when selected explicitly. The SVG and layout JSON operations report a typed missing-capability error for an unavailable or denied backend before measuring labels. Inspect the SVG render plan for the required and missing IDs.
 
+Enable `layout-grid` alongside the Flowchart, Swimlane, Agentflow, Class, ER, Mindmap,
+Requirement, State, or Usecase diagram feature.
+Select Grid with `layout: grid` in Mermaid config or `LayoutBackend::Grid` in the Rust builder.
+Grid uses the selected family's authored placements and preserves its diagram identity. An
+explicit Grid request without a compiled adapter returns `UnsupportedLayoutBackend`. A host
+that denies an available adapter gets `MissingCapability` for `layout-grid`.
+
+Enable `layout-layered` alongside the Flowchart, Swimlane, Agentflow, Class, ER, Mindmap,
+Requirement, State, or Usecase diagram feature.
+Select Layered with `layout: layered` in Mermaid config or `LayoutBackend::Layered` in the Rust
+builder. A recoverable Layered failure retries with Dagre when the operation can use
+`layout-dagre`, and the SVG root reports `data-layout-fallback="dagre"`. Both attempts count
+toward the operation's layout work limit. Mindmap uses its CoSE-Bilkent default when the source
+and site config omit the root `layout` key.
+
 With `layout-shoal`, a Rust host that repeatedly lays out flat or compound layered graphs can
 clone an environment created with `SvgEnvironment::with_shoal_scratch_reuse`. This applies to
 natural-width and `FitWidth` layouts. The environment and its clones share one idle slot for up

@@ -31,7 +31,7 @@ For a classic Mermaid look, pass its name to CLI `--theme` or set `site_config.t
 
 ## Graphics and terminal output
 
-Use `--background '#112233'` or `--background transparent` to replace the base of the diagram canvas. Theme textures remain visible. Raster and PDF matte settings belong to the destination output.
+Use `--background '#112233'` or `--background transparent` to replace the base of the diagram canvas. Theme textures remain visible over paint with nonzero opacity. A fully transparent canvas suppresses them. Raster and PDF matte settings belong to the destination output.
 
 Direct PNG, JPEG, and PDF renders use a known opaque destination color when choosing automatic Pie percentage ink over a translucent canvas. Automatic ink considers the full canvas gradient. Standalone SVG and reusable rendered documents choose their ink during SVG rendering using the theme appearance and canvas.
 

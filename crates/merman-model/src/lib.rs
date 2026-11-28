@@ -13,6 +13,8 @@ pub mod config;
 pub mod css_color;
 pub mod families;
 pub mod family;
+#[doc(hidden)]
+pub mod grid;
 pub mod json;
 pub mod number;
 pub mod operation;

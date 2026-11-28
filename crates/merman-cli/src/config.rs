@@ -307,6 +307,14 @@ fn renderer_from_config(
         ),
         (RenderCapability::LayoutElk, cfg!(feature = "layout-elk")),
         (
+            RenderCapability::LayoutGrid,
+            crate::capabilities::layout_grid_available(),
+        ),
+        (
+            RenderCapability::LayoutLayered,
+            crate::capabilities::layout_layered_available(),
+        ),
+        (
             RenderCapability::LayoutShoal,
             cfg!(feature = "layout-shoal"),
         ),

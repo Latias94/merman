@@ -471,10 +471,10 @@ select `CssOverridePolicy` directly, where it owns selector scoping, sanitizatio
 semantics, and renderer compatibility. One-shot bindings, reusable constructors, and request
 overlays cannot opt into those capabilities.
 
-Use top-level `background` in binding requests to replace the base canvas paint and preserve its
-theme textures. Passing `"transparent"` lets the host surface show through the texture. The
-`svg.root_background_color` option sets the root SVG's inline CSS background and applies when
-top-level `background` is omitted.
+Use top-level `background` in binding requests to replace the base canvas paint. Theme textures
+remain visible over paint with nonzero opacity. A fully transparent background suppresses the
+textures so the host surface shows through. The `svg.root_background_color` option sets the root
+SVG's inline CSS background and applies when top-level `background` is omitted.
 
 Core SVG output leaves the root background unset, matching `mermaid.render`. Theme variables
 such as `background` and `edgeLabelBackground` continue to control diagram-owned styling; they

@@ -76,7 +76,7 @@ const WASM_OPERATIONS: &[OperationKey] = &[
     #[cfg(feature = "analysis")]
     OperationKey::ValidationJson,
 ];
-const WASM_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
+const WASM_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = merman_bindings_core::mermaid_layout_capabilities![
     #[cfg(feature = "fixes")]
     CapabilityKey::Fixes,
     #[cfg(feature = "layout-cytoscape")]

@@ -59,7 +59,7 @@ const NODE_OPERATIONS: &[OperationKey] = &[
     #[cfg(feature = "svg")]
     OperationKey::SvgPlanJson,
 ];
-const NODE_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
+const NODE_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = merman_bindings_core::mermaid_layout_capabilities![
     #[cfg(feature = "layout-cytoscape")]
     CapabilityKey::LayoutCytoscape,
     #[cfg(feature = "layout-dagre")]
@@ -82,16 +82,26 @@ static ARTIFACT_CONTRACT: ValidatedArtifactContract =
         .with_runtime_policy_exposure(RuntimePolicyExposure::DeterministicOnly)
         .materialize();
 static NODE_WIRE_CONTRACT: LazyLock<NodeWireContract> = LazyLock::new(|| {
-    let contract = serde_json::from_str::<NodeWireContract>(NODE_WIRE_CONTRACT_JSON)
+    let mut contract = serde_json::from_str::<NodeWireContract>(NODE_WIRE_CONTRACT_JSON)
         .expect("the embedded Node wire contract must be valid JSON");
-    #[cfg(feature = "layout-shoal")]
-    let contract = {
-        let mut contract = contract;
-        let ids = &mut contract.artifact.capability_ids;
-        ids.push(CapabilityKey::LayoutShoal.id().to_owned());
+    let ids = &mut contract.artifact.capability_ids;
+    let canonical_len = ids.len();
+    ids.extend(
+        NODE_SUPPLEMENTAL_CAPABILITIES
+            .iter()
+            .filter(|key| {
+                matches!(
+                    key,
+                    CapabilityKey::LayoutGrid
+                        | CapabilityKey::LayoutLayered
+                        | CapabilityKey::LayoutShoal
+                )
+            })
+            .map(|key| key.id().to_owned()),
+    );
+    if ids.len() != canonical_len {
         ids.sort_unstable();
-        contract
-    };
+    }
     contract
         .validate()
         .expect("the embedded Node wire contract must be internally consistent");
@@ -1490,6 +1500,87 @@ mod tests {
         let mut drifted = catalog.clone();
         drifted["output_contracts"][0]["media_type"] = serde_json::json!("image/png");
         assert!(validate_runtime_catalog(&drifted).is_err());
+    }
+
+    #[cfg(feature = "diagram-flowchart")]
+    #[test]
+    fn explicit_mermaid_layouts_follow_node_owner_policy() {
+        use super::{CapabilityKey, NODE_SUPPLEMENTAL_CAPABILITIES};
+
+        let engine = create_engine("{}").unwrap();
+        for (layout, capability) in [
+            ("grid", CapabilityKey::LayoutGrid),
+            ("layered", CapabilityKey::LayoutLayered),
+        ] {
+            let declared = NODE_SUPPLEMENTAL_CAPABILITIES.contains(&capability);
+            assert_eq!(
+                node_wire_contract()
+                    .artifact
+                    .capability_ids
+                    .iter()
+                    .any(|id| id == capability.id()),
+                declared
+            );
+            let source = format!(
+                "---\nconfig:\n  layout: {layout}\n---\nflowchart LR\nA[Start] -->|Approved| B[Done]\n"
+            );
+            let execute = |operation_id| {
+                let request = serde_json::json!({ "operation_id": operation_id, "source": source });
+                serde_json::from_str::<serde_json::Value>(&execute_wire(
+                    &engine,
+                    &request.to_string(),
+                ))
+                .unwrap()
+            };
+            let plan = execute("svg-plan-json");
+            let geometry = execute("layout-json");
+            let svg = execute("svg");
+            if declared {
+                let plan: serde_json::Value =
+                    serde_json::from_str(plan["result"]["data"].as_str().unwrap()).unwrap();
+                assert_eq!(
+                    plan["required_capability_ids"],
+                    serde_json::json!([capability.id()])
+                );
+                assert_eq!(plan["missing_capability_ids"], serde_json::json!([]));
+                assert_eq!(plan["ready"], true);
+                let geometry: serde_json::Value =
+                    serde_json::from_str(geometry["result"]["data"].as_str().unwrap()).unwrap();
+                assert_eq!(geometry["meta"]["effective_config"]["layout"], layout);
+                assert!(geometry["layout"]["FlowchartV2"].is_object());
+                assert!(svg["result"]["data"].as_str().unwrap().starts_with("<svg"));
+            } else {
+                let expected_kind = if plan["ok"] == true {
+                    let plan: serde_json::Value =
+                        serde_json::from_str(plan["result"]["data"].as_str().unwrap()).unwrap();
+                    assert_eq!(
+                        plan["required_capability_ids"],
+                        serde_json::json!([capability.id()])
+                    );
+                    assert_eq!(
+                        plan["missing_capability_ids"],
+                        serde_json::json!([capability.id()])
+                    );
+                    assert_eq!(plan["ready"], false);
+                    "missing-capability"
+                } else {
+                    assert_eq!(plan["error"]["code_name"], "MERMAN_UNSUPPORTED_OPERATION");
+                    assert_eq!(plan["error"]["kind"], "generic");
+                    "generic"
+                };
+                for response in [geometry, svg] {
+                    assert_eq!(response["ok"], false);
+                    assert_eq!(
+                        response["error"]["code_name"],
+                        "MERMAN_UNSUPPORTED_OPERATION"
+                    );
+                    assert_eq!(response["error"]["kind"], expected_kind);
+                    if expected_kind == "missing-capability" {
+                        assert_eq!(response["error"]["capability_id"], capability.id());
+                    }
+                }
+            }
+        }
     }
 
     #[cfg(feature = "math")]

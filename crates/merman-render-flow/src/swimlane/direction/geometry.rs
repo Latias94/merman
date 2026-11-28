@@ -70,6 +70,18 @@ pub(super) struct OrthogonalSegment {
     pub vertical: bool,
 }
 
+impl OrthogonalSegment {
+    pub(super) fn distance_to_point(&self, point: &LayoutPoint) -> f64 {
+        let dx = (self.a.x.min(self.b.x) - point.x)
+            .max(0.0)
+            .max(point.x - self.a.x.max(self.b.x));
+        let dy = (self.a.y.min(self.b.y) - point.y)
+            .max(0.0)
+            .max(point.y - self.a.y.max(self.b.y));
+        dx.hypot(dy)
+    }
+}
+
 pub(super) fn same_point(left: &LayoutPoint, right: &LayoutPoint, epsilon: f64) -> bool {
     (left.x - right.x).abs() < epsilon && (left.y - right.y).abs() < epsilon
 }
@@ -143,6 +155,15 @@ pub(super) fn count_orthogonal_bends(points: &[LayoutPoint], epsilon: f64) -> us
         .count()
 }
 
+pub(super) fn orthogonal_bend_points(
+    segments: &[OrthogonalSegment],
+) -> impl Iterator<Item = &LayoutPoint> {
+    segments
+        .windows(2)
+        .filter(|pair| pair[0].horizontal != pair[1].horizontal)
+        .map(|pair| &pair[1].a)
+}
+
 pub(in crate::swimlane) fn routes_touch_at_bend(
     first: &[LayoutPoint],
     second: &[LayoutPoint],
@@ -152,21 +173,11 @@ pub(in crate::swimlane) fn routes_touch_at_bend(
     let second =
         orthogonal_segments_for_points(&dedupe_consecutive_points(second, EPSILON), EPSILON);
     let touches = |bends: &[OrthogonalSegment], segments: &[OrthogonalSegment]| {
-        bends
-            .windows(2)
-            .filter(|pair| pair[0].horizontal != pair[1].horizontal)
-            .any(|pair| {
-                let bend = &pair[1].a;
-                segments.iter().any(|segment| {
-                    let dx = (segment.a.x.min(segment.b.x) - bend.x)
-                        .max(0.0)
-                        .max(bend.x - segment.a.x.max(segment.b.x));
-                    let dy = (segment.a.y.min(segment.b.y) - bend.y)
-                        .max(0.0)
-                        .max(bend.y - segment.a.y.max(segment.b.y));
-                    dx.hypot(dy) < tolerance
-                })
-            })
+        orthogonal_bend_points(bends).any(|bend| {
+            segments
+                .iter()
+                .any(|segment| segment.distance_to_point(bend) < tolerance)
+        })
     };
     touches(&first, &second) || touches(&second, &first)
 }

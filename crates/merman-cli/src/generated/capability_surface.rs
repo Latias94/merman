@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 pub const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION: u32 = 1;
-pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:0c26d41286136ae5f3a76c0b6bd1cb6afa8d8166043f91172c0487dcf52d476c";
+pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:a8890daa18e827266f3c6608004c0b2fabdbb78cda285e82af5366bb6ed08429";
 
 pub const TARGET_IDS: &[&str] = &[
     "native",
@@ -20,6 +20,8 @@ pub const CAPABILITY_IDS: &[&str] = &[
     "layout-cytoscape",
     "layout-dagre",
     "layout-elk",
+    "layout-grid",
+    "layout-layered",
     "layout-shoal",
     "markdown",
     "math",
@@ -113,6 +115,8 @@ pub enum CapabilityKey {
     LayoutCytoscape,
     LayoutDagre,
     LayoutElk,
+    LayoutGrid,
+    LayoutLayered,
     LayoutShoal,
     Markdown,
     Math,
@@ -141,6 +145,8 @@ impl CapabilityKey {
         Self::LayoutCytoscape,
         Self::LayoutDagre,
         Self::LayoutElk,
+        Self::LayoutGrid,
+        Self::LayoutLayered,
         Self::LayoutShoal,
         Self::Markdown,
         Self::Math,
@@ -169,6 +175,8 @@ impl CapabilityKey {
             "layout-cytoscape" => Some(Self::LayoutCytoscape),
             "layout-dagre" => Some(Self::LayoutDagre),
             "layout-elk" => Some(Self::LayoutElk),
+            "layout-grid" => Some(Self::LayoutGrid),
+            "layout-layered" => Some(Self::LayoutLayered),
             "layout-shoal" => Some(Self::LayoutShoal),
             "markdown" => Some(Self::Markdown),
             "math" => Some(Self::Math),
@@ -203,21 +211,23 @@ impl CapabilityKey {
             Self::LayoutCytoscape => &CAPABILITIES[6],
             Self::LayoutDagre => &CAPABILITIES[7],
             Self::LayoutElk => &CAPABILITIES[8],
-            Self::LayoutShoal => &CAPABILITIES[9],
-            Self::Markdown => &CAPABILITIES[10],
-            Self::Math => &CAPABILITIES[11],
-            Self::NativeFonts => &CAPABILITIES[12],
-            Self::NetworkIcons => &CAPABILITIES[13],
-            Self::ParallelMarkdown => &CAPABILITIES[14],
-            Self::Pdf => &CAPABILITIES[15],
-            Self::Png => &CAPABILITIES[16],
-            Self::Rustdoc => &CAPABILITIES[17],
-            Self::ShellCompletions => &CAPABILITIES[18],
-            Self::Svg => &CAPABILITIES[19],
-            Self::SystemClock => &CAPABILITIES[20],
-            Self::SystemRandom => &CAPABILITIES[21],
-            Self::SystemTimezone => &CAPABILITIES[22],
-            Self::SystemTiming => &CAPABILITIES[23],
+            Self::LayoutGrid => &CAPABILITIES[9],
+            Self::LayoutLayered => &CAPABILITIES[10],
+            Self::LayoutShoal => &CAPABILITIES[11],
+            Self::Markdown => &CAPABILITIES[12],
+            Self::Math => &CAPABILITIES[13],
+            Self::NativeFonts => &CAPABILITIES[14],
+            Self::NetworkIcons => &CAPABILITIES[15],
+            Self::ParallelMarkdown => &CAPABILITIES[16],
+            Self::Pdf => &CAPABILITIES[17],
+            Self::Png => &CAPABILITIES[18],
+            Self::Rustdoc => &CAPABILITIES[19],
+            Self::ShellCompletions => &CAPABILITIES[20],
+            Self::Svg => &CAPABILITIES[21],
+            Self::SystemClock => &CAPABILITIES[22],
+            Self::SystemRandom => &CAPABILITIES[23],
+            Self::SystemTimezone => &CAPABILITIES[24],
+            Self::SystemTiming => &CAPABILITIES[25],
         }
     }
 }
@@ -249,6 +259,8 @@ impl CapabilityKey {
             Self::Fixes => 1_u64 << 21,
             Self::LayoutShoal => 1_u64 << 22,
             Self::LayoutDagre => 1_u64 << 23,
+            Self::LayoutGrid => 1_u64 << 24,
+            Self::LayoutLayered => 1_u64 << 25,
         }
     }
 }
@@ -710,6 +722,22 @@ pub const CAPABILITIES: &[CapabilityDescriptor] = &[
         kind: "engine",
         description: "Enable Mermaid ELK-backed layout behavior.",
         targets: &[TargetKey::Native, TargetKey::Typst, TargetKey::Web, ],
+        implications: &[CapabilityKey::Svg, ],
+    },
+    CapabilityDescriptor {
+        key: CapabilityKey::LayoutGrid,
+        id: "layout-grid",
+        kind: "engine",
+        description: "Select Mermaid Grid for Flowchart, Swimlane, Agentflow, Class, ER, Mindmap, Requirement, State, and Usecase SVG layout.",
+        targets: &[TargetKey::Native, TargetKey::Web, ],
+        implications: &[CapabilityKey::Svg, ],
+    },
+    CapabilityDescriptor {
+        key: CapabilityKey::LayoutLayered,
+        id: "layout-layered",
+        kind: "engine",
+        description: "Select Mermaid Layered for Flowchart, Swimlane, Agentflow, Class, ER, Mindmap, Requirement, State, and Usecase SVG layout.",
+        targets: &[TargetKey::Native, TargetKey::Web, ],
         implications: &[CapabilityKey::Svg, ],
     },
     CapabilityDescriptor {

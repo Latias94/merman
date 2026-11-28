@@ -2,7 +2,7 @@
  * Verifies the production Vite graph, CSP, WASM ownership, and published realm
  * artifacts. Prepared artifact integrity remains owned by the artifact verifier.
  *
- * Override: SKIP_VERIFY_DIST_WASM=1
+ * SKIP_VERIFY_DIST_WASM=1 applies only when the build has no pinned WASM digest.
  */
 import { createHash } from "node:crypto";
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -39,7 +39,8 @@ import {
 } from "./csp-policy.mjs";
 import { loadOpaqueRealmCspHashes } from "./opaque-realm-csp.mjs";
 
-if (process.env.SKIP_VERIFY_DIST_WASM === "1") process.exit(0);
+const expectedWasmSha256 = process.env.MERMAN_PLAYGROUND_EXPECTED_WASM_SHA256;
+if (process.env.SKIP_VERIFY_DIST_WASM === "1" && expectedWasmSha256 === undefined) process.exit(0);
 
 const playgroundRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -266,6 +267,10 @@ function verifyWasmOutput(graph, wasmKey, shimKey) {
   const shim = path.join(distRoot, manifestChunk(graph, shimKey).file);
   if (!isNonEmptyFile(wasm) || !isNonEmptyFile(shim)) {
     fail(["  Production WASM module or wasm-bindgen shim is missing."]);
+  }
+  if (expectedWasmSha256 !== undefined &&
+      createHash("sha256").update(readFileSync(wasm)).digest("hex") !== expectedWasmSha256) {
+    fail(["  Production WASM differs from the selected Web artifact's input receipt."]);
   }
   const owners = ownersOfAsset(graph, relativeToDist(wasm));
   if (owners.length !== 1) {

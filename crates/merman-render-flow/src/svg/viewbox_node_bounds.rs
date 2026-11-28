@@ -390,9 +390,9 @@ pub(in crate::svg) fn include_flowchart_node_rendered_bounds<'data, F>(
                     // which can extend beyond Neo's fixed shape padding.
                     include_rect(
                         n.x + geometry.label_dx - metrics.width / 2.0,
-                        n.y + y_off + geometry.label_dy - metrics.height / 2.0,
+                        n.y + y_off - metrics.height / 2.0,
                         n.x + geometry.label_dx + metrics.width / 2.0,
-                        n.y + y_off + geometry.label_dy + metrics.height / 2.0,
+                        n.y + y_off + metrics.height / 2.0,
                     );
                     let mut bounds: Option<crate::svg::path_bounds::SvgPathBounds> = None;
                     for path in geometry.paths {

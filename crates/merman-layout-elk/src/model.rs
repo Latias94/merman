@@ -4,6 +4,10 @@ const DEFAULT_GROUP_PADDING_X: f64 = 40.0;
 const DEFAULT_GROUP_PADDING_Y: f64 = 48.0;
 const DEFAULT_GROUP_LABEL_GAP: f64 = 10.0;
 
+/// Mermaid's `elk.spacing.portsSurrounding` for each side of the root and its containers.
+#[doc(hidden)]
+pub const MERMAID_PORTS_SURROUNDING_MARGIN: f64 = 12.0;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Direction {
     Left,

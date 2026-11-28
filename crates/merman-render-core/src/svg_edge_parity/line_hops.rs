@@ -7,6 +7,7 @@ use crate::LayoutPoint;
 use crate::resources::OperationWorkMeter;
 #[cfg(test)]
 use crate::resources::{RenderResourcePolicy, ResourceLimitId};
+use merman_model::OperationPhase;
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, BinaryHeap, HashMap};
 
@@ -147,6 +148,7 @@ fn path_emission_work_units(edges: &[LineHopEdge<'_>]) -> usize {
     })
 }
 
+#[cfg(test)]
 fn find_edge_intersections<'a>(
     edges: &[LineHopEdge<'a>],
     work_meter: &OperationWorkMeter,
@@ -159,8 +161,27 @@ pub fn find_edge_intersections_where<'a>(
     work_meter: &OperationWorkMeter,
     include: impl Fn(usize, usize) -> bool,
 ) -> crate::Result<Vec<LineHopCrossing<'a>>> {
+    find_edge_intersections_with_radii(
+        edges,
+        include,
+        |_| ROUNDED_CORNER_RADIUS,
+        OperationPhase::Layout,
+        work_meter,
+    )
+}
+
+fn find_edge_intersections_with_radii<'a>(
+    edges: &[LineHopEdge<'a>],
+    include: impl Fn(usize, usize) -> bool,
+    corner_radius: impl Fn(usize) -> f64,
+    phase: OperationPhase,
+    work_meter: &OperationWorkMeter,
+) -> crate::Result<Vec<LineHopCrossing<'a>>> {
     let segment_count = segment_count(edges);
-    work_meter.charge(segment_count.saturating_add(sorting_work_units(segment_count)))?;
+    work_meter.charge_work(
+        segment_count.saturating_add(sorting_work_units(segment_count)),
+        phase,
+    )?;
     let mut segments = Vec::new();
     for (edge_index, edge) in edges.iter().enumerate() {
         for (segment_index, pair) in edge.points.windows(2).enumerate() {
@@ -219,7 +240,7 @@ pub fn find_edge_intersections_where<'a>(
             if other_edge_index == current.edge_index {
                 continue;
             }
-            work_meter.charge(active_by_edge[other_edge_index].len())?;
+            work_meter.charge_work(active_by_edge[other_edge_index].len(), phase)?;
             for &other_segment_index in &active_by_edge[other_edge_index] {
                 let other = segments[other_segment_index];
                 if other.max_y <= current.min_y || current.max_y <= other.min_y {
@@ -245,7 +266,7 @@ pub fn find_edge_intersections_where<'a>(
         });
     }
 
-    work_meter.charge(sorting_work_units(candidate_pairs.len()))?;
+    work_meter.charge_work(sorting_work_units(candidate_pairs.len()), phase)?;
     candidate_pairs.sort_by_key(|candidate| {
         let a = segments[candidate.segment_a];
         let b = segments[candidate.segment_b];
@@ -262,9 +283,17 @@ pub fn find_edge_intersections_where<'a>(
 
         let edge_a = edges[segment_a.edge_index];
         let edge_b = edges[segment_b.edge_index];
-        if crossing_sits_in_rounded_corner(edge_a, segment_a.segment_index, intersection.t_a)
-            || crossing_sits_in_rounded_corner(edge_b, segment_b.segment_index, intersection.t_b)
-        {
+        if crossing_sits_in_rounded_corner(
+            edge_a,
+            segment_a.segment_index,
+            intersection.t_a,
+            corner_radius(segment_a.edge_index),
+        ) || crossing_sits_in_rounded_corner(
+            edge_b,
+            segment_b.segment_index,
+            intersection.t_b,
+            corner_radius(segment_b.edge_index),
+        ) {
             continue;
         }
         let a_is_horizontal = is_horizontally_dominant(segment_a.segment);
@@ -301,9 +330,30 @@ pub fn line_hop_overrides(
     accepts_curve: impl Fn(Option<&str>) -> bool,
     work_meter: &OperationWorkMeter,
 ) -> crate::Result<Vec<(usize, String)>> {
+    line_hop_overrides_with_radii(
+        edges,
+        config,
+        |_, edge| Ok(accepts_curve(edge.curve)),
+        |_| ROUNDED_CORNER_RADIUS,
+        OperationPhase::Layout,
+        work_meter,
+    )
+}
+
+/// The caller resolves the per-edge radius used to paint each original path. Run eligibility
+/// after detecting crossings so ineligible edges can still participate as the other edge.
+pub(crate) fn line_hop_overrides_with_radii(
+    edges: &[LineHopEdge<'_>],
+    config: LineHopConfig,
+    accepts_edge: impl Fn(usize, LineHopEdge<'_>) -> crate::Result<bool>,
+    corner_radius: impl Fn(usize) -> f64,
+    phase: OperationPhase,
+    work_meter: &OperationWorkMeter,
+) -> crate::Result<Vec<(usize, String)>> {
     // Preserve the admission before intersection discovery, including on crossing-free graphs.
-    work_meter.charge(path_emission_work_units(edges))?;
-    let crossings = find_edge_intersections(edges, work_meter)?;
+    work_meter.charge_work(path_emission_work_units(edges), phase)?;
+    let crossings =
+        find_edge_intersections_with_radii(edges, |_, _| true, &corner_radius, phase, work_meter)?;
     if crossings.is_empty() {
         return Ok(Vec::new());
     }
@@ -317,15 +367,18 @@ pub fn line_hop_overrides(
             .push(crossing);
     }
 
-    Ok(edges
-        .iter()
-        .copied()
-        .enumerate()
-        .filter_map(|(index, edge)| {
-            let jumps = jumps_by_edge.get(edge.id)?;
-            accepts_curve(edge.curve).then(|| (index, rewrite_edge_path(edge, jumps, config)))
-        })
-        .collect())
+    let mut paths = Vec::new();
+    for (index, edge) in edges.iter().copied().enumerate() {
+        if let Some(jumps) = jumps_by_edge.get(edge.id)
+            && accepts_edge(index, edge)?
+        {
+            paths.push((
+                index,
+                rewrite_edge_path(edge, jumps, config, corner_radius(index)),
+            ));
+        }
+    }
+    Ok(paths)
 }
 
 /// Return ELK paths rewritten for a crossing, even when nearby bends suppress every visible hop.
@@ -374,7 +427,22 @@ pub fn rewrite_style_after_line_hop<'a>(
     hopped_d: &str,
     work_meter: &OperationWorkMeter,
 ) -> crate::Result<std::borrow::Cow<'a, str>> {
-    work_meter.charge(original_style.len().saturating_add(hopped_d.len()))?;
+    rewrite_style_after_line_hop_with_phase(
+        original_style,
+        hopped_d,
+        OperationPhase::Layout,
+        work_meter,
+    )
+}
+
+/// Rewrite the same mask in the caller's paint phase using the shared work ledger.
+pub fn rewrite_style_after_line_hop_with_phase<'a>(
+    original_style: &'a str,
+    hopped_d: &str,
+    phase: OperationPhase,
+    work_meter: &OperationWorkMeter,
+) -> crate::Result<std::borrow::Cow<'a, str>> {
+    work_meter.charge_work(original_style.len().saturating_add(hopped_d.len()), phase)?;
     use std::borrow::Cow;
     const PROPERTY: &str = "stroke-dasharray";
 
@@ -538,7 +606,12 @@ fn is_horizontally_dominant(segment: Segment<'_>) -> bool {
 
 // Rounded strokes leave their provider polylines around a bend. A crossing on
 // either of those replaced stretches does not locate a crossing of the strokes.
-fn crossing_sits_in_rounded_corner(edge: LineHopEdge<'_>, index: usize, t: f64) -> bool {
+fn crossing_sits_in_rounded_corner(
+    edge: LineHopEdge<'_>,
+    index: usize,
+    t: f64,
+    radius: f64,
+) -> bool {
     if edge.curve != Some("rounded") {
         return false;
     }
@@ -550,13 +623,13 @@ fn crossing_sits_in_rounded_corner(edge: LineHopEdge<'_>, index: usize, t: f64) 
     let distance = t * length;
     let entering = index
         .checked_sub(1)
-        .and_then(|previous| compute_rounded_corner(&points[previous], start, end));
+        .and_then(|previous| compute_rounded_corner(&points[previous], start, end, radius));
     if entering.is_some_and(|corner| distance < corner.cut_length) {
         return true;
     }
     points
         .get(index + 2)
-        .and_then(|next| compute_rounded_corner(start, end, next))
+        .and_then(|next| compute_rounded_corner(start, end, next, radius))
         .is_some_and(|corner| length - distance < corner.cut_length)
 }
 
@@ -638,6 +711,7 @@ fn compute_rounded_corner(
     previous: &LayoutPoint,
     current: &LayoutPoint,
     next: &LayoutPoint,
+    radius: f64,
 ) -> Option<RoundedCorner> {
     let incoming_dx = current.x - previous.x;
     let incoming_dy = current.y - previous.y;
@@ -660,7 +734,7 @@ fn compute_rounded_corner(
         return None;
     }
 
-    let cut_length = (ROUNDED_CORNER_RADIUS / (angle / 2.0).sin())
+    let cut_length = (radius / (angle / 2.0).sin())
         .min(incoming_length / 2.0)
         .min(outgoing_length / 2.0);
     Some(RoundedCorner {
@@ -752,6 +826,7 @@ fn rewrite_edge_path(
     edge: LineHopEdge<'_>,
     jumps: &[LineHopCrossing<'_>],
     config: LineHopConfig,
+    corner_radius: f64,
 ) -> String {
     if edge.points.len() < 2 {
         return String::new();
@@ -800,6 +875,7 @@ fn rewrite_edge_path(
                 points
                     .get(segment_index + 1)
                     .unwrap_or(&points[segment_index]),
+                corner_radius,
             )
             .map_or(0.0, |corner| corner.cut_length)
         } else {
@@ -813,6 +889,7 @@ fn rewrite_edge_path(
                 points
                     .get(segment_index + 2)
                     .unwrap_or(&points[segment_index + 1]),
+                corner_radius,
             )
         } else {
             None
@@ -899,10 +976,12 @@ mod tests {
                             *edge_a,
                             segment_a_index,
                             intersection.t_a,
+                            ROUNDED_CORNER_RADIUS,
                         ) || crossing_sits_in_rounded_corner(
                             *edge_b,
                             segment_b_index,
                             intersection.t_b,
+                            ROUNDED_CORNER_RADIUS,
                         ) {
                             continue;
                         }
@@ -1526,10 +1605,30 @@ mod tests {
             curve: Some("rounded"),
             ..edge("rounded", &points)
         };
-        assert!(!crossing_sits_in_rounded_corner(rounded, 0, 0.75));
-        assert!(crossing_sits_in_rounded_corner(rounded, 0, 0.8));
-        assert!(crossing_sits_in_rounded_corner(rounded, 1, 0.4));
-        assert!(!crossing_sits_in_rounded_corner(rounded, 1, 0.5));
+        assert!(!crossing_sits_in_rounded_corner(
+            rounded,
+            0,
+            0.75,
+            ROUNDED_CORNER_RADIUS
+        ));
+        assert!(crossing_sits_in_rounded_corner(
+            rounded,
+            0,
+            0.8,
+            ROUNDED_CORNER_RADIUS
+        ));
+        assert!(crossing_sits_in_rounded_corner(
+            rounded,
+            1,
+            0.4,
+            ROUNDED_CORNER_RADIUS
+        ));
+        assert!(!crossing_sits_in_rounded_corner(
+            rounded,
+            1,
+            0.5,
+            ROUNDED_CORNER_RADIUS
+        ));
     }
 
     #[test]

@@ -25,7 +25,9 @@ import {
   recoverOutputTransaction,
 } from "./output-transaction.mjs";
 import { repositoryRoot, webPackageRoot } from "./paths.mjs";
+import { assertWasmRuntimeCatalog } from "./runtime-evidence.mjs";
 import {
+  LOCAL_WASM_LAYOUT_USAGE,
   parseWasmTargets,
   wasmArtifactProfile,
   wasmArtifactProfileManifest,
@@ -33,7 +35,7 @@ import {
 
 export { wasmArtifactProfile, wasmArtifactProfileManifest };
 
-export function runBuildWasmCli(args = process.argv.slice(2)) {
+export async function runBuildWasmCli(args = process.argv.slice(2)) {
   if (hasHelpFlag(args)) {
     printUsage();
     return;
@@ -53,7 +55,7 @@ export function runBuildWasmCli(args = process.argv.slice(2)) {
     const repositoryMetadata = cargoRepositoryMetadata({ repoRoot: repositoryRoot });
     const toolVersions = currentWasmBuildToolVersions(repositoryRoot);
     for (const target of selected) {
-      buildWasm({ ...target, repositoryMetadata, toolVersions });
+      await buildWasm({ ...target, repositoryMetadata, toolVersions });
     }
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
@@ -64,10 +66,11 @@ export function runBuildWasmCli(args = process.argv.slice(2)) {
   }
 }
 
-export function buildWasm({
+export async function buildWasm({
   outputDir,
   descriptor,
   profile = wasmArtifactProfile(descriptor),
+  localArgs = [],
   repositoryMetadata = null,
   toolVersions = null,
 }) {
@@ -109,6 +112,9 @@ export function buildWasm({
     }
     writePackageMetadata(buildMetadata, stageRoot);
     cleanPackageOutput(stageRoot);
+    if (localArgs[0] === "--local-layout") {
+      await assertWasmRuntimeCatalog(stageRoot, profile);
+    }
     writeFileSync(
       path.join(stageRoot, WASM_ARTIFACT_PROFILE_NAME),
       `${JSON.stringify(wasmArtifactProfileManifest(descriptor, profile), null, 2)}\n`,
@@ -243,5 +249,5 @@ function run(command, args, { env = process.env } = {}) {
 }
 
 function printUsage() {
-  console.log("usage: node scripts/build-wasm.mjs [--package <full|analysis|render|editor|ascii> | --all-packages] [--local-shoal]");
+  console.log(`usage: node scripts/build-wasm.mjs [--package <full|analysis|render|editor|ascii> | --all-packages] ${LOCAL_WASM_LAYOUT_USAGE}`);
 }

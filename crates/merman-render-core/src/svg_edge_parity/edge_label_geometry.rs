@@ -1,6 +1,6 @@
 use crate::LayoutPoint;
 
-fn js_round(value: f64, precision: i32) -> Option<f64> {
+pub(super) fn js_round(value: f64, precision: i32) -> Option<f64> {
     if !value.is_finite() {
         return None;
     }

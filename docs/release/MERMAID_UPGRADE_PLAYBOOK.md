@@ -5,19 +5,26 @@ release or changing any behavior-owning companion. A release is a pinned behavio
 single npm version. Completion means parser, semantics, editor services, headless output, browser
 reference execution, examples, provenance, and package surfaces all describe the same graph.
 
-## Current Transition: Mermaid 12.3.0
+## Current transition to Mermaid 12.4.0
 
-Development selects `mermaid@12.3.0` at `2086904e76c692331e34a45d7cc3bc30860d040e`.
+Development selects `mermaid@12.4.0` at `9f93a44a36e46a36b1379f9de72fb1ee5684ee3f`.
+The transition keeps the selected companion versions and admits the built-in Grid and Layered
+layouts through optional Rust providers. The [reference bundle](../../tools/upstreams/MERMAID_REFERENCE_BUNDLE.json)
+and its [selection decision](../../tools/upstreams/MERMAID_SELECTION_DECISION.json) own the
+exact selected graph. The [12.4 migration](../migrations/mermaid-12-4.md) covers source changes,
+layout selection, and package availability.
+
+### Historical transition to Mermaid 12.3.0
+
+The previous development graph selected `mermaid@12.3.0` at `2086904e76c692331e34a45d7cc3bc30860d040e`.
 The exact selected graph includes ELK `0.12.1`, Cytoscape `3.34.4`,
 `@braintree/sanitize-url 7.1.2`, reference CLI `12.2.0`, parser `2.0.1`, and DOMPurify `3.4.17`.
-The [reference bundle](../../tools/upstreams/MERMAID_REFERENCE_BUNDLE.json) and its digest-bound
-[selection decision](../../tools/upstreams/MERMAID_SELECTION_DECISION.json) own the complete graph.
 The transition adds Flowchart Step edges and nine BPMN shapes, moves observable ELK behavior,
 updates Swimlane preparation/routing, and removes Mindmap's ambient output identity. It adds no
 registered diagram, layout, Cargo feature, transport schema, or independent Tree-sitter baseline.
 Grid and the unwired anchor pipeline remain upstream groundwork rather than admitted capabilities.
 
-See the [development migration](../migrations/mermaid-12-3.md) for Rust changes, animated/static SVG
+See the [12.3 migration](../migrations/mermaid-12-3.md) for Rust changes, animated/static SVG
 contracts, selected versus investigated companion versions, and bounded reference-collection
 residuals. Published artifacts retain their release identities. Verification and artifact receipts
 must bind the settled source; this scope note is not a gate result or publication statement.

@@ -132,6 +132,18 @@ PROFILE_CASES = (
         "Render a family that calls the compiled ELK layout.",
     ),
     ProfileCase(
+        "grid-layout",
+        "Mermaid Grid layout",
+        ("all-diagrams", "layout-grid"),
+        "Render and project the families that support Grid without a legacy solver.",
+    ),
+    ProfileCase(
+        "layered-layout",
+        "Mermaid Layered layout",
+        ("all-diagrams", "layout-layered"),
+        "Render and project the families that support Layered without a Dagre retry.",
+    ),
+    ProfileCase(
         "math",
         "Math",
         ("all-diagrams", "layout-dagre", "math"),

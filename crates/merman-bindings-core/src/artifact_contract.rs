@@ -99,7 +99,7 @@ macro_rules! native_sdk_artifact_contract {
             $crate::OperationKey::ValidationJson,
         ];
         #[allow(unexpected_cfgs)]
-        const SUPPLEMENTAL_CAPABILITIES: &[$crate::CapabilityKey] = &[
+        const SUPPLEMENTAL_CAPABILITIES: &[$crate::CapabilityKey] = $crate::mermaid_layout_capabilities![
             #[cfg(feature = "fixes")]
             $crate::CapabilityKey::Fixes,
             #[cfg(feature = "layout-cytoscape")]
@@ -854,6 +854,14 @@ impl ValidatedArtifactContract {
             (
                 CapabilityKey::LayoutElk,
                 merman::svg::RenderCapability::LayoutElk,
+            ),
+            (
+                CapabilityKey::LayoutGrid,
+                merman::svg::RenderCapability::LayoutGrid,
+            ),
+            (
+                CapabilityKey::LayoutLayered,
+                merman::svg::RenderCapability::LayoutLayered,
             ),
             (
                 CapabilityKey::LayoutShoal,

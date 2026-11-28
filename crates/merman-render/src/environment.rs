@@ -462,6 +462,8 @@ impl RenderSession {
             RenderCapability::LayoutCytoscape => crate::layout_cytoscape_available(),
             RenderCapability::LayoutElk => crate::layout_elk_available(),
             RenderCapability::LayoutDagre => crate::layout_dagre_available(),
+            RenderCapability::LayoutGrid => crate::layout_grid_available(),
+            RenderCapability::LayoutLayered => crate::layout_layered_available(),
             RenderCapability::LayoutShoal => crate::layout_shoal_available(),
             RenderCapability::Math => self
                 .math_backend

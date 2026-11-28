@@ -941,3 +941,47 @@ fn overridden_shape_label_transforms_honor_svg_bbox_y_without_shifting_html() {
         }
     }
 }
+
+#[test]
+fn neo_brace_html_labels_are_centered_on_the_measured_box() {
+    let source = "---\nconfig:\n  look: neo\n  htmlLabels: true\n---\n\
+        flowchart TD\n\
+        A@{ shape: brace, label: Left }\n\
+        B@{ shape: brace-r, label: Right }\n\
+        C@{ shape: braces, label: Both }\n";
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let artifact = family::prepare(
+        &parsed,
+        &LayoutOptions::default(),
+        RenderEnvironment::deterministic().begin_session().unwrap(),
+    )
+    .unwrap();
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let labels: Vec<_> = document
+        .descendants()
+        .filter(|node| node.has_tag_name("foreignObject"))
+        .collect();
+    assert_eq!(labels.len(), 3);
+    for (index, label) in labels.into_iter().enumerate() {
+        let dimension = |name| label.attribute(name).unwrap().parse::<f64>().unwrap();
+        let transform = label.parent().unwrap().attribute("transform").unwrap();
+        let (x, y) = transform
+            .strip_prefix("translate(")
+            .unwrap()
+            .strip_suffix(')')
+            .unwrap()
+            .split_once(',')
+            .unwrap();
+        assert!((y.parse::<f64>().unwrap() + dimension("height") / 2.0).abs() < 1e-6);
+        if index != 0 {
+            assert!((x.parse::<f64>().unwrap() + dimension("width") / 2.0).abs() < 1e-6);
+        }
+    }
+}

@@ -33,7 +33,7 @@ export async function loadNodeWasmTransport(
   {
     modulePath = process.env.MERMAN_NODE_WASM_BINDING,
     loadModule = (specifier) => import(specifier),
-    localShoal = false,
+    localLayout = null,
   } = {},
   iconPacksJson,
 ) {
@@ -59,7 +59,7 @@ export async function loadNodeWasmTransport(
     expectedPackageVersion: nodeLoaderPackageVersion(),
     expectedTransport: "wasm",
     label: "The Node-targeted WASM candidate",
-    localShoal,
+    localLayout,
   });
   let transport;
   try {

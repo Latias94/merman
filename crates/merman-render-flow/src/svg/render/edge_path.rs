@@ -46,7 +46,10 @@ pub(in crate::svg) fn render_flowchart_edge_path(
     // must still consume the post-processed cache. Enabling diagnostics must not alter rendering.
     let owned_geom = if cached_geom.is_none() || trace_enabled {
         if let Some(layout_edge) = ctx.layout_edges_by_key.get(&key) {
-            ctx.work_meter.charge(layout_edge.points().len().max(2))?;
+            ctx.work_meter.charge_work(
+                layout_edge.points().len().max(2),
+                super::super::paint::edge_paint_phase(ctx),
+            )?;
         }
         flowchart_compute_edge_path_geom(
             FlowchartEdgePathGeomRequest {
@@ -71,7 +74,11 @@ pub(in crate::svg) fn render_flowchart_edge_path(
         };
         g
     };
-    terminal.append_to(
+    #[cfg(any(feature = "layout-grid", feature = "layout-layered"))]
+    let after_paint_d = geom.after_paint_d.as_deref();
+    #[cfg(not(any(feature = "layout-grid", feature = "layout-layered")))]
+    let after_paint_d = None;
+    terminal.append_with_route_overrides(
         out,
         FlowchartEdgeSvgGeometry {
             d: &geom.d,
@@ -81,6 +88,9 @@ pub(in crate::svg) fn render_flowchart_edge_path(
             pre_hop_dash_mask_length: geom.pre_hop_dash_mask_length,
             line_hop_applied: geom.line_hop_applied,
         },
+        after_paint_d,
+        #[cfg(feature = "layout-layered")]
+        geom.axes.as_deref(),
         &mut scratch.terminal,
     )
 }

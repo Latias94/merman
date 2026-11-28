@@ -156,7 +156,9 @@ pub fn diagram_type_presentation_family_id(
     let family = diagram_type_family_id(diagram_type)?;
     Some(match (family, layout) {
         (DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE, Some("swimlane"))
-        | (DiagramFamilyId::SWIMLANE, Some("shoal")) => DiagramFamilyId::SWIMLANE,
+        | (DiagramFamilyId::SWIMLANE, Some("shoal" | "grid" | "layered")) => {
+            DiagramFamilyId::SWIMLANE
+        }
         (DiagramFamilyId::SWIMLANE, _) => DiagramFamilyId::FLOWCHART,
         _ => family,
     })
@@ -380,8 +382,10 @@ const FLOWCHART_ELK_HEADERS: &[HeaderDefinition] =
     &[header(44, "flowchart-elk TD", "elk flowchart header")];
 const USECASE_HEADERS: &[HeaderDefinition] =
     &[header(45, "usecase-beta", "usecase diagram header")];
-const AGENTFLOW_HEADERS: &[HeaderDefinition] =
-    &[header(46, "agentflow-beta", "agentflow diagram header")];
+const AGENTFLOW_HEADERS: &[HeaderDefinition] = &[
+    header(46, "agentflow", "agentflow diagram header"),
+    header(47, "agentflow-beta", "agentflow beta alias"),
+];
 
 define_family_catalog! {
     ERROR => "error" {

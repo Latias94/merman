@@ -477,6 +477,42 @@ fn compiled_command_ids() -> Vec<String> {
     commands
 }
 
+#[cfg(feature = "svg")]
+pub(crate) const fn layout_grid_available() -> bool {
+    cfg!(all(
+        feature = "layout-grid",
+        any(
+            feature = "diagram-flowchart",
+            feature = "diagram-swimlane",
+            feature = "diagram-agentflow",
+            feature = "diagram-class",
+            feature = "diagram-er",
+            feature = "diagram-mindmap",
+            feature = "diagram-requirement",
+            feature = "diagram-state",
+            feature = "diagram-usecase"
+        )
+    )) && merman::svg::layout_grid_available()
+}
+
+#[cfg(feature = "svg")]
+pub(crate) const fn layout_layered_available() -> bool {
+    cfg!(all(
+        feature = "layout-layered",
+        any(
+            feature = "diagram-flowchart",
+            feature = "diagram-swimlane",
+            feature = "diagram-agentflow",
+            feature = "diagram-class",
+            feature = "diagram-er",
+            feature = "diagram-mindmap",
+            feature = "diagram-requirement",
+            feature = "diagram-state",
+            feature = "diagram-usecase"
+        )
+    )) && merman::svg::layout_layered_available()
+}
+
 fn compiled_capability_ids() -> Vec<&'static str> {
     let mut capabilities = Vec::new();
 
@@ -496,6 +532,14 @@ fn compiled_capability_ids() -> Vec<&'static str> {
     include_capability!("layout-cytoscape", "layout-cytoscape");
     include_capability!("layout-dagre", "layout-dagre");
     include_capability!("layout-elk", "layout-elk");
+    #[cfg(feature = "svg")]
+    if layout_grid_available() {
+        capabilities.push(descriptor::CapabilityKey::LayoutGrid.id());
+    }
+    #[cfg(feature = "svg")]
+    if layout_layered_available() {
+        capabilities.push(descriptor::CapabilityKey::LayoutLayered.id());
+    }
     include_capability!("layout-shoal", "layout-shoal");
     include_capability!("markdown", "markdown");
     include_capability!("math", "math");

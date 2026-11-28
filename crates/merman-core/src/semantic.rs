@@ -1,6 +1,6 @@
 //! Semantic-only parsing without resolving Mermaid themes or creating render state.
 
-use crate::preprocess::preprocess_builtin_semantic_controlled;
+use crate::preprocess::{preprocess_builtin_semantic_controlled, validate_grid_for_parser};
 use crate::{Error, MermaidConfig, OperationControl, OperationControlResult, Result};
 
 #[cfg(feature = "editor-facts")]
@@ -319,7 +319,14 @@ impl SemanticParser {
                         ),
                         None => crate::ParsedEditorFacts::Unavailable,
                     };
-                    let outcome = match construction.model {
+                    let parsed = validate_grid_for_parser(
+                        construction.model,
+                        &metadata.semantic_config,
+                        &metadata.diagram_type,
+                        true,
+                        control,
+                    )?;
+                    let outcome = match parsed {
                         Ok(mut model) => {
                             remap_semantic_source_positions(&mut model, &source, control)?;
                             SemanticParseOutcome::Parsed(model)
@@ -547,6 +554,13 @@ impl SemanticParser {
             }),
         };
         control.checkpoint_at(crate::OperationPhase::Semantic)?;
+        let parsed = validate_grid_for_parser(
+            parsed,
+            &metadata.semantic_config,
+            diagram_type,
+            true,
+            control,
+        )?;
         let mut model = match parsed {
             Ok(model) => model,
             Err(error) => {

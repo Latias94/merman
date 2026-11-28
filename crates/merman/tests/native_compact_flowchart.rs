@@ -9,10 +9,14 @@
     feature = "svg"
 ))]
 
+#[cfg(feature = "layout-elk")]
+use merman::model::OperationLedgerError;
 use merman::svg::{RenderResourcePolicy, ResourceLimitId, SvgOutputProfile};
 #[cfg(any(feature = "layout-dagre", feature = "layout-shoal"))]
 use merman::theme::{BuiltinPreset, Color, ThemeCompiler, ThemeSelection};
 use merman::{OperationControl, RenderError, RenderOutput, RenderRequest, Renderer, SvgRequest};
+#[cfg(feature = "layout-elk")]
+use merman::{OperationPhase, OperationResourceDomain};
 
 #[cfg(any(feature = "layout-dagre", feature = "layout-shoal"))]
 #[path = "native_compact/paint.rs"]
@@ -472,9 +476,19 @@ fn compact_flowchart_elk_keeps_straight_shafts_and_marker_contacts() {
 
 #[cfg(feature = "layout-elk")]
 #[test]
+fn compact_flowchart_elk_explicit_rounded_keeps_the_default_shaft() {
+    let body = "flowchart LR\nA[Plan] --> B[Ship]";
+    let default = render_with_config(ELK_CONFIG, body, compact_request()).unwrap();
+    let rounded = format!("{body}\nlinkStyle 0 interpolate rounded");
+    let explicit = render_with_config(ELK_CONFIG, &rounded, compact_request()).unwrap();
+    assert_eq!(explicit, default);
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
 fn compact_flowchart_elk_refuses_rounded_bends_line_hops_and_labels() {
     let line_hops = ELK_CONFIG.replace("lineHops: false", "lineHops: true");
-    let bent = "flowchart TB\nA[Plan] --> Z[Ship]\nB[Check] --> Z\nC[Read] --> Z";
+    let bent = "flowchart TB\nA[Plan] --> Z[Ship]\nB[Check] --> Z\nC[Read] --> Z\nlinkStyle 0 interpolate rounded";
     let parity = render_with_config(ELK_CONFIG, bent, SvgRequest::default()).unwrap();
     let parity = roxmltree::Document::parse(&parity).unwrap();
     assert!(
@@ -503,6 +517,64 @@ fn compact_flowchart_elk_refuses_rounded_bends_line_hops_and_labels() {
             "{error:?}"
         );
     }
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn compact_flowchart_elk_route_work_ceiling_records_emit() {
+    let source = format!("{ELK_CONFIG}flowchart LR\nA[Plan] --- B[Ship]");
+    let renderer = Renderer::new();
+    let render = |policy, control| {
+        let mut request = compact_request();
+        request.environment = request.environment.with_resource_policy(policy);
+        renderer.render(RenderRequest::svg(&source, control, request))
+    };
+    let resources = RenderResourcePolicy::unbounded_for_trusted_input();
+    let RenderOutput::Svg(Some(baseline)) = render(resources, OperationControl::new()).unwrap()
+    else {
+        panic!("expected standalone SVG");
+    };
+    let document = roxmltree::Document::parse(baseline.svg()).unwrap();
+    let root = document.root_element();
+    let line = shafts(root);
+    assert_eq!(line.len(), 1);
+    assert_eq!(line[0].len(), 4);
+    let commands = line[0].len() / 2;
+    let elements = document
+        .descendants()
+        .filter(roxmltree::Node::is_element)
+        .count();
+    let text_work: usize = root
+        .descendants()
+        .filter(|node| node.has_tag_name("text"))
+        .map(|node| node.text().unwrap().len().div_ceil(64))
+        .sum();
+    // After ELK's route batch, the open edge charges for collecting its shaft commands and
+    // serializing the scene's elements, path commands and labels.
+    let scene_work = elements + commands + text_work;
+    let work_after_route = baseline.evidence().layout_work_units() - commands - scene_work;
+    let maximum = work_after_route - 1;
+    let capped = resources
+        .with_limit(ResourceLimitId::MaxLayoutWorkUnits, maximum)
+        .unwrap();
+    let control = OperationControl::new();
+    let RenderError::ResourceLimitExceeded(error) = render(capped, control.clone()).unwrap_err()
+    else {
+        panic!("expected an ELK route work limit");
+    };
+    assert_eq!(error.id, "max_layout_work_units");
+    assert_eq!(error.phase, "layout_model");
+    assert_eq!(
+        (error.actual, error.maximum),
+        (work_after_route as u64, maximum as u64)
+    );
+    let Err(OperationLedgerError::ResourceLimitExceeded(terminal)) =
+        control.terminal_checkpoint_at(OperationPhase::Layout)
+    else {
+        panic!("expected the sticky route work terminal");
+    };
+    assert_eq!(terminal.phase, OperationPhase::Emit);
+    assert_eq!(terminal.provenance.domain, OperationResourceDomain::Render);
 }
 
 #[cfg(feature = "layout-elk")]

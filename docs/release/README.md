@@ -4,6 +4,9 @@ Use this index to choose an upgrade path by the version you have installed. Stab
 
 ## Current source
 
+Current source selects Mermaid `12.4.0`. See the [12.4 migration](../migrations/mermaid-12-4.md)
+for Grid and Layered selection and source-build availability.
+
 Theme v2 changes native theme documents and catalogs to schema `2` and reports
 `theme_outcome` in graphical result metadata. Update binding options to schema `4` and use one of
 the new `theme` forms. Build or install wrappers and runtime artifacts from the same revision.

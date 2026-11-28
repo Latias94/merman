@@ -28,6 +28,7 @@ import {
   NODE_WIRE_CONTRACT,
 } from "../src/errors.mjs";
 import { CAPABILITY_DESCRIPTOR_DIGEST } from "../src/generated/capability-surface.mjs";
+import { nodePackageLocalLayout, nodeWireContract } from "../src/transport-contract.mjs";
 
 const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -55,6 +56,51 @@ const muslReport = {
   header: {},
   sharedObjects: ["/lib/ld-musl-x86_64.so.1"],
 };
+
+test("native loader admits only the matching private layout identity", async () => {
+  for (const localLayout of ["grid", "layered"]) {
+    let constructed = 0;
+    const binding = {
+      transportIdentityJson: () => transportIdentityJson("napi", {
+        wire_contract: nodeWireContract(localLayout),
+      }),
+      NativeEngine: class {
+        constructor() { constructed += 1; }
+        execute() {}
+        executeSync() {}
+        metadataJson() { return "{}"; }
+        runtimeCatalogJson() { return JSON.stringify({ package_version: nodeLoaderPackageVersion() }); }
+        dispose() {}
+      },
+    };
+    const other = localLayout === "grid" ? "layered" : "grid";
+    for (const wrongLayout of [null, other]) {
+      await assert.rejects(
+        wrapNativeBinding(binding, "{}", undefined, { localLayout: wrongLayout }),
+        /candidate module identity is incompatible/i,
+      );
+    }
+    assert.equal(constructed, 0);
+    const transport = await wrapNativeBinding(binding, "{}", undefined, { localLayout });
+    assert.equal(constructed, 1);
+    await transport.dispose();
+  }
+});
+
+test("local layout markers require a private package with one recognized selection", () => {
+  assert.equal(nodePackageLocalLayout({ private: true, mermanLocalShoal: true }), "shoal");
+  assert.equal(nodePackageLocalLayout({ private: true, mermanLocalLayout: "grid" }), "grid");
+  assert.equal(nodePackageLocalLayout({ private: true, mermanLocalLayout: "layered" }), "layered");
+  assert.equal(nodePackageLocalLayout({ private: true }), null);
+  for (const manifest of [
+    { mermanLocalLayout: "grid" },
+    { private: true, mermanLocalLayout: "elk" },
+    { private: true, mermanLocalLayout: "grid", mermanLocalShoal: true },
+    { private: true, mermanLocalLayout: "layered", publishConfig: { access: "public" } },
+  ]) {
+    assert.throws(() => nodePackageLocalLayout(manifest), /invalid private local layout marker/i);
+  }
+});
 
 test("Node WASM module specifiers classify paths before generic URL schemes", () => {
   assert.equal(

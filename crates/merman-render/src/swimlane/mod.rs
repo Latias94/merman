@@ -47,13 +47,14 @@ use merman_render_flow::swimlane::working;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use merman_render_flow::swimlane::{
     DefaultLaneIdPolicy, FlowSwimlanePreparation, admit_layout_work, config,
-    measure_zero_width_lane_titles, prepare_working_layout, project_layout, solve,
+    measure_zero_width_lane_titles, prepare_working_layout, project_layout, solve_legacy_flow,
     source_layout_work_units,
 };
 #[cfg(any(feature = "diagram-er", feature = "diagram-mindmap"))]
 use std::sync::Arc;
 
 // The facade's Flow selectors own BPMN outlines even when other crates unify Flow features.
+#[cfg(any(feature = "diagram-er", feature = "diagram-mindmap"))]
 const USE_BPMN_DRAWN_SIZE: bool = cfg!(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane"
@@ -209,7 +210,7 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
         None
     };
     if !canonical {
-        solve(&mut working, config, USE_BPMN_DRAWN_SIZE, work_meter)?;
+        solve_legacy_flow(&mut working, config, work_meter)?;
         measure_zero_width_lane_titles(
             &mut working,
             model,

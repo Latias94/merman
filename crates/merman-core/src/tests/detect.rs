@@ -85,6 +85,35 @@ fn usecase_header_requires_whitespace_or_end() {
 }
 
 #[test]
+fn mermaid_detection_removes_inline_comments_before_testing_header_boundaries() {
+    let registry = DetectorRegistry::pinned_mermaid_baseline();
+    let mut config = SourcePresentationConfig::empty_object();
+    assert_eq!(
+        registry
+            .detect_type("agentflow%% inline\nA", &mut config)
+            .unwrap(),
+        "agentflow"
+    );
+    assert!(matches!(
+        registry.detect_type("\u{0085}agentflow\nA", &mut config),
+        Err(Error::DetectType(_))
+    ));
+}
+
+#[test]
+fn custom_detectors_keep_their_existing_line_comment_cleanup() {
+    let mut registry = DetectorRegistry::pinned_mermaid_baseline();
+    registry.add_fn("custom", |text, _| text == "custom %% inline\nA");
+    let mut config = SourcePresentationConfig::empty_object();
+    for (text, expected) in [
+        ("\n%% leading\n  custom %% inline\nA", "custom"),
+        ("agentflow%% inline\nA", "agentflow"),
+    ] {
+        assert_eq!(registry.detect_type(text, &mut config).unwrap(), expected);
+    }
+}
+
+#[test]
 fn canonical_catalog_detects_flowchart_elk_and_sets_layout() {
     let engine = MermaidEngine::new();
     let res = block_on(engine.parse_metadata("flowchart-elk TD\nA-->B")).unwrap();

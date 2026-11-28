@@ -410,7 +410,7 @@ pub(super) fn flowchart_dom_order_for_root<'a>(
     Ok(dom_order)
 }
 
-pub(super) fn flowchart_elk_dom_order<'a>(
+pub(super) fn flowchart_flat_dom_order<'a>(
     ctx: &'a FlowchartNodeInventoryInput<'a>,
     candidates: FlowchartDomCandidates<'a>,
 ) -> Result<Vec<&'a str>> {

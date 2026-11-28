@@ -56,8 +56,18 @@ fn svg_layout(layout: &FlowchartLayout) -> FlowchartSvgLayout<'_> {
 
     let route_contract = match &layout.route_contract {
         RouteContract::DagreParity => FlowchartSvgRoute::DagreParity,
+        #[cfg(all(feature = "layout-layered", feature = "layout-dagre"))]
+        RouteContract::LayeredDagreFallback => FlowchartSvgRoute::LayeredDagreFallback,
+        #[cfg(feature = "layout-layered")]
+        RouteContract::Layered(routes) => FlowchartSvgRoute::Layered(routes),
+        #[cfg(all(feature = "diagram-er", feature = "layout-layered"))]
+        RouteContract::ErLayered(_) => FlowchartSvgRoute::Legacy,
+        #[cfg(all(feature = "diagram-state", feature = "layout-layered"))]
+        RouteContract::StateLayered(_) => FlowchartSvgRoute::Legacy,
         #[cfg(feature = "layout-elk")]
         RouteContract::ElkParity => FlowchartSvgRoute::ElkParity,
+        #[cfg(feature = "layout-grid")]
+        RouteContract::Grid(settings) => FlowchartSvgRoute::Grid(*settings),
         RouteContract::Swimlane => FlowchartSvgRoute::Swimlane,
         #[cfg(any(feature = "layout-shoal", test))]
         RouteContract::CanonicalAxis(routes) => FlowchartSvgRoute::CanonicalAxis(routes),

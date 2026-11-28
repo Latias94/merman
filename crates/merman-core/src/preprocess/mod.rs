@@ -40,16 +40,25 @@ use config_policy::append_directive_evidence;
 #[cfg(feature = "editor-facts")]
 use config_policy::append_frontmatter_evidence;
 use config_policy::process_frontmatter_controlled;
-use config_policy::{DiagramTypeDetector, process_directives_controlled};
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
+pub(crate) use config_policy::validate_configured_grid;
+pub(crate) use config_policy::validate_grid_for_parser;
+use config_policy::{
+    DiagramTypeDetector, GridInitDetection, GridSource, merge_source_grid,
+    process_directives_controlled, sanitize_grid_config_controlled, sanitize_grid_section,
+};
 #[cfg(feature = "editor-facts")]
 use editor::editor_evidence_line_end;
 
 #[cfg(feature = "editor-facts")]
 use crate::EditorExpectedSyntaxKind;
-#[cfg(feature = "editor-facts")]
-use crate::SourceSpan;
 use crate::{
-    Error, MermaidConfig, OperationControl, OperationControlResult, Result, diagram::CapturedPanic,
+    Error, MermaidConfig, OperationControl, OperationControlResult, Result, SourceSpan,
+    diagram::CapturedPanic,
 };
 use merman_core_preprocess::SourceEdit;
 use merman_core_preprocess::directives::directive_blocks_controlled;
@@ -308,8 +317,21 @@ fn preprocess_source_capture_controlled(
     }
     let frontmatter_len = frontmatter.full.map_or(0, |full| full.end);
     let mut first_error = None;
-    let (title, mut frontmatter_config) = match frontmatter.result {
-        Ok(processed) => (processed.title, processed.config),
+    let (title, mut frontmatter_config, mut grid_source) = match frontmatter.result {
+        Ok(processed) => {
+            let grid_source = if let Some(full) = frontmatter.full {
+                GridSource::capture(
+                    &source,
+                    processed.grid_placements,
+                    0,
+                    SourceSpan::new(full.start, full.end),
+                    control,
+                )?
+            } else {
+                GridSource::default()
+            };
+            (processed.title, processed.config, grid_source)
+        }
         Err(error) => {
             control.checkpoint()?;
             #[cfg(feature = "editor-facts")]
@@ -317,7 +339,7 @@ fn preprocess_source_capture_controlled(
                 source_config.mark_rewrite_unsafe();
                 if capture_mode.collects() {
                     first_error = Some(error);
-                    (None, MermaidConfig::empty_object())
+                    (None, MermaidConfig::empty_object(), GridSource::default())
                 } else {
                     return Ok(PreprocessCaptureOutcome {
                         outcome: PreprocessCaptureResult::Failed(error),
@@ -351,12 +373,21 @@ fn preprocess_source_capture_controlled(
         Vec::new()
     };
     let processed_directives = process_directives_controlled(
-        source.text(),
+        &source,
         detector,
         directive_blocks,
         #[cfg(feature = "editor-facts")]
         capture_mode,
         first_error.is_none(),
+        if diagram_type.is_some() {
+            GridInitDetection::KnownType
+        } else {
+            GridInitDetection::Detect {
+                frontmatter_has_placements: frontmatter_config
+                    .get_path(&["grid", "placements"])
+                    .is_some(),
+            }
+        },
         control,
     )?;
     #[cfg(feature = "editor-facts")]
@@ -407,6 +438,13 @@ fn preprocess_source_capture_controlled(
             );
         }
     }
+    let merged_grid = merge_source_grid(
+        &frontmatter_config,
+        &mut grid_source,
+        &processed_directives.config,
+        processed_directives.grid_source,
+        control,
+    )?;
     source.apply_edits(
         processed_directives
             .removals
@@ -431,6 +469,30 @@ fn preprocess_source_capture_controlled(
     }
     #[cfg(not(feature = "editor-facts"))]
     frontmatter_config.deep_merge(processed_directives.config.as_value());
+    if let Some(grid) = merged_grid {
+        frontmatter_config.set_value("grid", grid);
+    }
+    if frontmatter_config.get("grid").is_some() {
+        let config = frontmatter_config.as_value_mut();
+        if let Err(error) = sanitize_grid_section(config, &grid_source, control)? {
+            #[cfg(feature = "editor-facts")]
+            source_config.mark_rewrite_unsafe();
+            control.checkpoint()?;
+            return Ok(PreprocessCaptureOutcome {
+                outcome: PreprocessCaptureResult::Failed(error),
+                #[cfg(feature = "editor-facts")]
+                source_config,
+            });
+        }
+        sanitize_grid_config_controlled(config, control)?;
+        // The source config policy removes double-underscore keys after shape validation.
+        if let Some(placements) = config
+            .pointer_mut("/grid/placements")
+            .and_then(Value::as_object_mut)
+        {
+            placements.retain(|id, _| !id.starts_with("__"));
+        }
+    }
 
     control.checkpoint()?;
     // These families opt into Mermaid's comment-preserving parser input. Keep the existing

@@ -281,7 +281,7 @@ pub(super) fn render_class_render_tree<O: SvgOutput>(
     Ok(())
 }
 
-pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
+pub(super) fn render_class_flat_adapter_dom<O: SvgOutput>(
     state: ClassNodesRenderState<'_, O>,
     ctx: &ClassNodesRenderContext<'_>,
     edge_ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
@@ -316,7 +316,7 @@ pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
         .render_tree
         .roots
         .get(ctx.layout.render_tree.top.0)
-        .expect("validated Class ELK render root");
+        .expect("validated flat Class render root");
     if root.namespace_id.is_some()
         || root
             .items
@@ -324,15 +324,23 @@ pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
             .any(|item| matches!(item, ClassRenderItem::Subgraph(_)))
     {
         return Err(Error::InvalidModel {
-            message: "Class ELK adapter requires one flat render root".to_string(),
+            message: "Class registered layout requires one flat render root".to_string(),
         });
     }
 
     // Mermaid 12 paints clusters before paths so namespace fills cannot cover relations.
+    let clusters = &ctx.layout.clusters;
+    let paint_clusters = (0..clusters.len()).map(|index| {
+        #[cfg(feature = "layout-layered")]
+        let index = edge_ctx
+            .layered
+            .map_or(index, |layered| layered.cluster_order[index]);
+        &clusters[index]
+    });
     detail.clusters += render_class_namespace_cluster_group(
         out,
         content_bounds,
-        &ctx.layout.clusters,
+        paint_clusters,
         ClassNamespaceClusterGroupContext {
             diagram_id: ctx.diagram_id,
             namespace_ids: ctx.namespace_ids,
@@ -366,7 +374,7 @@ pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
     out.checkpoint()?;
     for item in &root.items {
         let ClassRenderItem::Node(id) = item else {
-            unreachable!("Class ELK render root was validated as flat")
+            unreachable!("Class registered layout root was validated as flat")
         };
         render_class_node_id(
             ClassNodesRenderState {
@@ -384,6 +392,15 @@ pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
             },
         )?;
         out.checkpoint()?;
+    }
+    #[cfg(feature = "layout-grid")]
+    if edge_ctx.grid.is_some() {
+        super::grid::write_labels(
+            out,
+            content_bounds,
+            &ctx.layout.nodes,
+            &super::groups::local_edge_context(edge_ctx, 0.0, 0.0),
+        )?;
     }
     out.push_str("</g>");
     out.checkpoint()?;
@@ -592,7 +609,11 @@ fn render_class_split_edges_for_namespace<O: SvgOutput>(
         line_hop_paths: edge_ctx.line_hop_paths,
         relations_by_id: edge_ctx.relations_by_id,
         relation_index_by_id: edge_ctx.relation_index_by_id,
-        prepared_svg_edge_labels: edge_ctx.prepared_svg_edge_labels,
+        prepared_labels: edge_ctx.prepared_labels,
+        #[cfg(feature = "layout-grid")]
+        grid: None,
+        #[cfg(feature = "layout-layered")]
+        layered: None,
         #[cfg(feature = "layout-shoal")]
         canonical_routes: edge_ctx.canonical_routes,
         diagram_marker_class: edge_ctx.diagram_marker_class,

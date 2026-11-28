@@ -27,6 +27,7 @@ use merman_core_flow::flowchart::{
 };
 #[cfg(any(test, feature = "editor-facts"))]
 use merman_core_flow::flowchart::{FlowchartToken as Tok, StatementEvent, Stmt};
+use merman_core_flow::grid::InlineGridCoordinates;
 #[cfg(feature = "editor-facts")]
 use merman_model::text::is_ecmascript_whitespace as is_ecmascript_trim_char;
 use serde_json::Value;
@@ -189,15 +190,17 @@ fn construct_flowchart_captured_semantic_model_controlled<M: FlowchartMetadata>(
                     collect_expected_syntax_from_tokens(code, &trace, &mut facts, control)?;
                 }
                 let (acc_title, acc_descr) = flowchart_accessibility_metadata(&accessibility, code);
-                let model = ast
-                    .into_model(
+                let model = finish_grid_validation(
+                    ast.into_model_with_grid_coordinates(
                         meta.diagram_type(),
                         meta.diagram_config(),
                         acc_title,
                         acc_descr,
                         control,
-                    )?
-                    .map_err(|message| Error::diagram_parse_fallback(meta.diagram_type(), message));
+                    )?,
+                    meta,
+                    control,
+                )?;
                 control.checkpoint()?;
                 (model, facts)
             }
@@ -263,15 +266,33 @@ pub(crate) fn parse_flowchart_model_with_render_context_controlled(
         Err(error) => return Ok(Err(error)),
     };
     let (acc_title, acc_descr) = flowchart_accessibility_metadata(&accessibility, code);
-    Ok(ast
-        .into_model_with_render_context(
+    let (model, mut context, coordinates) = match ast
+        .into_model_with_render_context_and_grid_coordinates(
             meta.diagram_type(),
             meta.diagram_config(),
             acc_title,
             acc_descr,
             control,
-        )?
-        .map_err(|message| Error::diagram_parse_fallback(meta.diagram_type(), message)))
+        )? {
+        Ok(parsed) => parsed,
+        Err(message) => {
+            return Ok(Err(Error::diagram_parse_fallback(
+                meta.diagram_type(),
+                message,
+            )));
+        }
+    };
+    Ok(super::grid::validate_inline_grid(
+        meta.diagram_config(),
+        meta.diagram_type(),
+        &coordinates,
+        true,
+        control,
+    )?
+    .map(|placements| {
+        context.set_grid_placements(placements);
+        (model, context)
+    }))
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -328,15 +349,38 @@ fn parse_flowchart_model_controlled<M: FlowchartMetadata>(
         Err(error) => return Ok(Err(error)),
     };
     let (acc_title, acc_descr) = flowchart_accessibility_metadata(&accessibility, code);
-    Ok(ast
-        .into_model(
-            meta.diagram_type(),
-            meta.diagram_config(),
-            acc_title,
-            acc_descr,
-            control,
-        )?
-        .map_err(|message| Error::diagram_parse_fallback(meta.diagram_type(), message)))
+    let parsed = ast.into_model_with_grid_coordinates(
+        meta.diagram_type(),
+        meta.diagram_config(),
+        acc_title,
+        acc_descr,
+        control,
+    )?;
+    finish_grid_validation(parsed, meta, control)
+}
+
+fn finish_grid_validation<T>(
+    parsed: std::result::Result<(T, InlineGridCoordinates), String>,
+    meta: &impl FlowchartMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<T>> {
+    let (model, coordinates) = match parsed {
+        Ok(parsed) => parsed,
+        Err(message) => {
+            return Ok(Err(Error::diagram_parse_fallback(
+                meta.diagram_type(),
+                message,
+            )));
+        }
+    };
+    Ok(super::grid::validate_inline_grid(
+        meta.diagram_config(),
+        meta.diagram_type(),
+        &coordinates,
+        false,
+        control,
+    )?
+    .map(|_| model))
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]

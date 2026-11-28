@@ -1249,8 +1249,8 @@ impl Drawing {
                                 classes,
                                 styles,
                             );
-                        let metrics = crate::flowchart::flowchart_label_metrics_for_layout(
-                            crate::flowchart::FlowchartLabelMetricsRequest {
+                        let metrics = crate::graph_label::flowchart_label_metrics_for_layout(
+                            crate::graph_label::FlowchartLabelMetricsRequest {
                                 measurer: &crate::text::DeterministicTextMeasurer::default(),
                                 raw_label: raw,
                                 label_type: label_type.unwrap_or("text"),

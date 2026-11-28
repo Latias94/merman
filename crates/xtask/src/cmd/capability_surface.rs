@@ -35,6 +35,8 @@ const CAPABILITY_BIT_IDS: &[&str] = &[
     "fixes",
     "layout-shoal",
     "layout-dagre",
+    "layout-grid",
+    "layout-layered",
 ];
 const GENERATED_OUTPUTS: &[(&str, ArtifactKind)] = &[
     (

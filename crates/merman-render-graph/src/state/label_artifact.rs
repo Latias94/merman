@@ -100,9 +100,16 @@ fn label_slot<'a, T>(slots: &'a StateLabelSlots<T>, owner: StateLabelOwner<'_>) 
 #[derive(Debug, Default)]
 pub struct StateLabelSidecarBuilder {
     measured_native_geometries: RefCell<StateLabelSlots<StateNativeLabelGeometry>>,
+    #[cfg(feature = "layout-grid")]
+    grid_labels: RefCell<Option<super::grid::StateGridLabels>>,
 }
 
 impl StateLabelSidecarBuilder {
+    #[cfg(feature = "layout-grid")]
+    pub(super) fn set_grid_labels(&self, labels: super::grid::StateGridLabels) {
+        self.grid_labels.replace(Some(labels));
+    }
+
     pub fn measured_native_geometry(
         &self,
         owner: StateLabelOwner<'_>,
@@ -135,8 +142,23 @@ impl StateLabelSidecarBuilder {
     pub fn finish(self) -> StateLabelSidecar {
         StateLabelSidecar {
             measured_native_geometries: self.measured_native_geometries.into_inner(),
+            #[cfg(feature = "layout-grid")]
+            grid_labels: self.grid_labels.into_inner(),
         }
     }
+}
+
+#[cfg(feature = "layout-layered")]
+pub(super) fn measure_label_for_layout(
+    request: StateLabelMetricsRequest<'_>,
+) -> StateLabelMeasurement {
+    let measurer = request
+        .typography
+        .svg_measurer(request.measurer, request.wrap_mode);
+    measure_label(StateLabelMetricsRequest {
+        measurer: measurer.as_measurer(),
+        ..request
+    })
 }
 
 fn measure_label(request: StateLabelMetricsRequest<'_>) -> StateLabelMeasurement {
@@ -180,9 +202,18 @@ fn measure_label(request: StateLabelMetricsRequest<'_>) -> StateLabelMeasurement
 #[derive(Debug, Default)]
 pub struct StateLabelSidecar {
     measured_native_geometries: StateLabelSlots<StateNativeLabelGeometry>,
+    #[cfg(feature = "layout-grid")]
+    grid_labels: Option<super::grid::StateGridLabels>,
 }
 
 impl StateLabelSidecar {
+    #[cfg(feature = "layout-grid")]
+    pub(super) fn grid_labels(&self) -> &[super::grid::StateGridLabel] {
+        self.grid_labels
+            .as_ref()
+            .map_or(&[], |grid| grid.labels.as_slice())
+    }
+
     pub fn measured_native_geometry(
         &self,
         owner: StateLabelOwner<'_>,

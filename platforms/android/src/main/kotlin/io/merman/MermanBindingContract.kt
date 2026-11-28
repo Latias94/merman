@@ -118,6 +118,8 @@ internal val MERMAN_BINDING_CAPABILITY_SPECS: Map<String, MermanBindingCapabilit
     MermanBindingCapabilitySpec("layout-cytoscape", listOf("svg")),
     MermanBindingCapabilitySpec("layout-dagre", listOf("svg")),
     MermanBindingCapabilitySpec("layout-elk", listOf("svg")),
+    MermanBindingCapabilitySpec("layout-grid", listOf("svg")),
+    MermanBindingCapabilitySpec("layout-layered", listOf("svg")),
     MermanBindingCapabilitySpec("layout-shoal", listOf("svg")),
     MermanBindingCapabilitySpec("markdown", listOf()),
     MermanBindingCapabilitySpec("math", listOf("svg")),

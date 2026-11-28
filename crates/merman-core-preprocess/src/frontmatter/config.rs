@@ -1,13 +1,11 @@
 //! Frontmatter decoding from fenced source to fields and construct-local evidence.
 
-use super::{
-    FrontmatterByteSpan, dedent_frontmatter_body_controlled, frontmatter_fields_from_yaml_value,
-    locate_frontmatter_block_controlled,
-};
 #[cfg(feature = "yaml-editor")]
+use super::split_frontmatter_block_controlled;
 use super::{
-    find_physical_line_ending_controlled, frontmatter_has_prefix_controlled,
-    split_frontmatter_block_controlled,
+    FrontmatterBlockLocation, FrontmatterByteSpan, dedent_frontmatter_body_controlled,
+    find_physical_line_ending_controlled, frontmatter_fields_from_yaml_value,
+    frontmatter_has_prefix_controlled, locate_frontmatter_block_controlled,
 };
 #[cfg(feature = "yaml-editor")]
 use crate::config_order::{
@@ -15,13 +13,11 @@ use crate::config_order::{
 };
 #[cfg(feature = "yaml-editor")]
 use crate::directives::MAX_DIRECTIVE_CONFIG_PARSE_BYTES;
-#[cfg(feature = "yaml-editor")]
 use crate::scan::controlled::ControlledScanCheckpoints;
+use crate::yaml::GridPlacementsSource;
 #[cfg(feature = "yaml-editor")]
 use crate::yaml::{YamlConfigKeyEvidence, YamlInsertOrder, YamlInsertOrderRequest};
-#[cfg(feature = "yaml-editor")]
 use crate::{MappedSource, SourceEdit};
-#[cfg(feature = "yaml-editor")]
 use merman_model::SourceSpan;
 use merman_model::family::FAMILY_CATALOG;
 use merman_model::json::drop_value_nonrecursive;
@@ -36,6 +32,8 @@ use std::sync::OnceLock;
 pub struct DecodedFrontmatter<'a> {
     pub full: FrontmatterByteSpan,
     pub result: Result<FrontmatterFields, String>,
+    /// Grid placement order and key ranges in this decoder's input.
+    pub grid_placements: Option<GridPlacementsSource>,
     #[cfg(feature = "yaml-editor")]
     pub body: FrontmatterByteSpan,
     #[cfg(feature = "yaml-editor")]
@@ -93,13 +91,10 @@ fn decode_frontmatter_impl<'a>(
         return Ok(None);
     };
     let body = &input[location.body.start..location.body.end];
-    let yaml_input = dedented_frontmatter_yaml_input_controlled(
-        body,
-        location.indent,
-        #[cfg(feature = "yaml-editor")]
-        capture_keys,
-        control,
-    )?;
+    #[cfg(not(feature = "yaml-editor"))]
+    let capture_keys = false;
+    let yaml_input =
+        dedented_frontmatter_yaml_input_controlled(body, location.indent, capture_keys, control)?;
     control.checkpoint()?;
     #[cfg(feature = "yaml-editor")]
     let (mut captured, insert_order) = {
@@ -118,7 +113,7 @@ fn decode_frontmatter_impl<'a>(
         )?
     };
     #[cfg(not(feature = "yaml-editor"))]
-    let mut captured = crate::yaml::parse_yaml_with_capture_controlled(
+    let mut captured = crate::yaml::parse_yaml_frontmatter_capture_controlled(
         yaml_input.text(),
         MAX_DIAGRAM_NESTING_DEPTH,
         &["title", "displayMode"],
@@ -168,6 +163,16 @@ fn decode_frontmatter_impl<'a>(
         }
         Err(message) => Err(message),
     };
+    let mut grid_placements = captured.grid_placements;
+    if let Some(placements) = &mut grid_placements
+        && let Err(cancelled) =
+            map_grid_placement_spans_controlled(placements, &yaml_input, body, location, control)
+    {
+        if let Ok(fields) = result {
+            drop_value_nonrecursive(Value::Object(fields.fields));
+        }
+        return Err(cancelled);
+    }
     Ok(Some(DecodedFrontmatter {
         full: location.full,
         #[cfg(feature = "yaml-editor")]
@@ -179,6 +184,7 @@ fn decode_frontmatter_impl<'a>(
         rewrite_safe: captured.rewrite_safe,
         #[cfg(feature = "yaml-editor")]
         insert_order,
+        grid_placements,
         result,
     }))
 }
@@ -237,7 +243,6 @@ pub fn frontmatter_config_namespaces() -> &'static [&'static str] {
 
 enum FrontmatterYamlInput<'a> {
     Plain(Cow<'a, str>),
-    #[cfg(feature = "yaml-editor")]
     Mapped(Box<MappedSource>),
 }
 
@@ -245,16 +250,13 @@ impl FrontmatterYamlInput<'_> {
     fn text(&self) -> &str {
         match self {
             Self::Plain(text) => text.as_ref(),
-            #[cfg(feature = "yaml-editor")]
             Self::Mapped(source) => source.text(),
         }
     }
 
-    #[cfg(feature = "yaml-editor")]
     fn try_map_span_to_body(&self, span: SourceSpan) -> Option<SourceSpan> {
         match self {
             Self::Plain(_) => Some(span),
-            #[cfg(feature = "yaml-editor")]
             Self::Mapped(source) => source.try_map_span(span),
         }
     }
@@ -263,7 +265,6 @@ impl FrontmatterYamlInput<'_> {
     fn try_map_enclosing_span_to_body(&self, span: SourceSpan) -> Option<SourceSpan> {
         match self {
             Self::Plain(_) => Some(span),
-            #[cfg(feature = "yaml-editor")]
             Self::Mapped(source) => source.try_map_enclosing_span(span),
         }
     }
@@ -287,48 +288,76 @@ fn map_frontmatter_yaml_span_to_preprocessed_source(
     ))
 }
 
+fn map_grid_placement_spans_controlled(
+    placements: &mut GridPlacementsSource,
+    yaml_input: &FrontmatterYamlInput<'_>,
+    body: &str,
+    location: FrontmatterBlockLocation<'_>,
+    control: &OperationControl,
+) -> OperationControlResult<()> {
+    // Plain decoding dedents without a source map. Reuse the controlled dedent mapping for
+    // indented Grid frontmatter after YAML has succeeded.
+    let mapped =
+        if !location.indent.is_empty() && matches!(yaml_input, FrontmatterYamlInput::Plain(_)) {
+            Some(dedented_frontmatter_yaml_input_controlled(
+                body,
+                location.indent,
+                true,
+                control,
+            )?)
+        } else {
+            None
+        };
+    let source = mapped.as_ref().unwrap_or(yaml_input);
+    for (index, span) in placements.key_spans_mut().enumerate() {
+        if index.is_multiple_of(64) {
+            control.checkpoint()?;
+        }
+        *span = span.take().and_then(|range| {
+            let span = source.try_map_span_to_body(SourceSpan::new(range.start, range.end))?;
+            Some(
+                location.body.start.checked_add(span.start)?
+                    ..location.body.start.checked_add(span.end)?,
+            )
+        });
+    }
+    Ok(())
+}
+
 fn dedented_frontmatter_yaml_input_controlled<'a>(
     body: &'a str,
     indent: &str,
-    #[cfg(feature = "yaml-editor")] capture_keys: bool,
+    capture_mapping: bool,
     control: &OperationControl,
 ) -> OperationControlResult<FrontmatterYamlInput<'a>> {
-    #[cfg(not(feature = "yaml-editor"))]
-    {
-        dedent_frontmatter_body_controlled(body, indent, control).map(FrontmatterYamlInput::Plain)
+    if !capture_mapping {
+        return dedent_frontmatter_body_controlled(body, indent, control)
+            .map(FrontmatterYamlInput::Plain);
     }
-    #[cfg(feature = "yaml-editor")]
-    {
-        if !capture_keys {
-            return dedent_frontmatter_body_controlled(body, indent, control)
-                .map(FrontmatterYamlInput::Plain);
-        }
-        if indent.is_empty() {
-            control.checkpoint()?;
-            return Ok(FrontmatterYamlInput::Plain(Cow::Borrowed(body)));
-        }
+    if indent.is_empty() {
+        control.checkpoint()?;
+        return Ok(FrontmatterYamlInput::Plain(Cow::Borrowed(body)));
+    }
 
-        let mut source = MappedSource::new_controlled(body, true, control)?;
-        let mut checkpoints = ControlledScanCheckpoints::new(control)?;
-        let mut edits = Vec::new();
-        let mut line_start = 0usize;
-        loop {
-            let line_ending =
-                find_physical_line_ending_controlled(body, line_start, &mut checkpoints)?;
-            let (line_end, next_line_start) = line_ending.unwrap_or((body.len(), body.len()));
-            let line = &body[line_start..line_end];
-            if frontmatter_has_prefix_controlled(line, indent, &mut checkpoints)? {
-                edits.push(SourceEdit::delete(line_start..line_start + indent.len()));
-            }
-            if line_ending.is_none() || next_line_start == body.len() {
-                break;
-            }
-            line_start = next_line_start;
+    let mut source = MappedSource::new_controlled(body, true, control)?;
+    let mut checkpoints = ControlledScanCheckpoints::new(control)?;
+    let mut edits = Vec::new();
+    let mut line_start = 0usize;
+    loop {
+        let line_ending = find_physical_line_ending_controlled(body, line_start, &mut checkpoints)?;
+        let (line_end, next_line_start) = line_ending.unwrap_or((body.len(), body.len()));
+        let line = &body[line_start..line_end];
+        if frontmatter_has_prefix_controlled(line, indent, &mut checkpoints)? {
+            edits.push(SourceEdit::delete(line_start..line_start + indent.len()));
         }
-        checkpoints.finish()?;
-        source.apply_edits(edits, control)?;
-        Ok(FrontmatterYamlInput::Mapped(Box::new(source)))
+        if line_ending.is_none() || next_line_start == body.len() {
+            break;
+        }
+        line_start = next_line_start;
     }
+    checkpoints.finish()?;
+    source.apply_edits(edits, control)?;
+    Ok(FrontmatterYamlInput::Mapped(Box::new(source)))
 }
 
 pub fn parse_frontmatter_yaml_fields(input: &str) -> Result<Map<String, Value>, String> {
@@ -410,10 +439,120 @@ pub fn parse_frontmatter_insert_order_json(json: &str) -> Option<OrderedJson> {
     ordered_yaml_json(json)
 }
 
-#[cfg(all(test, feature = "yaml-editor"))]
+#[cfg(test)]
 mod tests {
     use super::*;
 
+    #[test]
+    fn grid_frontmatter_keeps_order_slots_and_indented_utf8_source_ranges() {
+        let input = concat!(
+            "\u{2003}---\r\n",
+            "\u{2003}title: 🚀\r\n",
+            "\u{2003}grid: { placements: { outside: {} } }\r\n",
+            "\u{2003}config:\r\n",
+            "\u{2003}  grid:\r\n",
+            "\u{2003}    placements:\r\n",
+            "\u{2003}      'z.🚀[1]': [null, { column: 0.5, 'row': -4 }, [], {}]\r\n",
+            "\u{2003}      a: { row: 3, column: 2 }\r\n",
+            "\u{2003}---\r\n",
+            "flowchart LR\r\n"
+        );
+        let check = |decoded: DecodedFrontmatter<'_>| {
+            let result = decoded.result.ok().unwrap();
+            let placements = decoded.grid_placements.unwrap();
+            assert_eq!(
+                placements.key_span.unwrap().start,
+                input.rfind("placements:").unwrap()
+            );
+            assert_eq!(
+                placements
+                    .entries
+                    .iter()
+                    .map(|entry| entry.id.as_str())
+                    .collect::<Vec<_>>(),
+                ["z.🚀[1]", "a"]
+            );
+            let entry = &placements.entries[0];
+            assert_eq!(&input[entry.key_span.clone().unwrap()], "z.🚀[1]");
+            let slots = &entry.occurrences;
+            assert_eq!(
+                slots.iter().map(|slot| slot.index).collect::<Vec<_>>(),
+                [Some(1), Some(3)]
+            );
+            assert!(slots[1].fields.is_empty());
+            let fields = &slots[0].fields;
+            assert_eq!(
+                fields
+                    .iter()
+                    .map(|field| field.name.as_str())
+                    .collect::<Vec<_>>(),
+                ["column", "row"]
+            );
+            assert_eq!(&input[fields[0].key_span.clone().unwrap()], "column");
+            assert_eq!(&input[fields[1].key_span.clone().unwrap()], "row");
+            assert_eq!(
+                fields[1].key_span.as_ref().unwrap().start,
+                input.find("'row'").unwrap() + 1
+            );
+            let values = &result.config().unwrap()["grid"]["placements"][&entry.id];
+            assert_eq!(values[1]["column"], 0.5);
+            assert!(values[0].is_null());
+            assert_eq!(placements.entries[1].occurrences[0].index, None);
+        };
+        let control = OperationControl::new();
+        check(
+            decode_frontmatter_controlled(input, &control)
+                .unwrap()
+                .unwrap(),
+        );
+        #[cfg(feature = "yaml-editor")]
+        check(
+            decode_frontmatter_with_evidence_controlled(input, &control)
+                .unwrap()
+                .unwrap(),
+        );
+    }
+
+    #[test]
+    fn grid_frontmatter_alias_keeps_order_with_the_local_id_as_span_fallback() {
+        let input = concat!(
+            "---\n",
+            "template: &placement { column: 1, row: 2 }\n",
+            "config: {grid: {placements: {service: *placement}}}\n",
+            "---\n",
+            "flowchart LR\n"
+        );
+        let decoded = decode_frontmatter_controlled(input, &OperationControl::new())
+            .unwrap()
+            .unwrap();
+        let entry = &decoded.grid_placements.unwrap().entries[0];
+        assert_eq!(&input[entry.key_span.clone().unwrap()], "service");
+        let fields = &entry.occurrences[0].fields;
+        assert_eq!(
+            fields
+                .iter()
+                .map(|field| field.name.as_str())
+                .collect::<Vec<_>>(),
+            ["column", "row"]
+        );
+        assert!(fields.iter().all(|field| field.key_span.is_none()));
+        assert_eq!(
+            decoded.result.ok().unwrap().config().unwrap()["grid"]["placements"]["service"]["row"],
+            2
+        );
+    }
+
+    #[test]
+    fn grid_frontmatter_errors_publish_no_order_or_spans() {
+        let raw = "---\nconfig: {grid: {placements: {A: {row: 1, row: 2}}}}\n---\nflowchart LR\n";
+        let decoded = decode_frontmatter_controlled(raw, &OperationControl::new())
+            .unwrap()
+            .unwrap();
+        assert!(decoded.result.is_err());
+        assert!(decoded.grid_placements.is_none());
+    }
+
+    #[cfg(feature = "yaml-editor")]
     #[test]
     fn indented_frontmatter_keys_address_the_original_utf8_bytes() {
         let input = concat!(

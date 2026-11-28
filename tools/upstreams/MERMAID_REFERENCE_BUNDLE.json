@@ -3,22 +3,22 @@
   "projectionSchemaVersion": 3,
   "selectionDecision": {
     "path": "tools/upstreams/MERMAID_SELECTION_DECISION.json",
-    "sha256": "3664c1d2945540ff4d3129ae48f820fb7bf5437ee6b216dc8d7c62ca61a38377"
+    "sha256": "46613bdea739e45a27d6dda03a1569b384683b7c0deb767c5d105caff1d05344"
   },
   "release": {
     "id": "mermaid",
     "role": "core",
     "package": "mermaid",
-    "version": "12.3.0",
-    "declaredRange": "12.3.0",
-    "integrity": "sha512-4113TdXeLAsMruJ79OpFL5O8+LTFXhQqZ260rF3tgUmiNAtRm4Uume04I+65PRN6yZ69J4f8rVYWW8zRk65UYw==",
-    "tarballUrl": "https://registry.npmjs.org/mermaid/-/mermaid-12.3.0.tgz",
-    "installedContentSha256": "8dea6d2895b9a75667443ef8a82fc4b8d30f962de057686c7b6ef860bc69d251",
+    "version": "12.4.0",
+    "declaredRange": "12.4.0",
+    "integrity": "sha512-j2gvsGUFeS/53WdYLl9H5G2YtMZX9G/PlCvV3E5Pf4j5XSnK19DwazU6wki7OTcKeYKed7+qujRDLhy8NV2zBg==",
+    "tarballUrl": "https://registry.npmjs.org/mermaid/-/mermaid-12.4.0.tgz",
+    "installedContentSha256": "e104992b5e4a0c794dd7f3834757173583836a9ee0387ee7460032327bc2ce63",
     "source": {
       "repository": "https://github.com/mermaid-js/mermaid.git",
-      "reference": "mermaid@12.3.0",
-      "commit": "2086904e76c692331e34a45d7cc3bc30860d040e",
-      "checkoutPath": "repo-ref/mermaid-12.3.0",
+      "reference": "mermaid@12.4.0",
+      "commit": "9f93a44a36e46a36b1379f9de72fb1ee5684ee3f",
+      "checkoutPath": "repo-ref/mermaid-12.4.0",
       "packagePath": "packages/mermaid"
     },
     "requiredSurfaces": [
@@ -123,10 +123,12 @@
     },
     "layouts": {
       "sourcePath": "packages/mermaid/src/rendering-util/render.ts",
-      "sourceSha256": "08f376cc21e285a9335287758d7ca125fe3fe2e994f6c3f4ca22a724a2437ebe",
+      "sourceSha256": "2678278437006efac36a4ab8331fccc4529055abd5d6cbcd6613600f74e345d3",
       "ids": [
         "dagre",
         "swimlane",
+        "grid",
+        "layered",
         "cose-bilkent",
         "elk",
         "elk.stress",
@@ -255,8 +257,8 @@
       ]
     },
     "workspace": "tools/mermaid-cli",
-    "packageJsonSha256": "5b969bc88be5bd1503f89118a90fdcf2c241683d5c40fa6f64651d90ef0608d8",
-    "packageLockSha256": "6be7b7ca2156f048e1cfe8560fee60f179ecb325877ced3d13e2dd69e75e5fcc",
+    "packageJsonSha256": "5f638289fd05a3f23e20ca18dfbba3d46d97d117d7471559e5802cc19cb83458",
+    "packageLockSha256": "1f0ca38a5fb1a39125f887d17c8eb01965e69e002e13bdb1c2cea91987142cdf",
     "configSha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc"
   },
   "rendererTools": [
@@ -441,7 +443,7 @@
   },
   "featureDecision": {
     "addCargoFeature": false,
-    "reason": "Mermaid 12 uses the existing layout-elk feature and complete-svg-elk product aggregate as the normal default. Explicit no-default-feature builds retain the documented no-ELK fallback and exclude the EPL-2.0 ELK closure. No additional per-algorithm Cargo feature is introduced. DOMPurify remains a source-aligned Rust sanitizer behavior and browser/reference dependency.",
+    "reason": "Mermaid 12.4.0 registers Grid and Layered in its core package. No browser or reference-only companion adds a Cargo feature. The native providers have opt-in layout-grid and layout-layered features. The normal default keeps layout-elk, and lean builds can omit the ELK algorithm closure. The selected DOMPurify behavior and browser/reference dependency remain unchanged.",
     "evidence": [
       "docs/FEATURES.md",
       "docs/release/PACKAGE_SURFACES.md",

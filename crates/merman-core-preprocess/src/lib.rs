@@ -5,9 +5,14 @@ use std::ops::Range;
 use std::sync::OnceLock;
 
 #[doc(hidden)]
+pub mod detection_comments;
+#[doc(hidden)]
 pub mod directives;
 #[doc(hidden)]
 pub mod frontmatter;
+#[cfg(any(feature = "directive-config", feature = "yaml"))]
+#[doc(hidden)]
+pub mod grid_coordinate;
 #[doc(hidden)]
 pub mod scan;
 #[doc(hidden)]

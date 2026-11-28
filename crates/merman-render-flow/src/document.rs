@@ -24,6 +24,7 @@ pub struct FlowchartSvgDocumentRequest<'a> {
     pub root_viewport: RootViewportContext<'a>,
     pub document_scope: &'a FlowchartDocumentScope,
     pub uses_elk_adapter_dom: bool,
+    pub layout_fallback: Option<&'static str>,
     pub use_max_width: bool,
     pub diagram_padding: f64,
     pub source_paint_bounds: Option<Bounds>,
@@ -44,6 +45,7 @@ pub struct FlowchartSvgDocument<'a> {
     root_spec: RootViewportSpec,
     document_scope: &'a FlowchartDocumentScope,
     uses_elk_adapter_dom: bool,
+    layout_fallback: Option<&'static str>,
     acc_title: Option<&'a str>,
     acc_descr: Option<&'a str>,
     diagram_title: Option<&'a str>,
@@ -78,6 +80,7 @@ pub fn prepare_flowchart_svg_document(
         root_spec,
         document_scope: request.document_scope,
         uses_elk_adapter_dom: request.uses_elk_adapter_dom,
+        layout_fallback: request.layout_fallback,
         acc_title: request.acc_title.filter(|s| !s.is_empty()),
         acc_descr: request.acc_descr.filter(|s| !s.is_empty()),
         diagram_title: request.diagram_title,
@@ -206,6 +209,10 @@ impl FlowchartSvgDocument<'_> {
         });
         root_chrome.aria_labelledby = aria_labelledby.as_deref();
         root_chrome.aria_describedby = aria_describedby.as_deref();
+        let fallback = self
+            .layout_fallback
+            .map(|backend| ("data-layout-fallback", backend));
+        root_chrome.extra_attrs = fallback.as_slice();
         root_chrome.dom.trailing_newline = false;
         if !self.use_max_width {
             root_chrome.dom.style_viewbox_order =

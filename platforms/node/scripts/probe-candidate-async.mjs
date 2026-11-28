@@ -12,6 +12,7 @@ import {
   BINDING_OPERATION_EXPECTATIONS,
 } from "../src/generated/binding-contract.mjs";
 import { nodeLoaderPackageVersion } from "../src/native-loader.mjs";
+import { readLocalLayoutFlag } from "./local-layout.mjs";
 
 const requireFromProbe = createRequire(import.meta.url);
 
@@ -25,7 +26,7 @@ try {
   validateTransportIdentityJson(binding.transportIdentityJson(), {
     expectedPackageVersion: nodeLoaderPackageVersion(),
     expectedTransport: transportKind,
-    localShoal: options.localShoal,
+    localLayout: options.localLayout,
   });
   const Engine = options.candidate === "napi"
     ? binding?.NativeEngine ?? binding?.default?.NativeEngine
@@ -199,10 +200,10 @@ function parseArgs(args) {
   const requestJson = valueAfter(args, "--request-json");
   if (!artifact || !requestJson || !["napi", "node-wasm"].includes(candidate)) {
     throw new Error(
-      "usage: probe-candidate-async.mjs --artifact <path> --candidate <napi|node-wasm> --request-json <json> [--local-shoal]",
+      "usage: probe-candidate-async.mjs --artifact <path> --candidate <napi|node-wasm> --request-json <json> [--local-grid | --local-layered | --local-shoal]",
     );
   }
-  return { artifact, candidate, requestJson, localShoal: args.includes("--local-shoal") };
+  return { artifact, candidate, requestJson, localLayout: readLocalLayoutFlag(args) };
 }
 
 function valueAfter(args, flag) {

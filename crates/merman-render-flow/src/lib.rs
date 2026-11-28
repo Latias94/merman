@@ -110,6 +110,16 @@ pub mod dagre;
 ))]
 #[doc(hidden)]
 pub mod elk;
+#[cfg(all(
+    feature = "layout-grid",
+    any(
+        feature = "diagram-agentflow",
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane"
+    )
+))]
+#[doc(hidden)]
+pub mod grid;
 #[cfg(any(
     feature = "diagram-agentflow",
     feature = "diagram-flowchart",
@@ -117,6 +127,16 @@ pub mod elk;
 ))]
 #[doc(hidden)]
 pub mod lane_title;
+#[cfg(all(
+    feature = "layout-layered",
+    any(
+        feature = "diagram-flowchart",
+        feature = "diagram-agentflow",
+        feature = "diagram-swimlane"
+    )
+))]
+#[doc(hidden)]
+pub mod layered;
 #[cfg(any(
     feature = "diagram-agentflow",
     feature = "diagram-flowchart",
@@ -125,7 +145,12 @@ pub mod lane_title;
 #[doc(hidden)]
 pub mod layout_config;
 #[cfg(all(
-    any(feature = "layout-elk", feature = "layout-shoal"),
+    any(
+        feature = "layout-elk",
+        feature = "layout-grid",
+        feature = "layout-layered",
+        feature = "layout-shoal"
+    ),
     any(
         feature = "diagram-agentflow",
         feature = "diagram-flowchart",

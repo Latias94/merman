@@ -46,6 +46,37 @@ pub fn solve(
     use_bpmn_drawn_size: bool,
     work_meter: Arc<OperationWorkMeter>,
 ) -> Result<()> {
+    solve_measured(
+        working,
+        config,
+        use_bpmn_drawn_size,
+        direction::PostProcessMode::Shared,
+        work_meter,
+    )
+}
+
+/// Runs legacy Flow Swimlane layout with its Mermaid 12.4 terminal straightening pass.
+pub fn solve_legacy_flow(
+    working: &mut working::WorkingLayout,
+    config: config::SwimlaneConfig,
+    work_meter: Arc<OperationWorkMeter>,
+) -> Result<()> {
+    solve_measured(
+        working,
+        config,
+        true,
+        direction::PostProcessMode::LegacyFlow,
+        work_meter,
+    )
+}
+
+fn solve_measured(
+    working: &mut working::WorkingLayout,
+    config: config::SwimlaneConfig,
+    use_bpmn_drawn_size: bool,
+    post_process_mode: direction::PostProcessMode,
+    work_meter: Arc<OperationWorkMeter>,
+) -> Result<()> {
     let reversed = sugiyama::run(working, config);
     for edge in &mut working.original_edges {
         edge.reversed_for_layout = reversed.contains(&edge.id);
@@ -53,7 +84,7 @@ pub fn solve(
     bounds::assign_canonical_group_bounds(working);
     let mut work_budget = work_budget::LayoutWorkBudget::for_operation(work_meter);
     routing::route(working, &mut work_budget, use_bpmn_drawn_size)?;
-    direction::post_process(working, &mut work_budget)?;
+    direction::post_process(working, &mut work_budget, post_process_mode)?;
 
     Ok(())
 }

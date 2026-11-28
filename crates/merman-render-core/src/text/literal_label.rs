@@ -131,6 +131,23 @@ pub struct FlowchartSvgLabelSource {
     plain_text: String,
 }
 
+/// Heap storage held by the SVG word rows after their producer returns.
+#[doc(hidden)]
+pub fn flowchart_svg_label_rows_heap_bytes(lines: &Vec<Vec<String>>) -> usize {
+    let rows = lines
+        .capacity()
+        .saturating_mul(std::mem::size_of::<Vec<String>>());
+    lines.iter().fold(rows, |bytes, line| {
+        let words = line
+            .capacity()
+            .saturating_mul(std::mem::size_of::<String>());
+        line.iter()
+            .fold(bytes.saturating_add(words), |bytes, word| {
+                bytes.saturating_add(word.capacity())
+            })
+    })
+}
+
 fn flowchart_source_plain_projection(source_lines: &[Vec<String>]) -> String {
     let mut plain_text = String::new();
     for (line_index, line) in source_lines.iter().enumerate() {
@@ -188,6 +205,12 @@ impl FlowchartSvgLabelSource {
 
     pub fn plain_text(&self) -> &str {
         &self.plain_text
+    }
+
+    #[doc(hidden)]
+    pub fn retained_heap_bytes(&self) -> usize {
+        flowchart_svg_label_rows_heap_bytes(&self.source_lines)
+            .saturating_add(self.plain_text.capacity())
     }
 
     pub fn wrapped_lines(

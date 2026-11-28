@@ -90,6 +90,8 @@ fn write_usecase_body(
     let style = &plan.source_style;
     if plan.ellipse {
         let business = source.is_some_and(|node| node.business);
+        let size = node_shape_size(node, plan);
+        let (rx, ry) = (size.width / 2.0, size.height / 2.0);
         let _ = write!(
             out,
             r#"<ellipse class="basic label-container{}" cx="0" cy="0" rx="{}" ry="{}" style="{}"/>"#,
@@ -98,12 +100,11 @@ fn write_usecase_body(
             } else {
                 ""
             },
-            fmt(node.width / 2.0),
-            fmt(node.height / 2.0),
+            fmt(rx),
+            fmt(ry),
             escape_attr(style)
         );
         if business {
-            let (rx, ry) = (node.width / 2.0, node.height / 2.0);
             let label_width = plan.label.metrics.width.max(
                 plan.stereotype
                     .as_ref()

@@ -116,6 +116,8 @@ diagram-swimlane = [
 ]
 layout-dagre = ["dep:dugong", "dep:serde_json", "merman-render-core/euclid-geometry", "merman-render-core/layout-dagre"]
 layout-elk = ["dep:merman-layout-elk", "merman-render-core/layout-elk"]
+layout-grid = ["merman-render-core/layout-grid"]
+layout-layered = ["merman-render-core/layout-layered"]
 layout-shoal = ["canonical-edge-paint", "merman-render-core/layout-shoal"]
 layout-swimlane = [
     "dep:indexmap",

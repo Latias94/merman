@@ -391,63 +391,82 @@ test("runtime catalog accepts additive fields within schema 1", async () => {
   await engine.dispose();
 });
 
-test("assembled Node WASM selects the exact Shoal identity only for the private package", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "merman-wasm-shoal-identity-"));
-  context.after(() => rm(root, { recursive: true, force: true }));
-  const wasm = path.join(root, "merman_node_bg.wasm");
-  const loader = path.join(root, "merman_node.js");
-  const catalog = runtimeCatalog();
-  catalog.capabilities.capability_ids.push("layout-shoal");
-  catalog.capabilities.capability_ids.sort();
-  const wire = structuredClone(NODE_WIRE_CONTRACT);
-  wire.artifact.capability_ids = catalog.capabilities.capability_ids;
-  const identity = {
-    schema_version: 1,
-    package_id: wire.package_id,
-    artifact_id: wire.artifact_id,
-    package_version: PACKAGE_VERSION,
-    transport_kind: "wasm",
-    transport_api_version: wire.transport_api_version,
-    binding_result_payload_version: wire.binding_result_payload_version,
-    capability_descriptor_digest: CAPABILITY_DESCRIPTOR_DIGEST,
-    wire_contract: wire,
-  };
-  const source = "---\nconfig:\n  layout: shoal\n---\nflowchart LR\nA --> B";
-  const svg = '<svg xmlns="http://www.w3.org/2000/svg" />';
-  await writeFile(wasm, "synthetic WASM used with a mock binding");
-  await writeFile(loader, `
-    exports.transportIdentityJson = () => ${JSON.stringify(JSON.stringify(identity))};
-    exports.WasmEngine = class {
-      execute(request) { return this.executeSync(request); }
-      executeSync(request) {
-        const { source, operation_id } = JSON.parse(request);
-        if (source !== ${JSON.stringify(source)} || operation_id !== "svg") throw new Error("Unexpected request");
-        return ${JSON.stringify(success(svg, false))};
-      }
-      metadataJson() { return "{}"; }
-      runtimeCatalogJson() { return ${JSON.stringify(JSON.stringify(catalog))}; }
+for (const layout of ["shoal", "grid", "layered"]) {
+  test(`assembled Node WASM selects the exact ${layout} identity for the matching private package`, async (context) => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "merman-wasm-shoal-identity-"));
+    context.after(() => rm(root, { recursive: true, force: true }));
+    const wasm = path.join(root, "merman_node_bg.wasm");
+    const loader = path.join(root, "merman_node.js");
+    const catalog = runtimeCatalog();
+    catalog.capabilities.capability_ids.push(`layout-${layout}`);
+    catalog.capabilities.capability_ids.sort();
+    const wire = structuredClone(NODE_WIRE_CONTRACT);
+    wire.artifact.capability_ids = catalog.capabilities.capability_ids;
+    const identity = {
+      schema_version: 1,
+      package_id: wire.package_id,
+      artifact_id: wire.artifact_id,
+      package_version: PACKAGE_VERSION,
+      transport_kind: "wasm",
+      transport_api_version: wire.transport_api_version,
+      binding_result_payload_version: wire.binding_result_payload_version,
+      capability_descriptor_digest: CAPABILITY_DESCRIPTOR_DIGEST,
+      wire_contract: wire,
     };
-  `);
+    const source = `---\nconfig:\n  layout: ${layout}\n---\nflowchart LR\nA --> B`;
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" />';
+    await writeFile(wasm, "synthetic WASM used with a mock binding");
+    await writeFile(loader, `
+      exports.transportIdentityJson = () => ${JSON.stringify(JSON.stringify(identity))};
+      exports.WasmEngine = class {
+        execute(request) { return this.executeSync(request); }
+        executeSync(request) {
+          const { source, operation_id } = JSON.parse(request);
+          if (source !== ${JSON.stringify(source)} || operation_id !== "svg") throw new Error("Unexpected request");
+          return ${JSON.stringify(success(svg, false))};
+        }
+        metadataJson() { return "{}"; }
+        runtimeCatalogJson() { return ${JSON.stringify(JSON.stringify(catalog))}; }
+      };
+    `);
 
-  for (const localShoal of [true, false]) {
-    const packageRoot = path.join(root, localShoal ? "local" : "published");
-    assembleWasmPackage(packageRoot, wasm, {
-      localShoal,
-      readReceipt: () => ({ candidate: "node-wasm", target: null }),
-    });
-    const { createNodeEngine: createPackagedEngine } = await import(
-      pathToFileURL(path.join(packageRoot, "node-wasm", "dist", "index.mjs")).href
-    );
-    if (localShoal) {
-      const engine = await createPackagedEngine();
-      try {
-        assert.deepEqual(engine.runtimeCatalog.capabilities.capability_ids, wire.artifact.capability_ids);
-        assert.equal(engine.renderSvgSync(source), svg);
-      } finally {
-        await engine.dispose();
+    const otherLayout = layout === "grid" ? "layered" : "grid";
+    for (const localLayout of [layout, null, otherLayout]) {
+      const packageRoot = path.join(root, localLayout ?? "published");
+      assembleWasmPackage(packageRoot, wasm, {
+        localLayout,
+        readReceipt: () => ({ candidate: "node-wasm", target: null }),
+      });
+      const { createNodeEngine: createPackagedEngine } = await import(
+        pathToFileURL(path.join(packageRoot, "node-wasm", "dist", "index.mjs")).href
+      );
+      if (localLayout === layout) {
+        const engine = await createPackagedEngine();
+        try {
+          assert.deepEqual(engine.runtimeCatalog.capabilities.capability_ids, wire.artifact.capability_ids);
+          assert.equal(engine.renderSvgSync(source), svg);
+        } finally {
+          await engine.dispose();
+        }
+      } else {
+        await assert.rejects(createPackagedEngine(), /candidate module identity is incompatible/i);
       }
-    } else {
-      await assert.rejects(createPackagedEngine(), /candidate module identity is incompatible/i);
+    }
+  });
+}
+
+test("Node catalogs require the selected local layout and reject other known layouts", async () => {
+  for (const layout of ["grid", "layered"]) {
+    const catalog = runtimeCatalog();
+    catalog.capabilities.capability_ids.push(`layout-${layout}`);
+    catalog.capabilities.capability_ids.sort();
+    const factory = transportFactory({ runtimeCatalogJson: () => JSON.stringify(catalog) });
+    const other = layout === "grid" ? "layered" : "grid";
+    for (const localLayout of [null, other]) {
+      await assert.rejects(
+        createNodeEngine({}, { loadTransport: factory.loadTransport, localLayout }),
+        /known capabilities do not match the Node artifact contract/i,
+      );
     }
   }
 });

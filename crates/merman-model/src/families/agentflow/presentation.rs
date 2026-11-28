@@ -5,6 +5,8 @@ use super::{
 };
 use super::{AgentflowEdgeAttributes, AgentflowNodeAttributes};
 use crate::families::flowchart::FlowEdgeDefaults;
+use crate::grid::{GridInlinePlacements, GridPlacementOwner};
+use crate::{OperationControl, OperationControlResult};
 use indexmap::IndexMap;
 use serde::ser::{SerializeMap, SerializeStruct};
 use serde::{Deserialize, Serialize, Serializer};
@@ -15,12 +17,28 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Default)]
 pub struct AgentflowVisuals {
     node_dom_indices: HashMap<String, usize>,
+    grid_placements: GridInlinePlacements,
 }
 
 impl AgentflowVisuals {
     /// Freezes the complete set of family-assigned DOM ordinals without rebuilding the graph.
     pub fn from_node_dom_indices(node_dom_indices: HashMap<String, usize>) -> Self {
-        Self { node_dom_indices }
+        Self {
+            node_dom_indices,
+            ..Self::default()
+        }
+    }
+
+    /// Installs the validated placements owned by the canonical family slots.
+    #[doc(hidden)]
+    pub fn with_grid_placements(mut self, placements: GridInlinePlacements) -> Self {
+        self.grid_placements = placements;
+        self
+    }
+
+    #[doc(hidden)]
+    pub fn grid_placements(&self) -> &GridInlinePlacements {
+        &self.grid_placements
     }
 }
 
@@ -239,6 +257,27 @@ impl Serialize for FullNode<'_> {
 }
 
 impl AgentflowDiagramRenderModel {
+    pub(crate) fn validate_grid_placements_controlled(
+        &self,
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<(), &'static str>> {
+        self.visuals.grid_placements.validate_owners_controlled(
+            |owner| match owner {
+                GridPlacementOwner::Vertex(slot) => {
+                    self.vertices.get(slot).map(|node| node.id.as_str())
+                }
+                GridPlacementOwner::Subgraph(slot) => {
+                    self.sub_graphs.get(slot).map(|graph| graph.id.as_str())
+                }
+                GridPlacementOwner::Connector(slot) => self
+                    .connectors
+                    .get(slot)
+                    .map(|connector| connector.id.as_str()),
+            },
+            control,
+        )
+    }
+
     /// Projects the domain graph into the shared flow layout model.
     ///
     /// Agentflow owns its semantic JSON and diagnostics, while Mermaid 12 uses the unified
@@ -447,6 +486,10 @@ impl AgentflowDiagramRenderModel {
                 .map(|(id, ancestor)| ((*id).to_string(), (*ancestor).to_string())),
         );
         context.set_subgraph_color_ordinals(containment.color_ordinals(&self.sub_graphs));
+        context.set_agentflow_grid_placements(
+            self.visuals.grid_placements.clone(),
+            self.vertices.len(),
+        );
         (model, context)
     }
 

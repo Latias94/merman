@@ -4,6 +4,11 @@ use merman_model::families::usecase::{
     UsecaseRelationshipType,
 };
 use merman_render_core::Error;
+#[cfg(feature = "layout-layered")]
+use merman_render_core::text::literal_label::{
+    FlowchartSvgLabelSource, FlowchartSvgWidthMode, flowchart_non_markdown_svg_plain_text,
+    flowchart_svg_label_rows_heap_bytes,
+};
 use merman_render_core::text::{
     WrapMode,
     inline_html::{MermaidMarkdownWordType, svg_markdown_word_style},
@@ -28,6 +33,57 @@ impl UsecasePreparedHtmlLabel {
             xhtml,
             _retained_text: retained_text,
         }))
+    }
+}
+
+#[cfg(feature = "layout-layered")]
+#[derive(Debug)]
+pub(crate) struct UsecasePreparedSvgLabel {
+    pub(crate) rows: Vec<Vec<String>>,
+    pub(crate) bbox_y: f64,
+    _retained: merman_render_core::resources::PreparedTextRetainedReservation,
+}
+
+#[cfg(feature = "layout-layered")]
+impl UsecasePreparedSvgLabel {
+    fn prepare(
+        source: &str,
+        measurer: &dyn TextMeasurer,
+        style: &TextStyle,
+        max_width: Option<f64>,
+        work: &mut OperationLayoutWorkControl,
+    ) -> Result<(Arc<Self>, TextMetrics)> {
+        work.charge_adapter(source.len().max(1))?;
+        let source = FlowchartSvgLabelSource::new(source);
+        let rows = source.wrapped_lines(measurer, style, max_width, true);
+        let metrics =
+            source.metrics_from_wrapped(measurer, style, &rows, FlowchartSvgWidthMode::Bbox);
+        let bbox_y = rows
+            .iter()
+            .enumerate()
+            .filter_map(|(index, row)| {
+                let text = flowchart_non_markdown_svg_plain_text(&row.join(" "));
+                (!text.trim().is_empty()).then(|| {
+                    index as f64 * style.font_size * 1.1
+                        + measurer.measure_svg_create_text_bbox_y_offset_px(&text, style)
+                })
+            })
+            .reduce(f64::min)
+            .unwrap_or(0.0);
+        work.checkpoint()?;
+        let bytes = work.checked_add(
+            flowchart_svg_label_rows_heap_bytes(&rows),
+            std::mem::size_of::<Self>() + 2 * std::mem::size_of::<usize>(),
+        )?;
+        let retained = work.reserve_prepared_text_retained_bytes(bytes)?;
+        Ok((
+            Arc::new(Self {
+                rows,
+                bbox_y,
+                _retained: retained,
+            }),
+            metrics,
+        ))
     }
 }
 
@@ -177,6 +233,7 @@ struct LabelContext<'a> {
     math_renderer: Option<&'a (dyn merman_render_core::math::MathRenderer + Send + Sync)>,
     styles: &'a indexmap::IndexMap<String, String>,
     root_font_size: f64,
+    layered: bool,
 }
 
 fn measure_plain_label(
@@ -223,7 +280,7 @@ fn label(
     max_width: Option<f64>,
     min_width: f64,
     context: &LabelContext<'_>,
-    work: &OperationLayoutWorkControl,
+    work: &mut OperationLayoutWorkControl,
 ) -> Result<UsecaseLabelPlan> {
     let html = context
         .config
@@ -289,39 +346,65 @@ fn label(
     } else {
         max_width
     };
-    let mut metrics = merman_render_core::math::math_label_metrics_for_layout(
-        merman_render_core::math::MathLabelMetricsRequest {
-            measurer: context.measurer,
-            raw_label: source,
-            style: &terminal_style,
-            max_width_px: measurement_width,
-            wrap_mode: mode,
-            config: context.config,
-            math_renderer,
-        },
-    )
-    .unwrap_or_else(|| {
-        if let Some(content) = html_content.as_deref() {
-            measure_xhtml_label_fragment_with_terminal_fonts(
-                context.measurer,
-                content,
-                &terminal_style,
-                measurement_width,
-                // HTML rem uses the document root independently of the role font.
-                16.0,
-            )
-        } else if label_type == UsecaseLabelType::Markdown {
-            measure_wrapped_markdown_with_inline_styles(
-                context.measurer,
-                text,
-                &terminal_style,
-                max_width,
-                mode,
-            )
-        } else {
-            measure_plain_label(source, &terminal_style, context.measurer)
-        }
-    });
+    #[cfg(feature = "layout-layered")]
+    let (layered_svg, layered_metrics) = if context.layered
+        && !html
+        && label_type == UsecaseLabelType::Text
+        && math_renderer.is_none()
+    {
+        let (label, metrics) = UsecasePreparedSvgLabel::prepare(
+            source,
+            context.measurer,
+            &terminal_style,
+            measurement_width,
+            work,
+        )?;
+        (Some(label), Some(metrics))
+    } else {
+        (None, None)
+    };
+    #[cfg(not(feature = "layout-layered"))]
+    let layered_metrics: Option<TextMetrics> = None;
+    let mut metrics = if let Some(metrics) = layered_metrics {
+        metrics
+    } else {
+        merman_render_core::math::math_label_metrics_for_layout(
+            merman_render_core::math::MathLabelMetricsRequest {
+                measurer: context.measurer,
+                raw_label: source,
+                style: &terminal_style,
+                max_width_px: measurement_width,
+                wrap_mode: mode,
+                config: context.config,
+                math_renderer,
+            },
+        )
+        .unwrap_or_else(|| {
+            if let Some(content) = html_content.as_deref() {
+                measure_xhtml_label_fragment_with_terminal_fonts(
+                    context.measurer,
+                    content,
+                    &terminal_style,
+                    measurement_width,
+                    // HTML rem uses the document root independently of the role font.
+                    16.0,
+                )
+            } else if label_type == UsecaseLabelType::Markdown {
+                measure_wrapped_markdown_with_inline_styles(
+                    context.measurer,
+                    text,
+                    &terminal_style,
+                    max_width,
+                    mode,
+                )
+            } else {
+                measure_plain_label(source, &terminal_style, context.measurer)
+            }
+        })
+    };
+    if context.layered {
+        work.checkpoint()?;
+    }
     let text_metrics = metrics;
     // labelHelper.withMinWidth also widens the measured box for SVG labels.
     if !text.is_empty() {
@@ -339,6 +422,8 @@ fn label(
         html: html_content
             .map(|content| UsecasePreparedHtmlLabel::new(content, work))
             .transpose()?,
+        #[cfg(feature = "layout-layered")]
+        layered_svg,
         styles: context
             .styles
             .iter()
@@ -466,14 +551,120 @@ fn escaped_markdown(text: &str) -> String {
     escaped
 }
 
+struct MeasureInputs<'a> {
+    config: &'a PresentationConfig,
+    css: &'a UsecaseCssBinding,
+    measurer: &'a dyn TextMeasurer,
+    math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
+}
+
 pub(super) fn measure(
     model: &UsecaseDiagramModel,
-    full_config: &merman_model::presentation::PresentationConfig,
-    css_binding: &UsecaseCssBinding,
+    config: &PresentationConfig,
+    css: &UsecaseCssBinding,
     measurer: &dyn TextMeasurer,
-    math_renderer: Option<&(dyn merman_render_core::math::MathRenderer + Send + Sync)>,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    work: &mut OperationLayoutWorkControl,
+    #[cfg(feature = "layout-grid")] grid_labels: Option<&mut super::grid::GridLabels<'_>>,
+) -> Result<(Vec<UsecaseNodePlan>, Vec<UsecaseEdgePlan>)> {
+    measure_pass(
+        model,
+        MeasureInputs {
+            config,
+            css,
+            measurer,
+            math_renderer,
+        },
+        work,
+        false,
+        #[cfg(feature = "layout-grid")]
+        grid_labels,
+    )
+}
+
+#[cfg(feature = "layout-layered")]
+pub(super) fn measure_layered(
+    model: &UsecaseDiagramModel,
+    config: &PresentationConfig,
+    css: &UsecaseCssBinding,
+    measurer: &dyn TextMeasurer,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<(Vec<UsecaseNodePlan>, Vec<UsecaseEdgePlan>)> {
+    measure_pass(
+        model,
+        MeasureInputs {
+            config,
+            css,
+            measurer,
+            math_renderer,
+        },
+        work,
+        true,
+        #[cfg(feature = "layout-grid")]
+        None,
+    )
+}
+
+#[cfg(feature = "layout-layered")]
+pub(super) fn prepare_layered_boundary_labels(
+    model: &UsecaseDiagramModel,
+    config: &PresentationConfig,
+    css_binding: &UsecaseCssBinding,
+    measurer: &dyn TextMeasurer,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    nodes: &mut [UsecaseNodePlan],
+    work: &mut OperationLayoutWorkControl,
+) -> Result<()> {
+    let root_font_size = if config
+        .get("htmlLabels")
+        .and_then(Value::as_bool)
+        .unwrap_or(true)
+    {
+        16.0
+    } else {
+        css_binding.root_font.font_size
+    };
+    let boundaries = nodes.iter_mut().filter(|plan| plan.is_boundary);
+    for (plan, boundary) in boundaries.zip(&model.boundaries) {
+        work.charge_adapter(plan.source_label.len().max(1))?;
+        let css = styles(model, &boundary.classes, &boundary.styles);
+        let style = styled(&css_binding.generic_font, None, &css, root_font_size);
+        // The solver reserved the unwrapped plain title. The cluster painter uses a new
+        // createText call at its default width and Markdown mode for every title.
+        plan.label = label(
+            &plan.source_label,
+            UsecaseLabelType::Markdown,
+            &style,
+            Some(200.0),
+            0.0,
+            &LabelContext {
+                config,
+                measurer,
+                math_renderer,
+                styles: &css,
+                root_font_size,
+                layered: true,
+            },
+            work,
+        )?;
+    }
+    Ok(())
+}
+
+fn measure_pass(
+    model: &UsecaseDiagramModel,
+    inputs: MeasureInputs<'_>,
+    work: &mut OperationLayoutWorkControl,
+    layered: bool,
+    #[cfg(feature = "layout-grid")] mut grid_labels: Option<&mut super::grid::GridLabels<'_>>,
+) -> Result<(Vec<UsecaseNodePlan>, Vec<UsecaseEdgePlan>)> {
+    let MeasureInputs {
+        config: full_config,
+        css: css_binding,
+        measurer,
+        math_renderer,
+    } = inputs;
     let config = full_config.as_value();
     let sanitize =
         |text: &str| merman_markup::sanitize::sanitize_text(text, full_config.as_config());
@@ -520,6 +711,7 @@ pub(super) fn measure(
                 math_renderer,
                 styles: &css,
                 root_font_size,
+                layered,
             };
             // Sanitize before escaping or folding stereotypes, as UsecaseDB does.
             let source_label = source_text(&node.label, node.label_type);
@@ -606,6 +798,15 @@ pub(super) fn measure(
             } else {
                 (label_width + 40.0, content_height + 20.0)
             };
+            #[cfg(feature = "layout-layered")]
+            let layered_ellipse = (layered && ellipse).then(|| kurbo::Size::new(width, height));
+            // Common Layered measures the whole group. A normal SVG oval's label
+            // starts at x=0, so its ink can extend beyond the nominal ellipse.
+            let width = if layered && ellipse && !html && !node.business {
+                width.max(width / 2.0 + main.text_metrics.width)
+            } else {
+                width
+            };
             nodes.push(UsecaseNodePlan {
                 id: node.id.clone(),
                 source_style: shape_style(&css),
@@ -619,6 +820,8 @@ pub(super) fn measure(
                 is_boundary: false,
                 package: false,
                 ellipse,
+                #[cfg(feature = "layout-layered")]
+                layered_ellipse,
                 table: None,
                 dagre_helper: false,
             });
@@ -635,6 +838,7 @@ pub(super) fn measure(
             math_renderer,
             styles: &css,
             root_font_size,
+            layered,
         };
         let main = label(
             &source_text(&note.label, note.label_type),
@@ -658,6 +862,8 @@ pub(super) fn measure(
             is_boundary: false,
             package: false,
             ellipse: false,
+            #[cfg(feature = "layout-layered")]
+            layered_ellipse: None,
             table: None,
             dagre_helper: false,
         });
@@ -672,6 +878,7 @@ pub(super) fn measure(
             math_renderer,
             styles: &css,
             root_font_size,
+            layered,
         };
         let main = label(
             &sanitize(&node.id),
@@ -737,6 +944,8 @@ pub(super) fn measure(
             is_boundary: false,
             package: false,
             ellipse: false,
+            #[cfg(feature = "layout-layered")]
+            layered_ellipse: None,
             dagre_helper: false,
             table: Some(UsecaseJsonTablePlan {
                 rows,
@@ -757,12 +966,20 @@ pub(super) fn measure(
             math_renderer,
             styles: &css,
             root_font_size,
+            layered,
+        };
+        let title_width = if !layered {
+            Some(200.0)
+        } else if boundary.label_type == UsecaseLabelType::Markdown {
+            wrapping_width
+        } else {
+            None
         };
         let main = label(
             &source_text(&boundary.label, boundary.label_type),
             boundary.label_type,
             &style,
-            Some(200.0),
+            title_width,
             0.0,
             &label_context,
             work,
@@ -780,6 +997,8 @@ pub(super) fn measure(
             is_boundary: true,
             package: boundary.package,
             ellipse: false,
+            #[cfg(feature = "layout-layered")]
+            layered_ellipse: None,
             table: None,
             dagre_helper: false,
         });
@@ -787,11 +1006,35 @@ pub(super) fn measure(
     let mut edges = Vec::new();
     for edge in &model.relationships {
         work.charge_adapter(1)?;
+        #[cfg(feature = "layout-grid")]
+        let edge_slot = edges.len();
         let mut css = styles(model, &edge.classes, &[]);
         // Mermaid selects Neo marker margins from class styles before inline edge styles.
         let source_animated = css
             .iter()
             .any(|(key, value)| key.contains("animation") || value.contains("animation"));
+        #[cfg(feature = "layout-layered")]
+        let layered_marker_stroke = if layered {
+            // Mermaid reads an entire inline stroke declaration for hand-drawn edges,
+            // and the first path stroke value (class declarations first) otherwise.
+            let inline = edge
+                .styles
+                .iter()
+                .find(|style| style.starts_with("stroke:"));
+            let stroke = if css_binding.edge_look == "handDrawn" {
+                inline.map(String::as_str)
+            } else {
+                css.get("stroke")
+                    .map(String::as_str)
+                    .or_else(|| inline.and_then(|style| style.strip_prefix("stroke:")))
+            };
+            if let Some(stroke) = stroke {
+                work.charge_adapter(stroke.len())?;
+            }
+            stroke.map(str::to_owned)
+        } else {
+            None
+        };
         apply_inline_styles(&mut css, &edge.styles);
         let label_context = LabelContext {
             config: full_config,
@@ -799,6 +1042,7 @@ pub(super) fn measure(
             math_renderer,
             styles: &css,
             root_font_size,
+            layered,
         };
         let (text, kind, start, end, dotted) = match edge.relationship_type {
             UsecaseRelationshipType::Include => (
@@ -839,6 +1083,8 @@ pub(super) fn measure(
         };
         edges.push(UsecaseEdgePlan {
             source_style: shape_style(&css),
+            #[cfg(feature = "layout-layered")]
+            layered_marker_stroke,
             // Mermaid's marker margin decision observes compiled class animation, excluding
             // inline path styles. Prepare that decision alongside the edge's other source facts.
             animated: edge.animate || edge.animation.is_some() || source_animated,
@@ -850,6 +1096,11 @@ pub(super) fn measure(
             target: edge.target.clone(),
             label: text
                 .map(|text| {
+                    #[cfg(feature = "layout-grid")]
+                    if let Some(grid_labels) = grid_labels.as_deref_mut() {
+                        grid_labels.measure(edge_slot, &source_text(text, kind), kind)?;
+                        return Ok(None);
+                    }
                     let mut plan = label(
                         &source_text(text, kind),
                         kind,
@@ -871,9 +1122,10 @@ pub(super) fn measure(
                         plan.metrics.width += 4.0;
                         plan.metrics.height += 4.0;
                     }
-                    Ok::<_, Error>(plan)
+                    Ok::<_, Error>(Some(plan))
                 })
-                .transpose()?,
+                .transpose()?
+                .flatten(),
             minlen: edge.minlen,
             start_marker: start.map(str::to_owned),
             end_marker: end.map(str::to_owned),
@@ -885,6 +1137,8 @@ pub(super) fn measure(
         work.charge_adapter(1)?;
         edges.push(UsecaseEdgePlan {
             source_style: String::new(),
+            #[cfg(feature = "layout-layered")]
+            layered_marker_stroke: None,
             animated: false,
             original_id: None,
             self_loop_node: None,
@@ -1057,6 +1311,8 @@ mod tests {
                 &DeterministicTextMeasurer::default(),
                 None,
                 &mut work(),
+                #[cfg(feature = "layout-grid")]
+                None,
             )
             .unwrap();
             let node = nodes.iter().find(|node| node.id == "A").unwrap();
@@ -1115,6 +1371,8 @@ mod tests {
             &DeterministicTextMeasurer::default(),
             None,
             &mut work,
+            #[cfg(feature = "layout-grid")]
+            None,
         )
         .unwrap();
         let style = edges[0].source_style.clone();
@@ -1161,6 +1419,8 @@ mod tests {
             &DeterministicTextMeasurer::default(),
             None,
             &mut work,
+            #[cfg(feature = "layout-grid")]
+            None,
         )
         .unwrap();
         super::super::dagre::expand_self_loops(
@@ -1228,6 +1488,8 @@ mod tests {
             &measurer,
             None,
             &mut work(),
+            #[cfg(feature = "layout-grid")]
+            None,
         )
         .unwrap();
         let (large, _) = measure(
@@ -1237,6 +1499,8 @@ mod tests {
             &measurer,
             None,
             &mut work(),
+            #[cfg(feature = "layout-grid")]
+            None,
         )
         .unwrap();
         assert_eq!(small[0].width, 76.0);
@@ -1265,6 +1529,8 @@ mod tests {
             &DeterministicTextMeasurer::default(),
             None,
             &mut work(),
+            #[cfg(feature = "layout-grid")]
+            None,
         )
         .unwrap();
         let table = nodes[0].table.as_ref().unwrap();

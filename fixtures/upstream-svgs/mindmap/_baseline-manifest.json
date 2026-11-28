@@ -1,12 +1,12 @@
 {
   "schema_version": 4,
   "source": {
-    "mermaid_version": "12.3.0",
+    "mermaid_version": "12.4.0",
     "mermaid_cli_version": "12.2.0",
-    "mermaid_source_tag": "mermaid@12.3.0",
-    "mermaid_source_commit": "2086904e76c692331e34a45d7cc3bc30860d040e",
-    "package_json_sha256": "5b969bc88be5bd1503f89118a90fdcf2c241683d5c40fa6f64651d90ef0608d8",
-    "package_lock_sha256": "6be7b7ca2156f048e1cfe8560fee60f179ecb325877ced3d13e2dd69e75e5fcc",
+    "mermaid_source_tag": "mermaid@12.4.0",
+    "mermaid_source_commit": "9f93a44a36e46a36b1379f9de72fb1ee5684ee3f",
+    "package_json_sha256": "5f638289fd05a3f23e20ca18dfbba3d46d97d117d7471559e5802cc19cb83458",
+    "package_lock_sha256": "1f0ca38a5fb1a39125f887d17c8eb01965e69e002e13bdb1c2cea91987142cdf",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "renderer_revision": "xtask-upstream-svg-v5"
   },
@@ -14,7 +14,7 @@
     "mode": "generated",
     "render_environment": {
       "browser": {
-        "product": "Chrome",
+        "product": "HeadlessChrome",
         "version": "156.0.8078.47",
         "revision": "@1d17a2e2ee147bb7d6ae2ab6abdb3a2510c17775",
         "locale": "zh-CN",
@@ -24,23 +24,23 @@
         "version": "25.16.0"
       },
       "operating_system": {
-        "platform": "darwin",
-        "arch": "arm64",
-        "release": "27.0.0"
+        "platform": "win32",
+        "arch": "x64",
+        "release": "10.0.26300"
       },
       "mermaid_runtime": {
-        "mermaid_version": "12.3.0",
+        "mermaid_version": "12.4.0",
         "dompurify_version": "3.4.17",
         "compiler_version": "0.28.2",
-        "artifact_sha256": "98084069d6691fe6e3ca8570d57c6c78dc24af3297d4849a33bfc74f76937968",
+        "artifact_sha256": "1683f26875fc5ed4ce134b7c76252add15dbc5053d1301ff6eb22970971fb408",
         "dompurify_package_sha256": "2a67a4d0cb2f51dbde8e63138391edd707e0d4bef608b1ad19c509d162e75bb6",
         "compiler_package_sha256": "0e4a34c8580ead6721d606c22db93fe468cec72ca21824be4dfe4c770e23100e",
-        "mermaid_package_sha256": "8dea6d2895b9a75667443ef8a82fc4b8d30f962de057686c7b6ef860bc69d251",
+        "mermaid_package_sha256": "e104992b5e4a0c794dd7f3834757173583836a9ee0387ee7460032327bc2ce63",
         "mermaid_cli_package_sha256": "7d43b6fab89acc14a4d1164d59675ceccbdcfe5d68944229461597031688ac5d"
       },
       "font_probe": {
         "revision": "mermaid-font-probe-v1",
-        "sha256": "c6b2b6ad65d9a2e47ff3b8c2b54afabae3c184561c20ae0f5b5bb11a35e890e2"
+        "sha256": "b74cb52f625a46ef61df9467965af3dac4a01564ba6a1d67812ff77ad4becc14"
       }
     }
   },
@@ -123,7 +123,7 @@
     },
     "stress_mindmap_html_sanitization_013": {
       "input_sha256": "3b0a694108d4e750ed9128f5fb8727e277bf52824c964aa51ecb589dd6594d7c",
-      "svg_sha256": "c31849b0fcf747505a7fd15ef60340c23887e2f576294d6ce5b3eec715d86bb4",
+      "svg_sha256": "83ff2aea2540c0931713498d82ccd1859bc15b356df8fbba567a3c5a1a4aa939",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "stress_mindmap_html_sanitization_links_034": {
@@ -158,7 +158,7 @@
     },
     "stress_mindmap_markdown_emphasis_icons_014": {
       "input_sha256": "76fccbab937bebe79d8a80da164f9e979e691367ccc97fd03a0fc8e246db094f",
-      "svg_sha256": "8ed57a7cd4ecbbc04149c85625d629f8c98b32f9e395aedc33b93403e2c01544",
+      "svg_sha256": "c2aef9703b4fda2a566a8a14d9e7d714e6998a9fe89db6923a69a62527cabd0c",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "stress_mindmap_markdown_mixed_raw_blocks_038": {
@@ -173,7 +173,7 @@
     },
     "stress_mindmap_multiline_markdown_021": {
       "input_sha256": "47312ace24699e3f22cd4d81bb647ed88a48c9de97b7c8c18ef85e3e8184f460",
-      "svg_sha256": "917a6340e3dd9775653e9f1f018f61383b1e82cced9a6be578b7335e3f127b1e",
+      "svg_sha256": "560df6ce1f74313eaa9f67415632e1873a508b9bc47437bc64d892407491d22b",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "stress_mindmap_proto_constructor_ids_033": {
@@ -488,7 +488,7 @@
     },
     "upstream_mermaid_12_2_svg_label_centering": {
       "input_sha256": "34b3d1f5e3a8612dc23ce55e6b14b086f2dff877ae9b8163951ab0c58c5439a9",
-      "svg_sha256": "79845721beb493964f5b8e2badfc5c16aad1e08a8464b5afce852b0334c61226",
+      "svg_sha256": "dc3dc22c914b0e7d5f9da2e610f64876e1a5fcae1ea8463af6a229590a6ff63e",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_node_types": {

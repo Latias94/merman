@@ -9,6 +9,7 @@ pub(crate) fn format_js_number(value: f64) -> String {
     ryu_js::Buffer::new().format(value).to_owned()
 }
 
+#[cfg(any(feature = "presentation", test))]
 pub(crate) fn cleanup_mermaid_comments(input: &str) -> std::borrow::Cow<'_, str> {
     if !input.contains("%%") {
         return std::borrow::Cow::Borrowed(input.trim_start());

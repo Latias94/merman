@@ -156,6 +156,7 @@ pub fn render_parity(
                 root_viewport: services.root_viewport.clone(),
                 document_scope,
                 uses_elk_adapter_dom: ctx.uses_elk_adapter_dom,
+                layout_fallback: ctx.layout.route_contract.layout_fallback(),
                 use_max_width,
                 diagram_padding,
                 source_paint_bounds,
@@ -173,6 +174,14 @@ pub fn render_parity(
             drop(_g_viewbox);
             let _g_render_svg = render_timing.section(&mut timings.render_svg);
 
+            let swimlane_styles = swimlane_layout.is_some();
+            #[cfg(feature = "layout-grid")]
+            let swimlane_styles = swimlane_styles
+                || diagram_type == "swimlane" && ctx.layout.route_contract.grid_paint().is_some();
+            let swimlane_styles = swimlane_styles
+                || diagram_type == "swimlane"
+                    && (ctx.layout.route_contract.is_layered()
+                        || ctx.layout.route_contract.layout_fallback().is_some());
             let document = document.write(
                 services.work_meter,
                 FlowchartStylesheetRequest {
@@ -186,7 +195,7 @@ pub fn render_parity(
                     font_family,
                     font_size,
                     class_defs: &model.class_defs,
-                    swimlane: swimlane_layout.is_some(),
+                    swimlane: swimlane_styles,
                     allow_deferred_palette: services.defer_palette_stylesheet,
                 },
                 |out| {

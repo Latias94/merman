@@ -27,8 +27,37 @@ pub(in crate::preprocess) fn sanitize_directive_controlled(
     value: &mut Value,
     control: &OperationControl,
 ) -> OperationControlResult<()> {
+    sanitize_directive_path(value, Vec::new(), control)
+}
+
+pub(in crate::preprocess) fn sanitize_grid_config_controlled(
+    config: &mut Value,
+    control: &OperationControl,
+) -> OperationControlResult<()> {
+    let Some(config_object) = config.as_object_mut() else {
+        return Ok(());
+    };
+    match config_object.get("grid") {
+        Some(Value::Null) => {
+            config_object.remove("grid");
+        }
+        Some(_) => sanitize_directive_path(
+            config,
+            vec![DirectiveValuePathSegment::Key("grid".to_owned())],
+            control,
+        )?,
+        None => {}
+    }
+    Ok(())
+}
+
+fn sanitize_directive_path(
+    value: &mut Value,
+    root: Vec<DirectiveValuePathSegment>,
+    control: &OperationControl,
+) -> OperationControlResult<()> {
     control.checkpoint()?;
-    let mut stack = vec![Vec::<DirectiveValuePathSegment>::new()];
+    let mut stack = vec![root];
     let mut visited = 0usize;
 
     while let Some(path) = stack.pop() {
@@ -50,7 +79,8 @@ pub(in crate::preprocess) fn sanitize_directive_controlled(
                     .iter()
                     .filter(|(key, value)| {
                         is_suspicious_directive_key(key)
-                            || !crate::generated::is_default_config_key(key)
+                            || (!crate::generated::is_default_config_key(key)
+                                && !is_mermaid_12_4_layout_key(&path, key))
                             || value.is_null()
                     })
                     .map(|(key, _)| key)
@@ -64,6 +94,11 @@ pub(in crate::preprocess) fn sanitize_directive_controlled(
 
                 let child_keys = map.keys().cloned().collect::<Vec<_>>();
                 for key in child_keys.into_iter().rev() {
+                    // The Grid policy admits this dictionary with its literal authored IDs
+                    // and uses the placement order from decoding to select the first error.
+                    if key == "placements" && is_grid_section(&path) {
+                        continue;
+                    }
                     if let Some(kind) = directive_dictionary_kind(&key)
                         && map
                             .get_mut(&key)
@@ -103,6 +138,36 @@ pub(in crate::preprocess) fn sanitize_directive_controlled(
         }
     }
     control.checkpoint()
+}
+
+fn is_grid_section(path: &[DirectiveValuePathSegment]) -> bool {
+    matches!(path, [DirectiveValuePathSegment::Key(key)] if key == "grid")
+}
+
+fn is_mermaid_12_4_layout_key(path: &[DirectiveValuePathSegment], key: &str) -> bool {
+    // Keep these layout options available until the selected reference's generated config moves.
+    match path {
+        [] => matches!(key, "grid" | "layered"),
+        [DirectiveValuePathSegment::Key(section)] if section == "grid" => matches!(
+            key,
+            "cellGap"
+                | "columnGap"
+                | "columns"
+                | "containerPadding"
+                | "curve"
+                | "edgeCornerRadius"
+                | "horizontalAlign"
+                | "lineHops"
+                | "placements"
+                | "rowGap"
+                | "titleGap"
+                | "verticalAlign"
+        ),
+        [DirectiveValuePathSegment::Key(section)] if section == "layered" => {
+            matches!(key, "edgeRouting" | "lineHops")
+        }
+        _ => false,
+    }
 }
 
 fn directive_path_is_css(path: &[DirectiveValuePathSegment]) -> bool {

@@ -120,7 +120,35 @@ pub fn render_state_diagram_svg_model(
     // Mermaid's state diagram DOM insertion order follows the order of `StateDB.getData().nodes`
     // (see `dataFetcher.ts` + dagre renderer `graph.nodes()` iteration). Our semantic model's
     // `nodes` already preserves that first-seen insertion order, so use it directly.
-    let node_order: Vec<&str> = model.nodes.iter().map(|n| n.id.as_str()).collect();
+    #[cfg(feature = "layout-layered")]
+    let layered_routes = options.layered.and_then(|paint| paint.routes.as_ref());
+    #[cfg(not(feature = "layout-layered"))]
+    let uses_layered = false;
+    #[cfg(feature = "layout-layered")]
+    let uses_layered = layered_routes.is_some();
+    #[cfg(not(feature = "layout-grid"))]
+    let uses_grid = false;
+    #[cfg(feature = "layout-grid")]
+    let uses_grid = options.grid.is_some();
+    let node_order: Vec<&str> = if uses_layered {
+        layout
+            .clusters
+            .iter()
+            .map(|group| group.id.as_str())
+            .chain(
+                layout
+                    .nodes
+                    .iter()
+                    .filter(|node| !node.is_cluster)
+                    .map(|node| node.id.as_str()),
+            )
+            .collect()
+    } else if uses_grid {
+        // Grid keeps the StateDB order, including merged note-group slots.
+        layout.nodes.iter().map(|n| n.id.as_str()).collect()
+    } else {
+        model.nodes.iter().map(|n| n.id.as_str()).collect()
+    };
 
     let native = options.native_theme;
     let native_elevation = native
@@ -132,6 +160,10 @@ pub fn render_state_diagram_svg_model(
         uses_elk_adapter_dom: elk_parity,
         elk_edge_paths: &layout.elk_edge_paths,
         elk_line_hop_paths: FxHashMap::default(),
+        #[cfg(feature = "layout-grid")]
+        grid_edges: None,
+        #[cfg(feature = "layout-layered")]
+        layered_edges: None,
         diagram_look: state_render_settings.diagram_look,
         serialized_diagram_look,
         palette_size: style_plan.compatibility().redux_palette.len(),
@@ -301,9 +333,22 @@ pub fn render_state_diagram_svg_model(
         out
     }
 
+    #[cfg(feature = "layout-grid")]
+    if let Some(settings) = options.grid {
+        ctx.grid_edges = Some(grid::prepare_edges(&ctx, settings)?);
+    }
+    #[cfg(feature = "layout-layered")]
+    if let Some(routes) = layered_routes {
+        ctx.layered_edges = Some(layered::prepare_edges(
+            &ctx,
+            layout,
+            routes,
+            effective_config,
+        )?);
+    }
     if elk_parity {
         ctx.elk_line_hop_paths = prepare_state_line_hop_paths(&ctx, effective_config)?;
-    } else {
+    } else if !ctx.uses_flat_routes() {
         ctx.nested_roots = compute_state_nested_roots(&ctx);
     }
     if native.is_some() {
@@ -319,6 +364,10 @@ pub fn render_state_diagram_svg_model(
     let aria_describedby = has_acc_descr.then(|| format!("chart-desc-{diagram_id}"));
     let root_context = &options.viewport;
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "stateDiagram");
+    #[cfg(feature = "layout-layered")]
+    if options.layered.is_some_and(|paint| paint.routes.is_none()) {
+        root_chrome.extra_attrs = &[("data-layout-fallback", "dagre")];
+    }
     root_chrome.class = Some("statediagram");
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
     root_chrome.aria_describedby = aria_describedby.as_deref();
@@ -359,6 +408,14 @@ pub fn render_state_diagram_svg_model(
     // unbounded temporary stylesheet before `MaxSvgBytes` admission.
     out.push_str("<style>");
     write_state_css(&mut XmlTextOutput::new(&mut out), diagram_id, style_plan)?;
+    #[cfg(feature = "layout-grid")]
+    if ctx.uses_grid() {
+        grid::write_native_label_css(
+            &mut XmlTextOutput::new(&mut out),
+            CssSelectorDiagramId(diagram_id),
+            style_plan,
+        );
+    }
     out.push_str("</style>");
     out.checkpoint()?;
 
@@ -694,74 +751,25 @@ fn render_state_root(
         let Some(node) = ctx.nodes_by_id.get(cluster_id).copied() else {
             continue;
         };
-        if !node.is_group || node.shape == "noteGroup" {
+        if !node.is_group {
             continue;
         }
-        if state_insertion_context(ctx, cluster_id) != root {
+        if node.shape == "noteGroup" {
+            if ctx.uses_layered() && pass != StateRenderPass::Foreground {
+                render_state_note_cluster(out, ctx, cluster_id, root, (origin_x, origin_y))?;
+            }
+            continue;
+        }
+        if !ctx.uses_flat_routes() && state_insertion_context(ctx, cluster_id) != root {
             continue;
         }
         render_state_cluster(out, ctx, cluster_id, origin_x, origin_y, pass);
         out.checkpoint()?;
     }
 
-    if pass != StateRenderPass::Foreground {
+    if !ctx.uses_layered() && pass != StateRenderPass::Foreground {
         for &cluster_id in &ctx.node_order {
-            if !ctx.layout_clusters_by_id.contains_key(cluster_id) {
-                continue;
-            }
-            let Some(cluster) = ctx.layout_clusters_by_id.get(cluster_id).copied() else {
-                continue;
-            };
-            if state_is_hidden(ctx, cluster_id) {
-                continue;
-            }
-            let Some(node) = ctx.nodes_by_id.get(cluster_id).copied() else {
-                continue;
-            };
-            if node.shape != "noteGroup" {
-                continue;
-            }
-            let note_owner = state_note_owner_id(cluster_id);
-            if ctx.hidden_prefixes.iter().any(|p| p == note_owner) {
-                continue;
-            }
-            let has_position = ctx
-                .states
-                .get(note_owner)
-                .and_then(|s| s.note.as_ref())
-                .and_then(|n| n.position.as_ref())
-                .is_some();
-            if !has_position {
-                continue;
-            }
-
-            let target_root = state_insertion_context(ctx, note_owner);
-            if target_root != root {
-                continue;
-            }
-
-            let left = cluster.x - cluster.width / 2.0;
-            let top = cluster.y - cluster.height / 2.0;
-            let x = left - origin_x;
-            let y = top - origin_y;
-            let dom_id = state_node_scoped_dom_id(ctx, cluster_id);
-            let _ = write!(out, r#"<g id="{}" class="note-cluster""#, dom_id);
-            if ctx.uses_canonical_routes() {
-                let _ = write!(
-                    out,
-                    r#" data-et="cluster" data-id="{}""#,
-                    escape_attr_display(cluster_id),
-                );
-            }
-            let _ = write!(
-                out,
-                r#"><rect x="{}" y="{}" width="{}" height="{}" fill="none"/></g>"#,
-                fmt_display(x),
-                fmt_display(y),
-                fmt_display(cluster.width.max(1.0)),
-                fmt_display(cluster.height.max(1.0))
-            );
-            out.checkpoint()?;
+            render_state_note_cluster(out, ctx, cluster_id, root, (origin_x, origin_y))?;
         }
     }
     out.push_str("</g>");
@@ -770,26 +778,25 @@ fn render_state_root(
     if pass != StateRenderPass::Depth {
         // edge paths
         let _g_edge_paths = detail_guard(timing, &mut details.edge_paths);
-        out.push_str(if ctx.uses_elk_adapter_dom {
+        out.push_str(if ctx.uses_elk_adapter_dom || ctx.uses_flat_routes() {
             r#"<g class="edges edgePaths">"#
         } else {
             r#"<g class="edgePaths">"#
         });
         if ctx.include_edges {
             for edge in ctx.edges {
-                if state_is_hidden(ctx, edge.start.as_str())
-                    || state_is_hidden(ctx, edge.end.as_str())
-                    || state_is_hidden(ctx, edge.id.as_str())
+                if !ctx.uses_flat_routes()
+                    && (state_is_hidden(ctx, edge.start.as_str())
+                        || state_is_hidden(ctx, edge.end.as_str())
+                        || state_is_hidden(ctx, edge.id.as_str())
+                        || state_edge_context(ctx, edge) != root
+                        || state_is_shadowed_self_loop_edge(ctx, edge))
                 {
                     continue;
                 }
-                if state_edge_context(ctx, edge) != root {
-                    continue;
-                }
-                if state_is_shadowed_self_loop_edge(ctx, edge) {
-                    continue;
-                }
-                if let Some(layout_edge) = ctx.layout_edges_by_id.get(edge.id.as_str()) {
+                if !ctx.uses_flat_routes()
+                    && let Some(layout_edge) = ctx.layout_edges_by_id.get(edge.id.as_str())
+                {
                     let original_path_work = ctx
                         .elk_edge_paths
                         .get(&layout_edge.id)
@@ -815,21 +822,19 @@ fn render_state_root(
         // edge labels
         let _g_edge_labels = detail_guard(timing, &mut details.edge_labels);
         out.push_str(r#"<g class="edgeLabels">"#);
-        if ctx.include_edges {
+        if ctx.include_edges && !ctx.uses_grid() {
             for edge in ctx.edges {
-                if state_is_hidden(ctx, edge.start.as_str())
-                    || state_is_hidden(ctx, edge.end.as_str())
-                    || state_is_hidden(ctx, edge.id.as_str())
+                if !ctx.uses_layered()
+                    && (state_is_hidden(ctx, edge.start.as_str())
+                        || state_is_hidden(ctx, edge.end.as_str())
+                        || state_is_hidden(ctx, edge.id.as_str())
+                        || state_edge_context(ctx, edge) != root
+                        || state_is_shadowed_self_loop_edge(ctx, edge))
                 {
                     continue;
                 }
-                if state_edge_context(ctx, edge) != root {
-                    continue;
-                }
-                if state_is_shadowed_self_loop_edge(ctx, edge) {
-                    continue;
-                }
-                if !ctx.uses_canonical_routes()
+                if !ctx.uses_layered()
+                    && !ctx.uses_canonical_routes()
                     && let Some(layout_edge) = ctx.layout_edges_by_id.get(edge.id.as_str())
                 {
                     let original_path_work = ctx
@@ -880,7 +885,7 @@ fn render_state_root(
             if n.is_cluster {
                 continue;
             }
-            if state_leaf_context(ctx, id) != root {
+            if !ctx.uses_flat_routes() && state_leaf_context(ctx, id) != root {
                 continue;
             }
             render_state_node_svg(out, ctx, id, origin_x, origin_y, timing, details)?;
@@ -889,6 +894,11 @@ fn render_state_root(
         if let Some(s) = leaf_start {
             details.leaf_nodes += s.elapsed();
         }
+    }
+
+    #[cfg(feature = "layout-grid")]
+    if ctx.uses_grid() && ctx.include_edges && pass != StateRenderPass::Depth {
+        grid::write_labels(out, ctx)?;
     }
 
     for child_root in nested {
@@ -914,6 +924,7 @@ fn render_state_root(
     if ctx.include_edges
         && !ctx.uses_elk_adapter_dom
         && !ctx.uses_canonical_routes()
+        && !ctx.uses_flat_routes()
         && pass != StateRenderPass::Depth
     {
         let _g_placeholders = detail_guard(timing, &mut details.self_loop_placeholders);
@@ -1000,6 +1011,60 @@ fn state_hand_drawn_rect_paths(
 
 fn state_hand_drawn_terminal_style(property: &str, compatibility: &str, direct: &str) -> String {
     format!("{property}:{compatibility};{direct}")
+}
+
+fn render_state_note_cluster(
+    out: &mut impl SvgOutput,
+    ctx: &StateRenderCtx<'_>,
+    id: &str,
+    root: Option<&str>,
+    (origin_x, origin_y): (f64, f64),
+) -> Result<()> {
+    let Some(&cluster) = ctx.layout_clusters_by_id.get(id) else {
+        return Ok(());
+    };
+    let Some(&node) = ctx.nodes_by_id.get(id) else {
+        return Ok(());
+    };
+    if state_is_hidden(ctx, id) || node.shape != "noteGroup" {
+        return Ok(());
+    }
+    let owner = state_note_owner_id(id);
+    let has_position = if ctx.uses_layered() {
+        node.position.is_some()
+    } else {
+        ctx.states
+            .get(owner)
+            .and_then(|state| state.note.as_ref())
+            .is_some_and(|note| note.position.is_some())
+    };
+    if !has_position
+        || ctx.hidden_prefixes.iter().any(|prefix| prefix == owner)
+        || (!ctx.uses_flat_routes() && state_insertion_context(ctx, owner) != root)
+    {
+        return Ok(());
+    }
+    let x = (cluster.x - cluster.width / 2.0) - origin_x;
+    let y = (cluster.y - cluster.height / 2.0) - origin_y;
+    let dom_id = state_node_scoped_dom_id(ctx, id);
+    let _ = write!(out, r#"<g id="{}" class="note-cluster""#, dom_id);
+    if ctx.uses_canonical_routes() {
+        let _ = write!(
+            out,
+            r#" data-et="cluster" data-id="{}""#,
+            escape_attr_display(id)
+        );
+    }
+    let _ = write!(
+        out,
+        r#"><rect x="{}" y="{}" width="{}" height="{}" fill="none"/></g>"#,
+        fmt_display(x),
+        fmt_display(y),
+        fmt_display(cluster.width.max(1.0)),
+        fmt_display(cluster.height.max(1.0)),
+    );
+    out.checkpoint()?;
+    Ok(())
 }
 
 fn render_state_cluster(
