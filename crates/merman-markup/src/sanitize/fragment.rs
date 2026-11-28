@@ -1269,7 +1269,7 @@ mod tests {
 
     #[test]
     fn rejected_tree_does_not_process_subsequent_tokens() {
-        let output_sink = super::super::StringOutputSink;
+        let output_sink = super::super::STRING_SINK;
         let adapter = ParseAdapter {
             sink: &output_sink,
             error: RefCell::new(None),

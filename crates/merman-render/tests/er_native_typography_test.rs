@@ -131,12 +131,23 @@ fn er_relationship_native_admission_observes_svg_and_sanitizer_removals() {
 #[test]
 fn er_grid_native_admission_uses_the_relationship_label_rect_html_mode() {
     let label = "<span style='letter-spacing:20px'>AAAA</span>";
-    for (overrides, retained) in [
-        (json!({}), true),
-        (json!({"htmlLabels": false}), false),
+    for (label, overrides, retained) in [
+        (label, json!({}), true),
+        (label, json!({"htmlLabels": false}), false),
         (
+            label,
             json!({"dompurifyConfig": {"FORBID_ATTR": ["style"]}}),
             false,
+        ),
+        (
+            "<span style='letter-spacing:20px'></span>",
+            json!({}),
+            false,
+        ),
+        (
+            "<i class='fas fa-cog' style='letter-spacing:20px'></i>",
+            json!({}),
+            true,
         ),
     ] {
         let mut config = json!({"layout": "grid", "flowchart": {"htmlLabels": false}});

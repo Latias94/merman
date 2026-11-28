@@ -4,7 +4,48 @@ use crate::mermaid_style::{
     visit_style_declaration_boundaries_with_checkpoints,
 };
 use merman_model::{OperationControl, OperationControlResult};
-use quick_xml::{Reader, events::Event};
+use quick_xml::{Reader, XmlVersion, events::Event};
+
+/// Reports unsupported styles unless the fragment contains only empty paragraph and span wrappers.
+pub fn unsupported_measurable_html_style(
+    html: &str,
+    control: &OperationControl,
+) -> OperationControlResult<Option<String>> {
+    let style = unsupported_retained_html_style(html, control)?;
+    if style.is_none() {
+        return Ok(None);
+    }
+    let mut tags = Reader::from_str(html);
+    let mut depth = 0usize;
+    loop {
+        control.checkpoint()?;
+        let opening = match tags.read_event() {
+            Ok(Event::Start(tag)) => {
+                depth += 1;
+                tag
+            }
+            Ok(Event::Empty(tag)) => tag,
+            Ok(Event::End(_)) if depth > 0 => {
+                depth -= 1;
+                continue;
+            }
+            Ok(Event::Eof) if depth == 0 => return Ok(None),
+            _ => return Ok(style),
+        };
+        if !matches!(opening.name().as_ref(), "p" | "span") {
+            return Ok(style);
+        }
+        for attribute in opening.attributes() {
+            control.checkpoint()?;
+            if !attribute.is_ok_and(|attribute| {
+                attribute.key.as_ref() == "style"
+                    && attribute.normalized_value(XmlVersion::Implicit1_0).is_ok()
+            }) {
+                return Ok(style);
+            }
+        }
+    }
+}
 
 /// Inspect retained XHTML. This does not grant permission to emit any CSS.
 pub fn unsupported_retained_html_style(
@@ -120,6 +161,32 @@ mod tests {
                     .as_deref(),
                 Some("HTML label normalization"),
                 "{html}",
+            );
+        }
+    }
+
+    #[test]
+    fn measurable_style_skips_only_well_formed_empty_wrappers() {
+        for (html, expected) in [
+            ("<p><span style='letter-spacing:20px'></span></p>", None),
+            (
+                "<p><span missing></span></p>",
+                Some("HTML label normalization"),
+            ),
+            (
+                "<p><span style='letter-spacing:20px'/>",
+                Some("letter-spacing"),
+            ),
+            (
+                "<p><span style='letter-spacing:20px'><img/></span></p>",
+                Some("letter-spacing"),
+            ),
+        ] {
+            assert_eq!(
+                unsupported_measurable_html_style(html, &OperationControl::new())
+                    .unwrap()
+                    .as_deref(),
+                expected,
             );
         }
     }

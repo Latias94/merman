@@ -223,6 +223,11 @@ impl SvgEnvironment {
         self
     }
 
+    #[cfg(feature = "native-fonts")]
+    pub(super) const fn capability_policy(&self) -> RenderCapabilityPolicy {
+        self.backend.capability_policy()
+    }
+
     pub fn with_compiled_math_renderer(mut self) -> Self {
         self.backend = self.backend.with_compiled_math_renderer();
         self

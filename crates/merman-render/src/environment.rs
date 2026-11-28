@@ -148,6 +148,11 @@ impl RenderEnvironment {
         self
     }
 
+    #[doc(hidden)]
+    pub const fn capability_policy(&self) -> RenderCapabilityPolicy {
+        self.capability_policy
+    }
+
     /// Installs the math renderer compiled into this renderer, if present.
     ///
     /// Facades use this to select the canonical compiled capability instead of duplicating Cargo

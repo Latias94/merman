@@ -5,7 +5,9 @@ use merman_model::presentation::PresentationConfig;
 use merman_model::{OperationControl, OperationControlResult, OperationPhase};
 use merman_render_core::{
     html::{HtmlOutputError, HtmlSanitizeSink},
-    mermaid_style::native_typography::unsupported_retained_html_style,
+    mermaid_style::native_typography::{
+        unsupported_measurable_html_style, unsupported_retained_html_style,
+    },
     resources::{OperationWorkError, OperationWorkMeter, RenderResourcePolicy},
     text::{WrapMode, mermaid_markdown_to_xhtml_label_fragment},
 };
@@ -15,6 +17,7 @@ use std::collections::HashSet;
 pub fn unsupported_html_style(
     model: &ErDiagramModel,
     config: &PresentationConfig,
+    grid_available: bool,
     control: &OperationControl,
 ) -> OperationControlResult<Option<String>> {
     let view = ErConfigView::new(config);
@@ -50,11 +53,23 @@ pub fn unsupported_html_style(
     // This typography probe also runs without a prepared render plan.
     let layout = config.get_str("layout");
     let swimlane = layout == Some("swimlane");
-    let uses_label_rect = swimlane || (cfg!(feature = "layout-grid") && layout == Some("grid"));
-    if view.relationship_html_labels(uses_label_rect) {
+    let grid = layout == Some("grid");
+    if (!grid || grid_available) && view.relationship_html_labels(swimlane || grid) {
         for relationship in &model.relationships {
             control.checkpoint()?;
-            let html = if uses_label_rect {
+            if grid {
+                let source = label_rect_html_source(&relationship.role_a);
+                let html = merman_markup::sanitize::sanitize_xhtml_controlled(
+                    &source,
+                    config.as_config(),
+                    control,
+                )?;
+                if let Some(property) = unsupported_measurable_html_style(&html, control)? {
+                    return Ok(Some(property));
+                }
+                continue;
+            }
+            let html = if swimlane {
                 let source = label_rect_html_source(&relationship.role_a);
                 let Some(html) = sanitize_relationship(&source, config, control)? else {
                     return Ok(Some("ER relationship HTML normalization".into()));

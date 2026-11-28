@@ -1,5 +1,6 @@
 use crate::generated::dompurify_defaults;
 use merman_model::config::MermaidConfig;
+use merman_model::{OperationCancelled, OperationControl, OperationControlResult};
 mod fragment;
 use std::collections::HashSet;
 
@@ -77,13 +78,26 @@ pub trait SanitizeOutputSink {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct StringOutputSink;
+struct StringOutputSink<'a> {
+    control: Option<&'a OperationControl>,
+}
+
+const STRING_SINK: StringOutputSink<'static> = StringOutputSink { control: None };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct StringOutputError;
+enum StringOutputError {
+    Capacity,
+    Cancelled(OperationCancelled),
+}
 
-impl SanitizeOutputSink for StringOutputSink {
+impl SanitizeOutputSink for StringOutputSink<'_> {
     type Error = StringOutputError;
+
+    fn checkpoint(&self) -> Result<(), Self::Error> {
+        self.control
+            .map_or(Ok(()), OperationControl::checkpoint)
+            .map_err(StringOutputError::Cancelled)
+    }
 
     fn parse_work_limit(&self, input_bytes: usize) -> Option<usize> {
         // Semantic-only APIs have no operation meter. Bound parser amplification
@@ -92,14 +106,16 @@ impl SanitizeOutputSink for StringOutputSink {
     }
 
     fn checked_output_len(&self, current: usize, additional: usize) -> Result<usize, Self::Error> {
-        current.checked_add(additional).ok_or(StringOutputError)
+        current
+            .checked_add(additional)
+            .ok_or(StringOutputError::Capacity)
     }
 
     fn string_with_capacity(&self, capacity: usize) -> Result<String, Self::Error> {
         let mut output = String::new();
         output
             .try_reserve_exact(capacity)
-            .map_err(|_| StringOutputError)?;
+            .map_err(|_| StringOutputError::Capacity)?;
         Ok(output)
     }
 
@@ -107,7 +123,7 @@ impl SanitizeOutputSink for StringOutputSink {
         let mut output = Vec::new();
         output
             .try_reserve_exact(input_len)
-            .map_err(|_| StringOutputError)?;
+            .map_err(|_| StringOutputError::Capacity)?;
         Ok(output)
     }
 
@@ -115,7 +131,7 @@ impl SanitizeOutputSink for StringOutputSink {
         self.checked_output_len(output.len(), chunk.len())?;
         output
             .try_reserve(chunk.len())
-            .map_err(|_| StringOutputError)?;
+            .map_err(|_| StringOutputError::Capacity)?;
         output.extend_from_slice(chunk);
         Ok(())
     }
@@ -766,7 +782,7 @@ fn dompurify_like_sanitize_html<S: SanitizeOutputSink>(
 }
 
 pub fn remove_script(text: &str) -> String {
-    try_remove_script(text, &StringOutputSink).unwrap_or_default()
+    try_remove_script(text, &STRING_SINK).unwrap_or_default()
 }
 
 fn try_remove_script<S: SanitizeOutputSink>(
@@ -871,7 +887,7 @@ fn sanitize_more<S: SanitizeOutputSink>(
 }
 
 pub fn sanitize_text(text: &str, config: &MermaidConfig) -> String {
-    sanitize_label::<_, true>(text, config, &StringOutputSink, fragment::Output::Html)
+    sanitize_label::<_, true>(text, config, &STRING_SINK, fragment::Output::Html)
         .unwrap_or_default()
 }
 
@@ -884,7 +900,7 @@ pub fn html_fragment_to_xhtml(text: &str) -> Option<String> {
     fragment::parse_and_serialize(
         text,
         None,
-        &StringOutputSink,
+        &STRING_SINK,
         fragment::Output::Xhtml,
         html5ever::ns!(html),
     )
@@ -894,14 +910,35 @@ pub fn html_fragment_to_xhtml(text: &str) -> Option<String> {
 /// Prepares sanitized HTML for direct embedding beneath an XHTML parent in SVG.
 #[doc(hidden)]
 pub fn sanitize_xhtml(text: &str, config: &MermaidConfig) -> String {
-    sanitize_label::<_, true>(text, config, &StringOutputSink, fragment::Output::Xhtml)
+    sanitize_label::<_, true>(text, config, &STRING_SINK, fragment::Output::Xhtml)
         .unwrap_or_default()
+}
+
+/// Uses the same string projection and parsing bound as [`sanitize_xhtml`].
+///
+/// Failed projections yield an empty string. Cancellation is propagated unchanged.
+#[doc(hidden)]
+pub fn sanitize_xhtml_controlled(
+    text: &str,
+    config: &MermaidConfig,
+    control: &OperationControl,
+) -> OperationControlResult<String> {
+    let sink = StringOutputSink {
+        control: Some(control),
+    };
+    match sanitize_label::<_, true>(text, config, &sink, fragment::Output::Xhtml) {
+        Err(SanitizeFailure::Output(StringOutputError::Cancelled(error))) => Err(error),
+        projection => {
+            control.checkpoint()?;
+            Ok(projection.unwrap_or_default())
+        }
+    }
 }
 
 /// Mirrors SVG `innerHTML` fragment parsing used by Architecture icon labels.
 #[doc(hidden)]
 pub fn sanitize_xhtml_in_svg_context(text: &str, config: &MermaidConfig) -> String {
-    sanitize_xhtml_in_svg_context_with_sink(text, config, &StringOutputSink).unwrap_or_default()
+    sanitize_xhtml_in_svg_context_with_sink(text, config, &STRING_SINK).unwrap_or_default()
 }
 
 /// Fallible projection of the sanitized SVG `innerHTML` assignment.
@@ -936,7 +973,7 @@ pub fn sanitize_text_as_html_fragment(text: &str, config: &MermaidConfig) -> Str
         return String::new();
     }
 
-    let sink = StringOutputSink;
+    let sink = STRING_SINK;
     let Ok(text) = sanitize_more(text, config, &sink) else {
         return String::new();
     };
@@ -1119,8 +1156,8 @@ mod tests {
             ] {
                 for output in [fragment::Output::Html, fragment::Output::Xhtml] {
                     assert_eq!(
-                        fragment::sanitize(input, &borrowed, &StringOutputSink, output),
-                        fragment::sanitize(input, &owned, &StringOutputSink, output),
+                        fragment::sanitize(input, &borrowed, &STRING_SINK, output),
+                        fragment::sanitize(input, &owned, &STRING_SINK, output),
                         "forbid_style={forbid_style}, input={input}"
                     );
                 }
@@ -1378,12 +1415,12 @@ mod tests {
     #[test]
     fn preserved_line_breaks_match_mermaid_regex_shape() {
         assert_eq!(
-            escape_html_preserving_breaks("A<br>B<BR/>C<br \t/>D<br   >E", true, &StringOutputSink)
+            escape_html_preserving_breaks("A<br>B<BR/>C<br \t/>D<br   >E", true, &STRING_SINK)
                 .unwrap(),
             "A<br/>B<br/>C<br/>D<br/>E"
         );
         assert_eq!(
-            escape_html_preserving_breaks("A<br\u{00A0}/>B<br\u{FEFF}>C", true, &StringOutputSink,)
+            escape_html_preserving_breaks("A<br\u{00A0}/>B<br\u{FEFF}>C", true, &STRING_SINK,)
                 .unwrap(),
             "A<br/>B<br/>C"
         );
@@ -1401,7 +1438,7 @@ mod tests {
             "flowchart": { "htmlLabels": true }
         }));
         assert_eq!(
-            sanitize_more(r#"<b a=1>ok</b>"#, &root_false, &StringOutputSink).unwrap(),
+            sanitize_more(r#"<b a=1>ok</b>"#, &root_false, &STRING_SINK).unwrap(),
             r#"<b a=1>ok</b>"#
         );
 
@@ -1411,7 +1448,7 @@ mod tests {
             "flowchart": { "htmlLabels": false }
         }));
         assert_eq!(
-            sanitize_more(r#"<b a=1>ok</b>"#, &root_true, &StringOutputSink).unwrap(),
+            sanitize_more(r#"<b a=1>ok</b>"#, &root_true, &STRING_SINK).unwrap(),
             r#"<b>ok</b>"#
         );
 
@@ -1420,7 +1457,7 @@ mod tests {
             "flowchart": { "htmlLabels": false }
         }));
         assert_eq!(
-            sanitize_more(r#"<b a=1>ok</b>"#, &deprecated_false, &StringOutputSink,).unwrap(),
+            sanitize_more(r#"<b a=1>ok</b>"#, &deprecated_false, &STRING_SINK,).unwrap(),
             r#"<b a=1>ok</b>"#
         );
     }
@@ -1681,7 +1718,7 @@ mod tests {
                 "securityLevel": security_level,
                 "htmlLabels": true
             }));
-            let recovered = sanitize_text_with_sink(payload, &config, &StringOutputSink).unwrap();
+            let recovered = sanitize_text_with_sink(payload, &config, &STRING_SINK).unwrap();
             assert!(!recovered.contains("<script"), "{recovered}");
             assert!(recovered.starts_with("<select>"), "{recovered}");
             assert!(recovered.ends_with("</select>"), "{recovered}");
@@ -1781,6 +1818,7 @@ mod tests {
 
     #[test]
     fn string_paragraph_grammar_matches_the_parser_and_policy() {
+        let control = OperationControl::new();
         let configs = [
             cfg_strict(),
             MermaidConfig::from_value(json!({
@@ -1807,11 +1845,17 @@ mod tests {
             for config in &configs {
                 assert_eq!(
                     sanitize_text(input, config),
-                    sanitize_text_with_sink(input, config, &StringOutputSink).unwrap(),
+                    sanitize_text_with_sink(input, config, &STRING_SINK).unwrap(),
+                );
+                let xhtml = sanitize_xhtml(input, config);
+                assert_eq!(
+                    xhtml,
+                    sanitize_xhtml_with_sink(input, config, &STRING_SINK).unwrap(),
                 );
                 assert_eq!(
-                    sanitize_xhtml(input, config),
-                    sanitize_xhtml_with_sink(input, config, &StringOutputSink).unwrap(),
+                    sanitize_xhtml_controlled(input, config, &control).unwrap(),
+                    xhtml,
+                    "{input:?}",
                 );
             }
         }
@@ -2184,14 +2228,45 @@ mod tests {
         let config = MermaidConfig::from_value(json!({"securityLevel": "loose"}));
         let span = format!("{}API{}", "<span>".repeat(4096), "</span>".repeat(4096));
         assert_eq!(
-            sanitize_xhtml_with_sink(&span, &config, &StringOutputSink).unwrap(),
+            sanitize_xhtml_with_sink(&span, &config, &STRING_SINK).unwrap(),
             span
         );
         let div = format!("{}API{}", "<div>".repeat(4096), "</div>".repeat(4096));
         assert!(matches!(
-            sanitize_xhtml_with_sink(&div, &config, &StringOutputSink),
+            sanitize_xhtml_with_sink(&div, &config, &STRING_SINK),
             Err(SanitizeFailure::RejectedInput)
         ));
         assert_eq!(sanitize_text(&div, &config), "");
+        let control = OperationControl::new();
+        assert_eq!(
+            sanitize_xhtml_controlled(&div, &config, &control),
+            Ok(String::new())
+        );
+        assert_eq!(
+            sanitize_xhtml_controlled("<p>after</p>", &config, &control).unwrap(),
+            "<p>after</p>",
+        );
+    }
+
+    #[test]
+    fn controlled_xhtml_replays_sticky_cancellation() {
+        use merman_model::{CancelReason, OperationPhase};
+
+        let config = cfg_strict();
+        let control = OperationControl::new().for_phase(OperationPhase::Semantic);
+        control.cancel();
+        let cancelled = OperationCancelled {
+            phase: OperationPhase::Semantic,
+            reason: CancelReason::Requested,
+        };
+        assert_eq!(
+            sanitize_xhtml_controlled("<p>Build_42?</p>", &config, &control),
+            Err(cancelled),
+        );
+        let emit_control = control.for_phase(OperationPhase::Emit);
+        assert_eq!(
+            sanitize_xhtml_controlled("<p><b>label</b></p>", &config, &emit_control),
+            Err(cancelled),
+        );
     }
 }
