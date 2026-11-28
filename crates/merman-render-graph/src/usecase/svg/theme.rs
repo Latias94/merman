@@ -70,6 +70,10 @@ pub(super) fn write_css(
             css,
             "#{id} .usecase-json-title,#{id} .usecase-json-key,#{id} .usecase-json-value,#{id} .usecase-json-table text{{stroke:none}}"
         );
+        let _ = write!(
+            css,
+            "#{id} .edgeLabel.usecase-panel-caption,#{id} .usecase-panel-caption :is(.labelBkg,.edgeLabel,p){{background-color:transparent}}#{id} .usecase-panel-caption .background{{fill:none}}"
+        );
     }
     #[cfg(feature = "layout-grid")]
     if mermaid_grid_label_font {

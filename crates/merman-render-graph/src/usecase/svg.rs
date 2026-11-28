@@ -57,6 +57,7 @@ pub type UsecaseEdgePainter<'a> =
 pub struct UsecaseCanonicalSvg<'a> {
     pub titles: &'a HashMap<String, LayoutLabel>,
     pub boundary_order: &'a [(usize, usize)],
+    pub panel_captions: &'a [bool],
     pub paint_edges: &'a UsecaseEdgePainter<'a>,
 }
 
@@ -152,7 +153,7 @@ enum UsecaseLabelKind<'a> {
     PositionedNode(&'a str),
     CenteredNode(&'a str),
     Boundary { canonical: bool },
-    Edge(&'a str),
+    Edge { id: &'a str, on_panel: bool },
 }
 
 fn write_label(
@@ -196,7 +197,7 @@ fn write_label(
             fmt(plan.style.font_size)
         );
     }
-    let is_edge_label = matches!(kind, UsecaseLabelKind::Edge(_));
+    let is_edge_label = matches!(kind, UsecaseLabelKind::Edge { .. });
     let is_boundary = matches!(kind, UsecaseLabelKind::Boundary { .. });
     let canonical_boundary = matches!(kind, UsecaseLabelKind::Boundary { canonical: true });
     let positioned_node = matches!(kind, UsecaseLabelKind::PositionedNode(_));
@@ -219,15 +220,20 @@ fn write_label(
         | UsecaseLabelKind::PositionedNode(class)
         | UsecaseLabelKind::CenteredNode(class) => class,
         UsecaseLabelKind::Boundary { .. } => "cluster-label system-boundary-title",
-        UsecaseLabelKind::Edge(_) => "label",
+        UsecaseLabelKind::Edge { .. } => "label",
     };
-    if let UsecaseLabelKind::Edge(data_id) = kind {
+    if let UsecaseLabelKind::Edge { id, on_panel } = kind {
+        let class = if on_panel {
+            "edgeLabel usecase-panel-caption"
+        } else {
+            "edgeLabel"
+        };
         let _ = write!(
             out,
-            r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({}, {})">"#,
+            r#"<g class="{class}" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({}, {})">"#,
             fmt(center_x),
             fmt(center_y),
-            escape_attr(data_id),
+            escape_attr(id),
             fmt(if html { -plan.metrics.width / 2.0 } else { 0.0 }),
             // insertEdgeLabel centers the SVG text bbox, including its local Y offset.
             fmt(-svg_bbox_y - plan.text_metrics.height / 2.0),
@@ -1048,6 +1054,18 @@ pub fn render_usecase_diagram_svg_model(
         }
     }
     let transparent = cutout::is_transparent_paint(css_binding.edge_background.css());
+    let caption_on_panel = |index: usize| {
+        #[cfg(feature = "layout-shoal")]
+        if let Some(canonical) = &options.canonical {
+            return canonical
+                .panel_captions
+                .get(index)
+                .copied()
+                .unwrap_or(false);
+        }
+        let _ = index;
+        false
+    };
     let has_edge_mask = !uses_canonical
         && transparent
         && write_edge_label_mask(
@@ -1235,7 +1253,7 @@ pub fn render_usecase_diagram_svg_model(
         #[cfg(feature = "layout-shoal")]
         let mut caption_cutout = None;
         #[cfg(feature = "layout-shoal")]
-        if transparent
+        if (transparent || caption_on_panel(edge_index))
             && plan.label.is_some()
             && let Some((painted, label)) = canonical_edge.as_ref().zip(edge.label.as_ref())
         {
@@ -1328,7 +1346,7 @@ pub fn render_usecase_diagram_svg_model(
         out.push_str("/>");
     }
     out.push_str("</g><g class=\"edgeLabels\">");
-    for plan in &prepared.measured.edges {
+    for (index, plan) in prepared.measured.edges.iter().enumerate() {
         out.checkpoint()?;
         if let Some(label) = &plan.label {
             let edge = edge_geometry[plan.id.as_str()];
@@ -1336,7 +1354,10 @@ pub fn render_usecase_diagram_svg_model(
                 write_label(
                     &mut out,
                     label,
-                    UsecaseLabelKind::Edge(&plan.id),
+                    UsecaseLabelKind::Edge {
+                        id: &plan.id,
+                        on_panel: caption_on_panel(index),
+                    },
                     position.x,
                     position.y + label_y_offset,
                     labels,

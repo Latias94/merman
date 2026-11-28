@@ -2781,3 +2781,50 @@ fn usecase_native_theme_paints_sketch_with_a_cutout_on_the_labeled_edge() {
         );
     }
 }
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_usecase_cuts_panel_captions_on_an_opaque_canvas() {
+    use merman_render::theme::{Appearance, BuiltinPreset, NativeTheme, ThemeCompiler};
+
+    let source = "usecase-beta\ndirection TB\nsystemBoundary Panel(\"Payments\")\n  A(\"Authorize\")\n  B(\"Capture\")\nend\nA -- internal --> B\nC -- external --> D\n";
+    let theme = ThemeCompiler::new()
+        .compile_preset(BuiltinPreset::Studio, Some(Appearance::Dark))
+        .unwrap();
+    for html in [false, true] {
+        let session = RenderEnvironment::deterministic()
+            .begin_session_with_native_theme(NativeTheme::new(theme.clone()))
+            .unwrap();
+        let (_, svg) = render_config_with_session(
+            source,
+            json!({"layout":"shoal", "htmlLabels":html}),
+            session,
+        );
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        for (id, on_panel) in [("edge-0", true), ("edge-1", false)] {
+            let path = document
+                .descendants()
+                .find(|node| {
+                    node.attribute("data-et") == Some("edge")
+                        && node.attribute("data-id") == Some(id)
+                })
+                .unwrap();
+            let caption = document
+                .descendants()
+                .find(|node| {
+                    node.attribute("class") == Some("label")
+                        && node.attribute("data-id") == Some(id)
+                })
+                .unwrap();
+            assert_eq!(path.attribute("clip-path").is_some(), on_panel, "{id}");
+            assert_eq!(
+                caption.parent_element().unwrap().attribute("class"),
+                Some(if on_panel {
+                    "edgeLabel usecase-panel-caption"
+                } else {
+                    "edgeLabel"
+                }),
+            );
+        }
+    }
+}
