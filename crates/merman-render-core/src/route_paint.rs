@@ -22,13 +22,19 @@ const MAX_CORNER_ARM: f64 = TERMINAL_TURN_RADIUS;
 const MAX_CORNER_ASPECT: f64 = 3.0;
 const QUARTER_CIRCLE_HANDLE: f64 = 0.552_284_749_830_793_6;
 #[cfg(feature = "layout-shoal")]
-use merman_layout_shoal::STEEP_SWEEP_RATIO;
+use merman_layout_shoal::{MIN_CROSSBAR_ARM, steep_sweep_run_limit};
 #[cfg(not(feature = "layout-shoal"))]
-const STEEP_SWEEP_RATIO: f64 = 1.6;
-const STEEP_SWEEP_MIN_ACROSS: f64 = 48.0;
-// Long fan spans keep their distributed curves instead of sharing a flat crossbar.
-const STEEP_SWEEP_MAX_ACROSS: f64 = 960.0;
-const MIN_TURN_ARM: f64 = 8.0;
+const MIN_CROSSBAR_ARM: f64 = 8.0;
+
+#[cfg(not(feature = "layout-shoal"))]
+fn steep_sweep_run_limit(across: f64) -> f64 {
+    let across = across.abs();
+    if across > 48.0 && across <= 960.0 {
+        across / 1.6
+    } else {
+        0.0
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum RouteStyle {
@@ -499,10 +505,7 @@ fn steep_offset(from: Point, end: RoutePoint) -> Option<(f64, f64)> {
         Axis::Vertical => (end.y - from.y, end.x - from.x),
         Axis::Horizontal => (end.x - from.x, end.y - from.y),
     };
-    (run.abs() >= 2.0 * MIN_TURN_ARM
-        && across.abs() > STEEP_SWEEP_MIN_ACROSS
-        && across.abs() <= STEEP_SWEEP_MAX_ACROSS
-        && across.abs() > run.abs() * STEEP_SWEEP_RATIO)
+    (run.abs() >= 2.0 * MIN_CROSSBAR_ARM && run.abs() < steep_sweep_run_limit(across))
         .then_some((run, across))
 }
 
@@ -559,7 +562,7 @@ fn steep_crossbar(from: Point, end: RoutePoint, guard: EdgeClearance<'_>) -> Opt
             Axis::Vertical => [from, to].map(|p| Point::new(p.x, from.y + run * fraction)),
             Axis::Horizontal => [from, to].map(|p| Point::new(from.x + run * fraction, p.y)),
         };
-        if arm < MIN_TURN_ARM
+        if arm < MIN_CROSSBAR_ARM
             || [from, first, last, to]
                 .windows(2)
                 .any(|leg| guard.blocks_line(leg[0], leg[1]))
@@ -575,7 +578,7 @@ fn steep_crossbar(from: Point, end: RoutePoint, guard: EdgeClearance<'_>) -> Opt
         };
         let scale =
             smoothing_scale(|scale| turns(scale).into_iter().any(|c| guard.blocks_cubic(c)))?;
-        if arm * scale < MIN_TURN_ARM {
+        if arm * scale < MIN_CROSSBAR_ARM {
             return None;
         }
         let [a, b] = turns(scale);
@@ -2395,6 +2398,55 @@ mod tests {
             (marker, marker),
             &mut scratch,
         ));
+    }
+
+    #[test]
+    fn crossbar_preflight_matches_painted_geometry_at_the_eligibility_limits() {
+        let clearance = Clearance::default();
+        let guard = clearance.for_edge(0, (Endpoint::Node(0), Endpoint::Node(1)), Vec2::ZERO, 1.);
+        let sides = (Side::Bottom, Side::Top);
+        let markers = (Marker::default(), Marker::default());
+        let mut scratch = RoutePaintScratch::default();
+        for (run, width, expected_crossbar) in [
+            (15., 49., false),
+            (16., 48., false),
+            (16., 49., true),
+            (36., 70., true),
+            (43.75, 70., false),
+            (144., 960., true),
+            (144., 961., false),
+        ] {
+            let points = [v(0., 0.), v(width, run)];
+            assert_eq!(
+                may_use_rounded_crossbar(&points, sides, markers, &mut scratch),
+                expected_crossbar,
+                "preflight for {width} by {run}"
+            );
+            let painted = build_svg_path(
+                &points,
+                sides,
+                RouteStyle::Curved,
+                markers,
+                CurveTerminals::Smooth,
+                &[],
+                Some(guard),
+            )
+            .unwrap();
+            let segments = segments(&painted);
+            assert!(
+                segments
+                    .iter()
+                    .any(|segment| matches!(segment, PathSeg::Cubic(_)))
+            );
+            assert_eq!(
+                segments.iter().any(|segment| matches!(segment,
+                    PathSeg::Line(line) if line.p0.y == line.p1.y && line.p0.x != line.p1.x
+                )),
+                expected_crossbar,
+                "{}",
+                painted.d
+            );
+        }
     }
 
     #[test]

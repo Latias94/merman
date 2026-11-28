@@ -417,7 +417,7 @@ fn level(points: &[RoutePoint]) -> f64 {
     points
         .windows(2)
         .find(|p| p[0].x != p[1].x && p[0].y == p[1].y)
-        .unwrap()[0]
+        .expect("route must have a crosswise shelf")[0]
         .y
 }
 
@@ -912,6 +912,85 @@ fn nearby_and_opposing_wide_sweeps_use_distinct_shelves() {
         .unwrap();
     assert_eq!(isolated.tracks, 0);
     assert_eq!(isolated.height, 50.);
+}
+
+#[test]
+fn opposing_sweeps_with_marker_runways_share_the_gap_on_distinct_shelves() {
+    let mut scene = Scene::new(
+        &[10.; 4],
+        &[&[0, 1], &[2, 3]],
+        &[&[0, 3], &[1, 2]],
+        &[0., 90., 20., 70.],
+    );
+    for edge in &mut scene.graph.edges {
+        let marker = MarkerMetrics {
+            length: 6.,
+            width: 5.,
+        };
+        edge.start_marker = marker;
+        edge.end_marker = marker;
+        edge.set_marker_runways([6., 6.]);
+    }
+    for edge_spacing in [scene.options.spacing.edge, 0.] {
+        scene.options.spacing.edge = edge_spacing;
+        let drawing = scene.draw();
+        let pitch = (level(&drawing.edges[0].1.points) - level(&drawing.edges[1].1.points)).abs();
+        assert!(pitch > 0. && pitch >= edge_spacing, "shelf pitch {pitch}");
+    }
+}
+
+#[test]
+fn opposing_sweeps_at_the_crossbar_span_limit_use_distinct_shelves() {
+    let draw = |width| {
+        Scene::new(
+            &[10.; 4],
+            &[&[0, 1], &[2, 3]],
+            &[&[0, 3], &[1, 2]],
+            &[0., width + 20., 20., width],
+        )
+        .draw()
+    };
+    let drawing = draw(960.);
+    let pitch = (level(&drawing.edges[0].1.points) - level(&drawing.edges[1].1.points)).abs();
+    assert!(
+        pitch >= Options::default().spacing.edge,
+        "shelf pitch {pitch}"
+    );
+
+    let longer = draw(961.);
+    assert!(longer.edges.iter().all(|(_, route)| {
+        route
+            .points
+            .windows(2)
+            .any(|p| p[0].x != p[1].x && p[0].y != p[1].y)
+    }));
+}
+
+#[test]
+fn optical_label_shift_preserves_the_run_of_opposing_cubics() {
+    let mut scene = Scene::new(
+        &[10.; 4],
+        &[&[0, 1], &[4, 5], &[2, 3]],
+        &[&[0, 4, 3], &[1, 5, 2]],
+        &[0., 90., 20., 70., 0., 90.],
+    );
+    scene.label(0, 4, 12., 16.);
+    let center = |drawing: &Drawing| drawing.edges[0].1.label_center.unwrap().y;
+    let unshifted = center(&scene.draw());
+    scene.graph.edges[0].start_marker.length = 24.;
+    let drawing = scene.draw();
+    assert!(center(&drawing) > unshifted);
+    for (_, route) in &drawing.edges {
+        let sweep = route
+            .points
+            .windows(2)
+            .find(|p| p[0].x != p[1].x)
+            .expect("route must have a sweep");
+        assert!(
+            sweep[1].y - sweep[0].y >= 43.75,
+            "label shift shortened {route:?}"
+        );
+    }
 }
 
 #[test]
