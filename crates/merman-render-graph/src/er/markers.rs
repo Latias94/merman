@@ -475,10 +475,7 @@ mod tests {
             for start in [true, false] {
                 for neo in [false, true] {
                     let metrics = er_canonical_marker(card, start, neo);
-                    assert_eq!(
-                        metrics.trim, 18.0,
-                        "{card} start={start} neo={neo}"
-                    );
+                    assert_eq!(metrics.trim, 18.0, "{card} start={start} neo={neo}");
                     assert!(metrics.depth > 0.0 && metrics.width > 0.0);
                 }
             }
