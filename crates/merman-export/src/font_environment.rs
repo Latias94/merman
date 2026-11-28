@@ -539,9 +539,13 @@ pub(crate) fn shared_system_fontdb() -> Arc<usvg::fontdb::Database> {
 mod tests {
     use super::*;
     use crate::font_selection::face_family_name;
-    use merman_render::environment::RenderEnvironment;
-    use merman_render::svg::finalize_resvg_svg;
+    #[cfg(any(
+        all(feature = "system-fonts", not(target_family = "wasm")),
+        all(feature = "native-fonts", feature = "png")
+    ))]
+    use merman_render::{environment::RenderEnvironment, svg::finalize_resvg_svg};
 
+    #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
     fn sealed_svg(catalog: FontCatalog, policy: FontSourcePolicy) -> ResvgCompatibleSvg {
         let session = RenderEnvironment::deterministic()
             .with_font_catalog(catalog)

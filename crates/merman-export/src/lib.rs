@@ -583,7 +583,12 @@ fn check_export_glyph_coverage(context: &NativeFontContext, plan: ExportFontPlan
 
 #[cfg(any(
     feature = "native-fonts",
-    all(test, any(feature = "png", feature = "jpeg", feature = "pdf"))
+    all(
+        test,
+        feature = "system-fonts",
+        not(target_family = "wasm"),
+        any(feature = "png", feature = "jpeg")
+    )
 ))]
 fn browser_like_font_resolver(
     selection: std::sync::Arc<font_selection::FontSelectionPolicy>,
@@ -632,6 +637,10 @@ fn parse_export_color(text: &str) -> std::result::Result<ExportRgbaColor, ()> {
 mod font_resolver_tests;
 
 #[cfg(all(test, any(feature = "png", feature = "jpeg", feature = "pdf")))]
+#[cfg(any(
+    feature = "native-fonts",
+    all(feature = "system-fonts", not(target_family = "wasm"))
+))]
 #[path = "tests/fixtures.rs"]
 mod test_fixtures;
 
