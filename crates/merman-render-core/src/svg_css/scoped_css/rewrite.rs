@@ -1,4 +1,4 @@
-use crate::svg::pipeline::SvgPostprocessExecution;
+use super::PostprocessWork;
 use crate::{Error, Result};
 use cssparser::{
     AtRuleParser, BasicParseErrorKind, CowRcStr, Delimiter, ParseError, ParseErrorKind, Parser,
@@ -14,7 +14,7 @@ const STYLE_END_ESCAPE_REPLACEMENT: &str = "\\3c /style";
 pub(super) fn projected_css_bytes(
     css: &str,
     scope: Option<&str>,
-    execution: SvgPostprocessExecution<'_>,
+    execution: PostprocessWork<'_>,
 ) -> Result<usize> {
     let mut projected = ProjectedBytes::default();
     {
@@ -31,7 +31,7 @@ pub(super) fn materialize_css(
     css: &str,
     scope: Option<&str>,
     output: &mut String,
-    execution: SvgPostprocessExecution<'_>,
+    execution: PostprocessWork<'_>,
 ) -> Result<()> {
     let mut escaped = StyleEndEscaper::new(output);
     write_scoped_css(css, scope, &mut escaped, execution)?;
@@ -133,12 +133,12 @@ impl<W: fmt::Write> fmt::Write for StyleEndEscaper<'_, W> {
 }
 
 struct ScopedCssCadence<'a> {
-    execution: SvgPostprocessExecution<'a>,
+    execution: PostprocessWork<'a>,
     iterations: usize,
 }
 
 impl<'a> ScopedCssCadence<'a> {
-    const fn new(execution: SvgPostprocessExecution<'a>) -> Self {
+    const fn new(execution: PostprocessWork<'a>) -> Self {
         Self {
             execution,
             iterations: 0,
@@ -240,7 +240,7 @@ fn write_scoped_css<W: fmt::Write>(
     css: &str,
     scope: Option<&str>,
     output: &mut W,
-    execution: SvgPostprocessExecution<'_>,
+    execution: PostprocessWork<'_>,
 ) -> Result<()> {
     let Some(scope) = scope else {
         let mut input = Parser::new(css);

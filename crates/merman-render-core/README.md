@@ -20,7 +20,9 @@ available with `svg-output` for families that consume routes without the solver.
 `paint-scene` provides an internal typed scene and bounded SVG writer for resolved geometry and
 paint. The writer does not select an output profile or replace terminal SVG admission.
 `svg-parse` provides lexical scanning, XML stylesheet decoding, and SVG structure
-validation for postprocessing. `svg-safety` provides the bounded CSS and attribute sanitizers
+validation for postprocessing. `svg-css-postprocess` rewrites scoped CSS, declaration priority,
+and root background styles under the operation's resource meter. The facade registers these
+transformations in its SVG pipeline. `svg-safety` provides the bounded CSS and attribute sanitizers
 and the inline raster URL policy used by terminal SVG validation.
 `svg-validation` checks native and known-host inline SVG and rebases document IDs using the
 operation's resource meter.

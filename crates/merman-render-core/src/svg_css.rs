@@ -5,16 +5,26 @@ use std::fmt::Write;
 
 use crate::{Result, svg_output::SvgOutput};
 
+#[cfg(feature = "svg-css-postprocess")]
+mod css_override;
 mod id;
 #[cfg(feature = "svg-identity")]
 mod id_suffix;
 #[cfg(feature = "css-style")]
 mod palette;
+#[cfg(any(feature = "svg-css-postprocess", feature = "svg-identity"))]
+mod postprocess;
 #[cfg(feature = "css-style")]
 mod prepared;
 #[cfg(any(feature = "svg-identity", feature = "svg-validation"))]
 mod resource_urls;
+#[cfg(feature = "svg-css-postprocess")]
+mod root_background;
+#[cfg(feature = "svg-css-postprocess")]
+mod scoped_css;
 
+#[cfg(feature = "svg-css-postprocess")]
+pub use css_override::{CssOverridePolicy, strip_css_important};
 #[cfg(feature = "css-style")]
 pub use id::available_local_svg_id;
 pub use id::{
@@ -34,6 +44,10 @@ pub use look_defs::PreparedLookDefs;
 pub use prepared::{PreparedCommonCss, PreparedCommonNeoCss};
 #[cfg(any(feature = "svg-identity", feature = "svg-validation"))]
 pub use resource_urls::{CssResourceScanError, CssResourceUrl, visit_css_resource_urls};
+#[cfg(feature = "svg-css-postprocess")]
+pub use root_background::set_root_background_color;
+#[cfg(feature = "svg-css-postprocess")]
+pub use scoped_css::apply_scoped_css;
 
 /// Emits alternating literal pieces and ordinary `Display` values, in format order.
 /// Each literal stands for one nonempty `write!` piece. Values still go through `fmt::Write`.

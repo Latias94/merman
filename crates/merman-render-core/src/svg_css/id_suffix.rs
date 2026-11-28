@@ -13,11 +13,11 @@
 //! Exact attribute matches retain specificity. Only resvg-safe output
 //! applies this conversion, after IDs and user styles have been finalized.
 
-use crate::resources::{OperationWorkMeter, ResourceLimitId, ResourceLimitPhase};
+use super::postprocess::PostprocessWork;
+use crate::resources::{OperationWorkMeter, ResourceLimitId};
 use crate::svg_scan::find_with_checkpoints;
 use crate::{Error, Result};
 use cssparser::{Delimiter, ParseErrorKind, Parser, Token, serialize_string};
-use merman_model::OperationPhase;
 use quick_xml::{Reader, events::Event};
 use std::borrow::Cow;
 use std::fmt;
@@ -30,34 +30,6 @@ fn css_error(parse_error: cssparser::ParseError<Error>) -> Error {
     match parse_error.kind {
         ParseErrorKind::Custom(error) => error,
         _ => error(parse_error),
-    }
-}
-
-#[derive(Clone, Copy)]
-struct PostprocessWork<'a>(&'a OperationWorkMeter);
-
-impl PostprocessWork<'_> {
-    fn checkpoint(self) -> Result<()> {
-        self.0.checkpoint(OperationPhase::Postprocess)?;
-        Ok(())
-    }
-
-    fn preflight_svg_byte_count(self, bytes: usize) -> Result<()> {
-        self.0.preflight_svg_byte_count(
-            bytes,
-            ResourceLimitPhase::SvgPostprocess,
-            OperationPhase::Postprocess,
-        )?;
-        Ok(())
-    }
-
-    fn svg_byte_count_overflow(self) -> Error {
-        self.0
-            .terminate_svg_byte_count_overflow(
-                ResourceLimitPhase::SvgPostprocess,
-                OperationPhase::Postprocess,
-            )
-            .into()
     }
 }
 
@@ -420,8 +392,8 @@ fn lower_selector(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::resources::RenderResourcePolicy;
-    use merman_model::{CancelReason, OperationControl};
+    use crate::resources::{RenderResourcePolicy, ResourceLimitPhase};
+    use merman_model::{CancelReason, OperationControl, OperationPhase};
 
     #[test]
     fn preflights_escaped_stylesheet_bytes_at_the_xml_boundary() {
