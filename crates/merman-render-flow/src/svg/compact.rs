@@ -682,11 +682,14 @@ fn render_scene(
             #[cfg(feature = "layout-shoal")]
             FlowchartSvgRoute::CanonicalAxis(axis) => {
                 let (request, _) = charged_edge_route_request(ctx, edge, hierarchy)?;
-                let bounds =
-                    paint_canonical_edge_commands(request, axis, &mut scratch, |command| {
-                        append_shoal_command(command, &mut commands, meter)
-                    })?
-                    .ok_or_else(|| invalid("missing Flowchart canonical route"))?;
+                let bounds = paint_canonical_edge_commands(
+                    request,
+                    axis,
+                    &mut scratch,
+                    &mut commands,
+                    |command, commands| append_shoal_command(command, commands, meter),
+                )?
+                .ok_or_else(|| invalid("missing Flowchart canonical route"))?;
                 if commands.len() - start < 2 {
                     return Err(unsupported(meter, "flowchart-shoal-linear-painted-route"));
                 }

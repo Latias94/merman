@@ -66,21 +66,18 @@ pub(super) fn compact_classic_point_end(
 pub(super) fn measure_marker(
     base: Option<crate::markers::FlowchartMarkerBase>,
     setback: Option<f64>,
+    margin: bool,
 ) -> merman_render_core::route_types::Marker {
     use crate::markers::flowchart_marker_shape_spec;
 
     let Some(base) = base else {
         return Default::default();
     };
-    let classic = flowchart_marker_shape_spec(base, false).viewport;
-    let margin = flowchart_marker_shape_spec(base, base.supports_margin()).viewport;
+    let viewport = flowchart_marker_shape_spec(base, margin).viewport;
     merman_render_core::route_types::Marker {
         trim: setback.unwrap_or_default(),
-        depth: classic.size[0]
-            .max(margin.size[0])
-            .max(classic.rotation_radius())
-            .max(margin.rotation_radius()),
-        width: classic.size[1].max(margin.size[1]),
+        depth: viewport.size[0].max(viewport.rotation_radius()),
+        width: viewport.size[1],
     }
 }
 
@@ -101,7 +98,7 @@ pub(super) fn prepare_flowchart_markers<'a>(
             .edge_style_plan
             .edge_for(edge.key)?
             .edge_marker_color(hand_drawn);
-        let margin = neo && !ctx.edge_style_plan.animation_for(edge.key)?.is_active();
+        let margin = ctx.edge_style_plan.marker_uses_margin_for(edge.key, neo)?;
         Ok(FlowchartEdgeMarkers {
             edge,
             source_color,

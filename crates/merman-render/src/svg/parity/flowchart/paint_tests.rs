@@ -472,7 +472,7 @@ fn geometry_without_positioned_labels_does_not_prepare_rough_paths() {
 }
 
 #[test]
-fn canonical_route_failure_is_returned_by_the_svg_renderer() {
+fn canonical_route_recovers_from_a_blocked_knot_but_reports_invalid_geometry() {
     use crate::graph_layout::{
         AxisRoutes, RouteContract, RouteTopology,
         axis_clearance::AxisClearance,
@@ -517,6 +517,26 @@ fn canonical_route_failure_is_returned_by_the_svg_renderer() {
     );
     with_layout(
         "flowchart LR\nA audit@--> B",
+        Some(layout.clone()),
+        false,
+        |request, execution| {
+            let svg = render_flowchart_svg_model(request, execution)?;
+            let doc = roxmltree::Document::parse(svg.as_str()).unwrap();
+            let edge = doc
+                .descendants()
+                .find(|node| {
+                    node.attribute("data-et") == Some("edge")
+                        && node.attribute("data-id") == Some("audit")
+                })
+                .unwrap();
+            let path = kurbo::BezPath::from_svg(edge.attribute("d").unwrap()).unwrap();
+            assert!(path.is_finite() && path.segments().next().is_some());
+            Ok(())
+        },
+    );
+    layout.edges[0].points[1].x = f64::NAN;
+    with_layout(
+        "flowchart LR\nA audit@--> B",
         Some(layout),
         false,
         |request, execution| {
@@ -526,7 +546,7 @@ fn canonical_route_failure_is_returned_by_the_svg_renderer() {
             assert!(matches!(
                 error,
                 Error::InvalidModel { message } if message.contains("`audit`") &&
-                    message.contains("no clear path between fixed route points")
+                    message.contains("invalid canonical route geometry")
             ));
             Ok(())
         },

@@ -13,19 +13,9 @@ pub fn write_hourglass(out: &mut impl SvgOutput, body: NodeBodySvg<'_>) {
 }
 
 pub fn write_notched_rectangle(out: &mut impl SvgOutput, width: f64, height: f64, style: &str) {
-    let w = width.max(1.0);
-    let h = height.max(1.0);
-    let notch = 12.0;
-    let pts: Vec<(f64, f64)> = vec![
-        (notch, -h),
-        (w, -h),
-        (w, 0.0),
-        (0.0, 0.0),
-        (0.0, -h + notch),
-        (notch, -h),
-    ];
+    let (points, (tx, ty)) = notched_rectangle_geometry(width, height);
     let mut points_attr = String::new();
-    for (idx, (px, py)) in pts.iter().copied().enumerate() {
+    for (idx, &(px, py)) in points.iter().chain(points.first()).enumerate() {
         if idx > 0 {
             points_attr.push(' ');
         }
@@ -35,10 +25,31 @@ pub fn write_notched_rectangle(out: &mut impl SvgOutput, width: f64, height: f64
         out,
         r#"<polygon points="{}" class="label-container" transform="translate({},{})"{} />"#,
         points_attr,
-        fmt(-w / 2.0),
-        fmt(h / 2.0),
+        fmt(tx),
+        fmt(ty),
         OptionalStyleAttr(style),
     );
+}
+
+fn notched_rectangle_geometry(width: f64, height: f64) -> ([(f64, f64); 5], (f64, f64)) {
+    let w = width.max(1.0);
+    let h = height.max(1.0);
+    let notch = 12.0;
+    (
+        [
+            (notch, -h),
+            (w, -h),
+            (w, 0.0),
+            (0.0, 0.0),
+            (0.0, -h + notch),
+        ],
+        (-w / 2.0, h / 2.0),
+    )
+}
+
+pub(super) fn notched_rectangle_body(geometry: &NodeBodyGeometry<'_>) -> OuterPathBody {
+    let (points, (tx, ty)) = notched_rectangle_geometry(geometry.width, geometry.height);
+    OuterPathBody::from_points(&points, OuterPathTranslation::Xy(tx, ty))
 }
 
 fn hourglass_body(geometry: &NodeBodyGeometry<'_>) -> OuterPathBody {

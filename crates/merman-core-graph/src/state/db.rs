@@ -1119,6 +1119,15 @@ fn build_state_graph(
             }
         });
 
+        // Mermaid retains the shape of a transition placeholder on a later typed declaration.
+        // Shoal applies pseudostate declarations to these placeholders.
+        if entry.shape == SHAPE_STATE
+            && matches!(parsed_item.ty.as_str(), "choice" | "fork" | "join")
+            && config.get_str("layout") == Some("shoal")
+        {
+            entry.shape.clone_from(&parsed_item.ty);
+        }
+
         apply_state_descriptions(
             entry,
             &item_id,

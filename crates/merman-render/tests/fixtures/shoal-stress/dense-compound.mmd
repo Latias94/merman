@@ -1,0 +1,47 @@
+---
+config:
+  layout: shoal
+  htmlLabels: true
+---
+flowchart LR
+  User([Web & Mobile Users]) ==> CDN[Edge CDN]
+  CDN --> WAF{WAF & Bot Shield}
+  WAF -->|blocked| Sink[(Threat Log)]
+  WAF -->|allowed| GW[API Gateway]
+  subgraph Auth["Identity & Access"]
+    GW <--> OAuth[OAuth2 / OIDC]
+    OAuth --> Session[(Redis Session)]
+    OAuth -.-> KMS[Key Vault]
+  end
+  subgraph Commerce["Core Order Pipeline"]
+    GW --> Cart[Cart Service]
+    GW --> Catalog[Catalog Search]
+    Cart --> Pricing[Pricing Engine]
+    Catalog --> Pricing
+    Pricing --> Order[Order Orchestrator]
+    Order ==> Inv[Inventory Lock]
+    Order ==> Pay[Payment Router]
+    Inv -.->|rollback| Order
+    Pay -.->|timeout retry| Order
+  end
+  subgraph Settlement["Billing & Ledger"]
+    Pay --> Risk{Fraud Score?}
+    Risk -->|high| Manual[Manual Review Queue]
+    Manual -->|approve| PSP[External PSP]
+    Manual --x Reject[Decline & Notify]
+    Risk -->|low| PSP
+    PSP --> Ledger[(Immutable Ledger)]
+    Ledger --> Recon[Batch Reconciliation]
+  end
+  subgraph Fulfillment["Shipping & Notifications"]
+    Order --> Ship[Warehouse Dispatch]
+    Inv --> Ship
+    Ship --> Carrier[3PL Carrier API]
+    Ledger o--o Invoice[Tax & Invoice PDF]
+    Ship --> Notify[Notification Hub]
+    Invoice --> Notify
+    Reject --> Notify
+  end
+  Notify -.-> User
+  Recon --> BI[(Analytics Warehouse)]
+  Sink --> BI

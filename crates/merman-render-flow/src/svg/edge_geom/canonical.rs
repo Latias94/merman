@@ -54,7 +54,13 @@ fn obstacles(ctx: &FlowchartRenderCtx<'_>) -> Vec<(kurbo::Rect, route_paint::Obs
             ) else {
                 continue;
             };
-            let marks = super::super::flowchart_marker_metrics(source);
+            let Ok(marks) = ctx.edge_style_plan.marker_metrics_for(
+                key,
+                source,
+                ctx.compatibility.look.is_neo(),
+            ) else {
+                continue;
+            };
             let Some((&(start_axis, start_kind), &(end_axis, end_kind))) =
                 route.knots.first().zip(route.knots.last())
             else {
@@ -217,7 +223,9 @@ fn prepare<'a>(
     );
     let stroke_outset = ctx.edge_style_plan.stroke_outset_for(key)?;
     let sides = (source_lead, target_lead);
-    let markers = super::super::flowchart_marker_metrics(edge);
+    let markers =
+        ctx.edge_style_plan
+            .marker_metrics_for(key, edge, ctx.compatibility.look.is_neo())?;
     let clearance = if style == route_paint::RouteStyle::Curved
         && stroke_outset.is_some_and(|outset| route.corridor_clearance > outset)
         && (points[0], points[last]) == box_contacts
@@ -291,12 +299,15 @@ pub(super) fn paint(
         origin_y,
         trace_enabled,
     } = request;
-    if ctx.compatibility.look.is_neo() && !ctx.edge_style_plan.animation_for(key)?.is_active() {
+    if ctx
+        .edge_style_plan
+        .marker_uses_margin_for(key, ctx.compatibility.look.is_neo())?
+    {
         scratch.canonical_paint.measure_length();
     }
     let points = route.points;
     let painted = route
-        .paint_svg(&mut scratch.canonical_paint)
+        .paint_solved_svg(&mut scratch.canonical_paint)
         .map_err(|error| edge_paint_error(&edge.id, error))?;
     let data_points: Vec<_> = points
         .iter()
@@ -360,11 +371,12 @@ pub(super) fn paint(
     feature = "layout-shoal",
     feature = "native-compact"
 ))]
-pub(in crate::svg) fn paint_commands(
+pub(in crate::svg) fn paint_commands<T>(
     request: FlowchartEdgePathGeomRequest<'_>,
     axis: &AxisRoutes,
     scratch: &mut FlowchartEdgeDataPointsScratch,
-    write: impl FnMut(route_paint::RouteCommand) -> Result<()>,
+    commands: &mut Vec<T>,
+    mut write: impl FnMut(route_paint::RouteCommand, &mut Vec<T>) -> Result<()>,
 ) -> Result<Option<merman_render_core::Bounds>> {
     let Some(prepared) = prepare(
         request,
@@ -377,7 +389,7 @@ pub(in crate::svg) fn paint_commands(
     };
     let bounds = prepared
         .route
-        .paint_commands(&mut scratch.canonical_paint, write)
+        .paint_solved_commands(&mut scratch.canonical_paint, commands, &mut write)
         .map_err(|error| match error {
             route_paint::RouteCommandError::Geometry(error) => {
                 edge_paint_error(&request.edge.id, error)

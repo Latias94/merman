@@ -649,7 +649,7 @@ impl<E> RouteOutput<'_, E> {
     }
 }
 
-struct Pen<'a, E> {
+struct Pen<'a, 'b, E> {
     output: RouteOutput<'a, E>,
     started: bool,
     bounds: Bounds,
@@ -660,20 +660,21 @@ struct Pen<'a, E> {
     length: Option<f64>,
     segments: Option<&'a mut Vec<PathSeg>>,
     shaft_allocation_failed: bool,
-    detour_budget: clearance::DetourBudget,
+    detour_budget: &'b mut clearance::DetourBudget,
 }
 
 fn svg_point(point: Point) -> Point {
     Point::new(canonicalize_number(point.x), canonicalize_number(point.y))
 }
 
-impl<'a, E> Pen<'a, E> {
+impl<'a, 'b, E> Pen<'a, 'b, E> {
     fn new(
         p: Point,
         compact_lines: bool,
         measure_length: bool,
         output: RouteOutput<'a, E>,
         segments: Option<&'a mut Vec<PathSeg>>,
+        detour_budget: &'b mut clearance::DetourBudget,
     ) -> Self {
         let bounds_start = if matches!(&output, RouteOutput::Commands(_)) {
             svg_point(p)
@@ -696,7 +697,7 @@ impl<'a, E> Pen<'a, E> {
             length: measure_length.then_some(0.0),
             segments,
             shaft_allocation_failed: false,
-            detour_budget: clearance::DetourBudget::default(),
+            detour_budget,
         }
     }
 
@@ -843,7 +844,7 @@ impl<'a, E> Pen<'a, E> {
         clearance: EdgeClearance<'_>,
         orthogonal: bool,
     ) -> Result<(), RouteCommandError<E>> {
-        for point in clearance.detour(self.at, target, orthogonal, &mut self.detour_budget)? {
+        for point in clearance.detour(self.at, target, orthogonal, self.detour_budget)? {
             self.line(point)?;
         }
         Ok(())
@@ -944,7 +945,7 @@ fn shrink_smoothing_scale(blocked: impl Fn(f64) -> bool) -> Option<f64> {
 }
 
 fn draw_body<E>(
-    pen: &mut Pen<'_, E>,
+    pen: &mut Pen<'_, '_, E>,
     body: &[RoutePoint],
     style: RouteStyle,
     terminals: (Option<&Terminal>, Option<&Terminal>),
@@ -1141,7 +1142,7 @@ pub fn marker_obstacle(
     let rect = marker_bounds(port, side, marker)?;
     Some((
         rect,
-        ObstacleOwner::Marker(edge, TerminalContact::new(endpoint, port)),
+        ObstacleOwner::Marker(edge, TerminalContact::new(endpoint, port).on_side(side)),
     ))
 }
 
@@ -1240,6 +1241,7 @@ pub fn build_svg_path_with_scratch(
 
 /// Bound route inputs shared by the SVG formatter and typed command sink.
 #[doc(hidden)]
+#[derive(Clone, Copy)]
 pub struct RoutePaintRequest<'a> {
     pub points: &'a [RoutePoint],
     pub sides: (Side, Side),
@@ -1265,6 +1267,104 @@ impl RoutePaintRequest<'_> {
         Ok(PaintedRoute { d, bounds })
     }
 
+    /// Paints an already solved route, recovering from an obstructed detour.
+    pub fn paint_solved_svg(
+        self,
+        scratch: &mut RoutePaintScratch,
+    ) -> Result<PaintedRoute, RoutePaintError> {
+        let mut d = String::new();
+        let bounds = self
+            .paint_solved(scratch, |request, scratch, smooth, budget| {
+                d.clear();
+                request.paint_with(
+                    scratch,
+                    RouteOutput::<Infallible>::Svg(&mut d),
+                    smooth,
+                    budget,
+                )
+            })
+            .map_err(|error| match error {
+                RouteCommandError::Geometry(error) => error,
+                RouteCommandError::Sink(never) => match never {},
+            })?;
+        Ok(PaintedRoute { d, bounds })
+    }
+
+    /// Appends one solved route atomically, preserving earlier commands if the sink fails.
+    pub fn paint_solved_commands<T, E>(
+        self,
+        scratch: &mut RoutePaintScratch,
+        commands: &mut Vec<T>,
+        mut write: impl FnMut(RouteCommand, &mut Vec<T>) -> Result<(), E>,
+    ) -> Result<Bounds, RouteCommandError<E>> {
+        let start = commands.len();
+        let result = self.paint_solved(scratch, |request, scratch, smooth, budget| {
+            commands.truncate(start);
+            request.paint_with(
+                scratch,
+                RouteOutput::Commands(&mut |command| write(command, commands)),
+                smooth,
+                budget,
+            )
+        });
+        if result.is_err() {
+            commands.truncate(start);
+        }
+        result
+    }
+
+    fn paint_solved<E>(
+        self,
+        scratch: &mut RoutePaintScratch,
+        mut paint: impl FnMut(
+            Self,
+            &mut RoutePaintScratch,
+            bool,
+            &mut clearance::DetourBudget,
+        ) -> Result<Bounds, RouteCommandError<E>>,
+    ) -> Result<Bounds, RouteCommandError<E>> {
+        let measure_length = scratch.measure_length;
+        let record_segments = scratch.record_segments;
+        let smooth_terminals = self.smooth_terminals();
+        let mut budget = clearance::DetourBudget::default();
+        let mut attempt = |request| {
+            scratch.measure_length = measure_length;
+            scratch.record_segments = record_segments;
+            paint(request, scratch, smooth_terminals, &mut budget)
+        };
+        match attempt(self) {
+            Err(RouteCommandError::Geometry(RoutePaintError::NoClearDetour)) => {}
+            result => return result,
+        }
+        if let Some(guard) = self.clearance {
+            let style = if self.style.stepped() || matches!(self.style, RouteStyle::Rounded(_)) {
+                RouteStyle::Step
+            } else {
+                RouteStyle::Linear
+            };
+            // The guarded polyline bridges obstructed interior knots. The original terminal
+            // runways and border stitches stay fixed, and detours share the original work budget.
+            for guard in [
+                guard.with_terminal_recovery(self.sides),
+                guard.hard_obstacles_only(),
+            ] {
+                match attempt(Self {
+                    style,
+                    clearance: Some(guard),
+                    ..self
+                }) {
+                    Err(RouteCommandError::Geometry(RoutePaintError::NoClearDetour)) => {}
+                    result => return result,
+                }
+            }
+        }
+        attempt(Self {
+            style: RouteStyle::Linear,
+            clearance: None,
+            ..self
+        })
+    }
+
     /// Writes the final shaft commands and returns their tight centerline bounds.
     /// The sink may receive a prefix on error. Publish the route only on success.
     pub fn paint_commands<E>(
@@ -1275,19 +1375,38 @@ impl RoutePaintRequest<'_> {
         self.paint(scratch, RouteOutput::Commands(&mut write))
     }
 
+    fn smooth_terminals(&self) -> bool {
+        self.style == RouteStyle::Curved && matches!(self.curve_terminals, CurveTerminals::Smooth)
+    }
+
     fn paint<'a, E>(
         self,
         scratch: &'a mut RoutePaintScratch,
         output: RouteOutput<'a, E>,
+    ) -> Result<Bounds, RouteCommandError<E>> {
+        self.paint_with(
+            scratch,
+            output,
+            self.smooth_terminals(),
+            &mut clearance::DetourBudget::default(),
+        )
+    }
+
+    fn paint_with<'a, E>(
+        self,
+        scratch: &'a mut RoutePaintScratch,
+        output: RouteOutput<'a, E>,
+        smooth_terminals: bool,
+        budget: &mut clearance::DetourBudget,
     ) -> Result<Bounds, RouteCommandError<E>> {
         let Self {
             points,
             sides,
             style,
             markers,
-            curve_terminals,
             stitches,
             clearance,
+            ..
         } = self;
         let measure_length = std::mem::take(&mut scratch.measure_length);
         scratch.measured_length = None;
@@ -1302,16 +1421,15 @@ impl RoutePaintRequest<'_> {
             return Err(RoutePaintError::InvalidGeometry.into());
         }
         let last = points.len() - 1;
-        let smooth =
-            style == RouteStyle::Curved && matches!(curve_terminals, CurveTerminals::Smooth);
-        let start = Terminal::new(points[0], sides.0, markers.0, smooth);
-        let end = Terminal::new(points[last], sides.1, markers.1, smooth);
+        let start = Terminal::new(points[0], sides.0, markers.0, smooth_terminals);
+        let end = Terminal::new(points[last], sides.1, markers.1, smooth_terminals);
         let mut pen = Pen::new(
             start.shaft_end(),
-            smooth,
+            smooth_terminals && style == RouteStyle::Curved,
             measure_length && !matches!(style, RouteStyle::Rounded(_)),
             output,
             record_segments.then_some(&mut scratch.segments),
+            budget,
         );
         let (knots, body) = (&mut scratch.knots, &mut scratch.body);
         let mut begin = 0;
@@ -1348,7 +1466,7 @@ impl RoutePaintRequest<'_> {
 }
 
 fn draw_section<E>(
-    pen: &mut Pen<'_, E>,
+    pen: &mut Pen<'_, '_, E>,
     points: &[RoutePoint],
     terminals: (Option<&Terminal>, Option<&Terminal>),
     style: RouteStyle,
@@ -1472,18 +1590,20 @@ fn prepare_body(
 mod tests {
     use super::*;
     use crate::route_types::Endpoint;
-    use kurbo::{BezPath, ParamCurve, ParamCurveArclen, PathEl, PathSeg};
+    use kurbo::{BezPath, ParamCurve, ParamCurveArclen, PathEl, PathSeg, Rect};
 
     #[test]
     fn serialized_lines_skip_knots_that_round_to_the_same_point() {
         let mut svg = String::new();
         let mut segments = Vec::new();
+        let mut budget = clearance::DetourBudget::default();
         let mut pen = Pen::new(
             Point::ORIGIN,
             false,
             true,
             RouteOutput::<Infallible>::Svg(&mut svg),
             Some(&mut segments),
+            &mut budget,
         );
         pen.start_path(4, RouteStyle::Step).unwrap();
         pen.line(Point::new(3.0, 0.0)).unwrap();
@@ -1896,6 +2016,139 @@ mod tests {
     }
 
     #[test]
+    fn solved_route_recovers_from_a_same_face_sibling_at_its_contact() {
+        let points = [h(0., 0.), h(36., 22.), h(100., 22.)];
+        let endpoints = (Endpoint::Node(0), Endpoint::Node(1));
+        let sibling = Marker {
+            trim: 2.,
+            depth: 10.,
+            width: 14.,
+        };
+        let body = Rect::new(18., 5., 30., 16.);
+        let tree = Clearance::new(vec![
+            marker_obstacle(1, endpoints.0, h(0., 3.), Side::Right, sibling).unwrap(),
+            (body, ObstacleOwner::Node(2)),
+        ])
+        .unwrap();
+        let request = RoutePaintRequest {
+            points: &points,
+            sides: (Side::Right, Side::Left),
+            style: RouteStyle::Curved,
+            markers: (Marker::default(), marker(2., 9.)),
+            curve_terminals: CurveTerminals::Smooth,
+            stitches: &[],
+            clearance: Some(
+                tree.for_edge(0, endpoints, Vec2::ZERO, 1.)
+                    .with_terminal_contacts((points[0], points[2])),
+            ),
+        };
+        let mut scratch = RoutePaintScratch::default();
+        assert!(matches!(
+            request.paint_svg(&mut scratch),
+            Err(RoutePaintError::NoClearDetour)
+        ));
+        scratch.record_segments();
+        scratch.measure_length();
+        let path = request.paint_solved_svg(&mut scratch).unwrap();
+        assert!(!samples_inside(&path, body.inflate(1., 1.)), "{}", path.d);
+        assert_eq!(scratch.segments()[0].start(), Point::ORIGIN);
+        let last = scratch.segments().last().unwrap();
+        assert_eq!(last.start(), Point::new(89., 22.));
+        assert_eq!(last.end(), Point::new(98., 22.));
+        assert!(scratch.measured_length().is_some_and(|n| n > 98.));
+    }
+
+    #[test]
+    fn solved_route_skips_a_trapped_knot_and_preserves_the_stitch_and_command_prefix() {
+        let points = [h(0., 0.), h(20., 8.), h(60., 25.), h(130., 25.)];
+        let stitches = [BorderStitch {
+            edge: 0,
+            point: 2,
+            group: 0,
+            side: Side::Right,
+        }];
+        let body = Rect::new(17., 4., 23., 12.);
+        let tree = Clearance::new(vec![(body, ObstacleOwner::Node(2))]).unwrap();
+        let request = RoutePaintRequest {
+            points: &points,
+            sides: (Side::Right, Side::Left),
+            style: RouteStyle::Curved,
+            markers: (marker(2., 8.), marker(3., 9.)),
+            curve_terminals: CurveTerminals::Smooth,
+            stitches: &stitches,
+            clearance: Some(tree.for_edge(
+                0,
+                (Endpoint::Node(0), Endpoint::Node(1)),
+                Vec2::ZERO,
+                1.,
+            )),
+        };
+        let mut scratch = RoutePaintScratch::default();
+        assert!(matches!(
+            request.paint_svg(&mut scratch),
+            Err(RoutePaintError::NoClearDetour)
+        ));
+        let path = request.paint_solved_svg(&mut scratch).unwrap();
+        assert!(!samples_inside(&path, body.inflate(1., 1.)), "{}", path.d);
+        let prefix = RouteCommand::MoveTo(Point::new(-7., -9.));
+        let mut commands = vec![prefix];
+        request
+            .paint_solved_commands(&mut scratch, &mut commands, |command, commands| {
+                commands.push(command);
+                Ok::<_, Infallible>(())
+            })
+            .unwrap();
+        assert_eq!(commands[0], prefix);
+        assert_eq!(commands[1], RouteCommand::MoveTo(Point::new(2., 0.)));
+        assert!(commands[2..].contains(&RouteCommand::LineTo(position(points[2]))));
+        assert_eq!(
+            commands[2..]
+                .iter()
+                .filter(|c| matches!(c, RouteCommand::MoveTo(_)))
+                .count(),
+            0
+        );
+        assert_eq!(
+            commands.last(),
+            Some(&RouteCommand::LineTo(Point::new(127., 25.)))
+        );
+
+        let mut commands = vec![prefix];
+        let error =
+            request.paint_solved_commands(&mut scratch, &mut commands, |command, commands| {
+                commands.push(command);
+                Err("output limit")
+            });
+        assert_eq!(error.unwrap_err(), RouteCommandError::Sink("output limit"));
+        assert_eq!(commands, [prefix]);
+    }
+
+    #[test]
+    fn solved_route_propagates_an_exhausted_detour_budget() {
+        let points = [h(0., 0.), h(240., 60.)];
+        let obstacle = Rect::new(80., -2., 170., 62.);
+        let tree = Clearance::new(vec![(obstacle, ObstacleOwner::EdgeLabel(1)); 5000]).unwrap();
+        let request = RoutePaintRequest {
+            points: &points,
+            sides: (Side::Right, Side::Left),
+            style: RouteStyle::Curved,
+            markers: (Marker::default(), Marker::default()),
+            curve_terminals: CurveTerminals::Smooth,
+            stitches: &[],
+            clearance: Some(tree.for_edge(
+                0,
+                (Endpoint::Node(0), Endpoint::Node(1)),
+                Vec2::ZERO,
+                1.,
+            )),
+        };
+        assert!(matches!(
+            request.paint_solved_svg(&mut RoutePaintScratch::default()),
+            Err(RoutePaintError::DetourBudgetExceeded)
+        ));
+    }
+
+    #[test]
     fn coincident_marker_contacts_preserve_the_shaft_and_other_obstacles() {
         let points = [h(0., 0.), h(12., 0.), h(120., 30.), h(140., 30.)];
         let offset = Vec2::new(1024., -256.);
@@ -2275,12 +2528,14 @@ mod tests {
                 .with_label_bounds(Some(Rect::new(-12., 28., 48., 36.)))
         }
         let mut svg = String::new();
+        let mut budget = clearance::DetourBudget::default();
         let mut pen = Pen::new(
             position(points[0]),
             true,
             false,
             RouteOutput::<Infallible>::Svg(&mut svg),
             None,
+            &mut budget,
         );
         draw_section(
             &mut pen,
@@ -2728,12 +2983,14 @@ mod tests {
     #[test]
     fn tight_bounds_use_bezier_extrema_not_control_points() {
         let mut write = |_| Ok::<_, Infallible>(());
+        let mut budget = clearance::DetourBudget::default();
         let mut p = Pen::new(
             Point::new(-1.0, 0.0),
             false,
             false,
             RouteOutput::Commands(&mut write),
             None,
+            &mut budget,
         );
         p.start_path(2, RouteStyle::Curved).unwrap();
         p.cubic(

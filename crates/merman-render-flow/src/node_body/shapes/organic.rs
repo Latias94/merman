@@ -38,7 +38,7 @@ fn path_data(arcs: &[RelativeArc]) -> String {
     path
 }
 
-fn render_organic_shape(
+pub(super) fn render_organic_shape(
     out: &mut impl SvgOutput,
     mut svg: NodeBodySvg<'_>,
     geometry: &OrganicShapeGeometry,
@@ -86,22 +86,6 @@ fn render_organic_shape(
     );
 }
 
-pub(super) fn write(
-    out: &mut impl SvgOutput,
-    svg: NodeBodySvg<'_>,
-    cloud: bool,
-    label_size: kurbo::Size,
-    padding: f64,
-    html_labels: bool,
-    label_dx: &mut f64,
-) {
-    let geometry = organic_geometry(cloud, label_size, padding);
-    if !html_labels {
-        *label_dx = -label_size.width / 2.0;
-    }
-    render_organic_shape(out, svg, &geometry);
-}
-
 pub(super) fn advance_rough_geometry(
     geometry: NodeBodyGeometry<'_>,
     cloud: bool,
@@ -126,7 +110,11 @@ pub(super) fn advance_rough_geometry(
     );
 }
 
-fn organic_geometry(cloud: bool, label_size: kurbo::Size, padding: f64) -> OrganicShapeGeometry {
+pub(super) fn organic_geometry(
+    cloud: bool,
+    label_size: kurbo::Size,
+    padding: f64,
+) -> OrganicShapeGeometry {
     if cloud {
         cloud_geometry(label_size.width, label_size.height, padding)
     } else {
