@@ -16,6 +16,7 @@ fn paint_canonical_edge(
     edge: &crate::model::LayoutEdge,
     stroke_outset: f64,
     edge_style: Option<merman_theme_contract::v2::EdgeStyle>,
+    hand_drawn: bool,
     work_meter: &crate::resources::OperationWorkMeter,
     randomness: &roughr::core::RoughRandomness,
 ) -> Result<(String, graph::RequirementCanonicalEdge)> {
@@ -26,7 +27,7 @@ fn paint_canonical_edge(
     use merman_theme_contract::v2::EdgeStyle;
     let style = edge_style.map_or(RouteStyle::Curved, RouteStyle::from_theme);
     let geometry = routes.paint(edge, Vec2::ZERO, stroke_outset, style, work_meter)?;
-    let (d, shaft) = if edge_style == Some(EdgeStyle::Sketch) {
+    let (d, shaft) = if hand_drawn || edge_style == Some(EdgeStyle::Sketch) {
         let d = constrained_rough_edge_path(
             &geometry.path.d,
             geometry.markers,
@@ -35,7 +36,10 @@ fn paint_canonical_edge(
         )?;
         work_meter.charge(d.len())?;
         let bounds = svg_path_bounds_from_d(&d).ok_or_else(|| crate::Error::InvalidModel {
-            message: format!("Requirement edge `{}` has no sketch bounds", edge.id),
+            message: format!(
+                "Requirement edge `{}` has no hand-drawn paint bounds",
+                edge.id
+            ),
         })?;
         (
             d,
@@ -96,12 +100,15 @@ pub(crate) fn render_requirement_diagram_svg_model(
     #[cfg(feature = "layout-shoal")]
     let canonical_routes = prepared.canonical_routes().map(|routes| {
         let randomness = &randomness;
+        let hand_drawn = merman_render_core::config::mermaid_config_diagram_look(sanitize_config)
+            .is_hand_drawn();
         move |edge: &merman_render_core::LayoutEdge, stroke_outset, edge_style| {
             paint_canonical_edge(
                 routes,
                 edge,
                 stroke_outset,
                 edge_style,
+                hand_drawn,
                 work_meter,
                 randomness,
             )

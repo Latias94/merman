@@ -9,7 +9,8 @@ use merman_render_core::{
     resources::OperationWorkMeter,
     root_svg,
     rough_svg::{
-        RoughRectSpec, constrained_rough_edge_path, ops_to_svg_path_d as roughjs_ops_to_svg_path_d,
+        RoughRectSpec, constrained_rough_edge_path, controlled,
+        ops_to_svg_path_d as roughjs_ops_to_svg_path_d,
         parse_hex_color_to_srgba as roughjs_parse_hex_color_to_srgba, roughjs_paths_for_rect,
     },
     svg_bounds::svg_path_bounds_from_d,
@@ -35,7 +36,8 @@ use merman_render_core::{
     svg_edge_parity::layered_route::{self, Curve},
 };
 use merman_theme_contract::v2::{EdgeStyle, MarkerStyle};
-use roughr::core::RoughRandomness;
+use roughr::core::{OpType, OptionsBuilder, RoughRandomness};
+use std::borrow::Cow;
 use std::fmt::Write as _;
 
 mod css;
@@ -52,6 +54,55 @@ struct RequirementPaintedEdge {
     d: String,
     label_position: Option<LayoutPoint>,
     canonical: Option<RequirementCanonicalEdge>,
+}
+
+fn shoal_hand_drawn_box(
+    [left, top, right, bottom]: [f64; 4],
+    divider_y: Option<f64>,
+    work_meter: &OperationWorkMeter,
+    randomness: &RoughRandomness,
+) -> Result<(String, Option<String>)> {
+    let mut options = OptionsBuilder::default()
+        .randomness(randomness.clone())
+        .roughness(0.7)
+        .bowing(0.0)
+        .max_randomness_offset(0.9)
+        .preserve_vertices(true)
+        .disable_multi_stroke(true)
+        .build()
+        .expect("valid Requirement hand-drawn options");
+    controlled::generate(work_meter, OperationPhase::Emit, |control| {
+        let point = roughr::Point2D::new;
+        let mut vertices = Vec::with_capacity(6);
+        vertices.extend([point(left, top), point(right, top)]);
+        let side_anchor = divider_y.filter(|&y| y > top && y < bottom);
+        if let Some(y) = side_anchor {
+            vertices.push(point(right, y));
+        }
+        vertices.extend([point(right, bottom), point(left, bottom)]);
+        if let Some(y) = side_anchor {
+            vertices.push(point(left, y));
+        }
+        let mut outline =
+            roughr::renderer::linear_path_with_control(&vertices, true, &mut options, control)?;
+        // Join the sides into a single closed fill and preserve the divider's two contacts.
+        let mut first = true;
+        outline
+            .ops
+            .retain(|op| std::mem::take(&mut first) || op.op != OpType::Move);
+        let mut d = roughjs_ops_to_svg_path_d(&outline);
+        d.push('Z');
+
+        options.bowing = Some(1.0);
+        options.disable_multi_stroke = Some(false);
+        let divider = divider_y
+            .map(|y| {
+                roughr::renderer::line_with_control(left, y, right, y, &mut options, control)
+                    .map(|ops| roughjs_ops_to_svg_path_d(&ops))
+            })
+            .transpose()?;
+        Ok((d, divider))
+    })
 }
 
 #[cfg(feature = "layout-shoal")]
@@ -349,6 +400,7 @@ pub fn render_requirement_diagram_svg_model(
     let uses_canonical_routes = false;
     let look = render_settings.look;
     let look = look.as_str();
+    let shoal_hand_drawn = uses_canonical_routes && look == "handDrawn";
     let layered_hand_drawn =
         uses_layered && look == "handDrawn" && edge_style != Some(EdgeStyle::Sketch);
     let look_attr = format!(r#" data-look="{}""#, escape_attr_display(look));
@@ -1201,6 +1253,27 @@ pub fn render_requirement_diagram_svg_model(
 
         let x = -n.width / 2.0;
         let y = -n.height / 2.0;
+        let divider_y = rendered_node.divider_y_offset.map(|offset| y + offset);
+        let drawn_box = if shoal_hand_drawn {
+            let (outline, divider) = shoal_hand_drawn_box(
+                [x, y, x + n.width, y + n.height],
+                divider_y,
+                options.work_meter,
+                hand_drawn_seed,
+            )?;
+            options.work_meter.charge_emit_work(outline.len())?;
+            let bounds = svg_path_bounds_from_d(&outline).ok_or_else(|| Error::InvalidModel {
+                message: format!("Requirement node `{}` has no hand-drawn paint bounds", n.id),
+            })?;
+            let outset = stroke_width / 2.0 * std::f64::consts::SQRT_2;
+            content_bounds.min_x = content_bounds.min_x.min(cx + bounds.min_x - outset);
+            content_bounds.min_y = content_bounds.min_y.min(cy + bounds.min_y - outset);
+            content_bounds.max_x = content_bounds.max_x.max(cx + bounds.max_x + outset);
+            content_bounds.max_y = content_bounds.max_y.max(cy + bounds.max_y + outset);
+            Some((outline, divider))
+        } else {
+            None
+        };
         let native_box = native.filter(|_| look != "handDrawn");
         let heading = native_box.and_then(|native| {
             if visual.source_owns_fill {
@@ -1253,29 +1326,37 @@ pub fn render_requirement_diagram_svg_model(
             }
             out.push_str("</g>");
         } else {
-            let fill_path = format!(
-                "M{} {} L{} {} L{} {} L{} {}",
-                fmt(x),
-                fmt(y),
-                fmt(x + n.width),
-                fmt(y),
-                fmt(x + n.width),
-                fmt(y + n.height),
-                fmt(x),
-                fmt(y + n.height)
-            );
-            let stroke_path = roughjs_paths_for_rect(RoughRectSpec {
-                x,
-                y,
-                w: n.width,
-                h: n.height,
-                stroke_width: stroke_width as f32,
-                work_meter: options.work_meter,
-                phase: merman_model::OperationPhase::Emit,
-                randomness: hand_drawn_seed,
-            })
-            .map(|(_, stroke_d)| stroke_d)
-            .unwrap_or_else(|| rough_rect_stroke_path_d(x, y, n.width, n.height));
+            let (fill_path, stroke_path) = if let Some((outline, _)) = &drawn_box {
+                (
+                    Cow::Borrowed(outline.as_str()),
+                    Cow::Borrowed(outline.as_str()),
+                )
+            } else {
+                let fill_path = format!(
+                    "M{} {} L{} {} L{} {} L{} {}",
+                    fmt(x),
+                    fmt(y),
+                    fmt(x + n.width),
+                    fmt(y),
+                    fmt(x + n.width),
+                    fmt(y + n.height),
+                    fmt(x),
+                    fmt(y + n.height)
+                );
+                let stroke_path = roughjs_paths_for_rect(RoughRectSpec {
+                    x,
+                    y,
+                    w: n.width,
+                    h: n.height,
+                    stroke_width: stroke_width as f32,
+                    work_meter: options.work_meter,
+                    phase: OperationPhase::Emit,
+                    randomness: hand_drawn_seed,
+                })
+                .map(|(_, stroke_d)| stroke_d)
+                .unwrap_or_else(|| rough_rect_stroke_path_d(x, y, n.width, n.height));
+                (Cow::Owned(fill_path), Cow::Owned(stroke_path))
+            };
 
             let _ = write!(
                 &mut out,
@@ -1433,8 +1514,7 @@ pub fn render_requirement_diagram_svg_model(
             out.push_str("</g>");
         }
 
-        if let Some(divider_y_offset) = rendered_node.divider_y_offset {
-            let divider_y = y + divider_y_offset;
+        if let Some(divider_y) = divider_y {
             if let Some(native) = native_box {
                 let stroke = if visual.source_owns_stroke {
                     stroke_color
@@ -1496,35 +1576,37 @@ pub fn render_requirement_diagram_svg_model(
                     message: "Requirement divider terminal emission failed".to_string(),
                 })?;
             } else {
-                let divider_d =
-                    if let Some(stroke) = roughjs_parse_hex_color_to_srgba(geometry_stroke_color) {
-                        if let Ok(mut opts) = roughr::core::OptionsBuilder::default()
-                            .randomness(hand_drawn_seed.clone())
-                            .roughness(0.0)
-                            .fill_style(roughr::core::FillStyle::Solid)
-                            .stroke(stroke)
-                            .stroke_width(stroke_width as f32)
-                            .stroke_line_dash(vec![0.0, 0.0])
-                            .stroke_line_dash_offset(0.0)
-                            .fill_line_dash(vec![0.0, 0.0])
-                            .fill_line_dash_offset(0.0)
-                            .disable_multi_stroke(false)
-                            .disable_multi_stroke_fill(false)
-                            .build()
-                        {
-                            roughjs_ops_to_svg_path_d(&roughr::renderer::line::<f64>(
-                                x,
-                                divider_y,
-                                x + n.width,
-                                divider_y,
-                                &mut opts,
-                            ))
-                        } else {
-                            rough_double_line_path_d(x, divider_y, x + n.width, divider_y)
-                        }
+                let divider_d = if let Some((_, Some(d))) = drawn_box {
+                    d
+                } else if let Some(stroke) = roughjs_parse_hex_color_to_srgba(geometry_stroke_color)
+                {
+                    if let Ok(mut opts) = roughr::core::OptionsBuilder::default()
+                        .randomness(hand_drawn_seed.clone())
+                        .roughness(0.0)
+                        .fill_style(roughr::core::FillStyle::Solid)
+                        .stroke(stroke)
+                        .stroke_width(stroke_width as f32)
+                        .stroke_line_dash(vec![0.0, 0.0])
+                        .stroke_line_dash_offset(0.0)
+                        .fill_line_dash(vec![0.0, 0.0])
+                        .fill_line_dash_offset(0.0)
+                        .disable_multi_stroke(false)
+                        .disable_multi_stroke_fill(false)
+                        .build()
+                    {
+                        roughjs_ops_to_svg_path_d(&roughr::renderer::line::<f64>(
+                            x,
+                            divider_y,
+                            x + n.width,
+                            divider_y,
+                            &mut opts,
+                        ))
                     } else {
                         rough_double_line_path_d(x, divider_y, x + n.width, divider_y)
-                    };
+                    }
+                } else {
+                    rough_double_line_path_d(x, divider_y, x + n.width, divider_y)
+                };
                 write!(
                 &mut out,
                 r##"<g class="divider" style="{style}"><path d="{d}" stroke="{stroke}" stroke-width="{stroke_width}" fill="none" stroke-dasharray="0 0"{style_attr}/></g>"##,
