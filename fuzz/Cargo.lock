@@ -1161,9 +1161,7 @@ version = "0.11.0"
 dependencies = [
  "cssparser",
  "dugong",
- "euclid",
  "indexmap",
- "kurbo",
  "manatee",
  "merman-layout-elk",
  "merman-markup",

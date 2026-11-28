@@ -1,9 +1,8 @@
 //! Mermaid Dagre self-loop geometry shared by graph adapters.
 
 use crate::LayoutPoint;
+use crate::euclid_box::Size;
 use dugong::RankDir;
-
-type Size = euclid::Size2D<f64, euclid::UnknownUnit>;
 
 pub struct CompactSelfLoopGeometry {
     pub points: Vec<LayoutPoint>,

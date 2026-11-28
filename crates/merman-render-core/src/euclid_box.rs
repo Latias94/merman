@@ -1,8 +1,22 @@
-//! Euclid-backed axis-aligned bounds shared by graph adapters and renderers.
+//! Euclid-backed geometry shared by graph adapters and renderers.
 
-use euclid::{UnknownUnit as Unit, point2 as point, vec2 as vector};
+pub type Unit = euclid::UnknownUnit;
 
-type Point = euclid::Point2D<f64, Unit>;
+pub type Point = euclid::Point2D<f64, Unit>;
+pub type Vector = euclid::Vector2D<f64, Unit>;
+pub type Size = euclid::Size2D<f64, Unit>;
+pub type Rect = euclid::Rect<f64, Unit>;
+pub type Transform = euclid::Transform2D<f64, Unit, Unit>;
+
+#[inline]
+pub fn point(x: f64, y: f64) -> Point {
+    euclid::point2(x, y)
+}
+
+#[inline]
+pub fn vector(x: f64, y: f64) -> Vector {
+    euclid::vec2(x, y)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Box2(pub euclid::Box2D<f64, Unit>);

@@ -2706,7 +2706,6 @@ dependencies = [
  "cssparser",
  "data-encoding",
  "dugong",
- "euclid",
  "futures",
  "indexmap",
  "kurbo 0.13.1",

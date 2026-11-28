@@ -106,7 +106,7 @@ layout-dagre = ["dep:dugong", "merman-render-core/layout-dagre", "merman-render-
 layout-elk = ["dep:merman-layout-elk", "merman-render-core/layout-elk", "merman-render-flow?/layout-elk", "merman-render-graph?/layout-elk"]
 layout-grid = ["merman-render-flow?/layout-grid", "merman-render-graph?/layout-grid"]
 layout-layered = ["merman-render-flow?/layout-layered", "merman-render-graph?/layout-layered"]
-layout-shoal = ["dep:merman-layout-shoal", "merman-render-core/shoal-bridge", "merman-render-flow?/layout-shoal", "merman-render-graph?/layout-shoal"]
+layout-shoal = ["dep:kurbo", "dep:merman-layout-shoal", "merman-render-core/shoal-bridge", "merman-render-flow?/layout-shoal", "merman-render-graph?/layout-shoal"]
 math = ["merman-render-core/math", "merman-render-sequence?/math"]
 
 [dependencies]
@@ -120,9 +120,8 @@ merman-render-sequence = { workspace = true, optional = true }
 merman-render-structured = { workspace = true, optional = true }
 cssparser = { workspace = true, optional = true }
 dugong = { workspace = true, optional = true }
-euclid.workspace = true
 indexmap = { workspace = true, features = ["serde"], optional = true }
-kurbo.workspace = true
+kurbo = { workspace = true, optional = true }
 manatee = { workspace = true, optional = true }
 merman-layout-elk = { workspace = true, optional = true }
 merman-layout-shoal = { workspace = true, optional = true }
@@ -141,6 +140,7 @@ data-encoding.workspace = true
 # Browser geometry replays require the exact captured IEEE-754 values.
 serde_json = { workspace = true, features = ["float_roundtrip"] }
 futures = { workspace = true, features = ["executor"] }
+kurbo.workspace = true
 merman-core = { workspace = true, features = ["all-diagrams", "presentation", "compat-json", "test-support"] }
 merman-fixture-render-context = { path = "../merman-fixture-render-context" }
 merman-render-core = { workspace = true, features = ["graph-layout", "route-paint", "svg-edge-parity", "test-support"] }
