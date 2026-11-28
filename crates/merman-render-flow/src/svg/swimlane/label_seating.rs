@@ -94,7 +94,7 @@ fn collect_seats(line: Line, anchor: Point, label: Rect, seats: &mut Vec<Point>)
     } else {
         label.height()
     };
-    // Keep at least half the label's extent on this uninterrupted painted run. Sample
+    // Keep at least half the label's extent on this uninterrupted run. Sample
     // within one label span of its current position to retain its association and lane.
     let low = span * 0.25;
     let high = length - low;
@@ -175,6 +175,14 @@ pub(in crate::svg) fn reseat(
             .stroke_outset_for(key)?
             .unwrap_or_default();
         let offset = Vec2::new(entry.origin_x - ctx.tx, entry.origin_y - ctx.ty);
+        let to_layout = kurbo::Affine::translate(offset);
+        let has_label = positions.contains_key(&key);
+        let rough = geom.emitted_d_for_label.is_some();
+        let mut register_run = |segment| {
+            if let PathSeg::Line(line) = segment {
+                shafts.entry(key).or_insert_with(Vec::new).push(line);
+            }
+        };
         let ink = EdgeInk::new(&shaft, edge.edge, geom, offset, outset);
         inks.extend(ink.marker_bounds().map(|bounds| Ink {
             bounds: bounds.inflate(outset, outset),
@@ -182,15 +190,25 @@ pub(in crate::svg) fn reseat(
         }));
         for segment in shaft.segments() {
             work.charge(1)?;
-            let segment = kurbo::Affine::translate(offset) * segment;
+            let segment = to_layout * segment;
             inks.push(Ink {
                 bounds: segment.bounding_box().inflate(outset, outset),
                 kind: Obstacle::Shaft(key, segment, outset),
             });
-            if let PathSeg::Line(line) = segment
-                && positions.contains_key(&key)
-            {
-                shafts.entry(key).or_insert_with(Vec::new).push(line);
+            if has_label && !rough {
+                register_run(segment);
+            }
+        }
+        if has_label && rough {
+            // RoughJS replaces straight runs with cubic subpaths. Seat labels on the logical
+            // centerline, while testing clearance against the painted paths above.
+            work.charge(geom.d.len().div_ceil(16))?;
+            let logical = BezPath::from_svg(&geom.d).map_err(|error| Error::InvalidModel {
+                message: format!("could not read logical Swimlane edge path: {error}"),
+            })?;
+            for segment in logical.segments() {
+                work.charge(1)?;
+                register_run(to_layout * segment);
             }
         }
     }

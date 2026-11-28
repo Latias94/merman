@@ -14,6 +14,7 @@ pub use preparation::{
     measure_flowchart_svg_label_for_layout_with_metrics_and_source_style,
     measure_flowchart_svg_label_for_layout_with_source_style,
 };
+pub(crate) use terminal::with_svg_font_fallback;
 pub use terminal::{
     OptionalStyleAttr, append_native_label_color, flowchart_label_html_with_prepared_label,
     write_flowchart_svg_label_plan, write_flowchart_svg_label_plan_with_style,

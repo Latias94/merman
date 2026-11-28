@@ -4,6 +4,7 @@ use crate::edge_labels::{
     FlowchartEdgeLabelPlacement, FlowchartEdgeLabelText, OrdinaryEdgeLabel, SwimlaneEdgeLabel,
     SwimlaneEdgeLabelPaint, write_ordinary_edge_label,
 };
+use crate::projection::FlowchartEdgeKey;
 use kurbo::Size;
 use merman_render_core::theme_svg::edge_label_background::{literal_fill, write_backplate};
 use merman_theme_contract::v2::EdgeLabelBackground;
@@ -93,6 +94,7 @@ fn render_native_label_background(
     out: &mut impl crate::svg::SvgOutput,
     ctx: &FlowchartRenderCtx<'_>,
     hierarchy: &FlowchartHierarchyPlan<'_>,
+    key: FlowchartEdgeKey,
     position: merman_render_core::LayoutPoint,
     (origin_x, origin_y): (f64, f64),
     (width, height): (f64, f64),
@@ -101,9 +103,9 @@ fn render_native_label_background(
         return Ok(None);
     };
     let mode = native.form.edge_label_bg;
-    let fill = match mode {
-        EdgeLabelBackground::Pill => native.node,
-        EdgeLabelBackground::Canvas => native.canvas,
+    let (fill, inside_container) = match mode {
+        EdgeLabelBackground::Pill => (native.node, false),
+        EdgeLabelBackground::Canvas => (native.canvas, false),
         EdgeLabelBackground::Auto | EdgeLabelBackground::Transparent => {
             let layers = match ctx.container_label_layers.get() {
                 Some(layers) => layers,
@@ -120,9 +122,46 @@ fn render_native_label_background(
         }
     };
     let bounds = kurbo::Rect::from_center_size((position.x, position.y), (width, height));
-    let _ = write_backplate(out, bounds, mode, fill, native.border);
+    let backdrop = if mode == EdgeLabelBackground::Auto
+        && !inside_container
+        && ctx.layout.route_contract.is_canonical_axis()
+        && ctx.diagram_type != "agentflow"
+        && ctx.canvas.is_some_and(|color| color.channels()[3] == 0)
+    {
+        let label_style = if ctx.swimlane_direction.is_some() {
+            ctx.edge_style_plan.swimlane_label_for(key)?
+        } else {
+            Some(ctx.edge_style_plan.edge_for(key)?)
+        };
+        let ink = label_style
+            .and_then(crate::style::compiled::FlowchartCompiledStyles::source_label_color)
+            .and_then(literal_fill)
+            .or_else(|| literal_fill(&ctx.compatibility.text_color));
+        const LIGHT: Color = Color::rgb(255, 255, 255);
+        const DARK: Color = Color::rgb(15, 23, 42);
+        let (plate, host) = if ink.is_some_and(|ink| ink.contrast(DARK) >= ink.contrast(LIGHT)) {
+            (DARK, LIGHT)
+        } else {
+            (LIGHT, Color::rgb(0, 0, 0))
+        };
+        let [r, g, b, _] = plate.channels();
+        let plate = Color::rgba(r, g, b, 224);
+        // Reserve a soft backing on the exposed canvas and assess the ink against the
+        // opposite host appearance, where that backing provides the least contrast.
+        let _ = write_backplate(
+            out,
+            bounds,
+            EdgeLabelBackground::Pill,
+            plate,
+            Color::TRANSPARENT,
+        );
+        plate.composite(host, 1.0)
+    } else {
+        let _ = write_backplate(out, bounds, mode, fill, native.border);
+        fill
+    };
     out.checkpoint()?;
-    Ok(Some(fill))
+    Ok(Some(backdrop))
 }
 
 pub(in crate::svg) struct ContainerLabelLayers(Vec<ContainerLabelLayer>);
@@ -203,12 +242,14 @@ impl ContainerLabelLayers {
         ctx: &FlowchartRenderCtx<'_>,
         point: kurbo::Point,
         mut backdrop: merman_theme_contract::v2::Color,
-    ) -> merman_render_core::Result<merman_theme_contract::v2::Color> {
+    ) -> merman_render_core::Result<(Color, bool)> {
         ctx.work_meter.charge_emit_work(self.0.len())?;
+        let mut inside_container = false;
         for layer in &self.0 {
             if !layer.bounds.contains(point) {
                 continue;
             }
+            inside_container = true;
             // A frame without a prepared terminal only matters when it is sampled.
             let paint =
                 layer
@@ -224,7 +265,7 @@ impl ContainerLabelLayers {
             };
             backdrop = fill.composite(backdrop, paint.opacity);
         }
-        Ok(backdrop)
+        Ok((backdrop, inside_container))
     }
 }
 
@@ -235,6 +276,7 @@ fn edge_label_text<'a>(ctx: &'a FlowchartRenderCtx<'_>) -> FlowchartEdgeLabelTex
         measurer: ctx.measurer,
         math_renderer: ctx.math_renderer,
         text_style: ctx.text_style,
+        svg_font_fallback: ctx.svg_label_font_fallback(),
         config: ctx.config,
         default_text_color: &ctx.compatibility.text_color,
     }
@@ -281,6 +323,7 @@ pub(in crate::svg) fn render_flowchart_edge_label(
             out,
             ctx,
             hierarchy,
+            key,
             position.clone(),
             (origin_x, origin_y),
             (size.width, size.height),
@@ -359,6 +402,7 @@ pub(in crate::svg) fn render_swimlane_edge_label_node(
             out,
             ctx,
             hierarchy,
+            key,
             position.clone(),
             (origin_x, origin_y),
             (width, height),
@@ -383,6 +427,7 @@ pub(in crate::svg) fn render_swimlane_edge_label_node(
             size: Size::new(width, height),
             sampled_backdrop,
             html_labels: ctx.node_html_labels,
+            canonical: ctx.layout.route_contract.is_canonical_axis(),
             wrap_mode: ctx.node_wrap_mode,
             wrapping_width: ctx.wrapping_width,
         },

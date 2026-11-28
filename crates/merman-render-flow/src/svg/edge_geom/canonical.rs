@@ -219,6 +219,7 @@ fn prepare<'a>(
         && stroke_outset.is_some_and(|outset| route.corridor_clearance > outset)
         && (points[0], points[last]) == box_contacts
         && stitches.is_empty()
+        && !route_paint::may_use_rounded_crossbar(points)
     {
         None
     } else {

@@ -711,7 +711,7 @@ fn shoal_horizontal_swimlane_titles_keep_markdown_rows_in_the_measured_band() {
             label
                 .attribute("transform")
                 .unwrap()
-                .contains("rotate(-90)")
+                .contains("rotate(-90) translate(0, ")
         );
         assert!(
             label
@@ -726,7 +726,82 @@ fn shoal_horizontal_swimlane_titles_keep_markdown_rows_in_the_measured_band() {
                 .any(|node| node.attribute("font-weight") == Some("bold"))
         );
         assert!(text_content(label).contains("Supporting Evidence"));
+        assert!(
+            label
+                .descendants()
+                .filter(|node| has_class(*node, "row"))
+                .all(|row| row.attribute("x") == Some("0")
+                    && row.attribute("text-anchor") == Some("middle"))
+        );
     }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_swimlane_centers_wrapped_edge_rows_on_their_anchor() {
+    let source = r#"---
+config:
+  layout: shoal
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+swimlane-beta LR
+subgraph Lane
+A handoff@-->|"Request More<br/>Docs"| B
+end"#;
+    let svg = render_swimlane(source, "centered-edge-rows");
+    let doc = roxmltree::Document::parse(&svg).unwrap();
+    let label = semantic_element(&doc, "handoff", "edge-label");
+    assert!(label.children().any(|child| {
+        has_class(child, "label")
+            && child
+                .attribute("transform")
+                .is_some_and(|transform| transform.starts_with("translate(0, "))
+    }));
+    let rows: Vec<_> = label
+        .descendants()
+        .filter(|node| has_class(*node, "row"))
+        .collect();
+    assert_eq!(
+        rows.iter().copied().map(text_content).collect::<Vec<_>>(),
+        ["Request More", "Docs"]
+    );
+    assert!(
+        rows.iter()
+            .all(|row| row.attribute("text-anchor") == Some("middle"))
+    );
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_empty_lane_keeps_title_height_with_crossing_traffic() {
+    let source = r#"---
+config:
+  layout: shoal
+  htmlLabels: false
+---
+swimlane-beta LR
+subgraph First
+A --> B --> C
+end
+subgraph Empty[Review]
+end
+subgraph Last
+D --> E --> F
+end
+A audit@------>|A long asynchronous review request| F
+D review@------>|Return to the original requester| C"#;
+    let (_, layout) = render_swimlane_with_layout(source, "compact-empty-lane");
+    let lane = layout.lanes.iter().find(|lane| lane.id == "Empty").unwrap();
+    let margin = lane.height - lane.title_label_width;
+    assert!((23.99..=24.01).contains(&margin), "{lane:?}");
+    assert!(
+        layout
+            .edges
+            .iter()
+            .any(|edge| edge.id == "audit" && edge.points.len() >= 2)
+    );
 }
 
 #[cfg(feature = "layout-shoal")]

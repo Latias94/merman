@@ -34,6 +34,7 @@ pub struct FlowchartEdgeLabelText<'a> {
     pub measurer: &'a dyn TextMeasurer,
     pub math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
     pub text_style: &'a TextStyle,
+    pub svg_font_fallback: Option<&'a str>,
     pub config: &'a PresentationConfig,
     pub default_text_color: &'a str,
 }

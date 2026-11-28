@@ -10,13 +10,13 @@ pub(super) use shoal::{EdgeInk, segment_enters_surface, spatial_bounds};
 
 #[derive(Default)]
 pub(crate) struct FlowchartEdgeFillPlan {
-    inks: FxHashMap<FlowchartEdgeKey, &'static str>,
+    inks: FxHashMap<FlowchartEdgeKey, Color>,
     layers: FxHashMap<FlowchartEdgeKey, Vec<SurfaceInk>>,
     clips: Vec<Option<RoundedRect>>,
 }
 
 impl FlowchartEdgeFillPlan {
-    pub(super) fn ink(&self, key: FlowchartEdgeKey) -> Option<&'static str> {
+    pub(super) fn ink(&self, key: FlowchartEdgeKey) -> Option<Color> {
         self.inks.get(&key).copied()
     }
 
@@ -83,6 +83,7 @@ impl FlowchartEdgeFillPlan {
 mod shoal {
     use super::*;
     use kurbo::{BezPath, Line, ParamCurve, ParamCurveExtrema, PathSeg, Point, Rect, Shape, Vec2};
+    use merman_model::css_color::{RgbaChannels, hsl_to_rgb, rgb_to_hsl};
     use merman_model::families::flowchart::{FlowEdge, FlowEdgeVisibility};
     use merman_render_core::graph_layout::spatial::{Bounds as SpatialBounds, Bvh, BvhEntry};
     use merman_render_core::theme_svg::edge_label_background::{literal_fill, literal_opacity};
@@ -370,17 +371,17 @@ mod shoal {
                     .filter(|surface| contains_rect(surface.frame, ink.bounds))
                     .and_then(|surface| surface.fill)
                     .or(surfaces.canvas);
-                let base = background.map_or(source_ink, |fill| adapt(source_ink, fill));
+                let surface_ink = |fill| adapt(source_ink, fill, source.is_some());
+                let base = background.map_or(source_ink, surface_ink);
                 if base != source_ink {
-                    plan.inks
-                        .insert(edge.key, if base == WHITE { "#FFFFFF" } else { "#000000" });
+                    plan.inks.insert(edge.key, base);
                 }
                 let mut layers = Vec::new();
                 recolored.clear();
                 for surface in &hits {
                     ctx.work_meter.charge(1)?;
                     let Some(fill) = surface.fill else { continue };
-                    let color = adapt(source_ink, fill);
+                    let color = surface_ink(fill);
                     if color != base {
                         recolored.insert(surface.order);
                     } else if !surfaces.overlaps_recolored_ink(
@@ -410,15 +411,42 @@ mod shoal {
         }
     }
 
-    fn adapt(ink: Color, fill: Color) -> Color {
+    fn adapt(ink: Color, fill: Color, authored: bool) -> Color {
         if ink.contrast(fill) >= EDGE_CONTRAST {
             return ink;
         }
-        if WHITE.contrast(fill) >= BLACK.contrast(fill) {
+        let extreme = if WHITE.contrast(fill) >= BLACK.contrast(fill) {
             WHITE
         } else {
             BLACK
+        };
+        let [red, green, blue, _] = ink.channels();
+        if !authored || (red == green && green == blue) {
+            return extreme;
         }
+
+        let mut hsl = rgb_to_hsl(RgbaChannels {
+            red: f64::from(red),
+            green: f64::from(green),
+            blue: f64::from(blue),
+            alpha: 1.0,
+        });
+        let mut failing = hsl.lightness_percent;
+        let mut passing = if extreme == WHITE { 100.0 } else { 0.0 };
+        let mut color = extreme;
+        // Check the quantized paint so the emitted hex itself meets the contrast threshold.
+        for _ in 0..10 {
+            hsl.lightness_percent = failing.midpoint(passing);
+            let [r, g, b, _] = hsl_to_rgb(hsl).to_rgba8();
+            let candidate = Color::rgb(r, g, b);
+            if candidate.contrast(fill) >= EDGE_CONTRAST {
+                passing = hsl.lightness_percent;
+                color = candidate;
+            } else {
+                failing = hsl.lightness_percent;
+            }
+        }
+        color
     }
 
     fn solid_canvas(

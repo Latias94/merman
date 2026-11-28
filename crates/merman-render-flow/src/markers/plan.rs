@@ -75,7 +75,7 @@ pub struct FlowchartMarkerSurface {
 pub struct FlowchartEdgeMarkers<'a> {
     pub edge: FlowchartRenderEdgeRef<'a>,
     pub source_color: Option<&'a str>,
-    pub adaptive_ink: Option<&'static str>,
+    pub adaptive_ink: Option<Color>,
     pub surfaces: &'a [FlowchartMarkerSurface],
     pub margin: bool,
 }
@@ -147,7 +147,9 @@ impl<'a> FlowchartMarkerEmissionPlan<'a> {
                 surfaces,
                 margin,
             } = inputs?;
-            let color = adaptive_ink
+            let adaptive_hex = adaptive_ink.map(|ink| ink.to_string());
+            let color = adaptive_hex
+                .as_deref()
                 .map(FlowchartMarkerColor::Adaptive)
                 .or_else(|| source_color.map(FlowchartMarkerColor::Source));
             plan.register_edge_with_identity(edge.key, edge.edge, color, margin)?;

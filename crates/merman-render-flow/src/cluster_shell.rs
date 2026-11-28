@@ -120,6 +120,14 @@ fn write_cluster_shell(
             radius,
             stroke_width,
         } => {
+            let outline = rough.and_then(|rough| {
+                roughjs_hand_drawn_stroke_path_for_svg_path(
+                    &rounded_rect_path_d(origin, size, radius),
+                    ROUGHNESS,
+                    rough.work_meter,
+                    rough.randomness,
+                )
+            });
             let _ = write!(
                 out,
                 r#"<rect x="{}" y="{}" width="{}" height="{}" rx="{}" style="fill:{};stroke:{};stroke-width:{}px"#,
@@ -135,7 +143,26 @@ fn write_cluster_shell(
             if !paint.style.is_empty() {
                 let _ = write!(out, ";{}", escape_attr_display(paint.style));
             }
+            if outline.is_some() {
+                // Keep the fill frame used by clipping and contrast sampling.
+                out.push_str(";stroke:none !important");
+            }
             out.push_str(r#""/>"#);
+            if let Some(path) = outline {
+                let border_style = rough_style_from_node_style(paint.style, |declaration| {
+                    let property = declaration.property();
+                    (property.starts_with("stroke") || property == "opacity")
+                        .then(|| declaration.property_css())
+                });
+                let _ = write!(
+                    out,
+                    r#"<path class="merman-rough-container-outline" d="{}" fill="none" stroke="{}" stroke-width="{}"{}/>"#,
+                    escape_attr_display(&path),
+                    escape_attr_display(paint.stroke),
+                    number(stroke_width),
+                    rough_style_attr(&border_style),
+                );
+            }
         }
         ClusterShellForm::Agentflow {
             stroke,

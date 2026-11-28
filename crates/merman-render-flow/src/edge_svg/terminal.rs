@@ -53,7 +53,7 @@ pub struct FlowchartEdgeSvgContext<'a> {
     pub compatibility: &'a FlowchartCompatibilityBinding,
     pub steps: &'a super::FlowchartSteps,
     pub default_edge_style: &'a [String],
-    pub adaptive_ink: Option<&'static str>,
+    pub adaptive_ink: Option<merman_theme_contract::v2::Color>,
     pub surface_layers: &'a [FlowchartMarkerSurface],
     pub label_cutout: bool,
     pub canonical: bool,

@@ -193,6 +193,48 @@ fn shoal_flowchart_paints_fill_boundaries_and_adapts_internal_markers() {
 
 #[cfg(feature = "diagram-flowchart")]
 #[test]
+fn shoal_authored_edge_hues_and_markers_survive_contrast_adjustment() {
+    let svg = render(
+        "flowchart",
+        "shoal",
+        "classic",
+        concat!(
+            "subgraph Light\nA blue@<--> B\nB orange@--> C\nend\n",
+            "subgraph Dark\nD purple@--> E\nend\n",
+            "style Light fill:#EFF4FA\nstyle Dark fill:#111827\n",
+            "linkStyle 0 stroke:#0EA5E9\nlinkStyle 1 stroke:#D97706\nlinkStyle 2 stroke:#2D1359\n",
+        ),
+        false,
+    );
+    let doc = Document::parse(&svg).unwrap();
+    for (id, source, backdrop) in [
+        ("blue", "#0EA5E9", "#EFF4FA"),
+        ("orange", "#D97706", "#EFF4FA"),
+        ("purple", "#2D1359", "#111827"),
+    ] {
+        let route = edge(&doc, id);
+        let stroke = paint(route, "stroke").unwrap();
+        assert_ne!(stroke, source, "{id}");
+        assert_ink(stroke, backdrop);
+        let source = merman_model::css_color::parse(source).unwrap().hsla;
+        let ink = merman_model::css_color::parse(stroke).unwrap().hsla;
+        assert!(
+            (ink.hue_degrees - source.hue_degrees).abs() < 2.0,
+            "{id}: {stroke}"
+        );
+        assert!(ink.saturation_percent > 50.0, "{id}: {stroke}");
+        for attribute in ["marker-start", "marker-end"] {
+            if route.attribute(attribute).is_some() {
+                let marker = marker_shape(&doc, route, attribute);
+                assert_eq!(marker.attribute("stroke"), Some(stroke), "{id}");
+                assert_eq!(marker.attribute("fill"), Some(stroke), "{id}");
+            }
+        }
+    }
+}
+
+#[cfg(feature = "diagram-flowchart")]
+#[test]
 fn shoal_hand_drawn_edges_adapt_over_dark_cluster_and_hatches_have_a_backing() {
     let svg = render(
         "flowchart",
@@ -235,7 +277,28 @@ fn shoal_hand_drawn_edges_adapt_over_dark_cluster_and_hatches_have_a_backing() {
                 .contains("stroke-opacity:0.15")
         );
         assert!(backing.range().end <= hatch.range().start);
+        if id == "DB" {
+            let clip = hatch.parent_element().unwrap();
+            let clip_id = clip
+                .attribute("clip-path")
+                .and_then(|value| value.strip_prefix("url(#"))
+                .and_then(|value| value.strip_suffix(')'))
+                .expect("cylinder hatches use a silhouette clip");
+            let silhouette = node
+                .descendants()
+                .find(|element| {
+                    element.has_tag_name("clipPath") && element.attribute("id") == Some(clip_id)
+                })
+                .and_then(|element| element.first_element_child())
+                .unwrap();
+            assert_eq!(silhouette.attribute("d"), backing.attribute("d"));
+        }
     }
+    assert!(doc.descendants().any(|node| {
+        node.attribute("class") == Some("merman-rough-container-outline")
+            && paint(node, "fill") == Some("none")
+            && node.attribute("d").is_some_and(|path| path.contains('C'))
+    }));
 }
 
 #[cfg(feature = "diagram-flowchart")]

@@ -110,7 +110,7 @@ struct FlowchartEdgeSvgEmission<'a> {
     marker_attrs: &'a str,
     default_edge_style: &'a [String],
     repeat_inline: bool,
-    adaptive_ink: Option<&'static str>,
+    adaptive_ink: Option<merman_theme_contract::v2::Color>,
     neo_edge_mask: Option<FlowchartNeoEdgeMaskPlan>,
     line_hop_applied: bool,
 }
@@ -125,9 +125,10 @@ impl FlowchartEdgeSvgEmission<'_> {
         let neo_mask_svg_bytes = self
             .neo_edge_mask
             .map_or(0, FlowchartNeoEdgeMaskPlan::serialized_bytes);
-        let ink_svg_bytes = self
-            .adaptive_ink
-            .map_or(0, |ink| ";stroke:!important;".len() + ink.len());
+        let ink_svg_bytes = self.adaptive_ink.map_or(0, |ink| {
+            let alpha_bytes = 2 * usize::from(ink.channels()[3] != u8::MAX);
+            ";stroke:#000000!important;".len() + alpha_bytes
+        });
         // The caller supplies the already formatted marker attributes.
         let Some(projected_contribution) = source_style_svg_bytes
             .checked_add(neo_mask_svg_bytes)

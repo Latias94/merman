@@ -12,6 +12,7 @@ use merman_render_core::{
     text::{
         TextStyle, WrapMode, create_text_html::FlowchartLabelMetricsRequest,
         html_label_layout::measure_flowchart_html_label, literal_label::FlowchartSvgWidthMode,
+        svg_label::write_svg_text_source_word_lines_with_style,
     },
     theme_svg::edge_label_background,
     xml::escape_attr_display,
@@ -23,10 +24,7 @@ use crate::{
     document::FlowchartDocumentIds,
     projection::FlowchartRenderEdgeRef,
     style::{compiled::FlowchartCompiledStyles, flowchart_is_source_spelled_label_style_key},
-    svg_label::{
-        FlowchartSvgLabelOwner, FlowchartSvgLabelRenderPlan, OptionalStyleAttr,
-        write_flowchart_svg_label_plan_with_style,
-    },
+    svg_label::{FlowchartSvgLabelOwner, FlowchartSvgLabelRenderPlan, OptionalStyleAttr},
 };
 
 pub struct SwimlaneEdgeLabel<'a> {
@@ -45,6 +43,7 @@ pub struct SwimlaneEdgeLabelPaint<'a> {
     pub size: Size,
     pub sampled_backdrop: Option<Color>,
     pub html_labels: bool,
+    pub canonical: bool,
     pub wrap_mode: WrapMode,
     pub wrapping_width: f64,
 }
@@ -121,6 +120,31 @@ impl<'a> SwimlaneEdgeLabel<'a> {
                 ),
             })?;
 
+        let prepared = (!paint.html_labels).then(|| {
+            FlowchartSvgLabelRenderPlan::new(
+                ctx.svg_label_sidecar,
+                Some(owner),
+                label_text,
+                ctx.measurer,
+                label_text_style,
+                Some(paint.wrapping_width),
+                true,
+                FlowchartSvgWidthMode::Bbox,
+            )
+        });
+        let lines = prepared
+            .as_ref()
+            .map(FlowchartSvgLabelRenderPlan::wrapped_lines);
+        let centered = paint.canonical && lines.as_ref().is_some_and(|lines| lines.len() > 1);
+        let (text_x, text_y) = if centered {
+            let bbox_y = ctx.measurer.measure_svg_create_text_bbox_y_offset_px(
+                prepared.as_ref().expect("centered SVG label").plain_text(),
+                label_text_style,
+            );
+            (0.0, -height / 2.0 - bbox_y)
+        } else {
+            (-width / 2.0, -height / 2.0)
+        };
         let _ = write!(
             out,
             r#"<g class="label edgeLabel" id="{}" data-id="{}" data-et="edge-label" transform="translate({}, {})"><rect width="0.1" height="0.1"/><g class="label"{} transform="translate({}, {})"><rect/>"#,
@@ -129,8 +153,8 @@ impl<'a> SwimlaneEdgeLabel<'a> {
             fmt_display(x),
             fmt_display(y),
             OptionalStyleAttr(swimlane_group_style.as_ref()),
-            fmt_display(-width / 2.0),
-            fmt_display(-height / 2.0),
+            fmt_display(text_x),
+            fmt_display(text_y),
         );
 
         if paint.html_labels {
@@ -194,23 +218,18 @@ impl<'a> SwimlaneEdgeLabel<'a> {
         }
 
         out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
-        let prepared = FlowchartSvgLabelRenderPlan::new(
-            ctx.svg_label_sidecar,
-            Some(owner),
-            label_text,
-            ctx.measurer,
-            label_text_style,
-            Some(paint.wrapping_width),
-            true,
-            FlowchartSvgWidthMode::Bbox,
-        );
         let swimlane_svg_text_style =
             swimlane_svg_edge_label_text_style(first_label_style, swimlane_adaptive_ink);
-        write_flowchart_svg_label_plan_with_style(
+        let swimlane_svg_text_style = crate::svg_label::with_svg_font_fallback(
+            &swimlane_svg_text_style,
+            ctx.svg_font_fallback,
+        );
+        write_svg_text_source_word_lines_with_style(
             out,
-            &prepared,
-            true,
-            (!swimlane_svg_text_style.is_empty()).then_some(swimlane_svg_text_style.as_str()),
+            &lines.expect("SVG label lines"),
+            &swimlane_svg_text_style,
+            centered,
+            None,
         );
         out.push_str("</g></g></g>");
         Ok(())

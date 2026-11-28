@@ -138,6 +138,16 @@ pub struct FlowchartRenderCtx<'a> {
 }
 
 impl<'a> FlowchartRenderCtx<'a> {
+    pub(in crate::svg) fn svg_label_font_fallback(&self) -> Option<&str> {
+        (self.layout.route_contract.is_canonical_axis() && self.diagram_type != "agentflow")
+            .then_some(
+                self.text_style
+                    .font_family
+                    .as_deref()
+                    .unwrap_or("sans-serif"),
+            )
+    }
+
     pub(in crate::svg) fn node_rectangle(
         &self,
         id: &str,

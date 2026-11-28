@@ -496,7 +496,9 @@ flowchart LR
         );
         let paths: Vec<_> = node
             .descendants()
-            .filter(|child| child.has_tag_name("path"))
+            .filter(|child| {
+                child.has_tag_name("path") && !child.ancestors().any(|n| n.has_tag_name("defs"))
+            })
             .collect();
         assert!(!paths.is_empty(), "missing shape geometry for {id}");
         for path in &paths {
@@ -507,6 +509,27 @@ flowchart LR
                     "shape {id} lacks explicit {property} on a hand-drawn path"
                 );
             }
+        }
+        if ["C", "H", "I"].contains(&id) {
+            let backing = paths
+                .iter()
+                .find(|path| path.attribute("class") == Some("merman-rough-backing"))
+                .expect("cylinder backing");
+            let fill_layer = backing.parent_element().unwrap();
+            let clip = node
+                .descendants()
+                .find(|child| child.has_tag_name("clipPath"))
+                .expect("cylinder fill clip");
+            let clip_url = format!("url(#{})", clip.attribute("id").unwrap());
+            assert_eq!(fill_layer.attribute("clip-path"), Some(clip_url.as_str()));
+            assert_eq!(
+                clip.first_element_child().unwrap().attribute("d"),
+                backing.attribute("d"),
+                "cylinder {id} should clip its hatch to the backing silhouette"
+            );
+            assert!(paths.iter().any(|path| {
+                path.parent_element() == Some(fill_layer) && path.attribute("fill") == Some("none")
+            }));
         }
         if id == "I" {
             assert!(paths.iter().any(|path| path.attribute("class")
