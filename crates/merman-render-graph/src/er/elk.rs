@@ -6,7 +6,12 @@ use super::{
 };
 use merman_layout_elk as elk;
 use merman_model::families::er::{ErDiagramModel, ErEntity, ErSubgraph};
-use merman_render_core::elk_adapter::{self, feedback_edges, options::layout_options};
+use merman_render_core::elk_adapter::{
+    self,
+    arrowheads::{Arrowhead, EdgeArrowheads},
+    feedback_edges,
+    options::layout_options,
+};
 use merman_render_core::graph_layout::Direction;
 use merman_render_core::layout_work::OperationLayoutWorkControl;
 use merman_render_core::text::TextMeasurer;
@@ -67,8 +72,9 @@ pub fn layout(
             (metrics.width.max(0.0), metrics.height.max(0.0)),
         );
     }
-    let oriented = feedback_edges::orient_feedback_edges(
+    let oriented = orient_er_elk_graph(
         &mut elk_graph,
+        model,
         effective_config,
         &mut Some(&mut *work_control),
     )?;
@@ -233,6 +239,28 @@ pub fn layout(
         edges: out_edges,
         clusters,
         bounds,
+    })
+}
+
+fn orient_er_elk_graph<'a>(
+    graph: &'a mut elk::Graph,
+    model: &ErDiagramModel,
+    config: &Value,
+    work: &mut Option<&mut OperationLayoutWorkControl>,
+) -> Result<feedback_edges::FeedbackOrientation<'a>> {
+    let arrowhead = |cardinality: &str| {
+        (!cardinality.is_empty() && !cardinality.eq_ignore_ascii_case("none"))
+            .then_some(Arrowhead::Other)
+    };
+    feedback_edges::orient_feedback_edges_with_arrowheads(graph, config, work, |index, _| {
+        // er_elk_graph emits one provider edge per relationship in source order. Mermaid's
+        // layout counts the raw cardinality spelling, including MD_PARENT.
+        let relation = &model.relationships[index].rel_spec;
+        Ok(EdgeArrowheads {
+            start: arrowhead(&relation.card_b),
+            end: arrowhead(&relation.card_a),
+            ..Default::default()
+        })
     })
 }
 
@@ -426,7 +454,9 @@ fn er_elk_direction(direction: &str) -> Option<elk::Direction> {
 mod tests {
     use super::{elk, layout_options};
     use crate::er::{ErConfigView, labels::prepare_er_labels};
-    use merman_model::families::er::{ErEntity, ErRelationship, ErSubgraph};
+    use merman_model::families::er::{
+        ErDiagramModel, ErEntity, ErRelSpec, ErRelationship, ErSubgraph,
+    };
     use merman_render_core::text::DeterministicTextMeasurer;
 
     #[test]
@@ -496,6 +526,79 @@ mod tests {
             .expect("replayed seeded ER layout");
 
         assert_eq!(first, replayed);
+    }
+
+    #[test]
+    fn er_elk_spreads_cardinalities_by_relationship_slot_and_endpoint() {
+        let mut model = ErDiagramModel {
+            direction: "LR".to_owned(),
+            ..Default::default()
+        };
+        for id in ["Source", "Target"] {
+            model.entities.insert(
+                id.to_owned(),
+                ErEntity {
+                    id: id.to_owned(),
+                    label: id.to_owned(),
+                    ..Default::default()
+                },
+            );
+        }
+        for card_b in ["ZERO_OR_ONE", "MD_PARENT", "ZERO_OR_MORE"] {
+            model.relationships.push(ErRelationship {
+                entity_a: "Source".to_owned(),
+                entity_b: "Target".to_owned(),
+                rel_spec: ErRelSpec {
+                    card_a: "ONLY_ONE".to_owned(),
+                    card_b: card_b.to_owned(),
+                    rel_type: "IDENTIFYING".to_owned(),
+                },
+                ..Default::default()
+            });
+        }
+        let config = serde_json::Value::Null;
+        let settings = ErConfigView::new(&config).layout_settings_for_test(&model.direction, false);
+        let measurer = DeterministicTextMeasurer::default();
+        let labels = prepare_er_labels(&model, &config, &measurer, false);
+        let mut input = super::er_elk_graph(
+            &model,
+            &config,
+            elk::Algorithm::Layered,
+            &measurer,
+            &settings,
+            &labels,
+            &mut None,
+        )
+        .expect("ER ELK graph");
+        assert_eq!(input.direction, elk::Direction::Right);
+        for node in &mut input.nodes {
+            node.height = 48.0;
+        }
+        let original = input.clone();
+        let center = Some(elk::PortAlignment::Center);
+        for (card_b, expected_source) in [("MD_PARENT", center), ("NONE", None), ("", None)] {
+            // Each control changes the middle relationship on the same ordered pair.
+            model.relationships[1].rel_spec.card_b = card_b.to_owned();
+            let oriented = super::orient_er_elk_graph(&mut input, &model, &config, &mut None)
+                .expect("prepare ER ELK ports");
+            let alignment = |id: &str| {
+                oriented
+                    .graph()
+                    .nodes
+                    .iter()
+                    .find(|node| node.id == id)
+                    .unwrap()
+                    .port_alignment
+            };
+            assert_eq!(alignment("Source"), expected_source, "cardB={card_b:?}");
+            assert_eq!(
+                alignment("Target"),
+                center,
+                "cardA is present on all three edges"
+            );
+            drop(oriented);
+            assert_eq!(input, original);
+        }
     }
 
     #[test]

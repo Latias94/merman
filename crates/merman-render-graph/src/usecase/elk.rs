@@ -11,8 +11,11 @@ use merman_model::families::usecase::UsecaseDiagramModel;
 use merman_render_core::{
     Bounds, Error, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, Result,
     elk_adapter::{
-        GroupFrame, apply_cyclic_entry_constraints, drawing_group_frames,
-        feedback_edges::orient_feedback_edges, options::layout_options,
+        GroupFrame, apply_cyclic_entry_constraints,
+        arrowheads::{Arrowhead, EdgeArrowheads},
+        drawing_group_frames,
+        feedback_edges::orient_feedback_edges_with_arrowheads,
+        options::layout_options,
     },
     layout_work::OperationLayoutWorkControl,
 };
@@ -130,7 +133,27 @@ fn layout(
             &mut Some(&mut *work),
         )?;
     }
-    let oriented = orient_feedback_edges(&mut graph, config, &mut Some(&mut *work))?;
+    let neo = config.get("look").and_then(Value::as_str) == Some("neo");
+    let arrowhead = |marker: Option<&str>| match marker {
+        Some("arrow_point") => Some(Arrowhead::Point),
+        Some("arrow_circle") => Some(Arrowhead::Circle),
+        Some("arrow_cross") => Some(Arrowhead::Cross),
+        None | Some("" | "none") => None,
+        Some(_) => Some(Arrowhead::Other),
+    };
+    let oriented = orient_feedback_edges_with_arrowheads(
+        &mut graph,
+        config,
+        &mut Some(&mut *work),
+        |index, _| {
+            let plan = &edge_plans[index];
+            Ok(EdgeArrowheads {
+                start: arrowhead(plan.start_marker.as_deref()),
+                end: arrowhead(plan.end_marker.as_deref()),
+                margin: neo && !plan.animated,
+            })
+        },
+    )?;
     let mut placed = {
         #[cfg(feature = "benchmark-stages")]
         let _stage = merman_model::benchmark_stages::enter(

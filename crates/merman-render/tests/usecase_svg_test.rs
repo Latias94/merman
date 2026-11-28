@@ -610,6 +610,58 @@ fn usecase_elk_preserves_raw_missing_sections_and_draws_relationships() {
 
 #[cfg(feature = "layout-elk")]
 #[test]
+fn usecase_elk_spreads_actor_ports_for_static_neo_markers() {
+    const SOURCE: &str = "usecase-beta
+direction TB
+actor Hub(H)
+A[One]
+B[Two]
+C[Three]
+D[Four]
+A first@--> Hub
+B second@--> Hub
+C third@--> Hub
+D fourth@--> Hub
+";
+    const ANIMATION: &str = "first@{animate:true}
+second@{animate:true}
+third@{animate:true}
+fourth@{animate:true}
+";
+
+    let port_span = |source: &str| {
+        let (projection, _) = render_config(
+            source,
+            json!({"layout": "elk", "look": "neo", "htmlLabels": false,
+                "elk": {"orientFeedbackEdges": false}}),
+        );
+        let graph = &projection["layout"]["UsecaseDiagram"];
+        let mut ports: Vec<_> = graph["edges"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|edge| {
+                assert_eq!(edge["to"], "Hub");
+                edge["points"].as_array().unwrap().last().unwrap()["x"]
+                    .as_f64()
+                    .unwrap()
+            })
+            .collect();
+        assert_eq!(ports.len(), 4);
+        ports.sort_by(f64::total_cmp);
+        ports[3] - ports[0]
+    };
+    // Four incoming points are crowded on this actor only with Neo's wider margins.
+    let static_span = port_span(SOURCE);
+    let animated_span = port_span(&format!("{SOURCE}{ANIMATION}"));
+    assert!(
+        static_span > animated_span + 1.0,
+        "{static_span} vs {animated_span}"
+    );
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
 fn usecase_elk_spreads_implicit_ports_on_ellipses() {
     for font_size in [14, 40] {
         let (projection, _) = render_config(

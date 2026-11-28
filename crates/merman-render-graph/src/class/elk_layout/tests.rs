@@ -1,6 +1,7 @@
 use super::{
-    ClassElkLayoutSettings, ClassRenderConfig, class_elk_layout_options, class_layout_from_elk,
-    class_measured_to_elk_graph, elk, measure_class_diagram, validate_class_elk_output_ids,
+    ClassElkLayoutSettings, ClassRenderConfig, MeasuredClassDiagram, class_elk_layout_options,
+    class_layout_from_elk, class_measured_to_elk_graph, elk, measure_class_diagram,
+    orient_class_elk_graph, validate_class_elk_output_ids,
 };
 use crate::class::ClassTextThemePlan;
 use merman_core::{MermaidEngine, ParseOptions};
@@ -36,7 +37,14 @@ fn measure_fixture_interface(request: FlowchartLabelMetricsRequest<'_>) -> TextM
     }
 }
 
-fn class_elk_graph_for_test(source: &str, algorithm: elk::Algorithm) -> merman_layout_elk::Graph {
+fn class_elk_graph_for_test(source: &str, algorithm: elk::Algorithm) -> elk::Graph {
+    class_elk_measurements_for_test(source, algorithm).0
+}
+
+fn class_elk_measurements_for_test(
+    source: &str,
+    algorithm: elk::Algorithm,
+) -> (elk::Graph, MeasuredClassDiagram) {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::default())
         .expect("parse Class source")
@@ -60,7 +68,7 @@ fn class_elk_graph_for_test(source: &str, algorithm: elk::Algorithm) -> merman_l
         None,
     )
     .expect("measure Class diagram");
-    class_measured_to_elk_graph(
+    let graph = class_measured_to_elk_graph(
         &measured,
         &ClassElkLayoutSettings {
             algorithm,
@@ -71,7 +79,41 @@ fn class_elk_graph_for_test(source: &str, algorithm: elk::Algorithm) -> merman_l
         },
         &mut None,
     )
-    .expect("Class ELK graph")
+    .expect("Class ELK graph");
+    (graph, measured)
+}
+
+#[test]
+fn class_elk_spreads_crowded_extension_markers_at_their_own_end() {
+    for (third_arrow, height, expected) in [
+        ("--|>", 48.0, Some(elk::PortAlignment::Center)),
+        ("<|--", 48.0, None),
+        ("--|>", 64.0, None),
+    ] {
+        let source =
+            format!("classDiagram\ndirection LR\nA --|> Hub\nB --|> Hub\nC {third_arrow} Hub\n");
+        let (mut input, measured) =
+            class_elk_measurements_for_test(&source, elk::Algorithm::Layered);
+        assert_eq!(input.direction, elk::Direction::Right);
+        let hub = input
+            .nodes
+            .iter()
+            .position(|node| node.id == "Hub")
+            .expect("Hub");
+        // Match the side lengths of the pinned ELK relation-marker witnesses.
+        input.nodes[hub].height = height;
+        let original = input.clone();
+        let oriented =
+            orient_class_elk_graph(&mut input, &measured, &serde_json::Value::Null, &mut None)
+                .expect("prepare Class ELK ports");
+        assert_eq!(
+            oriented.graph().nodes[hub].port_alignment,
+            expected,
+            "{third_arrow} on a {height}px side"
+        );
+        drop(oriented);
+        assert_eq!(input, original);
+    }
 }
 
 #[test]
