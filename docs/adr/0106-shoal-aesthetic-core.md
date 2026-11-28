@@ -112,20 +112,26 @@ Keep one public Shoal IR, `WorkControl`, DDLT verifier, and `route_paint` contra
   Shoal relation markers use the resolved shaft ink, including per-relation overrides. Dark Mermaid
   palettes supply the default relation and boundary-title ink.
 - When all top title anchors intersect automatic compound ports, Shoal reserves shoulder space
-  and solves the group's contacts again. Fixed contacts still have a title halo when a route must
-  pass through the title.
+  and solves the group's contacts again. With a single lane on the title face, the shoulder moves
+  the title and shell away from the content trunk so the interior route can stay straight. Fixed
+  contacts still have a title halo when a route must pass through the title.
 - The canonical painter tests step crossbars against the placed obstacle inventory after preparing
   the route sections. A bounded rectilinear detour handles a blocked step while keeping border
   stitches and marker leads fixed. Card-grid captions use shaft cutouts for crowded gutters, so
   the painter protects their node and title obstacles independently of relationship captions.
+- A steep curved offset can use two rounded corners around a clear crossbar. Each candidate clears
+  both the obstacle inventory and the corner control curves. Long fan spans keep their distributed
+  sweeps. Architecture measures the visible service shape and title separately from the grid's
+  routing reservation, so a clear top approach remains level during SVG emission.
 - Compound crossing comparisons index line and curve bounds before sampling overlapping curves.
   Geometry-only solves skip the statistic when it cannot affect route selection. Orthogonal
   refinement shares projected segments and route bounds, and the visibility router combines
   cached scope events with the current terminal rays.
 - Width fitting uses the same geometric solve as natural layout and relaxes compound seams on the
-  selected drawing. The opt-in render environment can retain up to 64 KiB of empty rank and
-  edge-chain rows across independent flat and compound solves. Preview frames own their editor
-  state separately.
+  selected drawing. Width trials that differ only in spacing share the same compound hierarchy
+  and port sides. A change in orientation builds a new hierarchy. The opt-in render environment can
+  retain up to 64 KiB of empty rank and edge-chain rows across independent flat and compound solves.
+  Preview frames own their editor state separately.
 - Grid auto titles score corner and center anchors against the actual border slots, favoring a
   clear column through a group when its terminals are already aligned. Curved compound routes can
   move automatic group contacts into peer order when the move preserves clearance and reduces
