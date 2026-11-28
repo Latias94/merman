@@ -336,7 +336,7 @@ fn shortest_slide(
                 |owner| owner != Owner::Stroke(id),
                 work,
             )
-            .map(|seat| seat.expect("unbounded label slide"))
+            .and_then(|seat| seat.ok_or(PRECISION))
     };
     let (a, da) = slide(sides[0], work)?;
     if da == 0.0 {
@@ -505,36 +505,21 @@ fn end_label(
             return Ok(at);
         }
     }
-    // The kernel must supply an anchor for every measured label. Only a hard node barrier
-    // can extend the slide when the local window has no clear seat.
-    for (limit, nodes_only) in [
-        (Some(max_slide), false),
-        (Some(max_slide), true),
-        (None, true),
-    ] {
+    // Try both nearby seats first. Keep the full set of walls when a label has to move farther.
+    for limit in [Some(max_slide), None] {
         let mut best = None;
         for origin in origins {
-            if let Some((p, d)) = walls.slide(
-                origin,
-                size,
-                port.side,
-                limit,
-                |owner| !nodes_only || owner == Owner::Node,
-                work,
-            )? {
-                if d == 0.0 {
-                    return Ok(p);
-                }
-                if best.is_none_or(|(_, old)| d < old) {
-                    best = Some((p, d));
-                }
+            if let Some((p, d)) = walls.slide(origin, size, port.side, limit, |_| true, work)?
+                && best.is_none_or(|(_, old)| d < old)
+            {
+                best = Some((p, d));
             }
         }
         if let Some((p, _)) = best {
             return Ok(p);
         }
     }
-    unreachable!("an unbounded node-only slide always has a seat")
+    Err(PRECISION)
 }
 
 fn endpoints(index: usize, c: &Component) -> [usize; 2] {

@@ -249,14 +249,15 @@ impl Obstacles {
             };
             if across && half > 0.0 {
                 let (lo, hi) = b.along(side);
+                let hi = finite(hi + half)?;
+                if hi <= start {
+                    continue;
+                }
                 let lo = finite(lo - half)?;
                 if limit.is_some_and(|limit| lo >= limit) {
                     continue;
                 }
-                let hi = finite(hi + half)?;
-                if hi > start {
-                    push(&mut intervals, (lo, hi))?;
-                }
+                push(&mut intervals, (lo, hi))?;
             }
         }
         work.charge_sort(intervals.len())?;

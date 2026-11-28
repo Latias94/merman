@@ -359,7 +359,7 @@ fn terminal_labels_clear_later_markers_middle_labels_nodes_and_one_another() {
 }
 
 #[test]
-fn end_label_slide_is_bounded_to_its_owning_endpoint() {
+fn bounded_end_label_slide_rejects_a_seat_across_a_long_obstacle() {
     let mut control = NoopWorkControl;
     let mut work = Work::new(&mut control);
     for span in [100.0, 400.0] {
@@ -372,18 +372,40 @@ fn end_label_slide_is_bounded_to_its_owning_endpoint() {
                 &mut work,
             )
             .unwrap();
+        let size = size(20., 12.);
+        let from = edge.points[0];
+        let origin = Point {
+            x: from.x,
+            y: from.y + 8.0,
+        };
+        let limit = (0.35 * span).min(64.0);
+        assert!(
+            walls
+                .slide(origin, size, Side::Bottom, Some(limit), |_| true, &mut work)
+                .unwrap()
+                .is_none()
+        );
+
         let center = end_label(
             &edge,
             false,
-            size(20., 12.),
+            size,
             MarkerMetrics::default(),
             &Options::default(),
             &walls,
             &mut work,
         )
         .unwrap();
-        let from = edge.points[0];
-        assert!((center.x - from.x).hypot(center.y - from.y) <= (0.35 * span).min(64.0));
+        assert!(center.y > origin.y + limit);
+        assert!(
+            walls
+                .fits(
+                    Bounds::checked_centered(center, size).unwrap(),
+                    None,
+                    &mut work
+                )
+                .unwrap()
+        );
     }
 }
 

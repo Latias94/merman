@@ -133,7 +133,7 @@ pub(super) fn seat(
             } else {
                 straight_lead(edge.points.iter().rev().skip(1), port, outward, work)?
             };
-            *label = seating.place(
+            *label = Some(seating.place(
                 current,
                 Terminal {
                     owner: (index, start),
@@ -145,7 +145,7 @@ pub(super) fn seat(
                 },
                 paired,
                 work,
-            )?;
+            )?);
             if start {
                 paired = label.as_ref().map(label_rect);
             }
@@ -157,7 +157,7 @@ pub(super) fn seat(
 struct Seating {
     fixed: Bvh<Obstacle>,
     occupied: BoundsIndex,
-    // A handled label's original box is obsolete, even if the label had no seat.
+    // A relocated label's original box is obsolete.
     handled: Vec<[bool; 2]>,
     drawing: Rect,
     shaft_outset: f64,
@@ -185,20 +185,19 @@ impl Seating {
         terminal: Terminal,
         paired: Option<Rect>,
         work: &mut OperationLayoutWorkControl,
-    ) -> Result<Option<LayoutLabel>> {
-        let seat = self.choose(&label, &terminal, paired, work)?;
+    ) -> Result<LayoutLabel> {
+        let Some(rect) = self.choose(&label, &terminal, paired, work)? else {
+            // Keep the solver's clear seat when the label cannot fit near its terminal.
+            return Ok(label);
+        };
         let (edge, start) = terminal.owner;
         self.handled[edge][usize::from(start)] = true;
-        let Some(rect) = seat else {
-            // No candidate in the local window cleared the hard obstacles.
-            return Ok(None);
-        };
         self.occupied
             .insert(bounds(rect), work)
             .map_err(|error| work.map_shoal_error(error))?;
         let center = rect.center();
         (label.x, label.y) = (center.x, center.y);
-        Ok(Some(label))
+        Ok(label)
     }
 
     fn choose(
@@ -507,7 +506,6 @@ mod tests {
                 None,
                 &mut work,
             )
-            .unwrap()
             .unwrap();
         assert_eq!(seated.x, 281.5);
     }
@@ -556,7 +554,6 @@ mod tests {
                 None,
                 &mut work,
             )
-            .unwrap()
             .unwrap();
 
         let mut can_place = |ink| {
@@ -621,7 +618,6 @@ mod tests {
                 None,
                 &mut work,
             )
-            .unwrap()
             .unwrap();
         let ink = label_rect(&seated);
         assert_eq!(ink.center().y, shaft.p0.y);
