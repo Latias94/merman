@@ -5,10 +5,10 @@ use std::collections::{HashMap, HashSet};
 use super::{
     Algorithm, ContainerMode, CycleBreakingStrategy, Direction, Edge, EdgeRouting, Error, Graph,
     HierarchyHandling, HierarchyIndex, Label, LayerConstraint, LayeringStrategy,
-    ModelOrderStrategy, Node, NodeKind, NodePlacementAlignment, NodePlacementStrategy,
-    NoopWorkControl, PortAlignment, Result, ScopeEdgeMetadata, ScopeLayout, ScopedEndpoint,
-    SegmentedEdgeMetadata, SelfLoopDistributionStrategy, SelfLoopOrderingStrategy, WorkControl,
-    WorkError, flat, source_port,
+    MERMAID_PORTS_SURROUNDING_MARGIN, ModelOrderStrategy, Node, NodeKind, NodePlacementAlignment,
+    NodePlacementStrategy, NoopWorkControl, PortAlignment, Result, ScopeEdgeMetadata, ScopeLayout,
+    ScopedEndpoint, SegmentedEdgeMetadata, SelfLoopDistributionStrategy, SelfLoopOrderingStrategy,
+    WorkControl, WorkError, flat, source_port,
 };
 use source_port::{
     ElkDirection, ElkInputEdge, ElkInputGraph, ElkInputLabel, ElkInputNode,
@@ -16,6 +16,12 @@ use source_port::{
 };
 
 const MEASURED_LABEL_PLACEHOLDER: &str = "\u{fffc}";
+const MERMAID_PORTS_SURROUNDING: source_port::SpacingMargin = source_port::SpacingMargin {
+    top: MERMAID_PORTS_SURROUNDING_MARGIN,
+    right: MERMAID_PORTS_SURROUNDING_MARGIN,
+    bottom: MERMAID_PORTS_SURROUNDING_MARGIN,
+    left: MERMAID_PORTS_SURROUNDING_MARGIN,
+};
 
 pub(super) fn graph_to_source_input(graph: &Graph) -> Result<ElkInputGraph> {
     let index = HierarchyIndex::build(graph, &mut NoopWorkControl)?;
@@ -73,14 +79,8 @@ pub(super) fn graph_to_source_input(graph: &Graph) -> Result<ElkInputGraph> {
                 } else {
                     source_port::NodeFlexibility::None
                 },
-                ports_surrounding: (node.kind == NodeKind::Group).then_some(
-                    source_port::SpacingMargin {
-                        top: 12.0,
-                        right: 12.0,
-                        bottom: 12.0,
-                        left: 12.0,
-                    },
-                ),
+                ports_surrounding: (node.kind == NodeKind::Group)
+                    .then_some(MERMAID_PORTS_SURROUNDING),
                 nested_options: (node.kind == NodeKind::Group).then(|| {
                     Box::new(resolved_container_options(
                         graph,
@@ -395,14 +395,8 @@ impl HierarchyIndex<'_> {
                     } else {
                         source_port::NodeFlexibility::None
                     },
-                    ports_surrounding: (source.kind == NodeKind::Group).then_some(
-                        source_port::SpacingMargin {
-                            top: 12.0,
-                            right: 12.0,
-                            bottom: 12.0,
-                            left: 12.0,
-                        },
-                    ),
+                    ports_surrounding: (source.kind == NodeKind::Group)
+                        .then_some(MERMAID_PORTS_SURROUNDING),
                     nested_options: (source.kind == NodeKind::Group).then(|| {
                         Box::new(resolved_container_options(
                             self.graph,
@@ -590,10 +584,7 @@ fn layered_options_to_source_for(
 }
 
 fn set_mermaid_port_clearance(options: &mut SourceLayeredOptions) {
-    options.spacing.ports_surrounding.top = 12.0;
-    options.spacing.ports_surrounding.right = 12.0;
-    options.spacing.ports_surrounding.bottom = 12.0;
-    options.spacing.ports_surrounding.left = 12.0;
+    options.spacing.ports_surrounding = MERMAID_PORTS_SURROUNDING;
 }
 
 fn container_options_to_source(

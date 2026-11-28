@@ -8,6 +8,8 @@ use merman_layout_elk as elk;
 use std::collections::HashMap;
 
 #[cfg(feature = "css-style")]
+pub mod arrowheads;
+#[cfg(feature = "css-style")]
 pub mod feedback_edges;
 pub mod hierarchy;
 #[cfg(feature = "css-style")]
