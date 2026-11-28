@@ -12,15 +12,16 @@ use merman::OperationControl;
 use merman_bindings_core::BindingEngineServices;
 use merman_bindings_core::{
     BindingAsciiOutputPlan, BindingEngine, BindingEngineAdmission, BindingEngineAdmissionError,
-    BindingEngineAdmissionMode, BindingError, BindingErrorKind, BindingOperationMetadata,
-    BindingOutputPlan, BindingStatus, OperationKey, ValidatedArtifactContract,
+    BindingEngineAdmissionMode, BindingEngineSlot, BindingError, BindingErrorKind,
+    BindingOperationMetadata, BindingOutputPlan, BindingStatus, OperationKey,
+    ValidatedArtifactContract,
 };
 #[cfg(feature = "svg")]
 use merman_bindings_core::{
     BindingIconRegistry, HostTextMeasurementError, HostTextMeasurer, IconPack, build_icon_registry,
 };
 use serde_json::Value;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 /// Version of the direct UniFFI binding API.
@@ -234,8 +235,7 @@ pub struct Merman;
 /// [`MermanErrorKind::ReentrantCall`].
 #[derive(uniffi::Object)]
 pub struct MermanEngine {
-    engine: Mutex<Option<Arc<BindingEngine>>>,
-    admission: Arc<BindingEngineAdmission>,
+    engine: BindingEngineSlot,
 }
 
 #[derive(Debug, uniffi::Object)]
@@ -1109,14 +1109,7 @@ impl MermanEngine {
             BindingEngineAdmissionMode::Concurrent
         };
         let admission = BindingEngineAdmission::new(admission_mode);
-        let services = uniffi_engine_services(services.as_deref(), &admission)?;
-        let engine = native_artifact_contract()
-            .create_engine_with_services(options_bytes(options_json.as_deref()), services)
-            .map_err(MermanError::from_binding)?;
-        Ok(Arc::new(Self {
-            engine: Mutex::new(Some(Arc::new(engine))),
-            admission,
-        }))
+        Self::from_services(options_json.as_deref(), services.as_deref(), admission).map(Arc::new)
     }
 
     pub fn render_svg(
@@ -1340,10 +1333,7 @@ impl MermanEngine {
     /// service graph under synchronization and drops foreign callbacks after releasing the lock.
     /// Repeated and concurrent close calls are idempotent.
     pub fn close(&self) -> Result<(), MermanError> {
-        match self
-            .admission
-            .try_close_detaching(|| self.lock_engine().take())
-        {
+        match self.engine.try_close(|| ()) {
             Ok(()) => Ok(()),
             Err(BindingEngineAdmissionError::Closed) => Ok(()),
             Err(error) => Err(MermanError::from_binding(error.into())),
@@ -1352,6 +1342,20 @@ impl MermanEngine {
 }
 
 impl MermanEngine {
+    fn from_services(
+        options_json: Option<&str>,
+        services: Option<&MermanEngineServices>,
+        admission: Arc<BindingEngineAdmission>,
+    ) -> Result<Self, MermanError> {
+        let services = uniffi_engine_services(services, &admission)?;
+        let engine = native_artifact_contract()
+            .create_engine_with_services(options_bytes(options_json), services)
+            .map_err(MermanError::from_binding)?;
+        Ok(Self {
+            engine: BindingEngineSlot::new(engine, admission),
+        })
+    }
+
     fn execute_data(&self, request: MermanOperationRequestV4) -> Result<Vec<u8>, MermanError> {
         self.with_reusable_operation(|engine| {
             engine
@@ -1367,22 +1371,9 @@ impl MermanEngine {
         &self,
         run: impl FnOnce(&BindingEngine) -> Result<T, MermanError>,
     ) -> Result<T, MermanError> {
-        let _operation = self
-            .admission
-            .enter_operation()
-            .map_err(|error| MermanError::from_binding(error.into()))?;
-        let engine = self
-            .lock_engine()
-            .as_ref()
-            .map(Arc::clone)
-            .ok_or_else(|| MermanError::invalid_argument("the reusable engine is closed"))?;
-        run(&engine)
-    }
-
-    fn lock_engine(&self) -> std::sync::MutexGuard<'_, Option<Arc<BindingEngine>>> {
         self.engine
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .with_operation(run)
+            .map_err(|error| MermanError::from_binding(error.into()))?
     }
 }
 

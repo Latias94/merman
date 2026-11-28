@@ -1,3 +1,4 @@
+use crate::BindingEngine;
 use std::fmt;
 use std::sync::{Arc, Mutex};
 
@@ -232,6 +233,49 @@ impl Drop for BindingCallbackAdmission {
     }
 }
 
+/// Owns the reusable engine for transports that destroy its services on close.
+pub struct BindingEngineSlot {
+    engine: Mutex<Option<Arc<BindingEngine>>>,
+    admission: Arc<BindingEngineAdmission>,
+}
+
+impl BindingEngineSlot {
+    pub fn new(engine: BindingEngine, admission: Arc<BindingEngineAdmission>) -> Self {
+        Self {
+            engine: Mutex::new(Some(Arc::new(engine))),
+            admission,
+        }
+    }
+
+    /// Runs an operation without holding either the admission or engine lock.
+    pub fn with_operation<T>(
+        &self,
+        run: impl FnOnce(&BindingEngine) -> T,
+    ) -> Result<T, BindingEngineAdmissionError> {
+        let _operation = self.admission.enter_operation()?;
+        let engine = self
+            .lock_engine()
+            .as_ref()
+            .map(Arc::clone)
+            .ok_or(BindingEngineAdmissionError::Closed)?;
+        Ok(run(&engine))
+    }
+
+    /// On accepted close, retires the transport handle before releasing the engine and services.
+    pub fn try_close(&self, retire: impl FnOnce()) -> Result<(), BindingEngineAdmissionError> {
+        self.admission.try_close_detaching(|| {
+            retire();
+            self.lock_engine().take()
+        })
+    }
+
+    fn lock_engine(&self) -> std::sync::MutexGuard<'_, Option<Arc<BindingEngine>>> {
+        self.engine
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -369,6 +413,33 @@ mod tests {
             acquired_before_close.enter_operation(),
             Err(BindingEngineAdmissionError::Closed)
         ));
+    }
+
+    #[test]
+    fn engine_slot_retires_only_on_accepted_close_before_releasing_services() {
+        let admission = BindingEngineAdmission::new(BindingEngineAdmissionMode::Concurrent);
+        let slot = BindingEngineSlot::new(BindingEngine::new(b"{}").unwrap(), admission);
+
+        slot.with_operation(|_| {
+            assert_eq!(
+                slot.try_close(|| panic!("busy close must not retire the handle")),
+                Err(BindingEngineAdmissionError::Busy)
+            );
+        })
+        .unwrap();
+        slot.try_close(|| {
+            assert!(slot.lock_engine().is_some());
+            assert_eq!(
+                slot.with_operation(|_| ()),
+                Err(BindingEngineAdmissionError::Closed)
+            );
+        })
+        .unwrap();
+        assert!(slot.lock_engine().is_none());
+        assert_eq!(
+            slot.try_close(|| panic!("repeated close must not retire the handle")),
+            Err(BindingEngineAdmissionError::Closed)
+        );
     }
 
     #[test]

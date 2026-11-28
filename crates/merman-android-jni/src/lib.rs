@@ -25,7 +25,7 @@ use jni::{
 use merman_bindings_core::transport_boundary::catch_transport_unwind;
 use merman_bindings_core::transport_handles::HandleRegistry;
 use merman_bindings_core::{
-    BindingEngine, BindingEngineAdmission, BindingEngineAdmissionMode, BindingEngineServices,
+    BindingEngineAdmission, BindingEngineAdmissionMode, BindingEngineServices, BindingEngineSlot,
     BindingError, BindingOperationRequest, BindingOperationResult, OperationControl,
 };
 #[cfg(feature = "svg")]
@@ -43,29 +43,7 @@ use std::{
 
 const ANDROID_TRANSPORT_API_VERSION: u32 = 2;
 
-struct JniEngineState {
-    engine: Mutex<Option<Arc<BindingEngine>>>,
-    admission: Arc<BindingEngineAdmission>,
-}
-
-impl JniEngineState {
-    fn acquire_engine(&self) -> Option<Arc<BindingEngine>> {
-        self.engine
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .as_ref()
-            .map(Arc::clone)
-    }
-
-    fn detach_engine(&self) -> Option<Arc<BindingEngine>> {
-        self.engine
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .take()
-    }
-}
-
-static ENGINE_REGISTRY: Mutex<HandleRegistry<Arc<JniEngineState>>> =
+static ENGINE_REGISTRY: Mutex<HandleRegistry<Arc<BindingEngineSlot>>> =
     Mutex::new(HandleRegistry::new(i64::MAX as u64));
 static OPERATION_CONTROL_REGISTRY: Mutex<JniOperationControlRegistry> =
     Mutex::new(JniOperationControlRegistry::new());
@@ -640,14 +618,9 @@ fn native_engine_new<'local>(
             BindingEngineServices::new()
         };
 
-        let engine = Arc::new(
-            android_artifact_contract()
-                .create_engine_with_services(options_json.as_bytes(), services)?,
-        );
-        let state = Arc::new(JniEngineState {
-            engine: Mutex::new(Some(engine)),
-            admission,
-        });
+        let engine = android_artifact_contract()
+            .create_engine_with_services(options_json.as_bytes(), services)?;
+        let state = Arc::new(BindingEngineSlot::new(engine, admission));
         let publication = engine_registry().try_insert(state);
         publication
             .map(|handle| handle as jlong)
@@ -674,9 +647,9 @@ fn native_engine_try_close<'local>(
     let Some(state) = state else {
         return Ok(JNI_TRUE);
     };
-    let close = state.admission.try_close_detaching(|| {
+    let close = state.try_close(|| {
         let retired = engine_registry().remove(token);
-        retired.as_ref().and_then(|state| state.detach_engine())
+        drop(retired);
     });
     match close {
         Ok(()) | Err(merman_bindings_core::BindingEngineAdmissionError::Closed) => Ok(JNI_TRUE),
@@ -756,13 +729,7 @@ fn native_engine_execute_impl<'local>(
         return Ok(JObject::null());
     };
     let result = state
-        .admission
-        .enter_operation()
-        .map_err(BindingError::from)
-        .and_then(|_operation| {
-            let engine = state
-                .acquire_engine()
-                .ok_or_else(|| BindingError::invalid_argument("Merman engine is closed"))?;
+        .with_operation(|engine| {
             let request = binding_operation_request(
                 &operation_id,
                 &source,
@@ -771,7 +738,8 @@ fn native_engine_execute_impl<'local>(
                 operation_control,
             );
             engine.execute(request)
-        });
+        })
+        .unwrap_or_else(|error| Err(error.into()));
     result_to_java_operation_result(env, result)
 }
 
@@ -791,7 +759,7 @@ fn binding_operation_request<'a>(
     }
 }
 
-fn engine_registry() -> MutexGuard<'static, HandleRegistry<Arc<JniEngineState>>> {
+fn engine_registry() -> MutexGuard<'static, HandleRegistry<Arc<BindingEngineSlot>>> {
     ENGINE_REGISTRY
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -852,7 +820,7 @@ fn engine_token(env: &mut Env<'_>, handle: jlong) -> Option<u64> {
     token
 }
 
-fn acquire_engine_state(env: &mut Env<'_>, token: u64) -> Option<Arc<JniEngineState>> {
+fn acquire_engine_state(env: &mut Env<'_>, token: u64) -> Option<Arc<BindingEngineSlot>> {
     let state = engine_registry().get(token).cloned();
     if state.is_none() {
         throw_merman_exception(env, "Merman engine is closed");
