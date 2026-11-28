@@ -977,7 +977,7 @@ struct FontArgumentDefinitions {
     #[arg(long = "font-system", value_enum, help_heading = "Native fonts")]
     font_system: Option<FontSystemKind>,
     /// Byte budget for the entire native font context, including explicit and selected system fonts
-    /// (default 256 MiB, or 384 MiB on macOS with system fonts and the trusted-native profile).
+    /// (default 256 MiB, or 384 MiB on macOS with system fonts and a trusted input profile).
     /// Use a positive integer in bytes or with a KiB, MiB, or GiB suffix, such as 256MiB.
     #[arg(
         long = "font-max-bytes",
