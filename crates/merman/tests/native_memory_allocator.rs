@@ -159,3 +159,25 @@ fn phase_allocations_are_exclusive_and_keep_interval_and_batch_peaks() {
     assert_eq!(heap.live_bytes_after, 0);
     assert!(!heap.counter_overflowed && !heap.counter_underflowed);
 }
+
+#[cfg(feature = "benchmark-stages")]
+#[test]
+fn stage_capture_rejects_a_counter_reset_during_an_interval() {
+    use merman_model::benchmark_stages::{Stage, enter};
+
+    static ALLOCATOR: CountingSystemAllocator = CountingSystemAllocator::new(System);
+    let layout = Layout::from_size_align(8, 8).expect("valid test allocation");
+    let ((), heap, _) = stages::capture(&ALLOCATOR, || {
+        // SAFETY: the allocation and deallocation use the same layout and allocator.
+        unsafe {
+            let retained = ALLOCATOR.alloc(layout);
+            assert!(!retained.is_null());
+            {
+                let _stage = enter(Stage::Measure);
+                assert_eq!(ALLOCATOR.begin_measurement(), 8);
+            }
+            ALLOCATOR.dealloc(retained, layout);
+        }
+    });
+    assert!(heap.counter_underflowed);
+}

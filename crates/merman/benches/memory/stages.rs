@@ -22,20 +22,31 @@ struct ActiveCapture {
     stage: Option<Stage>,
     start: AllocationCheckpoint,
     peak_live_bytes: u64,
+    counter_underflowed: bool,
 }
 
 impl ActiveCapture {
     fn close_interval(&mut self, end: AllocationCheckpoint) {
+        if self.counter_underflowed {
+            return;
+        }
+        let (Some(allocations), Some(allocated_bytes), Some(peak_growth_bytes)) = (
+            end.allocation_count
+                .checked_sub(self.start.allocation_count),
+            end.allocated_bytes.checked_sub(self.start.allocated_bytes),
+            end.peak_live_bytes.checked_sub(self.start.live_bytes),
+        ) else {
+            self.counter_underflowed = true;
+            return;
+        };
         let sample = match self.stage {
             Some(stage) => &mut self.report.stages[stage as usize],
             None => &mut self.report.unattributed,
         };
-        sample.allocations += end.allocation_count - self.start.allocation_count;
-        sample.allocated_bytes += end.allocated_bytes - self.start.allocated_bytes;
+        sample.allocations += allocations;
+        sample.allocated_bytes += allocated_bytes;
         // A phase can recur after another phase changes how much memory is live.
-        sample.peak_growth_bytes = sample
-            .peak_growth_bytes
-            .max(end.peak_live_bytes - self.start.live_bytes);
+        sample.peak_growth_bytes = sample.peak_growth_bytes.max(peak_growth_bytes);
         self.peak_live_bytes = self.peak_live_bytes.max(end.peak_live_bytes);
         self.start = end;
     }
@@ -80,6 +91,7 @@ pub(super) fn capture<R>(
             peak_live_bytes: snapshot,
         },
         peak_live_bytes: snapshot,
+        counter_underflowed: false,
     }));
     let output = observe_stage_changes(switch_stage, operation);
     let mut active = ACTIVE.take().expect("stage allocation capture is active");
@@ -94,7 +106,9 @@ pub(super) fn capture<R>(
     // high-water marks of all intervals. Allocation count and traffic are continuous counters.
     heap.snapshot_live_bytes = snapshot;
     heap.peak_live_bytes = active.peak_live_bytes;
-    heap.peak_growth_bytes = active.peak_live_bytes - snapshot;
+    let growth = active.peak_live_bytes.checked_sub(snapshot);
+    heap.peak_growth_bytes = growth.unwrap_or_default();
+    heap.counter_underflowed |= active.counter_underflowed || growth.is_none();
     drop(stop);
     (output, heap, active.report)
 }
