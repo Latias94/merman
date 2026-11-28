@@ -117,6 +117,10 @@ impl Metrics {
     pub(crate) fn margin(self) -> f64 {
         ((self.marker + self.separation) * 2.0).max(self.loop_gap)
     }
+
+    pub(crate) fn label_clearance(self) -> f64 {
+        self.label_clearance
+    }
 }
 
 #[derive(Clone, Copy)]

@@ -1,4 +1,4 @@
-use super::layout_with_control;
+use super::{CardGridOptions, layout_with_control, layout_with_hints};
 use crate::{
     EdgeId, EdgeSpec, Graph, GroupId, GroupSpec, LayoutError, MarkerMetrics, NodeId, NodeSpec,
     NoopWorkControl, Options, Point, PortSideHint, Rect, RoutePoint, Side, Size, WidthPolicy,
@@ -40,6 +40,63 @@ fn a_local_caption_does_not_add_an_empty_boundary_row() {
     let with = layout_with_control(&graph, &options, &mut NoopWorkControl).unwrap();
     assert!(with.edges[0].label_center.is_some());
     assert_eq!(with.groups[0].rect.height, without.groups[0].rect.height);
+}
+
+#[test]
+fn a_wide_caption_reserves_only_its_crossed_gutter() {
+    let mut graph = cards(9);
+    graph.edges.push(edge(0, 1));
+    let options = Options::default();
+    let without = layout_with_control(&graph, &options, &mut NoopWorkControl).unwrap();
+    graph.edges[0].label = Some(Size {
+        width: 100.0,
+        height: 20.0,
+    });
+    let with = layout_with_control(&graph, &options, &mut NoopWorkControl).unwrap();
+    let gap = |nodes: &[Rect], left: usize| nodes[left + 1].x - nodes[left].x;
+    assert!(gap(&with.nodes, 0) > gap(&without.nodes, 0));
+    assert_eq!(gap(&with.nodes, 1), gap(&without.nodes, 1));
+    let row_gap = |nodes: &[Rect]| nodes[3].y - nodes[0].y;
+    assert_eq!(row_gap(&with.nodes), row_gap(&without.nodes));
+}
+
+#[test]
+fn card_and_boundary_columns_have_separate_limits() {
+    let mut graph = cards(9);
+    graph.groups.extend((0..3).map(GroupSpec::new));
+    for (i, node) in graph.nodes.iter_mut().enumerate() {
+        node.parent = Some(GroupId((i / 3) as u32));
+    }
+    let options = Options {
+        capture_node_ranks: true,
+        ..Options::default()
+    };
+    let one = layout_with_hints(
+        &graph,
+        &options,
+        CardGridOptions::with_column_limits(Some(1), Some(1)),
+        &mut NoopWorkControl,
+    )
+    .unwrap();
+    assert_eq!(one.node_ranks, [0, 1, 2, 0, 1, 2, 0, 1, 2]);
+    assert!(
+        one.groups
+            .windows(2)
+            .all(|pair| pair[0].rect.y < pair[1].rect.y)
+    );
+    let two = layout_with_hints(
+        &graph,
+        &options,
+        CardGridOptions::with_column_limits(Some(2), Some(1)),
+        &mut NoopWorkControl,
+    )
+    .unwrap();
+    assert_eq!(two.node_ranks, [0, 0, 1, 0, 0, 1, 0, 0, 1]);
+    assert!(
+        two.groups
+            .windows(2)
+            .all(|pair| pair[0].rect.y < pair[1].rect.y)
+    );
 }
 
 #[test]
