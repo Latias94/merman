@@ -3,7 +3,6 @@ use super::pipeline::{
 };
 use crate::environment::{RenderSession, RoutedTextMeasurer, TextMeasurementPhase};
 use crate::family::FamilyExecutionView;
-use crate::model::*;
 use crate::text::TextMeasurer;
 use crate::{Error, Result};
 use merman_model::OperationPhase;

@@ -13,6 +13,8 @@ use crate::{TerminalDiagnostic, TerminalRuntimePolicyError};
 use merman_core::{ParseOptions, SemanticParser};
 #[cfg(any(feature = "ascii", feature = "svg"))]
 use merman_model::OperationPhase;
+#[cfg(all(feature = "ascii", feature = "presentation"))]
+use merman_model::presentation::RenderSemanticModel;
 use merman_model::{
     OperationCancelled, OperationControl, OperationResourceDomain, OperationResourceOverride,
     OperationResourceProvenance, resources::InputResourcePolicy,
@@ -1867,11 +1869,8 @@ fn render_document_target(
 }
 
 #[cfg(all(feature = "ascii", feature = "presentation"))]
-fn ascii_diagram_from_full(
-    model: &merman_model::presentation::RenderSemanticModel,
-) -> merman_ascii::AsciiDiagram<'_> {
+fn ascii_diagram_from_full(model: &RenderSemanticModel) -> merman_ascii::AsciiDiagram<'_> {
     use merman_ascii::AsciiDiagram;
-    use merman_model::presentation::RenderSemanticModel;
 
     match model {
         #[cfg(feature = "diagram-agentflow")]
