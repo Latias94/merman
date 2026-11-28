@@ -513,8 +513,8 @@ and layout JSON APIs report a typed error at admission when the selected engine 
 | --- | --- |
 | `layout-dagre` | `layout: dagre`, or the Mermaid 12 fallback for an absent ELK loader |
 | `layout-elk` | Mermaid 12’s default, `layout: elk`, or another registered ELK algorithm |
-| `layout-grid` | `layout: grid` for Flowchart, Swimlane, Agentflow, Class, ER, Mindmap, or Requirement |
-| `layout-layered` | `layout: layered` for Flowchart, Swimlane, Agentflow, or Mindmap |
+| `layout-grid` | `layout: grid` for Flowchart, Swimlane, Agentflow, Class, ER, Mindmap, Requirement, or State |
+| `layout-layered` | `layout: layered` for Flowchart, Swimlane, Agentflow, ER, Mindmap, or Requirement |
 | `layout-shoal` | Set `layout: shoal` in the diagram or site config |
 | No graph engine | The default request reports `layout-elk` missing. An explicit `layout: dagre` reports `layout-dagre` missing. |
 

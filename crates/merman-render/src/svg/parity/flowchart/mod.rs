@@ -60,6 +60,8 @@ fn svg_layout(layout: &FlowchartLayout) -> FlowchartSvgLayout<'_> {
         RouteContract::LayeredDagreFallback => FlowchartSvgRoute::LayeredDagreFallback,
         #[cfg(feature = "layout-layered")]
         RouteContract::Layered(routes) => FlowchartSvgRoute::Layered(routes),
+        #[cfg(all(feature = "diagram-er", feature = "layout-layered"))]
+        RouteContract::ErLayered(_) => FlowchartSvgRoute::Legacy,
         #[cfg(feature = "layout-elk")]
         RouteContract::ElkParity => FlowchartSvgRoute::ElkParity,
         #[cfg(feature = "layout-grid")]
