@@ -2218,14 +2218,22 @@ style Login fill:#abcdef
 
 #[cfg(feature = "layout-shoal")]
 #[test]
-fn usecase_shoal_centers_non_html_ellipse_and_note_labels() {
-    let source = "usecase-beta\nA(Run Real-Time AML Screening)\nnote for A \"PCI DSS scope\"\n";
+fn usecase_shoal_centers_non_html_ellipse_note_and_json_titles() {
+    let source = r#"usecase-beta
+A(Run Real-Time AML Screening)
+note for A "PCI DSS scope"
+json Config@{"rotationDays":30,"algorithm":"AES-256-GCM"}
+"#;
     let (_, svg) = render_config(
         source,
         json!({"layout": "shoal", "look": "classic", "htmlLabels": false}),
     );
     let document = roxmltree::Document::parse(&svg).unwrap();
-    for (id, class) in [("A", "label"), ("note-0", "label noteLabel")] {
+    for (id, class) in [
+        ("A", "label"),
+        ("note-0", "label noteLabel"),
+        ("Config", "label usecase-json-title"),
+    ] {
         let node = document
             .descendants()
             .find(|node| node.attribute("data-usecase-id") == Some(id))

@@ -412,10 +412,15 @@ pub(super) fn write_node<O: SvgOutput>(
             table.title_height,
             &plan.source_style,
         );
+        let title = "label usecase-json-title";
         write_label(
             out,
             &plan.label,
-            UsecaseLabelKind::PositionedNode("label usecase-json-title"),
+            if context.canonical {
+                UsecaseLabelKind::CenteredNode(title)
+            } else {
+                UsecaseLabelKind::PositionedNode(title)
+            },
             0.0,
             top + table.title_height / 2.0,
             context.labels,
