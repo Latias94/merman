@@ -301,7 +301,23 @@ fn c4_boundary_title_background_bounds(
     sections: &[(Option<&C4TextBlockLayout>, &C4PreparedFont, &str)],
     label_origin: Point2D<f64>,
     context: &C4SvgContext<'_>,
+    #[cfg(feature = "layout-shoal")] routed: Option<(&C4BoundaryLayout, &C4TypographyThemePlan)>,
 ) -> Result<Option<Box2D<f64>>> {
+    #[cfg(feature = "layout-shoal")]
+    if let Some((boundary, typography)) = routed {
+        return Ok(super::routed_text::boundary_title_footprint(
+            boundary,
+            typography,
+            context.text_measurer,
+            |units| Ok(context.work_meter.charge_emit_work(units)?),
+        )?
+        .map(|rect| {
+            Box2D::new(
+                Point2D::new(label_origin.x + rect.x0, label_origin.y + rect.y0),
+                Point2D::new(label_origin.x + rect.x1, label_origin.y + rect.y1),
+            )
+        }));
+    }
     #[cfg(feature = "layout-shoal")]
     let measurer = context.text_measurer;
     #[cfg(not(feature = "layout-shoal"))]
@@ -1523,6 +1539,8 @@ pub fn render_c4_diagram_svg_typed(
                         &sections,
                         Point2D::new(title_left + b.width / 2.0, b.y),
                         &context,
+                        #[cfg(feature = "layout-shoal")]
+                        is_shoal.then_some((b, typography_theme)),
                     )?
                 {
                     let viewport = Box2D::new(
@@ -1680,7 +1698,7 @@ pub fn render_c4_diagram_svg_typed(
                 routed::ShaftPaint {
                     stroke: stroke_color,
                     width: connector_width,
-                    outline,
+                    outline: outline.zip(native.map(C4NativeStyle::routed_shaft_outline_width)),
                 },
                 diagram_id,
                 clip_id.as_deref().map(|id| (id, root_bounds)),
