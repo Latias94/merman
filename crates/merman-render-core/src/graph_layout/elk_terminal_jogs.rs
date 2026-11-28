@@ -3,7 +3,7 @@
 //! Source: packages/mermaid/src/rendering-util/layout-algorithms/elk/render.ts,
 //! straightenTerminalJogs, label-aware moved-run projection and pair separation (mermaid@12.4.0).
 
-use crate::{LayoutLabel, LayoutPoint};
+use crate::{Bounds, LayoutLabel, LayoutPoint};
 
 /// Paint routes may retain coordinates relative to separate parent groups.
 pub trait TerminalRoute {
@@ -323,53 +323,10 @@ fn crossing_count(
     count
 }
 
-struct BoxBounds {
-    x1: f64,
-    y1: f64,
-    x2: f64,
-    y2: f64,
-}
-
-impl BoxBounds {
-    fn for_label(label: &LayoutLabel, offset: (f64, f64)) -> Self {
-        let x = label.x + offset.0;
-        let y = label.y + offset.1;
-        Self {
-            x1: x - label.width / 2.0,
-            y1: y - label.height / 2.0,
-            x2: x + label.width / 2.0,
-            y2: y + label.height / 2.0,
-        }
-    }
-
-    fn overlaps(&self, other: &Self) -> bool {
-        self.x1 < other.x2 && other.x1 < self.x2 && self.y1 < other.y2 && other.y1 < self.y2
-    }
-}
-
-/// Source's Liang-Barsky clip: a corner or endpoint-only contact does not cover a box.
-fn segment_hits_box(a: &LayoutPoint, b: &LayoutPoint, bounds: &BoxBounds) -> bool {
-    let mut t0 = 0.0_f64;
-    let mut t1 = 1.0_f64;
-    let dx = b.x - a.x;
-    let dy = b.y - a.y;
-    for (p, q) in [
-        (-dx, a.x - bounds.x1),
-        (dx, bounds.x2 - a.x),
-        (-dy, a.y - bounds.y1),
-        (dy, bounds.y2 - a.y),
-    ] {
-        if p == 0.0 {
-            if q < 0.0 {
-                return false;
-            }
-        } else if p < 0.0 {
-            t0 = t0.max(q / p);
-        } else {
-            t1 = t1.min(q / p);
-        }
-    }
-    t0 < t1
+fn label_bounds(label: &LayoutLabel, offset: (f64, f64)) -> Bounds {
+    let x = label.x + offset.0;
+    let y = label.y + offset.1;
+    Bounds::from_center(x, y, label.width, label.height)
 }
 
 fn nonempty_label(route: &impl TerminalRoute) -> Option<&LayoutLabel> {
@@ -387,7 +344,7 @@ fn covers_label(
     let Some(label) = label else {
         return false;
     };
-    let bounds = BoxBounds::for_label(
+    let bounds = label_bounds(
         label,
         (
             label_origin.0 - point_origin.0,
@@ -396,7 +353,7 @@ fn covers_label(
     );
     points
         .windows(2)
-        .any(|segment| segment_hits_box(&segment[0], &segment[1], &bounds))
+        .any(|segment| bounds.overlaps_segment(&segment[0], &segment[1]))
 }
 
 /// Accept each candidate against the current routes, in source edge order. Ports never move.
@@ -485,12 +442,12 @@ pub fn straighten_edge_terminals<R: TerminalRoute>(
                 )) + usize::from(covers_label(&candidate, origin, other_label, other_origin)),
             );
             if let Some(((original, candidate), other)) = competing_labels {
-                let other_bounds = BoxBounds::for_label(
+                let other_bounds = label_bounds(
                     other,
                     (other_origin.0 - origin.0, other_origin.1 - origin.1),
                 );
-                collides = BoxBounds::for_label(candidate, (0.0, 0.0)).overlaps(&other_bounds)
-                    && !BoxBounds::for_label(original, (0.0, 0.0)).overlaps(&other_bounds);
+                collides = label_bounds(candidate, (0.0, 0.0)).overlaps_strictly(&other_bounds)
+                    && !label_bounds(original, (0.0, 0.0)).overlaps_strictly(&other_bounds);
             }
         }
         if after <= before && covered_after <= covered_before && !collides {
@@ -930,11 +887,11 @@ mod tests {
 
     #[test]
     fn liang_barsky_clip_preserves_source_boundary_and_diagonal_cases() {
-        let bounds = BoxBounds {
-            x1: 0.0,
-            y1: 0.0,
-            x2: 10.0,
-            y2: 10.0,
+        let bounds = Bounds {
+            min_x: 0.0,
+            min_y: 0.0,
+            max_x: 10.0,
+            max_y: 10.0,
         };
         for (start, end, expected) in [
             ((-1.0, 5.0), (11.0, 5.0), true),
@@ -946,13 +903,12 @@ mod tests {
             ((-1.0, 5.0), (-1.0, 5.0), false),
         ] {
             assert_eq!(
-                segment_hits_box(
+                bounds.overlaps_segment(
                     &LayoutPoint {
                         x: start.0,
                         y: start.1
                     },
                     &LayoutPoint { x: end.0, y: end.1 },
-                    &bounds,
                 ),
                 expected,
                 "{start:?} -> {end:?}",

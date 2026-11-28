@@ -4,7 +4,7 @@
 //! followMovedEndpoints, slideTerminalLabelsOffFrames, putTerminalLabelsOnTheirSide.
 
 use merman_layout_elk::TerminalLabelKey as Key;
-use merman_render_core::{LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint as P, Result};
+use merman_render_core::{Bounds, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint as P, Result};
 
 #[derive(Default)]
 pub(super) struct PlacedTerminals {
@@ -52,70 +52,14 @@ pub(super) fn follow_moved_endpoints(edge: &mut LayoutEdge, placed: &PlacedTermi
     }
 }
 
-#[derive(Clone, Copy)]
-struct Box2 {
-    x1: f64,
-    y1: f64,
-    x2: f64,
-    y2: f64,
-}
-
-impl Box2 {
-    fn centered(x: f64, y: f64, width: f64, height: f64) -> Self {
-        Self {
-            x1: x - width / 2.0,
-            y1: y - height / 2.0,
-            x2: x + width / 2.0,
-            y2: y + height / 2.0,
-        }
-    }
-
-    fn label(label: &LayoutLabel) -> Self {
-        Self::centered(label.x, label.y, label.width, label.height)
-    }
-
-    fn overlaps(self, other: Self) -> bool {
-        self.x1 < other.x2 && other.x1 < self.x2 && self.y1 < other.y2 && other.y1 < self.y2
-    }
-
-    fn padded(self, clearance: f64) -> Self {
-        Self {
-            x1: self.x1 - clearance,
-            y1: self.y1 - clearance,
-            x2: self.x2 + clearance,
-            y2: self.y2 + clearance,
-        }
-    }
-}
-
-fn segment_hits_box(a: &P, b: &P, rect: Box2) -> bool {
-    let mut t0: f64 = 0.0;
-    let mut t1: f64 = 1.0;
-    let dx = b.x - a.x;
-    let dy = b.y - a.y;
-    for (p, q) in [
-        (-dx, a.x - rect.x1),
-        (dx, rect.x2 - a.x),
-        (-dy, a.y - rect.y1),
-        (dy, rect.y2 - a.y),
-    ] {
-        if p == 0.0 {
-            if q < 0.0 {
-                return false;
-            }
-        } else if p < 0.0 {
-            t0 = t0.max(q / p);
-        } else {
-            t1 = t1.min(q / p);
-        }
-    }
-    t0 < t1
+fn label_bounds(label: &LayoutLabel) -> Bounds {
+    Bounds::from_center(label.x, label.y, label.width, label.height)
 }
 
 struct Obstacles {
-    nodes: Vec<Box2>,
+    nodes: Vec<Bounds>,
     frames: Vec<(P, P)>,
-    center_labels: Vec<Box2>,
+    center_labels: Vec<Bounds>,
 }
 
 impl Obstacles {
@@ -128,24 +72,24 @@ impl Obstacles {
         let mut frames = Vec::new();
         for node in nodes {
             charge(4)?;
-            let rect = Box2::centered(node.x, node.y, node.width, node.height);
+            let rect = Bounds::from_center(node.x, node.y, node.width, node.height);
             if node.is_cluster {
                 let [a, b, c, d] = [
                     P {
-                        x: rect.x1,
-                        y: rect.y1,
+                        x: rect.min_x,
+                        y: rect.min_y,
                     },
                     P {
-                        x: rect.x2,
-                        y: rect.y1,
+                        x: rect.max_x,
+                        y: rect.min_y,
                     },
                     P {
-                        x: rect.x2,
-                        y: rect.y2,
+                        x: rect.max_x,
+                        y: rect.max_y,
                     },
                     P {
-                        x: rect.x1,
-                        y: rect.y2,
+                        x: rect.min_x,
+                        y: rect.max_y,
                     },
                 ];
                 frames.extend([
@@ -165,7 +109,7 @@ impl Obstacles {
                 && label.width != 0.0
                 && label.height != 0.0
             {
-                center_labels.push(Box2::label(label));
+                center_labels.push(label_bounds(label));
             }
         }
         Ok(Self {
@@ -177,14 +121,19 @@ impl Obstacles {
 
     fn hits_frame(
         &self,
-        rect: Box2,
+        rect: &Bounds,
         clearance: f64,
         charge: &mut impl FnMut(usize) -> Result<()>,
     ) -> Result<bool> {
-        let rect = rect.padded(clearance);
+        let rect = Bounds {
+            min_x: rect.min_x - clearance,
+            min_y: rect.min_y - clearance,
+            max_x: rect.max_x + clearance,
+            max_y: rect.max_y + clearance,
+        };
         for (a, b) in &self.frames {
             charge(1)?;
-            if segment_hits_box(a, b, rect) {
+            if rect.overlaps_segment(a, b) {
                 return Ok(true);
             }
         }
@@ -194,7 +143,7 @@ impl Obstacles {
     #[allow(clippy::too_many_arguments)]
     fn blocked(
         &self,
-        rect: Box2,
+        rect: &Bounds,
         edges: &[LayoutEdge],
         placed: &[PlacedTerminals],
         edge_index: usize,
@@ -203,9 +152,9 @@ impl Obstacles {
         clearance: f64,
         charge: &mut impl FnMut(usize) -> Result<()>,
     ) -> Result<bool> {
-        for &other in self.nodes.iter().chain(&self.center_labels) {
+        for other in self.nodes.iter().chain(&self.center_labels) {
             charge(1)?;
-            if rect.overlaps(other) {
+            if rect.overlaps_strictly(other) {
                 return Ok(true);
             }
         }
@@ -217,7 +166,7 @@ impl Obstacles {
             for (index, pair) in edge.points.windows(2).enumerate() {
                 charge(1)?;
                 if !(other_index == edge_index && index == segment)
-                    && segment_hits_box(&pair[0], &pair[1], rect)
+                    && rect.overlaps_segment(&pair[0], &pair[1])
                 {
                     return Ok(true);
                 }
@@ -229,7 +178,7 @@ impl Obstacles {
                 charge(1)?;
                 if !(other_index == edge_index && other_key == key)
                     && let Some(other) = label(edge, other_key)
-                    && rect.overlaps(Box2::label(other))
+                    && rect.overlaps_strictly(&label_bounds(other))
                 {
                     return Ok(true);
                 }
@@ -268,7 +217,7 @@ pub(super) fn slide_off_frames(
             let Some(center) = label(edge, key) else {
                 continue;
             };
-            if !obstacles.hits_frame(Box2::label(center), 0.0, &mut charge)? {
+            if !obstacles.hits_frame(&label_bounds(center), 0.0, &mut charge)? {
                 continue;
             }
             let Some((segment, from, to, length)) = terminal_segment(edge, key) else {
@@ -293,7 +242,7 @@ pub(super) fn slide_off_frames(
                     if along + half_extent <= 0.0
                         && along - half_extent >= -length
                         && !obstacles.blocked(
-                            Box2::centered(x, y, center.width, center.height),
+                            &Bounds::from_center(x, y, center.width, center.height),
                             edges,
                             placed,
                             edge_index,
@@ -353,7 +302,7 @@ pub(super) fn put_on_own_side(
             let x = center.x - 2.0 * offset * normal.0;
             let y = center.y - 2.0 * offset * normal.1;
             if !obstacles.blocked(
-                Box2::centered(x, y, center.width, center.height),
+                &Bounds::from_center(x, y, center.width, center.height),
                 edges,
                 placed,
                 edge_index,
