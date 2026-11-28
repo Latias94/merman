@@ -96,6 +96,7 @@ fn write_grid_edge_label_node(
         out,
         ctx,
         hierarchy,
+        edge.key,
         position.clone(),
         (0.0, 0.0),
         (label.width, label.height),

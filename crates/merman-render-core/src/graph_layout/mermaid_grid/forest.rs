@@ -450,13 +450,12 @@ mod tests {
             item("child", Some("group"), LEAF, 1),
         ];
         let policy = RenderResourcePolicy::unbounded_for_trusted_input();
-        let work = OperationWorkMeter::new(policy.clone());
+        let work = OperationWorkMeter::new(policy);
         layout(&items, &work).unwrap();
         let used = work.used();
         let with_limit = |limit| {
             OperationWorkMeter::new(
                 policy
-                    .clone()
                     .with_limit(ResourceLimitId::MaxLayoutWorkUnits, limit)
                     .unwrap(),
             )

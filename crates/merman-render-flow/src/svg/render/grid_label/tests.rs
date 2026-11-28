@@ -390,7 +390,7 @@ fn grid_label_rects_use_measured_boxes_in_top_level_node_order() {
 #[test]
 fn grid_label_rect_ids_stay_in_their_document_namespace() {
     let policy = RenderResourcePolicy::unbounded_for_trusted_input();
-    let first = render("grid-helpers", GRID_ROUTE, true, policy.clone()).unwrap();
+    let first = render("grid-helpers", GRID_ROUTE, true, policy).unwrap();
     let second = render("other-grid-helpers", GRID_ROUTE, true, policy).unwrap();
     let (_, first_ids) = measured_helpers(&first);
     let (_, second_ids) = measured_helpers(&second);
@@ -418,10 +418,9 @@ fn grid_svg_label_rect_seats_relative_text_using_the_final_font_size() {
 #[test]
 fn grid_label_rects_share_the_svg_byte_ceiling() {
     let policy = RenderResourcePolicy::unbounded_for_trusted_input();
-    let svg = render("grid-helpers", GRID_ROUTE, true, policy.clone()).unwrap();
+    let svg = render("grid-helpers", GRID_ROUTE, true, policy).unwrap();
     let with_bytes = |bytes| {
         policy
-            .clone()
             .with_limit(ResourceLimitId::MaxSvgBytes, bytes)
             .unwrap()
     };
