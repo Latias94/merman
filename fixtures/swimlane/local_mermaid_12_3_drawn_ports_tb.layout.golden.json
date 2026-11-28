@@ -39,20 +39,8 @@
               "y": 178.8
             },
             {
-              "x": -61.12,
+              "x": 125.0,
               "y": 178.8
-            },
-            {
-              "x": 200.5,
-              "y": 178.8
-            },
-            {
-              "x": 200.5,
-              "y": 162.8
-            },
-            {
-              "x": 200.5,
-              "y": 162.8
             }
           ],
           "reversed_for_layout": false,
@@ -354,11 +342,11 @@
           "label_width": 36.12,
           "layer": 0.0,
           "order": 0.0,
-          "parent_id": "work",
+          "parent_id": "review",
           "shape": "labelRect",
-          "top_lane_id": "work",
+          "top_lane_id": "review",
           "width": 36.12,
-          "x": 69.69,
+          "x": -14.59,
           "y": 178.8
         },
         {
