@@ -8,7 +8,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
-use super::{NodeDocumentLimits, node_wire_contract};
+use super::contract::{NodeDocumentLimits, node_wire_contract};
 
 pub(super) const OPERATION_OPTIONS_JSON_LABEL: &str = "operation request options_json";
 
