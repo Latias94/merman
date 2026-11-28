@@ -1,5 +1,6 @@
-use crate::grid::{Hierarchy, Metrics, Scope, rect};
-use crate::work::{LayoutResult, Work, filled, reserved};
+use super::CardGridOptions;
+use crate::grid::{Hierarchy, Metrics, Projection, Scope, rect};
+use crate::work::{LayoutResult, Work, filled, push, reserved};
 use crate::{
     Graph, GroupGeometry, Insets, LayoutError, LayoutOutput, Options, PackingPolicy, Point, Rect,
     Size, TitlePosition, WidthPolicy, WorkError,
@@ -9,6 +10,101 @@ const PRECISION: LayoutError =
     LayoutError::InvalidInput("card-grid coordinates exceed finite precision");
 
 type Gutters = [Vec<f64>; 2];
+
+#[derive(Clone, Copy)]
+pub(super) struct CaptionDemand {
+    slots: [usize; 2],
+    size: Size,
+}
+
+pub(super) fn caption_demands(
+    graph: &Graph,
+    hierarchy: &Hierarchy,
+    projections: &[Projection],
+    metrics: Metrics,
+    work: &mut Work<'_>,
+) -> LayoutResult<Vec<Vec<CaptionDemand>>> {
+    work.charge(hierarchy.scopes.len())?;
+    let mut grouped = reserved(hierarchy.scopes.len())?;
+    grouped.resize_with(hierarchy.scopes.len(), Vec::new);
+    work.visit(hierarchy.scopes.len())?;
+    if hierarchy
+        .scopes
+        .iter()
+        .all(|scope| scope.caption == Size::default())
+    {
+        return Ok(grouped);
+    }
+    work.charge(hierarchy.parent.len())?;
+    let mut slots = filled(hierarchy.parent.len(), 0)?;
+    for scope in &hierarchy.scopes {
+        work.visit(scope.items.len())?;
+        for (slot, &item) in scope.items.iter().enumerate() {
+            slots[item] = slot;
+        }
+    }
+    for (edge, projection) in graph.edges.iter().zip(projections) {
+        work.visit(1)?;
+        let [Some(a), Some(b)] = projection.items else {
+            continue;
+        };
+        if a == b {
+            continue;
+        }
+        let mut size = Size::default();
+        let clearance = 2.0 * metrics.label_clearance();
+        for label in [edge.label, edge.start_label, edge.end_label]
+            .into_iter()
+            .flatten()
+        {
+            size.width = size.width.max(label.width + clearance);
+            size.height = size.height.max(label.height + clearance);
+        }
+        if size != Size::default() {
+            push(
+                &mut grouped[projection.scope],
+                CaptionDemand {
+                    slots: [slots[a], slots[b]],
+                    size,
+                },
+            )?;
+        }
+    }
+    Ok(grouped)
+}
+
+fn caption_gaps(
+    items: usize,
+    columns: usize,
+    demands: &[CaptionDemand],
+    gap: Size,
+    runway: f64,
+    work: &mut Work<'_>,
+) -> LayoutResult<Gutters> {
+    let nx = columns - 1;
+    let ny = items.div_ceil(columns) - 1;
+    work.charge(nx.checked_add(ny).ok_or(WorkError::ArithmeticOverflow)?)?;
+    let mut gaps = [filled(nx, gap.width)?, filled(ny, gap.height)?];
+    work.visit(demands.len())?;
+    for &CaptionDemand {
+        slots: [a, b],
+        size,
+    } in demands
+    {
+        for (axis, a, b, span, normal) in [
+            (0, a % columns, b % columns, size.width, gap.width),
+            (1, a / columns, b / columns, size.height, gap.height),
+        ] {
+            if a != b {
+                // Each caption reserves a nearby crossing in its own scope. No caption can
+                // enlarge more than one row gap and one column gap.
+                let gap = &mut gaps[axis][a.min(b) + (a.abs_diff(b) - 1) / 2];
+                *gap = gap.max((span + runway).min(2.2 * normal));
+            }
+        }
+    }
+    Ok(gaps)
+}
 
 fn horizontal_anchor(graph: &Graph, item: usize, height: f64) -> f64 {
     graph
@@ -70,13 +166,19 @@ fn padding(graph: &Graph, scope: usize, margin: f64) -> Insets {
     padding
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Each scope uses borrowed placement and demand inputs."
+)]
 fn cells(
     graph: &Graph,
     scope: &Scope,
+    demands: &[CaptionDemand],
     drawing: &mut LayoutOutput,
     metrics: Metrics,
     available: f64,
     options: &Options,
+    hints: CardGridOptions,
     work: &mut Work<'_>,
 ) -> LayoutResult<(Size, Gutters)> {
     let items = &scope.items;
@@ -96,12 +198,14 @@ fn cells(
     let count = items.len();
     let mut average = Size::default();
     let mut widest: f64 = 0.0;
+    let mut kinds = [false; 2];
     for &item in items {
         work.visit(1)?;
         let card = rect(drawing, item);
         average.width += card.width / count as f64;
         average.height += card.height / count as f64;
         widest = widest.max(card.width);
+        kinds[usize::from(item >= graph.nodes.len())] = true;
     }
     let target = match options.packing {
         PackingPolicy::AspectTargeted { target_ratio }
@@ -112,28 +216,26 @@ fn cells(
         ((average.height + gap.height) / (average.width + gap.width) * target * count as f64)
             .sqrt()
             .round() as usize;
-    let natural = natural.clamp(1, count);
-    // Preserve the natural column count, then leave room for a caption along each axis
-    // after both terminal approaches.
-    let caption_gap = |gap: f64, caption: f64| {
-        if caption > 0.0 {
-            gap.max(caption + margin)
-        } else {
-            gap
-        }
-    };
-    let column_gap = caption_gap(gap.width, scope.caption.width);
-    let row_gap = caption_gap(gap.height, scope.caption.height);
-    if !column_gap.is_finite() || !row_gap.is_finite() {
-        return Err(PRECISION);
-    }
+    let column_limit = [hints.card_columns, hints.boundary_columns]
+        .into_iter()
+        .zip(kinds)
+        .filter_map(|(limit, present)| present.then_some(limit).flatten())
+        .fold(count, usize::min)
+        .max(1);
+    let natural = natural.clamp(1, column_limit);
     // The widest card gives a fitting column count without repeated trial layouts.
     // An oversized card gets its own row.
-    let guaranteed_fit =
-        (((available + column_gap) / (widest + column_gap)).floor() as usize).max(1);
-    let (mut columns, mut total_width) = widths(items, natural, column_gap, drawing, work)?;
+    let max_gap = if demands.is_empty() {
+        gap.width
+    } else {
+        gap.width * 2.2
+    };
+    let guaranteed_fit = (((available + max_gap) / (widest + max_gap)).floor() as usize).max(1);
+    let mut gaps = caption_gaps(count, natural, demands, gap, margin, work)?;
+    let (mut columns, mut total_width) = widths(items, natural, &gaps[0], drawing, work)?;
     if total_width > available && guaranteed_fit < natural {
-        (columns, total_width) = widths(items, guaranteed_fit, column_gap, drawing, work)?;
+        gaps = caption_gaps(count, guaranteed_fit, demands, gap, margin, work)?;
+        (columns, total_width) = widths(items, guaranteed_fit, &gaps[0], drawing, work)?;
     }
     let count_columns = columns.len();
     let count_rows = count.div_ceil(count_columns);
@@ -149,10 +251,10 @@ fn cells(
     gutters[0].push(0.0);
     gutters[1].push(0.0);
     let mut x = 0.0;
-    for &column in &columns[..count_columns - 1] {
+    for (&column, &gap) in columns.iter().zip(&gaps[0]) {
         work.visit(1)?;
-        gutters[0].push(x + column + column_gap / 2.0);
-        x += column + column_gap;
+        gutters[0].push(x + column + gap / 2.0);
+        x += column + gap;
     }
     let mut y = 0.0;
     for (row, items) in items.chunks(count_columns).enumerate() {
@@ -165,16 +267,17 @@ fn cells(
             below = below.max(height - anchor);
         }
         if row > 0 {
-            gutters[1].push(y + row_gap / 2.0);
-            y += row_gap;
+            let gap = gaps[1][row - 1];
+            gutters[1].push(y + gap / 2.0);
+            y += gap;
         }
         let mut x = 0.0;
-        for (&item, &column) in items.iter().zip(&columns) {
+        for (index, (&item, &column)) in items.iter().zip(&columns).enumerate() {
             work.visit(1)?;
             let slot = item_rect_mut(drawing, item);
             slot.x = x + (column - slot.width) / 2.0;
             slot.y = y + (above - horizontal_anchor(graph, item, slot.height));
-            x += column + column_gap;
+            x += column + gaps[0].get(index).copied().unwrap_or_default();
             if let Some(rank) = drawing.node_ranks.get_mut(item) {
                 *rank = row as u32;
             }
@@ -196,7 +299,7 @@ fn cells(
 fn widths(
     items: &[usize],
     count: usize,
-    gap: f64,
+    gaps: &[f64],
     drawing: &LayoutOutput,
     work: &mut Work<'_>,
 ) -> LayoutResult<(Vec<f64>, f64)> {
@@ -207,16 +310,22 @@ fn widths(
         let column = &mut widths[slot % count];
         *column = column.max(rect(drawing, item).width);
     }
-    work.visit(count)?;
-    let total = widths.iter().sum::<f64>() + (count - 1) as f64 * gap;
+    work.visit(
+        count
+            .checked_add(gaps.len())
+            .ok_or(WorkError::ArithmeticOverflow)?,
+    )?;
+    let total = widths.iter().chain(gaps).sum::<f64>();
     Ok((widths, total))
 }
 
 pub(super) fn place(
     graph: &Graph,
     hierarchy: &Hierarchy,
+    caption_demands: &[Vec<CaptionDemand>],
     metrics: Metrics,
     options: &Options,
+    hints: CardGridOptions,
     work: &mut Work<'_>,
 ) -> LayoutResult<(LayoutOutput, Vec<Gutters>)> {
     let mut drawing = LayoutOutput {
@@ -289,10 +398,12 @@ pub(super) fn place(
         let (content, tracks) = cells(
             graph,
             scope,
+            &caption_demands[id],
             &mut drawing,
             metrics,
             available[id],
             options,
+            hints,
             work,
         )?;
         gutters[id] = tracks;
