@@ -4,7 +4,8 @@
         feature = "diagram-flowchart",
         feature = "diagram-class",
         feature = "diagram-er",
-        feature = "diagram-requirement"
+        feature = "diagram-requirement",
+        feature = "diagram-state"
     )
 ))]
 
@@ -44,6 +45,15 @@ fn requirement_layered_builder_matches_planning_and_host_admission() {
     assert_layered_admission(
         DiagramFamilyId::REQUIREMENT,
         "requirementDiagram\n  requirement checkout {\n    id: 1\n  }\n",
+    );
+}
+
+#[test]
+#[cfg(feature = "diagram-state")]
+fn state_layered_builder_matches_planning_and_host_admission() {
+    assert_layered_admission(
+        DiagramFamilyId::STATE,
+        "stateDiagram-v2\n  Idle --> Ready\n",
     );
 }
 

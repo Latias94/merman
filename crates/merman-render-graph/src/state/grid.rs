@@ -7,10 +7,10 @@ use merman_model::{
     presentation::PresentationConfig,
 };
 use merman_render_core::{
-    Bounds, Error, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, Result,
+    Error, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, Result,
     config::{json_f64, json_string_or_first_array},
     graph_layout::{
-        Direction, Size, direction_from_rank,
+        Size,
         mermaid_grid::{
             GridEdgeLabel, GridGroupMeasure, GridItem, GridItemKind, GridMeasuredEdge,
             GridMeasuredItem, GridPaint, PreparedGrid, prepare_grid,
@@ -19,15 +19,16 @@ use merman_render_core::{
     resources::{OperationWorkMeter, PreparedTextRetainedReservation},
     text::TextMeasurer,
 };
-use rustc_hash::FxHashMap;
 
+use super::flat_input::{
+    FlatStateNode, charge_node_label, layout_bounds, resolve_directions, state_input,
+};
 use super::{
     StateConfigView, StateDiagramLayout, StateLabelOwner, StateLabelSidecarBuilder,
     StateLayoutSettings, StateNode, StateNodeStylePlan, StateStylePlan,
-    measure_state_markdown_label, normalize_dir, note_group_owner_id,
-    state_fork_join_painted_dimensions, state_hidden_prefixes, state_node_dimensions,
-    state_node_is_effective_group, state_node_label_text, title_label_metrics,
-    validate_state_parent_cycles,
+    measure_state_markdown_label, normalize_dir, state_fork_join_painted_dimensions,
+    state_hidden_prefixes, state_node_dimensions, state_node_is_effective_group,
+    state_node_label_text, title_label_metrics, validate_state_parent_cycles,
 };
 use crate::label_rect::LabelRect;
 
@@ -42,13 +43,6 @@ pub(super) struct StateGridLabel {
     pub(super) edge_id: Box<str>,
     pub(super) terminal: LabelRect,
     _retained: PreparedTextRetainedReservation,
-}
-
-struct GridNode<'a> {
-    node: &'a StateNode,
-    parent: Option<&'a str>,
-    placement_id: Option<&'a str>,
-    source_ordinal: usize,
 }
 
 struct Measurements<'a> {
@@ -87,68 +81,20 @@ pub fn layout(
             .unwrap_or(120.0),
     };
 
-    // StateDB updates a note group in its original slot and puts every note under it. The
-    // parser retains a distinct generated identity for each declaration. Keep the last group
-    // as its paint owner and the first group's placement key and source ordinal.
-    let mut note_groups = FxHashMap::default();
-    let mut aliases = FxHashMap::default();
-    for (ordinal, node) in model.nodes.iter().enumerate() {
-        work.checkpoint(OperationPhase::Layout)?;
-        if let Some(owner) = note_group_owner(node).filter(|_| !hidden.is_hidden(&node.id)) {
-            note_groups.try_reserve(1).map_err(|_| allocation_error())?;
-            let slots = note_groups.entry(owner).or_insert((ordinal, ordinal));
-            slots.1 = ordinal;
-        }
-    }
-    for node in &model.nodes {
-        work.checkpoint(OperationPhase::Layout)?;
-        if let Some(&(_, last)) = note_group_owner(node).and_then(|id| note_groups.get(id)) {
-            aliases.try_reserve(1).map_err(|_| allocation_error())?;
-            aliases.insert(node.id.as_str(), model.nodes[last].id.as_str());
-        }
-    }
-    let canonical = |id| aliases.get(id).copied().unwrap_or(id);
-    let mut slots = FxHashMap::default();
-    slots
-        .try_reserve(model.nodes.len())
-        .map_err(|_| allocation_error())?;
-    let mut nodes = buffer(model.nodes.len())?;
-    for (ordinal, node) in model.nodes.iter().enumerate() {
-        work.charge(node.id.len().max(1))?;
-        if hidden.is_hidden(&node.id) {
-            continue;
-        }
-        let (node, placement_id) = if let Some(&(first, last)) =
-            note_group_owner(node).and_then(|id| note_groups.get(id))
-        {
-            if ordinal != first {
-                continue;
-            }
-            (
-                &model.nodes[last],
-                (first != last).then_some(node.id.as_str()),
-            )
-        } else {
-            (node, None)
-        };
-        slots.insert(node.id.as_str(), nodes.len());
-        nodes.push(GridNode {
-            node,
-            parent: node
-                .parent_id
-                .as_deref()
-                .filter(|id| !hidden.is_hidden(id))
-                .map(canonical),
-            placement_id,
-            source_ordinal: ordinal,
-        });
-    }
-    let directions = resolve_directions(&nodes, &slots, measurements.settings.direction, work)?;
+    let input = state_input(model, &hidden, work, "grid")?;
+    let nodes = &input.nodes;
+    let directions = resolve_directions(
+        nodes,
+        &input.slots,
+        measurements.settings.direction,
+        work,
+        "grid",
+    )?;
     let mut items = buffer(nodes.len())?;
     for (input, direction) in nodes.iter().zip(directions) {
         let node = input.node;
         work.charge(node.id.len().max(1))?;
-        measurements.charge_node_label(node)?;
+        charge_node_label(node, work)?;
         let kind = if state_node_is_effective_group(node) {
             GridItemKind::Group(measurements.measure_group(node))
         } else {
@@ -201,10 +147,9 @@ pub fn layout(
         {
             continue;
         }
-        let (Some(&source), Some(&target)) = (
-            slots.get(canonical(&edge.start)),
-            slots.get(canonical(&edge.end)),
-        ) else {
+        let (Some(source), Some(target)) =
+            (input.node_slot(&edge.start), input.node_slot(&edge.end))
+        else {
             return Err(Error::InvalidModel {
                 message: format!(
                     "GRID_MISSING_ENDPOINT: Missing endpoint for edge \"{}\"",
@@ -262,7 +207,7 @@ pub fn layout(
     }
 
     let grid = prepare_grid(&items, &edges, config.get("grid"), work)?;
-    let output = measurements.project(&grid, &nodes, &items, &edges, &model.direction)?;
+    let output = measurements.project(&grid, nodes, &items, &edges, &model.direction)?;
     work.checkpoint(OperationPhase::Layout)?;
     sidecar.set_grid_labels(labels);
     let mut paint = grid.paint();
@@ -277,75 +222,7 @@ pub fn layout(
     Ok((output, paint))
 }
 
-fn note_group_owner(node: &StateNode) -> Option<&str> {
-    if node.shape == "noteGroup" {
-        note_group_owner_id(&node.id)
-    } else {
-        None
-    }
-}
-
-fn resolve_directions(
-    nodes: &[GridNode<'_>],
-    slots: &FxHashMap<&str, usize>,
-    root: Direction,
-    work: &OperationWorkMeter,
-) -> Result<Vec<Option<Direction>>> {
-    work.charge(nodes.len())?;
-    let mut directions = buffer(nodes.len())?;
-    directions.extend(
-        nodes
-            .iter()
-            .map(|input| input.node.dir.as_deref().map(direction_from_rank)),
-    );
-    let mut trail = Vec::new();
-    for (slot, input) in nodes.iter().enumerate() {
-        work.checkpoint(OperationPhase::Layout)?;
-        if !matches!(input.node.shape.as_str(), "fork" | "join") || directions[slot].is_some() {
-            continue;
-        }
-        let mut current = slot;
-        let inherited = loop {
-            if let Some(direction) = directions[current] {
-                break direction;
-            }
-            work.charge(1)?;
-            let Some(&parent) = nodes[current].parent.and_then(|id| slots.get(id)) else {
-                break root;
-            };
-            if trail.len() == nodes.len() {
-                return Err(invalid_projection("cycle while resolving shape directions"));
-            }
-            trail.try_reserve(1).map_err(|_| allocation_error())?;
-            trail.push(current);
-            current = parent;
-        };
-        directions[current] = Some(inherited);
-        for slot in trail.drain(..) {
-            directions[slot] = Some(inherited);
-        }
-    }
-    Ok(directions)
-}
-
 impl Measurements<'_> {
-    fn charge_node_label(&self, node: &StateNode) -> Result<()> {
-        match &node.label {
-            Some(serde_json::Value::String(label)) => self.work.charge(label.len().max(1))?,
-            Some(serde_json::Value::Array(lines)) => {
-                for line in lines {
-                    self.work
-                        .charge(line.as_str().map_or(1, |line| line.len().max(1)))?;
-                }
-            }
-            _ => {}
-        }
-        for line in node.description.iter().flatten() {
-            self.work.charge(line.len().max(1))?;
-        }
-        Ok(())
-    }
-
     fn measure_group(&self, node: &StateNode) -> GridGroupMeasure {
         let style = self.style.node(&node.id);
         let typography = style
@@ -403,7 +280,7 @@ impl Measurements<'_> {
     fn project(
         &self,
         grid: &PreparedGrid<'_>,
-        source_nodes: &[GridNode<'_>],
+        source_nodes: &[FlatStateNode<'_>],
         items: &[GridMeasuredItem<'_>],
         source_edges: &[GridMeasuredEdge<'_>],
         root_direction: &str,
@@ -438,7 +315,7 @@ impl Measurements<'_> {
                 label_height: None,
             });
             if let GridItemKind::Group(group) = item.kind {
-                self.charge_node_label(node)?;
+                charge_node_label(node, work)?;
                 let (title, metrics) = self.group_title(node);
                 let width = if title.is_empty() {
                     rect.width
@@ -552,38 +429,6 @@ impl Measurements<'_> {
         };
         (title, Size { width, height })
     }
-}
-
-fn layout_bounds(
-    nodes: &[LayoutNode],
-    clusters: &[LayoutCluster],
-    edges: &[LayoutEdge],
-    work: &OperationWorkMeter,
-) -> Result<Option<Bounds>> {
-    fn extents(x: f64, y: f64, w: f64, h: f64) -> [(f64, f64); 2] {
-        [(x - w / 2.0, y - h / 2.0), (x + w / 2.0, y + h / 2.0)]
-    }
-    work.charge(nodes.len())?;
-    work.charge(clusters.len())?;
-    for edge in edges {
-        work.charge(edge.points.len().max(1))?;
-    }
-    let nodes = nodes
-        .iter()
-        .flat_map(|n| extents(n.x, n.y, n.width, n.height));
-    let clusters = clusters
-        .iter()
-        .flat_map(|c| extents(c.x, c.y, c.width, c.height));
-    let points = edges
-        .iter()
-        .flat_map(|edge| edge.points.iter().map(|p| (p.x, p.y)));
-    let labels = edges
-        .iter()
-        .filter_map(|edge| edge.label.as_ref())
-        .flat_map(|label| extents(label.x, label.y, label.width, label.height));
-    Ok(Bounds::from_points(
-        nodes.chain(clusters).chain(points).chain(labels),
-    ))
 }
 
 pub(super) fn buffer<T>(capacity: usize) -> Result<Vec<T>> {

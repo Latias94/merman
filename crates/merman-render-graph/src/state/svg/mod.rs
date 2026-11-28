@@ -36,6 +36,8 @@ mod edge;
 mod effect;
 #[cfg(feature = "layout-grid")]
 mod grid;
+#[cfg(feature = "layout-layered")]
+mod layered;
 mod node;
 mod rough_cache;
 mod roughjs;
@@ -92,6 +94,8 @@ pub struct StateSvgContext<'a> {
     pub elk_parity: bool,
     #[cfg(feature = "layout-grid")]
     pub grid: Option<merman_render_core::graph_layout::mermaid_grid::GridPaint>,
+    #[cfg(feature = "layout-layered")]
+    pub layered: Option<&'a super::StateLayeredPaint>,
     #[cfg(feature = "layout-shoal")]
     pub canonical_routes: Option<&'a StateCanonicalEdgePainter<'a>>,
     pub work_meter: &'a OperationWorkMeter,
@@ -115,6 +119,8 @@ struct StateRenderCtx<'a> {
     elk_line_hop_paths: FxHashMap<String, String>,
     #[cfg(feature = "layout-grid")]
     grid_edges: Option<grid::StateGridEdges<'a>>,
+    #[cfg(feature = "layout-layered")]
+    layered_edges: Option<layered::StateLayeredEdges<'a>>,
     hand_drawn_seed: roughr::core::RoughRandomness,
     html_labels: bool,
     html_label_wrapping_width: f64,
@@ -146,6 +152,21 @@ struct StateRenderCtx<'a> {
 }
 
 impl StateRenderCtx<'_> {
+    fn uses_flat_routes(&self) -> bool {
+        self.uses_grid() || self.uses_layered()
+    }
+
+    fn uses_layered(&self) -> bool {
+        #[cfg(feature = "layout-layered")]
+        {
+            self.layered_edges.is_some()
+        }
+        #[cfg(not(feature = "layout-layered"))]
+        {
+            false
+        }
+    }
+
     fn uses_grid(&self) -> bool {
         #[cfg(feature = "layout-grid")]
         {

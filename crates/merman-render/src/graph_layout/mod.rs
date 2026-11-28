@@ -112,6 +112,8 @@ pub(crate) enum RouteContract {
     Layered(std::sync::Arc<merman_render_flow::layered::FlowLayeredRoutes>),
     #[cfg(all(feature = "diagram-er", feature = "layout-layered"))]
     ErLayered(std::sync::Arc<merman_render_graph::er::ErLayeredPaint>),
+    #[cfg(all(feature = "diagram-state", feature = "layout-layered"))]
+    StateLayered(std::sync::Arc<merman_render_graph::state::StateLayeredPaint>),
     #[cfg(feature = "layout-elk")]
     ElkParity,
     #[cfg(all(

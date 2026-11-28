@@ -452,22 +452,8 @@ fn prepare_state_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let label_sidecar = crate::state::StateLabelSidecarBuilder::default();
-    let style = crate::state::StateStylePlan::resolve(
-        model,
-        &meta.effective_config,
-        execution.layout_backend() == GraphLayoutBackend::Dagre,
-        execution.native_family_theme(),
-        execution.family.session().canvas_background(),
-    );
-    let (layout, route_contract) = crate::state::layout_state_diagram_typed_with_work_meter(
-        model,
-        &meta.effective_config,
-        &style,
-        &label_sidecar,
-        execution,
-    )?;
-    let label_sidecar = label_sidecar.finish();
+    let (layout, route_contract, label_sidecar, style) =
+        crate::state::prepare_state_diagram(model, &meta.effective_config, execution)?;
     Ok(BuiltinFamilyArtifact::State(Box::new(
         StateFamilyArtifact {
             pair: FamilyPair::new(model, layout),

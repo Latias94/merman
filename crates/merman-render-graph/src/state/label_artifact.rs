@@ -148,6 +148,19 @@ impl StateLabelSidecarBuilder {
     }
 }
 
+#[cfg(feature = "layout-layered")]
+pub(super) fn measure_label_for_layout(
+    request: StateLabelMetricsRequest<'_>,
+) -> StateLabelMeasurement {
+    let measurer = request
+        .typography
+        .svg_measurer(request.measurer, request.wrap_mode);
+    measure_label(StateLabelMetricsRequest {
+        measurer: measurer.as_measurer(),
+        ..request
+    })
+}
+
 fn measure_label(request: StateLabelMetricsRequest<'_>) -> StateLabelMeasurement {
     let style = if request.wrap_mode == WrapMode::HtmlLike {
         std::borrow::Cow::Borrowed(request.typography.text_style())

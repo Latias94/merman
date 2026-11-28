@@ -506,7 +506,8 @@ pub(crate) const fn layout_layered_available() -> bool {
             feature = "diagram-class",
             feature = "diagram-er",
             feature = "diagram-mindmap",
-            feature = "diagram-requirement"
+            feature = "diagram-requirement",
+            feature = "diagram-state"
         )
     )) && merman::svg::layout_layered_available()
 }

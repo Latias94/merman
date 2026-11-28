@@ -203,6 +203,7 @@ pub(crate) fn resolve(
                 | DiagramFamilyId::SWIMLANE
                 | DiagramFamilyId::MINDMAP
                 | DiagramFamilyId::REQUIREMENT
+                | DiagramFamilyId::STATE
         )
     {
         return Ok(Backend::Layered);
@@ -407,9 +408,9 @@ mod tests {
                                 | DiagramFamilyId::ER
                                 | DiagramFamilyId::MINDMAP
                                 | DiagramFamilyId::REQUIREMENT
+                                | DiagramFamilyId::STATE
                         )
-                        || (backend == Backend::Grid
-                            && matches!(family, DiagramFamilyId::STATE | DiagramFamilyId::USECASE)))
+                        || (backend == Backend::Grid && family == DiagramFamilyId::USECASE))
                 {
                     assert_eq!(resolve(family, diagram_type, &config).unwrap(), backend);
                     continue;

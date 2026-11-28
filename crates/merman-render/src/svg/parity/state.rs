@@ -93,6 +93,11 @@ pub(super) fn render_state_diagram_svg_model(
             RouteContract::Grid(paint) => Some(*paint),
             _ => None,
         },
+        #[cfg(feature = "layout-layered")]
+        layered: match route_contract {
+            RouteContract::StateLayered(paint) => Some(paint.as_ref()),
+            _ => None,
+        },
         #[cfg(feature = "layout-shoal")]
         canonical_routes: canonical_routes
             .as_ref()
@@ -197,7 +202,7 @@ mod tests {
             let config =
                 serde_json::json!({"look":"neo", "htmlLabels":false, "elk":{"lineHops":hops}});
             let plan = StateStylePlan::resolve_classic(model, &config, true);
-            let labels = crate::state::StateLabelSidecarBuilder::default().finish();
+            let labels = merman_render_graph::state::StateLabelSidecarBuilder::default().finish();
             crate::svg::with_test_svg_execution(
                 crate::DiagramFamilyId::STATE,
                 &SvgRenderOptions::default(),

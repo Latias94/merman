@@ -8,9 +8,13 @@ mod config;
 mod dagre;
 #[cfg(feature = "layout-elk")]
 mod elk;
+#[cfg(any(feature = "layout-grid", feature = "layout-layered"))]
+mod flat_input;
 mod geometry;
 #[cfg(feature = "layout-grid")]
 mod grid;
+#[cfg(feature = "layout-layered")]
+mod layered;
 mod layout_input;
 mod measure;
 mod style_plan;
@@ -37,6 +41,8 @@ use geometry::RectWithTitleGeometry;
 pub use geometry::StateDiagramLayout;
 #[cfg(feature = "layout-grid")]
 pub use grid::layout as layout_grid;
+#[cfg(feature = "layout-layered")]
+pub use layered::{StateLayeredError, StateLayeredPaint, layout as layout_layered};
 pub use layout_input::{
     HiddenPrefixMatcher, note_group_owner_id, state_hidden_prefixes, state_layout_adapter_work,
     validate_state_parent_cycles,

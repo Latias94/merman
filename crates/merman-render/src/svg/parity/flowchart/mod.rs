@@ -62,6 +62,8 @@ fn svg_layout(layout: &FlowchartLayout) -> FlowchartSvgLayout<'_> {
         RouteContract::Layered(routes) => FlowchartSvgRoute::Layered(routes),
         #[cfg(all(feature = "diagram-er", feature = "layout-layered"))]
         RouteContract::ErLayered(_) => FlowchartSvgRoute::Legacy,
+        #[cfg(all(feature = "diagram-state", feature = "layout-layered"))]
+        RouteContract::StateLayered(_) => FlowchartSvgRoute::Legacy,
         #[cfg(feature = "layout-elk")]
         RouteContract::ElkParity => FlowchartSvgRoute::ElkParity,
         #[cfg(feature = "layout-grid")]

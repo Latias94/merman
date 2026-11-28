@@ -258,7 +258,8 @@ fn compiled_capabilities_for_auto_detection() -> Vec<&'static str> {
                 feature = "diagram-class",
                 feature = "diagram-er",
                 feature = "diagram-mindmap",
-                feature = "diagram-requirement"
+                feature = "diagram-requirement",
+                feature = "diagram-state"
             )
         ))]
         "layout-layered",
@@ -1186,6 +1187,12 @@ fn workflow_layered() {
                 "requirement",
                 "requirementDiagram\n  requirement checkout {\n    id: 1\n  }\n",
                 "RequirementDiagram",
+            ),
+            #[cfg(feature = "diagram-state")]
+            (
+                "state",
+                "stateDiagram-v2\n  Idle --> Ready\n",
+                "StateDiagramV2",
             ),
         ],
     );

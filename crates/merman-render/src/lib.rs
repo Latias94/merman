@@ -308,6 +308,7 @@ pub const fn layout_layered_available() -> bool {
             feature = "diagram-er",
             feature = "diagram-mindmap",
             feature = "diagram-requirement",
+            feature = "diagram-state",
             feature = "diagram-swimlane"
         )
     ))
