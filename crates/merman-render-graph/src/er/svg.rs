@@ -41,6 +41,7 @@ use super::{
 
 #[cfg(feature = "layout-grid")]
 mod grid;
+#[cfg(feature = "layout-shoal")]
 mod hand_drawn;
 #[cfg(feature = "layout-layered")]
 mod layered;
@@ -732,6 +733,7 @@ pub fn render_er_diagram_svg_model(
     let entity_wrap_mode = er_render_settings.entity_html_label_wrap_mode;
     let entity_measurement = er_render_settings.entity_measurement;
     let hand_drawn_seed = options.rough_randomness;
+    #[cfg(feature = "layout-shoal")]
     let hand_drawn =
         (uses_canonical_routes && data_look == "handDrawn").then_some(hand_drawn::HandDrawn {
             work_meter: options.work_meter,
@@ -1602,10 +1604,16 @@ pub fn render_er_diagram_svg_model(
         let oy = -h / 2.0;
         let node_rect = kurbo::Rect::new(ox, oy, ox + w, oy + h);
         let radius = native.map_or(0.0, |style| style.radius);
+        #[cfg(feature = "layout-shoal")]
         let outline = hand_drawn
             .as_ref()
             .map(|draw| draw.outline(node_rect, radius))
             .transpose()?;
+        #[cfg(feature = "layout-shoal")]
+        let has_rough_outline = outline.is_some();
+        #[cfg(not(feature = "layout-shoal"))]
+        let has_rough_outline = false;
+        #[cfg(feature = "layout-shoal")]
         if let Some(outline) = &outline {
             let stroke_width = source_style
                 .rect_value("stroke-width")
@@ -1625,11 +1633,10 @@ pub fn render_er_diagram_svg_model(
         } else {
             format!("node {}", entity.css_classes.trim())
         };
-        let color_id_attr = color_indices
-            .as_ref()
-            .map_or(Some(ordinal), |indices| {
-                indices.get(entity.id.as_str()).copied()
-            })
+        let color_index = color_indices.as_ref().map_or(Some(ordinal), |indices| {
+            indices.get(entity.id.as_str()).copied()
+        });
+        let color_id_attr = color_index
             .and_then(|index| er_redux_color_id(redux_border_colors, index))
             .map(|color_id| format!(r#" data-color-id="{}""#, escape_attr(&color_id)))
             .unwrap_or_default();
@@ -1663,6 +1670,7 @@ pub fn render_er_diagram_svg_model(
         if entity.attributes.is_empty() {
             let entity_name_style_attr = er_text_style_attr(&source_label_style);
             let rect_style_attr = &visual.rect_style_attr;
+            #[cfg(feature = "layout-shoal")]
             if let Some(outline) = &outline {
                 let _ = write!(
                     &mut out,
@@ -1672,7 +1680,8 @@ pub fn render_er_diagram_svg_model(
                     escape_attr(&visual.box_stroke),
                     escape_attr(&binding.stroke_width),
                 );
-            } else {
+            }
+            if !has_rough_outline {
                 let radius = native.map_or_else(String::new, |style| {
                     format!(r#" rx="{}""#, fmt(style.radius))
                 });
@@ -1772,18 +1781,34 @@ pub fn render_er_diagram_svg_model(
             }
         }
 
-        if native.is_some() || outline.is_some() {
+        if native.is_some() || has_rough_outline {
             let clip_id = format!("{diagram_id}_er-table-{entity_index}");
             let (left, top, width, height, radius) =
                 (fmt(ox), fmt(oy), fmt(w), fmt(h), fmt(radius));
+            let fill_bounds = node_rect;
+            #[cfg(feature = "layout-shoal")]
             let fill_bounds = outline
                 .as_ref()
-                .map_or(node_rect, |outline| node_rect.union(outline.bounds));
+                .map_or(fill_bounds, |outline| fill_bounds.union(outline.bounds));
             let (fill_left, fill_top, fill_width) = (
                 fmt(fill_bounds.x0),
                 fmt(fill_bounds.y0),
                 fmt(fill_bounds.width()),
             );
+            // The table paints disjoint fill and stroke layers. Resolve the palette slot here
+            // so each layer owns only the paint it draws.
+            #[cfg(feature = "layout-shoal")]
+            let (box_fill, box_stroke, palette_fill) = color_index
+                .filter(|_| has_rough_outline)
+                .and_then(|index| super::stylesheet::er_redux_palette(binding, index))
+                .map_or((box_fill, box_stroke, None), |(stroke, fill)| {
+                    let stroke = (!stroke.is_empty()).then_some(stroke);
+                    (
+                        source_style.fill().or(fill).unwrap_or(box_fill),
+                        source_style.stroke().or(stroke).unwrap_or(box_stroke),
+                        fill,
+                    )
+                });
             let opacity_css = |property| {
                 source_style
                     .rect_value(property)
@@ -1792,8 +1817,10 @@ pub fn render_er_diagram_svg_model(
                     })
             };
             let fill_opacity = opacity_css("fill-opacity");
+            let table_class = "er-native-table";
+            #[cfg(feature = "layout-shoal")]
             let table_class = if native.is_some() {
-                "er-native-table"
+                table_class
             } else {
                 "er-hand-drawn-table"
             };
@@ -1804,15 +1831,17 @@ pub fn render_er_diagram_svg_model(
             out.push_str(">");
             // Keep the header and row fills disjoint for alpha compositing.
             let _ = write!(&mut out, r#"<defs><clipPath id="{clip_id}">"#);
+            #[cfg(feature = "layout-shoal")]
             if let Some(outline) = &outline {
                 let _ = write!(&mut out, r#"<path d="{}"/>"#, escape_attr(&outline.d));
-            } else {
+            }
+            if !has_rough_outline {
                 let _ = write!(
                     &mut out,
                     r#"<rect x="{left}" y="{top}" width="{width}" height="{height}" rx="{radius}"/>"#,
                 );
             }
-            let header_height = if outline.is_some() {
+            let header_height = if has_rough_outline {
                 sep_y - fill_bounds.y0
             } else {
                 name_row_h
@@ -1831,6 +1860,8 @@ pub fn render_er_diagram_svg_model(
                 } else {
                     box_fill
                 };
+                #[cfg(feature = "layout-shoal")]
+                let row_fill = palette_fill.unwrap_or(row_fill);
                 let fill = if native.is_some()
                     || !idx.is_multiple_of(2)
                     || binding.source_fill_owns_odd_rows()
@@ -1844,7 +1875,7 @@ pub fn render_er_diagram_svg_model(
                 } else {
                     "row-rect-even"
                 };
-                let paint_height = if outline.is_some() && idx + 1 == measure.rows.len() {
+                let paint_height = if has_rough_outline && idx + 1 == measure.rows.len() {
                     (fill_bounds.y1 - y).max(row_height)
                 } else {
                     row_height
@@ -1877,6 +1908,7 @@ pub fn render_er_diagram_svg_model(
                 escape_attr(dash),
                 opacity_css("stroke-opacity"),
             );
+            #[cfg(feature = "layout-shoal")]
             if let (Some(draw), Some(outline)) = (&hand_drawn, &outline) {
                 let outline_class = if native.is_some() {
                     "er-native-outline"
@@ -1912,7 +1944,8 @@ pub fn render_er_diagram_svg_model(
                 for x in divider_xs.into_iter().flatten() {
                     draw.write_divider(&mut out, (x, sep_y).into(), (x, fill_bounds.y1).into())?;
                 }
-            } else {
+            }
+            if !has_rough_outline {
                 let _ = write!(
                     &mut out,
                     r#"</g><rect class="er-native-outline" x="{left}" y="{top}" width="{width}" height="{height}" rx="{radius}" style="fill:none;stroke:{};{stroke_css}"/>"#,
@@ -1930,13 +1963,20 @@ pub fn render_er_diagram_svg_model(
                     let _ = write!(&mut out, " M{} {}V{}", fmt(x), fmt(sep_y), fmt(box_y1));
                 }
             }
-            // Neo's common path rules would override presentation attributes.
-            let divider_stroke = source_style
-                .stroke()
-                .unwrap_or_else(|| native.map_or(box_stroke, |style| style.guide.as_str()));
+            // Theme path rules can override presentation attributes.
+            let divider_stroke = native.map_or(box_stroke, |style| {
+                source_style.stroke().unwrap_or(&style.guide)
+            });
+            let divider_fill_css = "";
+            #[cfg(feature = "layout-shoal")]
+            let divider_fill_css = if has_rough_outline {
+                "fill:none;"
+            } else {
+                divider_fill_css
+            };
             let _ = write!(
                 &mut out,
-                r#"" fill="none" style="stroke:{};{stroke_css}"/></g></g>"#,
+                r#"" fill="none" style="{divider_fill_css}stroke:{};{stroke_css}"/></g></g>"#,
                 escape_attr(divider_stroke),
             );
             out.checkpoint()?;
@@ -2230,7 +2270,7 @@ pub fn render_er_diagram_svg_model(
             out.checkpoint()
         }
 
-        if native.is_none() && outline.is_none() {
+        if native.is_none() && !has_rough_outline {
             let escaped_box_fill = escape_attr(box_fill);
             let divider_path_attrs = format!(
                 r#" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{}"#,

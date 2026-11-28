@@ -3,7 +3,7 @@ use merman_model::OperationPhase;
 use merman_render_core::{
     Error, Result,
     resources::OperationWorkMeter,
-    rough_svg::{controlled, ops_to_svg_path_d},
+    rough_svg::{controlled, ops_to_compact_svg_path_d},
     svg_bounds::svg_path_bounds_from_d,
     svg_output::SvgOutput,
 };
@@ -49,7 +49,7 @@ impl HandDrawn<'_> {
             outline
                 .ops
                 .retain(|op| std::mem::take(&mut first) || op.op != OpType::Move);
-            let mut d = ops_to_svg_path_d(&outline);
+            let mut d = ops_to_compact_svg_path_d(&outline);
             d.push('Z');
             Ok(d)
         })?;
@@ -78,7 +78,7 @@ impl HandDrawn<'_> {
         let stroke = controlled::generate(self.work_meter, OperationPhase::Emit, |control| {
             roughr::renderer::line_with_control(from.x, from.y, to.x, to.y, &mut options, control)
         })?;
-        out.push_str(&ops_to_svg_path_d(&stroke));
+        out.push_str(&ops_to_compact_svg_path_d(&stroke));
         out.checkpoint()
     }
 }

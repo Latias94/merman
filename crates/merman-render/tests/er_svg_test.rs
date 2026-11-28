@@ -1373,6 +1373,85 @@ erDiagram
     }
 }
 
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn er_shoal_hand_drawn_tables_apply_redux_palette_by_paint_role() {
+    for (theme, background, second_background) in [
+        ("redux-color", "#FDF4FF", "#FFF7ED"),
+        ("redux-dark-color", "#111113", "#111113"),
+    ] {
+        let source = format!(
+            r#"---
+config:
+  layout: shoal
+  look: handDrawn
+  htmlLabels: false
+  theme: {theme}
+---
+erDiagram
+  PLAIN {{
+    int id PK
+    string name
+  }}
+  FILL_ONLY {{
+    int id PK
+    string name
+  }}
+  STROKE_ONLY {{
+    int id PK
+    string name
+  }}
+  STROKE_ONLY ||--|| FILL_ONLY : connects
+  FILL_ONLY ||--|| PLAIN : connects
+  style FILL_ONLY fill:#abcdef
+  classDef ink stroke:#123456
+  class STROKE_ONLY ink
+"#,
+        );
+        let svg = render_er_svg_from_text(&source, &SvgRenderOptions::default());
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        for (id, color_id, fill, stroke) in [
+            ("entity-PLAIN-0", "color-0", background, "#E879F9"),
+            ("entity-FILL_ONLY-1", "color-1", "#abcdef", "#2DD4BF"),
+            (
+                "entity-STROKE_ONLY-2",
+                "color-2",
+                second_background,
+                "#123456",
+            ),
+        ] {
+            let entity = document
+                .descendants()
+                .find(|node| node.attribute("data-id") == Some(id))
+                .unwrap();
+            assert_eq!(entity.attribute("data-color-id"), Some(color_id));
+            let part = |class| {
+                entity
+                    .descendants()
+                    .find(|node| node.attribute("class") == Some(class))
+                    .unwrap()
+            };
+            for class in ["er-native-header", "row-rect-odd", "row-rect-even"] {
+                let style = part(class).attribute("style").unwrap();
+                assert!(
+                    style.starts_with(&format!("fill:{fill};stroke:none")),
+                    "{theme}/{id}/{class}: {style}"
+                );
+            }
+            for path in [
+                part("er-hand-drawn-outline"),
+                part("divider").first_element_child().unwrap(),
+            ] {
+                let style = path.attribute("style").unwrap();
+                assert!(
+                    style.starts_with(&format!("fill:none;stroke:{stroke};")),
+                    "{theme}/{id}: {style}"
+                );
+            }
+        }
+    }
+}
+
 #[test]
 fn er_non_redux_preserves_row_colors_and_styles_both_divider_paths() {
     let source = r#"---

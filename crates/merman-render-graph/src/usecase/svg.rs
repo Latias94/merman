@@ -157,7 +157,7 @@ enum UsecaseLabelKind<'a> {
     },
     Edge {
         id: &'a str,
-        on_panel: bool,
+        panel_override: bool,
         plate: Option<Color>,
     },
 }
@@ -203,8 +203,10 @@ fn write_label(
             fmt(plan.style.font_size)
         );
     }
-    let is_edge_label = matches!(kind, UsecaseLabelKind::Edge { .. });
-    let on_panel = matches!(kind, UsecaseLabelKind::Edge { on_panel: true, .. });
+    let (is_edge_label, panel_override) = match kind {
+        UsecaseLabelKind::Edge { panel_override, .. } => (true, panel_override),
+        _ => (false, false),
+    };
     let is_boundary = matches!(kind, UsecaseLabelKind::Boundary { .. });
     let canonical_boundary = matches!(kind, UsecaseLabelKind::Boundary { canonical: true });
     let positioned_node = matches!(kind, UsecaseLabelKind::PositionedNode(_));
@@ -229,13 +231,8 @@ fn write_label(
         UsecaseLabelKind::Boundary { .. } => "cluster-label system-boundary-title",
         UsecaseLabelKind::Edge { .. } => "label",
     };
-    if let UsecaseLabelKind::Edge {
-        id,
-        on_panel,
-        plate,
-    } = kind
-    {
-        let class = if on_panel {
+    if let UsecaseLabelKind::Edge { id, plate, .. } = kind {
+        let class = if panel_override {
             "edgeLabel usecase-panel-caption"
         } else {
             "edgeLabel"
@@ -323,7 +320,7 @@ fn write_label(
         }
         out.push_str("<g>");
         if is_edge_label && !plan.text.is_empty() {
-            let background_style = if on_panel { "fill:none" } else { "" };
+            let background_style = if panel_override { "fill:none" } else { "" };
             let _ = write!(
                 out,
                 r#"<rect class="background" style="{background_style}" x="{}" y="{}" width="{}" height="{}"/>"#,
@@ -1113,28 +1110,28 @@ pub fn render_usecase_diagram_svg_model(
         }
     }
     let transparent = cutout::is_transparent_paint(css_binding.edge_background.css());
-    let caption_on_panel = |index: usize| {
-        #[cfg(feature = "layout-shoal")]
-        if let Some(canonical) = &options.canonical {
-            return canonical
-                .panel_captions
-                .get(index)
-                .copied()
-                .unwrap_or(false);
-        }
-        let _ = index;
-        false
-    };
-    let transparent_auto_canvas = options.native_theme.filter(|theme| {
-        uses_canonical
+    // Mermaid's derived background follows the same automatic panel policy.
+    let auto_background = uses_canonical
+        && native.is_none_or(|theme| theme.form.edge_label_bg == EdgeLabelBackground::Auto)
+        && !config.explicit_config_owns_path("themeVariables.edgeLabelBackground");
+    #[cfg(feature = "layout-shoal")]
+    let panel_captions = options
+        .canonical
+        .as_ref()
+        .filter(|_| auto_background)
+        .map_or(&[][..], |canonical| canonical.panel_captions);
+    #[cfg(not(feature = "layout-shoal"))]
+    let panel_captions: &[bool] = &[];
+    let panel_background_override =
+        |index: usize| panel_captions.get(index).copied().unwrap_or(false);
+    let transparent_auto_canvas = native.filter(|theme| {
+        auto_background
             && transparent
-            && theme.form.edge_label_bg == EdgeLabelBackground::Auto
             && css_binding
                 .canvas_background
                 .unwrap_or_else(|| theme.roles.canvas.first_color())
                 .channels()[3]
                 == 0
-            && !config.explicit_config_owns_path("themeVariables.edgeLabelBackground")
     });
     let has_edge_mask = !uses_canonical
         && transparent
@@ -1323,7 +1320,7 @@ pub fn render_usecase_diagram_svg_model(
         #[cfg(feature = "layout-shoal")]
         let mut caption_cutout = None;
         #[cfg(feature = "layout-shoal")]
-        if (transparent || caption_on_panel(edge_index))
+        if (transparent || panel_background_override(edge_index))
             && plan.label.is_some()
             && let Some((painted, label)) = canonical_edge.as_ref().zip(edge.label.as_ref())
         {
@@ -1421,15 +1418,15 @@ pub fn render_usecase_diagram_svg_model(
         if let Some(label) = &plan.label {
             let edge = edge_geometry[plan.id.as_str()];
             if let Some(position) = &edge.label {
-                let on_panel = caption_on_panel(index);
+                let panel_override = panel_background_override(index);
                 write_label(
                     &mut out,
                     label,
                     UsecaseLabelKind::Edge {
                         id: &plan.id,
-                        on_panel,
+                        panel_override,
                         plate: transparent_auto_canvas
-                            .filter(|_| !on_panel)
+                            .filter(|_| !panel_override)
                             .and_then(|theme| exposed_caption_plate(label, css_binding, theme)),
                     },
                     position.x,

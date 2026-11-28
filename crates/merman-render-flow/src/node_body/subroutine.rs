@@ -47,14 +47,13 @@ pub fn write_subroutine(out: &mut impl SvgOutput, mut body: NodeBodySvg<'_>) {
         for stroke in side_strokes.iter().rev() {
             out.push_str("<g>");
             #[cfg(feature = "layout-shoal")]
-            let compact = body.geometry.compact_rough;
-            #[cfg(not(feature = "layout-shoal"))]
-            let compact = false;
-            let d = if compact {
+            let d = if body.geometry.compact_rough {
                 merman_render_core::rough_svg::ops_to_compact_svg_path_d(stroke)
             } else {
                 ops_to_svg_path_d(stroke)
             };
+            #[cfg(not(feature = "layout-shoal"))]
+            let d = ops_to_svg_path_d(stroke);
             write_outline(out, &body, &d);
             out.push_str("</g>");
         }
