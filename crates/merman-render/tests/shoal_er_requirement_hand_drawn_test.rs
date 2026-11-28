@@ -147,7 +147,7 @@ fn er_shoal_hand_draws_table_and_entity_frames_with_seeded_dividers() {
 
 #[cfg(feature = "diagram-er")]
 #[test]
-fn er_shoal_bt_insets_crows_foot_tips_without_moving_the_marker_reference() {
+fn er_shoal_insets_bt_forks_and_seats_dashed_shafts_on_the_solid_prong() {
     for (direction, inset) in [("BT", 2.25), ("TB", 0.0)] {
         let body = format!(
             "erDiagram\ndirection {direction}\nA }}o--|{{ B : owns\nB }}|..o{{ C : routes\n"
@@ -162,7 +162,7 @@ fn er_shoal_bt_insets_crows_foot_tips_without_moving_the_marker_reference() {
                     .find(|node| node.attribute("id") == Some(id.as_str()))
                     .unwrap();
                 let reference = marker.attribute("refX").unwrap().parse::<f64>().unwrap();
-                assert_eq!(reference, anchor);
+                assert_eq!((reference - anchor).abs(), 18.0);
                 let d = geometry(marker.last_element_child().unwrap());
                 let curves = d
                     .segments()
@@ -175,6 +175,10 @@ fn er_shoal_bt_insets_crows_foot_tips_without_moving_the_marker_reference() {
                 assert_eq!((second.end().x - anchor).abs(), inset);
                 assert_eq!((first.end().x - anchor).abs(), 18.0);
                 assert_eq!(first.end(), second.start());
+                assert!(d.segments().any(|segment| {
+                    matches!(segment, PathSeg::Line(line) if line.p0 == kurbo::Point::new(anchor, 18.0)
+                        && line.p1 == kurbo::Point::new(reference, 18.0))
+                }), "missing solid center prong: {id}");
             }
         }
     }
