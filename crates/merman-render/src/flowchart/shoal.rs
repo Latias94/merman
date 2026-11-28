@@ -8,7 +8,7 @@ use super::{
     FlowchartSvgLabelSidecarBuilder,
 };
 use crate::graph_layout::axis_clearance::AxisClearance;
-use crate::graph_layout::contour::{Outline, ShapePortProfile, shoal_contour};
+use crate::graph_layout::contour::{ShapePortProfile, shoal_contour};
 use crate::graph_layout::ir::{
     Axis, Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredNode, Side, Size, SolvedGraph,
 };
@@ -21,6 +21,7 @@ use crate::model::{Bounds, FlowchartLayout, LayoutEdge, LayoutLabel, LayoutNode,
 use crate::{Error, LayoutAdaptation, LayoutExecution, Result};
 use merman_model::families::flowchart::{FlowchartModel, FlowchartRenderContext};
 use merman_model::presentation::PresentationConfig;
+use merman_render_core::graph_layout::contour::Outline;
 use merman_render_flow::edge_labels::HTML_EDGE_LABEL_INSET_PX;
 use merman_render_flow::node_geometry::contour as flow_contour;
 use merman_render_flow::projection::ProjectedFlowchartEdge;

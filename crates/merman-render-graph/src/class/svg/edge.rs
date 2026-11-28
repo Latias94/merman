@@ -613,7 +613,15 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
                     .flatten()
                     .map(|marker| marker.conservative_radius(width))
                     .fold(width, f64::max);
-                write_class_edge_label_cutout(out, ctx.diagram_id, ordinal, bounds, &gaps, outset, ctx.work_meter)?;
+                write_class_edge_label_cutout(
+                    out,
+                    ctx.diagram_id,
+                    ordinal,
+                    bounds,
+                    &gaps,
+                    outset,
+                    ctx.work_meter,
+                )?;
                 Some(ordinal)
             } else {
                 None

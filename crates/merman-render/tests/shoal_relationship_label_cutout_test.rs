@@ -3,7 +3,7 @@
     any(feature = "diagram-er", feature = "diagram-requirement")
 ))]
 
-use kurbo::{BezPath, Point, Shape};
+use kurbo::{BezPath, ParamCurve, Point, Shape};
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::environment::RenderEnvironment;
 use merman_render::svg::{SvgPipeline, SvgRenderOptions};

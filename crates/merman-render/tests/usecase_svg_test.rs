@@ -2704,7 +2704,7 @@ fn usecase_shoal_reads_root_spacing_before_family_defaults() {
 #[cfg(feature = "layout-shoal")]
 #[test]
 fn usecase_native_theme_paints_sketch_with_a_cutout_on_the_labeled_edge() {
-    use kurbo::{BezPath, Point, Shape};
+    use kurbo::{BezPath, ParamCurve, Point, Shape};
     use merman_render::theme::{NativeTheme, ThemeCompiler};
 
     let source = "usecase-beta\ndirection LR\nA -- status --> B\nC --> D\n";
