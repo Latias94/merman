@@ -264,7 +264,7 @@ fn circle_group_style<'a>(body: &NodeBodySvg<'a>, source_styles: &[String]) -> C
     }
 }
 
-fn write_rough_circle_paths(
+pub(super) fn write_rough_circle_paths(
     out: &mut impl SvgOutput,
     body: &NodeBodySvg<'_>,
     paths: &(String, String),

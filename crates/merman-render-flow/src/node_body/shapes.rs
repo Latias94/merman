@@ -4,8 +4,8 @@ use merman_render_core::{svg_output::SvgOutput, text::TextMetrics};
 
 use super::{
     NodeBodyGeometry, NodeBodySvg, RectangleWithDivider, advance_datastore, advance_hourglass,
-    advance_subroutine, escape_attr, write_datastore, write_hourglass, write_notched_rectangle,
-    write_subroutine,
+    advance_subroutine, escape_attr, label_container::notched_rectangle_body, write_datastore,
+    write_hourglass, write_notched_rectangle, write_subroutine,
 };
 
 mod browser;
@@ -25,7 +25,9 @@ pub enum LayoutNodeBody<'a> {
     Datastore,
     Divider(RectangleWithDivider),
     Hourglass,
-    NotchedRectangle,
+    NotchedRectangle {
+        backed_hand_drawn: bool,
+    },
     Note {
         fill: &'a str,
         stroke: &'a str,
@@ -35,6 +37,7 @@ pub enum LayoutNodeBody<'a> {
         label_size: kurbo::Size,
         padding: f64,
         html_labels: bool,
+        center_label: bool,
     },
     StackedRectangle {
         neo: bool,
@@ -56,8 +59,17 @@ impl LayoutNodeBody<'_> {
             Self::Datastore => write_datastore(out, svg),
             Self::Divider(divider) => divider.write(out, svg, label_dx, label_dy),
             Self::Hourglass => write_hourglass(out, svg),
-            Self::NotchedRectangle => {
-                write_notched_rectangle(out, svg.geometry.width, svg.geometry.height, svg.style);
+            Self::NotchedRectangle { backed_hand_drawn } => {
+                if backed_hand_drawn {
+                    notched_rectangle_body(&svg.geometry).write(out, svg);
+                } else {
+                    write_notched_rectangle(
+                        out,
+                        svg.geometry.width,
+                        svg.geometry.height,
+                        svg.style,
+                    );
+                }
             }
             Self::Note { fill, stroke } => note::write(out, svg, fill, stroke),
             Self::Organic {
@@ -65,7 +77,17 @@ impl LayoutNodeBody<'_> {
                 label_size,
                 padding,
                 html_labels,
-            } => organic::write(out, svg, cloud, label_size, padding, html_labels, label_dx),
+                center_label,
+            } => {
+                let outline = organic::organic_geometry(cloud, label_size, padding);
+                if center_label {
+                    *label_dx = (outline.rendered_min_x() + outline.rendered_max_x()) / 2.0;
+                    *label_dy = (outline.rendered_min_y() + outline.rendered_max_y()) / 2.0;
+                } else if !html_labels {
+                    *label_dx = -label_size.width / 2.0;
+                }
+                organic::render_organic_shape(out, svg, &outline);
+            }
             Self::StackedRectangle { neo } => {
                 stacked_rectangle::write(out, svg, neo, label_dx, label_dy);
             }
@@ -99,7 +121,12 @@ impl LayoutNodeBody<'_> {
             Self::Datastore => advance_datastore(geometry),
             Self::Divider(divider) => divider.advance_rough_geometry(geometry, label_dx, label_dy),
             Self::Hourglass => advance_hourglass(geometry),
-            Self::NotchedRectangle | Self::Text => {}
+            Self::NotchedRectangle { backed_hand_drawn } => {
+                if backed_hand_drawn {
+                    notched_rectangle_body(&geometry).advance_rough_geometry(geometry);
+                }
+            }
+            Self::Text => {}
             Self::Note { .. } => note::advance_rough_geometry(geometry),
             Self::Organic {
                 cloud,

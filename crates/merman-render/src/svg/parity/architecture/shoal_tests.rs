@@ -182,12 +182,22 @@ fn near(a: Point, b: Point) -> bool {
     a.distance(b) < GEOMETRY_EPSILON
 }
 
-fn junction_contact(junction: Node<'_, '_>) -> Point {
-    let body = junction
+fn junction_body<'a, 'i>(junction: Node<'a, 'i>) -> Node<'a, 'i> {
+    junction
         .descendants()
         .find(|node| node.has_tag_name("rect"))
-        .unwrap();
-    transform(junction) * Point::new(number(body, "width") / 2.0, number(body, "height") / 2.0)
+        .unwrap()
+}
+
+fn junction_dot(junction: Node<'_, '_>) -> (Point, f64) {
+    let body = junction_body(junction);
+    assert_eq!(body.attribute("fill-opacity"), None);
+    assert!(body.attribute("fill").is_some_and(|fill| fill != "none"));
+    let radius = number(body, "rx");
+    assert!((2.0..=4.0).contains(&radius), "junction radius {radius}");
+    assert_eq!(number(body, "width"), 2.0 * radius);
+    assert_eq!(number(body, "height"), 2.0 * radius);
+    (transform(junction) * Point::new(radius, radius), radius)
 }
 
 fn check_left_icon_contact(service: Node<'_, '_>, point: Point) {
@@ -285,13 +295,7 @@ fn architecture_shoal_separates_perpendicular_junction_markers() {
          hub:R -- L:worker\n",
     );
     let doc = Document::parse(&svg).unwrap();
-    let hub = element(&doc, "node", "hub");
-    let center = junction_contact(hub);
-    let dot = hub
-        .descendants()
-        .find(|node| node.has_tag_name("rect"))
-        .unwrap();
-    assert!(dot.attribute("fill").is_some());
+    let (center, radius) = junction_dot(element(&doc, "node", "hub"));
     let incoming = element(&doc, "edge", "edge-0");
     let reverse = element(&doc, "edge", "edge-1");
     let onward = element(&doc, "edge", "edge-2");
@@ -300,11 +304,6 @@ fn architecture_shoal_separates_perpendicular_junction_markers() {
     let top = contacts(reverse)[0];
     let right = contacts(onward)[0];
 
-    let radius = center.x - left.x;
-    assert!(
-        (2.0..=5.0).contains(&radius),
-        "junction marker room {radius}"
-    );
     assert!(near(left, Point::new(center.x - radius, center.y)));
     assert!(near(top, Point::new(center.x, center.y - radius)));
     assert!(near(right, Point::new(center.x + radius, center.y)));
@@ -319,6 +318,57 @@ fn architecture_shoal_separates_perpendicular_junction_markers() {
         .unwrap();
     check_arrow(arrow, top, shaft(reverse)[0].start());
     assert!(near(shaft(onward)[0].start(), right));
+}
+
+#[test]
+fn architecture_shoal_shows_four_way_splits_and_marked_elbows() {
+    let (_, svg) = render(
+        "architecture-beta\n\
+         service input(server)\n\
+         service upper(server)\n\
+         service peer(server)\n\
+         service output(server)\n\
+         junction split\n\
+         junction elbow\n\
+         junction through\n\
+         input:R --> L:split\n\
+         split:T --> B:upper\n\
+         split:R --> L:peer\n\
+         split:B -[sync]-> T:elbow\n\
+         elbow:R -- L:through\n\
+         through:R --> L:output\n",
+    );
+    let doc = Document::parse(&svg).unwrap();
+    let (split, split_radius) = junction_dot(element(&doc, "node", "split"));
+    let (elbow, elbow_radius) = junction_dot(element(&doc, "node", "elbow"));
+    let through = element(&doc, "node", "through");
+    let body = junction_body(through);
+    assert_eq!(body.attribute("fill-opacity"), Some("0"));
+    let through_center =
+        transform(through) * Point::new(number(body, "width") / 2.0, number(body, "height") / 2.0);
+
+    let route = |index| element(&doc, "edge", &format!("edge-{index}"));
+    let points: Vec<_> = (0..6).map(|index| contacts(route(index))).collect();
+    for (actual, expected) in [
+        (
+            *points[0].last().unwrap(),
+            Point::new(split.x - split_radius, split.y),
+        ),
+        (points[1][0], Point::new(split.x, split.y - split_radius)),
+        (points[2][0], Point::new(split.x + split_radius, split.y)),
+        (points[3][0], Point::new(split.x, split.y + split_radius)),
+        (
+            *points[3].last().unwrap(),
+            Point::new(elbow.x, elbow.y - elbow_radius),
+        ),
+        (points[4][0], Point::new(elbow.x + elbow_radius, elbow.y)),
+        (*points[4].last().unwrap(), through_center),
+        (points[5][0], through_center),
+    ] {
+        assert!(near(actual, expected), "contact {actual:?} vs {expected:?}");
+    }
+    assert!(near(shaft(route(4)).last().unwrap().end(), through_center));
+    assert!(near(shaft(route(5))[0].start(), through_center));
 }
 
 #[test]
@@ -502,7 +552,8 @@ fn architecture_shoal_paints_a_shared_crossbar_with_a_marked_leaf() {
         6
     );
     let diagram_id = doc.root_element().attribute("id").unwrap();
-    let hub = junction_contact(element(&doc, "node", "hub"));
+    let (center, radius) = junction_dot(element(&doc, "node", "hub"));
+    let hub = Point::new(center.x + radius, center.y);
     let mut leaf_rows: Vec<f64> = Vec::new();
     let mut bars = Vec::new();
     for index in 0..6 {
@@ -640,21 +691,23 @@ fn architecture_shoal_paints_full_routes_and_true_double_arrow_contacts() {
 
     let group_route = element(&doc, "edge", "edge-1");
     let group_points = contacts(group_route);
-    let junction = junction_contact(hub);
+    let (center, radius) = junction_dot(hub);
+    let left = Point::new(center.x - radius, center.y);
+    let right = Point::new(center.x + radius, center.y);
     let group_rect = rect(inner);
     assert!((group_points[0].x - group_rect.x1).abs() < 1e-7);
     assert!((group_rect.y0..=group_rect.y1).contains(&group_points[0].y));
-    assert!(near(*group_points.last().unwrap(), junction));
-    check_both_arrows(group_route, group_points[0], junction);
+    assert!(near(*group_points.last().unwrap(), left));
+    check_both_arrows(group_route, group_points[0], left);
     assert_eq!(layout.edges[1].from, "api");
     assert_eq!(layout.edges[1].from_cluster.as_deref(), Some("inner"));
 
     let outer_route = element(&doc, "edge", "edge-2");
     let outer_points = contacts(outer_route);
-    assert!(near(outer_points[0], junction));
+    assert!(near(outer_points[0], right));
     let client_tip = *outer_points.last().unwrap();
     check_left_icon_contact(client, client_tip);
-    check_both_arrows(outer_route, junction, client_tip);
+    check_both_arrows(outer_route, right, client_tip);
 }
 
 #[test]

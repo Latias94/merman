@@ -100,6 +100,7 @@ impl<'a> TerminalNodeBody<'a> {
                 ),
                 padding: ctx.node_padding,
                 html_labels: ctx.node_html_labels,
+                center_label: ctx.layout.route_contract.is_canonical_axis(),
             }),
             FlowchartShape::Datastore => Self::Layout(LayoutNodeBody::Datastore),
             FlowchartShape::DividedRectangle => {
@@ -109,7 +110,10 @@ impl<'a> TerminalNodeBody<'a> {
                 }))
             }
             FlowchartShape::Hourglass => Self::Layout(LayoutNodeBody::Hourglass),
-            FlowchartShape::NotchedRectangle => Self::Layout(LayoutNodeBody::NotchedRectangle),
+            FlowchartShape::NotchedRectangle => Self::Layout(LayoutNodeBody::NotchedRectangle {
+                backed_hand_drawn: common.look_is_hand_drawn()
+                    && ctx.layout.route_contract.is_canonical_axis(),
+            }),
             FlowchartShape::Note => Self::Layout(LayoutNodeBody::Note {
                 fill: &ctx.compatibility.note_fill,
                 stroke: &ctx.compatibility.note_stroke,
@@ -277,6 +281,7 @@ pub(super) fn advance_rough_geometry(
             shape,
             body_geometry(common),
             crate::node_geometry::CROSSED_CIRCLE_RADIUS,
+            ctx.layout.route_contract.is_canonical_axis(),
         ),
         FlowchartShape::BowTieRectangle => OuterPathShape::BowTieRectangle
             .prepare(ctx, common, label)
