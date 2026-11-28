@@ -254,7 +254,7 @@ pub(super) fn axis_points_json(
 
 pub(super) fn line_hop_paths<'a>(
     edges: &'a [LayoutEdge],
-    curve: Curve,
+    curve: impl Fn(&LayoutEdge) -> Result<Option<Curve>>,
     setting: Option<&Value>,
     work: &OperationWorkMeter,
 ) -> Result<HashMap<&'a str, String>> {
@@ -263,13 +263,15 @@ pub(super) fn line_hop_paths<'a>(
     };
     work.charge_emit_work(edges.len())?;
     let mut inputs = buffer(edges.len())?;
-    inputs.extend(edges.iter().map(|edge| LineHopEdge {
-        id: &edge.id,
-        points: &edge.points,
-        curve: Some(curve.as_str()),
-        arrow_type_start: None,
-        arrow_type_end: None,
-    }));
+    for edge in edges {
+        inputs.push(LineHopEdge {
+            id: &edge.id,
+            points: &edge.points,
+            curve: curve(edge)?.map(Curve::as_str),
+            arrow_type_start: None,
+            arrow_type_end: None,
+        });
+    }
     let overrides = layered_route::line_hops(&inputs, style, work)?;
     let mut paths = HashMap::new();
     paths

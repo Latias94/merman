@@ -1,8 +1,11 @@
 //! Requirement layout, retained label preparation, styling, and SVG emission.
 
 use indexmap::{Equivalent, IndexMap, map::Entry};
-use merman_model::families::requirement::{
-    RequirementDiagramModel, RequirementElement, RequirementNode, RequirementRelationship,
+use merman_model::{
+    OperationPhase,
+    families::requirement::{
+        RequirementDiagramModel, RequirementElement, RequirementNode, RequirementRelationship,
+    },
 };
 use merman_render_core::Bounds;
 use merman_render_core::{
@@ -936,6 +939,8 @@ pub fn measure_requirement<'a>(
             20.0,
             20.0,
         );
+        // Replay terminals from the infallible text measurer before validating the next node.
+        work_meter.checkpoint(OperationPhase::Layout)?;
         let (width, height, mut label) = box_layout.into_node_plan();
         label.typography = typography;
         Ok::<_, Error>(MeasuredRequirementNode {

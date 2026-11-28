@@ -5,8 +5,6 @@ use base64::Engine as _;
 use merman_model::{OperationPhase, families::requirement::RequirementDiagramModel};
 #[cfg(feature = "layout-shoal")]
 use merman_render_core::LayoutEdge;
-#[cfg(feature = "layout-layered")]
-use merman_render_core::svg_edge_parity::layered_route;
 use merman_render_core::{
     Bounds, Error, LayoutPoint, Result,
     number_format::canonical_number as fmt,
@@ -29,6 +27,12 @@ use merman_render_core::{
     svg_output::{BoundedSvgOutput, SvgOutput, XmlTextOutput},
     text::{TextMeasurer, TextStyle, svg_label as label},
     xml::{escape_attr, escape_attr_display, escape_xml},
+};
+#[cfg(feature = "layout-layered")]
+use merman_render_core::{
+    graph_layout::mermaid_layered::EdgeRouting,
+    rough_svg::paths::roughjs_hand_drawn_stroke_path_for_svg_path,
+    svg_edge_parity::layered_route::{self, Curve},
 };
 use merman_theme_contract::v2::{EdgeStyle, MarkerStyle};
 use roughr::core::RoughRandomness;
@@ -294,10 +298,13 @@ pub fn render_requirement_diagram_svg_model(
                 Some(EdgeStyle::Orthogonal) => "step",
                 _ => "basis",
             };
-            Some((
-                layered_route::Curve::for_edge_routing(*routing, authored),
-                routes,
-            ))
+            // RequirementDB leaves the curve unset. Curved routing preserves that absence,
+            // so paint falls back to Flowchart config while line hops inspect the painted path.
+            let hint = (*routing != EdgeRouting::Curved || edge_style.is_some())
+                .then(|| Curve::for_edge_routing(*routing, authored));
+            let curve =
+                hint.unwrap_or_else(|| Curve::from_mermaid(requirement_config.flowchart_curve()));
+            Some((curve, hint, routes))
         }
         #[cfg(feature = "layout-dagre")]
         super::layered::Paint::DagreFallback => None,
@@ -306,6 +313,11 @@ pub fn render_requirement_diagram_svg_model(
     let uses_layered = layered.is_some();
     #[cfg(not(feature = "layout-layered"))]
     let uses_layered = false;
+    #[cfg(feature = "layout-layered")]
+    let layered_label_y_offset =
+        uses_layered.then(|| requirement_config.layered_edge_label_y_offset());
+    #[cfg(not(feature = "layout-layered"))]
+    let layered_label_y_offset: Option<f64> = None;
     #[cfg(feature = "layout-grid")]
     let grid_paint = prepared.grid.as_ref().map(|grid| {
         let mut settings = grid.settings;
@@ -332,6 +344,8 @@ pub fn render_requirement_diagram_svg_model(
     let uses_canonical_routes = false;
     let look = render_settings.look;
     let look = look.as_str();
+    let layered_hand_drawn =
+        uses_layered && look == "handDrawn" && edge_style != Some(EdgeStyle::Sketch);
     let look_attr = format!(r#" data-look="{}""#, escape_attr_display(look));
     let border_colors = &binding.border_colors;
     let color_indices = requirement_color_indices(model);
@@ -392,7 +406,7 @@ pub fn render_requirement_diagram_svg_model(
         };
         let compatibility_path = || -> Result<String> {
             #[cfg(feature = "layout-layered")]
-            if let Some((curve, routes)) = layered {
+            if let Some((curve, _, routes)) = layered {
                 // Both the painted requirementBox and the measured port rectangle have straight sides.
                 // Requirement's markers use the same contact point as the shaft.
                 let path = layered_route::path(
@@ -402,11 +416,21 @@ pub fn render_requirement_diagram_svg_model(
                     0.0,
                     options.work_meter,
                 )?;
-                return if edge_style == Some(EdgeStyle::Sketch) {
-                    sketch_path(&path)
-                } else {
-                    Ok(path)
-                };
+                if edge_style == Some(EdgeStyle::Sketch) {
+                    return sketch_path(&path);
+                }
+                if layered_hand_drawn {
+                    if let Some(drawn) = roughjs_hand_drawn_stroke_path_for_svg_path(
+                        &path,
+                        0.3,
+                        options.work_meter,
+                        hand_drawn_seed,
+                    ) {
+                        return Ok(drawn);
+                    }
+                    options.work_meter.checkpoint(OperationPhase::Emit)?;
+                }
+                return Ok(path);
             }
             #[cfg(feature = "layout-grid")]
             if let Some(settings) = grid_paint
@@ -448,7 +472,12 @@ pub fn render_requirement_diagram_svg_model(
                 x: label.x,
                 y: label.y,
             };
-            Some(if uses_canonical_routes || uses_grid || uses_layered {
+            Some(if let Some(offset) = layered_label_y_offset {
+                LayoutPoint {
+                    y: anchor.y + offset,
+                    ..anchor
+                }
+            } else if uses_canonical_routes || uses_grid {
                 anchor
             } else {
                 edge_label_geometry::position_edge_label(
@@ -525,12 +554,20 @@ pub fn render_requirement_diagram_svg_model(
         hop_paths
     };
     #[cfg(feature = "layout-layered")]
-    let hop_paths = if let Some((curve, _)) = layered
+    let hop_paths = if let Some((_, hint, _)) = layered
         && edge_style != Some(EdgeStyle::Sketch)
     {
         super::layered::line_hop_paths(
             &layout.edges,
-            curve,
+            |edge| {
+                if hint.is_some() {
+                    return Ok(hint);
+                }
+                let d = &painted_edges[&RequirementEdgeIdentity::from(edge)].d;
+                options.work_meter.charge_emit_work(d.len())?;
+                // Both axis and rough writers emit only M/L and these three curve commands.
+                Ok(d.contains(['A', 'C', 'Q']).then_some(Curve::Curved))
+            },
             effective_config.pointer("/layered/lineHops"),
             options.work_meter,
         )?
@@ -540,6 +577,11 @@ pub fn render_requirement_diagram_svg_model(
 
     // Mermaid derives the root viewport from the rendered SVG subtree. Reconstruct those bounds
     // from final paths and post-path label positions instead of stale Dagre label anchors.
+    let bounds_scan_phase = if uses_layered {
+        OperationPhase::Emit
+    } else {
+        OperationPhase::Layout
+    };
     let mut min_x = f64::INFINITY;
     let mut min_y = f64::INFINITY;
     let mut max_x = f64::NEG_INFINITY;
@@ -568,7 +610,9 @@ pub fn render_requirement_diagram_svg_model(
             .get(edge.id.as_str())
             .or_else(|| (uses_grid || uses_layered || native.is_some()).then_some(&painted.d))
         {
-            options.work_meter.charge(path.len())?;
+            options
+                .work_meter
+                .charge_work(path.len(), bounds_scan_phase)?;
             if let Some(bounds) = svg_path_bounds_from_d(path) {
                 let outset = native.map_or(0.0, |style| style.connector_width / 2.0);
                 min_x = min_x.min(bounds.min_x - outset);
@@ -776,7 +820,13 @@ pub fn render_requirement_diagram_svg_model(
         let rel_type = prepared_label.relationship_type.as_str();
         let is_contains = rel_type == "contains";
         let pattern = if is_contains { "solid" } else { "dashed" };
-        let class = format!("edge-thickness-normal edge-pattern-{pattern} relationshipLine");
+        let transition = if layered_hand_drawn {
+            " transition"
+        } else {
+            ""
+        };
+        let class =
+            format!("edge-thickness-normal edge-pattern-{pattern}{transition} relationshipLine");
         let style = match (uses_canonical_routes, is_contains) {
             (true, true) => "fill:none;",
             (true, false) => "fill:none;stroke-dasharray:10,7;",
@@ -815,7 +865,7 @@ pub fn render_requirement_diagram_svg_model(
             .map_or(e.points.as_slice(), |geometry| geometry.points.as_slice());
         let json = {
             #[cfg(feature = "layout-layered")]
-            if let Some((_, routes)) = layered {
+            if let Some((_, _, routes)) = layered {
                 super::layered::axis_points_json(e, &routes[edge_index], options.work_meter)?
             } else {
                 json_stringify_points(data_points)
