@@ -274,7 +274,10 @@ Reviewed residuals are recorded in `fixtures/_verification/root-viewport-residua
 The out-of-domain XYChart extrapolation binds both SVG SHA-256 values and a versioned fingerprint
 of the live Chromium decision facts: root dimensions, paint status, capture policy, indeterminate
 reasons, and maximum structural overflow depth on each edge. That decision fingerprint deliberately
-excludes raw screenshot pixels and browser patch identity.
+excludes raw screenshot pixels and browser patch identity. The Mermaid 12.4 reference moved the
+horizontal axis and bar coordinates. Chromium measured the same top overflow depths, 1,150 CSS px
+locally and 1,147 CSS px upstream. The local SVG hash and decision fingerprint still matched, so
+only the upstream SVG hash changed in the receipt.
 
 The Flowchart title 029 display-font residual additionally binds an exact paired audit fingerprint:
 both roots, geometry, painted and structural overflow, capture state, structural pixel hashes, and
