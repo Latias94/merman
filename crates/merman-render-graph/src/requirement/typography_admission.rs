@@ -1,12 +1,23 @@
 use super::{
-    OperationControl, OperationControlResult, OperationPhase, declaration_scan, retained_html,
+    RequirementConfigView, RequirementNodeTypography, element_node_label_sources,
+    requirement_node_label_sources, sanitize_label_with_sink,
 };
-use crate::requirement::{RequirementConfigView, RequirementNodeTypography};
 use merman_model::families::requirement::RequirementDiagramModel;
 use merman_model::presentation::PresentationConfig;
+use merman_model::{OperationControl, OperationControlResult, OperationPhase};
+use merman_render_core::{
+    html::{HtmlOutputError, HtmlSanitizeSink},
+    mermaid_style::{
+        native_typography::{declarations, unsupported_retained_html_style},
+        parse_style_declaration,
+    },
+    resources::{OperationWorkError, OperationWorkMeter, RenderResourcePolicy},
+    text::mermaid_markdown_to_xhtml_label_fragment,
+};
 use std::collections::HashSet;
 
-pub(super) fn unsupported_text_style(
+/// Checks the declarations and effective font sizes of retained Requirement nodes.
+pub fn unsupported_text_style(
     model: &RequirementDiagramModel,
     control: &OperationControl,
 ) -> OperationControlResult<Option<String>> {
@@ -38,12 +49,12 @@ pub(super) fn unsupported_text_style(
     {
         for raw in styles {
             control.checkpoint()?;
-            if merman_render_core::mermaid_style::parse_style_declaration(raw)
+            if parse_style_declaration(raw)
                 .is_some_and(|declaration| declaration.property() == "font-size")
             {
                 continue;
             }
-            if let Some(property) = declaration_scan::declarations([raw.as_str()], control)? {
+            if let Some(property) = declarations([raw.as_str()], control)? {
                 return Ok(Some(property));
             }
         }
@@ -60,7 +71,8 @@ pub(super) fn unsupported_text_style(
     Ok(None)
 }
 
-pub(super) fn unsupported_html_style(
+/// Checks the retained Requirement HTML labels before native typography measurement.
+pub fn unsupported_html_style(
     model: &RequirementDiagramModel,
     config: &PresentationConfig,
     control: &OperationControl,
@@ -82,7 +94,7 @@ pub(super) fn unsupported_html_style(
         if !retained_ids.insert(node.name.as_str()) {
             continue;
         }
-        for source in crate::requirement::requirement_node_label_sources(node) {
+        for source in requirement_node_label_sources(node) {
             if let Some(property) = label_style(&source, config, control)? {
                 return Ok(Some(property));
             }
@@ -93,7 +105,7 @@ pub(super) fn unsupported_html_style(
         if !retained_ids.insert(node.name.as_str()) {
             continue;
         }
-        for source in crate::requirement::element_node_label_sources(node) {
+        for source in element_node_label_sources(node) {
             if let Some(property) = label_style(&source, config, control)? {
                 return Ok(Some(property));
             }
@@ -111,28 +123,20 @@ fn label_style(
     if source.trim().is_empty() {
         return Ok(None);
     }
-    let work = crate::resources::OperationWorkMeter::new_with_control(
-        crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+    let work = OperationWorkMeter::new_with_control(
+        RenderResourcePolicy::unbounded_for_trusted_input(),
         control.clone(),
     );
     let parse_work = std::cell::Cell::new(0);
-    let sink = merman_render_core::html::HtmlSanitizeSink::new(
-        usize::MAX,
-        &work,
-        &parse_work,
-        OperationPhase::Semantic,
-    );
-    let sanitized =
-        match crate::requirement::sanitize_label_with_sink(source, config.as_config(), &sink) {
-            Ok(source) => source,
-            Err(merman_markup::sanitize::SanitizeFailure::Output(
-                merman_render_core::html::HtmlOutputError::Operation(
-                    crate::resources::OperationWorkError::Cancelled(error),
-                ),
-            )) => return Err(error),
-            Err(_) => return Ok(Some("Requirement HTML normalization".into())),
-        };
+    let sink = HtmlSanitizeSink::new(usize::MAX, &work, &parse_work, OperationPhase::Semantic);
+    let sanitized = match sanitize_label_with_sink(source, config.as_config(), &sink) {
+        Ok(source) => source,
+        Err(merman_markup::sanitize::SanitizeFailure::Output(HtmlOutputError::Operation(
+            OperationWorkError::Cancelled(error),
+        ))) => return Err(error),
+        Err(_) => return Ok(Some("Requirement HTML normalization".into())),
+    };
     control.checkpoint()?;
-    let html = crate::text::mermaid_markdown_to_xhtml_label_fragment(&sanitized, true);
-    retained_html::unsupported_style(&html, control)
+    let html = mermaid_markdown_to_xhtml_label_fragment(&sanitized, true);
+    unsupported_retained_html_style(&html, control)
 }

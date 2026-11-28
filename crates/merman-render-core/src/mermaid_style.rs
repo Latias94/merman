@@ -1,6 +1,9 @@
 //! Mermaid CSS/style helpers shared by layout and SVG parity code.
 
 mod html_text;
+#[cfg(feature = "native-typography")]
+#[doc(hidden)]
+pub mod native_typography;
 mod typography;
 pub use html_text::{
     HtmlTextGeometry, HtmlTextGeometryDeclarations, HtmlTextProperty, HtmlTextSpacing,

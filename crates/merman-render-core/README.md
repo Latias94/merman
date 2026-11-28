@@ -33,9 +33,11 @@ The facade selects the pipeline and seals the selected bytes.
 `svg-bounds` measures emitted SVG shape and path bounds for parity viewports.
 `svg-identity` rewrites Mermaid marker selectors for the native SVG CSS engine.
 `css-style` provides presentation lookups, Mermaid CSS value parsing, and the shared `TextMeasurer`
-trait and its value types. `text-layout` provides font stacks, deterministic measurement, and
-line breaking. With `resources`, it also provides host measurement routing and provenance for one
-operation. `theme-svg` writes resolved canvas paint, markers, and categorical patterns to SVG.
+trait and its value types. `native-typography` checks source CSS and, with `svg-parse`, retained
+XHTML for styles that native measurement cannot represent. `text-layout` provides font stacks,
+deterministic measurement, and line breaking. With `resources`, it also provides host measurement
+routing and provenance for one operation. `theme-svg` writes resolved canvas paint, markers, and
+categorical patterns to SVG.
 `xhtml-labels` provides XHTML label font measurement and plain-paragraph projection.
 `markdown-labels` adds Markdown source words, bounded HTML projection, and shared wrapping for
 HTML and SVG label terminals.

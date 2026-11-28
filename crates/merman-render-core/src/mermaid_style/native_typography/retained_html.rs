@@ -1,8 +1,13 @@
-use super::{OperationControl, OperationControlResult, declaration_scan};
+use super::UNSUPPORTED_NATIVE_TEXT_STYLES;
+use crate::mermaid_style::{
+    CssFontSizeContext, css_font_size_override, parse_style_declaration, root_dependent_font_size,
+    visit_style_declaration_boundaries_with_checkpoints,
+};
+use merman_model::{OperationControl, OperationControlResult};
 use quick_xml::{Reader, events::Event};
 
 /// Inspect retained XHTML. This does not grant permission to emit any CSS.
-pub(super) fn unsupported_style(
+pub fn unsupported_retained_html_style(
     html: &str,
     control: &OperationControl,
 ) -> OperationControlResult<Option<String>> {
@@ -31,7 +36,7 @@ pub(super) fn unsupported_style(
         let style = merman_model::text::decode_html_entities_to_unicode(style.value.as_ref());
         let mut unsupported = None;
         let mut font_size: Option<(bool, bool)> = None;
-        merman_render_core::mermaid_style::visit_style_declaration_boundaries_with_checkpoints(
+        visit_style_declaration_boundaries_with_checkpoints(
             &style,
             &mut || control.checkpoint(),
             |boundary| {
@@ -52,22 +57,18 @@ pub(super) fn unsupported_style(
                     unsupported = Some(property);
                     return Ok(false);
                 }
-                if let Some(size) = merman_render_core::mermaid_style::css_font_size_override(raw)
+                if let Some(size) = css_font_size_override(raw)
                     && font_size.is_none_or(|(important, _)| size.important() || !important)
                 {
-                    let measured = merman_render_core::mermaid_style::parse_style_declaration(raw).is_some_and(
-                        |declaration| {
-                            declaration.inherits_property_value()
-                                || declaration
-                                    .resolve_font_size_px(
-                                        merman_render_core::mermaid_style::CssFontSizeContext::uniform(16.0),
-                                    )
-                                    .is_some()
-                        },
-                    );
+                    let measured = parse_style_declaration(raw).is_some_and(|declaration| {
+                        declaration.inherits_property_value()
+                            || declaration
+                                .resolve_font_size_px(CssFontSizeContext::uniform(16.0))
+                                .is_some()
+                    });
                     font_size = Some((size.important(), measured));
                 }
-                if !declaration_scan::UNSUPPORTED_NATIVE_TEXT_STYLES.contains(&property.as_str()) {
+                if !UNSUPPORTED_NATIVE_TEXT_STYLES.contains(&property.as_str()) {
                     return Ok(true);
                 }
                 let Some(first) = declaration.next().ok().cloned() else {
@@ -88,9 +89,7 @@ pub(super) fn unsupported_style(
             return Ok(unsupported);
         }
         // Font longhands are measured, but rem still needs an independent document root.
-        if merman_render_core::mermaid_style::root_dependent_font_size([style.as_ref()], control)?
-            .is_some()
-        {
+        if root_dependent_font_size([style.as_ref()], control)?.is_some() {
             return Ok(Some(
                 "font-size (rem requires a document-root font size)".into(),
             ));
@@ -116,7 +115,7 @@ mod tests {
             "<span style='color:red' style='letter-spacing:20px'>AAAA</span>",
         ] {
             assert_eq!(
-                unsupported_style(html, &OperationControl::new())
+                unsupported_retained_html_style(html, &OperationControl::new())
                     .unwrap()
                     .as_deref(),
                 Some("HTML label normalization"),
@@ -133,7 +132,7 @@ mod tests {
         );
         let control = OperationControl::new().for_phase(OperationPhase::Semantic);
         control.cancel_after_checkpoints(8);
-        let error = unsupported_style(&html, &control).unwrap_err();
+        let error = unsupported_retained_html_style(&html, &control).unwrap_err();
         assert_eq!(error.phase, OperationPhase::Semantic);
         assert_eq!(error.reason, CancelReason::Requested);
     }

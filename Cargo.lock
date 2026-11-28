@@ -2723,7 +2723,6 @@ dependencies = [
  "merman-render-sequence",
  "merman-render-structured",
  "merman-theme-contract",
- "quick-xml",
  "regex",
  "roughr-merman",
  "roxmltree 0.21.2",

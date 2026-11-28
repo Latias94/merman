@@ -40,6 +40,7 @@ math = [
     "ratex-svg/embed-fonts",
 ]
 math-labels = ["html", "text-layout", "dep:sha2"]
+native-typography = ["css-style"]
 paint-scene = ["css-style", "svg-output"]
 prepared-math-svg = ["math-labels", "svg-validation"]
 resources = ["dep:merman-model", "dep:thiserror"]

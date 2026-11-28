@@ -1,8 +1,8 @@
 # merman-render-flow
 
 The `diagram-flowchart`, `diagram-swimlane`, and `diagram-agentflow` selectors enable the shared
-Flow renderer. It owns config and theme binding, shape and label geometry, source styles, and
-complete Mermaid SVG emission. Flowchart can also emit the NativeCompact profile with
+Flow renderer. It owns config and theme binding, shape and label geometry, source styles,
+native typography admission, and complete Mermaid SVG emission. Flowchart can also emit the NativeCompact profile with
 `native-compact` and either `layout-dagre` or `layout-elk`. The ELK path accepts two-point sections
 with `elk.lineHops: false` in the classic ungrouped pilot with plain single-line rectangle labels
 and unlabeled edges. Edge geometry queries use the same prepared routes and label positions as SVG.

@@ -1,14 +1,26 @@
-use super::declaration_scan::{UNSUPPORTED_NATIVE_TEXT_STYLES, root_dependent_size, style_lists};
-use crate::flowchart::{
-    FlowchartConfigView, FlowchartLabelDom, FlowchartModel, FlowchartRenderContext, FlowchartShape,
-    flowchart_effective_node_class_names, flowchart_insert_style_by_spelling,
-    flowchart_label_is_empty_for_render, flowchart_split_mermaid_style_decls,
+use super::flowchart_label_xhtml_for_typography_admission;
+use crate::{
+    class_style::FlowchartLabelDom,
+    layout_config::FlowchartConfigView,
+    shapes::FlowchartShape,
+    style::{
+        flowchart_effective_node_class_names, flowchart_insert_style_by_spelling,
+        flowchart_split_mermaid_style_decls,
+    },
 };
 use indexmap::IndexMap;
+use merman_model::families::flowchart::{FlowchartModel, FlowchartRenderContext};
 use merman_model::presentation::PresentationConfig;
 use merman_model::{OperationControl, OperationControlResult};
 use merman_render_core::mermaid_style::{
     HtmlTextGeometryDeclarations, HtmlTextProperty, parse_style_declaration,
+};
+use merman_render_core::{
+    config::mermaid_config_diagram_look,
+    math::contains_delimited_math,
+    mermaid_style::native_typography::{
+        UNSUPPORTED_NATIVE_TEXT_STYLES, root_dependent_size, style_lists,
+    },
 };
 use quick_xml::{Reader, XmlVersion, events::Event};
 use rustc_hash::FxHashMap;
@@ -71,7 +83,7 @@ where
         .copied()
 }
 
-pub(super) fn unsupported_source_style(
+pub fn unsupported_source_style(
     model: &FlowchartModel,
     context: &FlowchartRenderContext,
     config: &PresentationConfig,
@@ -80,7 +92,7 @@ pub(super) fn unsupported_source_style(
     let view = FlowchartConfigView::new(config);
     let node_html = view.node_html_labels();
     let edge_html = view.effective_html_labels();
-    let hand_drawn = crate::config::mermaid_config_diagram_look(config).is_hand_drawn();
+    let hand_drawn = mermaid_config_diagram_look(config).is_hand_drawn();
     let mut catalog = ClassDeclarations::default();
     for (class, styles) in &model.class_defs {
         control.checkpoint()?;
@@ -171,7 +183,7 @@ pub(super) fn unsupported_source_style(
         }
         let Some(label) = context
             .edge_label_for_render(ordinal, edge)
-            .filter(|label| !flowchart_label_is_empty_for_render(label))
+            .filter(|label| !label.is_empty())
         else {
             continue;
         };
@@ -276,9 +288,7 @@ fn unsupported_html_classes(
     }) else {
         return Ok(None);
     };
-    let xhtml = crate::text::flowchart_label_xhtml_for_typography_admission(
-        label, label_type, config, control,
-    )?;
+    let xhtml = flowchart_label_xhtml_for_typography_admission(label, label_type, config, control)?;
     let mut reader = Reader::from_str(&xhtml);
     loop {
         control.checkpoint()?;
@@ -307,12 +317,10 @@ fn plain_html_label(
     config: &PresentationConfig,
     control: &OperationControl,
 ) -> OperationControlResult<bool> {
-    if crate::math::contains_delimited_math(label) {
+    if contains_delimited_math(label) {
         return Ok(false);
     }
-    let xhtml = crate::text::flowchart_label_xhtml_for_typography_admission(
-        label, label_type, config, control,
-    )?;
+    let xhtml = flowchart_label_xhtml_for_typography_admission(label, label_type, config, control)?;
     let mut reader = Reader::from_str(&xhtml);
     loop {
         control.checkpoint()?;

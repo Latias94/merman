@@ -42,6 +42,7 @@ diagram-er = [
     "dep:merman-render-core", "dep:merman-theme-contract", "dep:roxmltree", "dep:roughr",
     "dep:rustc-hash", "dep:ryu-js", "dep:serde_json", "merman-markup/html", "merman-model/diagram-er",
     "merman-render-core/css-style", "merman-render-core/graph-layout", "merman-render-core/markdown-labels",
+    "merman-render-core/native-typography",
     "merman-render-core/root-svg", "merman-render-core/rough-svg", "merman-render-core/svg-edge-parity",
     "merman-render-core/theme-svg",
 ]
@@ -54,13 +55,13 @@ diagram-mindmap = [
     "dep:base64", "dep:merman-markup", "dep:merman-model", "dep:merman-render-core",
     "dep:merman-theme-contract", "dep:rustc-hash", "dep:serde", "dep:serde_json", "merman-markup/html",
     "merman-model/diagram-mindmap", "merman-render-core/markdown-labels", "merman-render-core/math-labels",
-    "merman-render-core/root-svg", "merman-render-core/svg-edge-parity",
+    "merman-render-core/native-typography", "merman-render-core/root-svg", "merman-render-core/svg-edge-parity",
 ]
 diagram-requirement = [
     "dep:base64", "dep:cssparser", "dep:indexmap", "dep:merman-markup", "dep:merman-model", "dep:merman-render-core",
     "dep:merman-theme-contract", "dep:roughr", "dep:serde", "dep:serde_json", "merman-markup/html",
     "merman-model/diagram-requirement", "merman-render-core/graph-layout",
-    "merman-render-core/markdown-labels", "merman-render-core/root-svg",
+    "merman-render-core/markdown-labels", "merman-render-core/native-typography", "merman-render-core/root-svg",
     "merman-render-core/rough-svg", "merman-render-core/svg-edge-parity",
     "merman-render-core/theme-svg",
 ]
