@@ -2,7 +2,7 @@ use super::{ErLayoutSettings, ErPreparedLabels, ErPreparedLayout, ErSubgraph, er
 use crate::graph_layout::canonical::{CanonicalRoutes, CaptionClearance, theme_routing_style};
 use crate::graph_layout::contour::{ShapePortProfile, shoal_contour};
 use crate::graph_layout::ir::{
-    Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, Rect,
+    Direction, Endpoint, Marker, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, Rect,
     RoutingStyle, Side, Size, SolvedGraph, TitlePosition, direction_from_rank,
 };
 use crate::graph_layout::placement;
@@ -14,10 +14,14 @@ use crate::text::TextMeasurer;
 use crate::{Error, Result};
 use kurbo::Insets;
 use merman_model::families::er::ErDiagramModel;
+use merman_theme_contract::v2::EdgeStyle;
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
+mod routes;
+
 const GROUP_PADDING: f64 = 8.0;
+const ROUGH_MARKER_CLEARANCE: f64 = 4.0;
 
 struct MeasuredEr<'a> {
     graph: MeasuredGraph,
@@ -37,19 +41,34 @@ pub(super) fn layout(
     work: &mut OperationLayoutWorkControl,
 ) -> Result<ErPreparedLayout> {
     let native = execution.and_then(crate::LayoutExecution::native_family_theme);
-    let routing = theme_routing_style(native.map(|theme| theme.form.edge_style));
+    let edge_style = native.map(|theme| theme.form.edge_style);
+    // Straight and Sketch share a polyline layout. Both reserve the marker room needed by
+    // Sketch so changing only the shaft paint keeps the same terminals and label seats.
+    let sketch_room = matches!(edge_style, Some(EdgeStyle::Straight | EdgeStyle::Sketch))
+        || execution
+            .and_then(|execution| execution.presentation_config)
+            .is_some_and(|config| crate::config::config_diagram_look(config).is_hand_drawn());
+    let marker = |card: &str, start| {
+        let mut marker = crate::svg::er_canonical_marker(card, start, neo);
+        if sketch_room && marker.width > 0.0 {
+            // Leave room for the sketch strokes without changing the longitudinal marker tip.
+            marker.width += ROUGH_MARKER_CLEARANCE;
+        }
+        marker
+    };
     let mut input = measure(
         model,
         measurer,
         settings,
         &prepared_labels,
-        neo,
-        routing,
+        marker,
+        theme_routing_style(edge_style),
         work,
     )?;
     let group_order = parent_first_groups(&input, work)?;
     let radius = native.map_or(0.0, |theme| theme.form.radius);
     let directions = node_directions(&input.graph, &group_order, work)?;
+    routes::reserve_caption_space(&mut input.graph, &directions, work)?;
     work.charge_adapter(input.graph.nodes.len())?;
     let mut face_demands = vec![[MarkerDemand::default(); 4]; input.graph.nodes.len()];
     reserve_marker_faces(
@@ -60,7 +79,7 @@ pub(super) fn layout(
         radius,
         work,
     )?;
-    let (solved, placement) = loop {
+    let (mut solved, placement) = loop {
         let (solved, placement) = placement::solve(
             &input.graph,
             input.entity_ids.iter().copied(),
@@ -82,6 +101,31 @@ pub(super) fn layout(
             break (solved, placement);
         }
     };
+    let shaft_width = native.map_or_else(
+        || {
+            execution
+                .filter(|_| neo)
+                .and_then(|execution| execution.presentation_config)
+                .and_then(|config| {
+                    merman_render_core::config::config_f64_css_px(
+                        config,
+                        &["themeVariables", "strokeWidth"],
+                    )
+                })
+                .filter(|width| width.is_finite())
+                .unwrap_or(1.0)
+                .max(0.0)
+        },
+        |theme| theme.form.connector_width,
+    );
+    let shaft_outset = shaft_width / 2.0 + if sketch_room { 0.75 } else { 0.0 };
+    routes::finish(
+        &input.graph,
+        &mut solved,
+        &prepared_labels,
+        shaft_outset,
+        work,
+    )?;
     let mut canonical_routes = CanonicalRoutes::from_solved(
         &input.graph,
         &solved,
@@ -112,7 +156,7 @@ fn measure<'a>(
     measurer: &dyn TextMeasurer,
     settings: &ErLayoutSettings,
     prepared_labels: &ErPreparedLabels,
-    neo: bool,
+    marker: impl Fn(&str, bool) -> Marker,
     routing: RoutingStyle,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<MeasuredEr<'a>> {
@@ -263,8 +307,8 @@ fn measure<'a>(
             label: (width > 0.0 && height > 0.0).then_some(Size { width, height }),
             start_label: None,
             end_label: None,
-            start_marker: crate::svg::er_canonical_marker(&relationship.rel_spec.card_b, true, neo),
-            end_marker: crate::svg::er_canonical_marker(&relationship.rel_spec.card_a, false, neo),
+            start_marker: marker(&relationship.rel_spec.card_b, true),
+            end_marker: marker(&relationship.rel_spec.card_a, false),
         });
         edge_ids.push(format!("er-rel-{index}"));
     }
