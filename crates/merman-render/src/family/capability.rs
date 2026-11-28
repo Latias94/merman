@@ -328,9 +328,7 @@ fn supported_layout_adaptations(
     family: DiagramFamilyId,
     shoal: bool,
 ) -> &'static [LayoutAdaptation] {
-    if family == DiagramFamilyId::KANBAN
-        || (shoal && !matches!(family, DiagramFamilyId::BLOCK | DiagramFamilyId::SWIMLANE))
-    {
+    if family == DiagramFamilyId::KANBAN || (shoal && family != DiagramFamilyId::BLOCK) {
         &[LayoutAdaptation::None, LayoutAdaptation::FitWidth]
     } else {
         &[LayoutAdaptation::None]

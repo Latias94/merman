@@ -1197,11 +1197,13 @@ fn draw_body<E>(
     Ok(())
 }
 
+#[derive(Clone, Copy)]
 struct Terminal {
     tip: Point,
     normal: Vec2,
     marker: Marker,
     smooth: bool,
+    lead_limit: f64,
 }
 
 impl Marker {
@@ -1229,6 +1231,7 @@ impl Terminal {
             normal: outward(side),
             marker,
             smooth,
+            lead_limit: f64::INFINITY,
         }
     }
 
@@ -1241,7 +1244,7 @@ impl Terminal {
     }
 
     fn lead(&self) -> f64 {
-        self.marker.lead(self.smooth)
+        self.marker.lead(self.smooth).min(self.lead_limit)
     }
 
     fn covers(&self, knot: RoutePoint) -> bool {
@@ -1656,30 +1659,42 @@ fn draw_section<E>(
     }
 
     let last = route.len() - 1;
+    let mut start = terminals.0.copied();
+    let mut end = terminals.1.copied();
     if last == 1
-        && let (Some(start), Some(end)) = terminals
+        && let (Some(start), Some(end)) = (&mut start, &mut end)
         && start.normal == -end.normal
     {
         let gap = (end.shaft_end() - start.shaft_end()).dot(start.normal);
         // The two marker footprints consume the same runway. A reversed shaft would put both
         // SVG markers on the wrong side of their reference points.
-        if gap < 0.0 {
+        let on_axis = (end.tip - start.tip).cross(start.normal).abs() <= ALIGN_EPS;
+        if gap < 0.0 || gap == 0.0 && on_axis {
             return Err(RoutePaintError::InvalidGeometry.into());
         }
-        if aligned(start.tip, end.tip)
+        if on_axis
             && (end.tip - start.tip).dot(start.normal) > 0.0
             && (!(style.stepped() || style == RouteStyle::Linear)
                 || clearance.is_none_or(|guard| !guard.blocks_line(pen.at, end.shaft_end())))
         {
             // Opposed markers can share this one straight segment up to its full length.
-            if gap < start.lead().max(end.lead()) {
+            if gap < start.marker.depth.max(end.marker.depth) {
                 return Err(RoutePaintError::InvalidGeometry.into());
             }
             pen.start_path(2, RouteStyle::Linear)?;
             return pen.line(end.shaft_end());
         }
+        if start.lead() + end.lead() >= gap {
+            let free_run = gap - start.marker.depth - end.marker.depth;
+            if free_run < 0.0 {
+                return Err(RoutePaintError::InvalidGeometry.into());
+            }
+            start.lead_limit = start.marker.depth + free_run / 4.0;
+            end.lead_limit = end.marker.depth + free_run / 4.0;
+        }
     }
 
+    let terminals = (start.as_ref(), end.as_ref());
     prepare_body(route, body, terminals);
     // With different endpoint sides, inserting a normal shaft can create an offset leg even
     // on a previously orthogonal route. Step renderers must still emit only axis-aligned legs.
@@ -3139,6 +3154,62 @@ mod tests {
         assert!(paint(&[h(0.0, 0.0), h(5.0, 0.0)]).is_err());
         assert!(paint(&[h(0.0, 0.0), h(19.0, 0.0)]).is_err());
         assert!(paint(&[h(-f64::MAX, 2.0), h(f64::MAX, 1.0)]).is_err());
+    }
+
+    #[test]
+    fn short_opposing_marker_leads_keep_the_sweep_forward() {
+        let markers = (marker(2.0, 3.0), marker(2.0, 3.0));
+        for (points, sides, across) in [
+            ([h(0.0, 0.0), h(12.0, 0.0)], (Side::Right, Side::Left), 0.0),
+            ([h(0.0, 0.0), h(12.0, 9.0)], (Side::Right, Side::Left), 9.0),
+            ([h(12.0, 0.0), h(0.0, 9.0)], (Side::Left, Side::Right), 9.0),
+        ] {
+            let route = build_svg_path(
+                &points,
+                sides,
+                RouteStyle::Curved,
+                markers,
+                CurveTerminals::Smooth,
+                &[],
+                None,
+            )
+            .unwrap();
+            let path = BezPath::from_svg(&route.d).unwrap();
+            let forward = if sides.0 == Side::Right { 1.0 } else { -1.0 };
+            let first = path.segments().next().unwrap();
+            let last = path.segments().last().unwrap();
+            assert!((first.end().x - first.start().x) * forward >= markers.0.depth);
+            assert!((last.end().x - last.start().x) * forward >= markers.1.depth);
+            assert_eq!(path.segments().last().unwrap().end().y, across);
+            assert!(
+                path.segments().all(|segment| {
+                    (segment.end().x - segment.start().x) * forward > 0.0
+                        && (0..10).all(|step| {
+                            let at = f64::from(step) / 10.0;
+                            (segment.eval(at + 0.1).x - segment.eval(at).x) * forward > 0.0
+                        })
+                }),
+                "{}",
+                route.d
+            );
+            assert!((route.bounds.min_x - 2.0).abs() < 1e-9);
+            assert!((route.bounds.max_x - 10.0).abs() < 1e-9);
+        }
+    }
+
+    #[test]
+    fn opposing_unmarked_ports_can_share_a_perpendicular_span() {
+        let route = build_svg_path(
+            &[h(5.0, 0.0), h(5.0, 32.0)],
+            (Side::Right, Side::Left),
+            RouteStyle::Curved,
+            (Marker::default(), Marker::default()),
+            CurveTerminals::Smooth,
+            &[],
+            None,
+        )
+        .unwrap();
+        assert_eq!(route.d, "M5,0L5,32");
     }
 
     #[test]

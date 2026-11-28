@@ -16,13 +16,30 @@ const FLOWCHART_STADIUM_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
 const FLOWCHART_STADIUM_HAND_DRAWN_FILL_WEIGHT: f32 = 1.5;
 const FLOWCHART_STADIUM_HAND_DRAWN_HACHURE_GAP: f32 = 1.5;
 
+fn silhouette(geometry: &NodeBodyGeometry<'_>, stadium: &StadiumGeometry) -> String {
+    #[cfg(feature = "layout-shoal")]
+    if geometry.compact_rough && geometry.hand_drawn {
+        let radius = stadium.height / 2.0;
+        let cap = (stadium.width / 2.0 - radius).max(0.0);
+        return format!(
+            "M{left} {top}H{right}A{r} {r} 0 0 1 {right} {r}H{left}A{r} {r} 0 0 1 {left} {top}Z",
+            left = fmt(-cap),
+            right = fmt(cap),
+            top = fmt(-radius),
+            r = fmt(radius),
+        );
+    }
+    let _ = geometry;
+    path_from_points(&stadium.outline())
+}
+
 pub fn write_stadium(
     out: &mut impl SvgOutput,
     mut body: NodeBodySvg<'_>,
     stadium: StadiumGeometry,
 ) {
     // Mermaid samples this outline from the measured label. Layout retains the theoretical size.
-    let path_data = path_from_points(&stadium.outline());
+    let path_data = silhouette(&body.geometry, &stadium);
     let w = stadium.width;
     let h = stadium.height;
     let radius = h / 2.0;
@@ -98,7 +115,7 @@ pub fn write_stadium(
 }
 
 pub fn advance_stadium_rough_geometry(geometry: NodeBodyGeometry<'_>, stadium: StadiumGeometry) {
-    let path_data = path_from_points(&stadium.outline());
+    let path_data = silhouette(&geometry, &stadium);
     let target = RoughGeometryTarget::Query;
     if geometry.hand_drawn {
         let _ = prepare_hachure_svg_path(

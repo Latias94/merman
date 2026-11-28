@@ -2664,6 +2664,140 @@ flowchart TB
     );
 }
 
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_hand_drawn_link_markers_follow_the_authored_stroke() {
+    let svg = render_flowchart_svg_from_text(
+        r##"---
+config:
+  layout: shoal
+  look: handDrawn
+---
+flowchart LR
+    A <--> B
+    linkStyle 0 stroke:#f59e0b,stroke-width:5px
+"##,
+    );
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let shaft = document
+        .descendants()
+        .find(|node| node.attribute("data-id") == Some("L_A_B_0") && node.has_tag_name("path"))
+        .unwrap();
+    for attribute in ["marker-start", "marker-end"] {
+        let id = shaft
+            .attribute(attribute)
+            .and_then(|value| value.strip_prefix("url(#"))
+            .and_then(|value| value.strip_suffix(')'))
+            .unwrap();
+        let marker = document
+            .descendants()
+            .find(|node| node.attribute("id") == Some(id))
+            .unwrap()
+            .first_element_child()
+            .unwrap();
+        for property in ["stroke", "fill"] {
+            assert!(
+                marker
+                    .attribute(property)
+                    .is_some_and(|ink| ink.eq_ignore_ascii_case("#f59e0b")),
+                "{attribute} {property}"
+            );
+        }
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_identical_node_shadows_share_one_local_filter() {
+    use std::fmt::Write as _;
+
+    let mut source =
+        String::from("---\nconfig:\n  layout: shoal\n  htmlLabels: false\n---\nflowchart TB\n");
+    for index in 0..60 {
+        writeln!(source, "N{index}[Same size]").unwrap();
+    }
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let theme = flowchart_native_theme(serde_json::json!({"form":{"elevation":"soft"}}));
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(RenderResourcePolicy::constrained())
+        .begin_session_with_native_theme(theme)
+        .unwrap();
+    let artifact =
+        family::prepare(parsed.presentation(), &LayoutOptions::default(), session).unwrap();
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap()
+        .finalize_resvg(&merman_render::svg::SvgPipeline::resvg_safe())
+        .unwrap();
+    let doc = roxmltree::Document::parse(rendered.svg().as_str()).unwrap();
+    let mut references = std::collections::BTreeSet::new();
+    let mut shadow_count = 0;
+    for path in doc.descendants().filter(|node| node.has_tag_name("path")) {
+        let Some(filter) = path
+            .attribute("filter")
+            .filter(|value| value.contains("-merman-depth-"))
+        else {
+            continue;
+        };
+        shadow_count += 1;
+        references.insert(filter);
+    }
+    assert_eq!(shadow_count, 60);
+    assert_eq!(references.len(), 1);
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_stadium_ports_reserve_room_for_dense_opposing_fans() {
+    use std::fmt::Write as _;
+
+    let mut source = String::from(
+        "---\nconfig:\n  layout: shoal\n  htmlLabels: false\n---\n\
+         flowchart LR\nHub([Central Dispatcher])\nSink([Aggregator Sink])\n",
+    );
+    for index in 0..16 {
+        writeln!(
+            source,
+            "Hub --> W{index}[Worker {index}]\nW{index} --> Sink"
+        )
+        .unwrap();
+    }
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let layout = layout_flowchart_render_model(
+        parsed.into_presentation(),
+        &LayoutOptions::default(),
+        RenderEnvironment::deterministic().begin_session().unwrap(),
+    )
+    .unwrap();
+    for (hub, source) in [("Hub", true), ("Sink", false)] {
+        let mut contacts = layout
+            .edges
+            .iter()
+            .filter_map(|edge| {
+                if source && edge.from == hub {
+                    edge.points.first().map(|point| point.y)
+                } else if !source && edge.to == hub {
+                    edge.points.last().map(|point| point.y)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        contacts.sort_by(f64::total_cmp);
+        assert_eq!(contacts.len(), 16);
+        assert!(
+            contacts.windows(2).all(|pair| pair[1] - pair[0] >= 7.99),
+            "{contacts:?}"
+        );
+    }
+}
+
 #[test]
 fn flowchart_colored_marker_whitespace_follows_security_level() {
     fn marker_path_colors(svg: &str) -> (String, String) {

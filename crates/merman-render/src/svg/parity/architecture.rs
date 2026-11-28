@@ -92,6 +92,10 @@ mod canonical {
             Some((&title.text.lines, anchor))
         }
 
+        fn junction_diameter(&self, ordinal: usize) -> Option<f64> {
+            self.junction_diameters.get(ordinal).copied()
+        }
+
         fn group_title(&self, ordinal: usize) -> Option<ArchitecturePlacedText<'_>> {
             let title = self.groups[ordinal].title.as_ref()?;
             Some(ArchitecturePlacedText {

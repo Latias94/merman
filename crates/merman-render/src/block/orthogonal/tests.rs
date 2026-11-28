@@ -222,7 +222,11 @@ fn restoring_failed_routes_evicts_conflicts_without_stale_markers() {
         [Some(blocker(&next, 1)), None],
         [None; 2],
         [Some(blocker(&last, 3)), None],
-    ];
+    ]
+    .map(|markers| fallback::GridEdge {
+        markers,
+        ..Default::default()
+    });
     let mut solved = vec![None, Some(middle), Some(next), Some(last)];
     let mut work = OperationLayoutWorkControl::new(Arc::clone(&meter));
     fallback::restore(&mut solved, &grid, 2.0, &mut work).unwrap();

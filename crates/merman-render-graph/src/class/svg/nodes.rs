@@ -816,6 +816,7 @@ fn render_class_node_id<O: SvgOutput>(
             fill_opacity: binding.fill_opacity.as_deref(),
             rough_outline_style: &binding.rough_outline_style,
             rough_backing: ctx.rough_backing,
+            compact_rough: ctx.uses_canonical_routes,
             look: settings.look.as_str(),
             radius: native.map(|style| style.radius),
             hand_drawn_seed: ctx.hand_drawn_seed.clone(),

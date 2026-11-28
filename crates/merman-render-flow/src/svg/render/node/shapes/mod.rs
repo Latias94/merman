@@ -244,6 +244,12 @@ fn stadium_geometry(
     common: &FlowchartNodeGeometry<'_>,
     label: &FlowchartNodeLabelState<'_>,
 ) -> crate::node_geometry::StadiumGeometry {
+    if ctx.layout.route_contract.is_canonical_axis() {
+        return crate::node_geometry::StadiumGeometry {
+            width: common.layout_node.width,
+            height: common.layout_node.height,
+        };
+    }
     // The source sizes the path from its rendered label bbox, including fractional HTML fonts.
     let metrics = shape_label_metrics(ctx, common, label, Some(common.layout_node));
     crate::node_geometry::StadiumGeometry::from_label(

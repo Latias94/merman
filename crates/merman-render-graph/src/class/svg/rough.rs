@@ -110,7 +110,26 @@ pub(super) fn class_rough_hachure_rect_paths(
     stroke_dasharray: &str,
     work_meter: &merman_render_core::resources::OperationWorkMeter,
     randomness: &roughr::core::RoughRandomness,
+    compact: bool,
 ) -> Option<(String, String)> {
+    #[cfg(feature = "layout-shoal")]
+    if compact {
+        use merman_render_core::rough_svg::paths::{
+            RoughGeometryTarget, RoughHachure, prepare_hachure_rect,
+        };
+        return prepare_hachure_rect(
+            RoughGeometryTarget::Svg,
+            [left, top, width, height],
+            stroke_width,
+            stroke_dasharray,
+            RoughHachure::backed(1.5, 2.8, 0.7),
+            work_meter,
+            randomness,
+        )?
+        .into_compact_svg_paths(work_meter);
+    }
+    #[cfg(not(feature = "layout-shoal"))]
+    let _ = compact;
     let fill =
         parse_hex_color_to_srgba(fill).unwrap_or_else(|| roughr::Srgba::new(0.0, 0.0, 0.0, 1.0));
     let stroke =
@@ -389,6 +408,7 @@ mod control_tests {
                         "0 0",
                         &meter,
                         &randomness,
+                        false,
                     )
                     .map(|_| ()),
                     1 => {

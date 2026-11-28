@@ -234,6 +234,7 @@ struct LabelContext<'a> {
     styles: &'a indexmap::IndexMap<String, String>,
     root_font_size: f64,
     layered: bool,
+    authored_html: bool,
 }
 
 fn measure_plain_label(
@@ -308,30 +309,31 @@ fn label(
         terminal_style =
             svg_markdown_word_style(&terminal_style, MermaidMarkdownWordType::Normal).into_owned();
     }
-    let source = create_text_source(text, label_type);
+    let source = label_source(text, label_type, context.authored_html);
     let source = source.as_ref();
     let math_renderer = context
         .math_renderer
         .filter(|_| merman_render_core::math::contains_delimited_math(source));
     let html_content = if html {
-        Some(
-            merman_render_core::math::render_math_html_label(source, context.config, math_renderer)
-                .unwrap_or_else(|| match label_type {
-                    UsecaseLabelType::Text => {
-                        format!("<p>{}</p>", source.replace('\n', "<br/>"))
-                    }
-                    UsecaseLabelType::Markdown => {
-                        merman_render_core::text::mermaid_markdown_to_xhtml_label_fragment(
-                            text,
-                            merman_render_core::config::config_bool(
-                                context.config.as_value(),
-                                &["markdownAutoWrap"],
-                            )
-                            .unwrap_or(true),
-                        )
-                    }
-                }),
-        )
+        let math =
+            merman_render_core::math::render_math_html_label(source, context.config, math_renderer);
+        Some(match (math, label_type) {
+            (Some(content), _) => content,
+            (None, UsecaseLabelType::Text) if context.authored_html => {
+                html_text_label_fragment(source, &mut |units| work.charge_adapter(units))?
+            }
+            (None, UsecaseLabelType::Text) => format!("<p>{}</p>", source.replace('\n', "<br/>")),
+            (None, UsecaseLabelType::Markdown) => {
+                merman_render_core::text::mermaid_markdown_to_xhtml_label_fragment(
+                    text,
+                    merman_render_core::config::config_bool(
+                        context.config.as_value(),
+                        &["markdownAutoWrap"],
+                    )
+                    .unwrap_or(true),
+                )
+            }
+        })
     } else {
         None
     };
@@ -645,6 +647,7 @@ pub(super) fn prepare_layered_boundary_labels(
                 styles: &css,
                 root_font_size,
                 layered: true,
+                authored_html: false,
             },
             work,
         )?;
@@ -677,6 +680,7 @@ fn measure_pass(
         .unwrap_or(true);
     let canonical = cfg!(feature = "layout-shoal")
         && config.get("layout").and_then(Value::as_str) == Some("shoal");
+    let authored_html = shoal_html_labels(full_config);
     let canonical_font = (canonical && !html).then(|| {
         let mut font = css_binding.root_font.clone();
         if css_binding.native_title_font.is_none() {
@@ -733,6 +737,7 @@ fn measure_pass(
                 styles: &css,
                 root_font_size,
                 layered,
+                authored_html,
             };
             // Sanitize before escaping or folding stereotypes, as UsecaseDB does.
             let source_label = source_text(&node.label, node.label_type);
@@ -748,17 +753,28 @@ fn measure_pass(
             let folded_text = source_stereotype
                 .as_ref()
                 .filter(|_| folded_stereotype)
-                .map(|stereotype| {
+                .map(|stereotype| -> Result<_> {
+                    if authored_html && node.label_type == UsecaseLabelType::Text {
+                        return Ok(format!("«{stereotype}»<br/>{source_label}"));
+                    }
                     let body = if node.label_type == UsecaseLabelType::Text {
                         escaped_markdown(&source_label)
                     } else {
                         source_label.clone()
                     };
-                    format!("«{}»<br/>{body}", escaped_markdown(stereotype))
-                });
+                    let stereotype = if authored_html {
+                        escaped_markdown(&accessible_html_text(stereotype, |units| {
+                            work.charge_adapter(units)
+                        })?)
+                    } else {
+                        escaped_markdown(stereotype)
+                    };
+                    Ok(format!("«{stereotype}»<br/>{body}"))
+                })
+                .transpose()?;
             let main = label(
                 folded_text.as_deref().unwrap_or(&source_label),
-                if folded_stereotype {
+                if folded_stereotype && !authored_html {
                     UsecaseLabelType::Markdown
                 } else {
                     node.label_type
@@ -860,6 +876,7 @@ fn measure_pass(
             styles: &css,
             root_font_size,
             layered,
+            authored_html,
         };
         let main = label(
             &source_text(&note.label, note.label_type),
@@ -900,6 +917,7 @@ fn measure_pass(
             styles: &css,
             root_font_size,
             layered,
+            authored_html: false,
         };
         let main = label(
             &sanitize(&node.id),
@@ -988,6 +1006,7 @@ fn measure_pass(
             styles: &css,
             root_font_size,
             layered,
+            authored_html,
         };
         let title_width = if !layered {
             Some(200.0)
@@ -1064,6 +1083,7 @@ fn measure_pass(
             styles: &css,
             root_font_size,
             layered,
+            authored_html,
         };
         let (text, kind, start, end, dotted) = match edge.relationship_type {
             UsecaseRelationshipType::Include => (

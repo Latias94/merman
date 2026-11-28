@@ -321,6 +321,45 @@ fn architecture_shoal_separates_perpendicular_junction_markers() {
 }
 
 #[test]
+fn architecture_shoal_separates_large_markers_on_the_same_junction_face() {
+    let (_, svg) = render_configured(
+        "---\nconfig:\n  layout: shoal\n  architecture:\n    iconSize: 240\n---\n\
+         architecture-beta\n\
+         service first[First]\n\
+         service second[Second]\n\
+         junction join\n\
+         first:R -[Events]-> L:join\n\
+         second:R -[Retries]-> L:join\n",
+        None,
+    );
+    let doc = Document::parse(&svg).unwrap();
+    let junction = element(&doc, "node", "join");
+    let radius = number(junction_body(junction), "rx");
+    let center = transform(junction) * Point::new(radius, radius);
+    let [first, second] = ["edge-0", "edge-1"].map(|id| {
+        let path = element(&doc, "edge", id);
+        let arrow = path.next_sibling_element().unwrap();
+        assert!(arrow.has_tag_name("polygon"));
+        let tip = *contacts(path).last().unwrap();
+        assert!(tip.x < center.x && (tip.distance(center) - radius).abs() < GEOMETRY_EPSILON);
+        check_arrow(arrow, tip, shaft(path).last().unwrap().end());
+
+        let transform = transform(arrow);
+        let [top, bottom] = svgtypes::PointsParser::from(arrow.attribute("points").unwrap())
+            .map(|(x, y)| (transform * Point::new(x, y)).y)
+            .fold([f64::INFINITY, f64::NEG_INFINITY], |[top, bottom], y| {
+                [top.min(y), bottom.max(y)]
+            });
+        assert!((bottom - top - 40.0).abs() < GEOMETRY_EPSILON);
+        top..bottom
+    });
+    assert!(
+        first.end < second.start || second.end < first.start,
+        "incoming arrow triangles overlap: {first:?} and {second:?}"
+    );
+}
+
+#[test]
 fn architecture_shoal_shows_four_way_splits_and_marked_elbows() {
     let (_, svg) = render(
         "architecture-beta\n\

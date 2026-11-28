@@ -3,10 +3,7 @@
 use merman_render_core::{
     rough_svg::{
         closed_path_d_from_points as path_from_points,
-        paths::{
-            RoughGeometryTarget, roughjs_hachure_paths_for_svg_path,
-            roughjs_prepare_hachure_paths_for_svg_path,
-        },
+        paths::{RoughGeometryTarget, prepare_hachure_svg_path},
     },
     svg_output::SvgOutput,
 };
@@ -23,16 +20,20 @@ pub fn write_hexagon(out: &mut impl SvgOutput, mut body: NodeBodySvg<'_>, neo: b
     let (geometry, w, h, path_data) = prepare_hexagon_geometry(&body.geometry, neo);
     let rough_paths = if body.geometry.hand_drawn {
         body.timed_rough(|geometry| {
-            roughjs_hachure_paths_for_svg_path(
+            prepare_hachure_svg_path(
+                RoughGeometryTarget::Svg,
                 &path_data,
                 geometry.stroke_width,
                 geometry.stroke_dasharray,
-                FLOWCHART_HEXAGON_HAND_DRAWN_FILL_WEIGHT,
-                FLOWCHART_HEXAGON_HAND_DRAWN_HACHURE_GAP,
-                FLOWCHART_HEXAGON_HAND_DRAWN_ROUGHNESS,
+                geometry.hachure(
+                    FLOWCHART_HEXAGON_HAND_DRAWN_FILL_WEIGHT,
+                    FLOWCHART_HEXAGON_HAND_DRAWN_HACHURE_GAP,
+                    FLOWCHART_HEXAGON_HAND_DRAWN_ROUGHNESS,
+                ),
                 geometry.work_meter,
                 geometry.randomness,
             )
+            .and_then(|paths| geometry.write_rough_paths(paths))
         })
     } else {
         None
@@ -103,14 +104,16 @@ pub fn advance_hexagon_rough_geometry(geometry: NodeBodyGeometry<'_>, neo: bool)
     }
     let (_, _, _, path_data) = prepare_hexagon_geometry(&geometry, neo);
     let target = RoughGeometryTarget::Query;
-    let _ = roughjs_prepare_hachure_paths_for_svg_path(
+    let _ = prepare_hachure_svg_path(
         target,
         &path_data,
         geometry.stroke_width,
         geometry.stroke_dasharray,
-        FLOWCHART_HEXAGON_HAND_DRAWN_FILL_WEIGHT,
-        FLOWCHART_HEXAGON_HAND_DRAWN_HACHURE_GAP,
-        FLOWCHART_HEXAGON_HAND_DRAWN_ROUGHNESS,
+        geometry.hachure(
+            FLOWCHART_HEXAGON_HAND_DRAWN_FILL_WEIGHT,
+            FLOWCHART_HEXAGON_HAND_DRAWN_HACHURE_GAP,
+            FLOWCHART_HEXAGON_HAND_DRAWN_ROUGHNESS,
+        ),
         geometry.work_meter,
         geometry.randomness,
     );

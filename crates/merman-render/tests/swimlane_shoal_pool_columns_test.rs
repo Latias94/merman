@@ -8,10 +8,25 @@ use merman_model::resources::InputResourcePolicy;
 use merman_render::environment::RenderEnvironment;
 use merman_render::model::SwimlaneLayout;
 use merman_render::theme::{NativeTheme, ThemeCompiler};
-use merman_render::{LayoutOptions, family};
+use merman_render::{LayoutAdaptation, LayoutAdaptationObservation, LayoutOptions, family};
 use roxmltree::Document;
 
 fn render_pool(direction: &str, title: &str, nested: bool) -> (String, SwimlaneLayout) {
+    let (svg, layout, _) = render_pool_with_options(
+        direction,
+        title,
+        nested,
+        &LayoutOptions::headless_svg_defaults(),
+    );
+    (svg, layout)
+}
+
+fn render_pool_with_options(
+    direction: &str,
+    title: &str,
+    nested: bool,
+    options: &LayoutOptions,
+) -> (String, SwimlaneLayout, Option<LayoutAdaptationObservation>) {
     let (inner_start, inner_end, inner_port) = if nested {
         (
             "subgraph inner[Team]\n",
@@ -81,12 +96,8 @@ X poolPort@--> pool
     let session = RenderEnvironment::deterministic()
         .begin_session_with_native_theme(NativeTheme::new(theme))
         .unwrap();
-    let artifact = family::prepare(
-        &presentation,
-        &LayoutOptions::headless_svg_defaults(),
-        session,
-    )
-    .unwrap();
+    let artifact = family::prepare(&presentation, options, session).unwrap();
+    let adaptation = artifact.layout_adaptation();
     let layout = serde_json::from_value(
         artifact.layout_json().unwrap()["layout"]["SwimlaneDiagram"].clone(),
     )
@@ -94,7 +105,33 @@ X poolPort@--> pool
     let svg = artifact
         .render_svg(&Default::default(), &Default::default())
         .unwrap();
-    (svg.svg().to_owned(), layout)
+    (svg.svg().to_owned(), layout, adaptation)
+}
+
+#[test]
+fn shoal_pool_fit_width_counts_restored_headers_and_preserves_ports() {
+    let options = LayoutOptions::headless_svg_defaults()
+        .with_adaptation(LayoutAdaptation::FitWidth)
+        .with_container_size(1.0, 600.0);
+    let (_, layout, observation) = render_pool_with_options("RL", "Refunds", true, &options);
+    let observation = observation.unwrap();
+    let bounds = layout.bounds.as_ref().unwrap();
+    assert_eq!(observation.requested_width(), 1.0);
+    assert!(observation.overflowed());
+    assert!((observation.actual_width() - (bounds.max_x - bounds.min_x)).abs() < 1e-7);
+    let pool = lane_rect(&layout, "pool");
+    let inner = lane_rect(&layout, "inner");
+    let sales = lane_rect(&layout, "sales");
+    assert!(pool.x1 > inner.x1 && inner.x1 > sales.x1);
+    for (child, parent) in [("sales", "inner"), ("inner", "pool")] {
+        let lane = layout.lanes.iter().find(|lane| lane.id == child).unwrap();
+        assert_eq!(lane.parent_id.as_deref(), Some(parent));
+    }
+    for (edge_id, rect) in [("poolPort", pool), ("innerPort", inner)] {
+        let edge = layout.edges.iter().find(|edge| edge.id == edge_id).unwrap();
+        let contact = edge.points.last().unwrap();
+        assert!((rect.y0 - contact.y).abs() < 1e-8);
+    }
 }
 
 fn lane_rect(layout: &SwimlaneLayout, id: &str) -> Rect {

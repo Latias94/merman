@@ -357,6 +357,11 @@ pub(crate) fn natural_shape_size(
     if matches!(block_type, "composite" | "group") && !has_label {
         return None;
     }
+    if shape_settings.shoal {
+        // Grid slots are centered at the shape origin, including for translated polygons.
+        let (x0, y0, x1, y1) = boundary_extents(&boundary);
+        return Some((2.0 * (-x0).max(x1), 2.0 * (-y0).max(y1)));
+    }
     Some(boundary_size(&boundary))
 }
 
@@ -547,7 +552,12 @@ fn rendered_boundary_for(
     allocation: BlockShapeAllocation,
 ) -> Option<BlockShapeBoundary> {
     let intrinsic = intrinsic_boundary_for(inputs)?;
-    if !allocation.is_slot() {
+    // Shoal packs the measured outline. Stretching a slanted or circular shape to the
+    // common slot can make it wider than the space the grid has reserved for it.
+    if !allocation.is_slot()
+        || (inputs.shape_settings.shoal
+            && !matches!(intrinsic, BlockShapeBoundary::Rectangle { .. }))
+    {
         return Some(intrinsic);
     }
 

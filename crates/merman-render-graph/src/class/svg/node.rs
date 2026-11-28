@@ -72,6 +72,7 @@ pub(super) struct ClassNodeBasicContainerContext<'a> {
     pub fill_opacity: Option<&'a str>,
     pub rough_outline_style: &'a str,
     pub rough_backing: bool,
+    pub compact_rough: bool,
     pub look: &'a str,
     pub radius: Option<f64>,
     pub hand_drawn_seed: roughr::core::RoughRandomness,
@@ -379,6 +380,7 @@ pub(super) fn render_class_node_basic_container<O: SvgOutput>(
             ctx.node_stroke_dasharray,
             ctx.work_meter,
             &rough_seed,
+            ctx.compact_rough,
         )
         .unwrap_or_else(|| {
             let (stroke_d, _) =

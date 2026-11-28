@@ -147,8 +147,8 @@ fn er_shoal_hand_draws_table_and_entity_frames_with_seeded_dividers() {
 
 #[cfg(feature = "diagram-er")]
 #[test]
-fn er_shoal_insets_bt_forks_and_seats_dashed_shafts_on_the_solid_prong() {
-    for (direction, inset) in [("BT", 2.25), ("TB", 0.0)] {
+fn er_shoal_insets_forks_and_seats_dashed_shafts_on_the_solid_prong_in_each_direction() {
+    for direction in ["TB", "BT", "LR", "RL"] {
         let body = format!(
             "erDiagram\ndirection {direction}\nA }}o--|{{ B : owns\nB }}|..o{{ C : routes\n"
         );
@@ -171,8 +171,8 @@ fn er_shoal_insets_bt_forks_and_seats_dashed_shafts_on_the_solid_prong() {
                 let [first, second] = curves.as_slice() else {
                     panic!("open crow's foot: {id}")
                 };
-                assert_eq!((first.start().x - anchor).abs(), inset);
-                assert_eq!((second.end().x - anchor).abs(), inset);
+                assert_eq!((first.start().x - anchor).abs(), 2.25, "{direction}: {id}");
+                assert_eq!((second.end().x - anchor).abs(), 2.25, "{direction}: {id}");
                 assert_eq!((first.end().x - anchor).abs(), 18.0);
                 assert_eq!(first.end(), second.start());
                 assert!(d.segments().any(|segment| {

@@ -32,6 +32,7 @@ use std::collections::HashMap;
 struct BundleFace<'a> {
     source: &'a FlowNode,
     radii: Option<(f64, f64)>,
+    stadium: bool,
 }
 
 fn admit_paint_clearance(
@@ -278,11 +279,14 @@ fn measure(
             (geometry.is_none()
                 && matches!(
                     shape,
-                    super::FlowchartShape::Process | super::FlowchartShape::RoundedRectangle
+                    super::FlowchartShape::Process
+                        | super::FlowchartShape::RoundedRectangle
+                        | super::FlowchartShape::Stadium
                 ))
             .then_some(BundleFace {
                 source: node,
                 radii: rectangle_radii,
+                stadium: shape == super::FlowchartShape::Stadium,
             }),
         );
         bindings.push_leaf(&mut graph, layout_node, profile, seq, parent);
@@ -363,7 +367,7 @@ fn measure(
             end_marker,
         });
     }
-    bindings.reserve_parallel_faces(
+    bindings.reserve_node_faces(
         &mut graph,
         &parallel_faces,
         painted_edges.into_iter(),
@@ -375,7 +379,7 @@ fn measure(
 }
 
 impl FlowchartBindings {
-    fn reserve_parallel_faces(
+    fn reserve_node_faces(
         &mut self,
         graph: &mut MeasuredGraph,
         faces: &[Option<BundleFace<'_>>],
@@ -393,9 +397,34 @@ impl FlowchartBindings {
             .try_reserve(graph.edges.len())
             .map_err(|_| work.map_shoal_error(merman_layout_shoal::LayoutError::AllocationLimit))?;
         let mut has_bundle = false;
+        let mut stadium_ports = Vec::new();
         for (edge, visible) in graph.edges.iter().zip(painted_edges) {
             if !visible {
                 continue;
+            }
+            if edge.source != edge.target {
+                for (role, (endpoint, marker)) in [
+                    (edge.source, edge.start_marker),
+                    (edge.target, edge.end_marker),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    let Endpoint::Node(id) = endpoint else {
+                        continue;
+                    };
+                    let index = id as usize;
+                    if faces[index].as_ref().is_some_and(|face| face.stadium) {
+                        if stadium_ports.is_empty() {
+                            work.charge_adapter(faces.len())?;
+                            stadium_ports.resize(faces.len(), [(0usize, 0.0_f64); 2]);
+                        }
+                        let (degree, width) = &mut stadium_ports[index][role];
+                        *degree += 1;
+                        *width = width.max(marker.width);
+                        has_bundle |= *degree >= 3;
+                    }
+                }
             }
             let (Endpoint::Node(a), Endpoint::Node(b)) = (edge.source, edge.target) else {
                 continue;
@@ -436,8 +465,21 @@ impl FlowchartBindings {
                 }
             }
         }
+        for (target, ports) in demand.iter_mut().zip(stadium_ports) {
+            *target = ports.into_iter().fold(*target, |size, (degree, width)| {
+                if degree >= 3 {
+                    size.max((degree - 1) as f64 * width.max(minimum))
+                } else {
+                    size
+                }
+            });
+        }
         for (i, (face, required)) in faces.iter().zip(demand).enumerate() {
-            let Some(BundleFace { source, radii }) = face.as_ref().filter(|_| required > 0.0)
+            let Some(BundleFace {
+                source,
+                radii,
+                stadium,
+            }) = face.as_ref().filter(|_| required > 0.0)
             else {
                 continue;
             };
@@ -472,8 +514,21 @@ impl FlowchartBindings {
                     0.0
                 }
             };
-            let width = growth(0, Side::Top);
-            let height = growth(1, Side::Left);
+            let (width, height) = if *stadium {
+                let height = if axes[1] {
+                    node.height.max(
+                        required / merman_render_core::graph_layout::contour::ROUNDED_PORT_FRACTION,
+                    )
+                } else {
+                    node.height
+                };
+                let width = node
+                    .width
+                    .max(height + if axes[0] { required } else { 0.0 });
+                (width - node.width, height - node.height)
+            } else {
+                (growth(0, Side::Top), growth(1, Side::Left))
+            };
             if width == 0.0 && height == 0.0 {
                 continue;
             }
@@ -490,7 +545,11 @@ impl FlowchartBindings {
                 [Side::Top, Side::Left]
             };
             measured.size = size;
-            measured.contour = shoal_contour(&profile, size);
+            measured.contour = if *stadium {
+                merman_layout_shoal::ShapeContourHint::Stadium
+            } else {
+                shoal_contour(&profile, size)
+            };
             measured.port_span = Some(profile.port_span(sides[0]));
             measured.perpendicular_port_span = Some(profile.port_span(sides[1]));
             self.profiles[i] = profile;

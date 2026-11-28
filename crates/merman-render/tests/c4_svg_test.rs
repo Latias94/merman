@@ -742,6 +742,268 @@ Rel(n1, n1, "Caption 4 for the relationship", "HTTPS")
 
 #[cfg(feature = "layout-shoal")]
 #[test]
+fn c4_shoal_fit_width_wraps_only_the_exterior_reference_for_a_long_alias() {
+    let alias = "W".repeat(36);
+    let message = "Retry one request";
+    let caption = [message; 8].join("<br/>");
+    let source = format!(
+        r#"---
+config:
+  layout: shoal
+  c4:
+    wrap: false
+    width: 120
+    diagramMarginX: 30
+---
+C4Context
+System({alias}, "A")
+Rel({alias}, {alias}, "{caption}", "HTTPS")
+"#,
+    );
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let mut options = LayoutOptions::headless_svg_defaults()
+        .with_adaptation(merman_render::LayoutAdaptation::FitWidth);
+    options.container_width = 300.0;
+    let svg = family::prepare(parsed.presentation(), &options, session)
+        .unwrap()
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+    let document = roxmltree::Document::parse(svg.svg()).unwrap();
+    let viewport = document
+        .root_element()
+        .attribute("viewBox")
+        .unwrap()
+        .parse::<svgtypes::ViewBox>()
+        .unwrap();
+    assert!(viewport.w <= 300.0 + 1e-7, "viewport width {}", viewport.w);
+    let relation = |node: &roxmltree::Node<'_, '_>| node.attribute("data-id") == Some("c4-rel-0");
+    let shaft = document
+        .descendants()
+        .find(|node| relation(node) && node.attribute("data-et") == Some("edge"))
+        .unwrap();
+    assert!(shaft.attribute("marker-end").is_some());
+    assert!(shaft.attribute("clip-path").is_none());
+    let rows: Vec<_> = document
+        .descendants()
+        .find(|node| relation(node) && node.attribute("class") == Some("label"))
+        .unwrap()
+        .children()
+        .filter(|node| node.has_tag_name("text"))
+        .map(svg_text_content)
+        .collect();
+    let message_start = rows.iter().position(|row| row == message).unwrap();
+    assert!(message_start > 1, "expected a wrapped reference: {rows:?}");
+    assert_eq!(
+        rows[..message_start]
+            .join("")
+            .replace(char::is_whitespace, ""),
+        format!("{alias}→{alias}(1)")
+    );
+    assert_eq!(&rows[message_start..rows.len() - 1], &[message; 8]);
+    assert_eq!(rows.last().unwrap(), "[HTTPS]");
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn c4_shoal_fits_the_painted_mesh_without_losing_relationship_captions() {
+    use kurbo::{BezPath, ParamCurve, PathSeg, Rect, Shape, Vec2};
+    use merman_render::theme::{Appearance, BuiltinPreset, Color};
+
+    let source = r#"---
+config:
+  layout: shoal
+---
+C4Container
+  title Fit-Width 480px C4 Mesh
+  UpdateLayoutConfig($c4ShapeInRow="4")
+  System_Boundary(b1, "Frontend & Edge") {
+    Container(web, "Web App", "React", "Browser SPA")
+    Container(mob, "Mobile App", "Swift", "iOS client")
+    Container(bff, "API Gateway", "Envoy", "Routing and TLS")
+  }
+  System_Boundary(b2, "Core Services") {
+    Container(ord, "Order Engine", "Rust", "State machine")
+    Container(pay, "Payment Hub", "Go", "PSP routing")
+    Container(inv, "Inventory", "Rust", "Stock reservation")
+  }
+  System_Boundary(b3, "Data Tier") {
+    ContainerDb(pg, "Ledger DB", "Postgres", "ACID ledger")
+    ContainerDb(rd, "Cache", "Redis", "Hot sessions")
+    ContainerQueue(kf, "Kafka", "Kafka", "Domain events")
+  }
+  Rel(web, bff, "Calls GraphQL API with JWT bearer auth", "HTTPS")
+  Rel(mob, bff, "Streams telemetry and order updates", "gRPC")
+  Rel(bff, ord, "Dispatches verified checkout commands", "gRPC/mTLS")
+  Rel(ord, pay, "Authorizes and captures card funds", "gRPC")
+  Rel(ord, inv, "Reserves SKU allocation atomically", "gRPC")
+  Rel(ord, pg, "Persists immutable double-entry rows", "SQL/TLS")
+  Rel(pay, kf, "Publishes settlement completion events", "Kafka")
+  Rel(bff, rd, "Checks sliding-window rate limits", "RESP3")
+  Rel(kf, ord, "Triggers async reconciliation callbacks", "Kafka")
+"#;
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let theme = ThemeCompiler::new()
+        .compile_preset(BuiltinPreset::Studio, Some(Appearance::Dark))
+        .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_native_theme(NativeTheme::new(theme))
+        .unwrap()
+        .with_canvas_background(Color::TRANSPARENT);
+    let mut options = LayoutOptions::headless_svg_defaults()
+        .with_adaptation(merman_render::LayoutAdaptation::FitWidth);
+    options.container_width = 480.0;
+    let svg = family::prepare(parsed.presentation(), &options, session)
+        .unwrap()
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+    let document = roxmltree::Document::parse(svg.svg()).unwrap();
+    let viewport = document
+        .root_element()
+        .attribute("viewBox")
+        .unwrap()
+        .parse::<svgtypes::ViewBox>()
+        .unwrap();
+    assert!(viewport.w <= 480.0, "viewport width {}", viewport.w);
+    let viewport = Rect::from_origin_size((viewport.x, viewport.y), (viewport.w, viewport.h))
+        .inflate(1e-7, 1e-7);
+    let number =
+        |node: roxmltree::Node<'_, '_>, attr| node.attribute(attr).unwrap().parse::<f64>().unwrap();
+    let rect = |node| {
+        Rect::from_origin_size(
+            (number(node, "x"), number(node, "y")),
+            (number(node, "width"), number(node, "height")),
+        )
+    };
+    let frames: Vec<_> = document
+        .descendants()
+        .filter(|node| node.attribute("data-et") == Some("cluster"))
+        .map(|cluster| {
+            let frame = cluster
+                .children()
+                .find(|node| {
+                    node.has_tag_name("rect") && node.attribute("stroke-dasharray").is_some()
+                })
+                .unwrap();
+            let stroke = number(frame, "stroke-width") / 2.0;
+            let (outer, inner) = (
+                rect(frame).inflate(stroke, stroke),
+                rect(frame).inflate(-stroke, -stroke),
+            );
+            let id = cluster.attribute("data-id").unwrap();
+            assert!(
+                frame.attribute("stroke").is_some_and(|ink| ink != "none"),
+                "{id}"
+            );
+            assert!(stroke > 0.0 && viewport.contains_rect(outer), "{id}");
+            (id, outer, inner)
+        })
+        .collect();
+    assert_eq!(frames.len(), 3);
+    let shafts: Vec<_> = document
+        .descendants()
+        .filter(|node| node.attribute("data-et") == Some("edge"))
+        .map(|node| {
+            let outer = node
+                .prev_sibling()
+                .filter(|sibling| sibling.attribute("class") == Some("c4-relation-outline"))
+                .unwrap_or(node);
+            (
+                node.attribute("data-id").unwrap(),
+                BezPath::from_svg(node.attribute("d").unwrap()).unwrap(),
+                number(outer, "stroke-width") / 2.0,
+            )
+        })
+        .collect();
+    assert_eq!(shafts.len(), 9);
+    let mut captions: Vec<(String, Rect)> = Vec::new();
+    for (occurrence, text) in [
+        "Calls GraphQL API with JWT bearer auth",
+        "Streams telemetry and order updates",
+        "Dispatches verified checkout commands",
+        "Authorizes and captures card funds",
+        "Reserves SKU allocation atomically",
+        "Persists immutable double-entry rows",
+        "Publishes settlement completion events",
+        "Checks sliding-window rate limits",
+        "Triggers async reconciliation callbacks",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let id = format!("c4-rel-{occurrence}");
+        let matches_id = |node: &roxmltree::Node<'_, '_>| node.attribute("data-id") == Some(&id);
+        let (_, owner, _) = shafts.iter().find(|(edge, _, _)| *edge == id).unwrap();
+        let caption = document
+            .descendants()
+            .find(|node| matches_id(node) && node.attribute("class") == Some("label"))
+            .unwrap();
+        let origin: svgtypes::Transform = caption.attribute("transform").unwrap().parse().unwrap();
+        let plate = caption
+            .children()
+            .find(|node| node.attribute("class") == Some("c4-relation-label-background"))
+            .unwrap();
+        let ink = rect(plate) + Vec2::new(origin.e, origin.f);
+        assert!(viewport.contains_rect(ink), "{id} leaves the viewport");
+        for &(boundary, outer, inner) in &frames {
+            assert!(
+                ink.intersect(outer).area() - ink.intersect(inner).area() <= 1e-7,
+                "{id} crosses the {boundary} boundary stroke"
+            );
+        }
+        for (edge, path, stroke) in shafts.iter().filter(|(edge, _, _)| *edge != id) {
+            let guard = ink.inflate(*stroke, *stroke);
+            assert!(
+                !path.segments().any(|segment| {
+                    guard.contains(segment.start())
+                        || guard.contains(segment.end())
+                        || guard.path_segments(0.0).any(|side| {
+                            let PathSeg::Line(side) = side else {
+                                unreachable!()
+                            };
+                            !segment.intersect_line(side).is_empty()
+                        })
+                }),
+                "{id} is crossed by foreign shaft {edge}"
+            );
+        }
+        for (other, other_ink) in &captions {
+            assert!(
+                ink.intersect(*other_ink).area() <= 1e-7,
+                "{id} overlaps {other}"
+            );
+        }
+        if occurrence == 1 {
+            assert!(
+                ink.y1 < owner.bounding_box().y1,
+                "{id} should stay in the open channel on its own shaft"
+            );
+        }
+        assert!(
+            caption
+                .children()
+                .filter(|node| node.has_tag_name("text"))
+                .map(svg_text_content)
+                .collect::<Vec<_>>()
+                .join(" ")
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+                .contains(text),
+            "lost caption for {id}",
+        );
+        captions.push((id, ink));
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
 fn c4_shoal_definitions_keep_unique_ids_after_rebasing() {
     let source = r##"---
 config:
@@ -1976,6 +2238,10 @@ UpdateElementStyle(group, $bgColor="lightgrey")
         }
 
         let document = roxmltree::Document::parse(&seeded).unwrap();
+        let database_icon = document.descendants().any(|node| {
+            node.has_tag_name("symbol") && node.attribute("id") == Some("merman-database")
+        });
+        assert_eq!(database_icon, !shoal);
         let background = document
             .descendants()
             .find(|node| node.attribute("class") == Some("c4-boundary-background"))
@@ -1999,6 +2265,15 @@ UpdateElementStyle(group, $bgColor="lightgrey")
             .descendants()
             .find(|node| node.attribute("id") == Some("merman-service"))
             .unwrap();
+        let silhouette = card
+            .descendants()
+            .find(|node| node.attribute("class") == Some("rough-fill"))
+            .unwrap();
+        let arc_count = svgtypes::PathParser::from(silhouette.attribute("d").unwrap())
+            .map(|segment| segment.unwrap())
+            .filter(|segment| matches!(segment, svgtypes::PathSegment::EllipticalArc { .. }))
+            .count();
+        assert_eq!(arc_count, if shoal { 4 } else { 0 });
         assert_eq!(background.attribute("fill"), Some("lightgrey"));
         assert_eq!(outline.attribute("fill"), Some("none"));
         assert_eq!(outline.attribute("stroke-dasharray"), Some("7.0,7.0"));

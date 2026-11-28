@@ -1,43 +1,91 @@
 use super::{
-    BlockDiagramLayout, BlockDiagramRenderModel, BlockShapeGeometry, EdgeStyle,
-    OperationLayoutWorkControl, Point, Rect, Result, RoutePoint, Side, SolvedRequest, Wall,
-    block_render_edge_points, contact_work, edge_marker_geometry, intersects, knot_point,
+    BlockDiagramLayout, BlockDiagramRenderModel, BlockShapeGeometry, EdgePlacement, EdgeStyle,
+    LayoutLabel, OperationLayoutWorkControl, Point, Rect, Result, RoutePoint, Side, SolvedRequest,
+    Wall, block_render_edge_points, contact_work, edge_marker_geometry, intersects, knot_point,
     marker_bounds, rect_bounds, to_point,
 };
+use kurbo::{BezPath, ParamCurve, PathSeg, Shape};
 use merman_layout_shoal::geom::{Bounds, Bvh, BvhEntry};
+use merman_render_core::route_paint::ObstacleOwner;
+use merman_render_core::svg_edge_parity::curve::curve_basis_path_d;
 use std::{collections::HashMap, ops::ControlFlow};
 
-/// Compute the grid marker geometry once, independently of the selected ports.
-pub(super) fn markers(
+#[derive(Clone, Copy, Default)]
+pub(super) struct GridEdge {
+    pub(super) blocked: bool,
+    pub(super) markers: [Option<Wall>; 2],
+    pub(super) caption: Option<Wall>,
+}
+
+impl GridEdge {
+    pub(super) fn walls(&self) -> impl Iterator<Item = Wall> {
+        self.markers.into_iter().chain([self.caption]).flatten()
+    }
+}
+
+/// Inspect the unmodified grid path, including the legacy painter's marker insets.
+pub(super) fn grid_edges(
     model: &BlockDiagramRenderModel,
     layout: &BlockDiagramLayout,
-    edge_indices: &HashMap<&str, usize>,
-    geometries: &HashMap<&str, &BlockShapeGeometry>,
-    bodies: &HashMap<&str, u32>,
+    placements: &[EdgePlacement],
+    fixed: &[Wall],
+    captions: &[Option<LayoutLabel>],
     style: Option<EdgeStyle>,
     work: &mut OperationLayoutWorkControl,
-) -> Result<Vec<[Option<Wall>; 2]>> {
-    work.charge_adapter(model.edges.len())?;
-    let mut fallback = vec![[None; 2]; model.edges.len()];
-    for (occurrence, edge) in model.edges.iter().enumerate() {
+) -> Result<Vec<GridEdge>> {
+    work.charge_adapter(work.checked_add(model.edges.len(), layout.shape_geometries.len())?)?;
+    let mut fallback = vec![GridEdge::default(); model.edges.len()];
+    let geometries: HashMap<&str, &BlockShapeGeometry> = layout
+        .shape_geometries
+        .iter()
+        .map(|shape| (shape.id.as_str(), shape))
+        .collect();
+    work.charge_adapter(fixed.len())?;
+    let fixed = Bvh::build_controlled(fixed.to_vec(), |wall| rect_bounds(wall.rect), work)
+        .map_err(|error| work.map_shoal_error(error))?;
+    for &EdgePlacement {
+        occurrence,
+        index,
+        bodies,
+    } in placements
+    {
+        let edge = &model.edges[occurrence];
         let [start, end] = [true, false].map(|start| edge_marker_geometry(edge, start));
-        let (Some(&index), Some(&from), Some(&to)) = (
-            edge_indices.get(edge.id.as_str()),
-            bodies.get(edge.start.as_str()),
-            bodies.get(edge.end.as_str()),
-        ) else {
-            continue;
-        };
-        if start.is_none() && end.is_none() {
-            continue;
-        }
+        let grid = &mut fallback[occurrence];
         let edge_layout = &layout.edges[index];
         work.charge_adapter(edge_layout.points.len())?;
-        for body in [from, to] {
+        for body in bodies {
             work.charge_adapter(contact_work(&layout.shape_geometries[body as usize]))?;
         }
-        let points = block_render_edge_points(edge, edge_layout, geometries, style).rendered_points;
-        for (slot, (marker, body)) in [(start, from), (end, to)].into_iter().enumerate() {
+        let points =
+            block_render_edge_points(edge, edge_layout, &geometries, style).rendered_points;
+        if matches!(style, None | Some(EdgeStyle::Curved)) {
+            work.charge_adapter(points.len())?;
+            let path = BezPath::from_svg(&curve_basis_path_d(&points)).map_err(|error| {
+                crate::Error::InvalidModel {
+                    message: format!("Block grid edge {}: {error}", edge.id),
+                }
+            })?;
+            for segment in path.segments() {
+                if Footprint::Curve(segment).blocked_by(&fixed, bodies, work)? {
+                    grid.blocked = true;
+                    break;
+                }
+            }
+        } else {
+            for leg in points.windows(2) {
+                if Footprint::Shaft(to_point(&leg[0]), to_point(&leg[1]))
+                    .blocked_by(&fixed, bodies, work)?
+                {
+                    grid.blocked = true;
+                    break;
+                }
+            }
+        }
+        if grid.blocked {
+            continue;
+        }
+        for (slot, (marker, body)) in [start, end].into_iter().zip(bodies).enumerate() {
             let Some(marker) = marker else {
                 continue;
             };
@@ -50,9 +98,16 @@ pub(super) fn markers(
             if let Some((first, outward)) = terminal {
                 let rect = marker_bounds(marker, first, outward);
                 if rect.is_finite() {
+                    if Footprint::Marker(rect).blocked_by(&fixed, bodies, work)? {
+                        *grid = GridEdge {
+                            blocked: true,
+                            ..Default::default()
+                        };
+                        break;
+                    }
                     // The grid path can approach diagonally, so it has no orthogonal face.
                     let contact = first - outward * marker.routing.trim;
-                    fallback[occurrence][slot] = Some(Wall::marker(
+                    grid.markers[slot] = Some(Wall::marker(
                         rect,
                         occurrence,
                         body,
@@ -60,6 +115,12 @@ pub(super) fn markers(
                     ));
                 }
             }
+        }
+        if !grid.blocked && captions[occurrence].is_some() {
+            grid.caption = edge_layout
+                .label
+                .as_ref()
+                .map(|label| Wall::label(label, occurrence));
         }
     }
     Ok(fallback)
@@ -90,6 +151,7 @@ fn fallback_markers_use_the_first_nonzero_tangent_at_each_end() {
 
 enum Footprint {
     Shaft(Point, Point),
+    Curve(PathSeg),
     Marker(Rect),
 }
 
@@ -97,6 +159,7 @@ impl Footprint {
     fn bounds(&self) -> Rect {
         match *self {
             Self::Shaft(a, b) => Rect::from_points(a, b),
+            Self::Curve(segment) => segment.bounding_box(),
             Self::Marker(rect) => rect,
         }
     }
@@ -105,8 +168,23 @@ impl Footprint {
         if !intersects(self.bounds(), rect) {
             return false;
         }
-        let Self::Shaft(a, b) = *self else {
-            return true;
+        let (a, b) = match *self {
+            Self::Shaft(a, b) => (a, b),
+            Self::Curve(PathSeg::Line(line)) => (line.p0, line.p1),
+            Self::Curve(segment) => {
+                let inside = |point: Point| {
+                    rect.x0 < point.x && point.x < rect.x1 && rect.y0 < point.y && point.y < rect.y1
+                };
+                return inside(segment.start())
+                    || inside(segment.end())
+                    || kurbo::segments(rect.path_elements(0.0)).any(|side| {
+                        let PathSeg::Line(line) = side else {
+                            unreachable!()
+                        };
+                        !segment.intersect_line(line).is_empty()
+                    });
+            }
+            Self::Marker(_) => return true,
         };
         if a.x == b.x || a.y == b.y {
             return true;
@@ -116,14 +194,50 @@ impl Footprint {
         let [y0, y1] = [rect.y0, rect.y1].map(|y| (y - a.y) / (b.y - a.y));
         x0.min(x1).max(y0.min(y1)).max(0.0) < x0.max(x1).min(y0.max(y1)).min(1.0)
     }
+
+    fn blocked_by(
+        &self,
+        walls: &Bvh<Wall>,
+        endpoints: [u32; 2],
+        work: &mut OperationLayoutWorkControl,
+    ) -> Result<bool> {
+        let bounds = self.bounds();
+        work.charge_adapter(1)?;
+        let result = walls.visit(|entry| -> Result<ControlFlow<(), bool>> {
+            work.charge_adapter(1)?;
+            match entry {
+                BvhEntry::Node(Bounds {
+                    x: [x0, x1],
+                    y: [y0, y1],
+                }) => Ok(ControlFlow::Continue(intersects(
+                    bounds,
+                    Rect::new(x0, y0, x1, y1),
+                ))),
+                BvhEntry::Item(wall) => {
+                    let endpoint = match wall.owner {
+                        ObstacleOwner::Node(node) | ObstacleOwner::GroupTitle(node) => {
+                            endpoints.contains(&node)
+                        }
+                        _ => false,
+                    };
+                    if !endpoint && self.enters(wall.rect) {
+                        Ok(ControlFlow::Break(()))
+                    } else {
+                        Ok(ControlFlow::Continue(true))
+                    }
+                }
+            }
+        })?;
+        Ok(result.is_break())
+    }
 }
 
-/// A route that could not be solved restores its grid markers. Remove only solved
-/// paths that would intersect the restored ink, then examine their grid markers too.
+/// A safe grid fallback restores its markers and any displaced caption. Remove
+/// solved paths that intersect the restored ink, then examine their grid ink too.
 /// Each edge can fall back once, and BVH construction and visits share the layout budget.
 pub(super) fn restore(
     solved: &mut [Option<SolvedRequest>],
-    fallback: &[[Option<Wall>; 2]],
+    fallback: &[GridEdge],
     margin: f64,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<()> {
@@ -132,7 +246,7 @@ pub(super) fn restore(
         .iter()
         .zip(fallback)
         .enumerate()
-        .filter(|(_, (route, markers))| route.is_none() && markers.iter().any(Option::is_some))
+        .filter(|(_, (route, grid))| route.is_none() && grid.walls().next().is_some())
         .map(|(edge, _)| edge)
         .collect();
     if pending.is_empty() {
@@ -161,9 +275,9 @@ pub(super) fn restore(
         Bvh::build_controlled(footprints, |(_, item)| rect_bounds(item.bounds()), work)
             .map_err(|error| work.map_shoal_error(error))?;
     while let Some(edge) = pending.pop() {
-        for &marker in fallback[edge].iter().flatten() {
+        for wall in fallback[edge].walls() {
             work.charge_adapter(1)?;
-            let halo = marker.rect.inflate(margin, margin);
+            let halo = wall.rect.inflate(margin, margin);
             let _ = footprints.visit(|entry| -> Result<ControlFlow<(), bool>> {
                 work.charge_adapter(1)?;
                 match entry {

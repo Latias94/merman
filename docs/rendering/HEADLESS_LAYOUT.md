@@ -150,10 +150,12 @@ bytes. Reuse a prepared source to switch widths without reparsing.
 
 ## Shoal Width Adaptation and Preview Frames
 
-Flowchart, Agentflow, Architecture, C4, Class, State, ER, Requirement, and Usecase support `FitWidth`
+Flowchart, Agentflow, Architecture, C4, Class, State, ER, Requirement, Usecase, and Swimlane support `FitWidth`
 when their effective configuration selects Shoal. Layered diagrams wrap disconnected components
 and try tighter spacing. Architecture wraps disconnected root components while preserving their
-four-sided port constraints. C4 wraps rows of cards within its boundaries. Flowchart and Agentflow
+four-sided port constraints. C4 wraps rows of cards within its boundaries and reserves the SVG
+margin before placing relationship captions. Captions that cannot fit near their shaft without
+covering other ink retain an explicit endpoint reference below the drawing. Flowchart and Agentflow
 can also turn horizontal flows downward for containers narrower than 640 CSS pixels. Opt into
 folding eligible wide leaf fans with
 `LayoutOptions::with_fold_wide_ranks(true)` or the binding options below.
@@ -166,8 +168,10 @@ The `layout_adaptation` observation reports normalized geometry width before SVG
 and scaling. An empty diagram has a geometry width of zero. If the diagram cannot fit, the
 observation reports overflow and describes the narrowest applicable result.
 
-Swimlane uses a common rank grid with a natural width. Block uses the dimensions of its authored
-grid and selects Shoal for edge routing.
+Swimlane keeps its common rank grid and lane order while tightening the gaps. Horizontal
+lanes can turn downward within the same breakpoint when there is no expanded Pool.
+Expanded Pools keep their authored axis and include their outer headings in the reported
+width. Block uses the dimensions of its authored grid and selects Shoal for edge routing.
 
 For an interactive preview of Swimlane or a width-fitting Shoal family, call `LayoutOptions::with_shoal_layout_frame`
 with the previous successful `ShoalLayoutFrame`, or with `None` to start a session. Read the

@@ -4,10 +4,7 @@ use super::super::{NodeBodyGeometry, NodeBodySvg, circle_backing, escape_attr, p
 use super::rounded_rect_points;
 use merman_render_core::{
     number_format::canonical_number as fmt,
-    rough_svg::{
-        closed_path_d_from_points as path_from_points,
-        paths::{RoughGeometryTarget, roughjs_paths_for_circle, roughjs_prepare_paths_for_circle},
-    },
+    rough_svg::{closed_path_d_from_points as path_from_points, paths::RoughGeometryTarget},
     svg_output::SvgOutput,
     text::TextMetrics,
 };
@@ -41,14 +38,14 @@ pub(super) fn render_person(
             );
         }
         if let Some((fill_d, stroke_d)) = svg.timed_rough(|geometry| {
-            roughjs_paths_for_circle(
-                head_radius * 2.0,
-                geometry.stroke_width,
-                geometry.stroke_dasharray,
-                true,
-                geometry.work_meter,
-                geometry.randomness,
-            )
+            geometry
+                .rough_circle(
+                    RoughGeometryTarget::Svg,
+                    head_radius * 2.0,
+                    geometry.stroke_width,
+                    0.7,
+                )
+                .and_then(|paths| geometry.write_rough_paths(paths))
         }) {
             let _ = write!(
                 out,
@@ -134,13 +131,5 @@ pub(super) fn advance_rough_geometry(
         prepare_person_geometry(&geometry, metrics, padding);
     let target = RoughGeometryTarget::Query;
     let _ = prepare_node_path(&geometry, &body_path, target);
-    let _ = roughjs_prepare_paths_for_circle(
-        target,
-        head_radius * 2.0,
-        geometry.stroke_width,
-        geometry.stroke_dasharray,
-        true,
-        geometry.work_meter,
-        geometry.randomness,
-    );
+    let _ = geometry.rough_circle(target, head_radius * 2.0, geometry.stroke_width, 0.7);
 }

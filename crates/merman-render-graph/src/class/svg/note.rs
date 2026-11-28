@@ -134,6 +134,7 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
             "0 0",
             ctx.emit.work_meter,
             &rough_seed,
+            ctx.uses_canonical_routes,
         )
         .unwrap_or_else(|| {
             let (stroke_d, _) =

@@ -176,7 +176,7 @@ static CARDINALITIES: [Cardinality; 4] = [
 
 // Anchor the trimmed shaft at the fork's junction. The glyph owns all three solid prongs,
 // including the center line from the entity wall, even when the relationship is dashed.
-// For BT, omit the wall-facing eighth of each prong. These quadratic subdivisions retain the
+// Omit the wall-facing eighth of each prong. These quadratic subdivisions retain the
 // fork's junction and leave room for the entity stroke at the two nearly tangent tips.
 static CANONICAL_CROW_FOOT: [Cardinality; 2] = [
     Cardinality {

@@ -25,6 +25,7 @@ pub(crate) struct FlowchartRootPaint<'a, 'data> {
     pub(in crate::svg) label_cutouts: &'a FxHashSet<crate::projection::FlowchartEdgeKey>,
     pub edge_labels: &'a mut FlowchartEdgeLabels,
     pub step_badges: &'a StepBadges<'a>,
+    pub depth_filters: merman_render_core::theme_svg::elevation::DepthFilters,
 }
 
 impl FlowchartRootPaint<'_, '_> {
@@ -153,7 +154,7 @@ impl FlowchartRootPaint<'_, '_> {
         depth: bool,
     ) -> Result<()> {
         if depth {
-            render_flowchart_node_depth(out, self.ctx, id, x, y)
+            render_flowchart_node_depth(out, self.ctx, id, x, y, &mut self.depth_filters)
         } else {
             render_flowchart_node(
                 out,

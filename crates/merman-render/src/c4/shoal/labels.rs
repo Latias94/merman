@@ -344,16 +344,31 @@ pub(super) fn reseat(
     routes: &mut [super::PaintedRelation],
     shafts: &ShaftIndex<'_>,
     obstacles: Vec<Rect>,
+    horizontal: Option<[f64; 2]>,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<bool> {
     let hard = build_index(obstacles, |rect| *rect, work)?;
     work.charge_adapter(routes.len())?;
     let mut needs_seat = false;
+    let mut placed = BoundsIndex::default();
     for (edge, route) in routes.iter_mut().enumerate() {
         if let Some(label) = &route.label {
             route.seated = route.seated
+                && horizontal
+                    .is_none_or(|[left, right]| left <= label.ink.x0 && label.ink.x1 <= right)
                 && hard_overlap(&hard, label.ink, work)?.is_none()
                 && !shafts.blocks_caption(edge, label.ink, None, work)?;
+            if route.seated && horizontal.is_some() {
+                let ink = bounds(label.ink);
+                route.seated = !placed
+                    .any_overlap(ink, work)
+                    .map_err(|error| work.map_shoal_error(error))?;
+                if route.seated {
+                    placed
+                        .insert(ink, work)
+                        .map_err(|error| work.map_shoal_error(error))?;
+                }
+            }
             route.shaft_cutout = if route.seated {
                 shafts.own_cutout(edge, label.cutout, work)?
             } else {
@@ -366,19 +381,20 @@ pub(super) fn reseat(
         return Ok(false);
     }
 
-    work.charge_adapter(routes.len())?;
     let mut occupied_captions = Vec::new();
-    occupied_captions
-        .try_reserve_exact(routes.len())
-        .map_err(|_| work.map_shoal_error(merman_layout_shoal::LayoutError::AllocationLimit))?;
-    occupied_captions.extend(
-        routes
-            .iter()
-            .filter(|route| route.seated)
-            .filter_map(|route| route.label.as_ref().map(|label| label.ink)),
-    );
+    if horizontal.is_none() {
+        work.charge_adapter(routes.len())?;
+        occupied_captions
+            .try_reserve_exact(routes.len())
+            .map_err(|_| work.map_shoal_error(merman_layout_shoal::LayoutError::AllocationLimit))?;
+        occupied_captions.extend(
+            routes
+                .iter()
+                .filter(|route| route.seated)
+                .filter_map(|route| route.label.as_ref().map(|label| label.ink)),
+        );
+    }
     let soft = build_index(occupied_captions, |rect| *rect, work)?;
-    let mut placed = BoundsIndex::default();
     let mut exterior = false;
     for (edge, route) in routes.iter_mut().enumerate() {
         work.charge_adapter(1)?;
@@ -390,6 +406,7 @@ pub(super) fn reseat(
             soft: &soft,
             placed: &placed,
             shafts,
+            horizontal,
         };
         let Some(shift) = scene.find_seat(edge, label.ink, work)? else {
             exterior = true;
@@ -411,10 +428,16 @@ pub(super) fn place_exterior(
     routes: &mut [super::PaintedRelation],
     relations: &[C4RelLayout],
     diagram: &DiagramBounds,
+    horizontal: Option<[f64; 2]>,
     measure: &C4Measurement<'_>,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<()> {
     work.charge_adapter(work.checked_mul(routes.len(), 2)?)?;
+    let max_width = horizontal.map(|[left, right]| right - left);
+    let reference_ink = |reference: &mut C4RelLayout| -> Result<Option<Rect>> {
+        Ok(measure_c4_relation_label(reference, measure)?
+            .map(|(cutout, _)| measure.typography.routed_caption_footprint(cutout)))
+    };
     let mut bottom = diagram.max_y;
     for route in routes.iter().filter(|route| route.seated) {
         if let Some(label) = &route.label {
@@ -436,15 +459,27 @@ pub(super) fn place_exterior(
         reference.techn = None;
         reference.label.text = format!("{} {arrow} {} ({})", relation.from, relation.to, index + 1);
         reference.label.line_count = split_mermaid_common_br_lines(&reference.label.text).len();
-        if let Some((cutout, _)) = measure_c4_relation_label(&mut reference, measure)? {
-            let ink = measure.typography.routed_caption_footprint(cutout);
+        let mut ink = reference_ink(&mut reference)?;
+        if let Some(width) = max_width
+            && ink.is_some_and(|ink| ink.width() > width)
+        {
+            reference.label.text = measure.wrap_routed_reference(&reference.label.text, width)?;
+            reference.label.line_count = split_mermaid_common_br_lines(&reference.label.text).len();
+            ink = reference_ink(&mut reference)?;
+        }
+        if let Some(ink) = ink {
             let y = label.ink.y0 - SHAFT_CLEARANCE - ink.y1;
             reference.label.y = y - label.origin.y;
             label.ink = label.ink.union(ink + Vec2::new(label.origin.x, y));
             label.reference = Some(Box::new(reference.label));
         }
+        let x = horizontal.map_or(diagram.min_x, |[left, right]| {
+            diagram
+                .min_x
+                .clamp(left, (right - label.ink.width()).max(left))
+        });
         label.translate(Vec2::new(
-            diagram.min_x - label.ink.x0,
+            x - label.ink.x0,
             bottom + SHAFT_CLEARANCE - label.ink.y0,
         ));
         bottom = label.ink.y1;
@@ -468,6 +503,7 @@ struct SeatScene<'a> {
     soft: &'a Bvh<Rect>,
     placed: &'a BoundsIndex,
     shafts: &'a ShaftIndex<'a>,
+    horizontal: Option<[f64; 2]>,
 }
 
 impl SeatScene<'_> {
@@ -482,6 +518,12 @@ impl SeatScene<'_> {
         let clearance = self.shafts.stroke_outset + SHAFT_CLEARANCE;
         let dx = ink.width() / 2.0 + clearance;
         let dy = ink.height() / 2.0 + clearance;
+        let x_range = self
+            .horizontal
+            .map(|[left, right]| [left - ink.x0, right - ink.x1]);
+        if x_range.is_some_and(|[lo, hi]| lo > hi) {
+            return Ok(None);
+        }
         let mut best = None::<(f64, Vec2)>;
         let mut blocker: Option<Rect> = None;
         let mut probe = |anchor: Point,
@@ -489,7 +531,13 @@ impl SeatScene<'_> {
                          best: &mut Option<(f64, Vec2)>,
                          work: &mut OperationLayoutWorkControl| {
             work.charge_adapter(1)?;
-            let shift = anchor + offset - preferred;
+            let mut shift = anchor + offset - preferred;
+            let host_distance = if let Some([lo, hi]) = x_range {
+                shift.x = shift.x.clamp(lo, hi);
+                (preferred + shift - anchor).hypot()
+            } else {
+                offset.hypot()
+            };
             let caption = ink + shift;
             if !shift.is_finite()
                 || blocker.is_some_and(|rect| caption.intersect(rect).area() > 0.0)
@@ -501,11 +549,14 @@ impl SeatScene<'_> {
                 return Ok(None);
             }
             let overlap = self.soft_overlap(caption, work)?;
+            if x_range.is_some() && overlap > 0.0 {
+                return Ok(None);
+            }
             let score = (overlap, shift.hypot2());
             if best.is_some_and(|(area, old)| score >= (area, old.hypot2()))
                 || self
                     .shafts
-                    .blocks_caption(edge, caption, Some(offset.hypot()), work)?
+                    .blocks_caption(edge, caption, Some(host_distance), work)?
             {
                 return Ok(None);
             }
@@ -536,11 +587,12 @@ impl SeatScene<'_> {
             work.charge_adapter(segments.len())?;
             for segment in segments {
                 let along = segment.bounds.size();
-                let inset = if along.width >= along.height {
-                    (dx / along.width).min(0.5)
+                let (run, half_with_clearance) = if along.width >= along.height {
+                    (along.width, dx)
                 } else {
-                    (dy / along.height).min(0.5)
+                    (along.height, dy)
                 };
+                let inset = (half_with_clearance / run).min(0.5);
                 let near = segment.path.nearest(preferred, 1e-3).t;
                 let stops = [
                     near.clamp(inset, 1.0 - inset),
@@ -564,6 +616,17 @@ impl SeatScene<'_> {
                     };
                     for &offset in offsets {
                         if let Some(shift) = probe(anchor, offset, &mut best, work)? {
+                            return Ok(Some(shift));
+                        }
+                    }
+                }
+                if scale == 0.5 && x_range.is_some() {
+                    let inline_inset = ((half_with_clearance - SHAFT_CLEARANCE) / run).min(0.5);
+                    for t in [inline_inset, 1.0 - inline_inset] {
+                        if !stops.contains(&t)
+                            && let Some(shift) =
+                                probe(segment.path.eval(t), Vec2::ZERO, &mut best, work)?
+                        {
                             return Ok(Some(shift));
                         }
                     }
@@ -732,7 +795,7 @@ mod tests {
         let shafts = ShaftIndex::new(&paths, 0.5, &mut work).unwrap();
         let ink = Rect::new(2.0, 4.0, 6.0, 6.0);
         let mut routes = [initial_caption(ink)];
-        assert!(!reseat(&mut routes, &shafts, Vec::new(), &mut work).unwrap());
+        assert!(!reseat(&mut routes, &shafts, Vec::new(), None, &mut work).unwrap());
         let caption = routes[0].label.as_ref().unwrap().ink;
         assert_ne!(caption, ink);
         assert!(!shafts.blocks_caption(0, caption, None, &mut work).unwrap());
@@ -746,13 +809,13 @@ mod tests {
         let ink = Rect::new(3.0, -1.0, 7.0, 1.0);
         let obstacle = Rect::new(2.0, -4.0, 9.0, 4.0);
         let mut routes = [initial_caption(ink)];
-        assert!(!reseat(&mut routes, &shafts, vec![obstacle], &mut work).unwrap());
+        assert!(!reseat(&mut routes, &shafts, vec![obstacle], None, &mut work).unwrap());
         let caption = routes[0].label.as_ref().unwrap().ink;
         assert_eq!(caption.intersect(obstacle).area(), 0.0);
 
         let wall = Rect::new(-30.0, -10.0, 40.0, 10.0);
         let mut routes = [initial_caption(ink)];
-        assert!(reseat(&mut routes, &shafts, vec![wall], &mut work).unwrap());
+        assert!(reseat(&mut routes, &shafts, vec![wall], None, &mut work).unwrap());
         assert!(!routes[0].seated);
         assert!(routes[0].shaft_cutout.is_none());
     }
@@ -766,7 +829,7 @@ mod tests {
         let mut work = constrained_work();
         let shafts = ShaftIndex::new(&paths, 0.5, &mut work).unwrap();
         let mut routes = [initial_caption(Rect::new(3.0, -1.0, 7.0, 1.0))];
-        assert!(!reseat(&mut routes, &shafts, Vec::new(), &mut work).unwrap());
+        assert!(!reseat(&mut routes, &shafts, Vec::new(), None, &mut work).unwrap());
         let caption = routes[0].label.as_ref().unwrap();
         assert_eq!(caption.ink.intersect(marker).area(), 0.0);
     }
@@ -789,12 +852,19 @@ mod tests {
             soft: &soft,
             placed: &placed,
             shafts: &shafts,
+            horizontal: None,
         };
         let ink = Rect::new(3.0, -1.0, 7.0, 1.0);
         let caption = ink + scene.find_seat(0, ink, &mut work).unwrap().unwrap();
         assert_eq!(caption.intersect(obstacle).area(), 0.0);
         assert_eq!(caption.center().y, 3.5);
         assert_eq!(scene.soft_overlap(caption, &mut work).unwrap(), 6.0);
+
+        let bounded = SeatScene {
+            horizontal: Some([0.0, 10.0]),
+            ..scene
+        };
+        assert!(bounded.find_seat(0, ink, &mut work).unwrap().is_none());
     }
 
     #[test]
@@ -809,6 +879,7 @@ mod tests {
             soft: &soft,
             placed: &BoundsIndex::default(),
             shafts: &shafts,
+            horizontal: None,
         };
         let ink = Rect::new(3.0, -3.0, 7.0, -2.5);
         let caption = ink + scene.find_seat(0, ink, &mut work).unwrap().unwrap();

@@ -1,4 +1,7 @@
-use std::fmt::{self, Write};
+use std::{
+    collections::HashMap,
+    fmt::{self, Write},
+};
 
 use kurbo::{BezPath, Rect, Shape};
 use merman_theme_contract::v2::{Elevation, ShadowLayer};
@@ -103,35 +106,91 @@ pub fn write_depth(
     silhouette: &BezPath,
     center: (f64, f64),
 ) -> fmt::Result {
+    write_surface_depth(out, elevation, id, silhouette, center, None)
+}
+
+/// Shares identical local blur regions across silhouettes in one SVG document.
+#[derive(Default)]
+pub struct DepthFilters(HashMap<[u64; 5], String>);
+
+impl DepthFilters {
+    pub fn write_depth(
+        &mut self,
+        out: &mut impl Write,
+        elevation: &Elevation,
+        id: &str,
+        silhouette: &BezPath,
+        center: (f64, f64),
+    ) -> fmt::Result {
+        write_surface_depth(out, elevation, id, silhouette, center, Some(self))
+    }
+}
+
+fn write_surface_depth(
+    out: &mut impl Write,
+    elevation: &Elevation,
+    id: &str,
+    silhouette: &BezPath,
+    center: (f64, f64),
+    mut filters: Option<&mut DepthFilters>,
+) -> fmt::Result {
     let bounds = silhouette.bounding_box();
     let path = silhouette.to_svg();
     let id = crate::xml::escape_attr(id);
     for (index, layer) in visible_layers(elevation).enumerate() {
-        let filter = format!("{id}-merman-depth-{index}");
         write!(
             out,
             r#"<g data-merman-theme-depth="node" aria-hidden="true" pointer-events="none" transform="translate({},{})">"#,
             number(center.0 + layer.dx),
             number(center.1 + layer.dy)
         )?;
-        if layer.blur > 0.0 {
+        let unshared;
+        let filter = if layer.blur > 0.0 {
             let region = blur_region(bounds, layer.blur);
-            write!(
-                out,
-                r#"<defs><filter id="{filter}" filterUnits="userSpaceOnUse" x="{}" y="{}" width="{}" height="{}" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="{}"/></filter></defs>"#,
-                number(region.x0),
-                number(region.y0),
-                number(region.width()),
-                number(region.height()),
-                number(layer.blur)
-            )?;
-        }
+            if let Some(cache) = filters.as_mut() {
+                use std::collections::hash_map::Entry;
+                let key = [
+                    region.x0,
+                    region.y0,
+                    region.width(),
+                    region.height(),
+                    layer.blur,
+                ]
+                .map(f64::to_bits);
+                Some(match cache.0.entry(key) {
+                    Entry::Occupied(entry) => entry.into_mut().as_str(),
+                    Entry::Vacant(entry) => {
+                        let name = format!("{id}-merman-depth-{index}");
+                        write_blur_filter(out, &name, region, layer.blur)?;
+                        entry.insert(name).as_str()
+                    }
+                })
+            } else {
+                unshared = format!("{id}-merman-depth-{index}");
+                write_blur_filter(out, &unshared, region, layer.blur)?;
+                Some(unshared.as_str())
+            }
+        } else {
+            None
+        };
         write!(out, r#"<path d="{path}" stroke="none" "#)?;
         write_color(out, "fill", layer.color, layer.opacity)?;
-        if layer.blur > 0.0 {
+        if let Some(filter) = filter {
             write!(out, r#" filter="url(#{filter})""#)?;
         }
         out.write_str("/></g>")?;
     }
     Ok(())
+}
+
+fn write_blur_filter(out: &mut impl Write, id: &str, region: Rect, blur: f64) -> fmt::Result {
+    write!(
+        out,
+        r#"<defs><filter id="{id}" filterUnits="userSpaceOnUse" x="{}" y="{}" width="{}" height="{}" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="{}"/></filter></defs>"#,
+        number(region.x0),
+        number(region.y0),
+        number(region.width()),
+        number(region.height()),
+        number(blur)
+    )
 }

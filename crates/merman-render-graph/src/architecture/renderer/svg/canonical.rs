@@ -35,6 +35,9 @@ pub trait ArchitectureCanonicalSvg {
     fn group_count(&self) -> usize;
     fn group(&self, ordinal: usize) -> ArchitectureCanonicalGroup;
     fn service_title(&self, ordinal: usize) -> Option<(&[SvgLine], LayoutPoint)>;
+    fn junction_diameter(&self, _ordinal: usize) -> Option<f64> {
+        None
+    }
     fn group_title(&self, ordinal: usize) -> Option<ArchitecturePlacedText<'_>>;
     fn edge_label(
         &self,

@@ -6,7 +6,7 @@ use super::svg_emit::FlowchartSvgModelRequest;
 use super::*;
 use merman_model::OperationPhase;
 
-#[cfg(feature = "canonical-edge-paint")]
+#[cfg(all(feature = "canonical-edge-paint", not(feature = "layout-shoal")))]
 use merman_render_core::rough_svg::constrained_rough_edge_path;
 
 #[cfg(feature = "layout-shoal")]
@@ -596,7 +596,7 @@ pub(super) fn prepare_rough_edge_paths(
                 ctx.compatibility.look.is_neo(),
             )?;
             #[cfg(feature = "layout-shoal")]
-            if theme_sketch {
+            {
                 let (path, shaft) =
                     merman_render_core::rough_svg::constrained_rough_edge_with_geometry(
                         &entry.geom.d,
@@ -612,14 +612,16 @@ pub(super) fn prepare_rough_edge_paths(
                     max_y: bounds.y1,
                 });
                 entry.geom.emitted_d_for_label = Some(path);
-                continue;
             }
-            entry.geom.emitted_d_for_label = Some(constrained_rough_edge_path(
-                &entry.geom.d,
-                markers,
-                ctx.work_meter,
-                &ctx.hand_drawn_seed,
-            )?);
+            #[cfg(not(feature = "layout-shoal"))]
+            {
+                entry.geom.emitted_d_for_label = Some(constrained_rough_edge_path(
+                    &entry.geom.d,
+                    markers,
+                    ctx.work_meter,
+                    &ctx.hand_drawn_seed,
+                )?);
+            }
             continue;
         }
         entry.geom.emitted_d_for_label =

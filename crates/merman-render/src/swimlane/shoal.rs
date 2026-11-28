@@ -18,7 +18,7 @@ use crate::graph_layout::{AxisRoutes, RouteContract, RouteTopology, placement};
 use crate::layout_frame::GraphPlacement;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{LayoutNode, LayoutPoint, SwimlaneDirection, SwimlaneTitleRect};
-use crate::{Error, LayoutExecution, Result};
+use crate::{Error, LayoutAdaptation, LayoutAdaptationObservation, LayoutExecution, Result};
 use merman_model::presentation::PresentationConfig;
 use merman_render_core::route_types::Marker;
 use merman_render_flow::node_geometry::contour as flow_contour;
@@ -55,12 +55,12 @@ fn direction(value: SwimlaneDirection) -> Direction {
     }
 }
 
-fn direction_name(value: Direction) -> &'static str {
+fn swimlane_direction(value: Direction) -> SwimlaneDirection {
     match value {
-        Direction::Down => "TB",
-        Direction::Up => "BT",
-        Direction::Right => "LR",
-        Direction::Left => "RL",
+        Direction::Down => SwimlaneDirection::Tb,
+        Direction::Up => SwimlaneDirection::Bt,
+        Direction::Right => SwimlaneDirection::Lr,
+        Direction::Left => SwimlaneDirection::Rl,
     }
 }
 
@@ -95,22 +95,55 @@ pub(super) fn solve(
     )?;
     let ids = |&slot: &usize| working.nodes[slot].id.as_str();
     let edge_ports = columns.edge_ports(&graph, &mut work)?;
-    let (mut solved, placement) = placement::solve(
+    let pool_width = if execution.adaptation == LayoutAdaptation::FitWidth {
+        columns.horizontal_header_width
+    } else {
+        0.0
+    };
+    let inner_request;
+    let inner_execution;
+    let inner = if pool_width > 0.0 {
+        inner_request = (**execution).clone().with_container_size(
+            (execution.container_width - pool_width).max(f64::MIN_POSITIVE),
+            execution.container_height,
+        );
+        inner_execution = LayoutExecution::new(
+            &inner_request,
+            execution.family,
+            execution.presentation_config,
+        );
+        &inner_execution
+    } else {
+        execution
+    };
+    let (mut solved, mut placement) = placement::solve(
         &graph,
         bindings.node_slots.iter().map(ids),
         bindings.group_slots.iter().map(ids),
-        Some(execution),
+        Some(inner),
         placement::Constraints {
             lane_order: &columns.order,
             lane_boundaries: &columns.boundaries,
             edge_ports: &edge_ports,
             capture_ranks: true,
+            // Pool header minima were apportioned to the child columns on the authored axis.
+            allow_turn: !columns.has_expanded_shells(),
             ..Default::default()
         },
         &mut work,
     )?;
     drop(graph);
     columns.restore_shells(&mut solved, &mut work)?;
+    if pool_width > 0.0 {
+        let width = solved.bounds.width + pool_width;
+        if !width.is_finite() {
+            return Err(work.record_arithmetic_overflow().into());
+        }
+        placement.adaptation = Some(LayoutAdaptationObservation::fit_width(
+            execution.container_width,
+            width,
+        ));
+    }
     let routes = bindings.project(working, solved, view.edges.len(), visible_edges, &mut work)?;
     Ok(SwimlaneShoal { routes, placement })
 }
@@ -169,6 +202,7 @@ fn measure(
     }
     let mut columns =
         columns::Columns::new(&group_slots, working, parent, authored_order, flow, work)?;
+    let expanded_shells = columns.has_expanded_shells();
     let mut graph = MeasuredGraph {
         direction: flow,
         routing,
@@ -207,10 +241,14 @@ fn measure(
                 .as_deref()
                 .map(|name| direction(normalize_direction(Some(name)))),
             padding: insets,
-            min_size: title.map_or_else(Size::default, |title| Size {
-                width: title.width + padding * 2.0,
-                height: title.height + padding * 2.0,
-            }),
+            min_size: if !is_column || expanded_shells {
+                title.map_or_else(Size::default, |title| Size {
+                    width: title.width + padding * 2.0,
+                    height: title.height + padding * 2.0,
+                })
+            } else {
+                Size::default()
+            },
             title,
             title_position: TitlePosition::TopCenter,
         });
@@ -396,6 +434,8 @@ impl Bindings {
             profiles,
             markers,
         } = self;
+        let turned = direction(working.direction) != solved.direction;
+        working.direction = swimlane_direction(solved.direction);
         let horizontal = matches!(
             working.direction,
             SwimlaneDirection::Lr | SwimlaneDirection::Rl
@@ -448,8 +488,11 @@ impl Bindings {
             node.width = group.rect.width;
             node.height = group.rect.height;
             node.parent_id = parent_id;
-            node.requested_dir = Some(direction_name(group.direction).to_owned());
-            if let Some(label) = group.title {
+            node.requested_dir = Some(swimlane_direction(group.direction).as_str().to_owned());
+            if let Some(mut label) = group.title {
+                if turned && is_lane_shell(node) {
+                    std::mem::swap(&mut label.width, &mut label.height);
+                }
                 let rect =
                     kurbo::Rect::from_center_size((label.x, label.y), (label.width, label.height));
                 node.title_rect = Some(SwimlaneTitleRect {

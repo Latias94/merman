@@ -76,6 +76,11 @@ impl C4Look {
     pub const fn is_hand_drawn(self) -> bool {
         matches!(self, Self::HandDrawn)
     }
+
+    #[doc(hidden)]
+    pub const fn hand_drawn_outset(self) -> f64 {
+        if self.is_hand_drawn() { 8.0 } else { 0.0 }
+    }
 }
 
 pub struct C4ConfigView<'a> {
@@ -243,6 +248,49 @@ pub struct C4LayoutSettings {
     pub(crate) wrap: bool,
     pub(crate) next_line_padding_x: f64,
     pub(crate) use_max_width: bool,
+}
+
+impl C4LayoutSettings {
+    #[cfg(feature = "layout-shoal")]
+    #[doc(hidden)]
+    pub fn ink_width_for_viewport(&self, width: f64) -> f64 {
+        (width - 2.0 * (self.diagram_margin_x + self.look.hand_drawn_outset())).max(1.0)
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+impl super::C4Measurement<'_> {
+    #[doc(hidden)]
+    pub fn wrap_routed_reference(
+        &self,
+        text: &str,
+        ink_width: f64,
+    ) -> merman_render_core::Result<String> {
+        use merman_render_core::text::{WrapMode, try_measure_wrapped_text};
+
+        let style = &self.typography.message_font().measurement_style;
+        let clearance = super::SHAFT_CLEARANCE;
+        let padding = self
+            .typography
+            .routed_caption_footprint(kurbo::Rect::ZERO.inflate(clearance, clearance))
+            .width();
+        self.work.charge(text.len())?;
+        let rows = try_measure_wrapped_text(
+            text,
+            style,
+            Some((ink_width - padding).max(1.0)),
+            WrapMode::SvgLikeSingleRun,
+            style.font_size,
+            |row, style| {
+                self.work.charge(row.len().saturating_add(1))?;
+                Ok::<_, merman_render_core::Error>(
+                    self.measurer
+                        .measure_svg_tspan_text_bbox_width_px(row, style),
+                )
+            },
+        )?;
+        Ok(rows.lines.join("<br/>"))
+    }
 }
 
 pub(crate) const fn default_use_max_width() -> bool {
