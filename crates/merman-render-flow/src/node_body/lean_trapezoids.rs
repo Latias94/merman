@@ -6,10 +6,7 @@ use merman_render_core::{
     number_format::canonical_number as fmt_display,
     rough_svg::{
         closed_path_d_from_points as path_from_points,
-        paths::{
-            RoughGeometryTarget, roughjs_hachure_paths_for_svg_path,
-            roughjs_prepare_hachure_paths_for_svg_path,
-        },
+        paths::{RoughGeometryTarget, prepare_hachure_svg_path},
     },
     svg_output::SvgOutput,
 };
@@ -30,16 +27,20 @@ pub fn write_lean(
     if body.geometry.hand_drawn {
         let path_data = path_from_points(pts);
         if let Some((fill_d, stroke_d)) = body.timed_rough(|geometry| {
-            roughjs_hachure_paths_for_svg_path(
+            prepare_hachure_svg_path(
+                RoughGeometryTarget::Svg,
                 &path_data,
                 geometry.stroke_width,
                 geometry.stroke_dasharray,
-                FLOWCHART_POLYGON_HAND_DRAWN_FILL_WEIGHT,
-                FLOWCHART_POLYGON_HAND_DRAWN_HACHURE_GAP,
-                FLOWCHART_POLYGON_HAND_DRAWN_ROUGHNESS,
+                geometry.hachure(
+                    FLOWCHART_POLYGON_HAND_DRAWN_FILL_WEIGHT,
+                    FLOWCHART_POLYGON_HAND_DRAWN_HACHURE_GAP,
+                    FLOWCHART_POLYGON_HAND_DRAWN_ROUGHNESS,
+                ),
                 geometry.work_meter,
                 geometry.randomness,
             )
+            .and_then(|paths| geometry.write_rough_paths(paths))
         }) {
             let _ = write!(
                 out,
@@ -80,14 +81,16 @@ pub fn write_lean(
 /// Advances the rough stream for the caller's hand-drawn lean or trapezoid geometry.
 pub fn advance_lean_hand_drawn(geometry: NodeBodyGeometry<'_>, points: &[(f64, f64); 4]) {
     let path = path_from_points(points);
-    let _ = roughjs_prepare_hachure_paths_for_svg_path(
+    let _ = prepare_hachure_svg_path(
         RoughGeometryTarget::Query,
         &path,
         geometry.stroke_width,
         geometry.stroke_dasharray,
-        FLOWCHART_POLYGON_HAND_DRAWN_FILL_WEIGHT,
-        FLOWCHART_POLYGON_HAND_DRAWN_HACHURE_GAP,
-        FLOWCHART_POLYGON_HAND_DRAWN_ROUGHNESS,
+        geometry.hachure(
+            FLOWCHART_POLYGON_HAND_DRAWN_FILL_WEIGHT,
+            FLOWCHART_POLYGON_HAND_DRAWN_HACHURE_GAP,
+            FLOWCHART_POLYGON_HAND_DRAWN_ROUGHNESS,
+        ),
         geometry.work_meter,
         geometry.randomness,
     );

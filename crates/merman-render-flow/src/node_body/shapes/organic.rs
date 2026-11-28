@@ -4,10 +4,7 @@ use std::fmt::Write as _;
 
 use merman_render_core::{
     number_format::canonical_number as fmt,
-    rough_svg::paths::{
-        RoughGeometryTarget, roughjs_hachure_paths_for_svg_path,
-        roughjs_prepare_hachure_paths_for_svg_path,
-    },
+    rough_svg::paths::{RoughGeometryTarget, prepare_hachure_svg_path},
     svg_output::SvgOutput,
 };
 
@@ -46,16 +43,20 @@ pub(super) fn render_organic_shape(
     let path = path_data(&geometry.arcs);
     if svg.geometry.hand_drawn
         && let Some((fill_d, stroke_d)) = svg.timed_rough(|geometry| {
-            roughjs_hachure_paths_for_svg_path(
+            prepare_hachure_svg_path(
+                RoughGeometryTarget::Svg,
                 &path,
                 geometry.stroke_width,
                 geometry.stroke_dasharray,
-                HAND_DRAWN_FILL_WEIGHT,
-                HAND_DRAWN_HACHURE_GAP,
-                HAND_DRAWN_ROUGHNESS,
+                geometry.hachure(
+                    HAND_DRAWN_FILL_WEIGHT,
+                    HAND_DRAWN_HACHURE_GAP,
+                    HAND_DRAWN_ROUGHNESS,
+                ),
                 geometry.work_meter,
                 geometry.randomness,
             )
+            .and_then(|paths| geometry.write_rough_paths(paths))
         })
     {
         let _ = write!(
@@ -97,14 +98,16 @@ pub(super) fn advance_rough_geometry(
     }
     let outline = organic_geometry(cloud, label_size, padding);
     let path = path_data(&outline.arcs);
-    let _ = roughjs_prepare_hachure_paths_for_svg_path(
+    let _ = prepare_hachure_svg_path(
         RoughGeometryTarget::Query,
         &path,
         geometry.stroke_width,
         geometry.stroke_dasharray,
-        HAND_DRAWN_FILL_WEIGHT,
-        HAND_DRAWN_HACHURE_GAP,
-        HAND_DRAWN_ROUGHNESS,
+        geometry.hachure(
+            HAND_DRAWN_FILL_WEIGHT,
+            HAND_DRAWN_HACHURE_GAP,
+            HAND_DRAWN_ROUGHNESS,
+        ),
         geometry.work_meter,
         geometry.randomness,
     );

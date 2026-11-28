@@ -3,10 +3,7 @@
 use merman_render_core::{
     rough_svg::{
         closed_path_d_from_points as path_from_points,
-        paths::{
-            RoughGeometryTarget, roughjs_hachure_paths_for_svg_path,
-            roughjs_prepare_hachure_paths_for_svg_path,
-        },
+        paths::{RoughGeometryTarget, prepare_hachure_svg_path},
     },
     svg_output::SvgOutput,
 };
@@ -31,16 +28,20 @@ pub fn write_stadium(
     let radius = h / 2.0;
     if body.geometry.hand_drawn {
         if let Some((fill_d, stroke_d)) = body.timed_rough(|geometry| {
-            roughjs_hachure_paths_for_svg_path(
+            prepare_hachure_svg_path(
+                RoughGeometryTarget::Svg,
                 &path_data,
                 geometry.stroke_width,
                 geometry.stroke_dasharray,
-                FLOWCHART_STADIUM_HAND_DRAWN_FILL_WEIGHT,
-                FLOWCHART_STADIUM_HAND_DRAWN_HACHURE_GAP,
-                FLOWCHART_STADIUM_HAND_DRAWN_ROUGHNESS,
+                geometry.hachure(
+                    FLOWCHART_STADIUM_HAND_DRAWN_FILL_WEIGHT,
+                    FLOWCHART_STADIUM_HAND_DRAWN_HACHURE_GAP,
+                    FLOWCHART_STADIUM_HAND_DRAWN_ROUGHNESS,
+                ),
                 geometry.work_meter,
                 geometry.randomness,
             )
+            .and_then(|paths| geometry.write_rough_paths(paths))
         }) {
             if body.rough_fill_opacity.is_some() {
                 let _ = write!(
@@ -100,14 +101,16 @@ pub fn advance_stadium_rough_geometry(geometry: NodeBodyGeometry<'_>, stadium: S
     let path_data = path_from_points(&stadium.outline());
     let target = RoughGeometryTarget::Query;
     if geometry.hand_drawn {
-        let _ = roughjs_prepare_hachure_paths_for_svg_path(
+        let _ = prepare_hachure_svg_path(
             target,
             &path_data,
             geometry.stroke_width,
             geometry.stroke_dasharray,
-            FLOWCHART_STADIUM_HAND_DRAWN_FILL_WEIGHT,
-            FLOWCHART_STADIUM_HAND_DRAWN_HACHURE_GAP,
-            FLOWCHART_STADIUM_HAND_DRAWN_ROUGHNESS,
+            geometry.hachure(
+                FLOWCHART_STADIUM_HAND_DRAWN_FILL_WEIGHT,
+                FLOWCHART_STADIUM_HAND_DRAWN_HACHURE_GAP,
+                FLOWCHART_STADIUM_HAND_DRAWN_ROUGHNESS,
+            ),
             geometry.work_meter,
             geometry.randomness,
         );

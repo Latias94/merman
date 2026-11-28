@@ -7,7 +7,7 @@ use merman_render_core::{
     rough_svg::{
         ops_to_svg_path_d,
         paths::{
-            RoughGeometryTarget, RoughPathPair, roughjs_prepare_hachure_paths_for_rect,
+            RoughGeometryTarget, RoughPathPair, prepare_hachure_rect,
             roughjs_prepare_hand_drawn_line_path,
         },
     },
@@ -27,8 +27,7 @@ pub fn write_subroutine(out: &mut impl SvgOutput, mut body: NodeBodySvg<'_>) {
     if body.geometry.hand_drawn
         && let Some(((fill, outline), side_strokes)) = body.timed_rough(|geometry| {
             let target = RoughGeometryTarget::Svg;
-            let frame =
-                prepare_frame(geometry, target, total_w, h)?.into_svg_paths(geometry.work_meter)?;
+            let frame = geometry.write_rough_paths(prepare_frame(geometry, target, total_w, h)?)?;
             let sides = prepare_side_strokes(geometry, target, total_w, h)?;
             Some((frame, sides))
         })
@@ -47,7 +46,16 @@ pub fn write_subroutine(out: &mut impl SvgOutput, mut body: NodeBodySvg<'_>) {
         // Mermaid generates the left rule first, then inserts the right rule ahead of it.
         for stroke in side_strokes.iter().rev() {
             out.push_str("<g>");
-            write_outline(out, &body, &ops_to_svg_path_d(stroke));
+            #[cfg(feature = "layout-shoal")]
+            let compact = body.geometry.compact_rough;
+            #[cfg(not(feature = "layout-shoal"))]
+            let compact = false;
+            let d = if compact {
+                merman_render_core::rough_svg::ops_to_compact_svg_path_d(stroke)
+            } else {
+                ops_to_svg_path_d(stroke)
+            };
+            write_outline(out, &body, &d);
             out.push_str("</g>");
         }
         if body.rough_fill_opacity.is_some() {
@@ -115,17 +123,16 @@ fn prepare_frame(
     width: f64,
     height: f64,
 ) -> Option<RoughPathPair> {
-    roughjs_prepare_hachure_paths_for_rect(
+    prepare_hachure_rect(
         target,
-        -width / 2.0,
-        -height / 2.0,
-        width,
-        height,
+        [-width / 2.0, -height / 2.0, width, height],
         geometry.stroke_width,
         geometry.stroke_dasharray,
-        HAND_DRAWN_FILL_WEIGHT,
-        HAND_DRAWN_HACHURE_GAP,
-        HAND_DRAWN_ROUGHNESS,
+        geometry.hachure(
+            HAND_DRAWN_FILL_WEIGHT,
+            HAND_DRAWN_HACHURE_GAP,
+            HAND_DRAWN_ROUGHNESS,
+        ),
         geometry.work_meter,
         geometry.randomness,
     )

@@ -378,6 +378,8 @@ pub(in crate::svg) fn include_flowchart_node_rendered_bounds<'data, F>(
                     "comment" | "brace" | "brace-l" | "brace-r" | "braces"
                 ) {
                     let metrics = layout_node_metrics_or_zero(ctx, n);
+                    let compact = ctx.compatibility.look.is_hand_drawn()
+                        && ctx.layout.route_contract.is_canonical_axis();
                     let geometry = crate::svg::render::node::shapes::curly_brace_comment_geometry(
                         shape,
                         metrics.width,
@@ -385,6 +387,7 @@ pub(in crate::svg) fn include_flowchart_node_rendered_bounds<'data, F>(
                         node_padding,
                         merman_render_core::config::mermaid_config_diagram_look(ctx.config)
                             .is_neo(),
+                        compact,
                     );
                     // Root getBBox includes the separately translated label,
                     // which can extend beyond Neo's fixed shape padding.
@@ -396,11 +399,28 @@ pub(in crate::svg) fn include_flowchart_node_rendered_bounds<'data, F>(
                     );
                     let mut bounds: Option<crate::svg::path_bounds::SvgPathBounds> = None;
                     for path in geometry.paths {
-                        if let Some(mut pb) = rough_stroke_svg_path_bounds(
-                            &bounds_randomness,
-                            &path.d,
-                            ctx.work_meter,
-                        ) {
+                        let extent = if compact && !path.visible {
+                            crate::svg::path_bounds::svg_path_bounds_from_d(&path.d)
+                        } else if compact {
+                            use merman_render_core::rough_svg::paths;
+
+                            paths::roughjs_prepare_hand_drawn_stroke_path_for_svg_path(
+                                paths::RoughGeometryTarget::Query,
+                                &path.d,
+                                0.7,
+                                ctx.work_meter,
+                                &bounds_randomness,
+                            )
+                            .as_ref()
+                            .and_then(paths::svg_path_bounds_from_rough_ops)
+                        } else {
+                            rough_stroke_svg_path_bounds(
+                                &bounds_randomness,
+                                &path.d,
+                                ctx.work_meter,
+                            )
+                        };
+                        if let Some(mut pb) = extent {
                             pb.min_x += geometry.group_tx;
                             pb.max_x += geometry.group_tx;
                             bounds = Some(match bounds {

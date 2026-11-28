@@ -71,7 +71,7 @@ pub(in super::super) fn render_flowchart_shape(
             node_body::write_diamond(
                 out,
                 body_svg(common, details),
-                common.centered_diamond,
+                common.canonical_axis,
                 !common.effect_filter_style.is_empty(),
             );
         }

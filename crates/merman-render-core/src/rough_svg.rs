@@ -82,7 +82,7 @@ pub fn ops_to_svg_path_d(opset: &roughr::core::OpSet<f64>) -> String {
     out
 }
 
-/// Serialize rough operations with at most three fractional digits and no inter-command spaces.
+/// Serialize native rough operations to hundredths of a pixel.
 #[cfg(feature = "svg-edge-parity")]
 pub fn ops_to_compact_svg_path_d(opset: &roughr::core::OpSet<f64>) -> String {
     use crate::svg_edge_parity::path_numbers::fmt_path_into;
@@ -101,7 +101,7 @@ pub fn ops_to_compact_svg_path_d(opset: &roughr::core::OpSet<f64>) -> String {
                 out.push(' ');
             }
             if coordinate.abs() < i64::MAX as f64 / 1000.0 {
-                fmt_path_into(&mut out, coordinate);
+                fmt_path_into(&mut out, (coordinate * 100.0).round() / 100.0);
             } else {
                 let _ = write!(out, "{}", number(coordinate));
             }
@@ -143,7 +143,7 @@ mod tests {
         #[cfg(feature = "svg-edge-parity")]
         assert_eq!(
             ops_to_compact_svg_path_d(&operations),
-            "M0 2C0 2.5 -3 4 5.123 6L7 8"
+            "M0 2C0 2.5 -3 4 5.12 6L7 8"
         );
     }
 }

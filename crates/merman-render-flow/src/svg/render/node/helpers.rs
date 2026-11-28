@@ -257,25 +257,7 @@ pub(super) fn prepare_node_path(
     path: &str,
     target: super::roughjs::RoughGeometryTarget,
 ) -> Option<super::roughjs::RoughPathPair> {
-    if common.look_is_hand_drawn() {
-        super::roughjs::roughjs_prepare_paths_for_hand_drawn_svg_path(
-            target,
-            path,
-            common.stroke_width,
-            common.stroke_dasharray,
-            common.work_meter,
-            common.hand_drawn_seed,
-        )
-    } else {
-        super::roughjs::roughjs_prepare_paths_for_svg_path(
-            target,
-            path,
-            common.stroke_width,
-            common.stroke_dasharray,
-            common.work_meter,
-            common.hand_drawn_seed,
-        )
-    }
+    crate::node_body::prepare_node_path(&super::shapes::body_geometry(common), path, target)
 }
 
 /// Generate the complete RoughJS hand-drawn pair for a node path.
@@ -292,8 +274,13 @@ pub(super) fn hand_drawn_path_pair(
         return None;
     }
     timed_node_roughjs(common.timing, details, || {
-        prepare_node_path(common, path_data, super::roughjs::RoughGeometryTarget::Svg)
-            .and_then(|paths| paths.into_svg_paths(common.work_meter))
+        let geometry = super::shapes::body_geometry(common);
+        crate::node_body::prepare_node_path(
+            &geometry,
+            path_data,
+            super::roughjs::RoughGeometryTarget::Svg,
+        )
+        .and_then(|paths| geometry.write_rough_paths(paths))
     })
     .filter(|(fill, stroke)| !fill.is_empty() && !stroke.is_empty())
 }

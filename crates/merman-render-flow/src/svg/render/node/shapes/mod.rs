@@ -188,11 +188,13 @@ impl<'a> TerminalNodeBody<'a> {
     }
 }
 
-fn body_geometry<'a>(common: &'a FlowchartNodeGeometry<'_>) -> NodeBodyGeometry<'a> {
+pub(super) fn body_geometry<'a>(common: &'a FlowchartNodeGeometry<'_>) -> NodeBodyGeometry<'a> {
     NodeBodyGeometry {
         width: common.layout_node.width,
         height: common.layout_node.height,
         hand_drawn: common.look_is_hand_drawn(),
+        #[cfg(feature = "layout-shoal")]
+        compact_rough: common.look_is_hand_drawn() && common.canonical_axis,
         stroke_width: common.stroke_width,
         stroke_dasharray: common.stroke_dasharray,
         randomness: common.hand_drawn_seed,

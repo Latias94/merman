@@ -6,8 +6,8 @@ use merman_render_core::{
     number_format::canonical_number as fmt,
     resources::OperationWorkMeter,
     rough_svg::paths::{
-        RoughGeometryTarget, RoughPathPair, roughjs_paths_for_svg_path,
-        roughjs_prepare_paths_for_hand_drawn_svg_path, roughjs_prepare_paths_for_svg_path,
+        RoughGeometryTarget, RoughHachure, RoughPathPair, prepare_hachure_svg_path,
+        roughjs_paths_for_svg_path, roughjs_prepare_paths_for_svg_path,
     },
     svg_output::{SvgOutput, timing::RenderTiming},
     xml::{EscapeAttrDisplay, escape_attr_display},
@@ -53,10 +53,34 @@ pub struct NodeBodyGeometry<'a> {
     pub width: f64,
     pub height: f64,
     pub hand_drawn: bool,
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) compact_rough: bool,
     pub stroke_width: f32,
     pub stroke_dasharray: &'a str,
     pub randomness: &'a RoughRandomness,
     pub work_meter: &'a OperationWorkMeter,
+}
+
+impl NodeBodyGeometry<'_> {
+    fn hachure(&self, weight: f32, gap: f32, roughness: f32) -> RoughHachure {
+        #[cfg(feature = "layout-shoal")]
+        if self.compact_rough {
+            // Keep the texture legible over the solid backing.
+            return RoughHachure::backed(weight, gap.max(2.8), roughness);
+        }
+        RoughHachure::mermaid(weight, gap, roughness)
+    }
+
+    pub(crate) fn write_rough_paths(
+        &self,
+        paths: merman_render_core::rough_svg::paths::RoughPathPair,
+    ) -> Option<(String, String)> {
+        #[cfg(feature = "layout-shoal")]
+        if self.compact_rough {
+            return paths.into_compact_svg_paths(self.work_meter);
+        }
+        paths.into_svg_paths(self.work_meter)
+    }
 }
 
 /// Resolved body paint and the caller's shape timing counters.
@@ -91,7 +115,7 @@ impl<'a> NodeBodySvg<'a> {
         }
         self.timed_rough(|geometry| {
             prepare_node_path(geometry, path, RoughGeometryTarget::Svg)
-                .and_then(|paths| paths.into_svg_paths(geometry.work_meter))
+                .and_then(|paths| geometry.write_rough_paths(paths))
         })
         .filter(|(fill, stroke)| !fill.is_empty() && !stroke.is_empty())
     }
@@ -175,17 +199,22 @@ fn circle_backing(body: &NodeBodySvg<'_>, radius: f64) -> String {
     }
 }
 
-fn prepare_node_path(
+pub(crate) fn prepare_node_path(
     geometry: &NodeBodyGeometry<'_>,
     path: &str,
     target: RoughGeometryTarget,
 ) -> Option<RoughPathPair> {
     if geometry.hand_drawn {
-        roughjs_prepare_paths_for_hand_drawn_svg_path(
+        #[cfg(feature = "layout-shoal")]
+        let compact = geometry.compact_rough;
+        #[cfg(not(feature = "layout-shoal"))]
+        let compact = false;
+        prepare_hachure_svg_path(
             target,
             path,
             geometry.stroke_width,
             geometry.stroke_dasharray,
+            RoughHachure::flowchart_path(compact),
             geometry.work_meter,
             geometry.randomness,
         )
