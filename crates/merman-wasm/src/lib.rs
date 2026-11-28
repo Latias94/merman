@@ -20,6 +20,9 @@ use wasm_bindgen::prelude::*;
 use std::{cell::RefCell, sync::Arc};
 
 #[cfg(feature = "svg")]
+mod render_operation;
+
+#[cfg(feature = "svg")]
 mod render_source;
 #[cfg(feature = "svg")]
 pub use render_source::WasmPreparedSource;

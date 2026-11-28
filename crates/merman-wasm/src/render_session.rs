@@ -4,7 +4,7 @@ use crate::{
     binding_error_to_js, execute_wasm_operation_result_with_services,
     execute_wasm_operation_with_services, options_bytes, string_result, text_operation_result,
 };
-use merman_bindings_core::{BindingEngineServices, BindingError, build_icon_registry_from_json};
+use merman_bindings_core::{BindingEngineServices, build_icon_registry_from_json};
 use std::cell::Cell;
 use wasm_bindgen::prelude::*;
 
@@ -167,13 +167,11 @@ impl WasmRenderSession {
     }
 
     fn with_operation<T>(&self, run: impl FnOnce() -> Result<T, JsValue>) -> Result<T, JsValue> {
-        if self.active.replace(true) {
-            return Err(binding_error_to_js(BindingError::reentrant_call(
-                "a render session cannot be re-entered from its text measurement callback",
-            )));
-        }
-        let _guard = ActiveOperation(&self.active);
-        run()
+        crate::render_operation::with_active(
+            &self.active,
+            "a render session cannot be re-entered from its text measurement callback",
+            run,
+        )
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -188,13 +186,5 @@ impl WasmRenderSession {
                 .clone()
                 .with_host_text_measurer(std::sync::Arc::new(crate::WasmHostTextMeasurer)))
         })
-    }
-}
-
-struct ActiveOperation<'a>(&'a Cell<bool>);
-
-impl Drop for ActiveOperation<'_> {
-    fn drop(&mut self) {
-        self.0.set(false);
     }
 }
