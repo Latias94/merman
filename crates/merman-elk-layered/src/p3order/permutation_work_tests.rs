@@ -318,7 +318,7 @@ fn deferred_repair_prepays_the_exit_walk_and_charges_only_affected_maps() {
             charges: Vec::new(),
         };
         let result = {
-            let mut pass = PortOrderPass::new(&mut graph, PortOrderDeferral::AllowDescendants);
+            let mut pass = PortOrderPass::for_sorter(&mut graph);
             orders.into_iter().try_for_each(|(owner, order)| {
                 apply_port_order(
                     pass.graph,
@@ -900,4 +900,125 @@ fn model_order_rank_projection_retains_malformed_detached_reference_failure() {
     assert_eq!(old.downcast_ref::<String>(), new.downcast_ref::<String>());
     assert_eq!(old_work.events, new_work.events);
     assert_eq!(projected, immediate);
+}
+
+fn staged_port_order_fixture(degrees: bool, with_child: bool) -> LGraph {
+    use crate::graph::{LayeredEdge, SelfLoopEdge};
+
+    let mut graph = graph();
+    if degrees {
+        graph.options.port_sorting_strategy = PortSortingStrategy::PortDegree;
+    }
+    graph.set_node_layer(0, 0);
+    graph.set_node_layer(1, 0);
+    let first = &mut graph.layerless_nodes[0];
+    first.port_constraints = PortConstraints::FixedOrder;
+    for (rank, port) in first.ports.iter_mut().enumerate() {
+        port.set_side(PortSide::East);
+        port.port_index = Some(1 - rank as isize);
+    }
+    let second = &mut graph.layerless_nodes[1];
+    second.port_constraints = PortConstraints::FixedSide;
+    for id in 0..6 {
+        let mut port = LPort::new("duplicate", 1, PortType::Input);
+        port.model_order = Some(id);
+        port.set_side(if id < 3 {
+            PortSide::South
+        } else {
+            PortSide::West
+        });
+        second.ports.push(port);
+    }
+    let port = |id| PortRef { node: 1, port: id };
+    for (source, target, reversed) in [
+        (port(3), port(4), false),
+        (PortRef { node: 0, port: 0 }, port(3), false),
+        (PortRef { node: 0, port: 1 }, port(4), true),
+    ] {
+        graph
+            .add_edge(LayeredEdge {
+                id: format!("e{}", graph.edges.len()),
+                source,
+                target,
+                source_node_id: graph.layerless_nodes[source.node].id.clone(),
+                target_node_id: graph.layerless_nodes[target.node].id.clone(),
+                labels: Vec::new(),
+                minlen: 1,
+                reversed,
+                bend_points: Vec::new(),
+                model_order: None,
+                priority_direction: 0,
+                priority_shortness: 0,
+                priority_straightness: 0,
+                thickness: 0.0,
+                original_opposite_port: (source.node == 1).then_some(port(5)),
+                compound_segment: None,
+            })
+            .unwrap();
+    }
+    graph.detach_edge(0).unwrap();
+    graph.self_loop_holders.push(SelfLoopHolder {
+        node: 1,
+        hyper_loops: vec![SelfHyperLoop {
+            ports: vec![SelfLoopPort {
+                port: 3,
+                had_only_self_loops: false,
+                hidden: false,
+            }],
+            edges: vec![SelfLoopEdge {
+                edge: 0,
+                source_port: 3,
+                target_port: 4,
+            }],
+            labels: None,
+            self_loop_type: None,
+            leftmost_port: None,
+            rightmost_port: None,
+            occupied_sides: Vec::new(),
+            routing_slots: [0; 5],
+        }],
+        ports_hidden: false,
+        original_port_constraints: PortConstraints::FixedSide,
+    });
+    graph.layerless_nodes[0].long_edge_target = Some(port(5));
+    graph.layerless_nodes[0].origin_port = Some(graph.scoped_port(port(3)));
+    if with_child {
+        let mut child = LGraph::new("root", LayeredOptions::default());
+        child
+            .layerless_nodes
+            .push(LNode::new("dummy", 0.0, 0.0, None));
+        child.layerless_nodes[0].origin_port = Some(graph.scoped_port(port(3)));
+        let mut local = LNode::new("local", 0.0, 0.0, None);
+        local.ports = (0..6)
+            .map(|_| LPort::new("duplicate", 1, PortType::Input))
+            .collect();
+        local.origin_port = Some(child.scoped_port(port(3)));
+        child.layerless_nodes.push(local);
+        graph.layerless_nodes[1].nested_graph = Some(Box::new(child));
+    }
+    graph
+}
+
+#[test]
+fn port_list_storage_projects_the_final_rank_to_detached_and_scoped_references() {
+    for (degrees, with_child) in [(false, false), (true, false), (true, true)] {
+        let mut graph = staged_port_order_fixture(degrees, with_child);
+        let mut immediate = graph.clone();
+        immediate.reorder_node_ports(0, [1, 0]);
+        if degrees {
+            immediate.reorder_node_ports(1, [0, 1, 2, 4, 5, 3]);
+        }
+        sort_port_lists_with_work_control(&mut graph, &mut crate::work::NoopWorkControl).unwrap();
+        assert_eq!(graph, immediate);
+        assert_eq!(format!("{graph:?}"), format!("{immediate:?}"));
+        assert!(!graph.edge_source_attached(0));
+        assert!(!graph.edge_target_attached(0));
+        if let Some(child) = graph.layerless_nodes[1].nested_graph.as_ref() {
+            let parent_origin = child.layerless_nodes[0].origin_port.as_ref().unwrap();
+            let local_origin = child.layerless_nodes[1].origin_port.as_ref().unwrap();
+            assert!(parent_origin.belongs_to(&graph));
+            assert!(local_origin.belongs_to(child));
+            assert_eq!((parent_origin.port.port, local_origin.port.port), (5, 3));
+        }
+    }
 }

@@ -19,7 +19,7 @@ use crate::work::{NoopWorkControl, WorkControl, WorkError, checked_add, checked_
 
 mod clone_tree;
 mod port_remap;
-pub(crate) use port_remap::{FlatPortRemap, PendingPortRemap};
+pub(crate) use port_remap::{FlatPortRemap, PendingPortRemap, PortListStorage};
 
 #[derive(Clone, Copy, Default)]
 pub(crate) enum PortOrderDeferral {
@@ -2250,6 +2250,9 @@ mod tests {
         immediate.detach_edge(1).unwrap();
         let mut deferred = immediate.clone();
         let mut pending = PendingPortRemap::default();
+        let mut staged = immediate.clone();
+        let mut staged_references = PendingPortRemap::default();
+        let mut storage = PortListStorage::default();
 
         for (owner, order) in [
             (0, vec![2, 0, 1]),
@@ -2259,11 +2262,21 @@ mod tests {
             (1, vec![0, 1]),
         ] {
             immediate.reorder_node_ports(owner, order.clone());
-            pending.reorder(&mut deferred, owner, order);
+            pending.reorder(&mut deferred, owner, order.clone());
+            storage.stage_order(&mut staged, &mut staged_references, owner, order);
+            for (owner, node) in immediate.layerless_nodes.iter().enumerate() {
+                for (rank, expected) in node.ports.iter().enumerate() {
+                    let id = storage.port_id_at_rank(owner, rank);
+                    assert_eq!(&staged.layerless_nodes[owner].ports[id], expected);
+                }
+            }
         }
         pending.apply(&mut deferred);
+        storage.install(&mut staged);
+        staged_references.apply(&mut staged);
 
         assert_eq!(deferred, immediate);
+        assert_eq!(staged, immediate);
         assert_eq!(deferred.edges[1].source, PortRef { node: 0, port: 1 });
         assert!(!deferred.edge_source_attached(1));
     }

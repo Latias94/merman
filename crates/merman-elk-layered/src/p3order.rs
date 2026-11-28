@@ -14,8 +14,8 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
 use crate::graph::{
-    FlatPortRemap, GraphNodeRef, LGraph, LNodeKind, PendingPortRemap, PortOrderDeferral, PortRef,
-    PortSide, ReorderNodePortsWorkContext,
+    FlatPortRemap, GraphNodeRef, LGraph, LNodeKind, LPort, PendingPortRemap, PortListStorage,
+    PortOrderDeferral, PortRef, PortSide, ReorderNodePortsWorkContext,
 };
 use crate::options::{OrderingStrategy, PortConstraints, PortSortingStrategy};
 use crate::work::{WorkControl, WorkError, ceil_log2, checked_add, checked_mul, checked_sum};
@@ -383,9 +383,9 @@ pub fn sort_port_lists_with_work_control(
     graph: &mut LGraph,
     work: &mut dyn WorkControl,
 ) -> Result<(), WorkError> {
-    // The sorter reads port records and edge reversal flags without consulting port references.
-    // Reconcile the admitted prefix whenever the pass exits.
-    let mut pass = PortOrderPass::new(graph, PortOrderDeferral::AllowDescendants);
+    // The sorter reads ports by rank and edge reversal flags without consulting endpoints.
+    // Install the admitted order and reconcile its references whenever the pass exits.
+    let mut pass = PortOrderPass::for_sorter(graph);
     sort_port_lists_impl(pass.graph, work, &mut pass.context)
 }
 
@@ -395,6 +395,12 @@ struct PortOrderPass<'a> {
 }
 
 impl<'a> PortOrderPass<'a> {
+    fn for_sorter(graph: &'a mut LGraph) -> Self {
+        let mut pass = Self::new(graph, PortOrderDeferral::AllowDescendants);
+        pass.context.sorter_storage = Some(PortListStorage::default());
+        pass
+    }
+
     fn new(graph: &'a mut LGraph, deferral: PortOrderDeferral) -> Self {
         Self {
             graph,
@@ -403,6 +409,7 @@ impl<'a> PortOrderPass<'a> {
                 pending: (!matches!(deferral, PortOrderDeferral::Immediate))
                     .then(PendingPortRemap::default),
                 deferral,
+                sorter_storage: None,
             },
         }
     }
@@ -410,6 +417,9 @@ impl<'a> PortOrderPass<'a> {
 
 impl Drop for PortOrderPass<'_> {
     fn drop(&mut self) {
+        if let Some(storage) = self.context.sorter_storage.take() {
+            storage.install(self.graph);
+        }
         if let Some(pending) = self.context.pending.take() {
             pending.apply(self.graph);
         }
@@ -432,14 +442,18 @@ fn sort_port_lists_impl(
         if constraints.is_order_fixed() {
             let mut order = (0..graph.layerless_nodes[node].ports.len()).collect::<Vec<_>>();
             order.sort_by(|left, right| {
-                compare_combined_ports(graph, node, *left, *right, constraints)
+                compare_combined_ports(
+                    reorder_context.port_at_rank(graph, node, *left),
+                    reorder_context.port_at_rank(graph, node, *right),
+                    constraints,
+                )
             });
             apply_port_order(graph, node, order, work, reorder_context)?;
         } else if constraints.is_side_fixed() {
             let keys = (0..graph.layerless_nodes[node].ports.len())
                 .map(|port| {
                     (
-                        port_side_order(graph.layerless_nodes[node].ports[port].side),
+                        port_side_order(reorder_context.port_at_rank(graph, node, port).side),
                         port,
                     )
                 })
@@ -449,7 +463,10 @@ fn sort_port_lists_impl(
 
             if graph.options.port_sorting_strategy == PortSortingStrategy::PortDegree {
                 let keys = (0..graph.layerless_nodes[node].ports.len())
-                    .map(|port| (port_degree_east_west_key(graph, node, port), port))
+                    .map(|rank| {
+                        let port = reorder_context.port_at_rank(graph, node, rank);
+                        (port_degree_east_west_key(graph, port, rank), rank)
+                    })
                     .collect::<Vec<_>>();
                 reorder_by_keys(graph, node, keys, work, reorder_context)?;
             }
@@ -529,6 +546,17 @@ struct PortOrderContext {
     census: Option<ReorderNodePortsWorkContext>,
     pending: Option<PendingPortRemap>,
     deferral: PortOrderDeferral,
+    sorter_storage: Option<PortListStorage>,
+}
+
+impl PortOrderContext {
+    fn port_at_rank<'a>(&self, graph: &'a LGraph, node: usize, rank: usize) -> &'a LPort {
+        let id = self
+            .sorter_storage
+            .as_ref()
+            .map_or(rank, |storage| storage.port_id_at_rank(node, rank));
+        &graph.layerless_nodes[node].ports[id]
+    }
 }
 
 /// Read current order from a local endpoint. The port records are already in rank order,
@@ -551,12 +579,17 @@ fn apply_port_order(
     context: &mut PortOrderContext,
 ) -> Result<(), WorkError> {
     work.check(0)?;
+    let ports = &mut graph.layerless_nodes[node].ports;
+    let identity = order.iter().copied().eq(0..ports.len());
+    if identity && context.sorter_storage.is_some() {
+        for port in ports {
+            port.node = node;
+        }
+        return Ok(());
+    }
+
     let mut check_edge_slots = false;
-    if !order
-        .iter()
-        .copied()
-        .eq(0..graph.layerless_nodes[node].ports.len())
-    {
+    if !identity {
         if context.census.is_none() {
             let (census, can_defer) =
                 ReorderNodePortsWorkContext::new_with_work_control(graph, work, context.deferral)?;
@@ -582,7 +615,11 @@ fn apply_port_order(
             context.pending = None;
         }
     } else if let Some(pending) = &mut context.pending {
-        pending.reorder(graph, node, order);
+        if let Some(storage) = &mut context.sorter_storage {
+            storage.stage_order(graph, pending, node, order);
+        } else {
+            pending.reorder(graph, node, order);
+        }
     } else {
         graph.reorder_node_ports(node, order);
     }
@@ -607,14 +644,10 @@ fn reorder_by_keys<K: Ord>(
 }
 
 fn compare_combined_ports(
-    graph: &LGraph,
-    node: usize,
-    first: usize,
-    second: usize,
+    first_port: &LPort,
+    second_port: &LPort,
     constraints: PortConstraints,
 ) -> Ordering {
-    let first_port = &graph.layerless_nodes[node].ports[first];
-    let second_port = &graph.layerless_nodes[node].ports[second];
     let side_order = port_side_order(first_port.side).cmp(&port_side_order(second_port.side));
     if side_order != Ordering::Equal || !constraints.is_order_fixed() {
         return side_order;
@@ -664,8 +697,8 @@ fn reverse_side_range(
     work: &mut dyn WorkControl,
     context: &mut PortOrderContext,
 ) -> Result<(), WorkError> {
-    let ports = &graph.layerless_nodes[node].ports;
-    if ports.is_empty() {
+    let port_count = graph.layerless_nodes[node].ports.len();
+    if port_count == 0 {
         return Ok(());
     }
 
@@ -675,50 +708,40 @@ fn reverse_side_range(
     // must inspect the reordered list. A conventional side range changes routes.
     let lower_bound = port_side_order(side);
     let upper_bound = lower_bound + 1;
-    let mut current_side = port_side_order(ports[0].side);
+    let side_at_rank = |rank| port_side_order(context.port_at_rank(graph, node, rank).side);
+    let mut current_side = side_at_rank(0);
     let mut low = 0;
-    while low < ports.len() - 1 && current_side < lower_bound {
+    while low < port_count - 1 && current_side < lower_bound {
         low += 1;
-        current_side = port_side_order(ports[low].side);
+        current_side = side_at_rank(low);
     }
     let mut high = low;
-    while high < ports.len() - 1 && current_side < upper_bound {
+    while high < port_count - 1 && current_side < upper_bound {
         high += 1;
-        current_side = port_side_order(ports[low].side);
+        current_side = side_at_rank(low);
     }
     if high <= low + 2 {
         return Ok(());
     }
 
-    let mut order = (0..ports.len()).collect::<Vec<_>>();
+    let mut order = (0..port_count).collect::<Vec<_>>();
     order[low..high].reverse();
     apply_port_order(graph, node, order, work, context)
 }
 
-fn port_degree_east_west_key(graph: &LGraph, node: usize, port: usize) -> (u8, i64, usize) {
-    let port_data = &graph.layerless_nodes[node].ports[port];
-    let degree_key = match port_data.side {
-        PortSide::East => -(real_out_degree(graph, node, port) as i64),
-        PortSide::West => real_in_degree(graph, node, port) as i64,
+fn port_degree_east_west_key(graph: &LGraph, port: &LPort, rank: usize) -> (u8, i64, usize) {
+    let real_degree = |edges: &[usize]| {
+        edges
+            .iter()
+            .filter(|edge| !graph.edges[**edge].reversed)
+            .count() as i64
+    };
+    let degree_key = match port.side {
+        PortSide::East => -real_degree(&port.outgoing_edges),
+        PortSide::West => real_degree(&port.incoming_edges),
         _ => 0,
     };
-    (port_side_order(port_data.side), degree_key, port)
-}
-
-fn real_in_degree(graph: &LGraph, node: usize, port: usize) -> usize {
-    graph.layerless_nodes[node].ports[port]
-        .incoming_edges
-        .iter()
-        .filter(|edge| !graph.edges[**edge].reversed)
-        .count()
-}
-
-fn real_out_degree(graph: &LGraph, node: usize, port: usize) -> usize {
-    graph.layerless_nodes[node].ports[port]
-        .outgoing_edges
-        .iter()
-        .filter(|edge| !graph.edges[**edge].reversed)
-        .count()
+    (port_side_order(port.side), degree_key, rank)
 }
 
 fn port_side_order(side: PortSide) -> u8 {
