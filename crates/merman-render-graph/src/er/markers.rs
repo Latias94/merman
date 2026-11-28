@@ -21,6 +21,7 @@ struct MarkerGlyph {
     width: u8,
     height: u8,
     path: &'static str,
+    inset_path: Option<&'static str>,
     circle_x: Option<(f64, f64)>,
     outline: std::sync::OnceLock<Rect>,
 }
@@ -42,9 +43,15 @@ impl MarkerGlyph {
             width,
             height,
             path,
+            inset_path: None,
             circle_x,
             outline: std::sync::OnceLock::new(),
         }
+    }
+
+    const fn with_inset_path(mut self, path: &'static str) -> Self {
+        self.inset_path = Some(path);
+        self
     }
 
     fn write_content(
@@ -52,6 +59,7 @@ impl MarkerGlyph {
         out: &mut impl SvgOutput,
         background: &str,
         stroke_width: Option<&str>,
+        inset_prongs: bool,
     ) {
         if let Some((classic_x, neo_x)) = self.circle_x {
             if let Some(stroke_width) = stroke_width {
@@ -70,7 +78,12 @@ impl MarkerGlyph {
                 );
             }
         }
-        let _ = write!(out, r#"<path d="{}""#, self.path);
+        let path = if inset_prongs {
+            self.inset_path.unwrap_or(self.path)
+        } else {
+            self.path
+        };
+        let _ = write!(out, r#"<path d="{path}""#);
         if let Some(stroke_width) = stroke_width {
             let _ = write!(out, r#" stroke-width="{stroke_width}""#);
         }
@@ -161,29 +174,36 @@ static CARDINALITIES: [Cardinality; 4] = [
     },
 ];
 
-// Canonical (Shoal) ER markers emit the visible open crow's-foot half of Mermaid's symmetric
-// lens (exact De Casteljau split at t = 0.5) with refX anchored directly on the entity wall.
-// This avoids pulling shafts 18 px off entity borders and never exposes a closed back-half loop.
+// Anchor the trimmed shaft at the fork's junction. The glyph owns all three solid prongs,
+// including the center line from the entity wall, even when the relationship is dashed.
+// For BT, omit the wall-facing eighth of each prong. These quadratic subdivisions retain the
+// fork's junction and leave room for the entity stroke at the two nearly tangent tips.
 static CANONICAL_CROW_FOOT: [Cardinality; 2] = [
     Cardinality {
         card: "ONE_OR_MORE",
         name: "oneOrMore",
         ends: [
             MarkerGlyph::new(
-                0,
+                18,
                 18,
                 27,
                 36,
-                "M0,9 Q9,9 18,18 Q9,27 0,27 M24,9 L24,27",
+                "M0,9 Q9,9 18,18 Q9,27 0,27 M0,18 H18 M24,9 L24,27",
                 None,
+            )
+            .with_inset_path(
+                "M2.25,9.140625 Q10.125,10.125 18,18 Q10.125,25.875 2.25,26.859375 M0,18 H18 M24,9 L24,27",
             ),
             MarkerGlyph::new(
-                27,
+                9,
                 18,
                 27,
                 36,
-                "M3,9 L3,27 M27,9 Q18,9 9,18 Q18,27 27,27",
+                "M3,9 L3,27 M27,9 Q18,9 9,18 Q18,27 27,27 M27,18 H9",
                 None,
+            )
+            .with_inset_path(
+                "M3,9 L3,27 M24.75,9.140625 Q16.875,10.125 9,18 Q16.875,25.875 24.75,26.859375 M27,18 H9",
             ),
         ],
     },
@@ -192,21 +212,23 @@ static CANONICAL_CROW_FOOT: [Cardinality; 2] = [
         name: "zeroOrMore",
         ends: [
             MarkerGlyph::new(
-                0,
+                18,
                 18,
                 39,
                 36,
-                "M0,9 Q9,9 18,18 Q9,27 0,27",
+                "M0,9 Q9,9 18,18 Q9,27 0,27 M0,18 H18",
                 Some((30.0, 27.5)),
-            ),
+            )
+            .with_inset_path("M2.25,9.140625 Q10.125,10.125 18,18 Q10.125,25.875 2.25,26.859375 M0,18 H18"),
             MarkerGlyph::new(
-                39,
+                21,
                 18,
                 39,
                 36,
-                "M39,9 Q30,9 21,18 Q30,27 39,27",
+                "M39,9 Q30,9 21,18 Q30,27 39,27 M39,18 H21",
                 Some((9.0, 11.0)),
-            ),
+            )
+            .with_inset_path("M36.75,9.140625 Q28.875,10.125 21,18 Q28.875,25.875 36.75,26.859375 M39,18 H21"),
         ],
     },
 ];
@@ -361,6 +383,14 @@ pub struct ErMarkerDefs<'a> {
 }
 
 pub fn write_er_marker_definitions(out: &mut impl SvgOutput, defs: ErMarkerDefs<'_>) -> Result<()> {
+    write_er_marker_definitions_with_inset(out, defs, false)
+}
+
+pub(super) fn write_er_marker_definitions_with_inset(
+    out: &mut impl SvgOutput,
+    defs: ErMarkerDefs<'_>,
+    inset_crow_foot_prongs: bool,
+) -> Result<()> {
     let ErMarkerDefs {
         diagram_id,
         include_md_parent,
@@ -382,7 +412,7 @@ pub fn write_er_marker_definitions(out: &mut impl SvgOutput, defs: ErMarkerDefs<
         ] {
             let id = format!("{diagram_id}_er-mdParent{end}");
             write_marker_start(out, &id, "mdParent", &glyph, false);
-            glyph.write_content(out, "none", None);
+            glyph.write_content(out, "none", None, false);
             out.push_str("</marker></defs>\n");
             out.checkpoint()?;
         }
@@ -400,7 +430,12 @@ pub fn write_er_marker_definitions(out: &mut impl SvgOutput, defs: ErMarkerDefs<
             let name = active.name;
             let id = format!("{diagram_id}_er-{name}{end}");
             write_marker_start(out, &id, name, glyph, neo || canonical);
-            glyph.write_content(out, &background, neo.then_some(neo_width.as_str()));
+            glyph.write_content(
+                out,
+                &background,
+                neo.then_some(neo_width.as_str()),
+                inset_crow_foot_prongs,
+            );
             out.push_str("</marker></defs>\n");
             out.checkpoint()?;
         }
@@ -435,15 +470,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn canonical_crow_foot_markers_require_zero_trim_and_emit_open_forks() {
+    fn canonical_crow_foot_markers_trim_the_shaft_to_the_solid_fork() {
         for card in ["ONE_OR_MORE", "ZERO_OR_MORE"] {
             for start in [true, false] {
                 for neo in [false, true] {
                     let metrics = er_canonical_marker(card, start, neo);
-                    assert_eq!(
-                        metrics.trim, 0.0,
-                        "{card} start={start} neo={neo} must seat directly at entity border without line trim"
-                    );
+                    assert_eq!(metrics.trim, 18.0, "{card} start={start} neo={neo}");
                     assert!(metrics.depth > 0.0 && metrics.width > 0.0);
                 }
             }
@@ -462,10 +494,10 @@ mod tests {
             },
         )
         .unwrap();
-        assert!(canonical_svg.contains(r#"id="er_er-oneOrMoreStart" class="marker oneOrMore er" refX="0" refY="18" markerWidth="27""#));
-        assert!(canonical_svg.contains(r#"id="er_er-oneOrMoreEnd" class="marker oneOrMore er" refX="27" refY="18" markerWidth="27""#));
-        assert!(canonical_svg.contains(r#"id="er_er-zeroOrMoreStart" class="marker zeroOrMore er" refX="0" refY="18" markerWidth="39""#));
-        assert!(canonical_svg.contains(r#"id="er_er-zeroOrMoreEnd" class="marker zeroOrMore er" refX="39" refY="18" markerWidth="39""#));
+        assert!(canonical_svg.contains(r#"id="er_er-oneOrMoreStart" class="marker oneOrMore er" refX="18" refY="18" markerWidth="27""#));
+        assert!(canonical_svg.contains(r#"id="er_er-oneOrMoreEnd" class="marker oneOrMore er" refX="9" refY="18" markerWidth="27""#));
+        assert!(canonical_svg.contains(r#"id="er_er-zeroOrMoreStart" class="marker zeroOrMore er" refX="18" refY="18" markerWidth="39""#));
+        assert!(canonical_svg.contains(r#"id="er_er-zeroOrMoreEnd" class="marker zeroOrMore er" refX="21" refY="18" markerWidth="39""#));
 
         let mut legacy_svg = String::new();
         write_er_marker_definitions(

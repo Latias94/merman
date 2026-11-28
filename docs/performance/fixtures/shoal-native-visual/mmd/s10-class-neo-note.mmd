@@ -1,0 +1,44 @@
+---
+config:
+  layout: shoal
+  look: neo
+  htmlLabels: false
+---
+classDiagram
+  direction TB
+  namespace CoreDomain {
+    class Entity {
+      <<abstract>>
+      +UUID id
+    }
+    class Account {
+      +String iban
+      +Money balance
+      +debit(Money amt) Receipt
+    }
+    class LedgerEntry {
+      +Money delta
+      +String hash
+    }
+  }
+  namespace Services {
+    class TransferService {
+      +execute(TransferCmd cmd) Result~Receipt~
+    }
+  }
+  namespace Infrastructure {
+    class AccountRepo {
+      <<interface>>
+      +findById(UUID id) Optional~Account~
+    }
+    class PgAccountRepo {
+      -Pool pool
+      +findById(UUID id) Optional~Account~
+    }
+  }
+  Entity <|-- Account
+  Account "1" o-- "0..*" LedgerEntry : records
+  TransferService "1" --> "1..*" AccountRepo : loads
+  TransferService ..> Account : debits
+  AccountRepo <|.. PgAccountRepo : implements
+  note for TransferService "Transactional boundary across Account & Ledger"

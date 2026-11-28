@@ -1,0 +1,28 @@
+---
+config:
+  layout: shoal
+  htmlLabels: false
+---
+stateDiagram-v2
+  direction BT
+  [*] --> Root
+  state Root {
+    [*] --> Triage
+    state Triage <<choice>>
+    Triage --> FastPath : score < 20
+    Triage --> MedPath : 20 <= score < 60
+    Triage --> SlowPath : 60 <= score < 90
+    Triage --> BlockPath : score >= 90
+    state DeepZone {
+      state InnerZone {
+        FastPath --> Done1 : ok
+        MedPath --> Done1 : reviewed
+      }
+    }
+    state JoinAll <<join>>
+    Done1 --> JoinAll
+    SlowPath --> JoinAll
+    BlockPath --> JoinAll
+    JoinAll --> [*]
+  }
+  Root --> [*]

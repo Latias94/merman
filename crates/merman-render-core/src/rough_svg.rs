@@ -33,8 +33,9 @@ pub fn operation_randomness(
 mod geometry;
 
 pub use geometry::{
-    RoughRectSpec, closed_path_d_from_points, mermaid_arc_points, roughjs_circle_operations,
-    roughjs_circle_path_d, roughjs_paths_for_rect, roughjs_rect_operations,
+    RoughRectSpec, append_minor_circular_arc, closed_path_d_from_points, mermaid_arc_points,
+    roughjs_circle_operations, roughjs_circle_path_d, roughjs_paths_for_rect,
+    roughjs_rect_operations,
 };
 
 pub fn parse_hex_color_to_srgba(s: &str) -> Option<roughr::Srgba> {
@@ -81,6 +82,34 @@ pub fn ops_to_svg_path_d(opset: &roughr::core::OpSet<f64>) -> String {
     out
 }
 
+/// Serialize native rough operations to hundredths of a pixel.
+#[cfg(feature = "svg-edge-parity")]
+pub fn ops_to_compact_svg_path_d(opset: &roughr::core::OpSet<f64>) -> String {
+    use crate::svg_edge_parity::path_numbers::fmt_path_into;
+    use roughr::core::OpType;
+
+    let mut out = String::new();
+    for op in &opset.ops {
+        let command = match op.op {
+            OpType::Move => 'M',
+            OpType::BCurveTo => 'C',
+            OpType::LineTo => 'L',
+        };
+        out.push(command);
+        for (index, &coordinate) in op.data.iter().enumerate() {
+            if index != 0 {
+                out.push(' ');
+            }
+            if coordinate.abs() < i64::MAX as f64 / 1000.0 {
+                fmt_path_into(&mut out, (coordinate * 100.0).round() / 100.0);
+            } else {
+                let _ = write!(out, "{}", number(coordinate));
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -97,7 +126,7 @@ mod tests {
                 },
                 Op {
                     op: OpType::BCurveTo,
-                    data: vec![1e-10, 2.5, 3.0, 4.0 - 1e-8, 5.0, 6.0],
+                    data: vec![1e-10, 2.5, -3.0, 4.0 - 1e-8, 5.123456, 6.0],
                 },
                 Op {
                     op: OpType::LineTo,
@@ -107,6 +136,14 @@ mod tests {
             size: None,
             path: None,
         };
-        assert_eq!(ops_to_svg_path_d(&operations), "M0 2 C0 2.5, 3 4, 5 6 L7 8");
+        assert_eq!(
+            ops_to_svg_path_d(&operations),
+            "M0 2 C0 2.5, -3 4, 5.123456 6 L7 8"
+        );
+        #[cfg(feature = "svg-edge-parity")]
+        assert_eq!(
+            ops_to_compact_svg_path_d(&operations),
+            "M0 2C0 2.5 -3 4 5.12 6L7 8"
+        );
     }
 }

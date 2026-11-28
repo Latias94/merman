@@ -97,10 +97,23 @@ impl RoughPathPair {
     }
 
     pub fn into_svg_paths(self, work_meter: &OperationWorkMeter) -> Option<(String, String)> {
-        let paths = Some((
-            ops_to_svg_path_d(&self.fill),
-            ops_to_svg_path_d(&self.stroke),
-        ));
+        self.serialize(work_meter, ops_to_svg_path_d)
+    }
+
+    #[cfg(feature = "layout-shoal")]
+    pub fn into_compact_svg_paths(
+        self,
+        work_meter: &OperationWorkMeter,
+    ) -> Option<(String, String)> {
+        self.serialize(work_meter, super::ops_to_compact_svg_path_d)
+    }
+
+    fn serialize(
+        self,
+        work_meter: &OperationWorkMeter,
+        format_path: impl Fn(&roughr::core::OpSet<f64>) -> String,
+    ) -> Option<(String, String)> {
+        let paths = Some((format_path(&self.fill), format_path(&self.stroke)));
         match self.reservation {
             Some(reservation) => reconcile_hand_drawn_path(work_meter, reservation, paths),
             None => paths,
@@ -549,6 +562,75 @@ pub fn roughjs_prepare_hand_drawn_stroke_path_for_svg_path(
     .ok()
 }
 
+/// Hatch geometry for the upstream texture or a single pass over an opaque backing.
+#[derive(Clone, Copy)]
+pub struct RoughHachure {
+    weight: f32,
+    gap: f32,
+    roughness: f32,
+    single_pass: bool,
+}
+
+impl RoughHachure {
+    pub const fn mermaid(weight: f32, gap: f32, roughness: f32) -> Self {
+        Self {
+            weight,
+            gap,
+            roughness,
+            single_pass: false,
+        }
+    }
+
+    pub const fn backed(weight: f32, gap: f32, roughness: f32) -> Self {
+        Self {
+            weight,
+            gap,
+            roughness,
+            single_pass: true,
+        }
+    }
+
+    pub const fn flowchart_path(compact: bool) -> Self {
+        if compact {
+            Self::backed(
+                HAND_DRAWN_FILL_WEIGHT,
+                HAND_DRAWN_HACHURE_GAP,
+                HAND_DRAWN_ROUGHNESS,
+            )
+        } else {
+            Self::mermaid(
+                HAND_DRAWN_FILL_WEIGHT,
+                HAND_DRAWN_HACHURE_GAP,
+                HAND_DRAWN_ROUGHNESS,
+            )
+        }
+    }
+
+    fn options(
+        self,
+        stroke_width: f32,
+        stroke_dasharray: &str,
+        randomness: &RoughRandomness,
+    ) -> Option<roughr::core::Options> {
+        let (dash0, dash1) = parse_stroke_dash_pair(stroke_dasharray);
+        roughr::core::OptionsBuilder::default()
+            .randomness(randomness.clone())
+            .roughness(self.roughness)
+            .fill_style(roughr::core::FillStyle::Hachure)
+            .fill_weight(self.weight)
+            .hachure_gap(self.gap)
+            .stroke_width(stroke_width)
+            .stroke_line_dash(vec![dash0, dash1])
+            .stroke_line_dash_offset(0.0)
+            .fill_line_dash(vec![0.0, 0.0])
+            .fill_line_dash_offset(0.0)
+            .disable_multi_stroke(false)
+            .disable_multi_stroke_fill(self.single_pass)
+            .build()
+            .ok()
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn roughjs_hachure_paths_for_svg_path(
     svg_path_data: &str,
@@ -589,24 +671,34 @@ pub fn roughjs_prepare_hachure_paths_for_svg_path(
     work_meter: &OperationWorkMeter,
     randomness: &RoughRandomness,
 ) -> Option<RoughPathPair> {
-    let reservation =
-        admit_hand_drawn_path(target, svg_path_data, hachure_gap, roughness, work_meter)?;
-    let (dash0, dash1) = parse_stroke_dash_pair(stroke_dasharray);
-    let mut options = roughr::core::OptionsBuilder::default()
-        .randomness(randomness.clone())
-        .roughness(roughness)
-        .fill_style(roughr::core::FillStyle::Hachure)
-        .fill_weight(fill_weight)
-        .hachure_gap(hachure_gap)
-        .stroke_width(stroke_width)
-        .stroke_line_dash(vec![dash0, dash1])
-        .stroke_line_dash_offset(0.0)
-        .fill_line_dash(vec![0.0, 0.0])
-        .fill_line_dash_offset(0.0)
-        .disable_multi_stroke(false)
-        .disable_multi_stroke_fill(false)
-        .build()
-        .ok()?;
+    prepare_hachure_svg_path(
+        target,
+        svg_path_data,
+        stroke_width,
+        stroke_dasharray,
+        RoughHachure::mermaid(fill_weight, hachure_gap, roughness),
+        work_meter,
+        randomness,
+    )
+}
+
+pub fn prepare_hachure_svg_path(
+    target: RoughGeometryTarget,
+    svg_path_data: &str,
+    stroke_width: f32,
+    stroke_dasharray: &str,
+    hatch: RoughHachure,
+    work_meter: &OperationWorkMeter,
+    randomness: &RoughRandomness,
+) -> Option<RoughPathPair> {
+    let mut options = hatch.options(stroke_width, stroke_dasharray, randomness)?;
+    let reservation = admit_hand_drawn_path(
+        target,
+        svg_path_data,
+        hatch.gap,
+        hatch.roughness,
+        work_meter,
+    )?;
 
     let generated = controlled::generate(work_meter, target.phase(), |control| {
         let segments =
@@ -614,7 +706,7 @@ pub fn roughjs_prepare_hachure_paths_for_svg_path(
         let mut sets = roughr::points_on_path::points_on_normalized_segments_with_control::<f64>(
             &segments,
             Some(1.0),
-            Some((1.0 + roughness as f64) / 2.0),
+            Some((1.0 + f64::from(hatch.roughness)) / 2.0),
             control,
         )?;
         let fill =
@@ -669,14 +761,12 @@ pub fn roughjs_prepare_paths_for_hand_drawn_svg_path(
     work_meter: &OperationWorkMeter,
     randomness: &RoughRandomness,
 ) -> Option<RoughPathPair> {
-    roughjs_prepare_hachure_paths_for_svg_path(
+    prepare_hachure_svg_path(
         target,
         svg_path_data,
         stroke_width,
         stroke_dasharray,
-        HAND_DRAWN_FILL_WEIGHT,
-        HAND_DRAWN_HACHURE_GAP,
-        HAND_DRAWN_ROUGHNESS,
+        RoughHachure::flowchart_path(false),
         work_meter,
         randomness,
     )
@@ -833,23 +923,29 @@ pub fn roughjs_prepare_hachure_paths_for_rect(
     work_meter: &OperationWorkMeter,
     randomness: &RoughRandomness,
 ) -> Option<RoughPathPair> {
-    let reservation = admit_hand_drawn_rect(target, w, h, hachure_gap, roughness, work_meter)?;
-    let (dash0, dash1) = parse_stroke_dash_pair(stroke_dasharray);
-    let mut options = roughr::core::OptionsBuilder::default()
-        .randomness(randomness.clone())
-        .roughness(roughness)
-        .fill_style(roughr::core::FillStyle::Hachure)
-        .fill_weight(fill_weight)
-        .hachure_gap(hachure_gap)
-        .stroke_width(stroke_width)
-        .stroke_line_dash(vec![dash0, dash1])
-        .stroke_line_dash_offset(0.0)
-        .fill_line_dash(vec![0.0, 0.0])
-        .fill_line_dash_offset(0.0)
-        .disable_multi_stroke(false)
-        .disable_multi_stroke_fill(false)
-        .build()
-        .ok()?;
+    prepare_hachure_rect(
+        target,
+        [x, y, w, h],
+        stroke_width,
+        stroke_dasharray,
+        RoughHachure::mermaid(fill_weight, hachure_gap, roughness),
+        work_meter,
+        randomness,
+    )
+}
+
+pub fn prepare_hachure_rect(
+    target: RoughGeometryTarget,
+    rect: [f64; 4],
+    stroke_width: f32,
+    stroke_dasharray: &str,
+    hatch: RoughHachure,
+    work_meter: &OperationWorkMeter,
+    randomness: &RoughRandomness,
+) -> Option<RoughPathPair> {
+    let [x, y, w, h] = rect;
+    let mut options = hatch.options(stroke_width, stroke_dasharray, randomness)?;
+    let reservation = admit_hand_drawn_rect(target, w, h, hatch.gap, hatch.roughness, work_meter)?;
 
     let generated = controlled::generate(work_meter, target.phase(), |control| {
         let stroke =

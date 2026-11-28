@@ -334,6 +334,8 @@ pub(crate) fn layout_architecture_shoal(
     let mut sides = Vec::with_capacity(m);
     let mut edge_labels = Vec::with_capacity(m);
     let mut bottom_degree = vec![0usize; n];
+    let mut has_top_port = vec![false; n];
+    let mut has_bottom_marker = vec![false; n];
     let mut junction_degree = vec![0usize; n];
     let mut junction_has_incoming = vec![false; n];
     for edge in &model.edges {
@@ -355,8 +357,13 @@ pub(crate) fn layout_architecture_shoal(
         ] {
             if let Endpoint::Node(id) = end {
                 let index = id as usize;
-                if port == Side::Bottom {
-                    bottom_degree[index] += 1;
+                match port {
+                    Side::Top => has_top_port[index] = true,
+                    Side::Bottom => {
+                        bottom_degree[index] += 1;
+                        has_bottom_marker[index] |= arrow == Some(true);
+                    }
+                    Side::Left | Side::Right => {}
                 }
                 if model.nodes[index].node_type == ArchitectureNodeKind::Junction {
                     junction_degree[index] += 1;
@@ -447,15 +454,31 @@ pub(crate) fn layout_architecture_shoal(
         let mut w = half;
         let mut h = half;
         let title = title.map(|text| {
-            let mut x = 0.0;
-            if bottom_degree[index] > 0 {
-                let intervals = bottom_degree[index].saturating_sub(1) as f64;
+            let anchor = if bottom_degree[index] == 0 {
+                Point { x: 0.0, y: half }
+            } else {
+                let intervals = (bottom_degree[index] - 1) as f64;
                 let pitch = (arrow + TEXT_CLEARANCE).min(span / intervals.max(1.0));
                 bottom_pitch[index] = Some(pitch);
-                x = (pitch * intervals / 2.0 + arrow / 2.0 + TEXT_CLEARANCE - text.bounds.min_x)
-                    .max(0.0);
-            }
-            let anchor = Point { x, y: half };
+                if bottom_degree[index] == 1 && !has_top_port[index] {
+                    // A single bottom stem can leave the title centered above the icon.
+                    Point {
+                        x: 0.0,
+                        y: -half - TEXT_CLEARANCE - text.bounds.max_y,
+                    }
+                } else {
+                    let half_terminal = if has_bottom_marker[index] || bottom_degree[index] > 1 {
+                        (arrow / 2.0).max(edge_stroke_outset)
+                    } else {
+                        edge_stroke_outset
+                    };
+                    let left = pitch * intervals / 2.0 + half_terminal + TEXT_CLEARANCE;
+                    Point {
+                        x: (left - text.bounds.min_x).max(0.0),
+                        y: half,
+                    }
+                }
+            };
             let ink = text.bounds_at(anchor);
             w = w.max(ink.min_x.abs().max(ink.max_x.abs()) + TEXT_CLEARANCE);
             h = h.max(ink.min_y.abs().max(ink.max_y.abs()) + TEXT_CLEARANCE);

@@ -782,6 +782,45 @@ fn through_title(
     Ok(())
 }
 
+fn guard_title_corner(
+    route: &mut Vec<RoutePoint>,
+    end: usize,
+    side: Side,
+    title: Rect,
+    margin: f64,
+    work: &mut Work<'_>,
+) -> LayoutResult<()> {
+    let (port, corner, across, index) = match route.as_slice() {
+        [port, corner, across, ..] if end == 0 => (*port, *corner, *across, 1),
+        [.., across, corner, port] => (*port, *corner, *across, route.len() - 1),
+        _ => return Ok(()),
+    };
+    if port.x != corner.x
+        || corner.y != across.y
+        || (port.x - title.center().x).abs() < title.width / 2.0 + margin
+        || !blocks(title, point(port), point(across))
+    {
+        return Ok(());
+    }
+    let exit = match side {
+        Side::Top => title.y + title.height,
+        Side::Bottom => title.y,
+        Side::Left | Side::Right => return Ok(()),
+    };
+    if port.y.min(corner.y) < exit && exit < port.y.max(corner.y) {
+        // Keep the bend on the content side of the title in both the solver and painter.
+        work.charge(route.len() - index + 1)?;
+        route
+            .try_reserve(1)
+            .map_err(|_| LayoutError::AllocationLimit)?;
+        route.insert(
+            index,
+            RoutePoint::gap_boundary(port.x, exit, Axis::Vertical),
+        );
+    }
+    Ok(())
+}
+
 fn boundary_leg(
     index: usize,
     wire: &mut Wire,
@@ -873,6 +912,18 @@ fn boundary_leg(
                     .map_err(|_| LayoutError::AllocationLimit)?;
                 edge.points.extend(extension.into_iter().skip(1));
             }
+        }
+        if options.routing == crate::RoutingStyle::Curved
+            && let Some(title) = title
+        {
+            guard_title_corner(
+                &mut edge.points,
+                border,
+                side,
+                title,
+                wire.title_clearance(border, fit.title_margin()),
+                work,
+            )?;
         }
         edge.ports = ports;
         return Ok(edge);

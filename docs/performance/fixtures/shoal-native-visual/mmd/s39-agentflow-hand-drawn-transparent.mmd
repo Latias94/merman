@@ -1,0 +1,31 @@
+---
+config:
+  layout: shoal
+  look: handDrawn
+  handDrawnSeed: 42
+  htmlLabels: false
+---
+agentflow-beta TB
+  connector client["Client SDK"]
+  connector llm["LLM Router"]
+  flow root_flow["Autonomous Coding Agent"]
+    plan["Plan Task"]@{ shape: input }
+    flow exec_flow["Execution Loop"]
+      code["Edit Files"]@{ shape: task }
+      test["Run Verifier"]@{ shape: tool }
+      flow sub_fix["Auto Repair"]@{ view: collapsed }
+        diagnose["Diagnose"]@{ shape: decision }
+        patch["Patch"]@{ shape: task }
+        diagnose --> patch
+      end
+      code --> test
+      test -- fail --> sub_fix
+      sub_fix -- retry --> code
+    end
+    done["Publish PR"]@{ shape: task }
+    plan --> code
+    test -- pass --> done
+  end
+  client --> plan
+  code --> llm
+  done --> client

@@ -174,3 +174,113 @@ fn a_nested_crossing_exposed_by_the_first_port_retry_is_rechecked() {
     assert_eq!(drawing.stats.routed_crossings, 2);
     assert_eq!(drawing, crate::layout(&graph, &options).unwrap());
 }
+
+#[test]
+fn opposing_routes_follow_the_inner_order_at_a_shared_seam() {
+    use crate::{Direction, Insets, MarkerMetrics, TitlePosition};
+
+    let mut graph = Graph::default();
+    for (id, (parent, direction, width)) in [
+        (Some(1), None, 219.4),
+        (Some(2), Some(Direction::Left), 204.7),
+        (Some(3), Some(Direction::Up), 220.1),
+        (None, Some(Direction::Right), 258.0),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        graph.groups.push(GroupSpec {
+            parent: parent.map(GroupId),
+            direction,
+            padding: Insets {
+                top: 33.,
+                right: 8.,
+                bottom: 8.,
+                left: 8.,
+            },
+            title: Some(Size { width, height: 17. }),
+            title_position: TitlePosition::TopAuto,
+            ..GroupSpec::new(id as u32)
+        });
+    }
+    for (id, parent) in [
+        None,
+        Some(3),
+        Some(2),
+        Some(1),
+        Some(0),
+        Some(0),
+        Some(1),
+        Some(2),
+        Some(3),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let height = if matches!(id, 0 | 7) { 56.4 } else { 41. };
+        let mut node = NodeSpec::new(
+            Size {
+                width: 152.,
+                height,
+            },
+            id as u32,
+        );
+        node.parent = parent.map(GroupId);
+        node.port_span = Some(136.);
+        node.perpendicular_port_span = Some(height - 16.);
+        graph.nodes.push(node);
+    }
+    let marked = |mut edge: EdgeSpec, label_width: Option<f64>| {
+        edge.label = label_width.map(|width| Size { width, height: 21. });
+        edge.end_marker = MarkerMetrics {
+            length: 16.62,
+            width: 14.,
+        };
+        edge.set_marker_runways([0., 16.62]);
+        edge
+    };
+    for (from, to, label_width) in [
+        (0, 1, None),
+        (1, 2, None),
+        (2, 3, None),
+        (3, 4, Some(38.2)),
+        (4, 5, None),
+        (5, 6, Some(36.6)),
+        (6, 7, None),
+        (7, 8, None),
+        (8, 0, None),
+    ] {
+        graph.edges.push(marked(
+            EdgeSpec::new(NodeId(from).into(), NodeId(to).into()),
+            label_width,
+        ));
+    }
+    graph.edges.extend([
+        marked(EdgeSpec::new(GroupId(0).into(), NodeId(7).into()), None),
+        marked(
+            EdgeSpec::new(GroupId(2).into(), NodeId(0).into()),
+            Some(102.8),
+        ),
+        marked(
+            EdgeSpec::new(NodeId(5).into(), NodeId(1).into()),
+            Some(123.7),
+        ),
+    ]);
+
+    let options = Options::default();
+    let drawing = crate::layout(&graph, &options).unwrap();
+    assert_eq!(drawing.stats.routed_crossings, 0);
+    assert!(drawing.groups.iter().all(|group| !group.title_struck));
+    let seam_x = |edge| {
+        let seam = drawing
+            .border_stitches
+            .iter()
+            .find(|stitch| {
+                stitch.group == GroupId(3) && stitch.side == Side::Top && stitch.edge.0 == edge
+            })
+            .unwrap();
+        drawing.edges[edge as usize].points[seam.point].x
+    };
+    assert!(seam_x(0) - seam_x(10) >= options.spacing.min_port_pitch);
+    assert!(seam_x(8) - seam_x(0) >= options.spacing.min_port_pitch);
+}

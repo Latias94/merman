@@ -1,0 +1,148 @@
+[
+  {
+    "id": "S01",
+    "source": "mmd/s01-flow-mixed-directions.mmd",
+    "theme": "studio",
+    "appearance": "dark",
+    "review": "Check return-edge order across four mixed-direction subgraphs."
+  },
+  {
+    "id": "S02",
+    "source": "mmd/s02-flow-microservices.mmd",
+    "theme": "studio",
+    "appearance": "light",
+    "review": "Check that the dense graph paints every edge, including the thick Order-to-Inventory edge."
+  },
+  {
+    "id": "S03",
+    "source": "mmd/s03-flow-cjk-emoji.mmd",
+    "theme": "studio",
+    "appearance": "light",
+    "review": "Check CJK and emoji fallback, long URL wrapping, and the cluster title."
+  },
+  {
+    "id": "S05",
+    "source": "mmd/s05-flow-parallel-edges.mmd",
+    "theme": "studio",
+    "appearance": "dark",
+    "review": "Check distinct ports for eight parallel edges, mixed markers, and self-loops."
+  },
+  {
+    "id": "S10",
+    "source": "mmd/s10-class-neo-note.mmd",
+    "theme": "studio",
+    "appearance": "light",
+    "review": "Check that the note connector stays dotted in the neo look."
+  },
+  {
+    "id": "S11",
+    "source": "mmd/s11-class-parallel-multiplicities.mmd",
+    "theme": "studio",
+    "appearance": "dark",
+    "review": "Check that both multiplicities of each parallel edge stay near their own endpoints."
+  },
+  {
+    "id": "S12",
+    "source": "mmd/s12-state-neo-regions.mmd",
+    "theme": "studio",
+    "appearance": "light",
+    "review": "Check the concurrent-region dividers, label backgrounds, and note clearance."
+  },
+  {
+    "id": "S13",
+    "source": "mmd/s13-state-hand-drawn-nesting.mmd",
+    "theme": "studio",
+    "appearance": "dark",
+    "review": "Check visible sketch strokes and CJK label placement through four composite levels."
+  },
+  {
+    "id": "S16",
+    "source": "mmd/s16-c4-boundary-mesh.mmd",
+    "theme": "studio",
+    "appearance": "light",
+    "review": "Check diagram extent and clearance around cards, captions, and four boundary titles."
+  },
+  {
+    "id": "S17",
+    "source": "mmd/s17-c4-transparent-row-cap.mmd",
+    "theme": "studio",
+    "appearance": "light",
+    "background": "transparent",
+    "review": "Check the four-card row cap, caption padding, and the shafts behind transparent labels."
+  },
+  {
+    "id": "S20",
+    "source": "mmd/s20-usecase-opposing-fan.mmd",
+    "theme": "studio",
+    "appearance": "dark",
+    "background": "transparent",
+    "review": "Check that opposing fans use distinct tracks and that labels stay legible inside boundaries."
+  },
+  {
+    "id": "S27",
+    "source": "mmd/s27-flow-hand-drawn-shapes.mmd",
+    "theme": "studio",
+    "appearance": "dark",
+    "review": "Check default shape fills, centered cloud and bang labels, and the label-free bolt and hourglass."
+  },
+  {
+    "id": "S30",
+    "source": "mmd/s30-flow-empty-groups-markdown.mmd",
+    "theme": "studio",
+    "appearance": "light",
+    "review": "Check bounds for three levels of empty shells, islands, and multiline Markdown."
+  },
+  {
+    "id": "S31",
+    "source": "mmd/s31-swimlane-bt.mmd",
+    "theme": "studio",
+    "appearance": "light",
+    "review": "Check bottom-to-top lane ordering, long parallel labels, and the self-loop."
+  },
+  {
+    "id": "S33",
+    "source": "mmd/s33-state-composite-choice.mmd",
+    "theme": "studio",
+    "appearance": "dark",
+    "background": "transparent",
+    "review": "Check that the choice referenced before declaration paints as a diamond inside the composite."
+  },
+  {
+    "id": "S34",
+    "source": "mmd/s34-er-bt-transparent.mmd",
+    "theme": "studio",
+    "appearance": "dark",
+    "background": "transparent",
+    "review": "Check hollow crow's feet on dotted relationships and clear gaps behind labels."
+  },
+  {
+    "id": "S37",
+    "source": "mmd/s37-architecture-blueprint-junctions.mmd",
+    "theme": "blueprint",
+    "appearance": "dark",
+    "review": "Check both junction dots, arrow contacts, and clearance around the Storage Tier title."
+  },
+  {
+    "id": "S38",
+    "source": "mmd/s38-requirement-transparent-risks.mmd",
+    "theme": "studio",
+    "appearance": "dark",
+    "background": "transparent",
+    "review": "Check all three risk treatments and clear gaps behind relationship labels."
+  },
+  {
+    "id": "S39",
+    "source": "mmd/s39-agentflow-hand-drawn-transparent.mmd",
+    "theme": "studio",
+    "appearance": "light",
+    "background": "transparent",
+    "review": "Check three nested flows and the smooth return from Publish PR to Client SDK."
+  },
+  {
+    "id": "S40",
+    "source": "mmd/s40-block-hand-drawn-fanout.mmd",
+    "theme": "studio",
+    "appearance": "dark",
+    "review": "Check visible sketch strokes, spread fanout ports, and separated labels in the six-column grid."
+  }
+]

@@ -1,0 +1,54 @@
+---
+config:
+  layout: shoal
+  htmlLabels: false
+---
+C4Container
+  title Global FinTech Core Platform
+  Person(cust, "Retail User", "Mobile & Web banking user")
+  Person(ops, "Risk Officer", "Monitors alerts & disputes")
+  System_Boundary(edge, "Edge & API Perimeter") {
+    Container(web, "Web Portal", "React / Next.js", "Customer banking UI")
+    Container(mob, "Mobile App", "Swift / Kotlin", "Biometric payments")
+    Container(gw, "API Gateway", "Envoy / Rust", "AuthN, rate limits, routing")
+    Container(bff, "Ops Console", "TypeScript", "Internal investigation UI")
+  }
+  System_Boundary(core, "Core Payment & Risk Mesh") {
+    Container(ord, "Payment Engine", "Rust", "Orchestrates transfers")
+    Container(risk, "Fraud Scorer", "Python / ONNX", "Real-time ML scoring")
+    Container(kyc, "KYC Verifier", "Go", "Sanctions & identity checks")
+    Container(notif, "Notification Hub", "Rust", "Push, SMS, webhook fanout")
+    ContainerQueue(bus, "Event Backbone", "Kafka", "Ordered domain events")
+  }
+  System_Boundary(data, "Persistence") {
+    ContainerDb(ledger, "Ledger DB", "PostgreSQL 16", "Double-entry accounting")
+    ContainerDb(cache, "Session Cache", "Redis Cluster", "Idempotency & velocity")
+    ContainerDb(lake, "Compliance Lake", "Iceberg", "7-year immutable archive")
+  }
+  System_Boundary(rails, "External Payment Rails") {
+    System_Ext(psp, "Card Network", "ISO 8583 / Visa / MC")
+    System_Ext(swift, "SWIFT Gateway", "Cross-border MT103 / ISO20022")
+  }
+  Rel(cust, web, "Uses", "HTTPS")
+  Rel(cust, mob, "Uses", "HTTPS")
+  Rel(ops, bff, "Investigates", "mTLS")
+  Rel(web, gw, "Calls API", "JSON/HTTPS")
+  Rel(mob, gw, "Calls API", "gRPC-Web")
+  Rel(bff, gw, "Admin queries", "gRPC")
+  Rel(gw, ord, "Submits transfer", "gRPC")
+  Rel(gw, cache, "Checks rate limit", "RESP3")
+  BiRel(ord, risk, "Scores risk synchronously", "gRPC")
+  Rel(ord, kyc, "Verifies counterparty", "gRPC")
+  Rel(ord, ledger, "Commits atomic entries", "SQL/TLS")
+  Rel(ord, bus, "Publishes events", "Kafka")
+  Rel(ord, psp, "Authorizes card", "ISO 8583")
+  Rel(ord, swift, "Dispatches wire", "ISO 20022")
+  Rel(risk, cache, "Reads velocity counters", "RESP3")
+  Rel(bus, notif, "Triggers alerts", "Kafka")
+  Rel(bus, lake, "Streams audit log", "Kafka Connect")
+  Rel(kyc, lake, "Archives evidence", "S3/TLS")
+  Rel(notif, cust, "Sends push & SMS", "APNs/FCM")
+  Rel(notif, ops, "Pages on-call", "Webhook")
+  UpdateRelStyle(ord, psp, $lineColor="#38BDF8", $textColor="#38BDF8")
+  UpdateRelStyle(ord, swift, $lineColor="#F59E0B", $textColor="#F59E0B")
+  UpdateRelStyle(ord, risk, $lineColor="#F472B6", $textColor="#F472B6")

@@ -1,0 +1,30 @@
+---
+config:
+  layout: shoal
+  look: handDrawn
+  handDrawnSeed: 42
+  htmlLabels: false
+---
+flowchart LR
+  Card@{ shape: card, label: "Card" } --> Notch@{ shape: notch-rect, label: "Notched" }
+  Notch --> Small@{ shape: sm-circ, label: "Small circle" }
+  Small --> Cloud@{ shape: cloud, label: "Cloud" }
+  Cloud --> Bang@{ shape: bang, label: "Bang" }
+  Bang --> Braces@{ shape: braces, label: "Braces" }
+
+  Delay@{ shape: delay, label: "Delay" } --> Display@{ shape: display, label: "Display" }
+  Display --> Divided@{ shape: div-rect, label: "Divided" }
+  Divided --> Flag@{ shape: flag, label: "Flag" }
+  Flag --> Cylinder@{ shape: lin-cyl, label: "Lined cylinder" }
+  Cylinder --> Document@{ shape: lin-doc, label: "Lined document" }
+
+  Lined@{ shape: lin-rect, label: "Lined rectangle" } --> Odd@{ shape: odd, label: "Odd" }
+  Odd --> Sloped@{ shape: sl-rect, label: "Sloped" }
+  Sloped --> Stacked@{ shape: st-rect, label: "Stacked" }
+  Stacked --> TaggedDoc@{ shape: tag-doc, label: "Tagged document" }
+  TaggedDoc --> TaggedRect@{ shape: tag-rect, label: "Tagged rectangle" }
+
+  Triangle@{ shape: tri, label: "Triangle" } --> Window@{ shape: win-pane, label: "Window" }
+  Window --> Bolt@{ shape: bolt, label: "Bolt" }
+  Bolt --> Hourglass@{ shape: hourglass, label: "Hourglass" }
+  Hourglass --> Fork@{ shape: fork, label: "Fork" }

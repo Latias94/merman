@@ -4,10 +4,7 @@ use kurbo::Rect;
 use merman_render_core::{
     config::json_f64,
     number_format::canonical_number as fmt,
-    rough_svg::paths::{
-        RoughGeometryTarget, roughjs_hachure_paths_for_rect, roughjs_hachure_paths_for_svg_path,
-        roughjs_prepare_hachure_paths_for_rect, roughjs_prepare_hachure_paths_for_svg_path,
-    },
+    rough_svg::paths::{RoughGeometryTarget, prepare_hachure_rect, prepare_hachure_svg_path},
     svg_output::SvgOutput,
 };
 use serde_json::Value;
@@ -64,30 +61,31 @@ impl RectangleBody {
             Self::Rounded if compatibility.rounded_rect_radius_truthy => {
                 let path =
                     rounded_rect_path_data(width, height, &compatibility.rounded_rect_radius);
-                let _ = roughjs_prepare_hachure_paths_for_svg_path(
+                let _ = prepare_hachure_svg_path(
                     RoughGeometryTarget::Query,
                     &path,
                     geometry.stroke_width,
                     geometry.stroke_dasharray,
-                    HAND_DRAWN_FILL_WEIGHT,
-                    HAND_DRAWN_HACHURE_GAP,
-                    HAND_DRAWN_ROUGHNESS,
+                    geometry.hachure(
+                        HAND_DRAWN_FILL_WEIGHT,
+                        HAND_DRAWN_HACHURE_GAP,
+                        HAND_DRAWN_ROUGHNESS,
+                    ),
                     geometry.work_meter,
                     geometry.randomness,
                 );
             }
             Self::Process | Self::Rounded => {
-                let _ = roughjs_prepare_hachure_paths_for_rect(
+                let _ = prepare_hachure_rect(
                     RoughGeometryTarget::Query,
-                    -width / 2.0,
-                    -height / 2.0,
-                    width,
-                    height,
+                    [-width / 2.0, -height / 2.0, width, height],
                     geometry.stroke_width,
                     geometry.stroke_dasharray,
-                    HAND_DRAWN_FILL_WEIGHT,
-                    HAND_DRAWN_HACHURE_GAP,
-                    HAND_DRAWN_ROUGHNESS,
+                    geometry.hachure(
+                        HAND_DRAWN_FILL_WEIGHT,
+                        HAND_DRAWN_HACHURE_GAP,
+                        HAND_DRAWN_ROUGHNESS,
+                    ),
                     geometry.work_meter,
                     geometry.randomness,
                 );
@@ -106,19 +104,20 @@ fn write_process(
     let height = rect.height();
     let rough_paths = if body.geometry.hand_drawn {
         body.timed_rough(|geometry| {
-            roughjs_hachure_paths_for_rect(
-                -width / 2.0,
-                -height / 2.0,
-                width,
-                height,
+            prepare_hachure_rect(
+                RoughGeometryTarget::Svg,
+                [-width / 2.0, -height / 2.0, width, height],
                 geometry.stroke_width,
                 geometry.stroke_dasharray,
-                HAND_DRAWN_FILL_WEIGHT,
-                HAND_DRAWN_HACHURE_GAP,
-                HAND_DRAWN_ROUGHNESS,
+                geometry.hachure(
+                    HAND_DRAWN_FILL_WEIGHT,
+                    HAND_DRAWN_HACHURE_GAP,
+                    HAND_DRAWN_ROUGHNESS,
+                ),
                 geometry.work_meter,
                 geometry.randomness,
             )
+            .and_then(|paths| geometry.write_rough_paths(paths))
         })
     } else {
         None
@@ -159,16 +158,20 @@ fn write_rounded(
         // Preserve the source SVG arcs, including radii larger than half the box.
         let path_data = rounded_rect_path_data(w, h, &compatibility.rounded_rect_radius);
         let paths = body.timed_rough(|geometry| {
-            roughjs_hachure_paths_for_svg_path(
+            prepare_hachure_svg_path(
+                RoughGeometryTarget::Svg,
                 &path_data,
                 geometry.stroke_width,
                 geometry.stroke_dasharray,
-                HAND_DRAWN_FILL_WEIGHT,
-                HAND_DRAWN_HACHURE_GAP,
-                HAND_DRAWN_ROUGHNESS,
+                geometry.hachure(
+                    HAND_DRAWN_FILL_WEIGHT,
+                    HAND_DRAWN_HACHURE_GAP,
+                    HAND_DRAWN_ROUGHNESS,
+                ),
                 geometry.work_meter,
                 geometry.randomness,
             )
+            .and_then(|paths| geometry.write_rough_paths(paths))
         });
         paths.map(|(fill, stroke)| (path_data, fill, stroke))
     } else {

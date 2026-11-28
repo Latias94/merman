@@ -235,7 +235,7 @@ resvg-safe\:"Converts HTML labels and cleans SVG for resvg/usvg consumers"))' \
 on\:"Enable the build'\''s default system font provider"
 bounded\:"Use Merman'\''s bounded system font discovery"
 platform\:"Query the platform'\''s font catalog. Platform metadata access is outside Merman'\''s scan limits"))' \
-'--font-max-bytes=[Byte budget for the entire native font context, including explicit and selected system fonts (default 256 MiB). Use a positive integer in bytes or with a KiB, MiB, or GiB suffix, such as 256MiB]:SIZE:' \
+'--font-max-bytes=[Byte budget for the entire native font context, including explicit and selected system fonts (default 256 MiB, or 384 MiB on macOS with system fonts and the trusted-native profile). Use a positive integer in bytes or with a KiB, MiB, or GiB suffix, such as 256MiB]:SIZE:' \
 '--font-max-measurements=[Maximum uncached native font shaping probes per diagram (default\: 16384); independent of --resource-profile]:COUNT:' \
 '--math-renderer=[Math renderer override. Unspecified uses the compiled default; \`ratex\` requires \`math\`]:MATH_RENDERER:(none ratex)' \
 '-w+[Available container width for size-sensitive layouts]:CONTAINER_WIDTH:_default' \
@@ -346,7 +346,7 @@ resvg-safe\:"Converts HTML labels and cleans SVG for resvg/usvg consumers"))' \
 on\:"Enable the build'\''s default system font provider"
 bounded\:"Use Merman'\''s bounded system font discovery"
 platform\:"Query the platform'\''s font catalog. Platform metadata access is outside Merman'\''s scan limits"))' \
-'--font-max-bytes=[Byte budget for the entire native font context, including explicit and selected system fonts (default 256 MiB). Use a positive integer in bytes or with a KiB, MiB, or GiB suffix, such as 256MiB]:SIZE:' \
+'--font-max-bytes=[Byte budget for the entire native font context, including explicit and selected system fonts (default 256 MiB, or 384 MiB on macOS with system fonts and the trusted-native profile). Use a positive integer in bytes or with a KiB, MiB, or GiB suffix, such as 256MiB]:SIZE:' \
 '--font-max-measurements=[Maximum uncached native font shaping probes per diagram (default\: 16384); independent of --resource-profile]:COUNT:' \
 '--math-renderer=[Math renderer override. Unspecified uses the compiled default; \`ratex\` requires \`math\`]:MATH_RENDERER:(none ratex)' \
 '-w+[Available container width for size-sensitive layouts]:CONTAINER_WIDTH:_default' \
@@ -551,7 +551,7 @@ resvg-safe\:"Converts HTML labels and cleans SVG for resvg/usvg consumers"))' \
 on\:"Enable the build'\''s default system font provider"
 bounded\:"Use Merman'\''s bounded system font discovery"
 platform\:"Query the platform'\''s font catalog. Platform metadata access is outside Merman'\''s scan limits"))' \
-'--font-max-bytes=[Byte budget for the entire native font context, including explicit and selected system fonts (default 256 MiB). Use a positive integer in bytes or with a KiB, MiB, or GiB suffix, such as 256MiB]:SIZE:' \
+'--font-max-bytes=[Byte budget for the entire native font context, including explicit and selected system fonts (default 256 MiB, or 384 MiB on macOS with system fonts and the trusted-native profile). Use a positive integer in bytes or with a KiB, MiB, or GiB suffix, such as 256MiB]:SIZE:' \
 '--font-max-measurements=[Maximum uncached native font shaping probes per diagram (default\: 16384); independent of --resource-profile]:COUNT:' \
 '--math-renderer=[Math renderer override. Unspecified uses the compiled default]:MATH_RENDERER:(none ratex)' \
 '-w+[Width of the page]:CONTAINER_WIDTH:_default' \

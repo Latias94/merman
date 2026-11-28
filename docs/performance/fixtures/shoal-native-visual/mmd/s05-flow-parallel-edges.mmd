@@ -1,0 +1,19 @@
+---
+config:
+  layout: shoal
+  htmlLabels: false
+---
+flowchart LR
+  subgraph Bus["Dual-Node Parallel Stress"]
+    A[Service Alpha] -->|1. sync rpc| B[Service Beta]
+    A <-->|2. bidir stream| B
+    A o--o|3. circle sync| B
+    A x--x|4. cross reject| B
+    A ==>|5. thick batch| B
+    A -.->|6. dotted event| B
+    A ---|7. plain link| B
+    B -->|8. reverse ack| A
+    A -->|self retry<br/>backoff x2| A
+    B -.->|self health| B
+  end
+  Bus -->|cluster self<br/>refresh| Bus

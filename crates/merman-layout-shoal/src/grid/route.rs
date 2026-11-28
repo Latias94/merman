@@ -1,5 +1,6 @@
 //! Route each scope against its immediate walls, then stitch contacts at group faces.
 
+mod architecture;
 mod captions;
 mod comb;
 mod gutters;
@@ -870,6 +871,15 @@ impl Routing<'_> {
         walls.extend(self.title(scope));
         Ok(walls)
     }
+
+    fn router(&self, scope: usize, work: &mut Work<'_>) -> LayoutResult<OrthoRouter> {
+        OrthoRouter::new(
+            &self.walls(scope, work)?,
+            self.metrics.separation,
+            self.options.caps.max_ortho_grid_nodes,
+            work,
+        )
+    }
 }
 
 fn copy_points(points: &[RoutePoint]) -> LayoutResult<Vec<RoutePoint>> {
@@ -1253,6 +1263,8 @@ pub(crate) fn draw(
 ) -> LayoutResult<()> {
     let card_grid = matches!(gutters, Gutters::CardGrid(_));
     let boundary_channels = card_grid && !graph.groups.is_empty();
+    let architecture_channels =
+        matches!(gutters, Gutters::Architecture(_)) && graph.groups.len() > 1;
     let mut plan = {
         let context = Routing {
             graph,
@@ -1279,17 +1291,17 @@ pub(crate) fn draw(
     } else {
         false
     };
-    if adapt_titles || boundary_channels {
+    if adapt_titles || boundary_channels || architecture_channels {
         work.visit(indices.len().max(1).ilog2() as usize + 1)?;
         group_start = indices.partition_point(|&i| plan.sites[i].owner < hierarchy.node_count);
-        Routing {
+        let context = Routing {
             graph,
             hierarchy,
             drawing,
             metrics,
             options,
-        }
-        .ports(
+        };
+        context.ports(
             &mut indices[..group_start],
             &mut plan.sites,
             card_grid,
@@ -1331,6 +1343,18 @@ pub(crate) fn draw(
         metrics,
         options,
     };
+    let mut scope_routers = Vec::new();
+    if architecture_channels
+        && architecture::prefer_terminal_perimeter(
+            &context,
+            &mut plan,
+            &indices[group_start..],
+            &mut scope_routers,
+            work,
+        )?
+    {
+        sort_sites(&plan.sites, &mut indices[group_start..], work)?;
+    }
     context.ports(
         &mut indices[group_start..],
         &mut plan.sites,
@@ -1345,14 +1369,11 @@ pub(crate) fn draw(
         let mut routes = reserved::<Vec<RoutePoint>>(parts.len())?;
         if !parts.is_empty() {
             work.charge(parts.len())?;
-            let walls = context.walls(scope, work)?;
             let scope_bounds = context.bounds(scope);
-            let mut router = OrthoRouter::new(
-                &walls,
-                metrics.separation,
-                options.caps.max_ortho_grid_nodes,
-                work,
-            )?;
+            let mut router = match scope_routers.get_mut(scope).and_then(Option::take) {
+                Some(router) => router,
+                None => context.router(scope, work)?,
+            };
             let mut lanes = LaneUse::default();
             let runways = if card_grid {
                 Some(runways::Runways::new(parts, &plan.sites, work)?)

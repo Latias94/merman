@@ -35,11 +35,13 @@ use super::{
     ErPreparedLabels, ErPreparedRelationshipLabel, ErSvgGeometry, ErSvgLayoutView, ErSvgRouteKind,
     ErSwimlanePaintLayout, er_color_indices, er_redux_color_id, er_rel_idx_from_edge_id,
     er_unified_marker_id, geometry::er_relationship_dom_id,
-    stylesheet::write_er_stylesheet_with_cluster_titles, write_er_marker_definitions,
+    markers::write_er_marker_definitions_with_inset,
+    stylesheet::write_er_stylesheet_with_cluster_titles,
 };
 
 #[cfg(feature = "layout-grid")]
 mod grid;
+mod hand_drawn;
 #[cfg(feature = "layout-layered")]
 mod layered;
 mod swimlane;
@@ -731,6 +733,11 @@ pub fn render_er_diagram_svg_model(
     let entity_wrap_mode = er_render_settings.entity_html_label_wrap_mode;
     let entity_measurement = er_render_settings.entity_measurement;
     let hand_drawn_seed = options.rough_randomness;
+    let hand_drawn =
+        (uses_canonical_routes && data_look == "handDrawn").then_some(hand_drawn::HandDrawn {
+            work_meter: options.work_meter,
+            randomness: hand_drawn_seed,
+        });
     let insert_title_top_margin = er_render_settings.insert_title_top_margin;
     let geometry = ErSvgGeometry::prepare(
         layout,
@@ -893,7 +900,7 @@ pub fn render_er_diagram_svg_model(
     // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
     out.push_str("<g>");
 
-    write_er_marker_definitions(
+    write_er_marker_definitions_with_inset(
         &mut out,
         ErMarkerDefs {
             diagram_id,
@@ -903,6 +910,7 @@ pub fn render_er_diagram_svg_model(
             neo_stroke_width: binding.neo_marker_stroke_width,
             main_bkg: &marker_background,
         },
+        uses_canonical_routes && model.direction.trim().eq_ignore_ascii_case("BT"),
     )?;
 
     let mut entity_by_id: std::collections::HashMap<&str, &ErEntity> =
@@ -1590,6 +1598,25 @@ pub fn render_er_diagram_svg_model(
         let cy = n.y + translate_y;
         let ox = -w / 2.0;
         let oy = -h / 2.0;
+        let node_rect = kurbo::Rect::new(ox, oy, ox + w, oy + h);
+        let radius = native.map_or(0.0, |style| style.radius);
+        let outline = hand_drawn
+            .as_ref()
+            .map(|draw| draw.outline(node_rect, radius))
+            .transpose()?;
+        if let Some(outline) = &outline {
+            let stroke_width = source_style
+                .rect_value("stroke-width")
+                .and_then(|value| value.trim().trim_end_matches("px").trim().parse().ok())
+                .filter(|width: &f64| width.is_finite())
+                .unwrap_or_else(|| native.map_or(1.3, |style| style.border_width));
+            let stroke_outset = stroke_width.max(0.0) * std::f64::consts::FRAC_1_SQRT_2;
+            let bounds = outline.bounds.inflate(stroke_outset, stroke_outset);
+            content_bounds.min_x = content_bounds.min_x.min(cx + bounds.x0);
+            content_bounds.min_y = content_bounds.min_y.min(cy + bounds.y0);
+            content_bounds.max_x = content_bounds.max_x.max(cx + bounds.x1);
+            content_bounds.max_y = content_bounds.max_y.max(cy + bounds.y1);
+        }
 
         let group_class = if entity.css_classes.trim().is_empty() {
             "node".to_string()
@@ -1633,8 +1660,17 @@ pub fn render_er_diagram_svg_model(
 
         if entity.attributes.is_empty() {
             let entity_name_style_attr = er_text_style_attr(&source_label_style);
-            {
-                let rect_style_attr = &visual.rect_style_attr;
+            let rect_style_attr = &visual.rect_style_attr;
+            if let Some(outline) = &outline {
+                let _ = write!(
+                    &mut out,
+                    r#"<path class="basic label-container" {rect_style_attr} d="{}" fill="{}" stroke="{}" stroke-width="{}"/>"#,
+                    escape_attr(&outline.d),
+                    escape_attr(&visual.box_fill),
+                    escape_attr(&visual.box_stroke),
+                    escape_attr(&binding.stroke_width),
+                );
+            } else {
                 let radius = native.map_or_else(String::new, |style| {
                     format!(r#" rx="{}""#, fmt(style.radius))
                 });
@@ -1647,8 +1683,8 @@ pub fn render_er_diagram_svg_model(
                     fmt(w),
                     fmt(h)
                 );
-                out.checkpoint()?;
             }
+            out.checkpoint()?;
             let wrap_mode = entity_wrap_mode;
             let label_metrics = measure.unformatted_label_metrics;
             let lw = if wrap_mode == text::WrapMode::HtmlLike {
@@ -1734,10 +1770,18 @@ pub fn render_er_diagram_svg_model(
             }
         }
 
-        if let Some(native) = native {
+        if native.is_some() || outline.is_some() {
             let clip_id = format!("{diagram_id}_er-table-{entity_index}");
             let (left, top, width, height, radius) =
-                (fmt(ox), fmt(oy), fmt(w), fmt(h), fmt(native.radius));
+                (fmt(ox), fmt(oy), fmt(w), fmt(h), fmt(radius));
+            let fill_bounds = outline
+                .as_ref()
+                .map_or(node_rect, |outline| node_rect.union(outline.bounds));
+            let (fill_left, fill_top, fill_width) = (
+                fmt(fill_bounds.x0),
+                fmt(fill_bounds.y0),
+                fmt(fill_bounds.width()),
+            );
             let opacity_css = |property| {
                 source_style
                     .rect_value(property)
@@ -1746,40 +1790,82 @@ pub fn render_er_diagram_svg_model(
                     })
             };
             let fill_opacity = opacity_css("fill-opacity");
-            out.push_str(r#"<g class="er-native-table""#);
+            let table_class = if native.is_some() {
+                "er-native-table"
+            } else {
+                "er-hand-drawn-table"
+            };
+            let _ = write!(&mut out, r#"<g class="{table_class}""#);
             if let Some(opacity) = source_style.rect_value("opacity") {
                 let _ = write!(&mut out, r#" style="opacity:{}""#, escape_attr(opacity));
             }
             out.push_str(">");
             // Keep the header and row fills disjoint for alpha compositing.
+            let _ = write!(&mut out, r#"<defs><clipPath id="{clip_id}">"#);
+            if let Some(outline) = &outline {
+                let _ = write!(&mut out, r#"<path d="{}"/>"#, escape_attr(&outline.d));
+            } else {
+                let _ = write!(
+                    &mut out,
+                    r#"<rect x="{left}" y="{top}" width="{width}" height="{height}" rx="{radius}"/>"#,
+                );
+            }
+            let header_height = if outline.is_some() {
+                sep_y - fill_bounds.y0
+            } else {
+                name_row_h
+            };
             let _ = write!(
                 &mut out,
-                r##"<defs><clipPath id="{clip_id}"><rect x="{left}" y="{top}" width="{width}" height="{height}" rx="{radius}"/></clipPath></defs><g class="outer-path" clip-path="url(#{clip_id})"><rect class="er-native-header" x="{left}" y="{top}" width="{width}" height="{}" style="fill:{};stroke:none{fill_opacity}"/>"##,
-                fmt(name_row_h),
+                r##"</clipPath></defs><g class="outer-path" clip-path="url(#{clip_id})"><rect class="er-native-header" x="{fill_left}" y="{fill_top}" width="{fill_width}" height="{}" style="fill:{};stroke:none{fill_opacity}"/>"##,
+                fmt(header_height),
                 escape_attr(box_fill),
             );
             let mut y = sep_y;
             for (idx, (row, visual)) in measure.rows.iter().zip(&visual.rows).enumerate() {
                 let row_height = row.height.max(1.0) + row_extra_height;
-                let fill = source_style.fill().unwrap_or(&visual.fill);
+                let row_fill = if native.is_some() || visual.has_fill {
+                    visual.fill.as_str()
+                } else {
+                    box_fill
+                };
+                let fill = if native.is_some()
+                    || !idx.is_multiple_of(2)
+                    || binding.source_fill_owns_odd_rows()
+                {
+                    source_style.fill().unwrap_or(row_fill)
+                } else {
+                    row_fill
+                };
                 let row_class = if idx.is_multiple_of(2) {
                     "row-rect-odd"
                 } else {
                     "row-rect-even"
                 };
+                let paint_height = if outline.is_some() && idx + 1 == measure.rows.len() {
+                    (fill_bounds.y1 - y).max(row_height)
+                } else {
+                    row_height
+                };
                 let _ = write!(
                     &mut out,
-                    r#"<rect class="{row_class}" x="{left}" y="{}" width="{width}" height="{}" style="fill:{};stroke:none{fill_opacity}"/>"#,
+                    r#"<rect class="{row_class}" x="{fill_left}" y="{}" width="{fill_width}" height="{}" style="fill:{};stroke:none{fill_opacity}"/>"#,
                     fmt(y),
-                    fmt(row_height),
+                    fmt(paint_height),
                     escape_attr(fill),
                 );
                 y += row_height;
                 out.checkpoint()?;
             }
-            let stroke_width = source_style
-                .rect_value("stroke-width")
-                .map_or_else(|| fmt(native.border_width).to_string(), str::to_owned);
+            let stroke_width = source_style.rect_value("stroke-width").map_or_else(
+                || {
+                    native.map_or_else(
+                        || stroke_width_attr.to_owned(),
+                        |style| fmt(style.border_width).to_string(),
+                    )
+                },
+                str::to_owned,
+            );
             let dash = source_style
                 .rect_value("stroke-dasharray")
                 .unwrap_or("none");
@@ -1789,24 +1875,63 @@ pub fn render_er_diagram_svg_model(
                 escape_attr(dash),
                 opacity_css("stroke-opacity"),
             );
-            let _ = write!(
-                &mut out,
-                r#"</g><rect class="er-native-outline" x="{left}" y="{top}" width="{width}" height="{height}" rx="{radius}" style="fill:none;stroke:{};{stroke_css}"/>"#,
-                escape_attr(box_stroke),
-            );
-            // Stroke the separators together so translucent strokes are composited once.
-            let _ = write!(
-                &mut out,
-                r#"<g class="divider"><path d="M{} {}H{}"#,
-                fmt(box_x0),
-                fmt(sep_y),
-                fmt(box_x1),
-            );
-            for x in divider_xs.into_iter().flatten() {
-                let _ = write!(&mut out, " M{} {}V{}", fmt(x), fmt(sep_y), fmt(box_y1));
+            if let (Some(draw), Some(outline)) = (&hand_drawn, &outline) {
+                let outline_class = if native.is_some() {
+                    "er-native-outline"
+                } else {
+                    "er-hand-drawn-outline"
+                };
+                let _ = write!(
+                    &mut out,
+                    r##"</g><path class="{outline_class}" d="{}" style="fill:none;stroke:{};{stroke_css}"/><g class="divider" clip-path="url(#{clip_id})"><path d=""##,
+                    escape_attr(&outline.d),
+                    escape_attr(box_stroke),
+                );
+                draw.write_divider(
+                    &mut out,
+                    (fill_bounds.x0, sep_y).into(),
+                    (fill_bounds.x1, sep_y).into(),
+                )?;
+                if native.is_none() {
+                    let mut y = sep_y;
+                    for row in measure
+                        .rows
+                        .iter()
+                        .take(measure.rows.len().saturating_sub(1))
+                    {
+                        y += row.height.max(1.0) + row_extra_height;
+                        draw.write_divider(
+                            &mut out,
+                            (fill_bounds.x0, y).into(),
+                            (fill_bounds.x1, y).into(),
+                        )?;
+                    }
+                }
+                for x in divider_xs.into_iter().flatten() {
+                    draw.write_divider(&mut out, (x, sep_y).into(), (x, fill_bounds.y1).into())?;
+                }
+            } else {
+                let _ = write!(
+                    &mut out,
+                    r#"</g><rect class="er-native-outline" x="{left}" y="{top}" width="{width}" height="{height}" rx="{radius}" style="fill:none;stroke:{};{stroke_css}"/>"#,
+                    escape_attr(box_stroke),
+                );
+                // Stroke the separators together so translucent strokes are composited once.
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="divider"><path d="M{} {}H{}"#,
+                    fmt(box_x0),
+                    fmt(sep_y),
+                    fmt(box_x1),
+                );
+                for x in divider_xs.into_iter().flatten() {
+                    let _ = write!(&mut out, " M{} {}V{}", fmt(x), fmt(sep_y), fmt(box_y1));
+                }
             }
             // Neo's common path rules would override presentation attributes.
-            let divider_stroke = source_style.stroke().unwrap_or(&native.guide);
+            let divider_stroke = source_style
+                .stroke()
+                .unwrap_or_else(|| native.map_or(box_stroke, |style| style.guide.as_str()));
             let _ = write!(
                 &mut out,
                 r#"" fill="none" style="stroke:{};{stroke_css}"/></g></g>"#,
@@ -2103,7 +2228,7 @@ pub fn render_er_diagram_svg_model(
             out.checkpoint()
         }
 
-        if native.is_none() {
+        if native.is_none() && outline.is_none() {
             let escaped_box_fill = escape_attr(box_fill);
             let divider_path_attrs = format!(
                 r#" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{}"#,

@@ -10,18 +10,40 @@ use std::sync::Arc;
 
 const DETOUR_WORK_LIMIT: usize = 4096;
 
-pub(super) struct DetourBudget(usize);
+pub(super) struct DetourBudget {
+    remaining: usize,
+    allow_shortcuts: bool,
+}
 
 impl Default for DetourBudget {
     fn default() -> Self {
-        Self(DETOUR_WORK_LIMIT)
+        Self::new(false)
     }
 }
 
 impl DetourBudget {
+    pub(super) fn new(allow_shortcuts: bool) -> Self {
+        Self {
+            remaining: DETOUR_WORK_LIMIT,
+            allow_shortcuts,
+        }
+    }
+
+    pub(super) fn can_try_shortcut(&self) -> bool {
+        // Leave most of the shared work for recovering a blocked solved leg.
+        self.allow_shortcuts && self.remaining > DETOUR_WORK_LIMIT * 7 / 8
+    }
+
+    fn visit_shortcut(&mut self) -> Result<(), RoutePaintError> {
+        if !self.can_try_shortcut() {
+            return Err(RoutePaintError::DetourBudgetExceeded);
+        }
+        self.visit()
+    }
+
     fn visit(&mut self) -> Result<(), RoutePaintError> {
-        self.0 = self
-            .0
+        self.remaining = self
+            .remaining
             .checked_sub(1)
             .ok_or(RoutePaintError::DetourBudgetExceeded)?;
         Ok(())
@@ -180,14 +202,14 @@ impl EdgeClearance<'_> {
     }
 
     fn blocked(self, bounds: Rect, enters: impl FnMut(Rect) -> bool) -> bool {
-        self.query(bounds, None, |_| true, enters)
+        self.query(bounds, || Ok(()), |_| true, enters)
             .expect("no detour budget is used for a clearance check")
     }
 
     fn query(
         self,
         bounds: Rect,
-        mut budget: Option<&mut DetourBudget>,
+        mut charge_visit: impl FnMut() -> Result<(), RoutePaintError>,
         mut near_curve: impl FnMut(Rect) -> bool,
         mut enters: impl FnMut(Rect) -> bool,
     ) -> Result<bool, RoutePaintError> {
@@ -197,9 +219,7 @@ impl EdgeClearance<'_> {
         let outset = self.stroke_outset;
         let query = (bounds + self.paint_to_layout).inflate(outset, outset);
         let mut visit = |rect: Rect, owner: Option<ObstacleOwner>| -> Result<_, RoutePaintError> {
-            if let Some(budget) = budget.as_deref_mut() {
-                budget.visit()?;
-            }
+            charge_visit()?;
             if !overlaps(rect, query) {
                 return Ok(Continue(false));
             }
@@ -259,15 +279,21 @@ impl EdgeClearance<'_> {
     }
 
     pub(super) fn blocks_cubic(self, curve: CubicBez) -> bool {
-        self.query_cubic(curve, |rect| cubic_enters(curve, rect))
+        self.query_cubic(curve, || Ok(()), |rect| cubic_enters(curve, rect))
+            .expect("no detour budget is used for a clearance check")
     }
 
-    fn query_cubic(self, curve: CubicBez, enters: impl FnMut(Rect) -> bool) -> bool {
+    fn query_cubic(
+        self,
+        curve: CubicBez,
+        charge_visit: impl FnMut() -> Result<(), RoutePaintError>,
+        enters: impl FnMut(Rect) -> bool,
+    ) -> Result<bool, RoutePaintError> {
         let bounds = control_bounds(curve);
         let mut sections = None;
         self.query(
             bounds,
-            None,
+            charge_visit,
             |rect| {
                 sections
                     .get_or_insert_with(|| self.cubic_hulls(curve, bounds))
@@ -276,7 +302,16 @@ impl EdgeClearance<'_> {
             },
             enters,
         )
-        .expect("no detour budget is used for a clearance check")
+    }
+
+    pub(super) fn allows_sweep_shortcut(self, curve: CubicBez, budget: &mut DetourBudget) -> bool {
+        let (from, to) = (curve.p0, curve.p3);
+        let mut charge_visit = || budget.visit_shortcut();
+        charge_visit().is_ok()
+            && self.query_line(from, to, &mut charge_visit) == Ok(false)
+            && (super::aligned(from, to)
+                || self.query_cubic(curve, charge_visit, |rect| cubic_enters(curve, rect))
+                    == Ok(false))
     }
 
     fn cubic_hulls(self, curve: CubicBez, bounds: Rect) -> [Rect; 3] {
@@ -328,9 +363,22 @@ impl EdgeClearance<'_> {
     }
 
     pub(super) fn blocks_line(self, from: Point, to: Point) -> bool {
-        self.blocked(Rect::from_points(from, to), |rect| {
-            line_enters(from, to, rect)
-        })
+        self.query_line(from, to, || Ok(()))
+            .expect("no detour budget is used for a clearance check")
+    }
+
+    fn query_line(
+        self,
+        from: Point,
+        to: Point,
+        charge_visit: impl FnMut() -> Result<(), RoutePaintError>,
+    ) -> Result<bool, RoutePaintError> {
+        self.query(
+            Rect::from_points(from, to),
+            charge_visit,
+            |_| true,
+            |rect| line_enters(from, to, rect),
+        )
     }
 
     fn blocks_detour_leg(
@@ -340,12 +388,7 @@ impl EdgeClearance<'_> {
         budget: &mut DetourBudget,
     ) -> Result<bool, RoutePaintError> {
         budget.visit()?;
-        self.query(
-            Rect::from_points(from, to),
-            Some(budget),
-            |_| true,
-            |rect| line_enters(from, to, rect),
-        )
+        self.query_line(from, to, || budget.visit())
     }
 
     fn clear_elbow(
@@ -385,7 +428,7 @@ impl EdgeClearance<'_> {
             let mut expanded = bounds;
             let occupied = self.query(
                 bounds,
-                Some(budget),
+                || budget.visit(),
                 |_| true,
                 |rect| {
                     if line_enters(from, from, rect) || line_enters(to, to, rect) {
@@ -576,7 +619,7 @@ mod tests {
             guard.detour(from, to, false, &mut budget),
             Err(RoutePaintError::DetourBudgetExceeded),
         );
-        assert_eq!(budget.0, 0);
+        assert_eq!(budget.remaining, 0);
         assert_eq!(
             guard.detour(from, to, false, &mut budget),
             Err(RoutePaintError::DetourBudgetExceeded),
@@ -643,10 +686,16 @@ mod tests {
             broad += 1;
             false
         });
-        route.query_cubic(curve, |_| {
-            narrow += 1;
-            false
-        });
+        route
+            .query_cubic(
+                curve,
+                || Ok(()),
+                |_| {
+                    narrow += 1;
+                    false
+                },
+            )
+            .unwrap();
         assert!(
             broad > 200 && narrow < 10,
             "candidate boxes {broad} → {narrow}"
@@ -655,11 +704,14 @@ mod tests {
         {
             let bounds = control_bounds(curve);
             let hulls = route.cubic_hulls(curve, bounds);
-            let mut budget = DetourBudget(64);
+            let mut budget = DetourBudget {
+                remaining: 64,
+                ..DetourBudget::default()
+            };
             assert_eq!(
                 route.query(
                     bounds,
-                    Some(&mut budget),
+                    || budget.visit(),
                     |rect| hulls.iter().any(|&hull| overlaps(hull, rect)),
                     |_| false,
                 ),

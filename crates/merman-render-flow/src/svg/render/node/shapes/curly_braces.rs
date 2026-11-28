@@ -7,7 +7,9 @@ use crate::svg::path_bounds::svg_path_bounds_from_d;
 use crate::svg::{fmt, fmt_display};
 
 use super::super::geom::path_from_points;
-use super::super::roughjs::roughjs_stroke_path_for_svg_path;
+use super::super::roughjs::{RoughGeometryTarget, roughjs_prepare_stroke_path_for_svg_path};
+#[cfg(feature = "layout-shoal")]
+use merman_render_core::rough_svg::{append_minor_circular_arc, ops_to_compact_svg_path_d};
 
 pub(in crate::svg) struct CurlyBraceCommentGeometry {
     pub(in crate::svg) group_tx: f64,
@@ -20,12 +22,80 @@ pub(in crate::svg) struct CurlyBraceCommentPath {
     pub(in crate::svg) visible: bool,
 }
 
+enum BraceLeg {
+    Point((f64, f64)),
+    Arc {
+        x: f64,
+        y: f64,
+        samples: usize,
+        start: f64,
+        end: f64,
+    },
+}
+
+fn brace_path(legs: &[BraceLeg], radius: f64, negate: bool, compact: bool) -> String {
+    #[cfg(feature = "layout-shoal")]
+    if compact {
+        use std::fmt::Write as _;
+
+        let mut path = String::new();
+        let mut last = None;
+        let pen = |point: (f64, f64), last: &mut Option<(f64, f64)>, path: &mut String| {
+            if last
+                .is_some_and(|previous| (point.0 - previous.0).hypot(point.1 - previous.1) < 1e-9)
+            {
+                return;
+            }
+            let command = if path.is_empty() { 'M' } else { 'L' };
+            let _ = write!(path, "{command}{} {}", fmt(point.0), fmt(point.1));
+            *last = Some(point);
+        };
+        for leg in legs {
+            match *leg {
+                BraceLeg::Point(point) => pen(point, &mut last, &mut path),
+                BraceLeg::Arc {
+                    x, y, start, end, ..
+                } => {
+                    let point = |angle: f64| {
+                        let (sin, cos) = angle.to_radians().sin_cos();
+                        let (px, py) = (x + radius * cos, y + radius * sin);
+                        if negate { (-px, -py) } else { (px, py) }
+                    };
+                    pen(point(start), &mut last, &mut path);
+                    let end_point = point(end);
+                    append_minor_circular_arc(&mut path, radius, end_point, end > start);
+                    last = Some(end_point);
+                }
+            }
+        }
+        return path;
+    }
+    let _ = compact;
+    let mut points = Vec::new();
+    for leg in legs {
+        match *leg {
+            BraceLeg::Point(point) => points.push(point),
+            BraceLeg::Arc {
+                x,
+                y,
+                samples,
+                start,
+                end,
+            } => {
+                points.extend(circle_points(x, y, radius, samples, start, end, negate));
+            }
+        }
+    }
+    path_from_points(&points).trim_end_matches('Z').to_owned()
+}
+
 pub(in crate::svg) fn curly_brace_comment_geometry(
     shape: &str,
     label_w: f64,
     label_h: f64,
     padding: f64,
     look_is_neo: bool,
+    compact: bool,
 ) -> CurlyBraceCommentGeometry {
     let padding = padding.max(0.0);
     let (w, h) = crate::node_geometry::flowchart_brace_content_dimensions(
@@ -48,178 +118,66 @@ pub(in crate::svg) fn curly_brace_comment_geometry(
 
     let rect_points =
         curly_brace_comment_intersection_points(shape, label_w, label_h, padding, look_is_neo);
-    let paths = if shape == "braces" {
-        // Mermaid `curlyBraces.ts`: two visible brace paths + one invisible rect path.
-        let left_points: Vec<(f64, f64)> = [
-            circle_points(w / 2.0, -h / 2.0, radius, 30, -90.0, 0.0, true),
-            vec![(-w / 2.0 - radius, radius)],
-            circle_points(
-                w / 2.0 + radius * 2.0,
-                -radius,
-                radius,
-                20,
-                -180.0,
-                -270.0,
-                true,
-            ),
-            circle_points(
-                w / 2.0 + radius * 2.0,
-                radius,
-                radius,
-                20,
-                -90.0,
-                -180.0,
-                true,
-            ),
-            vec![(-w / 2.0 - radius, -h / 2.0)],
-            circle_points(w / 2.0, h / 2.0, radius, 20, 0.0, 90.0, true),
-        ]
-        .into_iter()
-        .flatten()
-        .collect();
-        let right_points: Vec<(f64, f64)> = [
-            circle_points(
+    let arc = |x, y, samples, start, end| BraceLeg::Arc {
+        x,
+        y,
+        samples,
+        start,
+        end,
+    };
+    let point = |x, y| BraceLeg::Point((x, y));
+    let brace = |legs: &[BraceLeg], negate| CurlyBraceCommentPath {
+        d: brace_path(legs, radius, negate, compact),
+        visible: true,
+    };
+    let right = [
+        arc(w / 2.0, -h / 2.0, 20, -90.0, 0.0),
+        point(w / 2.0 + radius, -radius),
+        arc(w / 2.0 + radius * 2.0, -radius, 20, -180.0, -270.0),
+        arc(w / 2.0 + radius * 2.0, radius, 20, -90.0, -180.0),
+        point(w / 2.0 + radius, h / 2.0),
+        arc(w / 2.0, h / 2.0, 20, 0.0, 90.0),
+    ];
+    let left = [
+        arc(w / 2.0, -h / 2.0, 30, -90.0, 0.0),
+        point(-w / 2.0 - radius, radius),
+        arc(w / 2.0 + radius * 2.0, -radius, 20, -180.0, -270.0),
+        arc(w / 2.0 + radius * 2.0, radius, 20, -90.0, -180.0),
+        point(-w / 2.0 - radius, -h / 2.0),
+        arc(w / 2.0, h / 2.0, 20, 0.0, 90.0),
+    ];
+    let mut paths = if shape == "braces" {
+        let opposing = [
+            arc(
                 -w / 2.0 + radius + radius / 2.0,
                 -h / 2.0,
-                radius,
                 20,
                 -90.0,
                 -180.0,
-                true,
             ),
-            vec![(w / 2.0 - radius / 2.0, radius)],
-            circle_points(
-                -w / 2.0 - radius / 2.0,
-                -radius,
-                radius,
-                20,
-                0.0,
-                90.0,
-                true,
-            ),
-            circle_points(
-                -w / 2.0 - radius / 2.0,
-                radius,
-                radius,
-                20,
-                -90.0,
-                0.0,
-                true,
-            ),
-            vec![(w / 2.0 - radius / 2.0, -radius)],
-            circle_points(
+            point(w / 2.0 - radius / 2.0, radius),
+            arc(-w / 2.0 - radius / 2.0, -radius, 20, 0.0, 90.0),
+            arc(-w / 2.0 - radius / 2.0, radius, 20, -90.0, 0.0),
+            point(w / 2.0 - radius / 2.0, -radius),
+            arc(
                 -w / 2.0 + radius + radius / 2.0,
                 h / 2.0,
-                radius,
                 30,
                 -180.0,
                 -270.0,
-                true,
             ),
-        ]
-        .into_iter()
-        .flatten()
-        .collect();
-
-        let left_path = path_from_points(&left_points)
-            .trim_end_matches('Z')
-            .to_string();
-        let right_path = path_from_points(&right_points)
-            .trim_end_matches('Z')
-            .to_string();
-        let rect_path = path_from_points(&rect_points);
-        // Upstream inserts each path at :first-child: right, left, then the hidden rectangle.
-        vec![
-            CurlyBraceCommentPath {
-                d: right_path,
-                visible: true,
-            },
-            CurlyBraceCommentPath {
-                d: left_path,
-                visible: true,
-            },
-            CurlyBraceCommentPath {
-                d: rect_path,
-                visible: false,
-            },
-        ]
+        ];
+        // Upstream inserts each path at :first-child: right, left, then the hidden outline.
+        vec![brace(&opposing, true), brace(&left, true)]
+    } else if shape == "brace-r" {
+        vec![brace(&right, false)]
     } else {
-        // Mermaid `curlyBraceLeft.ts` / `curlyBraceRight.ts`.
-        let points = if shape == "brace-r" {
-            let points: Vec<(f64, f64)> = [
-                circle_points(w / 2.0, -h / 2.0, radius, 20, -90.0, 0.0, false),
-                vec![(w / 2.0 + radius, -radius)],
-                circle_points(
-                    w / 2.0 + radius * 2.0,
-                    -radius,
-                    radius,
-                    20,
-                    -180.0,
-                    -270.0,
-                    false,
-                ),
-                circle_points(
-                    w / 2.0 + radius * 2.0,
-                    radius,
-                    radius,
-                    20,
-                    -90.0,
-                    -180.0,
-                    false,
-                ),
-                vec![(w / 2.0 + radius, h / 2.0)],
-                circle_points(w / 2.0, h / 2.0, radius, 20, 0.0, 90.0, false),
-            ]
-            .into_iter()
-            .flatten()
-            .collect();
-
-            points
-        } else {
-            let points: Vec<(f64, f64)> = [
-                circle_points(w / 2.0, -h / 2.0, radius, 30, -90.0, 0.0, true),
-                vec![(-w / 2.0 - radius, radius)],
-                circle_points(
-                    w / 2.0 + radius * 2.0,
-                    -radius,
-                    radius,
-                    20,
-                    -180.0,
-                    -270.0,
-                    true,
-                ),
-                circle_points(
-                    w / 2.0 + radius * 2.0,
-                    radius,
-                    radius,
-                    20,
-                    -90.0,
-                    -180.0,
-                    true,
-                ),
-                vec![(-w / 2.0 - radius, -h / 2.0)],
-                circle_points(w / 2.0, h / 2.0, radius, 20, 0.0, 90.0, true),
-            ]
-            .into_iter()
-            .flatten()
-            .collect();
-
-            points
-        };
-
-        let brace_path = path_from_points(&points).trim_end_matches('Z').to_string();
-        let rect_path = path_from_points(&rect_points);
-        vec![
-            CurlyBraceCommentPath {
-                d: brace_path,
-                visible: true,
-            },
-            CurlyBraceCommentPath {
-                d: rect_path,
-                visible: false,
-            },
-        ]
+        vec![brace(&left, true)]
     };
+    paths.push(CurlyBraceCommentPath {
+        d: path_from_points(&rect_points),
+        visible: false,
+    });
 
     CurlyBraceCommentGeometry {
         group_tx,
@@ -244,26 +202,38 @@ pub(in crate::svg::render::node) fn render_curly_brace_comment(
         common.node_classes,
         common.node_styles,
     );
+    let compact = common.look_is_hand_drawn() && ctx.layout.route_contract.is_canonical_axis();
     let geometry = curly_brace_comment_geometry(
         common.shape,
         metrics.width,
         metrics.height,
         ctx.node_padding,
         merman_render_core::config::mermaid_config_diagram_look(ctx.config).is_neo(),
+        compact,
     );
     label.dx = geometry.label_dx;
-    let compact_bounds =
-        common.look_is_hand_drawn() && ctx.layout.route_contract.is_canonical_axis();
 
     let mut stroke_d = |d: &str| {
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
-            roughjs_stroke_path_for_svg_path(
-                d,
+            let operations = if compact {
+                merman_render_core::rough_svg::paths::roughjs_prepare_hand_drawn_stroke_path_for_svg_path(
+                    RoughGeometryTarget::Svg, d, 0.7, common.work_meter, common.hand_drawn_seed,
+                )
+            } else {
+                roughjs_prepare_stroke_path_for_svg_path(
+                    RoughGeometryTarget::Svg,
+                    d,
                 common.stroke_width,
                 common.stroke_dasharray,
                 common.work_meter,
-                common.hand_drawn_seed,
-            )
+                    common.hand_drawn_seed,
+                )
+            }?;
+            #[cfg(feature = "layout-shoal")]
+            if compact {
+                return Some(ops_to_compact_svg_path_d(&operations));
+            }
+            Some(merman_render_core::rough_svg::ops_to_svg_path_d(&operations))
         })
         .unwrap_or_else(|| "M0,0".to_string())
     };
@@ -274,7 +244,7 @@ pub(in crate::svg::render::node) fn render_curly_brace_comment(
         fmt(geometry.group_tx),
     );
     for path in geometry.paths {
-        if compact_bounds && !path.visible {
+        if compact && !path.visible {
             // The contact polygon sets the hidden bounds. Only the braces need RoughJS paint.
             if let Some(bounds) = svg_path_bounds_from_d(&path.d) {
                 let _ = write!(
@@ -322,21 +292,27 @@ pub(super) fn advance_rough_geometry(
         common.node_classes,
         common.node_styles,
     );
+    let compact = common.look_is_hand_drawn() && ctx.layout.route_contract.is_canonical_axis();
     let geometry = curly_brace_comment_geometry(
         common.shape,
         metrics.width,
         metrics.height,
         ctx.node_padding,
         merman_render_core::config::mermaid_config_diagram_look(ctx.config).is_neo(),
+        compact,
     );
-    let compact_bounds =
-        common.look_is_hand_drawn() && ctx.layout.route_contract.is_canonical_axis();
     for path in geometry.paths {
-        if compact_bounds && !path.visible {
+        if compact && !path.visible {
             continue;
         }
-        let _ = super::super::roughjs::roughjs_prepare_stroke_path_for_svg_path(
-            super::super::roughjs::RoughGeometryTarget::Query,
+        if compact {
+            let _ = merman_render_core::rough_svg::paths::roughjs_prepare_hand_drawn_stroke_path_for_svg_path(
+                RoughGeometryTarget::Query, &path.d, 0.7, common.work_meter, common.hand_drawn_seed,
+            );
+            continue;
+        }
+        let _ = roughjs_prepare_stroke_path_for_svg_path(
+            RoughGeometryTarget::Query,
             &path.d,
             common.stroke_width,
             common.stroke_dasharray,
@@ -382,7 +358,7 @@ mod tests {
             ("brace-r", 0.0),
             ("braces", 0.0),
         ] {
-            let geometry = curly_brace_comment_geometry(shape, 100.0, 20.0, 15.0, true);
+            let geometry = curly_brace_comment_geometry(shape, 100.0, 20.0, 15.0, true, false);
             assert_eq!(geometry.label_dx, neo_dx, "{shape}");
             let bounds = union_translated_path_bounds(&geometry);
             let layout = crate::node_geometry::flowchart_node_render_dimensions(
@@ -404,7 +380,7 @@ mod tests {
                 "{shape}"
             );
             for padding in [0.0, -2.0] {
-                let empty = curly_brace_comment_geometry(shape, 0.0, 0.0, padding, false);
+                let empty = curly_brace_comment_geometry(shape, 0.0, 0.0, padding, false, false);
                 let bounds = union_translated_path_bounds(&empty);
                 let width = match shape {
                     "brace-r" => 10.0,
@@ -420,13 +396,13 @@ mod tests {
         }
         // A tall classic label increases radius beyond the default 5px.
         // Left-brace text follows r - padding/2, not the historical -r/2.
-        let tall = curly_brace_comment_geometry("brace", 100.0, 85.0, 15.0, false);
+        let tall = curly_brace_comment_geometry("brace", 100.0, 85.0, 15.0, false, false);
         assert_eq!(tall.label_dx, 2.5);
     }
 
     #[test]
     fn paired_braces_follow_source_dom_insertion_order() {
-        let geometry = curly_brace_comment_geometry("braces", 100.0, 20.0, 15.0, true);
+        let geometry = curly_brace_comment_geometry("braces", 100.0, 20.0, 15.0, true, false);
         assert_eq!(geometry.paths.len(), 3);
         let bounds = |index: usize| {
             crate::svg::path_bounds::svg_path_bounds_from_d(&geometry.paths[index].d)
@@ -450,7 +426,8 @@ mod tests {
         let label_w = 198.320_312_5;
         let label_h = 54.2;
         let padding = 15.0;
-        let geometry = curly_brace_comment_geometry("brace-r", label_w, label_h, padding, false);
+        let geometry =
+            curly_brace_comment_geometry("brace-r", label_w, label_h, padding, false, false);
 
         assert_eq!(geometry.paths.len(), 2);
         assert!(geometry.paths[0].visible);

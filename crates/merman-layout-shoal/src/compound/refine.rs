@@ -1341,9 +1341,16 @@ fn outer_cross(
     Ok(seam)
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum PortOrder {
+    Outer,
+    Inner,
+}
+
 pub(super) fn port_hints(
     ctx: &Pass<'_>,
     output: &LayoutOutput,
+    order: PortOrder,
     work: &mut Work<'_>,
 ) -> LayoutResult<Option<Vec<Option<f64>>>> {
     work.check()?;
@@ -1369,11 +1376,26 @@ pub(super) fn port_hints(
         if level.ports.len() < 2 {
             continue;
         }
+        if order == PortOrder::Inner {
+            let outside = output.groups[level_id]
+                .parent
+                .map_or(ctx.graph.direction, |id| {
+                    ctx.hierarchy.levels[id.0 as usize].direction
+                });
+            // The crossed-group policy may inherit the enclosing direction for placement.
+            if ctx.graph.groups[level_id]
+                .direction
+                .is_none_or(|inside| inside == outside)
+            {
+                continue;
+            }
+        }
         let (first, last) = flow_sides(level.direction);
         'face: for side in [first, last] {
             let axis = side.axis();
             positions.clear();
             sorted.clear();
+            let mut directions = [false; 2];
             for &id in &level.ports {
                 work.visit(1)?;
                 if ctx.sides[id] != side {
@@ -1386,24 +1408,48 @@ pub(super) fn port_hints(
                     // Group endpoints can have only an inner leg. Keep that face's original keys.
                     continue 'face;
                 };
-                let seam = stitches[by_border[index]].point;
+                let index = by_border[index];
+                let stitch = stitches[index];
+                let seam = stitch.point;
                 let route = &output.edges[border.edge].points;
                 let Some(&port) = route.get(seam) else {
                     return Err(LayoutError::InvalidInput("missing compound port seam"));
                 };
                 let at = across(port, axis);
-                let hint = if border.outgoing {
-                    outer_cross(at, route[seam + 1..].iter().copied(), axis, work)?
-                } else {
-                    outer_cross(at, route[..seam].iter().rev().copied(), axis, work)?
+                let hint = match (order, border.outgoing) {
+                    (PortOrder::Outer, true) => {
+                        outer_cross(at, route[seam + 1..].iter().copied(), axis, work)?
+                    }
+                    (PortOrder::Outer, false) => {
+                        outer_cross(at, route[..seam].iter().rev().copied(), axis, work)?
+                    }
+                    (PortOrder::Inner, outgoing) => {
+                        // Stitches are in route order. Reach the end of the inner leg, where
+                        // the peer order can differ from the order around the first turn.
+                        let (step, terminal) = if outgoing {
+                            (-1, 0)
+                        } else {
+                            (1, route.len() - 1)
+                        };
+                        let peer = index
+                            .checked_add_signed(step)
+                            .and_then(|index| stitches.get(index))
+                            .filter(|peer| peer.edge == stitch.edge)
+                            .map_or(terminal, |peer| peer.point);
+                        across(route[peer], axis)
+                    }
                 };
                 if !at.is_finite() || !hint.is_finite() {
                     return Err(WorkError::ArithmeticOverflow.into());
                 }
+                directions[usize::from(border.outgoing)] = true;
                 push(&mut sorted, positions.len())?;
                 push(&mut positions, (at, hint, id))?;
             }
-            // At each boundary between distinct seams, compare the largest and smallest outer keys.
+            if order == PortOrder::Inner && directions != [true; 2] {
+                continue;
+            }
+            // Compare the largest and smallest peer keys between distinct seams.
             work.sort(&mut sorted, |&a, &b| {
                 let (left, right) = (positions[a], positions[b]);
                 left.0
@@ -1417,7 +1463,7 @@ pub(super) fn port_hints(
                 left.0 < right.0 && left.1 > right.1
             });
             if inverted {
-                // Boundary hints feed only the flat row's relative order. If the outer
+                // Boundary hints feed only the flat row's relative order. If the peer
                 // coordinates changed but induce the same order, the local frame is current.
                 if positions.iter().all(|&(_, _, id)| ctx.ports[id].is_some()) {
                     let order = |left: f64, right: f64, a: usize, b: usize| {

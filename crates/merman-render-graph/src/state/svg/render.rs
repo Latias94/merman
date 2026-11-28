@@ -1012,13 +1012,13 @@ fn render_state_root(
 }
 
 fn state_hand_drawn_rect_paths(
+    ctx: &StateRenderCtx<'_>,
     x: f64,
     y: f64,
     width: f64,
     height: f64,
     stroke_width: f64,
     stroke_dasharray: &str,
-    randomness: &roughr::core::RoughRandomness,
 ) -> (String, String) {
     let path = format!(
         "M{x},{y} L{},{} L{},{} L{},{} Z",
@@ -1029,7 +1029,7 @@ fn state_hand_drawn_rect_paths(
         x,
         y + height,
     );
-    roughjs_paths_for_svg_path(&path, stroke_width as f32, stroke_dasharray, randomness)
+    ctx.rough_closed_path(&path, stroke_width as f32, stroke_dasharray)
         .unwrap_or_else(|| (path.clone(), path))
 }
 
@@ -1222,13 +1222,13 @@ fn render_state_cluster(
             );
             let stroke_width = compatibility.terminal_stroke_width_value(surface);
             let (fill_d, stroke_d) = state_hand_drawn_rect_paths(
+                ctx,
                 x,
                 y,
                 cluster.width.max(1.0),
                 cluster.height.max(1.0),
                 stroke_width,
                 "5",
-                &ctx.hand_drawn_seed,
             );
             let fill_style = state_hand_drawn_terminal_style("fill", &fill, body_fill_path_style);
             let stroke_style =
@@ -1344,22 +1344,22 @@ fn render_state_cluster(
         );
         let header_stroke_width = compatibility.terminal_stroke_width_value(header_surface);
         let (outer_fill_d, outer_stroke_d) = state_hand_drawn_rect_paths(
+            ctx,
             x,
             y,
             cluster.width.max(1.0),
             cluster.height.max(1.0),
             header_stroke_width,
             "0 0",
-            &ctx.hand_drawn_seed,
         );
         let (inner_fill_d, inner_stroke_d) = state_hand_drawn_rect_paths(
+            ctx,
             x,
             inner_y,
             cluster.width.max(1.0),
             inner_height,
             body_stroke_width,
             "0 0",
-            &ctx.hand_drawn_seed,
         );
         let header_fill_style =
             state_hand_drawn_terminal_style("fill", &header_fill, header_fill_path_style);

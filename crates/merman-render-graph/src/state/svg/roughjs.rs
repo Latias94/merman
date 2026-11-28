@@ -1,12 +1,146 @@
-//! Rough.js helpers used by multiple parity renderers.
+//! State shape geometry for Mermaid parity and Shoal.
 
-use roughr::core::RoughRandomness;
+use std::fmt::Write as _;
+
+use merman_model::OperationPhase;
+use roughr::core::{OpSet, OpType, Options, OptionsBuilder, RoughRandomness};
 use roughr::{PathParser, PathSegment};
 
 use merman_render_core::rough_svg::{
-    closed_path_d_from_points as roughjs_closed_path_d_from_points,
-    mermaid_arc_points as roughjs_arc_points, ops_to_svg_path_d as roughjs_ops_to_svg_path_d,
+    RoughRectSpec, append_minor_circular_arc, closed_path_d_from_points, controlled,
+    mermaid_arc_points, ops_to_compact_svg_path_d, ops_to_svg_path_d, roughjs_circle_path_d,
+    roughjs_paths_for_rect,
 };
+
+use super::StateRenderCtx;
+
+// Match the roughness Mermaid uses for its hand-drawn node shapes.
+const SHOAL_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
+
+impl StateRenderCtx<'_> {
+    fn uses_shoal_hand_drawn(&self) -> bool {
+        self.uses_canonical_routes() && self.style_plan.compatibility().is_hand_drawn()
+    }
+
+    pub(super) fn rough_circle_path(&self, diameter: f64) -> Option<String> {
+        if !self.uses_shoal_hand_drawn() {
+            return roughjs_circle_path_d(diameter, &self.hand_drawn_seed);
+        }
+        let mut options = shoal_hand_drawn_options(&self.hand_drawn_seed)?;
+        let outline = controlled::generate(self.work_meter, OperationPhase::Emit, |control| {
+            let ellipse = roughr::renderer::generate_ellipse_params_with_control(
+                diameter,
+                diameter,
+                &mut options,
+                control,
+            )?;
+            roughr::renderer::ellipse_with_params_with_control(
+                0.0,
+                0.0,
+                &mut options,
+                &ellipse,
+                control,
+            )
+        })
+        .ok()?;
+        Some(ops_to_compact_svg_path_d(&outline.opset))
+    }
+
+    pub(super) fn rough_leaf_rect_paths(&self, w: f64, h: f64) -> Option<(String, String)> {
+        if self.uses_shoal_hand_drawn() {
+            return self.shoal_rough_shape_paths(&mermaid_rounded_rect_path_data(w, h, 0.0));
+        }
+        roughjs_paths_for_rect(RoughRectSpec {
+            x: -w / 2.0,
+            y: -h / 2.0,
+            w,
+            h,
+            stroke_width: 1.3,
+            work_meter: self.work_meter,
+            phase: OperationPhase::Emit,
+            randomness: &self.hand_drawn_seed,
+        })
+    }
+
+    pub(super) fn rough_rounded_rect_paths(
+        &self,
+        w: f64,
+        h: f64,
+        radius: f64,
+    ) -> Option<(String, String)> {
+        if self.uses_shoal_hand_drawn() {
+            return self.shoal_rough_shape_paths(&shoal_rounded_rect_path_data(w, h, radius));
+        }
+        mermaid_rough_paths_for_svg_path(
+            &mermaid_rounded_rect_path_data(w, h, radius),
+            1.3,
+            "0 0",
+            &self.hand_drawn_seed,
+        )
+    }
+
+    pub(super) fn rough_closed_path(
+        &self,
+        path: &str,
+        stroke_width: f32,
+        stroke_dasharray: &str,
+    ) -> Option<(String, String)> {
+        if self.uses_shoal_hand_drawn() {
+            return self.shoal_rough_shape_paths(path);
+        }
+        mermaid_rough_paths_for_svg_path(
+            path,
+            stroke_width,
+            stroke_dasharray,
+            &self.hand_drawn_seed,
+        )
+    }
+
+    fn shoal_rough_shape_paths(&self, path: &str) -> Option<(String, String)> {
+        let mut options = shoal_hand_drawn_options(&self.hand_drawn_seed)?;
+        // These shapes have one closed contour. Preserve its joins and perturb the curves.
+        options.preserve_vertices = Some(true);
+        let (fill, stroke) =
+            controlled::generate(self.work_meter, OperationPhase::Emit, |control| {
+                let segments = roughr::points_on_path::normalized_path_with_control(path, control)?;
+                options.disable_multi_stroke = Some(true);
+                let mut fill = roughr::renderer::svg_normalized_segments_with_control::<f64>(
+                    &segments,
+                    &mut options,
+                    control,
+                )?;
+                join_solid_fill(&mut fill);
+                options.disable_multi_stroke = Some(false);
+                let stroke = roughr::renderer::svg_normalized_segments_with_control::<f64>(
+                    &segments,
+                    &mut options,
+                    control,
+                )?;
+                Ok((fill, stroke))
+            })
+            .ok()?;
+        Some((
+            ops_to_compact_svg_path_d(&fill),
+            ops_to_compact_svg_path_d(&stroke),
+        ))
+    }
+}
+
+fn shoal_hand_drawn_options(randomness: &RoughRandomness) -> Option<Options> {
+    OptionsBuilder::default()
+        .randomness(randomness.clone())
+        .roughness(SHOAL_HAND_DRAWN_ROUGHNESS)
+        .bowing(1.0)
+        .build()
+        .ok()
+}
+
+fn join_solid_fill(opset: &mut OpSet<f64>) {
+    let mut first = true;
+    opset
+        .ops
+        .retain(|op| std::mem::take(&mut first) || op.op != OpType::Move);
+}
 
 pub(super) fn normalized_rounded_rect_radius(w: f64, h: f64, radius: f64) -> f64 {
     let max_radius = (w.abs() / 2.0).min(h.abs() / 2.0);
@@ -17,10 +151,36 @@ pub(super) fn normalized_rounded_rect_radius(w: f64, h: f64, radius: f64) -> f64
     }
 }
 
-pub(super) fn mermaid_rounded_rect_path_data(w: f64, h: f64, radius: f64) -> String {
+fn shoal_rounded_rect_path_data(w: f64, h: f64, radius: f64) -> String {
     let radius = normalized_rounded_rect_radius(w, h, radius);
     if radius == 0.0 {
-        return roughjs_closed_path_d_from_points(&[
+        return mermaid_rounded_rect_path_data(w, h, 0.0);
+    }
+
+    let (x, y) = (w / 2.0, h / 2.0);
+    let (tx, ty) = (x - radius, y - radius);
+    let mut point = (-tx, -y);
+    let mut path = format!("M{} {}", point.0, point.1);
+    for (start, end) in [
+        ((tx, -y), (x, -ty)),
+        ((x, ty), (tx, y)),
+        ((-tx, y), (-x, ty)),
+        ((-x, -ty), (-tx, -y)),
+    ] {
+        if point != start {
+            let _ = write!(path, "L{} {}", start.0, start.1);
+        }
+        // Each corner becomes a single cubic. The final arc returns to the starting point.
+        append_minor_circular_arc(&mut path, radius, end, true);
+        point = end;
+    }
+    path
+}
+
+fn mermaid_rounded_rect_path_data(w: f64, h: f64, radius: f64) -> String {
+    let radius = normalized_rounded_rect_radius(w, h, radius);
+    if radius == 0.0 {
+        return closed_path_d_from_points(&[
             (-w / 2.0, -h / 2.0),
             (w / 2.0, -h / 2.0),
             (w / 2.0, h / 2.0),
@@ -33,7 +193,7 @@ pub(super) fn mermaid_rounded_rect_path_data(w: f64, h: f64, radius: f64) -> Str
 
     points.push((-w / 2.0 + taper, -h / 2.0));
     points.push((w / 2.0 - taper, -h / 2.0));
-    points.extend(roughjs_arc_points(
+    points.extend(mermaid_arc_points(
         w / 2.0 - taper,
         -h / 2.0,
         w / 2.0,
@@ -45,7 +205,7 @@ pub(super) fn mermaid_rounded_rect_path_data(w: f64, h: f64, radius: f64) -> Str
 
     points.push((w / 2.0, -h / 2.0 + taper));
     points.push((w / 2.0, h / 2.0 - taper));
-    points.extend(roughjs_arc_points(
+    points.extend(mermaid_arc_points(
         w / 2.0,
         h / 2.0 - taper,
         w / 2.0 - taper,
@@ -57,7 +217,7 @@ pub(super) fn mermaid_rounded_rect_path_data(w: f64, h: f64, radius: f64) -> Str
 
     points.push((w / 2.0 - taper, h / 2.0));
     points.push((-w / 2.0 + taper, h / 2.0));
-    points.extend(roughjs_arc_points(
+    points.extend(mermaid_arc_points(
         -w / 2.0 + taper,
         h / 2.0,
         -w / 2.0,
@@ -69,7 +229,7 @@ pub(super) fn mermaid_rounded_rect_path_data(w: f64, h: f64, radius: f64) -> Str
 
     points.push((-w / 2.0, h / 2.0 - taper));
     points.push((-w / 2.0, -h / 2.0 + taper));
-    points.extend(roughjs_arc_points(
+    points.extend(mermaid_arc_points(
         -w / 2.0,
         -h / 2.0 + taper,
         -w / 2.0 + taper,
@@ -79,7 +239,7 @@ pub(super) fn mermaid_rounded_rect_path_data(w: f64, h: f64, radius: f64) -> Str
         true,
     ));
 
-    roughjs_closed_path_d_from_points(&points)
+    closed_path_d_from_points(&points)
 }
 
 pub(super) fn mermaid_choice_diamond_path_data(w: f64, h: f64) -> String {
@@ -89,10 +249,10 @@ pub(super) fn mermaid_choice_diamond_path_data(w: f64, h: f64) -> String {
         (0.0, -h / 2.0),
         (-w / 2.0, 0.0),
     ];
-    roughjs_closed_path_d_from_points(&points)
+    closed_path_d_from_points(&points)
 }
 
-pub(super) fn roughjs_paths_for_svg_path(
+fn mermaid_rough_paths_for_svg_path(
     svg_path_data: &str,
     stroke_width: f32,
     stroke_dasharray: &str,
@@ -161,12 +321,7 @@ pub(super) fn roughjs_paths_for_svg_path(
 
         let mut opset =
             roughr::renderer::svg_normalized_segments::<f64>(&normalized_segments, &mut options);
-        let mut idx = 0usize;
-        opset.ops.retain(|op| {
-            let keep = idx == 0 || op.op != roughr::core::OpType::Move;
-            idx += 1;
-            keep
-        });
+        join_solid_fill(&mut opset);
         opset
     } else {
         let distance = (1.0 + base_roughness as f64) / 2.0;
@@ -188,8 +343,8 @@ pub(super) fn roughjs_paths_for_svg_path(
         roughr::renderer::svg_normalized_segments::<f64>(&normalized_segments, &mut options);
 
     Some((
-        roughjs_ops_to_svg_path_d(&fill_opset),
-        roughjs_ops_to_svg_path_d(&stroke_opset),
+        ops_to_svg_path_d(&fill_opset),
+        ops_to_svg_path_d(&stroke_opset),
     ))
 }
 

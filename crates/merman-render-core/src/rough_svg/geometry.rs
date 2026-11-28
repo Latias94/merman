@@ -12,6 +12,13 @@ pub fn closed_path_d_from_points(points: &[(f64, f64)]) -> String {
     out
 }
 
+/// Append an SVG circular arc of at most 180 degrees for RoughJS to normalize to curves.
+pub fn append_minor_circular_arc(path: &mut String, radius: f64, end: (f64, f64), clockwise: bool) {
+    let (x, y) = end;
+    let sweep = u8::from(clockwise);
+    let _ = write!(path, "A{radius} {radius} 0 0 {sweep} {x} {y}");
+}
+
 pub fn mermaid_arc_points(
     x1: f64,
     y1: f64,

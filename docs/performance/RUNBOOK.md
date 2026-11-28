@@ -508,6 +508,32 @@ python3 tools/bench/bench.py plan --scenario flowchart-layout-dagre-classic --ou
 python3 tools/bench/bench.py rust --plan target/bench/layouts/pinned.json --metric clock --operation layout-json --site-layout shoal --out target/bench/layouts/pinned-result.json
 ```
 
+### Review the Shoal native-font visual corpus
+
+Run the [20-case corpus](fixtures/shoal-native-visual/manifest.json) during release preflight
+and on demand for Shoal changes. It covers 11 diagram families and records the source, preset,
+appearance, canvas override, and visual review focus for each case.
+
+From the repository root, build a Shoal-enabled CLI with the platform font provider and render
+into a fresh output directory.
+
+```console
+cargo build --locked --release --target-dir target -p merman-cli --no-default-features --features "diagram-agentflow,diagram-architecture,diagram-block,diagram-c4,diagram-class,diagram-er,diagram-flowchart,diagram-requirement,diagram-state,diagram-swimlane,diagram-usecase,layout-dagre,layout-shoal,png,platform-system-font-default"
+python3 docs/performance/fixtures/shoal-native-visual/render.py --binary target/release/merman-cli --out-dir target/bench/shoal-native-visual
+```
+
+On Windows use `py -3` or `python` and point `--binary` at `target/release/merman-cli.exe`.
+The runner uses installed fonts for layout and painting with the CLI's default font budget.
+Use a host with CJK and emoji coverage for S03. Compare revisions on the same host with the
+same installed fonts, and inspect the PNGs at full size using the prompts in the manifest.
+Inspect CLI diagnostics for missing glyphs or render errors. The runner attempts every case
+and exits with status 1 if any export fails or is reduced below the requested 2× scale.
+The audit allows up to 16,384 pixels per side and 100 million pixels per image for dense cases.
+
+Retain the audit IDs when updating cases. Reference an existing fixture if it exercises the
+same geometry and configuration. Otherwise keep the Mermaid source focused on the case's
+review condition. Keep 2× PNGs and any comparison notes under `target/bench/`.
+
 ## Publish a reader report
 
 Use `bench.py report` to turn completed benchmark evidence into a dated Markdown page and a

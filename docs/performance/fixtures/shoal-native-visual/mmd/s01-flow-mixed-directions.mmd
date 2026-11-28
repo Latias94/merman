@@ -1,0 +1,29 @@
+---
+config:
+  layout: shoal
+  htmlLabels: false
+---
+flowchart TB
+  Ext[External Client Traffic] --> L1A
+  subgraph L1["Level 1 Global Ingress & Edge Gateway"]
+    direction LR
+    L1A[Edge Router] --> L2A
+    subgraph L2["Level 2 Regional Mesh (LR -> BT)"]
+      direction BT
+      L2A[Mesh Ingress] --> L3A
+      subgraph L3["Level 3 Service Pod (BT -> RL)"]
+        direction RL
+        L3A[Policy Engine] -->|allow| L4A
+        subgraph L4["Level 4 Crypto Enclave (Deepest)"]
+          L4A[Sign Token] --> L4B[Verify HSM]
+        end
+        L4B -->|audit| L3B[Audit Sink]
+      end
+      L3B --> L2B[Telemetry Forwarder]
+    end
+    L2B --> L1B[Egress Proxy]
+  end
+  L1B --> Ext
+  L4 --> L2B
+  L2 -->|fallback circuit| Ext
+  L4B -.->|emergency revoke| L1A

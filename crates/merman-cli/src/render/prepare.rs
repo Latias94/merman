@@ -23,6 +23,8 @@ use crate::output::PublicationGuards;
 use crate::resources::ResolvedResourcePolicy;
 use crate::runtime::SharedWriter;
 use merman::OperationControl;
+#[cfg(feature = "native-fonts")]
+use merman::model::resources::ResourceProfile;
 #[cfg(feature = "svg")]
 use merman::svg::SvgPipeline;
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -593,7 +595,13 @@ pub(crate) fn prepare_graphical_output(
         None
     } else {
         let svg_output = matches!(&output, PreparedGraphicalOutput::Svg);
-        let context = prepare_font_context(&common.render.fonts, &common.cwd, svg_output, control)?;
+        let context = prepare_font_context(
+            &common.render.fonts,
+            &common.cwd,
+            common.resources.profile(),
+            svg_output,
+            control,
+        )?;
         if common.render.fonts.max_bytes.is_some() && context.is_none() && !svg_output {
             return Err(CliError::InvalidInput(
                 "--font-max-bytes requires a native font context for encoded output. Use --font-system on or --font-file PATH and omit --font-measurement deterministic.".to_owned(),
@@ -635,7 +643,11 @@ pub(crate) fn prepare_graphical_output(
             PreparedGraphicalSource::RawSvg(Box::new(PreparedRawSvg {
                 environment: RenderEnvironment::deterministic()
                     .with_resource_policy(common.resources.render_policy()),
-                fonts: PreparedRawSvgFonts::from_args(&common.render.fonts, &common.cwd)?,
+                fonts: PreparedRawSvgFonts::from_args(
+                    &common.render.fonts,
+                    &common.cwd,
+                    common.resources.profile(),
+                )?,
             }))
         }
         #[cfg(not(any(feature = "png", feature = "jpeg", feature = "pdf")))]
@@ -738,7 +750,11 @@ pub(crate) fn prepare_rustdoc_renderers(
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 impl PreparedRawSvgFonts {
-    fn from_args(args: &crate::cli::FontCliArgs, cwd: &Path) -> Result<Option<Self>, CliError> {
+    fn from_args(
+        args: &crate::cli::FontCliArgs,
+        cwd: &Path,
+        profile: ResourceProfile,
+    ) -> Result<Option<Self>, CliError> {
         use crate::cli::FontSystemKind;
 
         if args.max_measurements.is_some() {
@@ -764,7 +780,7 @@ impl PreparedRawSvgFonts {
             .system
             .map_or(!explicit, |mode| mode != FontSystemKind::Off);
         Ok(Some(Self {
-            options: native_font_options(args, cwd, use_system),
+            options: native_font_options(args, cwd, profile, use_system),
             system: args.system,
             sources: args.sources.clone(),
         }))
@@ -803,6 +819,7 @@ impl PreparedRawSvgFonts {
 fn prepare_font_context(
     args: &crate::cli::FontCliArgs,
     cwd: &Path,
+    profile: ResourceProfile,
     svg_output: bool,
     control: &OperationControl,
 ) -> Result<Option<merman::svg::export::NativeFontContext>, CliError> {
@@ -862,7 +879,7 @@ fn prepare_font_context(
         }
         return Ok(None);
     }
-    let options = native_font_options(args, cwd, use_system);
+    let options = native_font_options(args, cwd, profile, use_system);
     load_cli_font_context(options, args.system, &args.sources, control).map(Some)
 }
 
@@ -870,6 +887,7 @@ fn prepare_font_context(
 fn native_font_options(
     args: &crate::cli::FontCliArgs,
     cwd: &Path,
+    profile: ResourceProfile,
     use_system: bool,
 ) -> merman::svg::export::NativeFontOptions {
     use crate::cli::FontSource;
@@ -878,6 +896,9 @@ fn native_font_options(
     let mut options = NativeFontOptions::default().with_system_fonts(use_system);
     if let Some(maximum) = args.max_bytes {
         options.limits.max_bytes = maximum;
+    } else if cfg!(target_os = "macos") && use_system && profile == ResourceProfile::TrustedNative {
+        // Apple Color Emoji and a CJK collection can exceed 256 MiB together.
+        options.limits.max_bytes = 384 * 1024 * 1024;
     }
     if let Some(maximum) = args.max_measurements {
         options.limits.max_measurements = maximum;
@@ -1089,7 +1110,7 @@ fn render_input_limit(raw_svg: bool, resources: &ResolvedResourcePolicy) -> Inpu
 
 #[cfg(all(test, feature = "native-fonts"))]
 mod font_policy_tests {
-    use super::prepare_font_context;
+    use super::{ResourceProfile, prepare_font_context};
     use crate::cli::{FontCliArgs, FontMeasurementKind, FontSystemKind};
 
     #[cfg(feature = "platform-system-font-query")]
@@ -1126,9 +1147,14 @@ mod font_policy_tests {
         ];
         let cwd = std::env::current_dir().unwrap();
         for policy in policies {
-            let context =
-                prepare_font_context(&policy, &cwd, true, &merman::OperationControl::new())
-                    .unwrap();
+            let context = prepare_font_context(
+                &policy,
+                &cwd,
+                ResourceProfile::TrustedNative,
+                true,
+                &merman::OperationControl::new(),
+            )
+            .unwrap();
             assert!(
                 context.is_none(),
                 "deterministic layout must not acquire fonts"

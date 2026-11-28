@@ -308,7 +308,7 @@ fn shoal_hand_drawn_braces_emit_only_visible_rough_strokes() {
         2
     );
     // Each visible stroke still uses the shared RoughJS serializer.
-    assert!(group.range().len() < 64 * 1024);
+    assert!(group.range().len() < 15_000);
 }
 
 #[test]

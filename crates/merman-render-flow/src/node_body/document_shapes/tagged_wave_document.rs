@@ -2,10 +2,7 @@
 
 use merman_render_core::{
     number_format::canonical_number as fmt,
-    rough_svg::paths::{
-        RoughGeometryTarget, roughjs_paths_for_hand_drawn_solid_svg_path,
-        roughjs_prepare_paths_for_hand_drawn_solid_svg_path,
-    },
+    rough_svg::paths::{RoughGeometryTarget, roughjs_prepare_paths_for_hand_drawn_solid_svg_path},
     svg_output::SvgOutput,
 };
 
@@ -85,13 +82,15 @@ impl TaggedWaveDocumentBody {
             let wave_paths = body.hand_drawn_path_pair(&wave);
             let tag_paths = body
                 .timed_rough(|geometry| {
-                    roughjs_paths_for_hand_drawn_solid_svg_path(
+                    roughjs_prepare_paths_for_hand_drawn_solid_svg_path(
+                        RoughGeometryTarget::Svg,
                         &tag,
                         geometry.stroke_width,
                         geometry.stroke_dasharray,
                         geometry.work_meter,
                         geometry.randomness,
                     )
+                    .and_then(|paths| geometry.write_rough_paths(paths))
                 })
                 .filter(|(fill_d, stroke_d)| !fill_d.is_empty() && !stroke_d.is_empty());
 

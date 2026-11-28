@@ -287,10 +287,11 @@ outline table larger than half the collection, Merman can retain one TTC or OTC
 and verify the selected member by its native tables. Measurement and painting
 then share the same bytes and member index.
 
-The default font-data budget per native context increases from 64 MiB to 256 MiB.
-It covers explicit inputs, including whole files from `--font-dir`, and selected
-system font data. A large color or bitmap table can exceed it. The CLI reports
-the requested total so far and suggests a retry such as `--font-max-bytes 512MiB`.
+The library default font-data budget per native context is 256 MiB. It covers
+explicit inputs, including whole files from `--font-dir`, and selected system
+font data. A large color or bitmap table can exceed it. The CLI reports the
+requested total so far and suggests a retry such as `--font-max-bytes 512MiB`.
+For CLI defaults by platform and profile, see [Explicit Fonts](../crates/merman-cli/README.md#explicit-fonts).
 Bounded discovery has a separate budget for scanning character maps. Native
 measurement has its own per-diagram `--font-max-measurements` limit.
 
