@@ -324,7 +324,7 @@ impl Renderer {
         target: RenderTarget,
     ) -> Result<RenderOutput, RenderError> {
         let policy = self.configured_input_policy().or_else(|| {
-            if self.resources.profile() != ResourceProfile::UnboundedForTrustedInput {
+            if !input_policy_is_unbounded(self.resources) {
                 return None;
             }
             #[cfg(feature = "svg")]
