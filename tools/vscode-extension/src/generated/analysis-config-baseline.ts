@@ -31,6 +31,7 @@ export const BUNDLED_ANALYSIS_CONFIG_PROJECTION = {
     "merman.config.invalid_front_matter_yaml",
     "merman.config.invalid_theme_color",
     "merman.block.width_exceeds_columns",
+    "merman.c4-dynamic-overwritten-relation",
     "merman.authoring.flowchart.explicit_direction",
     "merman.semantic.flowchart.unknown_style_target",
     "merman.semantic.agentflow.shape_removed",

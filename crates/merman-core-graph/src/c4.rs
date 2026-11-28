@@ -98,6 +98,12 @@ pub enum C4Observation<'statement> {
         detail: &'static str,
         argument_name: Option<&'statement str>,
     },
+    /// A C4Dynamic declaration replaced the relationship at this ordered pair.
+    RelationOverwritten {
+        from: &'statement str,
+        to: &'statement str,
+        span: SourceSpan,
+    },
     DirectionValue(SourceSpan),
 }
 

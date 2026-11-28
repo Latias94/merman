@@ -26,7 +26,7 @@ use merman_render_core::graph_layout::shoal::{Placement, project_input, project_
 use merman_render_core::rough_svg::{constrained_rough_edge_with_geometry, operation_randomness};
 use merman_render_graph::c4::{C4RoutedGeometry, C4RoutedRelation};
 use merman_theme_contract::v2::EdgeStyle;
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 use serde_json::Value;
 
 const ROOT: &str = "global";
@@ -79,14 +79,13 @@ fn include_ink(bounds: &mut Bounds, ink: &Bounds, stroke_outset: f64) {
     bounds.max_y = bounds.max_y.max(ink.max_y + stroke_outset);
 }
 
-fn marker_ink(edge: &CanonicalPaintedEdge) -> impl Iterator<Item = Bounds> + '_ {
+fn marker_ink(edge: &CanonicalPaintedEdge) -> [Option<Bounds>; 2] {
     let ends = &edge.marker_points;
     [
         (edge.data_points.first(), &ends[1], edge.markers.0),
         (edge.data_points.last(), &ends[2], edge.markers.1),
     ]
-    .into_iter()
-    .filter_map(|(tip, lead, marker)| {
+    .map(|(tip, lead, marker)| {
         if let Some(tip) = tip
             && marker.width > 0.0
         {
@@ -212,7 +211,7 @@ pub(crate) fn layout_c4_shoal(
     let spacing = conf.c4_shape_margin.max(2.0 * C4_ROUNDED_RADIUS);
     let native = typography.native_style();
     let node_radius = native.map_or(C4_ROUNDED_RADIUS, |theme| theme.radius);
-    let stroke_outset = native.map_or(0.5, |theme| theme.connector_width / 2.0);
+    let stroke_outset = native.map_or(0.5, |theme| theme.routed_shaft_outline_width() / 2.0);
     let route_style = native.map_or(RouteStyle::Step, |theme| {
         RouteStyle::from_theme(theme.edge_style)
     });
@@ -307,7 +306,7 @@ pub(crate) fn layout_c4_shoal(
                     width: ink.width(),
                     height,
                 }),
-                title_position: TitlePosition::TopCenter,
+                title_position: TitlePosition::TopAuto,
             });
         }
         title_centers.push(title.map(|ink| ink.center().y));
@@ -316,9 +315,6 @@ pub(crate) fn layout_c4_shoal(
     let mut relations = Vec::with_capacity(relation_count);
     let mut labels = Vec::with_capacity(relation_count);
     let mut ids = Vec::with_capacity(relation_count);
-    let mut caption_span = 0.0_f64;
-    let mut labelled_bridges = FxHashSet::default();
-    let mut has_shared_bridge = false;
     let fit_width = execution.adaptation == LayoutAdaptation::FitWidth;
     let paint_style = match route_style {
         // Bound the bend within the card grid's right-angle channels.
@@ -344,24 +340,6 @@ pub(crate) fn layout_c4_shoal(
         let label_size = label.as_ref().map(|label| label.size(shaft_outset));
         let source = endpoint(&rel.from_alias, "from")?;
         let target = endpoint(&rel.to_alias, "to")?;
-        if let Some(size) = label_size {
-            caption_span = caption_span.max(size.width).max(size.height);
-            let group = |end| match end {
-                Endpoint::Node(id) => graph.nodes[id as usize].parent,
-                Endpoint::Group(id) => Some(id),
-            };
-            if !fit_width
-                && !has_shared_bridge
-                && let [Some(a), Some(b)] = [group(source), group(target)]
-                && a != b
-            {
-                work.charge_adapter(1)?;
-                labelled_bridges.try_reserve(1).map_err(|_| {
-                    work.map_shoal_error(merman_layout_shoal::LayoutError::AllocationLimit)
-                })?;
-                has_shared_bridge = !labelled_bridges.insert((a.min(b), a.max(b)));
-            }
-        }
         let (start, end) = super::c4_relation_markers(&rel.rel_type);
         graph.edges.push(MeasuredEdge {
             source,
@@ -401,163 +379,161 @@ pub(crate) fn layout_c4_shoal(
         hints: &hints,
         ..Default::default()
     };
-    let mut options = input.options_for(&graph);
-    if has_shared_bridge {
-        // The labels of a shared bridge can occupy either interior leg of the stitched route.
-        // Reserve the measured caption and marker approach before routing the bundle.
-        let runway = MARKER.trim + MARKER.depth + options.spacing.edge.max(1.0);
-        let gutter = 2.0 * (caption_span + options.spacing.end_label_across + runway);
-        if gutter.is_finite() {
-            options.spacing.node = options.spacing.node.max(gutter);
-            options.spacing.rank = options.spacing.rank.max(gutter);
-        }
-    }
+    let options = input.options_for(&graph);
     let measured = project_input(&graph, &input, &mut work)?;
-    let mut expanded_caption_gutters = false;
-    let (solved, mut bounds, painted_routes) = 'paint: loop {
-        let geometry = crate::layout_work::measure_layout_solve!(card_grid::layout_with_control(
-            &measured, &options, &mut work,
-        ))
-        .map_err(|error| work.map_shoal_error(error))?;
-        // Captions without a grid seat remain in `labels` for the painted-shaft search.
-        work.charge_adapter(graph.edges.len())?;
-        for ((edge, original), route) in graph
-            .edges
-            .iter_mut()
-            .zip(&measured.edges)
-            .zip(&geometry.edges)
-        {
-            edge.label = route.label_center.and(original.label);
-        }
-        let solved = project_output(&graph, geometry, &mut work)?;
-        let routes = CanonicalRoutes::from_solved(
-            &graph,
-            &solved,
-            &profiles,
-            |id| {
-                cluster_theme
-                    .boundary_tokens(group_ids[id as usize])
-                    .and_then(|(_, _, radius)| radius.parse().ok())
-                    .unwrap_or(0.0)
-            },
-            ids.iter().map(String::as_str),
-            CaptionClearance::Cutout,
-            &mut work,
-        )?;
+    let row_limit = |value: f64| (value.is_finite() && value >= 1.0).then_some(value as usize);
+    let rows = card_grid::CardGridOptions::with_column_limits(
+        row_limit(model.layout.c4_shape_in_row),
+        row_limit(model.layout.c4_boundary_in_row),
+    );
+    let geometry = crate::layout_work::measure_layout_solve!(card_grid::layout_with_hints(
+        &measured, &options, rows, &mut work,
+    ))
+    .map_err(|error| work.map_shoal_error(error))?;
+    // Captions without a grid seat remain in `labels` for the painted-shaft search.
+    work.charge_adapter(graph.edges.len())?;
+    for ((edge, original), route) in graph
+        .edges
+        .iter_mut()
+        .zip(&measured.edges)
+        .zip(&geometry.edges)
+    {
+        edge.label = route.label_center.and(original.label);
+    }
+    let mut solved = project_output(&graph, geometry, &mut work)?;
+    let routes = CanonicalRoutes::from_solved(
+        &graph,
+        &solved,
+        &profiles,
+        |id| {
+            cluster_theme
+                .boundary_tokens(group_ids[id as usize])
+                .and_then(|(_, _, radius)| radius.parse().ok())
+                .unwrap_or(0.0)
+        },
+        ids.iter().map(String::as_str),
+        CaptionClearance::Cutout,
+        &mut work,
+    )?;
 
-        let mut bounds = Bounds {
-            min_x: 0.0,
-            min_y: 0.0,
-            max_x: solved.bounds.width,
-            max_y: solved.bounds.height,
-        };
-        let mut painted_routes = Vec::with_capacity(relation_count);
-        let mut shafts = Vec::new();
-        let check_labels = labels.iter().any(Option::is_some);
-        if check_labels {
-            work.charge_adapter(relation_count)?;
-            shafts.try_reserve_exact(relation_count).map_err(|_| {
-                work.map_shoal_error(merman_layout_shoal::LayoutError::AllocationLimit)
-            })?;
+    let mut bounds = Bounds {
+        min_x: 0.0,
+        min_y: 0.0,
+        max_x: solved.bounds.width,
+        max_y: solved.bounds.height,
+    };
+    let mut painted_routes = Vec::with_capacity(relation_count);
+    let mut shafts = Vec::new();
+    let check_labels = labels.iter().any(Option::is_some);
+    let check_titles = solved.groups.iter().any(|group| group.title.is_some());
+    let record_shafts = check_labels || check_titles;
+    if record_shafts {
+        work.charge_adapter(relation_count)?;
+        shafts
+            .try_reserve_exact(relation_count)
+            .map_err(|_| work.map_shoal_error(merman_layout_shoal::LayoutError::AllocationLimit))?;
+    }
+    let mut paint_scratch = CanonicalPaintScratch::default();
+    for ((id, edge), label) in ids.iter().zip(&solved.edges).zip(&labels) {
+        work.charge_adapter(edge.points.len())?;
+        if record_shafts && sketch.is_none() {
+            paint_scratch.route.record_segments();
         }
-        let mut paint_scratch = CanonicalPaintScratch::default();
-        for ((id, edge), label) in ids.iter().zip(&solved.edges).zip(&labels) {
-            work.charge_adapter(edge.points.len())?;
-            if check_labels && sketch.is_none() {
-                paint_scratch.route.record_segments();
-            }
-            let mut painted = routes.paint_points_with_scratch(
-                id,
-                edge.points.iter().map(|p| (p.x, p.y)),
-                Vec2::ZERO,
-                stroke_outset,
-                paint_style,
-                execution.work_meter_ref(),
-                &mut paint_scratch,
-            )?;
-            let rough = if let Some(randomness) = &sketch {
-                let (d, geometry) = constrained_rough_edge_with_geometry(
-                    &painted.path.d,
-                    painted.markers,
-                    execution.work_meter_ref(),
-                    randomness,
-                )?;
-                let ink = geometry.bounding_box();
-                painted.path.d = d;
-                painted.path.bounds = Bounds {
-                    min_x: ink.x0,
-                    min_y: ink.y0,
-                    max_x: ink.x1,
-                    max_y: ink.y1,
-                };
-                Some(geometry)
-            } else {
-                None
-            };
-            if check_labels {
-                shafts.push(labels::PaintedShaft::from_segments(
-                    &painted,
-                    paint_scratch.route.segments(),
-                    rough.as_ref(),
-                    &mut work,
-                )?);
-            }
-            let [start, .., end] = painted.data_points.as_slice() else {
-                return Err(invalid("c4: missing canonical relation contacts"));
-            };
-            include_ink(&mut bounds, &painted.path.bounds, stroke_outset);
-            for marker in marker_ink(&painted) {
-                include_ink(&mut bounds, &marker, 0.0);
-            }
-            let seated = label.is_none() || edge.label.is_some();
-            let placed_label = label.as_ref().map(|prep| {
-                let center = edge.label.as_ref().map_or_else(
-                    || kurbo::Point::new(start.x.midpoint(end.x), start.y.midpoint(end.y)),
-                    |label| kurbo::Point::new(label.x, label.y),
-                );
-                prep.place(center)
-            });
-            painted_routes.push(PaintedRelation {
-                shaft: painted,
-                label: placed_label,
-                seated,
-                shaft_cutout: None,
-            });
-        }
-        if !check_labels {
-            break 'paint (solved, bounds, painted_routes);
-        }
-        let mut captions = labels::CaptionInk::new(
-            painted_routes.iter().map(|route| {
-                route
-                    .label
-                    .as_ref()
-                    .filter(|_| route.seated)
-                    .map(|label| label.ink)
-            }),
-            &shafts,
-            &mut work,
+        let mut painted = routes.paint_points_with_scratch(
+            id,
+            edge.points.iter().map(|p| (p.x, p.y)),
+            Vec2::ZERO,
+            stroke_outset,
+            paint_style,
+            execution.work_meter_ref(),
+            &mut paint_scratch,
         )?;
-        for (edge, (route, shaft)) in painted_routes.iter_mut().zip(&shafts).enumerate() {
-            route.shaft_cutout = captions.own_cutout(edge, shaft, stroke_outset, &mut work)?;
+        let rough = if let Some(randomness) = &sketch {
+            let (d, geometry) = constrained_rough_edge_with_geometry(
+                &painted.path.d,
+                painted.markers,
+                execution.work_meter_ref(),
+                randomness,
+            )?;
+            let ink = geometry.bounding_box();
+            painted.path.d = d;
+            painted.path.bounds = Bounds {
+                min_x: ink.x0,
+                min_y: ink.y0,
+                max_x: ink.x1,
+                max_y: ink.y1,
+            };
+            Some(geometry)
+        } else {
+            None
+        };
+        let markers = marker_ink(&painted);
+        if record_shafts {
+            shafts.push(labels::PaintedShaft::from_segments(
+                &painted,
+                paint_scratch.route.segments(),
+                rough.as_ref(),
+                &markers,
+                &mut work,
+            )?);
         }
-        let mut needs_seat = false;
-        work.charge_adapter(painted_routes.len())?;
-        for (route, occluded) in painted_routes.iter_mut().zip(captions.occluded) {
-            route.seated &= !occluded;
-            needs_seat |= !route.seated;
+        let [start, .., end] = painted.data_points.as_slice() else {
+            return Err(invalid("c4: missing canonical relation contacts"));
+        };
+        include_ink(&mut bounds, &painted.path.bounds, stroke_outset);
+        for marker in markers.into_iter().flatten() {
+            include_ink(&mut bounds, &marker, 0.0);
         }
-        if needs_seat {
+        let seated = label.is_none() || edge.label.is_some();
+        let placed_label = label.as_ref().map(|prep| {
+            let center = edge.label.as_ref().map_or_else(
+                || kurbo::Point::new(start.x.midpoint(end.x), start.y.midpoint(end.y)),
+                |label| kurbo::Point::new(label.x, label.y),
+            );
+            prep.place(center)
+        });
+        painted_routes.push(PaintedRelation {
+            shaft: painted,
+            label: placed_label,
+            seated,
+            shaft_cutout: None,
+        });
+    }
+    if record_shafts {
+        let shafts = labels::ShaftIndex::new(&shafts, stroke_outset, &mut work)?;
+        // TopAuto may choose a side even when its top face is uncrowded. Restore the
+        // center when the *painted* route leaves room for the full title and marker wings.
+        work.charge_adapter(solved.groups.len())?;
+        for group in &mut solved.groups {
+            let Some(title) = &mut group.title else {
+                continue;
+            };
+            let center = group.rect.center().x;
+            if title.x != center {
+                let ink =
+                    kurbo::Rect::from_center_size((center, title.y), (title.width, title.height));
+                if !shafts.intersects(ink, &mut work)? {
+                    title.x = center;
+                }
+            }
+        }
+        if check_labels {
             let obstacle_count = work.checked_add(solved.nodes.len(), solved.groups.len())?;
-            let obstacle_count =
-                work.checked_add(obstacle_count, work.checked_mul(relation_count, 2)?)?;
             work.charge_adapter(obstacle_count)?;
             let mut obstacles = Vec::new();
             obstacles.try_reserve_exact(obstacle_count).map_err(|_| {
                 work.map_shoal_error(merman_layout_shoal::LayoutError::AllocationLimit)
             })?;
+            let card_outset = execution
+                .family
+                .native_theme()
+                .map_or(1.0, |theme| theme.form.stroke_width / 2.0);
             obstacles.extend(solved.nodes.iter().map(|node| {
-                kurbo::Rect::new(node.x, node.y, node.x + node.width, node.y + node.height)
+                let ink =
+                    kurbo::Rect::new(node.x, node.y, node.x + node.width, node.y + node.height)
+                        .inflate(card_outset, card_outset);
+                bounds.max_y = bounds.max_y.max(ink.y1);
+                ink
             }));
             obstacles.extend(
                 solved
@@ -571,32 +547,7 @@ pub(crate) fn layout_c4_shoal(
                         )
                     }),
             );
-            obstacles.extend(
-                painted_routes
-                    .iter()
-                    .flat_map(|route| marker_ink(&route.shaft))
-                    .map(|marker| {
-                        kurbo::Rect::new(marker.min_x, marker.min_y, marker.max_x, marker.max_y)
-                    }),
-            );
-            if let Some(ink) = labels::reseat(
-                &mut painted_routes,
-                &shafts,
-                obstacles,
-                stroke_outset,
-                !expanded_caption_gutters,
-                &mut work,
-            )? {
-                // The compact grid can leave every position on a shaft covered. Retry once
-                // with room for the blocked caption and the two opposing marker approaches.
-                let runway = MARKER.trim + MARKER.depth + options.spacing.edge.max(1.0);
-                let gutter = |span| 2.0 * (span + options.spacing.end_label_across + runway);
-                options.spacing.node = gutter(ink.width()).max(2.0 * options.spacing.node);
-                options.spacing.rank = gutter(ink.height()).max(2.0 * options.spacing.rank);
-                expanded_caption_gutters = true;
-                continue;
-            }
-            if expanded_caption_gutters && painted_routes.iter().any(|route| !route.seated) {
+            if labels::reseat(&mut painted_routes, &shafts, obstacles, &mut work)? {
                 labels::place_exterior(
                     &mut painted_routes,
                     &relations,
@@ -606,8 +557,7 @@ pub(crate) fn layout_c4_shoal(
                 )?;
             }
         }
-        break (solved, bounds, painted_routes);
-    };
+    }
     let mut placement = placement::placement_for_solved(
         &graph,
         &solved,
@@ -743,7 +693,7 @@ mod tests {
             data_points: vec![xy(10.0, 0.0), xy(90.0, 0.0)],
             markers: (MARKER, MARKER),
         };
-        for marker in marker_ink(&edge) {
+        for marker in marker_ink(&edge).into_iter().flatten() {
             include_ink(&mut bounds, &marker, 0.0);
         }
         assert_eq!(bounds.min_y, -MARKER.width / 2.0);
@@ -818,7 +768,11 @@ C4Context
             measurer: execution.text_measurer(),
             work: execution.work_meter_ref(),
         };
-        let stroke_outset = typography.native_style().unwrap().connector_width / 2.0;
+        let stroke_outset = typography
+            .native_style()
+            .unwrap()
+            .routed_shaft_outline_width()
+            / 2.0;
         let paths: Vec<_> = routes
             .iter()
             .map(|route| BezPath::from_svg(&route.path).unwrap())
@@ -828,8 +782,19 @@ C4Context
             let (ink, _) = measure_c4_relation_label(relation, &measure)
                 .unwrap()
                 .unwrap();
-            let ink = ink + Vec2::new(origin.x, origin.y);
+            let ink = typography.routed_caption_footprint(ink) + Vec2::new(origin.x, origin.y);
             let guard = ink.inflate(stroke_outset, stroke_outset);
+            for card in &layout.shapes {
+                let card_ink =
+                    kurbo::Rect::from_origin_size((card.x, card.y), (card.width, card.height));
+                assert_eq!(
+                    ink.intersect(card_ink).area(),
+                    0.0,
+                    "{} overlaps {}",
+                    route.id,
+                    card.alias
+                );
+            }
             let center = ink.center();
             let distance = |path: &BezPath| {
                 path.segments()
@@ -963,6 +928,13 @@ C4Context
                 &execution,
             )
             .unwrap();
+            if (boundaries, cards) == (8, 8) {
+                let units = execution.work_meter_ref().used();
+                assert!(
+                    units <= 122_000,
+                    "64-card C4 used {units} layout work units"
+                );
+            }
             let routes = &geometry.routed().relations;
             assert_eq!(
                 routes.len(),

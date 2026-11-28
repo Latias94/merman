@@ -20,12 +20,14 @@ const OWNERSHIP_CLEARANCE: f64 = 2.0 * SHAFT_CLEARANCE;
 pub(super) struct PlacedRelationLabel {
     pub(super) origin: LayoutPoint,
     pub(super) ink: Rect,
+    cutout: Rect,
     pub(super) reference: Option<Box<C4TextBlockLayout>>,
 }
 
 impl PlacedRelationLabel {
     fn translate(&mut self, shift: Vec2) {
         self.ink = self.ink + shift;
+        self.cutout = self.cutout + shift;
         self.origin.x += shift.x;
         self.origin.y += shift.y;
     }
@@ -35,12 +37,19 @@ impl PlacedRelationLabel {
 /// local caption allowance so a relationship can still use the compact grid's gutters.
 pub(super) struct RelationLabel {
     ink: Rect,
+    cutout: Rect,
     offset: Vec2,
 }
 
 impl RelationLabel {
     pub(super) fn prepare(rel: &mut C4RelLayout, ctx: &C4Measurement<'_>) -> Result<Option<Self>> {
-        Ok(measure_c4_relation_label(rel, ctx)?.map(|(ink, offset)| Self { ink, offset }))
+        Ok(
+            measure_c4_relation_label(rel, ctx)?.map(|(cutout, offset)| Self {
+                ink: ctx.typography.routed_caption_footprint(cutout),
+                cutout,
+                offset,
+            }),
+        )
     }
 
     pub(super) fn size(&self, shaft_outset: f64) -> Size {
@@ -68,108 +77,9 @@ impl RelationLabel {
                 y: origin.y,
             },
             ink: self.ink + origin.to_vec2(),
+            cutout: self.cutout + origin.to_vec2(),
             reference: None,
         }
-    }
-}
-
-pub(super) struct CaptionInk {
-    index: Bvh<CaptionRegion>,
-    pub(super) occluded: Vec<bool>,
-}
-
-struct CaptionRegion {
-    edge: usize,
-    ink: Rect,
-    vicinity: Rect,
-    reach_squared: f64,
-}
-
-impl CaptionInk {
-    pub(super) fn new(
-        labels: impl ExactSizeIterator<Item = Option<Rect>>,
-        shafts: &[PaintedShaft],
-        work: &mut OperationLayoutWorkControl,
-    ) -> Result<Self> {
-        let len = labels.len();
-        work.charge_adapter(len)?;
-        let allocation =
-            |_| work.map_shoal_error(merman_layout_shoal::LayoutError::AllocationLimit);
-        let mut ink = Vec::new();
-        ink.try_reserve_exact(len).map_err(allocation)?;
-        let mut occluded = Vec::new();
-        occluded.try_reserve_exact(len).map_err(allocation)?;
-        occluded.resize(len, false);
-        for (edge, (label, shaft)) in labels.zip(shafts).enumerate() {
-            let Some(label) = label else { continue };
-            work.charge_adapter(shaft.segments.len())?;
-            let center = label.center();
-            let reach = shaft
-                .segments
-                .iter()
-                .map(|segment| segment.path.nearest(center, 1e-3).distance_sq)
-                .fold(f64::INFINITY, f64::min)
-                .sqrt()
-                + OWNERSHIP_CLEARANCE;
-            if !reach.is_finite() {
-                occluded[edge] = true;
-                continue;
-            }
-            ink.push(CaptionRegion {
-                edge,
-                ink: label,
-                vicinity: Rect::from_center_size(center, (reach * 2.0, reach * 2.0)),
-                reach_squared: reach * reach,
-            });
-        }
-        let index = build_index(ink, |label| label.ink.union(label.vicinity), work)?;
-        Ok(Self { index, occluded })
-    }
-
-    pub(super) fn own_cutout(
-        &mut self,
-        edge: usize,
-        shaft: &PaintedShaft,
-        stroke_outset: f64,
-        work: &mut OperationLayoutWorkControl,
-    ) -> Result<Option<Rect>> {
-        let shaft_bounds = shaft.bounds.inflate(stroke_outset, stroke_outset);
-        let mut cutout = None;
-        let _ = self.index.visit(|entry| -> Result<_> {
-            work.charge_adapter(1)?;
-            let label = match entry {
-                BvhEntry::Node(bounds) => {
-                    let region = Rect::new(bounds.x[0], bounds.y[0], bounds.x[1], bounds.y[1]);
-                    return Ok(Continue(rects_touch(shaft_bounds, region)));
-                }
-                BvhEntry::Item(label) => label,
-            };
-            if self.occluded[label.edge] {
-                return Ok(Continue(true));
-            }
-            let owns_caption = label.edge == edge;
-            let guard = label.ink.inflate(stroke_outset, stroke_outset);
-            let crosses_ink = rects_touch(shaft.bounds, guard);
-            let rivals_owner = !owns_caption && rects_touch(shaft.bounds, label.vicinity);
-            if !(crosses_ink || rivals_owner) {
-                return Ok(Continue(true));
-            }
-            work.charge_adapter(shaft.segments.len())?;
-            let center = label.ink.center();
-            if shaft.segments.iter().any(|segment| {
-                (crosses_ink && segment.intersects(guard))
-                    || (rivals_owner
-                        && segment.is_within(center, label.vicinity, label.reach_squared))
-            }) {
-                if owns_caption {
-                    cutout = Some(label.ink);
-                } else {
-                    self.occluded[label.edge] = true;
-                }
-            }
-            Ok(Continue(true))
-        })?;
-        Ok(cutout)
     }
 }
 
@@ -213,15 +123,24 @@ impl ShaftSegment {
         })
     }
 
-    fn is_within(&self, center: Point, vicinity: Rect, reach_squared: f64) -> bool {
-        rects_touch(self.bounds, vicinity)
-            && self.path.nearest(center, 1e-3).distance_sq <= reach_squared
+    fn side_offset(&self, preferred: Point, anchor: Point, dx: f64, dy: f64) -> Vec2 {
+        let normal = if self.bounds.width() >= self.bounds.height() {
+            Vec2::new(0.0, dy)
+        } else {
+            Vec2::new(dx, 0.0)
+        };
+        if (preferred - anchor).dot(normal) < 0.0 {
+            -normal
+        } else {
+            normal
+        }
     }
 }
 
 pub(super) struct PaintedShaft {
     bounds: Rect,
     segments: Vec<ShaftSegment>,
+    markers: [Option<Rect>; 2],
 }
 
 impl PaintedShaft {
@@ -229,6 +148,7 @@ impl PaintedShaft {
         route: &CanonicalPaintedEdge,
         segments: &[PathSeg],
         rough: Option<&BezPath>,
+        markers: &[Option<DiagramBounds>; 2],
         work: &mut OperationLayoutWorkControl,
     ) -> Result<Self> {
         let capacity = rough.map_or(segments.len(), |path| path.elements().len());
@@ -246,67 +166,233 @@ impl PaintedShaft {
         Ok(Self {
             bounds: Rect::new(bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y),
             segments: indexed,
+            markers: markers.each_ref().map(|marker| {
+                marker
+                    .as_ref()
+                    .map(|marker| Rect::new(marker.min_x, marker.min_y, marker.max_x, marker.max_y))
+            }),
         })
+    }
+}
+
+pub(super) struct ShaftIndex<'a> {
+    shafts: &'a [PaintedShaft],
+    index: Bvh<usize>,
+    stroke_outset: f64,
+}
+
+impl<'a> ShaftIndex<'a> {
+    pub(super) fn new(
+        shafts: &'a [PaintedShaft],
+        stroke_outset: f64,
+        work: &mut OperationLayoutWorkControl,
+    ) -> Result<Self> {
+        work.charge_adapter(shafts.len())?;
+        let mut indices = Vec::new();
+        indices
+            .try_reserve_exact(shafts.len())
+            .map_err(|_| work.map_shoal_error(merman_layout_shoal::LayoutError::AllocationLimit))?;
+        indices.extend(0..shafts.len());
+        let index = build_index(
+            indices,
+            |&edge| {
+                let shaft = &shafts[edge];
+                shaft
+                    .markers
+                    .iter()
+                    .flatten()
+                    .copied()
+                    .fold(shaft.bounds, |bounds, marker| bounds.union(marker))
+            },
+            work,
+        )?;
+        Ok(Self {
+            shafts,
+            index,
+            stroke_outset,
+        })
+    }
+
+    pub(super) fn intersects(
+        &self,
+        area: Rect,
+        work: &mut OperationLayoutWorkControl,
+    ) -> Result<bool> {
+        let guard = area.inflate(self.stroke_outset, self.stroke_outset);
+        self.blocks(guard, area, None, work, |segment, _| {
+            Ok(segment.intersects(guard))
+        })
+    }
+
+    fn blocks(
+        &self,
+        region: Rect,
+        ink: Rect,
+        owner: Option<usize>,
+        work: &mut OperationLayoutWorkControl,
+        mut blocks: impl FnMut(&ShaftSegment, &mut OperationLayoutWorkControl) -> Result<bool>,
+    ) -> Result<bool> {
+        Ok(self
+            .index
+            .visit(|entry| -> Result<_> {
+                work.charge_adapter(1)?;
+                let edge = match entry {
+                    BvhEntry::Node(bounds) => {
+                        return Ok(Continue(rects_touch(region, rect(bounds))));
+                    }
+                    BvhEntry::Item(&edge) => edge,
+                };
+                let shaft = &self.shafts[edge];
+                // The owner's shaft may be clipped. Its endpoint markers must stay visible.
+                if shaft
+                    .markers
+                    .iter()
+                    .flatten()
+                    .any(|&marker| ink.intersect(marker).area() > 0.0)
+                {
+                    return Ok(Break(()));
+                }
+                if Some(edge) != owner && rects_touch(region, shaft.bounds) {
+                    work.charge_adapter(shaft.segments.len())?;
+                    for segment in &shaft.segments {
+                        if rects_touch(region, segment.bounds) && blocks(segment, work)? {
+                            return Ok(Break(()));
+                        }
+                    }
+                }
+                Ok(Continue(true))
+            })?
+            .is_break())
+    }
+
+    fn host_distance(
+        &self,
+        edge: usize,
+        center: Point,
+        work: &mut OperationLayoutWorkControl,
+    ) -> Result<f64> {
+        let segments = &self.shafts[edge].segments;
+        work.charge_adapter(segments.len())?;
+        Ok(segments
+            .iter()
+            .map(|segment| segment.path.nearest(center, 1e-3).distance_sq)
+            .fold(f64::INFINITY, f64::min)
+            .sqrt())
+    }
+
+    fn blocks_caption(
+        &self,
+        edge: usize,
+        caption: Rect,
+        anchor_distance: Option<f64>,
+        work: &mut OperationLayoutWorkControl,
+    ) -> Result<bool> {
+        let center = caption.center();
+        let guard = caption.inflate(self.stroke_outset, self.stroke_outset);
+        let mut exact = anchor_distance.is_none();
+        let mut reach = match anchor_distance {
+            Some(distance) => distance,
+            None => self.host_distance(edge, center, work)?,
+        } + OWNERSHIP_CLEARANCE;
+        if !reach.is_finite() {
+            return Ok(true);
+        }
+        let region = guard.union(Rect::from_center_size(center, (2.0 * reach, 2.0 * reach)));
+        self.blocks(region, caption, Some(edge), work, |segment, work| {
+            if segment.intersects(guard) {
+                return Ok(true);
+            }
+            let vicinity = Rect::from_center_size(center, (2.0 * reach, 2.0 * reach));
+            if !rects_touch(vicinity, segment.bounds) {
+                return Ok(false);
+            }
+            let distance = segment.path.nearest(center, 1e-3).distance_sq;
+            if distance > reach * reach {
+                return Ok(false);
+            }
+            // The probe's anchor bounds the owner distance. Measure the exact minimum only
+            // when a rival could otherwise reject this seat.
+            if !exact {
+                reach = self.host_distance(edge, center, work)? + OWNERSHIP_CLEARANCE;
+                exact = true;
+            }
+            Ok(distance <= reach * reach)
+        })
+    }
+
+    fn own_cutout(
+        &self,
+        edge: usize,
+        cutout: Rect,
+        work: &mut OperationLayoutWorkControl,
+    ) -> Result<Option<Rect>> {
+        let guard = cutout.inflate(self.stroke_outset, self.stroke_outset);
+        let shaft = &self.shafts[edge];
+        if !rects_touch(shaft.bounds, guard) {
+            return Ok(None);
+        }
+        work.charge_adapter(shaft.segments.len())?;
+        Ok(shaft
+            .segments
+            .iter()
+            .any(|segment| segment.intersects(guard))
+            .then_some(cutout))
     }
 }
 
 pub(super) fn reseat(
     routes: &mut [super::PaintedRelation],
-    shafts: &[PaintedShaft],
-    mut occupied: Vec<Rect>,
-    stroke_outset: f64,
-    can_expand_gutters: bool,
+    shafts: &ShaftIndex<'_>,
+    obstacles: Vec<Rect>,
     work: &mut OperationLayoutWorkControl,
-) -> Result<Option<Rect>> {
+) -> Result<bool> {
+    let hard = build_index(obstacles, |rect| *rect, work)?;
     work.charge_adapter(routes.len())?;
-    let allocation = |work: &OperationLayoutWorkControl| {
-        work.map_shoal_error(merman_layout_shoal::LayoutError::AllocationLimit)
-    };
-    occupied
-        .try_reserve(routes.len())
-        .map_err(|_| allocation(work))?;
-    for route in routes.iter() {
-        if route.seated
-            && let Some(label) = &route.label
-        {
-            occupied.push(label.ink);
+    let mut needs_seat = false;
+    for (edge, route) in routes.iter_mut().enumerate() {
+        if let Some(label) = &route.label {
+            route.seated = route.seated
+                && hard_overlap(&hard, label.ink, work)?.is_none()
+                && !shafts.blocks_caption(edge, label.ink, None, work)?;
+            route.shaft_cutout = if route.seated {
+                shafts.own_cutout(edge, label.cutout, work)?
+            } else {
+                None
+            };
+            needs_seat |= !route.seated;
         }
     }
-    let occupied = build_index(occupied, |rect| *rect, work)?;
-    let mut shaft_entries = Vec::new();
-    for (edge, shaft) in shafts.iter().enumerate() {
-        work.charge_adapter(shaft.segments.len())?;
-        shaft_entries
-            .try_reserve(shaft.segments.len())
-            .map_err(|_| allocation(work))?;
-        shaft_entries.extend(shaft.segments.iter().map(|segment| (edge, segment)));
+    if !needs_seat {
+        return Ok(false);
     }
-    let foreign = build_index(shaft_entries, |(_, segment)| segment.bounds, work)?;
+
+    work.charge_adapter(routes.len())?;
+    let mut occupied_captions = Vec::new();
+    occupied_captions
+        .try_reserve_exact(routes.len())
+        .map_err(|_| work.map_shoal_error(merman_layout_shoal::LayoutError::AllocationLimit))?;
+    occupied_captions.extend(
+        routes
+            .iter()
+            .filter(|route| route.seated)
+            .filter_map(|route| route.label.as_ref().map(|label| label.ink)),
+    );
+    let soft = build_index(occupied_captions, |rect| *rect, work)?;
     let mut placed = BoundsIndex::default();
-    let mut candidates = Vec::new();
+    let mut exterior = false;
     for (edge, route) in routes.iter_mut().enumerate() {
         work.charge_adapter(1)?;
         let Some(label) = route.label.as_mut().filter(|_| !route.seated) else {
             continue;
         };
         let scene = SeatScene {
-            occupied: &occupied,
+            hard: &hard,
+            soft: &soft,
             placed: &placed,
-            foreign: &foreign,
-            stroke_outset,
+            shafts,
         };
-        let Some(shift) = scene.find_seat(
-            edge,
-            label.ink,
-            &shafts[edge],
-            &mut candidates,
-            !can_expand_gutters,
-            work,
-        )?
-        else {
-            if can_expand_gutters {
-                return Ok(Some(label.ink));
-            }
+        let Some(shift) = scene.find_seat(edge, label.ink, work)? else {
+            exterior = true;
             continue;
         };
         label.translate(shift);
@@ -314,15 +400,9 @@ pub(super) fn reseat(
         placed
             .insert(bounds(label.ink), work)
             .map_err(|error| work.map_shoal_error(error))?;
-        work.charge_adapter(shafts[edge].segments.len())?;
-        let guard = label.ink.inflate(stroke_outset, stroke_outset);
-        route.shaft_cutout = shafts[edge]
-            .segments
-            .iter()
-            .any(|segment| segment.intersects(guard))
-            .then_some(label.ink);
+        route.shaft_cutout = shafts.own_cutout(edge, label.cutout, work)?;
     }
-    Ok(None)
+    Ok(exterior)
 }
 
 /// Keep unseated captions outside all painted shafts and already placed captions. Their
@@ -356,7 +436,8 @@ pub(super) fn place_exterior(
         reference.techn = None;
         reference.label.text = format!("{} {arrow} {} ({})", relation.from, relation.to, index + 1);
         reference.label.line_count = split_mermaid_common_br_lines(&reference.label.text).len();
-        if let Some((ink, _)) = measure_c4_relation_label(&mut reference, measure)? {
+        if let Some((cutout, _)) = measure_c4_relation_label(&mut reference, measure)? {
+            let ink = measure.typography.routed_caption_footprint(cutout);
             let y = label.ink.y0 - SHAFT_CLEARANCE - ink.y1;
             reference.label.y = y - label.origin.y;
             label.ink = label.ink.union(ink + Vec2::new(label.origin.x, y));
@@ -382,19 +463,11 @@ fn build_index<T>(
         .map_err(|error| work.map_shoal_error(error))
 }
 
-#[derive(Clone, Copy)]
-struct Seat {
-    shift: Vec2,
-    distance: f64,
-    cost: f64,
-    ordinal: usize,
-}
-
 struct SeatScene<'a> {
-    occupied: &'a Bvh<Rect>,
+    hard: &'a Bvh<Rect>,
+    soft: &'a Bvh<Rect>,
     placed: &'a BoundsIndex,
-    foreign: &'a Bvh<(usize, &'a ShaftSegment)>,
-    stroke_outset: f64,
+    shafts: &'a ShaftIndex<'a>,
 }
 
 impl SeatScene<'_> {
@@ -402,213 +475,159 @@ impl SeatScene<'_> {
         &self,
         edge: usize,
         ink: Rect,
-        shaft: &PaintedShaft,
-        candidates: &mut Vec<Seat>,
-        allow_overlap: bool,
         work: &mut OperationLayoutWorkControl,
     ) -> Result<Option<Vec2>> {
+        let segments = &self.shafts.shafts[edge].segments;
         let preferred = ink.center();
-        let dx = ink.width() / 2.0 + self.stroke_outset + SHAFT_CLEARANCE;
-        let dy = ink.height() / 2.0 + self.stroke_outset + SHAFT_CLEARANCE;
-        // Keep a marginal seat on its local run when there is room closer to the shaft.
-        // Probe the same run before allocating candidates along the entire relationship.
-        work.charge_adapter(shaft.segments.len())?;
-        let nearest = shaft
-            .segments
+        let clearance = self.shafts.stroke_outset + SHAFT_CLEARANCE;
+        let dx = ink.width() / 2.0 + clearance;
+        let dy = ink.height() / 2.0 + clearance;
+        let mut best = None::<(f64, Vec2)>;
+        let mut blocker: Option<Rect> = None;
+        let mut probe = |anchor: Point,
+                         offset: Vec2,
+                         best: &mut Option<(f64, Vec2)>,
+                         work: &mut OperationLayoutWorkControl| {
+            work.charge_adapter(1)?;
+            let shift = anchor + offset - preferred;
+            let caption = ink + shift;
+            if !shift.is_finite()
+                || blocker.is_some_and(|rect| caption.intersect(rect).area() > 0.0)
+            {
+                return Ok(None);
+            }
+            blocker = hard_overlap(self.hard, caption, work)?;
+            if blocker.is_some() {
+                return Ok(None);
+            }
+            let overlap = self.soft_overlap(caption, work)?;
+            let score = (overlap, shift.hypot2());
+            if best.is_some_and(|(area, old)| score >= (area, old.hypot2()))
+                || self
+                    .shafts
+                    .blocks_caption(edge, caption, Some(offset.hypot()), work)?
+            {
+                return Ok(None);
+            }
+            *best = Some((overlap, shift));
+            Ok::<_, crate::Error>((overlap == 0.0).then_some(shift))
+        };
+
+        // Most marginal seats can stay on their original run. Probe it before sweeping
+        // the whole relationship, and stop as soon as a caption is clear of its peers.
+        work.charge_adapter(segments.len())?;
+        let nearest = segments
             .iter()
-            .map(|segment| (segment.path, segment.path.nearest(preferred, 1e-3)))
+            .map(|segment| (segment, segment.path.nearest(preferred, 1e-3)))
             .min_by(|(_, a), (_, b)| a.distance_sq.total_cmp(&b.distance_sq));
-        if let Some((PathSeg::Line(line), nearest)) = nearest {
-            let anchor = line.eval(nearest.t);
-            let normal = if line.p0.y == line.p1.y {
-                Some(Vec2::new(0.0, dy / 2.0))
-            } else if line.p0.x == line.p1.x {
-                Some(Vec2::new(dx / 2.0, 0.0))
-            } else {
-                None
-            };
-            if let Some(mut normal) = normal {
-                if (preferred - anchor).dot(normal) < 0.0 {
-                    normal = -normal;
+        if let Some((segment, nearest)) = nearest {
+            let anchor = segment.path.eval(nearest.t);
+            let shoulder = segment.side_offset(preferred, anchor, dx, dy) / 2.0;
+            for offset in [shoulder, Vec2::ZERO, -shoulder] {
+                if let Some(shift) = probe(anchor, offset, &mut best, work)? {
+                    return Ok(Some(shift));
                 }
-                for offset in [normal, Vec2::ZERO, -normal] {
-                    work.charge_adapter(1)?;
-                    let shift = anchor + offset - preferred;
-                    if !shift.is_finite() {
+            }
+        }
+
+        // Search on and just off each run before trying positions beside the shaft. The
+        // running score keeps a soft-overlap fallback without a second traversal or sort.
+        for scale in [0.5, 1.0] {
+            work.charge_adapter(segments.len())?;
+            for segment in segments {
+                let along = segment.bounds.size();
+                let inset = if along.width >= along.height {
+                    (dx / along.width).min(0.5)
+                } else {
+                    (dy / along.height).min(0.5)
+                };
+                let near = segment.path.nearest(preferred, 1e-3).t;
+                let stops = [
+                    near.clamp(inset, 1.0 - inset),
+                    0.5,
+                    inset,
+                    1.0 - inset,
+                    0.0,
+                    1.0,
+                ];
+                for (index, &t) in stops.iter().enumerate() {
+                    if stops[..index].contains(&t) {
                         continue;
                     }
-                    let caption = ink + shift;
-                    if self.overlap_area(caption, false, work)? == 0.0
-                        && !self.foreign_shaft_blocks(
-                            edge,
-                            caption,
-                            offset.hypot() + OWNERSHIP_CLEARANCE,
-                            work,
-                        )?
+                    let anchor = segment.path.eval(t);
+                    let side = scale * segment.side_offset(preferred, anchor, dx, dy);
+                    let offsets = [side, -side, Vec2::ZERO];
+                    let offsets = if scale == 0.5 {
+                        &offsets[..]
+                    } else {
+                        &offsets[..2]
+                    };
+                    for &offset in offsets {
+                        if let Some(shift) = probe(anchor, offset, &mut best, work)? {
+                            return Ok(Some(shift));
+                        }
+                    }
+                }
+            }
+        }
+        // A tight bend can leave a clear pocket diagonally beyond its elbow, even when
+        // every perpendicular probe is blocked. Restrict those probes to the run ends.
+        if best.is_none() {
+            work.charge_adapter(segments.len())?;
+            for segment in segments {
+                for anchor in [segment.path.start(), segment.path.end()] {
+                    for offset in [-dx, dx]
+                        .into_iter()
+                        .flat_map(|x| [-dy, dy].map(|y| Vec2::new(x, y)))
                     {
-                        return Ok(Some(shift));
+                        if let Some(shift) = probe(anchor, offset, &mut best, work)? {
+                            return Ok(Some(shift));
+                        }
                     }
                 }
-            }
-        }
-
-        let limit = work.checked_mul(shaft.segments.len(), 54)?;
-        work.charge_adapter(work.checked_add(limit, shaft.segments.len())?)?;
-        candidates.clear();
-        candidates
-            .try_reserve(limit)
-            .map_err(|_| work.map_shoal_error(merman_layout_shoal::LayoutError::AllocationLimit))?;
-        for segment in &shaft.segments {
-            let nearest = segment.path.nearest(preferred, 1e-3).t;
-            let caption_cross = match segment.path {
-                PathSeg::Line(line) if line.p0.y == line.p1.y => Some(ink.width()),
-                PathSeg::Line(line) if line.p0.x == line.p1.x => Some(ink.height()),
-                _ => None,
-            };
-            let inset = caption_cross.map_or(0.25, |span| {
-                let along = (segment.path.end() - segment.path.start()).hypot();
-                ((span / 2.0 + self.stroke_outset + SHAFT_CLEARANCE) / along).min(0.5)
-            });
-            for t in [
-                nearest.clamp(inset, 1.0 - inset),
-                0.0,
-                inset,
-                0.5,
-                1.0 - inset,
-                1.0,
-            ] {
-                let anchor = segment.path.eval(t);
-                for offset in [-dx, 0.0, dx]
-                    .into_iter()
-                    .flat_map(|x| [-dy, 0.0, dy].map(|y| Vec2::new(x, y)))
-                {
-                    let shift = anchor + offset - preferred;
-                    let distance = offset.hypot();
-                    let cost = shift.hypot() + distance;
-                    if cost.is_finite() {
-                        candidates.push(Seat {
-                            shift,
-                            distance,
-                            cost,
-                            ordinal: candidates.len(),
-                        });
-                    }
-                }
-            }
-        }
-        let len = candidates.len();
-        work.charge_adapter(work.checked_mul(len, len.checked_ilog2().unwrap_or(0) as usize + 1)?)?;
-        candidates
-            .sort_unstable_by(|a, b| a.cost.total_cmp(&b.cost).then(a.ordinal.cmp(&b.ordinal)));
-        for &seat in &*candidates {
-            work.charge_adapter(1)?;
-            let caption = ink + seat.shift;
-            // The chosen anchor gives an upper bound on distance to the host shaft.
-            if self.overlap_area(caption, false, work)? == 0.0
-                && !self.foreign_shaft_blocks(
-                    edge,
-                    caption,
-                    seat.distance + OWNERSHIP_CLEARANCE,
-                    work,
-                )?
-            {
-                return Ok(Some(seat.shift));
-            }
-        }
-        if !allow_overlap {
-            return Ok(None);
-        }
-
-        // Relax obstacle overlap only with proven ownership and foreign-shaft clearance.
-        let mut best = None::<(f64, Vec2)>;
-        for &seat in &*candidates {
-            work.charge_adapter(1)?;
-            let caption = ink + seat.shift;
-            let area = self.overlap_area(caption, true, work)?;
-            if best.is_some_and(|(best_area, _)| area >= best_area) {
-                continue;
-            }
-            work.charge_adapter(shaft.segments.len())?;
-            let center = caption.center();
-            let distance = shaft
-                .segments
-                .iter()
-                .map(|segment| segment.path.nearest(center, 1e-3).distance_sq)
-                .fold(f64::INFINITY, f64::min)
-                .sqrt();
-            if !self.foreign_shaft_blocks(edge, caption, distance + OWNERSHIP_CLEARANCE, work)? {
-                if area == 0.0 {
-                    return Ok(Some(seat.shift));
-                }
-                best = Some((area, seat.shift));
             }
         }
         Ok(best.map(|(_, shift)| shift))
     }
 
-    fn overlap_area(
-        &self,
-        caption: Rect,
-        sum: bool,
-        work: &mut OperationLayoutWorkControl,
-    ) -> Result<f64> {
+    fn soft_overlap(&self, caption: Rect, work: &mut OperationLayoutWorkControl) -> Result<f64> {
         let mut area = 0.0;
-        let occupied = self.occupied.visit(|entry| -> Result<_> {
+        let _ = self.soft.visit(|entry| -> Result<_> {
             work.charge_adapter(1)?;
             Ok(match entry {
                 BvhEntry::Node(bounds) => Continue(rects_touch(caption, rect(bounds))),
-                BvhEntry::Item(&obstacle) => {
-                    area += caption.intersect(obstacle).area();
-                    if !sum && area > 0.0 {
-                        Break(())
-                    } else {
-                        Continue(true)
-                    }
+                BvhEntry::Item(&peer) => {
+                    area += caption.intersect(peer).area();
+                    Continue(true)
                 }
             })
         })?;
-        if !occupied.is_break() {
-            area += if sum {
-                self.placed.overlap_area(bounds(caption), work)
-            } else {
-                self.placed
-                    .any_overlap(bounds(caption), work)
-                    .map(|hit| if hit { 1.0 } else { 0.0 })
-            }
-            .map_err(|error| work.map_shoal_error(error))?;
-        }
-        Ok(area)
+        Ok(area
+            + self
+                .placed
+                .overlap_area(bounds(caption), work)
+                .map_err(|error| work.map_shoal_error(error))?)
     }
+}
 
-    fn foreign_shaft_blocks(
-        &self,
-        edge: usize,
-        caption: Rect,
-        reach: f64,
-        work: &mut OperationLayoutWorkControl,
-    ) -> Result<bool> {
-        let guard = caption.inflate(self.stroke_outset, self.stroke_outset);
-        let center = caption.center();
-        let neighborhood = Rect::from_center_size(center, (reach * 2.0, reach * 2.0));
-        let region = guard.union(neighborhood);
-        Ok(self
-            .foreign
-            .visit(|entry| -> Result<_> {
-                work.charge_adapter(1)?;
-                Ok(match entry {
-                    BvhEntry::Node(bounds) => Continue(rects_touch(region, rect(bounds))),
-                    BvhEntry::Item(&(other, segment))
-                        if other != edge
-                            && (segment.intersects(guard)
-                                || segment.is_within(center, neighborhood, reach * reach)) =>
-                    {
-                        Break(())
-                    }
-                    BvhEntry::Item(_) => Continue(true),
-                })
-            })?
-            .is_break())
-    }
+fn hard_overlap(
+    hard: &Bvh<Rect>,
+    caption: Rect,
+    work: &mut OperationLayoutWorkControl,
+) -> Result<Option<Rect>> {
+    let mut blocker = None;
+    let _ = hard.visit(|entry| -> Result<_> {
+        work.charge_adapter(1)?;
+        Ok(match entry {
+            BvhEntry::Node(bounds) => Continue(rects_touch(caption, rect(bounds))),
+            BvhEntry::Item(&obstacle) if caption.intersect(obstacle).area() > 0.0 => {
+                blocker = Some(obstacle);
+                Break(())
+            }
+            BvhEntry::Item(_) => Continue(true),
+        })
+    })?;
+    Ok(blocker)
 }
 
 fn rect(bounds: Bounds) -> Rect {
@@ -646,157 +665,157 @@ mod tests {
         assert!(line.intersects(Rect::new(-2.0, 0.0, 2.0, 1.0)));
     }
 
+    fn constrained_work() -> OperationLayoutWorkControl {
+        OperationLayoutWorkControl::new(Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::constrained(),
+        )))
+    }
+
+    fn horizontal_shaft(y: f64) -> PaintedShaft {
+        let segment = ShaftSegment::new(PathSeg::Line(Line::new((0.0, y), (10.0, y))));
+        PaintedShaft {
+            bounds: segment.bounds,
+            segments: vec![segment],
+            markers: [None; 2],
+        }
+    }
+
+    fn initial_caption(ink: Rect) -> super::super::PaintedRelation {
+        super::super::PaintedRelation {
+            shaft: CanonicalPaintedEdge {
+                path: PaintedRoute {
+                    d: "M0,0L10,0".into(),
+                    bounds: DiagramBounds {
+                        min_x: 0.0,
+                        min_y: 0.0,
+                        max_x: 10.0,
+                        max_y: 0.0,
+                    },
+                },
+                marker_points: std::array::from_fn(|_| LayoutPoint { x: 0.0, y: 0.0 }),
+                data_points: Vec::new(),
+                markers: Default::default(),
+            },
+            label: Some(PlacedRelationLabel {
+                origin: LayoutPoint { x: 0.0, y: 0.0 },
+                ink,
+                cutout: ink,
+                reference: None,
+            }),
+            seated: true,
+            shaft_cutout: None,
+        }
+    }
+
     #[test]
-    fn c4_cutout_uses_only_the_shaft_owner_even_when_label_boxes_overlap() {
-        let own = Rect::new(2.0, -2.0, 6.0, 2.0);
-        let foreign = Rect::new(4.0, -2.0, 8.0, 2.0);
+    fn c4_cutout_uses_only_the_shaft_owner() {
+        let ink = Rect::new(2.0, -2.0, 6.0, 2.0);
+        let paths = [horizontal_shaft(0.0), horizontal_shaft(10.0)];
         let mut policy = RenderResourcePolicy::constrained();
         policy
             .apply_limit(ResourceLimitId::MaxLayoutWorkUnits, 1)
             .unwrap();
         let mut limited =
             OperationLayoutWorkControl::new(Arc::new(OperationWorkMeter::new(policy)));
-        assert!(
-            CaptionInk::new([Some(own), Some(foreign)].into_iter(), &[], &mut limited).is_err()
-        );
+        assert!(ShaftIndex::new(&paths, 0.5, &mut limited).is_err());
 
-        let mut work = OperationLayoutWorkControl::new(Arc::new(OperationWorkMeter::new(
-            RenderResourcePolicy::constrained(),
-        )));
-        let route = CanonicalPaintedEdge {
-            path: PaintedRoute {
-                d: "M0,0L10,0".into(),
-                bounds: crate::model::Bounds {
-                    min_x: 0.0,
-                    min_y: 0.0,
-                    max_x: 10.0,
-                    max_y: 0.0,
-                },
-            },
-            marker_points: std::array::from_fn(|_| LayoutPoint { x: 0.0, y: 0.0 }),
-            data_points: Vec::new(),
-            markers: Default::default(),
-        };
-        let line = PathSeg::Line(Line::new((0.0, 0.0), (10.0, 0.0)));
-        let shafts = std::array::from_fn::<_, 2, _>(|_| {
-            PaintedShaft::from_segments(&route, &[line], None, &mut work).unwrap()
-        });
-        let mut captions =
-            CaptionInk::new([Some(own), Some(foreign)].into_iter(), &shafts, &mut work).unwrap();
-        assert_eq!(
-            captions.own_cutout(0, &shafts[0], 0.5, &mut work).unwrap(),
-            Some(own)
-        );
-        assert_eq!(captions.occluded, [false, true]);
+        let mut work = constrained_work();
+        let shafts = ShaftIndex::new(&paths, 0.5, &mut work).unwrap();
+        assert_eq!(shafts.own_cutout(0, ink, &mut work).unwrap(), Some(ink));
+        assert_eq!(shafts.own_cutout(1, ink, &mut work).unwrap(), None);
     }
 
     #[test]
-    fn c4_clear_ink_nearer_a_foreign_shaft_still_needs_reseating() {
-        let shaft = |y| {
-            let bounds = Rect::new(0.0, y, 10.0, y);
-            PaintedShaft {
-                bounds,
-                segments: vec![ShaftSegment {
-                    path: PathSeg::Line(Line::new((0.0, y), (10.0, y))),
-                    bounds,
-                }],
-            }
-        };
-        let shafts = [shaft(0.0), shaft(9.0)];
-        let mut work = OperationLayoutWorkControl::new(Arc::new(OperationWorkMeter::new(
-            RenderResourcePolicy::constrained(),
-        )));
+    fn c4_initial_caption_nearer_a_foreign_shaft_is_reseated() {
+        let paths = [horizontal_shaft(0.0), horizontal_shaft(9.0)];
+        let mut work = constrained_work();
+        let shafts = ShaftIndex::new(&paths, 0.5, &mut work).unwrap();
         let ink = Rect::new(2.0, 4.0, 6.0, 6.0);
-        let mut captions =
-            CaptionInk::new([Some(ink), None].into_iter(), &shafts, &mut work).unwrap();
-        assert_eq!(
-            captions.own_cutout(1, &shafts[1], 0.5, &mut work).unwrap(),
-            None
-        );
-        assert_eq!(captions.occluded, [true, false]);
+        let mut routes = [initial_caption(ink)];
+        assert!(!reseat(&mut routes, &shafts, Vec::new(), &mut work).unwrap());
+        let caption = routes[0].label.as_ref().unwrap().ink;
+        assert_ne!(caption, ink);
+        assert!(!shafts.blocks_caption(0, caption, None, &mut work).unwrap());
     }
 
     #[test]
-    fn c4_reseating_minimizes_overlap_among_host_owned_positions() {
-        let mut work = OperationLayoutWorkControl::new(Arc::new(OperationWorkMeter::new(
-            RenderResourcePolicy::constrained(),
-        )));
-        let own = ShaftSegment::new(PathSeg::Line(Line::new((0.0, 0.0), (10.0, 0.0))));
-        let host = PaintedShaft {
-            bounds: own.bounds,
-            segments: vec![own],
-        };
-        let rival = ShaftSegment::new(PathSeg::Line(Line::new((-20.0, -4.5), (30.0, -4.5))));
-        let foreign = build_index(vec![(1, &rival)], |(_, shaft)| shaft.bounds, &mut work).unwrap();
-        let obstacle = Rect::new(-30.0, -2.0, 30.0, 4.0);
-        let occupied = build_index(vec![obstacle], |rect| *rect, &mut work).unwrap();
+    fn c4_initial_seat_blocked_by_a_hard_obstacle_moves_or_uses_exterior() {
+        let paths = [horizontal_shaft(0.0)];
+        let mut work = constrained_work();
+        let shafts = ShaftIndex::new(&paths, 0.5, &mut work).unwrap();
+        let ink = Rect::new(3.0, -1.0, 7.0, 1.0);
+        let obstacle = Rect::new(2.0, -4.0, 9.0, 4.0);
+        let mut routes = [initial_caption(ink)];
+        assert!(!reseat(&mut routes, &shafts, vec![obstacle], &mut work).unwrap());
+        let caption = routes[0].label.as_ref().unwrap().ink;
+        assert_eq!(caption.intersect(obstacle).area(), 0.0);
+
+        let wall = Rect::new(-30.0, -10.0, 40.0, 10.0);
+        let mut routes = [initial_caption(ink)];
+        assert!(reseat(&mut routes, &shafts, vec![wall], &mut work).unwrap());
+        assert!(!routes[0].seated);
+        assert!(routes[0].shaft_cutout.is_none());
+    }
+
+    #[test]
+    fn c4_initial_caption_cannot_cover_its_own_marker() {
+        let marker = Rect::new(4.0, -3.0, 9.0, 3.0);
+        let mut path = horizontal_shaft(0.0);
+        path.markers[1] = Some(marker);
+        let paths = [path];
+        let mut work = constrained_work();
+        let shafts = ShaftIndex::new(&paths, 0.5, &mut work).unwrap();
+        let mut routes = [initial_caption(Rect::new(3.0, -1.0, 7.0, 1.0))];
+        assert!(!reseat(&mut routes, &shafts, Vec::new(), &mut work).unwrap());
+        let caption = routes[0].label.as_ref().unwrap();
+        assert_eq!(caption.ink.intersect(marker).area(), 0.0);
+    }
+
+    #[test]
+    fn c4_soft_overlap_fallback_keeps_hard_clearance() {
+        let mut work = constrained_work();
+        let paths = [horizontal_shaft(0.0), horizontal_shaft(-4.5)];
+        let shafts = ShaftIndex::new(&paths, 0.5, &mut work).unwrap();
+        let obstacle = Rect::new(-30.0, -20.0, 30.0, 0.5);
+        let hard = build_index(vec![obstacle], |rect| *rect, &mut work).unwrap();
+        let peer = Rect::new(-30.0, 0.5, 30.0, 4.0);
+        let soft = build_index(vec![peer], |rect| *rect, &mut work).unwrap();
         let mut placed = BoundsIndex::default();
         placed
-            .insert(bounds(Rect::new(3.0, 2.0, 7.0, 5.0)), &mut work)
+            .insert(bounds(Rect::new(4.0, 1.0, 6.0, 3.0)), &mut work)
             .unwrap();
         let scene = SeatScene {
-            occupied: &occupied,
+            hard: &hard,
+            soft: &soft,
             placed: &placed,
-            foreign: &foreign,
-            stroke_outset: 0.5,
+            shafts: &shafts,
         };
         let ink = Rect::new(3.0, -1.0, 7.0, 1.0);
-        let mut candidates = Vec::new();
-        assert!(
-            scene
-                .find_seat(0, ink, &host, &mut candidates, false, &mut work)
-                .unwrap()
-                .is_none()
-        );
-        let caption = ink
-            + scene
-                .find_seat(0, ink, &host, &mut candidates, true, &mut work)
-                .unwrap()
-                .unwrap();
+        let caption = ink + scene.find_seat(0, ink, &mut work).unwrap().unwrap();
+        assert_eq!(caption.intersect(obstacle).area(), 0.0);
         assert_eq!(caption.center().y, 3.5);
-        assert_eq!(scene.overlap_area(caption, true, &mut work).unwrap(), 6.0);
+        assert_eq!(scene.soft_overlap(caption, &mut work).unwrap(), 6.0);
     }
 
     #[test]
     fn c4_overlap_fallback_keeps_the_ownership_clearance() {
-        let mut work = OperationLayoutWorkControl::new(Arc::new(OperationWorkMeter::new(
-            RenderResourcePolicy::constrained(),
-        )));
-        let own = ShaftSegment::new(PathSeg::Line(Line::new((0.0, 0.0), (10.0, 0.0))));
-        let host = PaintedShaft {
-            bounds: own.bounds,
-            segments: vec![own],
-        };
-        let rival = ShaftSegment::new(PathSeg::Line(Line::new((-20.0, -6.0), (30.0, -6.0))));
-        let foreign = build_index(vec![(1, &rival)], |(_, shaft)| shaft.bounds, &mut work).unwrap();
-        let wall = Rect::new(-30.0, -2.7, 40.0, 7.0);
-        let occupied = build_index(vec![wall], |rect| *rect, &mut work).unwrap();
+        let mut work = constrained_work();
+        let paths = [horizontal_shaft(0.0), horizontal_shaft(-6.0)];
+        let shafts = ShaftIndex::new(&paths, 0.5, &mut work).unwrap();
+        let peer = Rect::new(-30.0, -2.7, 40.0, 7.0);
+        let soft = build_index(vec![peer], |rect| *rect, &mut work).unwrap();
         let scene = SeatScene {
-            occupied: &occupied,
+            hard: &build_index(Vec::new(), |rect| *rect, &mut work).unwrap(),
+            soft: &soft,
             placed: &BoundsIndex::default(),
-            foreign: &foreign,
-            stroke_outset: 0.5,
+            shafts: &shafts,
         };
         let ink = Rect::new(3.0, -3.0, 7.0, -2.5);
-        let mut candidates = Vec::new();
-        assert!(
-            scene
-                .find_seat(0, ink, &host, &mut candidates, false, &mut work)
-                .unwrap()
-                .is_none()
-        );
-        let caption = ink
-            + scene
-                .find_seat(0, ink, &host, &mut candidates, true, &mut work)
-                .unwrap()
-                .unwrap();
+        let caption = ink + scene.find_seat(0, ink, &mut work).unwrap().unwrap();
         let center = caption.center();
-        let own = host.segments[0]
-            .path
-            .nearest(center, 1e-3)
-            .distance_sq
-            .sqrt();
-        let foreign = rival.path.nearest(center, 1e-3).distance_sq.sqrt();
+        let own = shafts.host_distance(0, center, &mut work).unwrap();
+        let foreign = shafts.host_distance(1, center, &mut work).unwrap();
+        assert!(caption.intersect(peer).area() > 0.0);
         assert!(foreign > own + OWNERSHIP_CLEARANCE);
     }
 }
