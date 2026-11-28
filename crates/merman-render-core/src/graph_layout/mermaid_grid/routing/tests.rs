@@ -1,3 +1,4 @@
+use super::super::routing_context::grid_occupied_spans;
 use super::labels::{
     GridLabelMarkers, GridLabelObstacles, grid_label_fallback_anchor, place_grid_label_on_route,
 };
@@ -99,6 +100,49 @@ fn corridor_ties_use_numeric_coordinate_and_trim_occupancy() {
         .unwrap()
         .is_none()
     );
+}
+
+#[test]
+fn planning_occupancy_keeps_short_hierarchy_terminal_conflicts() {
+    let work = meter();
+    let occupancy = |route: &[Point]| grid_occupied_spans(route, &work).unwrap();
+
+    // Mermaid 12.4's 06-flowchart-edges-to-and-from-subgraphs fixture with columnGap set to 30.
+    // O -> M's least-common-ancestor route has two 15 px terminal legs.
+    let forward = points([(152.0, 97.5), (167.0, 97.5), (167.0, 156.0), (182.0, 156.0)]);
+    let mut reversed = forward;
+    reversed.reverse();
+
+    // Removing both 20 px approaches from this straight path yields the O -> G search arc.
+    let rejected = occupancy(&points([(192.0, 81.0), (142.0, 81.0)]));
+    assert_eq!(rejected.len(), 1);
+    let chosen = occupancy(&points([
+        (152.0, 81.0),
+        (176.0, 81.0),
+        (176.0, 55.0),
+        (158.0, 55.0),
+        (158.0, 81.0),
+        (182.0, 81.0),
+    ]));
+    assert_eq!(chosen.len(), 5);
+
+    for (route, overlapping_span) in [(forward, 0), (reversed, 2)] {
+        let spans = occupancy(&route);
+        assert_eq!(spans.len(), 3);
+        assert!(rejected[0].conflicts(spans[overlapping_span]));
+        assert!(
+            chosen
+                .iter()
+                .all(|&segment| spans.iter().all(|&span| !segment.conflicts(span)))
+        );
+    }
+
+    // G -> M's recorded 6 px tail runs toward decreasing x. Its trim occupies x = 428..442.
+    let short_tail = occupancy(&points([(428.0, 198.0), (428.0, 95.5), (422.0, 95.5)]));
+    let tail_probe = occupancy(&points([(414.0, 112.0), (458.0, 112.0)]));
+    assert_eq!(short_tail.len(), 2);
+    assert_eq!(tail_probe.len(), 1);
+    assert!(tail_probe[0].conflicts(short_tail[1]));
 }
 
 #[test]
