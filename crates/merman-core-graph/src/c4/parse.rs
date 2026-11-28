@@ -1046,18 +1046,17 @@ fn parse_c4_semantic_source(
     code: &str,
     config: &MermaidConfig,
     #[cfg(feature = "editor-facts")] capture_rich: bool,
-    #[cfg(feature = "editor-facts")] observe: Option<&mut Observer<'_>>,
+    #[cfg(feature = "editor-facts")] mut observer: Option<&mut Observer<'_>>,
     control: &OperationControl,
 ) -> OperationControlResult<C4ParseOutcome> {
     control.checkpoint()?;
     let mut db = C4Db::new(config);
     #[cfg(feature = "editor-facts")]
     let mut observe = {
-        let mut observe = observe;
-        if let Some(observer) = observe.as_deref_mut() {
+        if let Some(observer) = observer.as_deref_mut() {
             observer(C4Observation::CaptureStarted);
         }
-        observe.filter(|_| capture_rich)
+        observer.as_deref_mut().filter(|_| capture_rich)
     };
     let mut issues = Vec::new();
     let mut semantic_statements = Vec::new();
@@ -1365,12 +1364,16 @@ fn parse_c4_semantic_source(
         ));
     }
 
+    #[cfg(feature = "editor-facts")]
+    let observe_overwrites = observer.filter(|_| db.is_dynamic());
     apply_c4_semantic_statements(
         &mut db,
         &semantic_statements,
         &boundary_records,
         config,
         &mut issues,
+        #[cfg(feature = "editor-facts")]
+        observe_overwrites,
         control,
     )?;
     issues.sort_by_key(|issue| issue.recovery_span.start);
@@ -1385,6 +1388,7 @@ fn apply_c4_semantic_statements(
     boundaries: &[C4BoundaryRecord],
     config: &MermaidConfig,
     issues: &mut Vec<C4SourceIssue>,
+    #[cfg(feature = "editor-facts")] mut observe_overwrites: Option<&mut Observer<'_>>,
     control: &OperationControl,
 ) -> OperationControlResult<()> {
     struct ReplayFrame<'a> {
@@ -1415,7 +1419,13 @@ fn apply_c4_semantic_statements(
                 db.set_acc_description(description);
             }
             C4SemanticStatement::Macro(statement) => {
-                if let Err(error) = apply_c4_macro(db, statement, &parent_boundary) {
+                if let Err(error) = apply_c4_macro(
+                    db,
+                    statement,
+                    &parent_boundary,
+                    #[cfg(feature = "editor-facts")]
+                    observe_overwrites.as_deref_mut(),
+                ) {
                     issues.push(c4_parse_issue(error, statement.span));
                 }
             }
@@ -1424,7 +1434,13 @@ fn apply_c4_semantic_statements(
                     declaration,
                     statements,
                 } = &boundaries[boundary.0];
-                match apply_c4_macro(db, declaration, &parent_boundary) {
+                match apply_c4_macro(
+                    db,
+                    declaration,
+                    &parent_boundary,
+                    #[cfg(feature = "editor-facts")]
+                    None,
+                ) {
                     Ok(Some(alias)) => {
                         frames.push(ReplayFrame {
                             statements,
@@ -1451,6 +1467,7 @@ fn apply_c4_macro(
     db: &mut C4Db,
     stmt: &SpannedMacroStmt,
     parent_boundary: &str,
+    #[cfg(feature = "editor-facts")] observe_overwrites: Option<&mut Observer<'_>>,
 ) -> C4Result<Option<String>> {
     let name = stmt.name.as_str();
     let mut args = semantic_c4_args(&stmt.args);
@@ -1485,6 +1502,21 @@ fn apply_c4_macro(
         return Ok(Some(alias));
     }
 
+    let add_rel = |db: &mut C4Db, rel_type: &str, args: &[C4Arg]| -> C4Result<()> {
+        let overwritten = db.add_rel(rel_type, args)?;
+        #[cfg(feature = "editor-facts")]
+        if overwritten && let Some(observe) = observe_overwrites {
+            observe(C4Observation::RelationOverwritten {
+                from: args[0].value(),
+                to: args[1].value(),
+                span: stmt.span,
+            });
+        }
+        #[cfg(not(feature = "editor-facts"))]
+        let _ = overwritten;
+        Ok(())
+    };
+
     match name {
         "Person" => db.add_person_or_system("person", &args, parent_boundary)?,
         "Person_Ext" => db.add_person_or_system("external_person", &args, parent_boundary)?,
@@ -1512,14 +1544,14 @@ fn apply_c4_macro(
         "ComponentQueue_Ext" => {
             db.add_component("external_component_queue", &args, parent_boundary)?
         }
-        "Rel" => db.add_rel("rel", &args)?,
-        "BiRel" => db.add_rel("birel", &args)?,
-        "Rel_U" | "Rel_Up" => db.add_rel("rel_u", &args)?,
-        "Rel_D" | "Rel_Down" => db.add_rel("rel_d", &args)?,
-        "Rel_L" | "Rel_Left" => db.add_rel("rel_l", &args)?,
-        "Rel_R" | "Rel_Right" => db.add_rel("rel_r", &args)?,
-        "Rel_Back" => db.add_rel("rel_b", &args)?,
-        "RelIndex" => db.add_rel("rel", &args[1..])?,
+        "Rel" => add_rel(db, "rel", &args)?,
+        "BiRel" => add_rel(db, "birel", &args)?,
+        "Rel_U" | "Rel_Up" => add_rel(db, "rel_u", &args)?,
+        "Rel_D" | "Rel_Down" => add_rel(db, "rel_d", &args)?,
+        "Rel_L" | "Rel_Left" => add_rel(db, "rel_l", &args)?,
+        "Rel_R" | "Rel_Right" => add_rel(db, "rel_r", &args)?,
+        "Rel_Back" => add_rel(db, "rel_b", &args)?,
+        "RelIndex" => add_rel(db, "rel", &args[1..])?,
         "UpdateElementStyle" => db.update_el_style(&args)?,
         "UpdateRelStyle" => db.update_rel_style(&args)?,
         "UpdateLayoutConfig" => db.update_layout_config(&args)?,

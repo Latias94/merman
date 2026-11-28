@@ -281,6 +281,10 @@ UpdateElementStyle(inner, $bgColor="#445566")
             if layout.is_empty() {
                 assert!(rect.width() > number(backgrounds[0], "width"));
                 assert!(rect.x0 < number(backgrounds[0], "x"));
+            } else {
+                let boundary_center =
+                    number(backgrounds[0], "x") + number(backgrounds[0], "width") / 2.0;
+                assert!((rect.center().x - boundary_center).abs() < 1e-7);
             }
 
             let fill = Color::parse(background.attribute("fill").unwrap()).unwrap();
@@ -338,6 +342,7 @@ UpdateElementStyle(inner, $bgColor="#445566")
 #[test]
 fn c4_transparent_shoal_relations_keep_contrast_and_authored_paint() {
     use kurbo::{Point, Rect, Vec2};
+    use merman_render::text::{DeterministicTextMeasurer, TextMeasurer};
     use merman_render::theme::{Appearance, BuiltinPreset, Color};
 
     let source = r##"---
@@ -402,6 +407,9 @@ UpdateRelStyle(b, c, $textColor="#112233", $lineColor="#2468AC")
     let authored = find("c4-rel-1");
     let outline = shaft.prev_sibling().unwrap();
     assert_eq!(outline.attribute("class"), Some("c4-relation-outline"));
+    assert_eq!(shaft.attribute("stroke-width"), Some("1.5"));
+    let outline_width: f64 = outline.attribute("stroke-width").unwrap().parse().unwrap();
+    assert!(outline_width > 1.5);
     for attr in ["d", "clip-path"] {
         assert_eq!(outline.attribute(attr), shaft.attribute(attr));
     }
@@ -499,10 +507,29 @@ UpdateRelStyle(b, c, $textColor="#112233", $lineColor="#2468AC")
             let ink = Color::parse(row.attribute("fill").unwrap()).unwrap();
             assert!(ink.contrast(Color::parse(fill).unwrap()) >= 4.5);
             let y = number(row, "y") + number(row.first_element_child().unwrap(), "dy");
+            let content = svg_text_content(row);
+            let style = TextStyle {
+                font_size: c4_effective_property(row, "font-size")
+                    .unwrap()
+                    .trim_end_matches("px")
+                    .parse()
+                    .unwrap(),
+                font_family: c4_effective_property(row, "font-family"),
+                font_weight: c4_effective_property(row, "font-weight"),
+                font_style: c4_effective_property(row, "font-style"),
+            };
+            let half_width = DeterministicTextMeasurer::default()
+                .measure_svg_tspan_text_bbox_width_px(&content, &style)
+                / 2.0;
+            let x = number(row, "x");
             assert!(
-                bounds.contains(Point::new(number(row, "x"), y)),
-                "{}",
-                svg_text_content(row)
+                bounds
+                    .inflate(1e-7, 1e-7)
+                    .contains(Point::new(x - half_width - 6.0, y))
+                    && bounds
+                        .inflate(1e-7, 1e-7)
+                        .contains(Point::new(x + half_width + 6.0, y)),
+                "missing horizontal padding around {content}"
             );
         }
         let opaque_shaft = opaque_document
@@ -524,6 +551,12 @@ UpdateRelStyle(b, c, $textColor="#112233", $lineColor="#2468AC")
     }
     assert!(!opaque.svg().contains("c4-relation-label-background"));
     assert!(!opaque.svg().contains("c4-relation-outline"));
+
+    let light = compiler
+        .compile_preset(BuiltinPreset::Studio, Some(Appearance::Light))
+        .unwrap();
+    let light = render(light, Color::TRANSPARENT);
+    assert!(!light.svg().contains("c4-relation-label-background"));
 
     let explicit_background = compiler
         .compile_json(
@@ -596,8 +629,12 @@ Rel(n0, n2, "Caption 2 for the relationship", "HTTPS")
 Rel(n0, n0, "Caption 3 for the relationship", "HTTPS")
 Rel(n1, n1, "Caption 4 for the relationship", "HTTPS")
 "#;
+    // A caption taller than the loop's entire shelf forces the exterior placement.
+    let line = "Caption 4 word group that must remain legible";
+    let caption = [line; 11].join("<br/>");
+    let source = source.replace("Caption 4 for the relationship", &caption);
     let parsed = MermaidEngine::new()
-        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
         .unwrap()
         .unwrap();
     let theme = ThemeCompiler::new()
@@ -615,7 +652,17 @@ Rel(n1, n1, "Caption 4 for the relationship", "HTTPS")
     .unwrap();
     let projection = prepared.layout_json().unwrap();
     let relation = &projection["layout"]["C4Diagram"]["rels"][4];
-    assert_eq!(relation["label"]["text"], "Caption 4 for the relationship");
+    let prepared_caption = relation["label"]["text"]
+        .as_str()
+        .unwrap()
+        .replace("<br/>", " ");
+    assert_eq!(
+        prepared_caption.split_whitespace().collect::<Vec<_>>(),
+        caption
+            .replace("<br/>", " ")
+            .split_whitespace()
+            .collect::<Vec<_>>(),
+    );
     assert_eq!(relation["techn"]["text"], "HTTPS");
 
     let svg = prepared
@@ -658,10 +705,12 @@ Rel(n1, n1, "Caption 4 for the relationship", "HTTPS")
         .filter(|node| node.has_tag_name("text"))
         .map(svg_text_content)
         .collect();
-    assert_eq!(
-        blocks,
-        ["n1 → n1 (5)", "Caption 4 for the relationship", "[HTTPS]"]
-    );
+    let [reference, message @ .., technology] = blocks.as_slice() else {
+        panic!("expected the exterior relationship caption: {blocks:?}");
+    };
+    assert_eq!(reference, "n1 → n1 (5)");
+    assert_eq!(message.join(" "), [line; 11].join(" "));
+    assert_eq!(technology, "[HTTPS]");
     let transform = caption
         .attribute("transform")
         .unwrap()

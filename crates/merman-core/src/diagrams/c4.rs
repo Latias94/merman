@@ -21,6 +21,8 @@ use merman_core_graph::c4::{
 #[cfg(test)]
 use merman_core_graph::c4::{c4_syntax_construction_count, reset_c4_syntax_construction_count};
 pub(crate) use merman_model::families::c4::C4DiagramModel;
+#[cfg(feature = "editor-facts")]
+use merman_model::warnings::{C4_DYNAMIC_OVERWRITTEN_RELATION_WARNING_RULE_ID, DiagramWarningFact};
 #[cfg(any(test, feature = "compat-json"))]
 use serde_json::Value;
 
@@ -115,6 +117,17 @@ fn project_c4_observation(facts: &mut EditorSemanticFacts, observation: C4Observ
                 EditorExpectedSyntaxKind::CardinalDirectionValue,
                 span,
             ));
+        }
+        C4Observation::RelationOverwritten { from, to, span } => {
+            facts.warning_facts.push(
+                DiagramWarningFact::new(
+                    C4_DYNAMIC_OVERWRITTEN_RELATION_WARNING_RULE_ID,
+                    format!(
+                        "C4Dynamic relationship from {from:?} to {to:?} overwrites an earlier step."
+                    ),
+                )
+                .with_span(span),
+            );
         }
     }
 }

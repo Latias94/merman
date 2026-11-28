@@ -10,6 +10,8 @@ pub const AGENTFLOW_CONTAINMENT_VIOLATION_WARNING_RULE_ID: &str =
     "merman.semantic.agentflow.containment_violation";
 
 pub const BLOCK_WIDTH_WARNING_RULE_ID: &str = "merman.block.width_exceeds_columns";
+pub const C4_DYNAMIC_OVERWRITTEN_RELATION_WARNING_RULE_ID: &str =
+    "merman.c4-dynamic-overwritten-relation";
 pub const CLASS_IGNORED_STATEMENT_WARNING_RULE_ID: &str =
     "merman.authoring.class.ignored_statement";
 pub const FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID: &str =

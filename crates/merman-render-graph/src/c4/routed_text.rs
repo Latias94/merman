@@ -2,18 +2,45 @@ use kurbo::{Rect, Vec2};
 use merman_render_core::{
     Result,
     text::{
-        TextStyle, WrapMode, line_break::split_mermaid_common_br_lines,
+        TextMeasurer, TextStyle, WrapMode, line_break::split_mermaid_common_br_lines,
         svg_title_bbox_vertical_extents_px, try_measure_wrapped_text,
     },
 };
 
+use merman_theme_contract::v2::EdgeLabelBackground;
+
 use super::{
-    C4_TECHNOLOGY_GAP, C4BoundaryLayout, C4Measurement, C4RelLayout, C4TextBlockLayout,
-    c4_relation_offset, c4_text_row_offset, geometry::C4TextRenderPlan, typography::C4PreparedFont,
+    C4_TECHNOLOGY_GAP, C4BoundaryLayout, C4Measurement, C4NativeStyle, C4RelLayout,
+    C4TextBlockLayout, C4TypographyThemePlan, c4_relation_offset, c4_text_row_offset,
+    geometry::C4TextRenderPlan, typography::C4PreparedFont,
 };
 
 const RELATION_WRAP_WIDTH: f64 = 190.0;
 pub const SHAFT_CLEARANCE: f64 = 2.0;
+const PLATE_PAD_X: f64 = 6.0;
+const PLATE_PAD_Y: f64 = 3.0;
+
+impl C4TypographyThemePlan {
+    /// Reserve the largest caption footprint across canvas backgrounds.
+    pub fn routed_caption_footprint(&self, cutout: Rect) -> Rect {
+        if self
+            .native_style()
+            .is_some_and(|theme| theme.edge_label_bg == EdgeLabelBackground::Auto)
+        {
+            cutout.inflate(PLATE_PAD_X - SHAFT_CLEARANCE, PLATE_PAD_Y - SHAFT_CLEARANCE)
+        } else {
+            cutout
+        }
+    }
+}
+
+impl C4NativeStyle {
+    /// Maximum painted shaft width, including the transparent-canvas contrast outline.
+    pub fn routed_shaft_outline_width(&self) -> f64 {
+        let halo = (self.connector_width / 2.0).min(0.65);
+        self.connector_width + 2.0 * halo
+    }
+}
 
 pub fn measure_c4_relation_label(
     rel: &mut C4RelLayout,
@@ -62,7 +89,12 @@ fn relation_ink(
     } else {
         (&block.text, &font.measurement_style)
     };
-    let mut ink = text_ink(text, 0.0, size, style, ctx)?;
+    let measure = |text: &str| {
+        text_ink(text, 0.0, size, style, ctx.measurer, |units| {
+            Ok(ctx.work.charge(units)?)
+        })
+    };
+    let mut ink = measure(text)?;
     if ctx.conf.wrap && ink.is_some_and(|ink| ink.width() > RELATION_WRAP_WIDTH) {
         let mut all_lines = Vec::new();
         for segment in split_mermaid_common_br_lines(text) {
@@ -88,7 +120,7 @@ fn relation_ink(
         }
         block.line_count = all_lines.len().max(1);
         let wrapped = all_lines.join("<br/>");
-        ink = text_ink(&wrapped, 0.0, size, style, ctx)?;
+        ink = measure(&wrapped)?;
         block.text = if technology {
             wrapped
                 .strip_prefix('[')
@@ -105,8 +137,7 @@ fn relation_ink(
     Ok(ink)
 }
 
-/// Includes the same caption clearance as layout and the shaft cutout.
-pub(super) fn relation_label_footprint(
+pub(super) fn relation_label_plate(
     relation: &C4RelLayout,
     reference: Option<&C4TextBlockLayout>,
 ) -> Option<Rect> {
@@ -118,18 +149,30 @@ pub(super) fn relation_label_footprint(
             C4TextRenderPlan::Unified(_) => None,
         })
         .reduce(|ink, block| ink.union(block))
-        .map(|ink| ink.inflate(SHAFT_CLEARANCE, SHAFT_CLEARANCE))
+        .map(|ink| ink.inflate(PLATE_PAD_X, PLATE_PAD_Y))
 }
 
 pub fn title_ink(boundary: &C4BoundaryLayout, ctx: &C4Measurement<'_>) -> Result<Option<Rect>> {
-    let fonts = ctx.typography.boundary_fonts();
-    let measure = |block: &C4TextBlockLayout, font: &C4PreparedFont| {
+    boundary_title_footprint(boundary, ctx.typography, ctx.measurer, |units| {
+        Ok(ctx.work.charge(units)?)
+    })
+}
+
+pub(super) fn boundary_title_footprint(
+    boundary: &C4BoundaryLayout,
+    typography: &C4TypographyThemePlan,
+    measurer: &dyn TextMeasurer,
+    mut charge: impl FnMut(usize) -> Result<()>,
+) -> Result<Option<Rect>> {
+    let fonts = typography.boundary_fonts();
+    let mut measure = |block: &C4TextBlockLayout, font: &C4PreparedFont| {
         text_ink(
             &block.text,
             block.y,
-            font.css_font_size_px.expect("legacy C4 text row size"),
+            font.css_font_size_px.expect("C4 boundary font size"),
             &font.measurement_style,
-            ctx,
+            measurer,
+            &mut charge,
         )
     };
     let mut ink = measure(&boundary.label, &fonts.name)?;
@@ -138,7 +181,7 @@ pub fn title_ink(boundary: &C4BoundaryLayout, ctx: &C4Measurement<'_>) -> Result
             ink = union(ink, measure(block, font)?);
         }
     }
-    Ok(ink)
+    Ok(ink.map(|ink| ink.inflate(PLATE_PAD_X, PLATE_PAD_Y)))
 }
 
 fn union(a: Option<Rect>, b: Option<Rect>) -> Option<Rect> {
@@ -154,12 +197,13 @@ fn text_ink(
     y: f64,
     font_size: f64,
     style: &TextStyle,
-    ctx: &C4Measurement<'_>,
+    measurer: &dyn TextMeasurer,
+    mut charge: impl FnMut(usize) -> Result<()>,
 ) -> Result<Option<Rect>> {
     if style.font_size <= 0.0 {
         return Ok(None);
     }
-    ctx.work.charge(text.len())?;
+    charge(text.len())?;
     let split;
     let rows = if text.contains('<') {
         split = split_mermaid_common_br_lines(text);
@@ -169,20 +213,13 @@ fn text_ink(
     };
     let mut ink = None;
     for (row, content) in rows.iter().enumerate() {
-        ctx.work.charge(content.len().saturating_add(1))?;
+        charge(content.len().saturating_add(1))?;
         if content.trim().is_empty() {
             continue;
         }
-        let half_width = ctx
-            .measurer
-            .measure_svg_tspan_text_bbox_width_px(content, style)
-            / 2.0;
-        let height = ctx
-            .measurer
-            .measure_svg_tspan_text_bbox_height_px(content, style);
-        let middle = ctx
-            .measurer
-            .measure_svg_raw_text_middle_bbox_y_offset_px(content, style);
+        let half_width = measurer.measure_svg_tspan_text_bbox_width_px(content, style) / 2.0;
+        let height = measurer.measure_svg_tspan_text_bbox_height_px(content, style);
+        let middle = measurer.measure_svg_raw_text_middle_bbox_y_offset_px(content, style);
         let (top, bottom) = middle.map_or_else(
             || {
                 // When the profile has no middle-baseline metric, reserve both the
