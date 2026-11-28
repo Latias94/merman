@@ -10,9 +10,9 @@ use merman_core::preprocess::{SourceConfigEvidence, SourceConfigOrigin};
 use merman_model::warnings::{
     AGENTFLOW_CONTAINMENT_VIOLATION_WARNING_RULE_ID, AGENTFLOW_SHAPE_REMOVED_WARNING_RULE_ID,
     AGENTFLOW_SHAPE_UNSUPPORTED_WARNING_RULE_ID, BLOCK_WIDTH_WARNING_RULE_ID,
-    CLASS_IGNORED_STATEMENT_WARNING_RULE_ID, DiagramWarningFact,
-    FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID, FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID,
-    GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID,
+    C4_DYNAMIC_OVERWRITTEN_RELATION_WARNING_RULE_ID, CLASS_IGNORED_STATEMENT_WARNING_RULE_ID,
+    DiagramWarningFact, FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
+    FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID,
 };
 use merman_model::{
     MermaidConfig,
@@ -509,6 +509,20 @@ const BLOCK_WIDTH_RULE: RuleDescriptor = RuleDescriptor {
     origin: RuleOrigin::MermaidCompatibility,
     fixable: false,
 };
+const C4_DYNAMIC_OVERWRITTEN_RELATION_RULE: RuleDescriptor = RuleDescriptor {
+    id: C4_DYNAMIC_OVERWRITTEN_RELATION_WARNING_RULE_ID,
+    description: "Report C4Dynamic relationships that overwrite an earlier step on the same ordered pair.",
+    evidence: &[
+        "https://github.com/mermaid-js/mermaid/blob/9f93a44a36e46a36b1379f9de72fb1ee5684ee3f/packages/mermaid/src/diagrams/c4/c4Db.ts#L86-L122",
+    ],
+    default_severity: DiagnosticSeverity::Warning,
+    category: DiagnosticCategory::Semantic,
+    tags: &[],
+    default_enabled: true,
+    default_profile: AnalysisRuleProfile::Core,
+    origin: RuleOrigin::MermaidCompatibility,
+    fixable: false,
+};
 const FLOWCHART_EXPLICIT_DIRECTION_RULE: RuleDescriptor = RuleDescriptor {
     id: FLOWCHART_EXPLICIT_DIRECTION_RULE_ID,
     description: "Recommend explicit flowchart header directions and offer an insertion quickfix.",
@@ -629,6 +643,7 @@ const RULE_DESCRIPTORS: &[RuleDescriptor] = &[
     INTERNAL_FAILURE_RULE,
     INTERNAL_RULE_REGISTRY_GAP_RULE,
     BLOCK_WIDTH_RULE,
+    C4_DYNAMIC_OVERWRITTEN_RELATION_RULE,
     FLOWCHART_EXPLICIT_DIRECTION_RULE,
     FLOWCHART_UNKNOWN_STYLE_TARGET_RULE,
     AGENTFLOW_SHAPE_REMOVED_RULE,
@@ -1156,6 +1171,9 @@ fn warning_fact_repair_cancellable(
 fn warning_fact_rule_descriptor(rule_id: &str) -> Option<RuleDescriptor> {
     match rule_id {
         BLOCK_WIDTH_WARNING_RULE_ID => Some(BLOCK_WIDTH_RULE),
+        C4_DYNAMIC_OVERWRITTEN_RELATION_WARNING_RULE_ID => {
+            Some(C4_DYNAMIC_OVERWRITTEN_RELATION_RULE)
+        }
         FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID => Some(FLOWCHART_EXPLICIT_DIRECTION_RULE),
         FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID => Some(FLOWCHART_UNKNOWN_STYLE_TARGET_RULE),
         AGENTFLOW_SHAPE_REMOVED_WARNING_RULE_ID => Some(AGENTFLOW_SHAPE_REMOVED_RULE),

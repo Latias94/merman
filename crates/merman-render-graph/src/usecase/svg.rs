@@ -30,7 +30,7 @@ use merman_render_core::{
     theme_svg::{elevation, marker::arrow_path},
     xml::{escape_attr, escape_xml},
 };
-use merman_theme_contract::v2::{FamilyTheme, MarkerStyle};
+use merman_theme_contract::v2::{Color, EdgeLabelBackground, FamilyTheme, MarkerStyle};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::Write as _;
@@ -57,6 +57,7 @@ pub type UsecaseEdgePainter<'a> =
 pub struct UsecaseCanonicalSvg<'a> {
     pub titles: &'a HashMap<String, LayoutLabel>,
     pub boundary_order: &'a [(usize, usize)],
+    pub panel_captions: &'a [bool],
     pub paint_edges: &'a UsecaseEdgePainter<'a>,
 }
 
@@ -151,8 +152,14 @@ enum UsecaseLabelKind<'a> {
     Node(&'a str),
     PositionedNode(&'a str),
     CenteredNode(&'a str),
-    Boundary { canonical: bool },
-    Edge(&'a str),
+    Boundary {
+        canonical: bool,
+    },
+    Edge {
+        id: &'a str,
+        on_panel: bool,
+        plate: Option<Color>,
+    },
 }
 
 fn write_label(
@@ -196,7 +203,8 @@ fn write_label(
             fmt(plan.style.font_size)
         );
     }
-    let is_edge_label = matches!(kind, UsecaseLabelKind::Edge(_));
+    let is_edge_label = matches!(kind, UsecaseLabelKind::Edge { .. });
+    let on_panel = matches!(kind, UsecaseLabelKind::Edge { on_panel: true, .. });
     let is_boundary = matches!(kind, UsecaseLabelKind::Boundary { .. });
     let canonical_boundary = matches!(kind, UsecaseLabelKind::Boundary { canonical: true });
     let positioned_node = matches!(kind, UsecaseLabelKind::PositionedNode(_));
@@ -219,15 +227,40 @@ fn write_label(
         | UsecaseLabelKind::PositionedNode(class)
         | UsecaseLabelKind::CenteredNode(class) => class,
         UsecaseLabelKind::Boundary { .. } => "cluster-label system-boundary-title",
-        UsecaseLabelKind::Edge(_) => "label",
+        UsecaseLabelKind::Edge { .. } => "label",
     };
-    if let UsecaseLabelKind::Edge(data_id) = kind {
+    if let UsecaseLabelKind::Edge {
+        id,
+        on_panel,
+        plate,
+    } = kind
+    {
+        let class = if on_panel {
+            "edgeLabel usecase-panel-caption"
+        } else {
+            "edgeLabel"
+        };
         let _ = write!(
             out,
-            r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({}, {})">"#,
+            r#"<g class="{class}" transform="translate({},{})">"#,
             fmt(center_x),
             fmt(center_y),
-            escape_attr(data_id),
+        );
+        if let Some(plate) = plate {
+            let _ = write!(
+                out,
+                r#"<rect class="merman-edge-label-background" x="{}" y="{}" width="{}" height="{}" rx="{}" fill="{plate}"/>"#,
+                fmt(-plan.metrics.width / 2.0),
+                fmt(-plan.metrics.height / 2.0),
+                fmt(plan.metrics.width),
+                fmt(plan.metrics.height),
+                fmt(plan.metrics.height / 2.0),
+            );
+        }
+        let _ = write!(
+            out,
+            r#"<g class="label" data-id="{}" transform="translate({}, {})">"#,
+            escape_attr(id),
             fmt(if html { -plan.metrics.width / 2.0 } else { 0.0 }),
             // insertEdgeLabel centers the SVG text bbox, including its local Y offset.
             fmt(-svg_bbox_y - plan.text_metrics.height / 2.0),
@@ -290,9 +323,10 @@ fn write_label(
         }
         out.push_str("<g>");
         if is_edge_label && !plan.text.is_empty() {
+            let background_style = if on_panel { "fill:none" } else { "" };
             let _ = write!(
                 out,
-                r#"<rect class="background" style="" x="{}" y="{}" width="{}" height="{}"/>"#,
+                r#"<rect class="background" style="{background_style}" x="{}" y="{}" width="{}" height="{}"/>"#,
                 fmt(-plan.text_metrics.width / 2.0 - 2.0),
                 fmt(svg_bbox_y - 2.0),
                 fmt(plan.metrics.width),
@@ -357,6 +391,37 @@ fn write_label(
     if is_edge_label {
         out.push_str("</g>");
     }
+}
+
+fn exposed_caption_plate(
+    label: &UsecaseLabelPlan,
+    binding: &super::UsecaseCssBinding,
+    theme: &FamilyTheme,
+) -> Option<Color> {
+    let paint = label
+        .styles
+        .get("color")
+        .or_else(|| label.styles.get("fill"));
+    let ink = paint.map_or(binding.text.css(), |value| {
+        value.trim_end_matches("!important")
+    });
+    let [r, g, b, a] = merman_model::css_color::parse(ink.trim())?.rgba.to_rgba8();
+    let ink = Color::rgba(r, g, b, a);
+    let contrast = |background| ink.composite(background, 1.0).contrast(background);
+    let light = Color::rgb(255, 255, 255);
+    if a == 0 || contrast(light) >= 4.5 {
+        return None;
+    }
+    let [r, g, b, _] = theme.roles.canvas.first_color().channels();
+    let preferred = Color::rgb(r, g, b);
+    let dark = Color::rgb(0, 0, 0);
+    Some(if contrast(preferred) >= 4.5 {
+        preferred
+    } else if contrast(dark) > contrast(light) {
+        dark
+    } else {
+        light
+    })
 }
 
 fn write_edge_label_mask<'a>(
@@ -1048,6 +1113,29 @@ pub fn render_usecase_diagram_svg_model(
         }
     }
     let transparent = cutout::is_transparent_paint(css_binding.edge_background.css());
+    let caption_on_panel = |index: usize| {
+        #[cfg(feature = "layout-shoal")]
+        if let Some(canonical) = &options.canonical {
+            return canonical
+                .panel_captions
+                .get(index)
+                .copied()
+                .unwrap_or(false);
+        }
+        let _ = index;
+        false
+    };
+    let transparent_auto_canvas = options.native_theme.filter(|theme| {
+        uses_canonical
+            && transparent
+            && theme.form.edge_label_bg == EdgeLabelBackground::Auto
+            && css_binding
+                .canvas_background
+                .unwrap_or_else(|| theme.roles.canvas.first_color())
+                .channels()[3]
+                == 0
+            && !config.explicit_config_owns_path("themeVariables.edgeLabelBackground")
+    });
     let has_edge_mask = !uses_canonical
         && transparent
         && write_edge_label_mask(
@@ -1235,7 +1323,7 @@ pub fn render_usecase_diagram_svg_model(
         #[cfg(feature = "layout-shoal")]
         let mut caption_cutout = None;
         #[cfg(feature = "layout-shoal")]
-        if transparent
+        if (transparent || caption_on_panel(edge_index))
             && plan.label.is_some()
             && let Some((painted, label)) = canonical_edge.as_ref().zip(edge.label.as_ref())
         {
@@ -1328,15 +1416,22 @@ pub fn render_usecase_diagram_svg_model(
         out.push_str("/>");
     }
     out.push_str("</g><g class=\"edgeLabels\">");
-    for plan in &prepared.measured.edges {
+    for (index, plan) in prepared.measured.edges.iter().enumerate() {
         out.checkpoint()?;
         if let Some(label) = &plan.label {
             let edge = edge_geometry[plan.id.as_str()];
             if let Some(position) = &edge.label {
+                let on_panel = caption_on_panel(index);
                 write_label(
                     &mut out,
                     label,
-                    UsecaseLabelKind::Edge(&plan.id),
+                    UsecaseLabelKind::Edge {
+                        id: &plan.id,
+                        on_panel,
+                        plate: transparent_auto_canvas
+                            .filter(|_| !on_panel)
+                            .and_then(|theme| exposed_caption_plate(label, css_binding, theme)),
+                    },
                     position.x,
                     position.y + label_y_offset,
                     labels,

@@ -151,7 +151,7 @@ pub(super) fn render_native_label_background(
             default_ink
         };
         let readable_on_light = |ink: Color| ink.composite(LIGHT, 1.0).contrast(LIGHT) >= 4.5;
-        if ctx.diagram_type == "flowchart-v2"
+        if matches!(ctx.diagram_type, "flowchart" | "flowchart-v2")
             && default_ink.is_some_and(readable_on_light)
             && known_ink.is_some_and(readable_on_light)
         {

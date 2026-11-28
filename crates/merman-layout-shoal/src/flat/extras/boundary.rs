@@ -206,21 +206,13 @@ impl BoundaryRoutes {
         }
         self.0.add_stroke(id, &edge, work)?;
         if let Some(size) = spec.start_label {
-            let center = end_label(
-                &edge,
-                false,
-                size,
-                spec.start_marker,
-                options,
-                &self.0,
-                work,
-            )?;
+            let center = end_label((id, &edge), false, size, spec, options, &self.0, work)?;
             self.0
                 .add(Owner::End, Bounds::checked_centered(center, size)?, work)?;
             edge.start_label_center = Some(center);
         }
         if let Some(size) = spec.end_label {
-            let center = end_label(&edge, true, size, spec.end_marker, options, &self.0, work)?;
+            let center = end_label((id, &edge), true, size, spec, options, &self.0, work)?;
             self.0
                 .add(Owner::End, Bounds::checked_centered(center, size)?, work)?;
             edge.end_label_center = Some(center);

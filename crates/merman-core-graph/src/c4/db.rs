@@ -115,20 +115,28 @@ impl C4Db {
             .expect("boundary was just inserted")
     }
 
-    fn ensure_relation(&mut self, from: &str, to: &str) -> &mut C4RelationRecord {
+    fn ensure_relation(&mut self, from: &str, to: &str) -> (&mut C4RelationRecord, bool) {
         if let Some(index) = self
             .rels
             .iter()
             .position(|rel| rel.matches_endpoints(from, to))
         {
-            return &mut self.rels[index];
+            return (&mut self.rels[index], true);
         }
         self.rels.push(C4RelationRecord::default());
-        self.rels.last_mut().expect("relation was just inserted")
+        (
+            self.rels.last_mut().expect("relation was just inserted"),
+            false,
+        )
     }
 
     pub(super) fn set_c4_type(&mut self, raw: &str, config: &MermaidConfig) {
         self.c4_type = sanitize_text(raw, config);
+    }
+
+    #[cfg(feature = "editor-facts")]
+    pub(super) fn is_dynamic(&self) -> bool {
+        self.c4_type == "C4Dynamic"
     }
 
     pub(super) fn set_title(&mut self, raw: &str, config: &MermaidConfig) {
@@ -260,15 +268,16 @@ impl C4Db {
         Ok(alias)
     }
 
-    pub(super) fn add_rel(&mut self, rel_type: &str, args: &[C4Arg]) -> C4Result<()> {
+    /// Returns whether the declaration overwrote an existing relationship.
+    pub(super) fn add_rel(&mut self, rel_type: &str, args: &[C4Arg]) -> C4Result<bool> {
         let from = positional_arg_to_string(args.first())?;
         let to = positional_arg_to_string(args.get(1))?;
         let Some(label) = args.get(2).map(C4Arg::to_value) else {
-            return Ok(());
+            return Ok(false);
         };
 
         let wrap_enabled = self.wrap_enabled;
-        let rel = self.ensure_relation(&from, &to);
+        let (rel, overwritten) = self.ensure_relation(&from, &to);
 
         rel.assign("type", json!(rel_type));
         rel.assign("from", json!(from));
@@ -282,7 +291,7 @@ impl C4Db {
         assign_optional_argument(rel, "tags", args.get(6));
         assign_optional_argument(rel, "link", args.get(7));
         rel.assign("wrap", json!(wrap_enabled));
-        Ok(())
+        Ok(overwritten)
     }
 
     pub(super) fn update_el_style(&mut self, args: &[C4Arg]) -> C4Result<()> {

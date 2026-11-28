@@ -393,9 +393,9 @@ pub fn render_requirement_diagram_svg_model(
     let uses_canonical_routes = canonical_paint.is_some();
     #[cfg(feature = "layout-shoal")]
     let cutout_labels = uses_canonical_routes
-        && (cutout::is_transparent_paint(&binding.edge_label_background)
-            || (render_settings.edge_html_labels
-                && cutout::is_transparent_paint(&binding.requirement_edge_label_background)));
+        && cutout::is_transparent_paint(&binding.edge_label_background)
+        && (!render_settings.edge_html_labels
+            || cutout::is_transparent_paint(&binding.requirement_edge_label_background));
     #[cfg(not(feature = "layout-shoal"))]
     let uses_canonical_routes = false;
     let look = render_settings.look;

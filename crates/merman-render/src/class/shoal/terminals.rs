@@ -133,7 +133,7 @@ pub(super) fn seat(
             } else {
                 straight_lead(edge.points.iter().rev().skip(1), port, outward, work)?
             };
-            *label = seating.place(
+            *label = Some(seating.place(
                 current,
                 Terminal {
                     owner: (index, start),
@@ -145,7 +145,7 @@ pub(super) fn seat(
                 },
                 paired,
                 work,
-            )?;
+            )?);
             if start {
                 paired = label.as_ref().map(label_rect);
             }
@@ -157,7 +157,7 @@ pub(super) fn seat(
 struct Seating {
     fixed: Bvh<Obstacle>,
     occupied: BoundsIndex,
-    // A handled label's original box is obsolete, even if the label had no seat.
+    // A relocated label's original box is obsolete.
     handled: Vec<[bool; 2]>,
     drawing: Rect,
     shaft_outset: f64,
@@ -185,20 +185,19 @@ impl Seating {
         terminal: Terminal,
         paired: Option<Rect>,
         work: &mut OperationLayoutWorkControl,
-    ) -> Result<Option<LayoutLabel>> {
-        let seat = self.choose(&label, &terminal, paired, work)?;
+    ) -> Result<LayoutLabel> {
+        let Some(rect) = self.choose(&label, &terminal, paired, work)? else {
+            // Keep the solver's clear seat when the label cannot fit near its terminal.
+            return Ok(label);
+        };
         let (edge, start) = terminal.owner;
         self.handled[edge][usize::from(start)] = true;
-        let Some(rect) = seat else {
-            // No candidate in the local window cleared the hard obstacles.
-            return Ok(None);
-        };
         self.occupied
             .insert(bounds(rect), work)
             .map_err(|error| work.map_shoal_error(error))?;
         let center = rect.center();
         (label.x, label.y) = (center.x, center.y);
-        Ok(Some(label))
+        Ok(label)
     }
 
     fn choose(
@@ -261,9 +260,13 @@ impl Seating {
             let near = preferred_along.min(lead_limit);
             let far = (near + 8.0).min(lead_limit);
             // Preserve the close, shaft-owned seat whenever there is room beside the lead.
-            for offset in offsets {
-                for distance in [near, past_marker.clamp(near, far), far] {
-                    if distance.hypot(offset) > radius {
+            let distances = [near, past_marker.clamp(near, far), far];
+            for (index, &offset) in offsets.iter().enumerate() {
+                if offsets[..index].contains(&offset) {
+                    continue;
+                }
+                for (index, &distance) in distances.iter().enumerate() {
+                    if distances[..index].contains(&distance) || distance.hypot(offset) > radius {
                         continue;
                     }
                     let mut best = None::<(Rect, f64)>;
@@ -275,6 +278,9 @@ impl Seating {
                             && best.is_none_or(|(_, previous)| clearance.nearest_shaft > previous)
                         {
                             best = Some((rect, clearance.nearest_shaft));
+                            if clearance.nearest_shaft.is_infinite() {
+                                break;
+                            }
                         }
                     }
                     if let Some((rect, _)) = best {
@@ -288,12 +294,16 @@ impl Seating {
         // hard, and prefer covering our own shaft (which SVG clips under the label) to a peer's.
         let mut best = None::<(Rect, [f64; 4])>;
         let mut consider = |center: Point, offset: f64, work: &mut OperationLayoutWorkControl| {
+            let distance = center.distance(port);
+            if best.is_some_and(|(_, rank)| rank <= [0.0, 0.0, 0.0, distance]) {
+                return Ok(());
+            }
             if let Some((rect, clearance)) = assess(center, offset, work)? {
                 let rank = [
                     clearance.foreign_shaft_overlap,
                     clearance.overlap,
                     (offset - clearance.nearest_shaft).max(0.0),
-                    center.distance(port),
+                    distance,
                 ];
                 if best.is_none_or(|(_, previous)| rank < previous) {
                     best = Some((rect, rank));
@@ -354,6 +364,7 @@ impl Seating {
             foreign_shaft_overlap: 0.0,
             nearest_shaft: f64::INFINITY,
         };
+        let mut nearest_sq = f64::INFINITY;
         let result = self.fixed.visit(|entry| -> Result<_> {
             work.charge_adapter(1)?;
             let obstacle = match entry {
@@ -372,9 +383,7 @@ impl Seating {
             let blocked = match obstacle {
                 Obstacle::Shaft(edge, line) => {
                     if edge != owner.0 {
-                        clearance.nearest_shaft = clearance
-                            .nearest_shaft
-                            .min(line.nearest(center, 0.0).distance_sq.sqrt());
+                        nearest_sq = nearest_sq.min(line.nearest(center, 0.0).distance_sq);
                     }
                     let hits = shaft_ink.contains(line.p0)
                         || shaft_ink.contains(line.p1)
@@ -395,10 +404,9 @@ impl Seating {
                     false
                 }
                 Obstacle::Terminal(terminal, ink) => {
-                    if terminal != owner && !self.handled[terminal.0][usize::from(terminal.1)] {
-                        clearance.overlap += terminal_ink.intersect(ink).area();
-                    }
-                    false
+                    terminal != owner
+                        && !self.handled[terminal.0][usize::from(terminal.1)]
+                        && terminal_ink.intersect(ink).area() > 0.0
                 }
                 Obstacle::Box(ink) => rect.intersect(ink).area() > 0.0,
             };
@@ -407,10 +415,14 @@ impl Seating {
         if result.is_break() {
             return Ok(None);
         }
-        clearance.overlap += self
+        if self
             .occupied
-            .overlap_area(bounds(terminal_ink), work)
-            .map_err(|error| work.map_shoal_error(error))?;
+            .any_overlap(bounds(terminal_ink), work)
+            .map_err(|error| work.map_shoal_error(error))?
+        {
+            return Ok(None);
+        }
+        clearance.nearest_shaft = nearest_sq.sqrt();
         Ok(Some(clearance))
     }
 }
@@ -507,7 +519,6 @@ mod tests {
                 None,
                 &mut work,
             )
-            .unwrap()
             .unwrap();
         assert_eq!(seated.x, 281.5);
     }
@@ -556,7 +567,6 @@ mod tests {
                 None,
                 &mut work,
             )
-            .unwrap()
             .unwrap();
 
         let mut can_place = |ink| {
@@ -621,7 +631,6 @@ mod tests {
                 None,
                 &mut work,
             )
-            .unwrap()
             .unwrap();
         let ink = label_rect(&seated);
         assert_eq!(ink.center().y, shaft.p0.y);

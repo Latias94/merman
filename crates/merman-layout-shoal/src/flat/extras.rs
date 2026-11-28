@@ -336,7 +336,7 @@ fn shortest_slide(
                 |owner| owner != Owner::Stroke(id),
                 work,
             )
-            .map(|seat| seat.expect("unbounded label slide"))
+            .and_then(|seat| seat.ok_or(PRECISION))
     };
     let (a, da) = slide(sides[0], work)?;
     if da == 0.0 {
@@ -454,16 +454,21 @@ fn write_route(
 }
 
 fn end_label(
-    edge: &EdgeGeometry,
+    (id, edge): (u32, &EdgeGeometry),
     end: bool,
     size: Size,
-    marker: MarkerMetrics,
+    spec: &EdgeSpec,
     options: &Options,
     walls: &Obstacles,
     work: &mut Work<'_>,
 ) -> LayoutResult<Point> {
     let [first, last] = old_ports(edge)?;
     let port = if end { last } else { first };
+    let marker = if end {
+        spec.end_marker
+    } else {
+        spec.start_marker
+    };
     let vertical = port.side.axis() == Axis::Vertical;
     let (depth, width) = if vertical {
         (size.height, size.width)
@@ -473,9 +478,6 @@ fn end_label(
     let along = finite(marker.length + options.spacing.end_label_along + depth / 2.0)?;
     let start = advance(port.at, port.side, along)?;
     let cross = finite(options.spacing.end_label_across + width / 2.0)?;
-    let span = (first.at.x - last.at.x).hypot(first.at.y - last.at.y);
-    let radius = (0.35 * span).min(64.0);
-    let max_slide = ((radius * radius - cross * cross).max(0.0).sqrt() - along).max(0.0);
     let mut positive = true;
     for j in 1..edge.points.len() {
         work.visit(1)?;
@@ -505,28 +507,40 @@ fn end_label(
             return Ok(at);
         }
     }
-    // The kernel must supply an anchor for every measured label. Only a hard node barrier
-    // can extend the slide when the local window has no clear seat.
-    for (limit, nodes_only) in [
-        (Some(max_slide), false),
+    let span = if spec.source == spec.target {
+        let mut span = 0.0;
+        for pair in edge.points.windows(2) {
+            work.visit(1)?;
+            span += (pair[1].x - pair[0].x).hypot(pair[1].y - pair[0].y);
+            if span >= 64.0 / 0.35 {
+                break;
+            }
+        }
+        span
+    } else {
+        (first.at.x - last.at.x).hypot(first.at.y - last.at.y)
+    };
+    let radius = (0.35 * span).min(64.0);
+    let max_slide = ((radius * radius - cross * cross).max(0.0).sqrt() - along).max(0.0);
+    // A label may sit on its own shaft if the local corridor is crowded. Keep every marker,
+    // node, foreign shaft, and other caption active across all passes.
+    for (limit, own_shaft) in [
         (Some(max_slide), true),
+        (Some(max_slide), false),
         (None, true),
     ] {
+        if limit == Some(0.0) && own_shaft {
+            continue;
+        }
         let mut best = None;
         for origin in origins {
-            if let Some((p, d)) = walls.slide(
-                origin,
-                size,
-                port.side,
-                limit,
-                |owner| !nodes_only || owner == Owner::Node,
-                work,
-            )? {
+            let blocks = |owner| own_shaft || owner != Owner::Stroke(id);
+            if let Some((p, d)) = walls.slide(origin, size, port.side, limit, blocks, work)?
+                && best.is_none_or(|(_, old)| d < old)
+            {
+                best = Some((p, d));
                 if d == 0.0 {
-                    return Ok(p);
-                }
-                if best.is_none_or(|(_, old)| d < old) {
-                    best = Some((p, d));
+                    break;
                 }
             }
         }
@@ -534,7 +548,7 @@ fn end_label(
             return Ok(p);
         }
     }
-    unreachable!("an unbounded node-only slide always has a seat")
+    Err(PRECISION)
 }
 
 fn endpoints(index: usize, c: &Component) -> [usize; 2] {
@@ -798,13 +812,10 @@ pub(super) fn finish(
         for (id, edge) in &mut drawing.edges {
             work.visit(1)?;
             let spec = &graph.edges[*id as usize];
-            for (end, label, m) in [
-                (false, spec.start_label, spec.start_marker),
-                (true, spec.end_label, spec.end_marker),
-            ] {
+            for (end, label) in [(false, spec.start_label), (true, spec.end_label)] {
                 if let Some(size) = label {
                     let size = canonical_size(graph.direction, size);
-                    let p = end_label(edge, end, size, m, options, &walls, work)?;
+                    let p = end_label((*id, edge), end, size, spec, options, &walls, work)?;
                     if end {
                         edge.end_label_center = Some(p)
                     } else {

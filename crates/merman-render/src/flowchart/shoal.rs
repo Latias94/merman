@@ -19,14 +19,20 @@ use crate::layout_frame::GraphPlacement;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{Bounds, FlowchartLayout, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint};
 use crate::{Error, LayoutAdaptation, LayoutExecution, Result};
-use merman_model::families::flowchart::{FlowchartModel, FlowchartRenderContext};
+use merman_model::families::flowchart::{
+    FlowEdgeVisibility, FlowNode, FlowchartModel, FlowchartRenderContext,
+};
 use merman_model::presentation::PresentationConfig;
-use merman_render_core::graph_layout::contour::Outline;
 use merman_render_flow::edge_labels::HTML_EDGE_LABEL_INSET_PX;
 use merman_render_flow::node_geometry::contour as flow_contour;
 use merman_render_flow::projection::ProjectedFlowchartEdge;
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
+
+struct BundleFace<'a> {
+    source: &'a FlowNode,
+    radii: Option<(f64, f64)>,
+}
 
 fn admit_paint_clearance(
     nodes: usize,
@@ -268,17 +274,16 @@ fn measure(
             };
             bindings.flow_relative_nodes.push((graph.nodes.len(), axis));
         }
-        let face = match dir {
-            Direction::Down | Direction::Up => Side::Top,
-            Direction::Left | Direction::Right => Side::Left,
-        };
         parallel_faces.push(
             (geometry.is_none()
                 && matches!(
                     shape,
                     super::FlowchartShape::Process | super::FlowchartShape::RoundedRectangle
                 ))
-            .then_some((face, profile.port_span(face))),
+            .then_some(BundleFace {
+                source: node,
+                radii: rectangle_radii,
+            }),
         );
         bindings.push_leaf(&mut graph, layout_node, profile, seq, parent);
     }
@@ -323,6 +328,7 @@ fn measure(
     } else {
         0.0
     };
+    let mut painted_edges = Vec::with_capacity(view.edges.len());
     for (key, projected) in view.projected_edges() {
         let endpoint = |id: &str| {
             endpoints
@@ -340,6 +346,7 @@ fn measure(
         let label = measurement.edge_label(edge, key)?;
         let markers = edge_styles.marker_metrics_for(key, edge, look_is_neo)?;
         let (start_marker, end_marker) = edge_styles.reserve_marker_stroke(key, markers)?;
+        painted_edges.push(edge.visibility == FlowEdgeVisibility::Visible);
         graph.edges.push(MeasuredEdge {
             source: endpoint(projected.from)?,
             target: endpoint(projected.to)?,
@@ -356,7 +363,13 @@ fn measure(
             end_marker,
         });
     }
-    bindings.reserve_parallel_faces(&mut graph, &parallel_faces, work)?;
+    bindings.reserve_parallel_faces(
+        &mut graph,
+        &parallel_faces,
+        painted_edges.into_iter(),
+        fit_width,
+        work,
+    )?;
 
     Ok((graph, bindings))
 }
@@ -365,7 +378,9 @@ impl FlowchartBindings {
     fn reserve_parallel_faces(
         &mut self,
         graph: &mut MeasuredGraph,
-        faces: &[Option<(Side, f64)>],
+        faces: &[Option<BundleFace<'_>>],
+        painted_edges: impl Iterator<Item = bool>,
+        fit_width: bool,
         work: &mut OperationLayoutWorkControl,
     ) -> Result<()> {
         const MAX_FACE_GROWTH: f64 = 64.0;
@@ -377,7 +392,11 @@ impl FlowchartBindings {
         pairs
             .try_reserve(graph.edges.len())
             .map_err(|_| work.map_shoal_error(merman_layout_shoal::LayoutError::AllocationLimit))?;
-        for edge in &graph.edges {
+        let mut has_bundle = false;
+        for (edge, visible) in graph.edges.iter().zip(painted_edges) {
+            if !visible {
+                continue;
+            }
             let (Endpoint::Node(a), Endpoint::Node(b)) = (edge.source, edge.target) else {
                 continue;
             };
@@ -395,60 +414,86 @@ impl FlowchartBindings {
             }
             let (count, widest) = pairs.entry(ids).or_default();
             *count += 1;
+            has_bundle |= *count >= 3;
             for (widest, width) in widest.iter_mut().zip(widths) {
                 *widest = widest.max(width);
             }
         }
+        if !has_bundle {
+            return Ok(());
+        }
         let minimum = merman_layout_shoal::Spacing::default().min_port_pitch;
         work.charge_adapter(pairs.len())?;
+        let group_axes = groups::bundle_faces(graph, fit_width, work)?;
+        let horizontal = matches!(graph.direction, Direction::Left | Direction::Right);
+        let root_axes = [!horizontal || fit_width, horizontal];
+        work.charge_adapter(faces.len())?;
+        let mut demand = vec![0.0_f64; faces.len()];
         for (ids, (count, widths)) in pairs {
-            if count < 3 {
+            if count >= 3 {
+                for (i, width) in ids.into_iter().zip(widths) {
+                    demand[i] = demand[i].max((count - 1) as f64 * width.max(minimum));
+                }
+            }
+        }
+        for (i, (face, required)) in faces.iter().zip(demand).enumerate() {
+            let Some(BundleFace { source, radii }) = face.as_ref().filter(|_| required > 0.0)
+            else {
+                continue;
+            };
+            let measured = &mut graph.nodes[i];
+            let axes = measured
+                .parent
+                .map_or(root_axes, |group| group_axes[group as usize]);
+            let measure_profile =
+                |node| flow_contour::from_paint_metrics(source, node, 0.0, false, None, *radii);
+            let original = &self.profiles[i];
+            let node = &mut self.nodes[i];
+            let largest = LayoutNode {
+                id: String::new(),
+                x: 0.0,
+                y: 0.0,
+                width: node.width + MAX_FACE_GROWTH,
+                height: node.height + MAX_FACE_GROWTH,
+                is_cluster: false,
+                label_width: None,
+                label_height: None,
+            };
+            let capacity = measure_profile(&largest)?;
+            let growth = |axis: usize, side: Side| {
+                let span = capacity.port_span(side);
+                if axes[axis]
+                    && required > original.port_span(side)
+                    && span > original.port_span(side)
+                {
+                    // Usable straight span grows one-for-one once the authored radius fits.
+                    MAX_FACE_GROWTH - (span - required).max(0.0)
+                } else {
+                    0.0
+                }
+            };
+            let width = growth(0, Side::Top);
+            let height = growth(1, Side::Left);
+            if width == 0.0 && height == 0.0 {
                 continue;
             }
-            for (i, width) in ids.into_iter().zip(widths) {
-                let Some((face, original_span)) = faces[i] else {
-                    continue;
-                };
-                let profile = &self.profiles[i];
-                let Outline::Box { rx, ry, .. } = *profile.outline() else {
-                    continue;
-                };
-                let mut spans = [profile.port_span(Side::Top), profile.port_span(Side::Left)];
-                let cross = usize::from(face == Side::Left);
-                let required = (count - 1) as f64 * width.max(minimum);
-                let growth =
-                    (required.min(original_span + MAX_FACE_GROWTH) - spans[cross]).max(0.0);
-                if growth == 0.0 {
-                    continue;
-                }
-                // Each pair requests its own width. Resize the actual node before ports are seated.
-                let node = &mut self.nodes[i];
-                if cross == 0 {
-                    node.width += growth;
-                } else {
-                    node.height += growth;
-                }
-                spans[cross] += growth;
-                let profile = ShapePortProfile::new(
-                    Outline::rect(node.width, node.height, rx, ry),
-                    spans[0],
-                    spans[1],
-                );
-                let size = Size {
-                    width: node.width,
-                    height: node.height,
-                };
-                let axis = usize::from(matches!(
-                    graph.direction,
-                    Direction::Left | Direction::Right
-                ));
-                let measured = &mut graph.nodes[i];
-                measured.size = size;
-                measured.contour = shoal_contour(&profile, size);
-                measured.port_span = Some(spans[axis]);
-                measured.perpendicular_port_span = Some(spans[1 - axis]);
-                self.profiles[i] = profile;
-            }
+            node.width += width;
+            node.height += height;
+            let profile = measure_profile(node)?;
+            let size = Size {
+                width: node.width,
+                height: node.height,
+            };
+            let sides = if horizontal {
+                [Side::Left, Side::Top]
+            } else {
+                [Side::Top, Side::Left]
+            };
+            measured.size = size;
+            measured.contour = shoal_contour(&profile, size);
+            measured.port_span = Some(profile.port_span(sides[0]));
+            measured.perpendicular_port_span = Some(profile.port_span(sides[1]));
+            self.profiles[i] = profile;
         }
         Ok(())
     }

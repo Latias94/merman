@@ -23,6 +23,7 @@ pub(super) fn render_block_diagram_svg_model_with_theme(
     options: &SvgExecution<'_>,
 ) -> Result<RootedSvg> {
     let diagram_id = options.diagram_id_or("merman");
+    let session = options.family.session();
     block::render_block_diagram_svg_model_with_theme(
         layout,
         model,
@@ -35,7 +36,8 @@ pub(super) fn render_block_diagram_svg_model_with_theme(
             viewport: options.root_viewport(DiagramFamilyId::BLOCK, diagram_id),
             work_meter: options.work_meter(),
             text_measurer: options.text_measurer(),
-            operation: options.family.session().operation_context(),
+            operation: session.operation_context(),
+            canvas_background: session.canvas_background(),
             shoal: edge_routes.is_shoal(),
         },
     )

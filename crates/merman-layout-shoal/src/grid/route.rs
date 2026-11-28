@@ -1426,8 +1426,7 @@ pub(crate) fn draw(
                     )?
                 {
                     Some(path)
-                } else if boundary_channels
-                    && early_gutters
+                } else if early_gutters
                     && let Some(path) = card_channel(
                         &router,
                         gutter_span,

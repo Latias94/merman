@@ -1536,6 +1536,80 @@ mod tests {
     }
 
     #[test]
+    fn face_contacts_follow_translated_nonrectangular_outlines() {
+        let mut geometry = BlockShapeGeometry {
+            id: "node".to_string(),
+            allocated: BlockAllocatedBounds {
+                x: 10.0,
+                y: -20.0,
+                width: 80.0,
+                height: 60.0,
+            },
+            boundary: BlockShapeBoundary::Circle {
+                radius: 5.0,
+                width_attribute: 10.0,
+                height_attribute: 10.0,
+            },
+        };
+        let assert_contacts = |geometry: &BlockShapeGeometry, cases: [(Side, f64, f64, f64); 4]| {
+            for (side, across, x, y) in cases {
+                let port = geometry.face_contact(side, across).unwrap();
+                assert!(
+                    (port.x - x).abs() < 1e-10 && (port.y - y).abs() < 1e-10,
+                    "{side:?}: {port:?}"
+                );
+            }
+        };
+        assert_contacts(
+            &geometry,
+            [
+                (Side::Top, 13.0, 13.0, -24.0),
+                (Side::Right, -17.0, 14.0, -17.0),
+                (Side::Bottom, 13.0, 13.0, -16.0),
+                (Side::Left, -17.0, 6.0, -17.0),
+            ],
+        );
+        assert!(geometry.face_contact(Side::Bottom, 15.5).is_none());
+
+        geometry.boundary = BlockShapeBoundary::Cylinder {
+            width: 20.0,
+            body_height: 20.0,
+            radius_x: 10.0,
+            radius_y: 5.0,
+        };
+        assert_contacts(
+            &geometry,
+            [
+                (Side::Top, 18.0, 18.0, -33.0),
+                (Side::Right, -7.0, 18.0, -7.0),
+                (Side::Bottom, 18.0, 18.0, -7.0),
+                (Side::Left, -14.0, 0.0, -14.0),
+            ],
+        );
+        assert!(geometry.face_contact(Side::Right, -4.5).is_none());
+
+        geometry.boundary = BlockShapeBoundary::Polygon {
+            points: vec![
+                LayoutPoint { x: 6.0, y: 0.0 },
+                LayoutPoint { x: 12.0, y: 6.0 },
+                LayoutPoint { x: 6.0, y: 12.0 },
+                LayoutPoint { x: 0.0, y: 6.0 },
+            ],
+            translation: LayoutPoint { x: -6.0, y: -6.0 },
+        };
+        assert_contacts(
+            &geometry,
+            [
+                (Side::Top, 12.0, 12.0, -24.0),
+                (Side::Right, -18.0, 14.0, -18.0),
+                (Side::Bottom, 12.0, 12.0, -16.0),
+                (Side::Left, -18.0, 6.0, -18.0),
+            ],
+        );
+        assert!(geometry.face_contact(Side::Left, -13.5).is_none());
+    }
+
+    #[test]
     fn all_block_shapes_materialize_a_closed_boundary_from_one_shape_factory() {
         let directions = vec!["right".to_string(), "down".to_string()];
         let cases = [

@@ -12,12 +12,42 @@ use crate::{
     WorkControl,
 };
 
+/// Optional limits on the number of cards or child boundaries in a row.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct CardGridOptions {
+    pub card_columns: Option<usize>,
+    pub boundary_columns: Option<usize>,
+}
+
+impl CardGridOptions {
+    pub fn with_column_limits(
+        card_columns: Option<usize>,
+        boundary_columns: Option<usize>,
+    ) -> Self {
+        Self {
+            card_columns,
+            boundary_columns,
+        }
+    }
+}
+
 /// Places each boundary's cards on a compact grid in authored order. Nested boundaries occupy
 /// their own cells, and a requested width can reduce the number of columns at every depth.
 /// Geometry remains in input order. Captured ranks are local row indices.
 pub fn layout_with_control(
     graph: &Graph,
     options: &Options,
+    control: &mut impl WorkControl,
+) -> Result<LayoutGeometry, LayoutError> {
+    layout_with_hints(graph, options, CardGridOptions::default(), control)
+}
+
+/// Places a card grid with caller-supplied row limits. `None` uses the aspect target.
+pub fn layout_with_hints(
+    graph: &Graph,
+    options: &Options,
+    hints: CardGridOptions,
     control: &mut impl WorkControl,
 ) -> Result<LayoutGeometry, LayoutError> {
     let mut work = Work::new(control);
@@ -29,7 +59,17 @@ pub fn layout_with_control(
     let mut hierarchy = Hierarchy::new(graph, &mut work)?;
     let mut metrics = Metrics::new(options);
     let projections = hierarchy.edges(graph, &mut metrics, &mut work)?;
-    let (mut drawing, gutters) = place::place(graph, &hierarchy, metrics, options, &mut work)?;
+    let caption_demands =
+        place::caption_demands(graph, &hierarchy, &projections, metrics, &mut work)?;
+    let (mut drawing, gutters) = place::place(
+        graph,
+        &hierarchy,
+        &caption_demands,
+        metrics,
+        options,
+        hints,
+        &mut work,
+    )?;
 
     work.charge(projections.len())?;
     let mut edges = reserved(projections.len())?;

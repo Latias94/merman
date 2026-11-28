@@ -669,9 +669,6 @@ pub fn render_er_diagram_svg_model(
     let canonical_routes = options.canonical_routes;
     #[cfg(feature = "layout-shoal")]
     let uses_canonical_routes = canonical_routes.is_some();
-    #[cfg(feature = "layout-shoal")]
-    let cutout_labels =
-        uses_canonical_routes && cutout::is_transparent_paint(&binding.edge_label_background);
     #[cfg(not(feature = "layout-shoal"))]
     let uses_canonical_routes = false;
     let is_elk_layout = options.elk_parity;
@@ -724,6 +721,14 @@ pub fn render_er_diagram_svg_model(
     let use_max_width = er_render_settings.use_max_width;
     let label_style = er_render_settings.label_style.clone();
     let edge_html_labels = entity_theme.relationship_html_labels();
+    #[cfg(feature = "layout-shoal")]
+    let cutout_labels = uses_canonical_routes
+        && cutout::is_transparent_paint(&binding.edge_label_background)
+        && (!edge_html_labels
+            || binding
+                .label_background
+                .as_ref()
+                .is_ok_and(|paint| cutout::is_transparent_paint(paint)));
     let swimlane_html_labels = ErConfigView::new(effective_config).swimlane_title_html_labels();
     let entity_wrap_mode = er_render_settings.entity_html_label_wrap_mode;
     let entity_measurement = er_render_settings.entity_measurement;
