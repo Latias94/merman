@@ -22,6 +22,25 @@ pub mod er;
 #[doc(hidden)]
 pub mod gitgraph;
 
+#[cfg(all(
+    feature = "layout-grid",
+    any(feature = "diagram-er", feature = "diagram-requirement")
+))]
+mod grid_edges;
+
+#[cfg(any(
+    feature = "diagram-er",
+    all(
+        feature = "layout-grid",
+        any(
+            feature = "diagram-requirement",
+            feature = "diagram-state",
+            feature = "diagram-usecase"
+        )
+    )
+))]
+mod label_rect;
+
 #[cfg(feature = "diagram-mindmap")]
 #[doc(hidden)]
 pub mod mindmap;

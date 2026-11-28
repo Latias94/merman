@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1 as const;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:0c26d41286136ae5f3a76c0b6bd1cb6afa8d8166043f91172c0487dcf52d476c" as const;
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:a8890daa18e827266f3c6608004c0b2fabdbb78cda285e82af5366bb6ed08429" as const;
 
 export const TARGETS = [
   {
@@ -117,6 +117,30 @@ export const CAPABILITIES = [
     "targets": [
       "native",
       "typst",
+      "web"
+    ]
+  },
+  {
+    "description": "Select Mermaid Grid for Flowchart, Swimlane, Agentflow, Class, ER, Mindmap, Requirement, State, and Usecase SVG layout.",
+    "id": "layout-grid",
+    "implications": [
+      "svg"
+    ],
+    "kind": "engine",
+    "targets": [
+      "native",
+      "web"
+    ]
+  },
+  {
+    "description": "Select Mermaid Layered for Flowchart, Swimlane, Agentflow, Class, ER, Mindmap, Requirement, State, and Usecase SVG layout.",
+    "id": "layout-layered",
+    "implications": [
+      "svg"
+    ],
+    "kind": "engine",
+    "targets": [
+      "native",
       "web"
     ]
   },
@@ -587,6 +611,8 @@ export const CAPABILITY_IDS = [
   "layout-cytoscape",
   "layout-dagre",
   "layout-elk",
+  "layout-grid",
+  "layout-layered",
   "layout-shoal",
   "markdown",
   "math",

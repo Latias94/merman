@@ -249,7 +249,7 @@ pub(in crate::svg) fn prepare_flowchart_viewbox_bounds<'data>(
         edge_path_cache
     };
 
-    if ctx.uses_elk_adapter_dom {
+    if ctx.layout.route_contract.dom().is_flat() {
         ctx.work_meter.charge(render_edges.len())?;
         for edge in render_edges {
             let key = edge.as_ref().key;

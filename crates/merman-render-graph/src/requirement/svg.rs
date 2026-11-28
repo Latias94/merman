@@ -28,6 +28,12 @@ use merman_render_core::{
     text::{TextMeasurer, TextStyle, svg_label as label},
     xml::{escape_attr, escape_attr_display, escape_xml},
 };
+#[cfg(feature = "layout-layered")]
+use merman_render_core::{
+    graph_layout::mermaid_layered::EdgeRouting,
+    rough_svg::paths::roughjs_hand_drawn_stroke_path_for_svg_path,
+    svg_edge_parity::layered_route::{self, Curve},
+};
 use merman_theme_contract::v2::{EdgeStyle, MarkerStyle};
 use roughr::core::RoughRandomness;
 use std::fmt::Write as _;
@@ -284,6 +290,49 @@ pub fn render_requirement_diagram_svg_model(
     let native = binding.native.as_ref();
     let edge_style = binding.edge_style();
     let render_settings = requirement_config.render_settings_with_binding(binding);
+    #[cfg(feature = "layout-layered")]
+    let layered = prepared.layered.as_ref().and_then(|paint| match paint {
+        super::layered::Paint::Axes { routing, routes } => {
+            let authored = match edge_style {
+                Some(EdgeStyle::Straight | EdgeStyle::Sketch) => "linear",
+                Some(EdgeStyle::Orthogonal) => "step",
+                _ => "basis",
+            };
+            // RequirementDB leaves the curve unset. Curved routing preserves that absence,
+            // so paint falls back to Flowchart config while line hops inspect the painted path.
+            let hint = (*routing != EdgeRouting::Curved || edge_style.is_some())
+                .then(|| Curve::for_edge_routing(*routing, authored));
+            let curve =
+                hint.unwrap_or_else(|| Curve::from_mermaid(requirement_config.flowchart_curve()));
+            Some((curve, hint, routes))
+        }
+        #[cfg(feature = "layout-dagre")]
+        super::layered::Paint::DagreFallback => None,
+    });
+    #[cfg(feature = "layout-layered")]
+    let uses_layered = layered.is_some();
+    #[cfg(not(feature = "layout-layered"))]
+    let uses_layered = false;
+    #[cfg(feature = "layout-layered")]
+    let layered_label_y_offset =
+        uses_layered.then(|| requirement_config.layered_edge_label_y_offset());
+    #[cfg(not(feature = "layout-layered"))]
+    let layered_label_y_offset: Option<f64> = None;
+    #[cfg(feature = "layout-grid")]
+    let grid_paint = prepared.grid.as_ref().map(|grid| {
+        let mut settings = grid.settings;
+        if matches!(
+            edge_style,
+            Some(EdgeStyle::Orthogonal | EdgeStyle::Straight)
+        ) {
+            settings.curve = "linear";
+        }
+        settings
+    });
+    #[cfg(feature = "layout-grid")]
+    let uses_grid = grid_paint.is_some();
+    #[cfg(not(feature = "layout-grid"))]
+    let uses_grid = false;
     #[cfg(feature = "layout-shoal")]
     let canonical_paint = options.canonical_routes.map(|paint| {
         let width = binding.canonical_stroke_width(&requirement_config);
@@ -295,6 +344,8 @@ pub fn render_requirement_diagram_svg_model(
     let uses_canonical_routes = false;
     let look = render_settings.look;
     let look = look.as_str();
+    let layered_hand_drawn =
+        uses_layered && look == "handDrawn" && edge_style != Some(EdgeStyle::Sketch);
     let look_attr = format!(r#" data-look="{}""#, escape_attr_display(look));
     let border_colors = &binding.border_colors;
     let color_indices = requirement_color_indices(model);
@@ -325,7 +376,9 @@ pub fn render_requirement_diagram_svg_model(
     };
 
     let mut painted_edges = std::collections::HashMap::with_capacity(layout.edges.len());
-    for edge in &layout.edges {
+    for (edge_index, edge) in layout.edges.iter().enumerate() {
+        #[cfg(not(feature = "layout-layered"))]
+        let _ = edge_index;
         let identity = RequirementEdgeIdentity::from(edge);
         let prepared_edge = prepared_edges
             .get(&identity)
@@ -335,31 +388,61 @@ pub fn render_requirement_diagram_svg_model(
                     edge.from, edge.to, edge.id
                 ),
             })?;
+        let sketch_path = |d: &str| {
+            let (contains, arrow) = compatibility_sketch_markers.unwrap_or_default();
+            let markers = (
+                if prepared_edge.marker_start {
+                    contains
+                } else {
+                    Default::default()
+                },
+                if prepared_edge.marker_end {
+                    arrow
+                } else {
+                    Default::default()
+                },
+            );
+            constrained_rough_edge_path(d, markers, options.work_meter, hand_drawn_seed)
+        };
         let compatibility_path = || -> Result<String> {
+            #[cfg(feature = "layout-layered")]
+            if let Some((curve, _, routes)) = layered {
+                // Both the painted requirementBox and the measured port rectangle have straight sides.
+                // Requirement's markers use the same contact point as the shaft.
+                let path = layered_route::path(
+                    &routes[edge_index].points,
+                    curve,
+                    0.0,
+                    0.0,
+                    options.work_meter,
+                )?;
+                if edge_style == Some(EdgeStyle::Sketch) {
+                    return sketch_path(&path);
+                }
+                if layered_hand_drawn {
+                    if let Some(drawn) = roughjs_hand_drawn_stroke_path_for_svg_path(
+                        &path,
+                        0.3,
+                        options.work_meter,
+                        hand_drawn_seed,
+                    ) {
+                        return Ok(drawn);
+                    }
+                    options.work_meter.checkpoint(OperationPhase::Emit)?;
+                }
+                return Ok(path);
+            }
+            #[cfg(feature = "layout-grid")]
+            if let Some(settings) = grid_paint
+                && edge_style != Some(EdgeStyle::Sketch)
+            {
+                return crate::grid_edges::shaft(&edge.points, settings, options.work_meter);
+            }
             Ok(match edge_style {
                 Some(EdgeStyle::Orthogonal) => curve::curve_step_path_d_and_bounds(&edge.points).0,
                 Some(EdgeStyle::Straight) => curve::curve_linear_path_d(&edge.points),
                 Some(EdgeStyle::Sketch) => {
-                    let d = curve::curve_linear_path_d(&edge.points);
-                    let (contains, arrow) = compatibility_sketch_markers.unwrap_or_default();
-                    let markers = (
-                        if prepared_edge.marker_start {
-                            contains
-                        } else {
-                            Default::default()
-                        },
-                        if prepared_edge.marker_end {
-                            arrow
-                        } else {
-                            Default::default()
-                        },
-                    );
-                    return constrained_rough_edge_path(
-                        &d,
-                        markers,
-                        options.work_meter,
-                        hand_drawn_seed,
-                    );
+                    return sketch_path(&curve::curve_linear_path_d(&edge.points));
                 }
                 Some(EdgeStyle::Curved) => curve::curve_basis_path_d(&edge.points),
                 None if prepared.uses_elk() && edge.points.len() <= 2 => {
@@ -389,7 +472,12 @@ pub fn render_requirement_diagram_svg_model(
                 x: label.x,
                 y: label.y,
             };
-            Some(if uses_canonical_routes {
+            Some(if let Some(offset) = layered_label_y_offset {
+                LayoutPoint {
+                    y: anchor.y + offset,
+                    ..anchor
+                }
+            } else if uses_canonical_routes || uses_grid {
                 anchor
             } else {
                 edge_label_geometry::position_edge_label(
@@ -457,9 +545,43 @@ pub fn render_requirement_diagram_svg_model(
     } else {
         std::collections::HashMap::new()
     };
+    #[cfg(feature = "layout-grid")]
+    let hop_paths = if let Some(settings) = grid_paint
+        && edge_style != Some(EdgeStyle::Sketch)
+    {
+        crate::grid_edges::line_hop_paths(&layout.edges, settings, options.work_meter)?
+    } else {
+        hop_paths
+    };
+    #[cfg(feature = "layout-layered")]
+    let hop_paths = if let Some((_, hint, _)) = layered
+        && edge_style != Some(EdgeStyle::Sketch)
+    {
+        super::layered::line_hop_paths(
+            &layout.edges,
+            |edge| {
+                if hint.is_some() {
+                    return Ok(hint);
+                }
+                let d = &painted_edges[&RequirementEdgeIdentity::from(edge)].d;
+                options.work_meter.charge_emit_work(d.len())?;
+                // Both axis and rough writers emit only M/L and these three curve commands.
+                Ok(d.contains(['A', 'C', 'Q']).then_some(Curve::Curved))
+            },
+            effective_config.pointer("/layered/lineHops"),
+            options.work_meter,
+        )?
+    } else {
+        hop_paths
+    };
 
     // Mermaid derives the root viewport from the rendered SVG subtree. Reconstruct those bounds
     // from final paths and post-path label positions instead of stale Dagre label anchors.
+    let bounds_scan_phase = if uses_layered {
+        OperationPhase::Emit
+    } else {
+        OperationPhase::Layout
+    };
     let mut min_x = f64::INFINITY;
     let mut min_y = f64::INFINITY;
     let mut max_x = f64::NEG_INFINITY;
@@ -486,9 +608,11 @@ pub fn render_requirement_diagram_svg_model(
             max_y = max_y.max(canonical.bounds.max_y);
         } else if let Some(path) = hop_paths
             .get(edge.id.as_str())
-            .or_else(|| native.map(|_| &painted.d))
+            .or_else(|| (uses_grid || uses_layered || native.is_some()).then_some(&painted.d))
         {
-            options.work_meter.charge(path.len())?;
+            options
+                .work_meter
+                .charge_work(path.len(), bounds_scan_phase)?;
             if let Some(bounds) = svg_path_bounds_from_d(path) {
                 let outset = native.map_or(0.0, |style| style.connector_width / 2.0);
                 min_x = min_x.min(bounds.min_x - outset);
@@ -574,6 +698,13 @@ pub fn render_requirement_diagram_svg_model(
     root_chrome.class = Some("requirementDiagram");
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
     root_chrome.aria_describedby = aria_describedby.as_deref();
+    #[cfg(all(feature = "layout-layered", feature = "layout-dagre"))]
+    if matches!(
+        &prepared.layered,
+        Some(super::layered::Paint::DagreFallback)
+    ) {
+        root_chrome.extra_attrs = &[("data-layout-fallback", "dagre")];
+    }
     root_chrome.dom = root_svg::RootDomProfile {
         fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
         fixed_style_placement: root_svg::RootStylePlacement::Tail,
@@ -671,7 +802,7 @@ pub fn render_requirement_diagram_svg_model(
     out.push_str(r#"<g class="root">"#);
     out.push_str(r#"<g class="clusters"/>"#);
 
-    out.push_str(if prepared.uses_elk() {
+    out.push_str(if prepared.uses_elk() || uses_grid || uses_layered {
         r#"<g class="edges edgePaths">"#
     } else {
         r#"<g class="edgePaths">"#
@@ -689,7 +820,13 @@ pub fn render_requirement_diagram_svg_model(
         let rel_type = prepared_label.relationship_type.as_str();
         let is_contains = rel_type == "contains";
         let pattern = if is_contains { "solid" } else { "dashed" };
-        let class = format!("edge-thickness-normal edge-pattern-{pattern} relationshipLine");
+        let transition = if layered_hand_drawn {
+            " transition"
+        } else {
+            ""
+        };
+        let class =
+            format!("edge-thickness-normal edge-pattern-{pattern}{transition} relationshipLine");
         let style = match (uses_canonical_routes, is_contains) {
             (true, true) => "fill:none;",
             (true, false) => "fill:none;stroke-dasharray:10,7;",
@@ -726,8 +863,17 @@ pub fn render_requirement_diagram_svg_model(
             .canonical
             .as_ref()
             .map_or(e.points.as_slice(), |geometry| geometry.points.as_slice());
-        let data_points_b64 =
-            base64::engine::general_purpose::STANDARD.encode(json_stringify_points(data_points));
+        let json = {
+            #[cfg(feature = "layout-layered")]
+            if let Some((_, _, routes)) = layered {
+                super::layered::axis_points_json(e, &routes[edge_index], options.work_meter)?
+            } else {
+                json_stringify_points(data_points)
+            }
+            #[cfg(not(feature = "layout-layered"))]
+            json_stringify_points(data_points)
+        };
+        let data_points_b64 = base64::engine::general_purpose::STANDARD.encode(json);
 
         let mut marker_attr = String::new();
         if prepared_label.marker_start {
@@ -768,7 +914,12 @@ pub fn render_requirement_diagram_svg_model(
     out.push_str("</g>");
 
     out.push_str(r#"<g class="edgeLabels">"#);
-    for e in &layout.edges {
+    let regular_labels = if uses_grid {
+        &[]
+    } else {
+        layout.edges.as_slice()
+    };
+    for e in regular_labels {
         let identity = RequirementEdgeIdentity::from(e);
         let prepared_label = prepared_edges
             .get(&identity)
@@ -1362,6 +1513,38 @@ pub fn render_requirement_diagram_svg_model(
         }
 
         out.push_str("</g>");
+    }
+    #[cfg(feature = "layout-grid")]
+    if let Some(grid) = &prepared.grid {
+        let prefix = format!("{diagram_id}-");
+        for (edge, label) in layout.edges.iter().zip(&grid.labels) {
+            options.work_meter.checkpoint(OperationPhase::Emit)?;
+            let placement = edge.label.as_ref().ok_or_else(|| Error::InvalidModel {
+                message: format!("missing Requirement Grid label geometry for `{}`", edge.id),
+            })?;
+            options.work_meter.charge_emit_work(edge.id.len())?;
+            options.work_meter.charge_emit_work(edge.from.len())?;
+            options.work_meter.charge_emit_work(edge.to.len())?;
+            let id = available_local_svg_id(
+                format!("edge-label-{}-{}-{}", edge.from, edge.to, edge.id),
+                layout.nodes.len(),
+                |candidate| {
+                    let local_id = if has_diagram_id {
+                        candidate.strip_prefix(&prefix)
+                    } else {
+                        Some(candidate)
+                    };
+                    candidate == diagram_id.semantic_str()
+                        || local_id.is_some_and(|id| {
+                            req_by_id.contains_key(id) || el_by_id.contains_key(id)
+                        })
+                },
+                options.work_meter,
+            )?;
+            label
+                .terminal
+                .write(&mut out, placement, &id, (0.0, 0.0), false)?;
+        }
     }
     out.push_str("</g>");
 

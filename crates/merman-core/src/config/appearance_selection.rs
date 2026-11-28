@@ -18,6 +18,18 @@ pub(super) fn select_appearance_value<'a>(
     initialize: &'a MermaidConfig,
     defaults: &'a MermaidConfig,
 ) -> Option<(Cow<'a, Value>, AppearanceOrigin)> {
+    // MindmapDB asks whether user configuration supplied the root layout key before reading
+    // the effective layout. A family-only layout leaves its CoSE-Bilkent default in place.
+    if section == "mindmap"
+        && key == "layout"
+        && source.get(key).is_none()
+        && initialize.get(key).is_none()
+    {
+        return Some((
+            Cow::Owned(Value::String("cose-bilkent".to_owned())),
+            AppearanceOrigin::Default,
+        ));
+    }
     [
         (source, AppearanceOrigin::Source),
         (initialize, AppearanceOrigin::Initialize),
@@ -25,15 +37,6 @@ pub(super) fn select_appearance_value<'a>(
     .into_iter()
     .find_map(|(layer, origin)| {
         read_appearance(layer, section, key).map(|value| (Cow::Borrowed(value), origin))
-    })
-    // Mindmap chooses Cose only in the absence of an authored layout, including null.
-    .or_else(|| {
-        (section == "mindmap" && key == "layout").then(|| {
-            (
-                Cow::Owned(Value::String("cose-bilkent".to_string())),
-                AppearanceOrigin::Default,
-            )
-        })
     })
     .or_else(|| {
         read_appearance(defaults, section, key)

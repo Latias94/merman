@@ -6,7 +6,7 @@ Parse, lay out, and render [Mermaid] diagrams for documentation, editor previews
 applications. Merman runs headlessly: its native rendering path needs no browser or JavaScript
 runtime. Use it as a Rust library, a CLI, or through browser and native bindings.
 
-Merman targets Mermaid **12.3.0** syntax, behavior, and SVG structure. Rendering uses Mermaid's
+Merman targets Mermaid **12.4.0** syntax, behavior, and SVG structure. Rendering uses Mermaid's
 themes by default; custom Merman themes are optional.
 
 [![CI status](https://github.com/Latias94/merman/actions/workflows/ci.yml/badge.svg)](https://github.com/Latias94/merman/actions/workflows/ci.yml) [![merman on crates.io](https://img.shields.io/crates/v/merman.svg)](https://crates.io/crates/merman) [![Rust API documentation](https://docs.rs/merman/badge.svg)](https://docs.rs/merman) [![MIT or Apache 2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-59636e.svg)](#license-and-attribution)

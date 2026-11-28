@@ -845,7 +845,36 @@ pub fn render_mindmap_diagram_svg(
         .iter()
         .map(|node| (node.id.as_str(), node))
         .collect();
-    let backend = *routing;
+    let backend = routing;
+    #[cfg(feature = "layout-grid")]
+    let (mut grid_edges, grid_dom) = match backend {
+        MindmapEdgeRouting::Grid(settings) => (
+            super::grid::paint_edges(
+                &layout.edges,
+                &node_by_id,
+                &source_node_by_id,
+                *settings,
+                context.work_meter,
+            )?
+            .into_iter(),
+            true,
+        ),
+        _ => (Vec::new().into_iter(), false),
+    };
+    #[cfg(not(feature = "layout-grid"))]
+    let grid_dom = false;
+    #[cfg(feature = "layout-layered")]
+    let mut layered_edges = match backend {
+        MindmapEdgeRouting::Layered(paint) => Some(
+            paint
+                .edges(model, layout, config, context.work_meter)?
+                .into_iter(),
+        ),
+        _ => None,
+    };
+    let common_dom = grid_dom;
+    #[cfg(feature = "layout-layered")]
+    let common_dom = common_dom || layered_edges.is_some();
 
     drop(_g_build_ctx);
 
@@ -881,11 +910,15 @@ pub fn render_mindmap_diagram_svg(
     let _g_render_svg = timing.section(&mut timings.render_svg);
 
     let mut out = BoundedSvgOutput::new(context.work_meter);
+    let fallback = backend
+        .layout_fallback()
+        .map(|name| ("data-layout-fallback", name));
     let root_document = context.viewport.write_open(
         &mut out,
         root_spec,
         root_svg::RootChrome {
             class: Some("mindmapDiagram"),
+            extra_attrs: fallback.as_slice(),
             dom: root_svg::RootDomProfile {
                 trailing_newline: false,
                 ..Default::default()
@@ -934,7 +967,9 @@ pub fn render_mindmap_diagram_svg(
     );
     out.checkpoint()?;
 
-    if layout.swimlane_lanes.is_empty() {
+    if common_dom {
+        out.push_str(r#"<g class="root"><g class="clusters"/>"#);
+    } else if layout.swimlane_lanes.is_empty() {
         out.push_str(r#"<g class="subgraphs"/>"#);
     } else {
         out.push_str(r#"<g class="subgraphs">"#);
@@ -964,91 +999,120 @@ pub fn render_mindmap_diagram_svg(
         out.push_str("</g>");
     }
 
-    out.push_str(r#"<g class="edgePaths">"#);
+    out.push_str(if common_dom {
+        r#"<g class="edges edgePaths">"#
+    } else {
+        r#"<g class="edgePaths">"#
+    });
     out.checkpoint()?;
     for e in &model.edges {
-        let start = node_by_id.get(&e.start).copied();
-        let end = node_by_id.get(&e.end).copied();
-        let projected_points = || {
-            edge_by_id
-                .get(e.id.as_str())
-                .map(|edge| edge.points.clone())
-                .unwrap_or_default()
-        };
-        let is_circle = |id: &str| {
-            source_node_by_id
-                .get(id)
-                .is_some_and(|node| node.shape == "mindmapCircle")
-        };
-        let points_for_data_points = match (backend, start, end) {
-            #[cfg(feature = "layout-cytoscape")]
-            (MindmapEdgeRouting::CoseBilkent, ..) => {
-                // Mermaid offsets the endpoints of CoSE edges along the node-to-node ray.
-                let (sx, sy, tx, ty) = match (start, end) {
-                    (Some(a), Some(b)) => (a.x, a.y, b.x, b.y),
-                    _ => (0.0, 0.0, 0.0, 0.0),
+        let (d, data_points) = match backend {
+            #[cfg(feature = "layout-layered")]
+            MindmapEdgeRouting::Layered(_) => {
+                let geometry = layered_edges
+                    .as_mut()
+                    .and_then(Iterator::next)
+                    .ok_or_else(|| super::layered::invalid_projection("missing painted edge"))?;
+                (geometry.path, geometry.data_points)
+            }
+            #[cfg(feature = "layout-grid")]
+            MindmapEdgeRouting::Grid(_) => {
+                let geometry = grid_edges
+                    .next()
+                    .ok_or_else(|| super::grid::invalid_projection("missing painted edge"))?;
+                (
+                    geometry.path,
+                    base64::engine::general_purpose::STANDARD
+                        .encode(json_stringify_points(&geometry.points)),
+                )
+            }
+            _ => {
+                let start = node_by_id.get(&e.start).copied();
+                let end = node_by_id.get(&e.end).copied();
+                let projected_points = || {
+                    edge_by_id
+                        .get(e.id.as_str())
+                        .map(|edge| edge.points.clone())
+                        .unwrap_or_default()
                 };
-                let (vx, vy) = (tx - sx, ty - sy);
-                let v_len = (vx * vx + vy * vy).sqrt();
-                let (ux, uy) = if v_len == 0.0 {
-                    (0.0, 0.0)
+                let is_circle = |id: &str| {
+                    source_node_by_id
+                        .get(id)
+                        .is_some_and(|node| node.shape == "mindmapCircle")
+                };
+                let points_for_data_points = match (backend, start, end) {
+                    #[cfg(feature = "layout-cytoscape")]
+                    (MindmapEdgeRouting::CoseBilkent, ..) => {
+                        // Mermaid offsets the endpoints of CoSE edges along the node-to-node ray.
+                        let (sx, sy, tx, ty) = match (start, end) {
+                            (Some(a), Some(b)) => (a.x, a.y, b.x, b.y),
+                            _ => (0.0, 0.0, 0.0, 0.0),
+                        };
+                        let (vx, vy) = (tx - sx, ty - sy);
+                        let v_len = (vx * vx + vy * vy).sqrt();
+                        let (ux, uy) = if v_len == 0.0 {
+                            (0.0, 0.0)
+                        } else {
+                            (vx / v_len, vy / v_len)
+                        };
+                        let endpoint_offset = 15.0;
+                        let start_x = sx + endpoint_offset * ux;
+                        let start_y = sy + endpoint_offset * uy;
+                        let end_x = tx - endpoint_offset * ux;
+                        let end_y = ty - endpoint_offset * uy;
+                        let mid_x = (start_x + end_x) / 2.0;
+                        let mid_y = (start_y + end_y) / 2.0;
+                        vec![
+                            LayoutPoint {
+                                x: start_x,
+                                y: start_y,
+                            },
+                            LayoutPoint { x: mid_x, y: mid_y },
+                            LayoutPoint { x: end_x, y: end_y },
+                        ]
+                    }
+                    (backend, Some(start), Some(end)) if backend.clips_circle_endpoints() => {
+                        clip_circle_endpoints(
+                            projected_points(),
+                            start,
+                            end,
+                            is_circle(&e.start),
+                            is_circle(&e.end),
+                        )
+                    }
+                    #[cfg(feature = "layout-elk")]
+                    (MindmapEdgeRouting::Elk, Some(start), Some(end)) => {
+                        let points = projected_points();
+                        let mut elk_points = Vec::with_capacity(points.len() + 2);
+                        elk_points.push(LayoutPoint {
+                            x: start.x,
+                            y: start.y,
+                        });
+                        elk_points.extend(points);
+                        elk_points.push(LayoutPoint { x: end.x, y: end.y });
+                        sanitize_elk_endpoints(
+                            &elk_points,
+                            start,
+                            end,
+                            is_circle(&e.start),
+                            is_circle(&e.end),
+                        )
+                    }
+                    _ => projected_points(),
+                };
+                let d = if matches!(backend, MindmapEdgeRouting::Swimlane) {
+                    curve::curve_rounded_path_d(&points_for_data_points, 10.0)
+                } else if e.curve.trim() == "basis" {
+                    curve::curve_basis_path_d(&points_for_data_points)
                 } else {
-                    (vx / v_len, vy / v_len)
+                    curve::curve_linear_path_d(&points_for_data_points)
                 };
-                let endpoint_offset = 15.0;
-                let start_x = sx + endpoint_offset * ux;
-                let start_y = sy + endpoint_offset * uy;
-                let end_x = tx - endpoint_offset * ux;
-                let end_y = ty - endpoint_offset * uy;
-                let mid_x = (start_x + end_x) / 2.0;
-                let mid_y = (start_y + end_y) / 2.0;
-                vec![
-                    LayoutPoint {
-                        x: start_x,
-                        y: start_y,
-                    },
-                    LayoutPoint { x: mid_x, y: mid_y },
-                    LayoutPoint { x: end_x, y: end_y },
-                ]
-            }
-            (backend, Some(start), Some(end)) if backend.clips_circle_endpoints() => {
-                clip_circle_endpoints(
-                    projected_points(),
-                    start,
-                    end,
-                    is_circle(&e.start),
-                    is_circle(&e.end),
+                (
+                    d,
+                    base64::engine::general_purpose::STANDARD
+                        .encode(json_stringify_points(&points_for_data_points)),
                 )
             }
-            #[cfg(feature = "layout-elk")]
-            (MindmapEdgeRouting::Elk, Some(start), Some(end)) => {
-                let points = projected_points();
-                let mut elk_points = Vec::with_capacity(points.len() + 2);
-                elk_points.push(LayoutPoint {
-                    x: start.x,
-                    y: start.y,
-                });
-                elk_points.extend(points);
-                elk_points.push(LayoutPoint { x: end.x, y: end.y });
-                sanitize_elk_endpoints(
-                    &elk_points,
-                    start,
-                    end,
-                    is_circle(&e.start),
-                    is_circle(&e.end),
-                )
-            }
-            _ => projected_points(),
-        };
-        let data_points = base64::engine::general_purpose::STANDARD
-            .encode(json_stringify_points(&points_for_data_points));
-
-        let d = if matches!(backend, MindmapEdgeRouting::Swimlane) {
-            curve::curve_rounded_path_d(&points_for_data_points, 10.0)
-        } else if e.curve.trim() == "basis" {
-            curve::curve_basis_path_d(&points_for_data_points)
-        } else {
-            curve::curve_linear_path_d(&points_for_data_points)
         };
         let class = format!(
             "edge-thickness-{} edge-pattern-solid {}",
@@ -1095,8 +1159,10 @@ pub fn render_mindmap_diagram_svg(
 
     out.push_str(r#"<g class="edgeLabels">"#);
     out.checkpoint()?;
-    for e in &model.edges {
-        write_mindmap_edge_label(&mut out, &e.id, config)?;
+    if !common_dom {
+        for e in &model.edges {
+            write_mindmap_edge_label(&mut out, &e.id, config)?;
+        }
     }
     out.push_str("</g>");
     out.checkpoint()?;
@@ -1465,6 +1531,9 @@ pub fn render_mindmap_diagram_svg(
     }
     out.push_str("</g>");
 
+    if common_dom {
+        out.push_str("</g>");
+    }
     out.push_str("</g>");
     if let Some(binding) = binding {
         push_mindmap_shadow_defs(&mut out, diagram_id.semantic_str(), binding.shadow_flood)?;

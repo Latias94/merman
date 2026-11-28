@@ -145,6 +145,8 @@ fn selected_case() -> String {
         "parallel-pdf",
         "cytoscape-layout",
         "elk-layout",
+        "grid-layout",
+        "layered-layout",
         "math",
         "rustdoc",
         "completions",
@@ -186,6 +188,8 @@ fn expected_capabilities(case: &str) -> Vec<&'static str> {
         ],
         "cytoscape-layout" => vec!["layout-cytoscape", "svg"],
         "elk-layout" => vec!["layout-elk", "svg"],
+        "grid-layout" => vec!["layout-grid", "svg"],
+        "layered-layout" => vec!["layout-layered", "svg"],
         "math" => vec!["layout-dagre", "math", "svg"],
         "rustdoc" => vec![
             "layout-cytoscape",
@@ -230,6 +234,36 @@ fn compiled_capabilities_for_auto_detection() -> Vec<&'static str> {
         "layout-dagre",
         #[cfg(feature = "layout-elk")]
         "layout-elk",
+        #[cfg(all(
+            feature = "layout-grid",
+            any(
+                feature = "diagram-flowchart",
+                feature = "diagram-swimlane",
+                feature = "diagram-agentflow",
+                feature = "diagram-class",
+                feature = "diagram-er",
+                feature = "diagram-mindmap",
+                feature = "diagram-requirement",
+                feature = "diagram-state",
+                feature = "diagram-usecase"
+            )
+        ))]
+        "layout-grid",
+        #[cfg(all(
+            feature = "layout-layered",
+            any(
+                feature = "diagram-flowchart",
+                feature = "diagram-swimlane",
+                feature = "diagram-agentflow",
+                feature = "diagram-class",
+                feature = "diagram-er",
+                feature = "diagram-mindmap",
+                feature = "diagram-requirement",
+                feature = "diagram-state",
+                feature = "diagram-usecase"
+            )
+        ))]
+        "layout-layered",
         #[cfg(feature = "layout-shoal")]
         "layout-shoal",
         #[cfg(feature = "markdown")]
@@ -643,13 +677,13 @@ fn workflow_base() {
     assert_eq!(detect.stdout, b"flowchart-v2\n");
 
     let parse = run(&["parse", "-"], SIMPLE_SOURCE.as_bytes(), None);
-    #[cfg(feature = "all-diagrams")]
+    #[cfg(feature = "diagram-flowchart")]
     {
         assert_success(&parse, "parse stdin");
         let payload: Value = serde_json::from_slice(&parse.stdout).expect("parse JSON");
         assert!(payload.is_object());
     }
-    #[cfg(not(feature = "all-diagrams"))]
+    #[cfg(not(feature = "diagram-flowchart"))]
     {
         assert_eq!(
             parse.status.code(),
@@ -1087,6 +1121,159 @@ fn workflow_elk() {
     panic!("ELK matrix case lacks layout-elk");
 }
 
+fn workflow_grid() {
+    #[cfg(feature = "layout-grid")]
+    workflow_mermaid_layout(
+        "grid",
+        &[
+            #[cfg(feature = "diagram-class")]
+            ("class", "classDiagram\nclass A\n", "ClassDiagramV2"),
+            #[cfg(feature = "diagram-er")]
+            (
+                "er",
+                "erDiagram\n  CUSTOMER ||--o{ ORDER : places\n",
+                "ErDiagram",
+            ),
+            #[cfg(feature = "diagram-mindmap")]
+            (
+                "mindmap",
+                "mindmap\n  root((Start))\n    Done\n",
+                "MindmapDiagram",
+            ),
+            #[cfg(feature = "diagram-requirement")]
+            (
+                "requirement",
+                "requirementDiagram\n  requirement checkout {\n    id: 1\n  }\n",
+                "RequirementDiagram",
+            ),
+            #[cfg(feature = "diagram-state")]
+            (
+                "state",
+                "stateDiagram-v2\n  Idle --> Ready\n",
+                "StateDiagramV2",
+            ),
+            #[cfg(feature = "diagram-usecase")]
+            (
+                "usecase",
+                "usecase-beta\n  actor Customer\n  Checkout[Checkout]\n  Customer --> Checkout\n",
+                "UsecaseDiagram",
+            ),
+        ],
+    );
+    #[cfg(not(feature = "layout-grid"))]
+    panic!("Grid matrix case lacks layout-grid");
+}
+
+fn workflow_layered() {
+    #[cfg(feature = "layout-layered")]
+    workflow_mermaid_layout(
+        "layered",
+        &[
+            #[cfg(feature = "diagram-class")]
+            ("class", "classDiagram\nA --> B\n", "ClassDiagramV2"),
+            #[cfg(feature = "diagram-er")]
+            (
+                "er",
+                "erDiagram\n  CUSTOMER ||--o{ ORDER : places\n",
+                "ErDiagram",
+            ),
+            #[cfg(feature = "diagram-mindmap")]
+            (
+                "mindmap",
+                "mindmap\n  root((Start))\n    Done\n",
+                "MindmapDiagram",
+            ),
+            #[cfg(feature = "diagram-requirement")]
+            (
+                "requirement",
+                "requirementDiagram\n  requirement checkout {\n    id: 1\n  }\n",
+                "RequirementDiagram",
+            ),
+            #[cfg(feature = "diagram-state")]
+            (
+                "state",
+                "stateDiagram-v2\n  Idle --> Ready\n",
+                "StateDiagramV2",
+            ),
+            #[cfg(feature = "diagram-usecase")]
+            (
+                "usecase",
+                "usecase-beta\n  actor Customer\n  Checkout[Checkout]\n  Customer --> Checkout\n",
+                "UsecaseDiagram",
+            ),
+        ],
+    );
+    #[cfg(not(feature = "layout-layered"))]
+    panic!("Layered matrix case lacks layout-layered");
+}
+
+#[cfg(any(feature = "layout-grid", feature = "layout-layered"))]
+fn workflow_mermaid_layout(backend: &str, extra_families: &[(&str, &str, &str)]) {
+    let flow_families: &[(&str, &str, &str)] = &[
+        #[cfg(feature = "diagram-flowchart")]
+        (
+            "flowchart",
+            "flowchart LR\nA[Start] -->|Approved| B[Done]\n",
+            "FlowchartV2",
+        ),
+        #[cfg(feature = "diagram-swimlane")]
+        (
+            "swimlane",
+            "swimlane-beta LR\nA[Start] -->|Approved| B[Done]\n",
+            "FlowchartV2",
+        ),
+        #[cfg(feature = "diagram-agentflow")]
+        (
+            "agentflow",
+            "agentflow LR\nA[Start] -->|Approved| B[Done]\n",
+            "AgentflowDiagram",
+        ),
+    ];
+    assert!(!flow_families.is_empty() || !extra_families.is_empty());
+    let temp = tempfile::tempdir().expect("create layout config directory");
+    fs::write(
+        temp.path().join("layout.json"),
+        serde_json::json!({"layout": backend}).to_string(),
+    )
+    .expect("write layout site config");
+
+    for &(family, diagram, layout_kind) in flow_families.iter().chain(extra_families) {
+        let source = format!("---\nconfig:\n  layout: {backend}\n---\n{diagram}");
+        let rendered = run(&["render", "--format", "svg", "-"], source.as_bytes(), None);
+        assert_success(&rendered, family);
+        assert_svg(&rendered.stdout);
+
+        let layout = run(
+            &["layout", "--config-file", "layout.json", "-"],
+            diagram.as_bytes(),
+            Some(temp.path()),
+        );
+        assert_success(&layout, family);
+        let payload: Value = serde_json::from_slice(&layout.stdout).expect("layout JSON");
+        assert_eq!(payload["family_id"], family);
+        assert!(payload["layout"][layout_kind].is_object(), "{payload}");
+    }
+}
+
+#[cfg(all(
+    feature = "svg",
+    feature = "diagram-flowchart",
+    not(feature = "layout-grid")
+))]
+#[test]
+fn grid_source_requires_cli_opt_in() {
+    let source = format!("---\nconfig:\n  layout: grid\n---\n{SIMPLE_SOURCE}");
+    let output = run(&["render", "--format", "svg", "-"], source.as_bytes(), None);
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("layout backend `grid` is unsupported")
+            || stderr.contains("lacks capability `layout-grid`"),
+        "{stderr}"
+    );
+}
+
 fn workflow_math() {
     #[cfg(feature = "math")]
     {
@@ -1332,8 +1519,18 @@ fn workflow_auto() {
     workflow_base();
     #[cfg(feature = "analysis")]
     workflow_analysis();
-    #[cfg(feature = "svg")]
+    #[cfg(all(
+        feature = "svg",
+        feature = "diagram-flowchart",
+        feature = "layout-dagre"
+    ))]
     workflow_svg();
+    if compiled_capabilities_for_auto_detection().contains(&"layout-grid") {
+        workflow_grid();
+    }
+    if compiled_capabilities_for_auto_detection().contains(&"layout-layered") {
+        workflow_layered();
+    }
     #[cfg(feature = "ascii")]
     workflow_ascii();
     #[cfg(feature = "icons")]
@@ -1388,6 +1585,8 @@ fn execute_primary_workflow(case: &str) {
         "parallel-pdf" => workflow_batch("pdf", Some("2")),
         "cytoscape-layout" => workflow_cytoscape(),
         "elk-layout" => workflow_elk(),
+        "grid-layout" => workflow_grid(),
+        "layered-layout" => workflow_layered(),
         "math" => workflow_math(),
         "rustdoc" => workflow_rustdoc(),
         "completions" => workflow_completions(),

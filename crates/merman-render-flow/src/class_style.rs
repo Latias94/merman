@@ -100,6 +100,18 @@ impl FlowchartPreparedClassShell {
             },
         }
     }
+
+    #[cfg(feature = "layout-grid")]
+    pub(crate) fn observe_grid_html_label_fonts(
+        &self,
+        cascade: &mut mermaid_style::TextStyleCascade<'_>,
+    ) {
+        for font in self.shape_labels.fonts.iter().flatten() {
+            let declaration = &font.declaration;
+            // The generated `.nodes > *` and `.nodes span` rules are both important.
+            cascade.observe(declaration.property(), declaration.value(), true);
+        }
+    }
 }
 
 #[derive(Debug)]

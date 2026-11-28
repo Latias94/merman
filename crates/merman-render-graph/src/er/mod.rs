@@ -1,4 +1,4 @@
-//! ER configuration, prepared labels and styles, Dagre and ELK layout, and complete SVG emission.
+//! ER configuration, prepared labels and styles, layout adapters, and complete SVG emission.
 
 mod binding;
 mod config;
@@ -7,7 +7,11 @@ mod dagre;
 #[cfg(feature = "layout-elk")]
 mod elk;
 mod geometry;
+#[cfg(feature = "layout-grid")]
+mod grid;
 mod labels;
+#[cfg(feature = "layout-layered")]
+mod layered;
 mod markers;
 mod native_theme;
 mod source_style;
@@ -16,6 +20,7 @@ mod svg;
 mod swimlane;
 mod theme;
 
+pub use crate::label_rect::label_rect_html_source as swimlane_relationship_html_source;
 pub use binding::ErCssBinding;
 pub use config::{ErConfigView, ErEntityMeasurementSettings, ErLayoutSettings, ErRenderSettings};
 #[cfg(feature = "layout-dagre")]
@@ -27,9 +32,15 @@ use geometry::calc_label_position;
 pub use geometry::{
     ErSvgGeometry, ErSvgLayoutView, ErSvgRouteKind, er_layout_bounds, er_rel_idx_from_edge_id,
 };
+#[cfg(feature = "layout-grid")]
+pub use grid::{ErGridLayout, layout as layout_grid};
 pub use labels::{
     ErBoxLabel, ErPreparedLabels, ErPreparedRelationshipLabel, er_subgraph_title_metrics,
     er_swimlane_title_metrics,
+};
+#[cfg(feature = "layout-layered")]
+pub use layered::{
+    ErLayeredError, ErLayeredLabels, ErLayeredLayout, ErLayeredPaint, layout as layout_layered,
 };
 pub use markers::{ErMarkerDefs, er_marker_id, er_unified_marker_id, write_er_marker_definitions};
 #[cfg(feature = "layout-shoal")]
@@ -45,7 +56,5 @@ pub use stylesheet::{
 #[cfg(feature = "layout-shoal")]
 pub use svg::{ErCanonicalEdge, ErCanonicalEdgePainter};
 pub use svg::{ErPreparedSvgLayout, ErSvgContext, render_er_diagram_svg_model};
-pub use swimlane::{
-    ErSwimlanePaintLayout, relationship_html_source as swimlane_relationship_html_source,
-};
+pub use swimlane::ErSwimlanePaintLayout;
 pub use theme::ErEntityThemePlan;

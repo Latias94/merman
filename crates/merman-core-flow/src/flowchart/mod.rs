@@ -27,7 +27,9 @@ pub use ast::{
     ClassAssignStmt, ClassDefStmt, ClickAction, ClickStmt, LinkStylePos, LinkStyleStmt, StyleStmt,
 };
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-pub use ast::{EdgeAction, FlowchartAst, NodeAction, StatementEvent, Stmt, SubgraphBlock};
+pub use ast::{
+    EdgeAction, FlowchartAst, NodeAction, ShapeData, StatementEvent, Stmt, SubgraphBlock,
+};
 #[cfg(feature = "editor-facts")]
 pub use ast::{FlowchartClickEditorEvidence, FlowchartDirectiveEditorEvidence};
 use lexer::Lexer;

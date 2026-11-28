@@ -113,6 +113,20 @@ impl FlowchartRootPaint<'_, '_> {
         )
     }
 
+    #[cfg(feature = "layout-grid")]
+    pub(crate) fn paints_grid_edge_label_nodes(&self) -> bool {
+        self.ctx.layout.route_contract.grid_paint().is_some()
+    }
+
+    #[cfg(feature = "layout-grid")]
+    pub(crate) fn write_grid_edge_label_nodes(
+        &self,
+        out: &mut impl SvgOutput,
+        edges: &[FlowchartRenderEdgeRef<'_>],
+    ) -> Result<()> {
+        super::grid_label::write_grid_edge_label_nodes(out, self.ctx, edges, self.hierarchy_plan)
+    }
+
     pub(crate) fn write_swimlane_edge_label(
         &self,
         out: &mut impl SvgOutput,

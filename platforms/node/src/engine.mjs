@@ -1,6 +1,6 @@
 import { BoundedExecutor } from "./bounded-executor.mjs";
 import { supportsDirectNativeSvg, takeVersionCheckedRuntimeCatalog } from "./native-loader.mjs";
-import { NODE_LOCAL_SHOAL_WIRE_CONTRACT } from "./transport-contract.mjs";
+import { nodeWireContract } from "./transport-contract.mjs";
 import {
   MermanInvalidTransportError,
   NODE_TRANSPORT_FIELD_LIMITS,
@@ -123,7 +123,7 @@ export async function createNodeEngine(
     concurrency = 1,
     maxQueue = 64,
   } = {},
-  { loadTransport, localShoal = false } = {},
+  { loadTransport, localLayout = null } = {},
 ) {
   if (typeof loadTransport !== "function") {
     throw new MermanInvalidTransportError("A concrete Node candidate transport loader is required.");
@@ -141,7 +141,7 @@ export async function createNodeEngine(
     const catalogText = await transport.runtimeCatalogJson();
     const catalog = takeVersionCheckedRuntimeCatalog(transport, catalogText) ??
       parseRuntimeCatalogJsonText(catalogText);
-    const runtimeCatalog = validateParsedRuntimeCatalog(catalog, localShoal);
+    const runtimeCatalog = validateParsedRuntimeCatalog(catalog, localLayout);
     const directSvg = supportsDirectNativeSvg(transport) &&
       runtimeCatalog.capabilities.operation_ids.includes("svg");
     return new MermanEngine(
@@ -679,11 +679,11 @@ async function disposeUnusableTransport(transport) {
   }
 }
 
-export function validateRuntimeCatalog(value, { localShoal = false } = {}) {
-  return validateParsedRuntimeCatalog(parseRuntimeCatalogJsonText(value), localShoal);
+export function validateRuntimeCatalog(value, { localLayout = null } = {}) {
+  return validateParsedRuntimeCatalog(parseRuntimeCatalogJsonText(value), localLayout);
 }
 
-function validateParsedRuntimeCatalog(catalog, localShoal) {
+function validateParsedRuntimeCatalog(catalog, localLayout) {
   if (!isPlainObject(catalog)) {
     throw new MermanInvalidTransportError("Merman transport returned an invalid runtime catalog.");
   }
@@ -735,7 +735,7 @@ function validateParsedRuntimeCatalog(catalog, localShoal) {
   const metadataIds = validateMetadataIds(catalog.metadata_ids, new Set(capabilityIds));
   validateKnownArtifactIdentity({
     capabilityIds,
-    localShoal,
+    localLayout,
     metadataIds,
     operationIds,
     outputIds,
@@ -776,13 +776,13 @@ function validateParsedRuntimeCatalog(catalog, localShoal) {
 
 function validateKnownArtifactIdentity({
   capabilityIds,
-  localShoal,
+  localLayout,
   metadataIds,
   operationIds,
   outputIds,
   systemAdapterIds,
 }) {
-  const expected = (localShoal ? NODE_LOCAL_SHOAL_WIRE_CONTRACT : NODE_WIRE_CONTRACT).artifact;
+  const expected = nodeWireContract(localLayout).artifact;
   validateKnownIds(
     capabilityIds,
     expected.capability_ids,

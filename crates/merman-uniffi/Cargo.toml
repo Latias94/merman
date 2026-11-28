@@ -117,6 +117,8 @@ pdf = ["svg", "merman-bindings-core/pdf"]
 layout-cytoscape = ["svg", "merman-bindings-core/layout-cytoscape"]
 layout-dagre = ["svg", "merman-bindings-core/layout-dagre"]
 layout-elk = ["svg", "merman-bindings-core/layout-elk"]
+layout-grid = ["svg", "merman-bindings-core/layout-grid"]
+layout-layered = ["svg", "merman-bindings-core/layout-layered"]
 math = ["svg", "merman-bindings-core/math"]
 binding-generation = ["uniffi/bindgen", "uniffi/cargo-metadata"]
 

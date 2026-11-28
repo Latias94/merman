@@ -310,7 +310,7 @@ mod tests {
     }
 
     #[test]
-    fn mindmap_default_does_not_override_an_authored_layout() {
+    fn mindmap_layout_selection_checks_the_authored_root_key() {
         for (initialize, source, expected) in [
             (json!({}), json!({}), json!("cose-bilkent")),
             (json!({"layout": "elk"}), json!({}), json!("elk")),
@@ -327,7 +327,12 @@ mod tests {
             (
                 json!({}),
                 json!({"mindmap": {"layout": "dagre"}}),
-                json!("dagre"),
+                json!("cose-bilkent"),
+            ),
+            (
+                json!({}),
+                json!({"layout": "dagre", "mindmap": {"layout": "layered"}}),
+                json!("layered"),
             ),
         ] {
             let defaults = MermaidConfig::from_value(json!({"layout": "elk"}));

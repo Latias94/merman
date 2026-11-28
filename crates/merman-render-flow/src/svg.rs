@@ -93,7 +93,9 @@ pub mod test_support {
     )
 ))]
 pub use compact::render_native_compact;
-pub use layout::{FlowchartSvgLayout, FlowchartSvgRoute, SwimlaneSvgLayout};
+#[cfg(feature = "layout-grid")]
+pub use layout::{FlowchartGridPaint, GridLineHops};
+pub use layout::{FlowchartLayoutDom, FlowchartSvgLayout, FlowchartSvgRoute, SwimlaneSvgLayout};
 pub use paint::edge_geometry;
 pub use svg_emit::{FlowchartSvgModelRequest, render_parity};
 pub use swimlane_layout::project_swimlane_layout;

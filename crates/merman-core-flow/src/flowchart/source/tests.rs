@@ -1,5 +1,6 @@
 use super::*;
 use crate::flowchart::{FlowchartLexer, parse_flowchart};
+use merman_core_preprocess::grid_coordinate::{GridCoordinateField, GridCoordinateValue};
 use merman_model::OperationCancelled;
 use serde_json::json;
 
@@ -9,6 +10,289 @@ pub(super) fn parse_ast(source: &str) -> FlowchartAst {
     parse_flowchart(lexer, &control, 500, source.len())
         .expect("a private parse control cannot be cancelled")
         .expect("valid Flowchart test source")
+}
+
+#[cfg(feature = "presentation")]
+#[test]
+fn grid_presentation_freezes_vertex_and_group_owners() {
+    use merman_model::grid::{
+        GridHorizontalAlign, GridInlinePlacements, GridPlacementOwner, GridVerticalAlign,
+    };
+
+    let source = concat!(
+        "flowchart LR\n",
+        "G@{ row: -9007199254740991, horizontalAlign: left }\n",
+        "G@{ column: 0, verticalAlign: bottom }\n",
+        "subgraph G\n  Child\nend\n",
+        "G@{ row: 5, horizontalAlign: center, verticalAlign: top }\n",
+        "G@{ horizontalAlign: Left }\n",
+        "subgraph H\n  Hidden\nend\n",
+        "H@{ view: collapsed, row: 9, horizontalAlign: right }\n",
+        "Only@{ horizontalAlign: center, verticalAlign: bottom }\n",
+    );
+    let config = MermaidConfig::from_value(json!({"layout": "grid"}));
+    let control = OperationControl::new();
+    let build = |source| {
+        parse_ast(source)
+            .into_model_with_render_context_and_grid_coordinates(
+                "flowchart-v2",
+                &config,
+                None,
+                None,
+                &control,
+            )
+            .unwrap()
+            .unwrap()
+    };
+    let (mut model, mut context, replay) = build(source);
+    let prior_bytes = context.retained_bytes_for_model(&model);
+    let placements = replay
+        .validate_placements_controlled(&control)
+        .unwrap()
+        .unwrap();
+    let placement_bytes = placements.retained_bytes();
+    context.set_grid_placements(placements);
+    assert_eq!(
+        context.retained_bytes_for_model(&model),
+        prior_bytes + placement_bytes
+    );
+    assert_eq!(
+        context.validate_for_model_controlled(&model, &control),
+        Ok(Ok(()))
+    );
+    let [vertex, alignment_only, group] = context.grid_placements().entries() else {
+        panic!("expected two vertices and the expanded group");
+    };
+    assert_eq!(vertex.owner, GridPlacementOwner::Vertex(0));
+    assert_eq!(vertex.id, "G");
+    let fields = vertex.placement;
+    assert_eq!(fields.row.unwrap().get(), -9_007_199_254_740_991);
+    assert_eq!(fields.column.unwrap().get(), 0);
+    assert_eq!(fields.horizontal_align, Some(GridHorizontalAlign::Left));
+    assert_eq!(fields.vertical_align, Some(GridVerticalAlign::Bottom));
+
+    assert_eq!(alignment_only.id, "Only");
+    assert_eq!(alignment_only.placement.row, None);
+    assert_eq!(
+        alignment_only.placement.horizontal_align,
+        Some(GridHorizontalAlign::Center)
+    );
+    assert_eq!(
+        alignment_only.placement.vertical_align,
+        Some(GridVerticalAlign::Bottom)
+    );
+
+    assert_eq!(
+        (group.owner, group.id.as_str()),
+        (GridPlacementOwner::Subgraph(0), "G")
+    );
+    assert_eq!(group.placement.row.unwrap().get(), 5);
+    assert_eq!(group.placement.horizontal_align, None);
+    assert_eq!(group.placement.vertical_align, Some(GridVerticalAlign::Top));
+    model.subgraphs[0].metadata.as_mut().unwrap()["row"] = json!(1234);
+    assert_eq!(group.placement.row.unwrap().get(), 5);
+    let mut mismatched = context.clone();
+    let mut entries = context.grid_placements().entries().to_vec();
+    entries[0].owner = GridPlacementOwner::Connector(0);
+    mismatched.set_grid_placements(GridInlinePlacements::from_entries(entries));
+    assert_eq!(
+        mismatched.validate_for_model_controlled(&model, &control),
+        Ok(Err("grid placement owner does not match its model slot"))
+    );
+
+    let invalid = source.replace("row: 9", "row: null");
+    let (_, _, replay) = build(&invalid);
+    let (error, _) = replay
+        .validate_placements_controlled(&control)
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(error.placement_id, "H");
+}
+
+#[test]
+fn inline_grid_uses_db_order_and_the_last_writer_of_each_field() {
+    for (header, diagram_type) in [("flowchart", "flowchart-v2"), ("swimlane-beta", "swimlane")] {
+        let input = format!(
+            "{header} TD\nZ\nA@{{ row: 0.5 }}\nZ@{{ column: null, row: 7 }}\nZ@{{ row: 0.5 }}\n"
+        );
+        let config = MermaidConfig::from_value(json!({"layout": "grid"}));
+        let control = OperationControl::new();
+        #[cfg(feature = "presentation")]
+        let (_, _, grid) = parse_ast(&input)
+            .into_model_with_render_context_and_grid_coordinates(
+                diagram_type,
+                &config,
+                None,
+                None,
+                &control,
+            )
+            .unwrap()
+            .unwrap();
+        #[cfg(not(feature = "presentation"))]
+        let (_, grid) = parse_ast(&input)
+            .into_model_with_grid_coordinates(diagram_type, &config, None, None, &control)
+            .unwrap()
+            .unwrap();
+        let fields: Vec<_> = grid.iter().collect();
+        assert_eq!(fields.len(), 3);
+        let row = fields[0];
+        assert_eq!(
+            (row.id, row.field, row.value),
+            (
+                "Z",
+                GridCoordinateField::Row,
+                GridCoordinateValue::Number(0.5)
+            )
+        );
+        assert_eq!(row.span.start, input.rfind("@{ row: 0.5 }").unwrap());
+        let column = fields[1];
+        assert_eq!(
+            (column.id, column.field, column.value),
+            ("Z", GridCoordinateField::Column, GridCoordinateValue::Null)
+        );
+        assert_eq!(
+            &input[column.span.start..column.span.end],
+            "@{ column: null, row: 7 }"
+        );
+        assert_eq!(fields[2].id, "A");
+
+        let (error, span) = grid.validate_controlled(&control).unwrap().unwrap_err();
+        assert_eq!(span, row.span);
+        assert_eq!(
+            error.to_string(),
+            "GRID_INVALID_COORDINATE: Invalid row for placement \"Z\": expected a safe integer; received 0.5 (number)."
+        );
+        control.cancel_after_checkpoints(0);
+        assert!(matches!(
+            grid.validate_controlled(&control),
+            Err(OperationCancelled { .. })
+        ));
+    }
+}
+
+#[test]
+fn inline_grid_follows_vertex_edge_and_completed_subgraph_dispatch() {
+    let input = concat!(
+        "flowchart TD\n",
+        "G@{ row: null } & G@{ row: -1 }\n",
+        "subgraph G\n  A\nend\n",
+        "A G@--> B\n",
+        "B onlyEdge@--> C\n",
+        "onlyEdge@{ row: false }\n",
+        "G@{ column: true }\n",
+    );
+    let control = OperationControl::new();
+    let config = MermaidConfig::from_value(json!({"layout": "grid"}));
+    let (model, grid) = parse_ast(input)
+        .into_model_with_grid_coordinates("flowchart-v2", &config, None, None, &control)
+        .unwrap()
+        .unwrap();
+    assert_eq!(model.edges[0].id, "G");
+    let fields: Vec<_> = grid.iter().collect();
+    assert_eq!(fields.len(), 2);
+    let vertex = fields[0];
+    assert_eq!(
+        (vertex.id, vertex.field, vertex.value),
+        (
+            "G",
+            GridCoordinateField::Row,
+            GridCoordinateValue::Number(-1.0)
+        )
+    );
+    assert_eq!(&input[vertex.span.start..vertex.span.end], "@{ row: -1 }");
+    let (error, span) = grid.validate_controlled(&control).unwrap().unwrap_err();
+    assert_eq!(
+        (error.placement_id, error.field, error.received),
+        (
+            "G",
+            GridCoordinateField::Column,
+            GridCoordinateValue::Boolean(true)
+        )
+    );
+    assert_eq!(&input[span.start..span.end], "@{ column: true }");
+}
+
+#[test]
+fn inline_grid_waits_for_replay_and_leaves_other_layout_metadata_uninterpreted() {
+    let control = OperationControl::new();
+    let grid = MermaidConfig::from_value(json!({"layout": "grid"}));
+    let result = parse_ast("flowchart TD\nA@{ row: 0.5 }\nB@{ shape: Bad }\n")
+        .into_model_with_grid_coordinates("flowchart-v2", &grid, None, None, &control)
+        .unwrap();
+    assert_eq!(
+        result.unwrap_err(),
+        "No such shape: Bad. Shape names should be lowercase."
+    );
+
+    let dagre = MermaidConfig::from_value(json!({"layout": "dagre"}));
+    let (_, grid) = parse_ast("flowchart TD\nA@{ row: 0.5 }\n")
+        .into_model_with_grid_coordinates("flowchart-v2", &dagre, None, None, &control)
+        .unwrap()
+        .unwrap();
+    assert_eq!(grid.iter().count(), 0);
+}
+
+#[test]
+fn inline_grid_nonfinite_preserves_type_and_the_last_token_after_shape_cache_reuse() {
+    let config = MermaidConfig::from_value(json!({"layout": "grid"}));
+    let control = OperationControl::new();
+    for (metadata, received) in [
+        ("row: .nan", "NaN (number)."),
+        ("row: '.nan'", "\".nan\" (string)."),
+        ("row: !!float '.NaN'", "NaN (number)."),
+        ("row: !!str .nan", "\".nan\" (string)."),
+        ("row: +.Inf", "Infinity (number)."),
+        ("row: -1e999", "\"-1e999\" (string)."),
+        ("note: &v .nan, row: *v", "NaN (number)."),
+        ("note: &v '.nan', row: *v", "\".nan\" (string)."),
+    ] {
+        let token = format!("@{{ {metadata} }}");
+        let source = format!("flowchart LR\nA[\"服务\"]\nA{token}\nA@{{ row: 3 }}\nA{token}\n");
+        let (_, grid) = parse_ast(&source)
+            .into_model_with_grid_coordinates("flowchart-v2", &config, None, None, &control)
+            .unwrap()
+            .unwrap();
+        let (error, span) = grid
+            .validate_placements_controlled(&control)
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(error.field, GridCoordinateField::Row);
+        assert!(error.to_string().ends_with(received), "{error}");
+        assert_eq!(span.start, source.rfind(&token).unwrap());
+        assert_eq!(&source[span.start..span.end], token);
+    }
+}
+
+#[test]
+fn inline_grid_nonfinite_is_validated_after_duplicate_keys_and_db_replay() {
+    let config = MermaidConfig::from_value(json!({"layout": "grid"}));
+    let control = OperationControl::new();
+    let parse = |source| {
+        parse_ast(source)
+            .into_model_with_grid_coordinates("swimlane", &config, None, None, &control)
+            .unwrap()
+    };
+    let duplicate = parse("swimlane-beta LR\nA@{ row: .nan, 'row': 0 }\n").unwrap_err();
+    assert!(duplicate.contains("duplicated mapping key"), "{duplicate}");
+    let shape = parse("swimlane-beta LR\nA@{ row: .nan }\nB@{ shape: Bad }\n").unwrap_err();
+    assert_eq!(
+        shape,
+        "No such shape: Bad. Shape names should be lowercase."
+    );
+
+    let (_, grid) = parse(concat!(
+        "swimlane-beta LR\nA@{ row: .nan }\nA@{ row: 0 }\n",
+        "A link@--> B\nlink@{ column: -.inf }\n",
+    ))
+    .unwrap();
+    grid.validate_controlled(&control).unwrap().unwrap();
+    let fields: Vec<_> = grid.iter().collect();
+    let [row] = fields.as_slice() else {
+        panic!("expected only the vertex row")
+    };
+    assert_eq!(row.id, "A");
+    assert_eq!(row.field, GridCoordinateField::Row);
+    assert_eq!(row.value, GridCoordinateValue::Number(0.0));
 }
 
 #[test]
@@ -80,6 +364,41 @@ fn same_id_shape_data_routes_to_subgraph_metadata_without_mutating_node() {
 }
 
 #[test]
+fn flowchart_source_strips_prototype_keys_from_subgraph_metadata() {
+    let ast = parse_ast(concat!(
+        "flowchart TD\n",
+        "subgraph __group\n",
+        "  A\n",
+        "end\n",
+        "__group@{\n",
+        "  algorithm: elk.box\n",
+        "  __proto__: ignored\n",
+        "  details:\n",
+        "    - constructor: ignored\n",
+        "      prototype: ignored\n",
+        "      note: kept\n",
+        "}\n",
+    ));
+    let source = build_flowchart_source(
+        ast,
+        None,
+        None,
+        &MermaidConfig::empty_object(),
+        false,
+        &OperationControl::new(),
+    )
+    .expect("a private parse control cannot be cancelled")
+    .expect("subgraph metadata should parse");
+
+    let group = &source.subgraphs[0];
+    assert_eq!(group.id, "__group");
+    assert_eq!(
+        group.metadata.as_ref(),
+        Some(&json!({"algorithm": "elk.box", "details": [{"note": "kept"}]}))
+    );
+}
+
+#[test]
 fn single_large_chain_observes_cancellation_in_post_parse_projections() {
     let nodes = (0..256)
         .map(|index| format!("n{index}"))
@@ -96,7 +415,7 @@ fn single_large_chain_observes_cancellation_in_post_parse_projections() {
     let shape_data_control = OperationControl::new();
     shape_data_control.cancel_after_checkpoints(2);
     assert!(matches!(
-        prepare_flowchart_shape_data(&ast, &shape_data_control),
+        prepare_flowchart_shape_data(&ast, false, &shape_data_control),
         Err(OperationCancelled { .. })
     ));
 

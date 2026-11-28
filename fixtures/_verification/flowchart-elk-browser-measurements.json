@@ -1,33 +1,37 @@
 {
   "schema_version": 1,
-  "mermaid_version": "12.3.0",
-  "mermaid_source_commit": "2086904e76c692331e34a45d7cc3bc30860d040e",
-  "browser": "Chrome/156.0.8078.47",
-  "measurement_source": "Actual natural-browser Mermaid 12.3.0 invocation dimensions and raw elkjs 0.12.0 output. Read-only hooks copy serializable data immediately before and after the real elk.layout(elkGraph) call; function-valued intersection callbacks are omitted from the copies, never from the graph passed to ELK. Raw section points are translated only by their recorded ELK container origin, before clipping, terminal straightening, and label separation. Node centers used by the SVG writer are captured after the upstream node/frame alignment pass. Native measurements are unchanged; no fonts, dimensions, graph options, placements, or routes are injected. historical_collection is archival metadata only and is not an active oracle.",
+  "mermaid_version": "12.4.0",
+  "mermaid_source_commit": "9f93a44a36e46a36b1379f9de72fb1ee5684ee3f",
+  "browser": "HeadlessChrome/156.0.8078.47",
+  "measurement_source": "Actual Mermaid 12.4.0 browser invocation dimensions and raw elkjs 0.12.1 output. Read-only hooks snapshot the graph around the real elk.layout call and capture browser label boxes. Raw first-section points use the adapter’s recorded container offset and authored edge order before clipping. Node centers come from the adapter’s placement pass. Both observer variants match the unmodified SVG. Historical collection metadata remains archival.",
   "capture": {
-    "node_version": "v24.21.0",
+    "node_version": "v26.13.0",
+    "mermaid_version": "12.4.0",
     "browser": {
-      "product": "Chrome",
+      "product": "HeadlessChrome",
       "version": "156.0.8078.47",
       "revision": "@1d17a2e2ee147bb7d6ae2ab6abdb3a2510c17775",
       "locale": "zh-CN",
       "timezone": "Asia/Shanghai"
     },
-    "mermaid_version": "12.3.0",
-    "mermaid_source_commit": "2086904e76c692331e34a45d7cc3bc30860d040e",
-    "elkjs_version": "0.12.0",
+    "operating_system": {
+      "platform": "win32",
+      "arch": "x64",
+      "release": "10.0.26300"
+    },
+    "browser_executable_sha256": "bcfdfad160ceb75478dddf8126449665dea82019d736340fe049ee46037cf179",
     "puppeteer_version": "25.16.0",
-    "esbuild_version": "0.28.1",
-    "reference_runtime_sha256": "555d901f1da7635d0727be0a5b95cc1b84a4770e08126fed19e53966515a8911",
-    "instrumented_runtime_sha256": "bc4a5d4e11c0f489c0485a18760c3dea7896fbcb5beca3213c8e9f0dfdc2589a",
-    "harness_sha256": "a6410c16076de07446cbf3aa23bab410f19e41de0b12f01ee8f463965921b89f",
+    "esbuild_version": "0.28.2",
+    "dompurify_version": "3.4.17",
+    "reference_runtime_sha256": "1683f26875fc5ed4ce134b7c76252add15dbc5053d1301ff6eb22970971fb408",
+    "instrumented_runtime_sha256": "bca48499e350f85763d1ba35803cefabd5effd7e907e058164682ec7128c5b23",
+    "harness_sha256": "06bded891ccdc1092962b5c99b7297cf8ade855f22cdef45bb5ee976add82f44",
+    "batched_renderer_sha256": "e3cc04107391fe26defecc7e22c5225f90b62ba1df45361e0fb5f8aa795ba256",
     "seeded_renderer_sha256": "ce4093ffe0100f9da018dbbcd273ed99d33d801468d1a6c582ef35b7a224101e",
-    "elk_source_path": "repo-ref/mermaid-12.3.0/packages/mermaid/src/rendering-util/layout-algorithms/elk/render.ts",
-    "elk_source_sha256": "034346873f802f348feff0eead48326da40fee71812e0e3f01034370a554fc57",
-    "elk_adapter_path": "tools/mermaid-cli/node_modules/mermaid/dist/chunks/mermaid.core/elk-XV6XMXQE.mjs",
-    "elk_adapter_sha256": "727e080c44d169f9e2212bfc30a77aa2c823c5c9b4406aed23b3c9f6bd354ba0",
-    "elk_adapter_source_map_sha256": "e04bda42a4e2715ac4b202a58e1e53a0d52b8014f750db0e88d9a79606eecbee",
-    "elkjs_bundle_sha256": "1222e44f953ce7746af23801e723708f8e6f436b8b377a6a5fc7552f34a307b3",
+    "terminal_harness_sha256": "5e321d056b74bc2914b6e211d61920f4e5ec70dabb92801cc1c28acf45046016",
+    "package_json_sha256": "5f638289fd05a3f23e20ca18dfbba3d46d97d117d7471559e5802cc19cb83458",
+    "package_lock_sha256": "1f0ca38a5fb1a39125f887d17c8eb01965e69e002e13bdb1c2cea91987142cdf",
+    "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "viewport": {
       "width": 800,
       "height": 600,
@@ -39,13 +43,30 @@
     },
     "seed": "1",
     "fixed_wall_clock_ms": 1704067200000,
+    "mermaid_source_commit": "9f93a44a36e46a36b1379f9de72fb1ee5684ee3f",
+    "elkjs_version": "0.12.1",
+    "elk_source_path": "repo-ref/mermaid-12.4.0/packages/mermaid/src/rendering-util/layout-algorithms/elk/render.ts",
+    "elk_source_sha256": "231709952fd61d48dcd374519ab31089447d6ce4403995ff0c8d4d13195ffa20",
+    "elk_adapter_path": "tools/mermaid-cli/node_modules/mermaid/dist/chunks/mermaid.core/elk-O5DQBFGD.mjs",
+    "elk_adapter_sha256": "c7a714de4ea48052abd64cbc18779c546628ee86ea569743c209a6c90382b965",
+    "elk_adapter_source_map_sha256": "e63d711b187c3abb03feae09b0d610037298037eb452be5e829fe5d005950c2d",
+    "elkjs_bundle_sha256": "b1032b7cfd2a57c54c6f0e8369d7665e19a579954f7cd20a6dae28f1912ea0d7",
     "source_map_matches_selected_source": true,
-    "upstream_svg_match": "43 captured SVGs are byte-identical to the current baselines. Three neo-look fixtures retain class whitespace and label-offset-y metadata differences already reproduced by the uninstrumented selected renderer; all SVG text, geometry, routes, markers, transforms, and other attributes are identical. No baseline or comparator is changed.",
-    "nonidentical_svg_fixtures": [
-      "upstream_cypress_flowchart_v2_spec_60_handle_styling_for_all_node_shapes_v2_021",
-      "upstream_flow_node_data_shape_aliases_spec",
-      "upstream_flowchart_v2_shape_styling_matrix_spec"
-    ]
+    "font_probe": {
+      "revision": "mermaid-font-probe-v1",
+      "sha256": "b74cb52f625a46ef61df9467965af3dac4a01564ba6a1d67812ff77ad4becc14"
+    },
+    "label_box_runtime_sha256": "dae3b655812ff7a661746a551070e7278ab963984a7484ff7244416e6c980359",
+    "label_box_harness_sha256": "26f1aaaeb3050cda4a60549819cc51d40323e4555b737f2786ae48bf9d18db22",
+    "fixture_context_replay": {
+      "manifest_sha256": "09d0dc072323390822817a1d665c854598fca768ee9ab3310996d13b048ca883",
+      "context_catalog_sha256": "993a5a2884decdd90ca4f4136dea3494749c9304b8e1e171c83d25c0f30c3993",
+      "harness_sha256": "4208fe839078e43f7b99de51fd823a6ed430db84f7b2153a7543ef6ca0d2f6b5",
+      "receipt_sha256": "45c2804652a7773d6f2b15f40415c728cccda6aed20fd234bd24c09a06367465"
+    },
+    "upstream_svg_match": "All 46 observed and uninstrumented SVGs are byte-identical to their regenerated baselines.",
+    "nonidentical_svg_fixtures": [],
+    "baseline_manifest_sha256": "09d0dc072323390822817a1d665c854598fca768ee9ab3310996d13b048ca883"
   },
   "historical_collection": {
     "schema_version": 1,
@@ -102,12 +123,10 @@
     {
       "fixture": "stress_flowchart_edge_labels_far_from_arrows_066",
       "input_sha256": "6436bd1c9f897bf4387e3cfa67be332797104ae6fead6faeb271ada6d75af783",
-      "upstream_svg_sha256": "2ddc6ce14bdb55223ea3a638fecaccdfa1de0460d9f7114c54d85f9443c2cd9d",
       "capture": {
-        "captured_at": "2026-11-03T20:06:58.489Z",
-        "provider_input_sha256": "98b1418b3aae939378cbe9d0d5437f85d5f362dc148b2466daa72a0b97738971",
-        "provider_output_sha256": "d541b99ba119afff422f7b18d20833dc3f1097f6e12d91406fe7d8fcada101a0",
-        "captured_svg_sha256": "2ddc6ce14bdb55223ea3a638fecaccdfa1de0460d9f7114c54d85f9443c2cd9d",
+        "provider_input_sha256": "b05ae2fc1f2d92a009577c23723d6f333ee86473f8cbb1a0976847b867a56ec9",
+        "provider_output_sha256": "fa0426fa627f8e6352b9686ce7a399478b257841df8206d0d1f70b8eff6b11b1",
+        "captured_svg_sha256": "5177c141ddde5fef699a7d37b000c1083f1ac2abd2b81f8399bd373115d4f4ca",
         "upstream_svg_byte_identical": true,
         "upstream_svg_geometry_identical": true
       },
@@ -120,7 +139,7 @@
           ],
           "center": [
             88,
-            242.8932113647461
+            242.89321136474607
           ],
           "label_box": {
             "text": "Database File",
@@ -334,11 +353,11 @@
             ],
             [
               921.1004943847656,
-              208.93707631429038
+              196.5975072224935
             ],
             [
               973.6506500244141,
-              208.93707631429038
+              196.5975072224935
             ]
           ],
           "label_size": [
@@ -353,11 +372,11 @@
           "points": [
             [
               1067.6880645751953,
-              208.93707631429038
+              196.5975072224935
             ],
             [
               1120.2382202148438,
-              208.93707631429038
+              196.5975072224935
             ],
             [
               1120.2382202148438,
@@ -380,11 +399,11 @@
           "points": [
             [
               973.6506500244141,
-              221.27664540608725
+              215.10686086018882
             ],
             [
               901.1004943847656,
-              221.27664540608725
+              215.10686086018882
             ],
             [
               901.1004943847656,
@@ -539,11 +558,11 @@
           "points": [
             [
               1067.6880645751953,
-              221.27664540608725
+              215.10686086018882
             ],
             [
               1140.2382202148438,
-              221.27664540608725
+              215.10686086018882
             ],
             [
               1140.2382202148438,
@@ -609,11 +628,11 @@
           "points": [
             [
               973.6506500244141,
-              245.955783589681
+              252.12556813557944
             ],
             [
               901.1004943847656,
-              245.955783589681
+              252.12556813557944
             ],
             [
               901.1004943847656,
@@ -730,11 +749,11 @@
             ],
             [
               921.1004943847656,
-              258.2953526814779
+              270.63492177327475
             ],
             [
               973.6506500244141,
-              258.2953526814779
+              270.63492177327475
             ]
           ],
           "label_size": [
@@ -749,11 +768,11 @@
           "points": [
             [
               1067.6880645751953,
-              245.955783589681
+              252.12556813557944
             ],
             [
               1140.2382202148438,
-              245.955783589681
+              252.12556813557944
             ],
             [
               1140.2382202148438,
@@ -784,11 +803,11 @@
             ],
             [
               1120.2382202148438,
-              258.2953526814779
+              270.63492177327475
             ],
             [
               1067.6880645751953,
-              258.2953526814779
+              270.63492177327475
             ]
           ],
           "label_size": [
@@ -796,14 +815,13 @@
             21
           ]
         }
-      ]
+      ],
+      "upstream_svg_sha256": "5177c141ddde5fef699a7d37b000c1083f1ac2abd2b81f8399bd373115d4f4ca"
     },
     {
       "fixture": "stress_flowchart_multi_direction_graph_011",
       "input_sha256": "e9bb97dc1a4ff62fecd0ab34c94e571e20b219aad1fbf9eae8c44f0a2d79ecc6",
-      "upstream_svg_sha256": "acfbbf40e779e13a55ba030a1378f473e712f915ec6692bf973b84365ab55867",
       "capture": {
-        "captured_at": "2026-11-03T20:06:58.468Z",
         "provider_input_sha256": "815fea69497066b502d5ecc799e16f0664357d4ba0a131977fef261a0a451b38",
         "provider_output_sha256": "e2e4c0dd868eaefc56f9af252f00c3eef354a5c583717c78b43ae2f696a4b7b2",
         "captured_svg_sha256": "acfbbf40e779e13a55ba030a1378f473e712f915ec6692bf973b84365ab55867",
@@ -1041,14 +1059,13 @@
           ],
           "label_size": null
         }
-      ]
+      ],
+      "upstream_svg_sha256": "acfbbf40e779e13a55ba030a1378f473e712f915ec6692bf973b84365ab55867"
     },
     {
       "fixture": "stress_flowchart_nested_subgraphs_titles_001",
       "input_sha256": "9ec03eb59b9bcbbaba1ebf2e5b17fb6386b6f26c590253b438c1d17db4cad6f0",
-      "upstream_svg_sha256": "2b791c9b2051fe42878fe3fa3c09016d472f08c34a310e822112b86c644a1086",
       "capture": {
-        "captured_at": "2026-11-03T20:06:59.255Z",
         "provider_input_sha256": "f87eec21996fb66fde86acc6b98491c0c1a58a0dfc43ca2c26513d8a9997f7ae",
         "provider_output_sha256": "583955e0132df79a72285ca9e19abc77c26008862e03c7faf58ed0d067496e16",
         "captured_svg_sha256": "2b791c9b2051fe42878fe3fa3c09016d472f08c34a310e822112b86c644a1086",
@@ -1283,11 +1300,11 @@
               378
             ],
             [
-              153,
+              153.0,
               378
             ],
             [
-              153,
+              153.0,
               457.5
             ]
           ],
@@ -1400,14 +1417,13 @@
           ],
           "label_size": null
         }
-      ]
+      ],
+      "upstream_svg_sha256": "2b791c9b2051fe42878fe3fa3c09016d472f08c34a310e822112b86c644a1086"
     },
     {
       "fixture": "stress_flowchart_shape_mix_009",
       "input_sha256": "3f850d981f3ba3a11218860bd2bf353a270ba8d4a00427b3f6d4b5b79a34a256",
-      "upstream_svg_sha256": "8a5dda23cd58b4a6b35db2db331350aecfccb86986f5642c95caaaf2cfe105c0",
       "capture": {
-        "captured_at": "2026-11-03T20:06:59.233Z",
         "provider_input_sha256": "c494ae55414f1573edd70390dce4b12c41d9499f303e7477f64c6ddde6f13d2b",
         "provider_output_sha256": "1f29ef06b326d070819268f8aeec3905de70829d1291e9fb6f35b7ccc00a7ffa",
         "captured_svg_sha256": "8a5dda23cd58b4a6b35db2db331350aecfccb86986f5642c95caaaf2cfe105c0",
@@ -1788,14 +1804,13 @@
           ],
           "label_size": null
         }
-      ]
+      ],
+      "upstream_svg_sha256": "8a5dda23cd58b4a6b35db2db331350aecfccb86986f5642c95caaaf2cfe105c0"
     },
     {
       "fixture": "upstream_cypress_flowchart_handdrawn_spec_fdh24_keep_node_label_text_if_already_defined_when_a_style_is_ap_024",
       "input_sha256": "ff4755986501cb58d7e1140127d7b3b7b3276f56c380877e6d6d887b451c6ffa",
-      "upstream_svg_sha256": "a052cfc73134979244445399f4f0d025ef8ed2fe2066e6ff3f2d4b5bd5884e56",
       "capture": {
-        "captured_at": "2026-11-03T20:06:59.984Z",
         "provider_input_sha256": "733cff3b31dade58feb37c2368d80d9c8397236f5c78fb06092b373706f130cb",
         "provider_output_sha256": "43cc9702dc204dd8406aa10d63a5fb2d5cceb14865af77c6128b69d2acdc29fa",
         "captured_svg_sha256": "a052cfc73134979244445399f4f0d025ef8ed2fe2066e6ff3f2d4b5bd5884e56",
@@ -1934,17 +1949,16 @@
             21
           ]
         }
-      ]
+      ],
+      "upstream_svg_sha256": "a052cfc73134979244445399f4f0d025ef8ed2fe2066e6ff3f2d4b5bd5884e56"
     },
     {
       "fixture": "upstream_cypress_flowchart_handdrawn_spec_fdh27_set_text_color_of_nodes_and_links_according_to_styles_when_027",
       "input_sha256": "e37d2bc5cfa26cefde0177a1c617384e8a8e6bf4de30269c5b35d9e1277ba8d1",
-      "upstream_svg_sha256": "c32ca666ce42c23f998ccb1785136674bf423a86b6f4df14c6faaa515b4b7cb0",
       "capture": {
-        "captured_at": "2026-11-03T20:07:00.007Z",
         "provider_input_sha256": "998c435701b875252b5fd9f7a8c9479febce0ae837200338902cea214658bdea",
         "provider_output_sha256": "222e05a835c3531b665434ff64cfc9ca7f412c15c705cb0ba5668c6f3b143efa",
-        "captured_svg_sha256": "c32ca666ce42c23f998ccb1785136674bf423a86b6f4df14c6faaa515b4b7cb0",
+        "captured_svg_sha256": "9af8bf52048b3cb969bc39f0fd231763abed382375bb781121c69f978edbe639",
         "upstream_svg_byte_identical": true,
         "upstream_svg_geometry_identical": true
       },
@@ -2116,17 +2130,16 @@
             35.400001525878906
           ]
         }
-      ]
+      ],
+      "upstream_svg_sha256": "9af8bf52048b3cb969bc39f0fd231763abed382375bb781121c69f978edbe639"
     },
     {
       "fixture": "upstream_cypress_flowchart_handdrawn_spec_fhd6_should_render_a_flowchart_full_of_circles_006",
       "input_sha256": "12ea63c20f4c332b0d713254fae3b9f0b7e0501b26300d67b8f36371fb55220c",
-      "upstream_svg_sha256": "0d8ddf4a0ae3cb10efdbfd64781184f1c04ff6937e8419039afaafbdcaa76eb8",
       "capture": {
-        "captured_at": "2026-11-03T20:07:00.778Z",
-        "provider_input_sha256": "cf032dc058ecefd1f62643f76d62be34da76661344b99a5992c4b34746fa0a0f",
-        "provider_output_sha256": "9c976eaa8a5d28bf20dd4dc41ecdd054a47a337ef26e1435765fbdfd7de5c2e9",
-        "captured_svg_sha256": "0d8ddf4a0ae3cb10efdbfd64781184f1c04ff6937e8419039afaafbdcaa76eb8",
+        "provider_input_sha256": "6501dd609caf66276e1743683858c6b55dc9f79fdedc686e31130868f0df0da1",
+        "provider_output_sha256": "6c215d637bb133d09a28e0a3099b3fd82468b610c331768127184fe55677ca7d",
+        "captured_svg_sha256": "1aef8620b1d087cf12bb65d862c149ffe22bbc8f55ccc0f006a54bc7bbf1fa8c",
         "upstream_svg_byte_identical": true,
         "upstream_svg_geometry_identical": true
       },
@@ -2139,7 +2152,7 @@
           ],
           "center": [
             1847.5269097222222,
-            307.0444444444444
+            308.76666666666665
           ],
           "label_box": {
             "text": "SAM.CommonFA.FMESummary",
@@ -2157,7 +2170,7 @@
           ],
           "center": [
             2244.859375,
-            352.5444444444444
+            354.26666666666665
           ],
           "label_box": {
             "text": "SAM.CommonFA.CommonFAFinanceBudget",
@@ -2175,7 +2188,7 @@
           ],
           "center": [
             1885.3828125,
-            398.0444444444444
+            399.76666666666665
           ],
           "label_box": {
             "text": "SAM.CommonFA.BudgetSubserviceLineVolume",
@@ -2193,7 +2206,7 @@
           ],
           "center": [
             130.875,
-            84.19444444444443
+            85.91666666666666
           ],
           "label_box": {
             "text": "SAM.CommonFA.PopulationFME",
@@ -2355,7 +2368,7 @@
           ],
           "center": [
             425.125,
-            333.65277777777777
+            335.375
           ],
           "label_box": {
             "text": "SAM.CommonFA.ChargeDetails",
@@ -2373,7 +2386,7 @@
           ],
           "center": [
             134.390625,
-            338.81944444444446
+            340.54166666666663
           ],
           "label_box": {
             "text": "SAM.CommonFA.PremetricCost",
@@ -2392,19 +2405,19 @@
           "points": [
             [
               1963.2690972222222,
-              307.0444444444444
+              308.76666666666665
             ],
             [
               2069.796875,
-              307.0444444444444
+              308.76666666666665
             ],
             [
               2069.796875,
-              347.37777777777774
+              349.09999999999997
             ],
             [
               2089.796875,
-              347.37777777777774
+              349.09999999999997
             ]
           ],
           "label_size": null
@@ -2416,19 +2429,19 @@
           "points": [
             [
               2049.796875,
-              398.0444444444444
+              399.76666666666665
             ],
             [
               2069.796875,
-              398.0444444444444
+              399.76666666666665
             ],
             [
               2069.796875,
-              357.7111111111111
+              359.43333333333334
             ],
             [
               2089.796875,
-              357.7111111111111
+              359.43333333333334
             ]
           ],
           "label_size": null
@@ -2440,11 +2453,11 @@
           "points": [
             [
               249.75,
-              76.44444444444443
+              78.16666666666666
             ],
             [
               269.75,
-              76.44444444444443
+              78.16666666666666
             ],
             [
               269.75,
@@ -2472,11 +2485,11 @@
             ],
             [
               1700.96875,
-              294.9888888888889
+              293.26666666666665
             ],
             [
               1731.7847222222222,
-              294.9888888888889
+              293.26666666666665
             ]
           ],
           "label_size": null
@@ -2512,11 +2525,11 @@
             ],
             [
               1660.96875,
-              312.2111111111111
+              315.4095238095238
             ],
             [
               1731.7847222222222,
-              312.2111111111111
+              315.4095238095238
             ]
           ],
           "label_size": null
@@ -2540,11 +2553,11 @@
             ],
             [
               1680.96875,
-              315.6555555555555
+              319.8380952380952
             ],
             [
               1731.7847222222222,
-              315.6555555555555
+              319.8380952380952
             ]
           ],
           "label_size": null
@@ -2564,11 +2577,11 @@
             ],
             [
               1660.96875,
-              301.87777777777774
+              302.1238095238095
             ],
             [
               1731.7847222222222,
-              301.87777777777774
+              302.1238095238095
             ]
           ],
           "label_size": null
@@ -2596,11 +2609,11 @@
             ],
             [
               1700.96875,
-              319.09999999999997
+              324.26666666666665
             ],
             [
               1731.7847222222222,
-              319.09999999999997
+              324.26666666666665
             ]
           ],
           "label_size": null
@@ -2620,11 +2633,11 @@
             ],
             [
               1640.96875,
-              305.3222222222222
+              306.55238095238093
             ],
             [
               1731.7847222222222,
-              305.3222222222222
+              306.55238095238093
             ]
           ],
           "label_size": null
@@ -2648,11 +2661,11 @@
             ],
             [
               1680.96875,
-              298.4333333333333
+              297.6952380952381
             ],
             [
               1731.7847222222222,
-              298.4333333333333
+              297.6952380952381
             ]
           ],
           "label_size": null
@@ -2672,11 +2685,11 @@
             ],
             [
               1640.96875,
-              308.76666666666665
+              310.9809523809524
             ],
             [
               1731.7847222222222,
-              308.76666666666665
+              310.9809523809524
             ]
           ],
           "label_size": null
@@ -2704,35 +2717,35 @@
           "points": [
             [
               249.75,
-              84.19444444444443
+              85.91666666666666
             ],
             [
               289.75,
-              84.19444444444443
+              85.91666666666666
             ],
             [
               289.75,
-              90.81944444444443
+              92.54166666666666
             ],
             [
               425.125,
-              90.81944444444443
+              92.54166666666666
             ],
             [
               724.96875,
-              90.81944444444443
+              92.54166666666666
             ],
             [
               869.4375,
-              90.81944444444443
+              92.54166666666666
             ],
             [
               869.4375,
-              144.33333333333331
+              144.33333333333334
             ],
             [
               926.296875,
-              144.33333333333331
+              144.33333333333334
             ]
           ],
           "label_size": null
@@ -2752,11 +2765,11 @@
             ],
             [
               869.4375,
-              154.66666666666666
+              154.66666666666669
             ],
             [
               926.296875,
-              154.66666666666666
+              154.66666666666669
             ]
           ],
           "label_size": null
@@ -2792,23 +2805,23 @@
           "points": [
             [
               540.5,
-              324.35277777777776
+              326.075
             ],
             [
               560.5,
-              324.35277777777776
+              326.075
             ],
             [
               560.5,
-              151.3361111111111
+              153.05833333333334
             ],
             [
               724.96875,
-              151.3361111111111
+              153.05833333333334
             ],
             [
               849.4375,
-              151.3361111111111
+              153.05833333333334
             ],
             [
               849.4375,
@@ -2828,11 +2841,11 @@
           "points": [
             [
               540.5,
-              330.55277777777775
+              332.275
             ],
             [
               600.5,
-              330.55277777777775
+              332.275
             ],
             [
               600.5,
@@ -2860,11 +2873,11 @@
           "points": [
             [
               540.5,
-              336.7527777777778
+              338.475
             ],
             [
               580.5,
-              336.7527777777778
+              338.475
             ],
             [
               580.5,
@@ -2884,11 +2897,11 @@
           "points": [
             [
               540.5,
-              342.9527777777778
+              344.675
             ],
             [
               560.5,
-              342.9527777777778
+              344.675
             ],
             [
               560.5,
@@ -2908,19 +2921,19 @@
           "points": [
             [
               249.75,
-              91.94444444444443
+              93.66666666666666
             ],
             [
               269.75,
-              91.94444444444443
+              93.66666666666666
             ],
             [
               269.75,
-              328.4861111111111
+              330.2083333333333
             ],
             [
               309.75,
-              328.4861111111111
+              330.2083333333333
             ]
           ],
           "label_size": null
@@ -2932,26 +2945,25 @@
           "points": [
             [
               249.75,
-              338.81944444444446
+              340.54166666666663
             ],
             [
               309.75,
-              338.81944444444446
+              340.5416666666667
             ]
           ],
           "label_size": null
         }
-      ]
+      ],
+      "upstream_svg_sha256": "1aef8620b1d087cf12bb65d862c149ffe22bbc8f55ccc0f006a54bc7bbf1fa8c"
     },
     {
       "fixture": "upstream_cypress_flowchart_spec_20_multiple_nodes_and_chaining_in_one_statement_020",
       "input_sha256": "89d1f6cdd6662da4eefc4f4023587c64545f50df14d3690946354d7aa58a92e9",
-      "upstream_svg_sha256": "f4859bfcf882e02427685ac573845ade8e7a970c792f736165c03cca7a95bc8a",
       "capture": {
-        "captured_at": "2026-11-03T20:07:00.745Z",
-        "provider_input_sha256": "59abc64a9d72b3463ca1cca812f7b3f76ec713f14a772d7855b16610ed8cb157",
-        "provider_output_sha256": "d7018767212e9d17cddb6b8cdafb0c5d70651416c06ead6dd438da3de4213360",
-        "captured_svg_sha256": "f4859bfcf882e02427685ac573845ade8e7a970c792f736165c03cca7a95bc8a",
+        "provider_input_sha256": "0543af4748fb8de846f569cbaaa2e794825f361452c400064e1b84a86c440bed",
+        "provider_output_sha256": "85d887de801674a14291ad5a0bd8bd6fb697ee90c18aa2f907aa9b2a09ad5a4e",
+        "captured_svg_sha256": "4997b1b4041978a66144f28a1c904d580f2efefd3dbb1a275f2c6cc8228cff1f",
         "upstream_svg_byte_identical": true,
         "upstream_svg_geometry_identical": true
       },
@@ -2982,7 +2994,7 @@
           ],
           "center": [
             88,
-            179.49999809265137
+            179.5
           ],
           "label_box": {
             "text": "test",
@@ -3000,7 +3012,7 @@
           ],
           "center": [
             280,
-            179.49999809265137
+            179.5
           ],
           "label_box": {
             "text": "C",
@@ -3018,7 +3030,7 @@
           ],
           "center": [
             184,
-            264.49999809265137
+            264.5
           ],
           "label_box": {
             "text": "D",
@@ -3049,12 +3061,12 @@
             ],
             [
               88,
-              156.99999809265137
+              157
             ]
           ],
           "label_size": [
             46.015625,
-            19.999998092651367
+            20
           ]
         },
         {
@@ -3076,12 +3088,12 @@
             ],
             [
               280,
-              156.99999809265137
+              157
             ]
           ],
           "label_size": [
             46.015625,
-            19.999998092651367
+            20
           ]
         },
         {
@@ -3091,19 +3103,19 @@
           "points": [
             [
               88,
-              201.99999809265137
+              202
             ],
             [
               88,
-              221.99999809265137
+              222
             ],
             [
               162,
-              221.99999809265137
+              222
             ],
             [
               162,
-              241.99999809265137
+              242
             ]
           ],
           "label_size": null
@@ -3115,34 +3127,33 @@
           "points": [
             [
               280,
-              201.99999809265137
+              202
             ],
             [
               280,
-              221.99999809265137
+              222
             ],
             [
               206,
-              221.99999809265137
+              222
             ],
             [
               206,
-              241.99999809265137
+              242
             ]
           ],
           "label_size": null
         }
-      ]
+      ],
+      "upstream_svg_sha256": "4997b1b4041978a66144f28a1c904d580f2efefd3dbb1a275f2c6cc8228cff1f"
     },
     {
       "fixture": "upstream_cypress_flowchart_spec_24_keep_node_label_text_if_already_defined_when_a_style_is_appli_024",
       "input_sha256": "9d416eaedbeda364326ad0d96ad075d2d12a96eda9278d763eba79cf1c939918",
-      "upstream_svg_sha256": "3d296ceab9ed3a364d2e6069c3430ea3ed94e35dfbcba70afd699cb5e302a09d",
       "capture": {
-        "captured_at": "2026-11-03T20:07:01.397Z",
-        "provider_input_sha256": "5d8210cebd139a6bb6c511ccecd5f453177521ea9ad0ac34b3f6c2ce37358b07",
-        "provider_output_sha256": "19f64955eec3a137af6284a49fbc36459ba66cccaaccdb8133dffd88a1b6b9f2",
-        "captured_svg_sha256": "3d296ceab9ed3a364d2e6069c3430ea3ed94e35dfbcba70afd699cb5e302a09d",
+        "provider_input_sha256": "b5bbebe4f151a790e89164228193b0480c71a775cfd5cb5b2ffaacaf4e21b9a2",
+        "provider_output_sha256": "5b2739fb2e0c816308e6f58760b7617ddbf324542b7180f8972d1e260685e1b1",
+        "captured_svg_sha256": "af2668d8eb2910c653a974ef6d7868a33b6a71d432fddadfc3bcb44140831349",
         "upstream_svg_byte_identical": true,
         "upstream_svg_geometry_identical": true
       },
@@ -3237,7 +3248,7 @@
           ],
           "label_size": [
             54.421875,
-            19.999998092651367
+            20
           ]
         },
         {
@@ -3256,7 +3267,7 @@
           ],
           "label_size": [
             54.421875,
-            19.999998092651367
+            20
           ]
         },
         {
@@ -3275,20 +3286,19 @@
           ],
           "label_size": [
             54.421875,
-            19.999998092651367
+            20
           ]
         }
-      ]
+      ],
+      "upstream_svg_sha256": "af2668d8eb2910c653a974ef6d7868a33b6a71d432fddadfc3bcb44140831349"
     },
     {
       "fixture": "upstream_cypress_flowchart_spec_6_should_render_a_flowchart_full_of_circles_006",
       "input_sha256": "732173c18b52c7d0252b9ecdf925726e3d043008aa00d2c22d2f6532a6197f8c",
-      "upstream_svg_sha256": "14274c49f5129362a5b04e283bfd0c371626ac327c8c3cd14a0484bdcb09a664",
       "capture": {
-        "captured_at": "2026-11-03T20:07:01.731Z",
-        "provider_input_sha256": "df0964d2bc652757497a6bd367c0a5675d5dd904e3316a96a031613f4f124956",
-        "provider_output_sha256": "46d37137c43b34f5f045b1eb90dced5f7011a4c4b741a27e2d22572bbab6f6c0",
-        "captured_svg_sha256": "14274c49f5129362a5b04e283bfd0c371626ac327c8c3cd14a0484bdcb09a664",
+        "provider_input_sha256": "ec0872aa272c956049f3e3246be412f2e214123fb641f5bf691aa3cd9edbe936",
+        "provider_output_sha256": "12f60d5f007476b86b3016dd262e3d6e52dad32a509127b93131ba4603093899",
+        "captured_svg_sha256": "ab0459d23e3a125b5c378fe68a79da4f622c8e98b5b1a5a8e794fed834cee433",
         "upstream_svg_byte_identical": true,
         "upstream_svg_geometry_identical": true
       },
@@ -3301,7 +3311,7 @@
           ],
           "center": [
             1908.771701388889,
-            307.0444444444444
+            308.76666666666665
           ],
           "label_box": {
             "text": "SAM.CommonFA.FMESummary",
@@ -3319,7 +3329,7 @@
           ],
           "center": [
             2337.703125,
-            352.5444444444444
+            354.26666666666665
           ],
           "label_box": {
             "text": "SAM.CommonFA.CommonFAFinanceBudget",
@@ -3337,7 +3347,7 @@
           ],
           "center": [
             1961.046875,
-            398.0444444444444
+            399.76666666666665
           ],
           "label_box": {
             "text": "SAM.CommonFA.BudgetSubserviceLineVolume",
@@ -3355,7 +3365,7 @@
           ],
           "center": [
             136.21875,
-            84.19444444444443
+            85.91666666666666
           ],
           "label_box": {
             "text": "SAM.CommonFA.PopulationFME",
@@ -3517,7 +3527,7 @@
           ],
           "center": [
             444.65625,
-            333.65277777777777
+            335.375
           ],
           "label_box": {
             "text": "SAM.CommonFA.ChargeDetails",
@@ -3535,7 +3545,7 @@
           ],
           "center": [
             136.21875,
-            338.81944444444446
+            340.54166666666663
           ],
           "label_box": {
             "text": "SAM.CommonFA.PremetricCost",
@@ -3554,19 +3564,19 @@
           "points": [
             [
               2020.388888888889,
-              307.0444444444444
+              308.76666666666665
             ],
             [
               2159.875,
-              307.0444444444444
+              308.76666666666665
             ],
             [
               2159.875,
-              347.37777777777774
+              349.09999999999997
             ],
             [
               2179.875,
-              347.37777777777774
+              349.09999999999997
             ]
           ],
           "label_size": null
@@ -3578,19 +3588,19 @@
           "points": [
             [
               2139.875,
-              398.0444444444444
+              399.76666666666665
             ],
             [
               2159.875,
-              398.0444444444444
+              399.76666666666665
             ],
             [
               2159.875,
-              357.7111111111111
+              359.43333333333334
             ],
             [
               2179.875,
-              357.7111111111111
+              359.43333333333334
             ]
           ],
           "label_size": null
@@ -3602,11 +3612,11 @@
           "points": [
             [
               260.4375,
-              76.44444444444443
+              78.16666666666666
             ],
             [
               280.4375,
-              76.44444444444443
+              78.16666666666666
             ],
             [
               280.4375,
@@ -3634,11 +3644,11 @@
             ],
             [
               1762.21875,
-              294.9888888888889
+              293.26666666666665
             ],
             [
               1797.154513888889,
-              294.9888888888889
+              293.26666666666665
             ]
           ],
           "label_size": null
@@ -3674,11 +3684,11 @@
             ],
             [
               1722.21875,
-              312.2111111111111
+              315.4095238095238
             ],
             [
               1797.154513888889,
-              312.2111111111111
+              315.4095238095238
             ]
           ],
           "label_size": null
@@ -3702,11 +3712,11 @@
             ],
             [
               1742.21875,
-              315.6555555555555
+              319.8380952380952
             ],
             [
               1797.154513888889,
-              315.6555555555555
+              319.8380952380952
             ]
           ],
           "label_size": null
@@ -3726,11 +3736,11 @@
             ],
             [
               1722.21875,
-              301.87777777777774
+              302.1238095238095
             ],
             [
               1797.154513888889,
-              301.87777777777774
+              302.1238095238095
             ]
           ],
           "label_size": null
@@ -3758,11 +3768,11 @@
             ],
             [
               1762.21875,
-              319.09999999999997
+              324.26666666666665
             ],
             [
               1797.154513888889,
-              319.09999999999997
+              324.26666666666665
             ]
           ],
           "label_size": null
@@ -3782,11 +3792,11 @@
             ],
             [
               1702.21875,
-              305.3222222222222
+              306.55238095238093
             ],
             [
               1797.154513888889,
-              305.3222222222222
+              306.55238095238093
             ]
           ],
           "label_size": null
@@ -3810,11 +3820,11 @@
             ],
             [
               1742.21875,
-              298.4333333333333
+              297.6952380952381
             ],
             [
               1797.154513888889,
-              298.4333333333333
+              297.6952380952381
             ]
           ],
           "label_size": null
@@ -3834,11 +3844,11 @@
             ],
             [
               1702.21875,
-              308.76666666666665
+              310.9809523809524
             ],
             [
               1797.154513888889,
-              308.76666666666665
+              310.9809523809524
             ]
           ],
           "label_size": null
@@ -3866,35 +3876,35 @@
           "points": [
             [
               260.4375,
-              84.19444444444443
+              85.91666666666666
             ],
             [
               300.4375,
-              84.19444444444443
+              85.91666666666666
             ],
             [
               300.4375,
-              90.81944444444443
+              92.54166666666666
             ],
             [
               444.65625,
-              90.81944444444443
+              92.54166666666666
             ],
             [
               760.4921875,
-              90.81944444444443
+              92.54166666666666
             ],
             [
               912.109375,
-              90.81944444444443
+              92.54166666666666
             ],
             [
               912.109375,
-              144.33333333333331
+              144.33333333333334
             ],
             [
               960.5104166666666,
-              144.33333333333331
+              144.33333333333334
             ]
           ],
           "label_size": null
@@ -3914,11 +3924,11 @@
             ],
             [
               912.109375,
-              154.66666666666666
+              154.66666666666669
             ],
             [
               960.5104166666666,
-              154.66666666666666
+              154.66666666666669
             ]
           ],
           "label_size": null
@@ -3954,23 +3964,23 @@
           "points": [
             [
               568.875,
-              324.35277777777776
+              326.075
             ],
             [
               588.875,
-              324.35277777777776
+              326.075
             ],
             [
               588.875,
-              151.3361111111111
+              153.05833333333334
             ],
             [
               760.4921875,
-              151.3361111111111
+              153.05833333333334
             ],
             [
               892.109375,
-              151.3361111111111
+              153.05833333333334
             ],
             [
               892.109375,
@@ -3990,11 +4000,11 @@
           "points": [
             [
               568.875,
-              330.55277777777775
+              332.275
             ],
             [
               628.875,
-              330.55277777777775
+              332.275
             ],
             [
               628.875,
@@ -4022,11 +4032,11 @@
           "points": [
             [
               568.875,
-              336.7527777777778
+              338.475
             ],
             [
               608.875,
-              336.7527777777778
+              338.475
             ],
             [
               608.875,
@@ -4046,11 +4056,11 @@
           "points": [
             [
               568.875,
-              342.9527777777778
+              344.675
             ],
             [
               588.875,
-              342.9527777777778
+              344.675
             ],
             [
               588.875,
@@ -4070,19 +4080,19 @@
           "points": [
             [
               260.4375,
-              91.94444444444443
+              93.66666666666666
             ],
             [
               280.4375,
-              91.94444444444443
+              93.66666666666666
             ],
             [
               280.4375,
-              328.4861111111111
+              330.2083333333333
             ],
             [
               320.4375,
-              328.4861111111111
+              330.2083333333333
             ]
           ],
           "label_size": null
@@ -4094,23 +4104,22 @@
           "points": [
             [
               260.4375,
-              338.81944444444446
+              340.54166666666663
             ],
             [
               320.4375,
-              338.81944444444446
+              340.5416666666667
             ]
           ],
           "label_size": null
         }
-      ]
+      ],
+      "upstream_svg_sha256": "ab0459d23e3a125b5c378fe68a79da4f622c8e98b5b1a5a8e794fed834cee433"
     },
     {
       "fixture": "upstream_cypress_flowchart_v2_spec_60_handle_styling_for_all_node_shapes_v2_020",
       "input_sha256": "2f54dde38bbcb1c672856d8cee4904b27d714a154de03b268f0b768304138b59",
-      "upstream_svg_sha256": "1896c80161791d5d8f39b2eebb0a0cf4601a8808de960ca9bf0144d8f0d6226f",
       "capture": {
-        "captured_at": "2026-11-03T20:07:02.084Z",
         "provider_input_sha256": "a0217849261be294bebe43503672c98b33281e868f97557cc045d0aeb127b2d8",
         "provider_output_sha256": "ce589cf705d7b8435ee45d8b978bb68d915e91e8e2af8730f5f19c35915f3fab",
         "captured_svg_sha256": "1896c80161791d5d8f39b2eebb0a0cf4601a8808de960ca9bf0144d8f0d6226f",
@@ -4560,18 +4569,19 @@
             21
           ]
         }
-      ]
+      ],
+      "upstream_svg_sha256": "1896c80161791d5d8f39b2eebb0a0cf4601a8808de960ca9bf0144d8f0d6226f"
     },
     {
       "fixture": "upstream_cypress_flowchart_v2_spec_60_handle_styling_for_all_node_shapes_v2_021",
       "input_sha256": "913ee975becbdabe00aa3792aa0731167041f36d78dfb57e0f8a78f791870d25",
-      "upstream_svg_sha256": "3dc87ac87d756a76719974bfccf7e916f659fe1ddabcc5d19a14a56a5821c9b1",
       "capture": {
-        "captured_at": "2026-11-03T20:07:02.426Z",
         "provider_input_sha256": "a0217849261be294bebe43503672c98b33281e868f97557cc045d0aeb127b2d8",
         "provider_output_sha256": "ce589cf705d7b8435ee45d8b978bb68d915e91e8e2af8730f5f19c35915f3fab",
-        "captured_svg_sha256": "7fa0b2794a6f6f47ac46eba5c4ba52b9a04b22002c8ec963604c077f4dbe7f63",
-        "upstream_svg_byte_identical": false,
+        "captured_svg_sha256": "3dc87ac87d756a76719974bfccf7e916f659fe1ddabcc5d19a14a56a5821c9b1",
+        "render_config_sha256": "9e9de8664dfdae70e4b5e6d70b7cb54b3a0cc4f294b04ea2289fc43caac74ddc",
+        "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000-host-security-loose-v1",
+        "upstream_svg_byte_identical": true,
         "upstream_svg_geometry_identical": true
       },
       "nodes": [
@@ -5017,17 +5027,16 @@
             21
           ]
         }
-      ]
+      ],
+      "upstream_svg_sha256": "3dc87ac87d756a76719974bfccf7e916f659fe1ddabcc5d19a14a56a5821c9b1"
     },
     {
       "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset2_lr_allpairs_059",
       "input_sha256": "d2853b45a392660b37f13512a916f1200b3bcff87707cfc29b8c31d5ba835dea",
-      "upstream_svg_sha256": "36eec772517caf015d8d42e21984b7e1efaca3419205f1df4fea3fb419b7699e",
       "capture": {
-        "captured_at": "2026-11-03T20:07:02.760Z",
-        "provider_input_sha256": "ec2340bebd4846d622cb1e8b8c6c0cb9a1059bfe90c31eb5721bfe5bde2d87c3",
-        "provider_output_sha256": "699f823fede65f28b44887d1ef0bfb830b4c49749a672fa14c0244425736fd75",
-        "captured_svg_sha256": "36eec772517caf015d8d42e21984b7e1efaca3419205f1df4fea3fb419b7699e",
+        "provider_input_sha256": "d397788959a305c643958cb9e4bd4e9bac0ed6e7502c3222d8122eac798f5e00",
+        "provider_output_sha256": "dcd46bfb380056860d1e6b0d9f74ca0fc511787e4a969e0ebe5461cc5e0b7a00",
+        "captured_svg_sha256": "5e7f4e201684dfa3433887b828c138a9c56ccc1124c8004a63df390bf7e97a7b",
         "upstream_svg_byte_identical": true,
         "upstream_svg_geometry_identical": true
       },
@@ -5188,11 +5197,11 @@
               159.23614501953125
             ],
             [
-              528.3999938964844,
+              508.3999938964844,
               159.23614501953125
             ],
             [
-              528.3999938964844,
+              508.3999938964844,
               147.03614501953126
             ],
             [
@@ -5289,11 +5298,11 @@
             ],
             [
               548.3999938964844,
-              148.53614501953126
+              150.03614501953126
             ],
             [
               568.3999938964844,
-              148.53614501953126
+              150.03614501953126
             ]
           ],
           "label_size": null
@@ -5313,19 +5322,19 @@
             ],
             [
               433.3999938964844,
-              49.368072509765625
+              48.618072509765625
             ],
             [
               470.8999938964844,
-              49.368072509765625
+              48.618072509765625
             ],
             [
               575.4066405296326,
-              49.368072509765625
+              48.618072509765625
             ],
             [
               622.4132871627808,
-              49.368072509765625
+              48.618072509765625
             ],
             [
               622.4132871627808,
@@ -5348,16 +5357,16 @@
               206.90281168619794
             ],
             [
-              508.3999938964844,
+              528.3999938964844,
               206.90281168619794
             ],
             [
-              508.3999938964844,
-              145.53614501953126
+              528.3999938964844,
+              144.03614501953126
             ],
             [
               568.3999938964844,
-              145.53614501953126
+              144.03614501953126
             ]
           ],
           "label_size": null
@@ -5414,17 +5423,16 @@
           ],
           "label_size": null
         }
-      ]
+      ],
+      "upstream_svg_sha256": "5e7f4e201684dfa3433887b828c138a9c56ccc1124c8004a63df390bf7e97a7b"
     },
     {
       "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset3_tb_allpairs_019",
       "input_sha256": "72a5231fc9097a54c4d683d7854f8196135e72d7f3608c5bf7c8baf33371b462",
-      "upstream_svg_sha256": "b5ab6e805dd0da0d6075af105eec255cd82df615048e377ba4c6b7c6a54a9db0",
       "capture": {
-        "captured_at": "2026-11-03T20:07:03.102Z",
-        "provider_input_sha256": "c131fe23342fb91ec441160bbeb1a561610d2dc2e9447ccd02bcc897df9fce0d",
-        "provider_output_sha256": "d19e0e27e0fbcbd2997c0ca7367687fb349e36e9ad4a4f8a9d3ee52079168e68",
-        "captured_svg_sha256": "b5ab6e805dd0da0d6075af105eec255cd82df615048e377ba4c6b7c6a54a9db0",
+        "provider_input_sha256": "0e7f5e749bf7663dda0b3a710fe1da7e2084bc28c746e366d4d9ca74836a052d",
+        "provider_output_sha256": "a512de7fcc20c348c820ceb9ca428243a007a21c135a9098520fbff0e2b7d4a3",
+        "captured_svg_sha256": "e94feb71685a2fb4dbf2bc198b40ab430b5ae679bf83d026630962990c8c06e7",
         "upstream_svg_byte_identical": true,
         "upstream_svg_geometry_identical": true
       },
@@ -5508,7 +5516,7 @@
             60
           ],
           "center": [
-            241.80740979512532,
+            237.80171254475908,
             614.0417556762695
           ]
         }
@@ -5640,11 +5648,11 @@
               564.0417556762695
             ],
             [
-              253.82450154622396,
+              257.83019879659014,
               564.0417556762695
             ],
             [
-              253.82450154622396,
+              257.83019879659014,
               584.0417556762695
             ]
           ],
@@ -5716,27 +5724,27 @@
               233
             ],
             [
-              51.25807189941406,
+              48.81855392456055,
               233
             ],
             [
-              51.25807189941406,
+              48.81855392456055,
               311.12087631225586
             ],
             [
-              51.25807189941406,
+              48.81855392456055,
               476.6417541503906
             ],
             [
-              51.25807189941406,
+              48.81855392456055,
               564.0417556762695
             ],
             [
-              229.7903180440267,
+              217.77322629292803,
               564.0417556762695
             ],
             [
-              229.7903180440267,
+              217.77322629292803,
               584.0417556762695
             ]
           ],
@@ -5784,11 +5792,11 @@
               544.0417556762695
             ],
             [
-              245.81310704549153,
+              244.47787462870278,
               544.0417556762695
             ],
             [
-              245.81310704549153,
+              244.47787462870278,
               584.0417556762695
             ]
           ],
@@ -5808,27 +5816,26 @@
               544.0417556762695
             ],
             [
-              237.8017125447591,
+              231.1255504608154,
               544.0417556762695
             ],
             [
-              237.8017125447591,
+              231.1255504608154,
               584.0417556762695
             ]
           ],
           "label_size": null
         }
-      ]
+      ],
+      "upstream_svg_sha256": "e94feb71685a2fb4dbf2bc198b40ab430b5ae679bf83d026630962990c8c06e7"
     },
     {
       "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset5_lr_allpairs_083",
       "input_sha256": "3c08be319b945953c904817d6657828b821cb71107919b5878e2923224fda960",
-      "upstream_svg_sha256": "9d48dbb2d6eb2e673b710fa2575585a559c9077a66ba526b27d4e2cc5bcd671a",
       "capture": {
-        "captured_at": "2026-11-03T20:07:03.442Z",
-        "provider_input_sha256": "86fe3b11358f3b2c172350804bbe5128a95f5fbeccbcf88b9aded636db1ab774",
-        "provider_output_sha256": "13a9987ef29492e2eceea3b30be453435aa87715adfc82f3a12c590d162e5997",
-        "captured_svg_sha256": "9d48dbb2d6eb2e673b710fa2575585a559c9077a66ba526b27d4e2cc5bcd671a",
+        "provider_input_sha256": "003e81696a1e1b106a88572d3848350bc0d6663d649740d8668fc6482d83f37a",
+        "provider_output_sha256": "47e858bdfb2892dd1325cde66be2ef5999ea1c3e1472d4de7c617722786b0342",
+        "captured_svg_sha256": "2e92cffbb215b5893c80c95a58f518c9296dc27d3dad3902a662295578bb78a4",
         "upstream_svg_byte_identical": true,
         "upstream_svg_geometry_identical": true
       },
@@ -5841,7 +5848,7 @@
           ],
           "center": [
             95.5999984741211,
-            197.8403835296631
+            203.4816879272461
           ],
           "label_box": {
             "text": "This is a label for lined-document shape",
@@ -5877,7 +5884,7 @@
           ],
           "center": [
             540.0999984741211,
-            197.24000282287597
+            196.01502075195316
           ],
           "label_box": {
             "text": "This is a label for brace-l shape",
@@ -5894,7 +5901,7 @@
             64.80000305175781
           ],
           "center": [
-            751.9000015258789,
+            731.9000015258789,
             86.4000015258789
           ],
           "label_box": {
@@ -5912,8 +5919,8 @@
             79.19999694824219
           ],
           "center": [
-            974.0500030517578,
-            163.67371559143066
+            954.0500030517578,
+            169.31501998901365
           ],
           "label_box": {
             "text": "This is a label for braces shape",
@@ -5930,8 +5937,8 @@
             79.19999694824219
           ],
           "center": [
-            1224.900001525879,
-            178.1312235514323
+            1204.900001525879,
+            178.8391948699951
           ],
           "label_box": {
             "text": "This is a label for brace-r shape",
@@ -5950,19 +5957,19 @@
           "points": [
             [
               179.1999969482422,
-              179.4262930552165
+              185.06759745279948
             ],
             [
               219.1999969482422,
-              179.4262930552165
+              185.06759745279948
             ],
             [
               219.1999969482422,
-              112.60000228881836
+              112.60000228881837
             ],
             [
               239.1999969482422,
-              112.60000228881836
+              112.60000228881837
             ]
           ],
           "label_size": null
@@ -5974,23 +5981,15 @@
           "points": [
             [
               179.1999969482422,
-              197.8403835296631
-            ],
-            [
-              199.1999969482422,
-              197.8403835296631
-            ],
-            [
-              199.1999969482422,
-              204.70666999816893
+              203.48168792724613
             ],
             [
               321.6999969482422,
-              204.70666999816893
+              203.48168792724613
             ],
             [
               464.1999969482422,
-              204.70666999816893
+              203.48168792724613
             ]
           ],
           "label_size": null
@@ -6002,11 +6001,11 @@
           "points": [
             [
               179.1999969482422,
-              161.01220258076987
+              166.65350697835288
             ],
             [
               199.1999969482422,
-              161.01220258076987
+              166.65350697835288
             ],
             [
               199.1999969482422,
@@ -6026,11 +6025,11 @@
             ],
             [
               636,
-              75.20000076293945
+              66.4000015258789
             ],
             [
-              676,
-              75.20000076293945
+              656,
+              66.4000015258789
             ]
           ],
           "label_size": null
@@ -6042,39 +6041,39 @@
           "points": [
             [
               179.1999969482422,
-              216.2544740041097
+              221.89577840169272
             ],
             [
               219.1999969482422,
-              216.2544740041097
+              221.89577840169272
             ],
             [
               219.1999969482422,
-              253.91371650695802
+              257.58168767293296
             ],
             [
               321.6999969482422,
-              253.91371650695802
+              257.58168767293296
             ],
             [
               540.0999984741211,
-              253.91371650695802
+              257.58168767293296
             ],
             [
-              751.9000015258789,
-              253.91371650695802
+              731.9000015258789,
+              257.58168767293296
+            ],
+            [
+              847.8000030517578,
+              257.58168767293296
+            ],
+            [
+              847.8000030517578,
+              198.91501846313474
             ],
             [
               867.8000030517578,
-              253.91371650695802
-            ],
-            [
-              867.8000030517578,
-              181.43371467590333
-            ],
-            [
-              887.8000030517578,
-              181.43371467590333
+              198.91501846313474
             ]
           ],
           "label_size": null
@@ -6086,43 +6085,43 @@
           "points": [
             [
               179.1999969482422,
-              234.66856447855633
+              240.30986887613932
             ],
             [
               199.1999969482422,
-              234.66856447855633
+              240.30986887613932
             ],
             [
               199.1999969482422,
-              274.91371650695805
+              278.58168767293296
             ],
             [
               321.6999969482422,
-              274.91371650695805
+              278.58168767293296
             ],
             [
               540.0999984741211,
-              274.91371650695805
+              278.58168767293296
             ],
             [
-              751.9000015258789,
-              274.91371650695805
+              731.9000015258789,
+              278.58168767293296
             ],
             [
-              974.0500030517578,
-              274.91371650695805
+              954.0500030517578,
+              278.58168767293296
             ],
             [
-              1100.3000030517578,
-              274.91371650695805
+              1080.3000030517578,
+              278.58168767293296
             ],
             [
-              1100.3000030517578,
-              197.86455586751302
+              1080.3000030517578,
+              208.43919334411623
             ],
             [
-              1140.3000030517578,
-              197.86455586751302
+              1120.3000030517578,
+              208.43919334411623
             ]
           ],
           "label_size": null
@@ -6134,19 +6133,19 @@
           "points": [
             [
               404.1999969482422,
-              141.47252807617187
+              141.4725280761719
             ],
             [
               424.1999969482422,
-              141.47252807617187
+              141.4725280761719
             ],
             [
               424.1999969482422,
-              189.773335647583
+              188.5483535766602
             ],
             [
               464.1999969482422,
-              189.773335647583
+              188.5483535766602
             ]
           ],
           "label_size": null
@@ -6158,11 +6157,11 @@
           "points": [
             [
               404.1999969482422,
-              102.9758270263672
+              102.97582702636718
             ],
             [
               444.1999969482422,
-              102.9758270263672
+              102.97582702636718
             ],
             [
               444.1999969482422,
@@ -6173,7 +6172,7 @@
               86.4000015258789
             ],
             [
-              676,
+              656,
               86.4000015258789
             ]
           ],
@@ -6186,11 +6185,11 @@
           "points": [
             [
               404.1999969482422,
-              122.22417755126952
+              122.22417755126953
             ],
             [
               444.1999969482422,
-              122.22417755126952
+              122.22417755126953
             ],
             [
               444.1999969482422,
@@ -6201,20 +6200,20 @@
               138.8000030517578
             ],
             [
-              751.9000015258789,
+              731.9000015258789,
               138.8000030517578
             ],
             [
-              847.8000030517578,
+              827.8000030517578,
               138.8000030517578
             ],
             [
-              847.8000030517578,
-              157.75371589660645
+              827.8000030517578,
+              159.4483538309733
             ],
             [
-              887.8000030517578,
-              157.75371589660645
+              867.8000030517578,
+              159.4483538309733
             ]
           ],
           "label_size": null
@@ -6241,24 +6240,24 @@
               33
             ],
             [
-              751.9000015258789,
+              731.9000015258789,
               33
             ],
             [
-              974.0500030517578,
+              954.0500030517578,
               33
+            ],
+            [
+              1100.3000030517578,
+              33
+            ],
+            [
+              1100.3000030517578,
+              149.23919639587402
             ],
             [
               1120.3000030517578,
-              33
-            ],
-            [
-              1120.3000030517578,
-              158.39789123535155
-            ],
-            [
-              1140.3000030517578,
-              158.39789123535155
+              149.23919639587402
             ]
           ],
           "label_size": null
@@ -6270,19 +6269,19 @@
           "points": [
             [
               616,
-              186.0400020599365
+              184.8150199890137
             ],
             [
               636,
-              186.0400020599365
+              184.8150199890137
             ],
             [
               636,
-              97.60000228881836
+              106.4000015258789
             ],
             [
-              676,
-              97.60000228881836
+              656,
+              106.4000015258789
             ]
           ],
           "label_size": null
@@ -6294,31 +6293,23 @@
           "points": [
             [
               616,
-              197.24000282287597
+              196.01502075195316
             ],
             [
-              656,
-              197.24000282287597
+              731.9000015258789,
+              196.01502075195316
             ],
             [
-              656,
-              190.37371635437012
+              827.8000030517578,
+              196.01502075195316
             ],
             [
-              751.9000015258789,
-              190.37371635437012
+              827.8000030517578,
+              179.18168614705405
             ],
             [
-              847.8000030517578,
-              190.37371635437012
-            ],
-            [
-              847.8000030517578,
-              169.5937152862549
-            ],
-            [
-              887.8000030517578,
-              169.5937152862549
+              867.8000030517578,
+              179.18168614705405
             ]
           ],
           "label_size": null
@@ -6330,35 +6321,35 @@
           "points": [
             [
               616,
-              208.44000358581542
+              207.2150215148926
             ],
             [
               636,
-              208.44000358581542
+              207.2150215148926
             ],
             [
               636,
-              227.71371574401857
+              231.3816869099935
             ],
             [
-              751.9000015258789,
-              227.71371574401857
+              731.9000015258789,
+              231.3816869099935
             ],
             [
-              974.0500030517578,
-              227.71371574401857
+              954.0500030517578,
+              231.3816869099935
             ],
             [
-              1080.3000030517578,
-              227.71371574401857
+              1060.3000030517578,
+              231.3816869099935
             ],
             [
-              1080.3000030517578,
-              187.99788970947264
+              1060.3000030517578,
+              193.6391941070557
             ],
             [
-              1140.3000030517578,
-              187.99788970947264
+              1120.3000030517578,
+              193.6391941070557
             ]
           ],
           "label_size": null
@@ -6369,20 +6360,20 @@
           "target": "n44",
           "points": [
             [
-              827.8000030517578,
-              93.86666870117188
+              807.8000030517578,
+              96.4000015258789
+            ],
+            [
+              847.8000030517578,
+              96.4000015258789
+            ],
+            [
+              847.8000030517578,
+              139.71502151489256
             ],
             [
               867.8000030517578,
-              93.86666870117188
-            ],
-            [
-              867.8000030517578,
-              145.91371650695802
-            ],
-            [
-              887.8000030517578,
-              145.91371650695802
+              139.71502151489256
             ]
           ],
           "label_size": null
@@ -6393,24 +6384,24 @@
           "target": "n55",
           "points": [
             [
-              827.8000030517578,
-              78.93333435058594
+              807.8000030517578,
+              76.4000015258789
             ],
             [
-              974.0500030517578,
-              78.93333435058594
+              954.0500030517578,
+              76.4000015258789
             ],
             [
-              1100.3000030517578,
-              78.93333435058594
+              1080.3000030517578,
+              76.4000015258789
             ],
             [
-              1100.3000030517578,
-              168.26455739339193
+              1080.3000030517578,
+              164.0391956329346
             ],
             [
-              1140.3000030517578,
-              168.26455739339193
+              1120.3000030517578,
+              164.0391956329346
             ]
           ],
           "label_size": null
@@ -6421,35 +6412,34 @@
           "target": "n55",
           "points": [
             [
+              1040.3000030517578,
+              169.31501998901365
+            ],
+            [
               1060.3000030517578,
-              163.67371559143066
+              169.31501998901365
             ],
             [
-              1080.3000030517578,
-              163.67371559143066
+              1060.3000030517578,
+              178.83919486999514
             ],
             [
-              1080.3000030517578,
-              178.1312235514323
-            ],
-            [
-              1140.3000030517578,
-              178.1312235514323
+              1120.3000030517578,
+              178.83919486999514
             ]
           ],
           "label_size": null
         }
-      ]
+      ],
+      "upstream_svg_sha256": "2e92cffbb215b5893c80c95a58f518c9296dc27d3dad3902a662295578bb78a4"
     },
     {
       "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset5_lr_label_082",
       "input_sha256": "5e6e5fd9e7fd58759bd190f4dde9a7a3bfcf3bc93a89710d1ea1772bcc7685dd",
-      "upstream_svg_sha256": "b12f43496138ee41d65cdc5d0c5ed9a0368bac4942dcc747c9720179d85eb4e0",
       "capture": {
-        "captured_at": "2026-11-03T20:07:03.780Z",
         "provider_input_sha256": "ed650927d555af067d9ade4ad94da27115f508e86268d8d6ce0f546917de4604",
         "provider_output_sha256": "71205e08a7966ec4462c84de72f6c93e5a7e7b1af31b175eb1c535f9d828760f",
-        "captured_svg_sha256": "b12f43496138ee41d65cdc5d0c5ed9a0368bac4942dcc747c9720179d85eb4e0",
+        "captured_svg_sha256": "1e5348874e2f0b27ef4e74877debd9529d3207504954e65cda24c8fa548c6f22",
         "upstream_svg_byte_identical": true,
         "upstream_svg_geometry_identical": true
       },
@@ -6768,17 +6758,16 @@
           ],
           "label_size": null
         }
-      ]
+      ],
+      "upstream_svg_sha256": "1e5348874e2f0b27ef4e74877debd9529d3207504954e65cda24c8fa548c6f22"
     },
     {
       "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset5_lr_longlabel_084",
       "input_sha256": "7d3e32bf052a4fa1478725315bc54c1c2ad779cf6718ec9023af0b7dee4d611c",
-      "upstream_svg_sha256": "04b89ebefbd41cda0b5036471adefeb04d583d699ea5126f8441212822d4e76a",
       "capture": {
-        "captured_at": "2026-11-03T20:07:04.119Z",
         "provider_input_sha256": "34a2d815da94bfb03e100563fb2396c89b766d619c1cbb7fae16d7a46f44cdf8",
         "provider_output_sha256": "e2abc92e1b833c0afd962a13ddf348c9ee32b4514b79212976d287ca7ad10d2d",
-        "captured_svg_sha256": "04b89ebefbd41cda0b5036471adefeb04d583d699ea5126f8441212822d4e76a",
+        "captured_svg_sha256": "04d0ab0707f746a88bef5fdc929c5418b142b7a35e58a1c6c4cbef563554fce9",
         "upstream_svg_byte_identical": true,
         "upstream_svg_geometry_identical": true
       },
@@ -7097,17 +7086,16 @@
           ],
           "label_size": null
         }
-      ]
+      ],
+      "upstream_svg_sha256": "04d0ab0707f746a88bef5fdc929c5418b142b7a35e58a1c6c4cbef563554fce9"
     },
     {
       "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset5_lr_md_html_true_085",
       "input_sha256": "00925432d8904ef7281b77054b732dbdb7a004d3352ed083ddde2cedfbf3baa6",
-      "upstream_svg_sha256": "411498a9171461f51e9d1304cf3c61a7dec809822697c9b33fae5427cb88d3b0",
       "capture": {
-        "captured_at": "2026-11-03T20:07:04.459Z",
         "provider_input_sha256": "bf7cb40a2da0faa5f442356fa4b86188484ffb391c065713034a581315842db5",
         "provider_output_sha256": "d8b7d4dfc4717e184f2b0306bc1ccfa53ca0ab62366ce5b1851f108a4bb36100",
-        "captured_svg_sha256": "411498a9171461f51e9d1304cf3c61a7dec809822697c9b33fae5427cb88d3b0",
+        "captured_svg_sha256": "a003e4aaebc730e8b9ca679b8881a9fd96e5ffb73ccac7038569a2ac66cd4e38",
         "upstream_svg_byte_identical": true,
         "upstream_svg_geometry_identical": true
       },
@@ -7426,17 +7414,16 @@
           ],
           "label_size": null
         }
-      ]
+      ],
+      "upstream_svg_sha256": "a003e4aaebc730e8b9ca679b8881a9fd96e5ffb73ccac7038569a2ac66cd4e38"
     },
     {
       "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset5_tb_allpairs_035",
       "input_sha256": "12146de76d14c39cd522e601b546f5c2f8099d63a8ac6813898d8f2d04e8bfae",
-      "upstream_svg_sha256": "eaa984b453d5f31c734f06280700d432cfeeadd6f071d7dbe4160275e44b4057",
       "capture": {
-        "captured_at": "2026-11-03T20:07:04.796Z",
         "provider_input_sha256": "58eae1f77eb53bfa49bcab64c7f9903bf473c1f7e072747238aa6ddbc76ff4d9",
         "provider_output_sha256": "d7f4ed021b83831cc440e9c7ca73b73f100151e224f478a80bd142478f7073ef",
-        "captured_svg_sha256": "eaa984b453d5f31c734f06280700d432cfeeadd6f071d7dbe4160275e44b4057",
+        "captured_svg_sha256": "92761bbb4e659387c51db875e58b911ca888ea60c8eadfc9c7f751945332077f",
         "upstream_svg_byte_identical": true,
         "upstream_svg_geometry_identical": true
       },
@@ -8047,17 +8034,16 @@
           ],
           "label_size": null
         }
-      ]
+      ],
+      "upstream_svg_sha256": "92761bbb4e659387c51db875e58b911ca888ea60c8eadfc9c7f751945332077f"
     },
     {
       "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset6_lr_allpairs_091",
       "input_sha256": "ab3890b19e238bb699421b2f61f4a249993b6ad6517f562ad3989825686a7901",
-      "upstream_svg_sha256": "55086838947143199edde75b6c52ee971ab72187913b39c5a29b96b61277abc3",
       "capture": {
-        "captured_at": "2026-11-03T20:07:04.948Z",
         "provider_input_sha256": "5bcb402690c58e5baa4d2cc495ffd0753f5a2475afd9f691bdf17d956560f91c",
         "provider_output_sha256": "74d61744e3cd5d313568f26124bc13ebefe14bd5bcd313246b78c8537d3d859a",
-        "captured_svg_sha256": "55086838947143199edde75b6c52ee971ab72187913b39c5a29b96b61277abc3",
+        "captured_svg_sha256": "280e9f3e36c624185794d2773f49415622c9fb4b9f180935deed728482cf73b4",
         "upstream_svg_byte_identical": true,
         "upstream_svg_geometry_identical": true
       },
@@ -8116,17 +8102,16 @@
           ],
           "label_size": null
         }
-      ]
+      ],
+      "upstream_svg_sha256": "280e9f3e36c624185794d2773f49415622c9fb4b9f180935deed728482cf73b4"
     },
     {
       "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset6_lr_label_090",
       "input_sha256": "8c5a55d0eac222e695f6b60b8bd95272d30f8b5f083c40238e452f8cc0e90ff4",
-      "upstream_svg_sha256": "a23c6ff6b03d2b9d661179434732ece78ee0fc2580fdf55fcd5ffcee1e09fa88",
       "capture": {
-        "captured_at": "2026-11-03T20:07:05.477Z",
         "provider_input_sha256": "53b946fcae488f11999ea0ae8e7329c873e1f031339e5b389f027b2e4298a311",
         "provider_output_sha256": "279bf549778bab8a47f262f0ef753b81b3b0fbcaa17fe7ab85856c758deb9712",
-        "captured_svg_sha256": "a23c6ff6b03d2b9d661179434732ece78ee0fc2580fdf55fcd5ffcee1e09fa88",
+        "captured_svg_sha256": "114c4a420bed0e5adedc4b7920d54abdf10d860d92ac3e809524256b3dee2d21",
         "upstream_svg_byte_identical": true,
         "upstream_svg_geometry_identical": true
       },
@@ -8237,17 +8222,16 @@
           ],
           "label_size": null
         }
-      ]
+      ],
+      "upstream_svg_sha256": "114c4a420bed0e5adedc4b7920d54abdf10d860d92ac3e809524256b3dee2d21"
     },
     {
       "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset6_lr_longlabel_092",
       "input_sha256": "9f26c2787c6aff6b6be7dbdf52cef610ce9aa3275dca4feb202b968454a5e6bf",
-      "upstream_svg_sha256": "c520b0fe4715a459c29ff7066a565f1b49d1615a8659ad78c6e5fb7409e3e2b1",
       "capture": {
-        "captured_at": "2026-11-03T20:07:05.821Z",
         "provider_input_sha256": "afba2148562a09bcdfb05a3286311c0f1daec59381b6a8c0366235bf910584af",
         "provider_output_sha256": "5298fe0a3cb245e8b7043e03dcc8faca2f431fd6eb24087c7c36e368d035d9c4",
-        "captured_svg_sha256": "c520b0fe4715a459c29ff7066a565f1b49d1615a8659ad78c6e5fb7409e3e2b1",
+        "captured_svg_sha256": "c697d87717335f9d16a8a2c6a9a2d4a78926d68befb4d5b7e64acc3b2e933f22",
         "upstream_svg_byte_identical": true,
         "upstream_svg_geometry_identical": true
       },
@@ -8358,17 +8342,16 @@
           ],
           "label_size": null
         }
-      ]
+      ],
+      "upstream_svg_sha256": "c697d87717335f9d16a8a2c6a9a2d4a78926d68befb4d5b7e64acc3b2e933f22"
     },
     {
       "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset6_lr_md_html_false_094",
       "input_sha256": "fcc1647a03d968d09a49f5be57be869fa34639476d4c06065e49c686a9b69380",
-      "upstream_svg_sha256": "368d2cad76de90802a92dc9970e0b63eb21423ce833e4669e94c81077e76d75b",
       "capture": {
-        "captured_at": "2026-11-03T20:07:06.161Z",
         "provider_input_sha256": "6a3a76cf4b966087374eca83402d114f206a821378eefd89e93c5091109f2bde",
         "provider_output_sha256": "84b4c71a17933070a0426d63d8fe8c3256068b570302173e2315312984c5e28d",
-        "captured_svg_sha256": "368d2cad76de90802a92dc9970e0b63eb21423ce833e4669e94c81077e76d75b",
+        "captured_svg_sha256": "b7a630c597e5ad8b6512e1f26b6be35c5c51839ce46cd001b5ff3740422bc3c8",
         "upstream_svg_byte_identical": true,
         "upstream_svg_geometry_identical": true
       },
@@ -8479,17 +8462,16 @@
           ],
           "label_size": null
         }
-      ]
+      ],
+      "upstream_svg_sha256": "b7a630c597e5ad8b6512e1f26b6be35c5c51839ce46cd001b5ff3740422bc3c8"
     },
     {
       "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset6_lr_md_html_true_093",
       "input_sha256": "863edb5c1987e86570e2cb92961c51cea2e1fac9eba41353b1e406b8f50347be",
-      "upstream_svg_sha256": "8f44d8bb99ec230d7e9cb0a0e906230fe17f9cb28dcbf923f3558a04eadfef2a",
       "capture": {
-        "captured_at": "2026-11-03T20:07:06.505Z",
         "provider_input_sha256": "a60a34e98b1776127be35fdadfc3cf645ee011939eb14f8025a376fa88acd004",
         "provider_output_sha256": "b868361223f82faa85e668028417eb04c9dcaf37826ce6b3be4a2da5a44ed652",
-        "captured_svg_sha256": "8f44d8bb99ec230d7e9cb0a0e906230fe17f9cb28dcbf923f3558a04eadfef2a",
+        "captured_svg_sha256": "8dfb4dd4cdc4d8b261e9d396c08a93d23a691fbea005f2e44d95a5a2d90e1e7f",
         "upstream_svg_byte_identical": true,
         "upstream_svg_geometry_identical": true
       },
@@ -8600,17 +8582,16 @@
           ],
           "label_size": null
         }
-      ]
+      ],
+      "upstream_svg_sha256": "8dfb4dd4cdc4d8b261e9d396c08a93d23a691fbea005f2e44d95a5a2d90e1e7f"
     },
     {
       "fixture": "upstream_cypress_oldshapes_spec_shapessets_shapesset2_lr_allpairs_051",
       "input_sha256": "c866d880081dc3aad1ce9f7c4b3fae895a415260253517ea4b553bfef073b4cc",
-      "upstream_svg_sha256": "c12019330a65c705c0caf1581a7288f71de561a85e2b4eac22c4f0dcffd59c1e",
       "capture": {
-        "captured_at": "2026-11-03T20:07:06.844Z",
-        "provider_input_sha256": "a67309c11a3d1dd9323c60824cfbd1e1e1d0025202e996a3f33e0133b815dce5",
-        "provider_output_sha256": "09f555094cd95155a7527bd0c0e1a8958b576f446cc66fb4731c0ad42df4b73f",
-        "captured_svg_sha256": "c12019330a65c705c0caf1581a7288f71de561a85e2b4eac22c4f0dcffd59c1e",
+        "provider_input_sha256": "1f548f1d204e8eca7f6dd70c9f2216ddbeed32b8cb5011e51081a5a53d3cfdfe",
+        "provider_output_sha256": "2d5f324aea730f2a9481d2e48d3bb0a04abdc4c3d91fc09b2cb51150ed7bddec",
+        "captured_svg_sha256": "34748c7b516196319104f37b7ed55006e20486c63cc7e69586100c2914b1ef5a",
         "upstream_svg_byte_identical": true,
         "upstream_svg_geometry_identical": true
       },
@@ -8670,7 +8651,7 @@
           ],
           "center": [
             515.0066466331482,
-            93.25
+            92.5
           ]
         }
       ],
@@ -8758,11 +8739,11 @@
             ],
             [
               468,
-              93.25
+              92.5
             ],
             [
               508,
-              93.25
+              92.5
             ]
           ],
           "label_size": null
@@ -8810,11 +8791,11 @@
             ],
             [
               488,
-              96.25
+              98.5
             ],
             [
               508,
-              96.25
+              98.5
             ]
           ],
           "label_size": null
@@ -8834,26 +8815,25 @@
             ],
             [
               448,
-              94.75
+              95.5
             ],
             [
               508,
-              94.75
+              95.5
             ]
           ],
           "label_size": null
         }
-      ]
+      ],
+      "upstream_svg_sha256": "34748c7b516196319104f37b7ed55006e20486c63cc7e69586100c2914b1ef5a"
     },
     {
       "fixture": "upstream_cypress_oldshapes_spec_shapessets_shapesset2_tb_allpairs_011",
       "input_sha256": "caab57208157d0ed33b5d6d5f8f9ceae6f50ba6102d403cc23392a5d71b1bb7c",
-      "upstream_svg_sha256": "f60bfeeee549a74dbe9803568b9b4dfdf7539061efafcee9efc9f5e269a00edf",
       "capture": {
-        "captured_at": "2026-11-03T20:07:07.186Z",
-        "provider_input_sha256": "fa070b66b8ad242ea5bb5274bedb83650e34d4b2e53ea66d7fe44d373aa6fa6f",
-        "provider_output_sha256": "a749a82f8326afd95b3a7005907f99033a268ad352c3b1666a73cb66dff7e5dc",
-        "captured_svg_sha256": "f60bfeeee549a74dbe9803568b9b4dfdf7539061efafcee9efc9f5e269a00edf",
+        "provider_input_sha256": "a5523c416023d75db91e011c5ae8c68e380e86a437b318add10a6b3a2d720d50",
+        "provider_output_sha256": "6f81bedb5738e25b50e26eb2ca06c40cf8e008a9cdd1bf7ff38df9040c839d11",
+        "captured_svg_sha256": "4bec4db265b84345d9cdd8edc666f60878aa363bc02bc4d0461ea356c49e0dd6",
         "upstream_svg_byte_identical": true,
         "upstream_svg_geometry_identical": true
       },
@@ -8912,7 +8892,7 @@
             14
           ],
           "center": [
-            176.25166165828705,
+            175.5033233165741,
             351
           ]
         }
@@ -9000,11 +8980,11 @@
               304
             ],
             [
-              176.25166165828705,
+              175.5033233165741,
               304
             ],
             [
-              176.25166165828705,
+              175.5033233165741,
               344
             ]
           ],
@@ -9052,11 +9032,11 @@
               324
             ],
             [
-              179.24501502513885,
+              181.4900300502777,
               324
             ],
             [
-              179.24501502513885,
+              181.4900300502777,
               344
             ]
           ],
@@ -9076,27 +9056,26 @@
               284
             ],
             [
-              177.74833834171295,
+              178.4966766834259,
               284
             ],
             [
-              177.74833834171295,
+              178.4966766834259,
               344
             ]
           ],
           "label_size": null
         }
-      ]
+      ],
+      "upstream_svg_sha256": "4bec4db265b84345d9cdd8edc666f60878aa363bc02bc4d0461ea356c49e0dd6"
     },
     {
       "fixture": "upstream_cypress_oldshapes_spec_shapessets_shapesset3_lr_allpairs_059",
       "input_sha256": "1e5ef4f39bc64a1e594171df94d6d47a965c7bb7890660ddfccfa0877f913dee",
-      "upstream_svg_sha256": "126d1756268184cd5eadb7d3d368533283d057688b8585289be4bcd34a5cb931",
       "capture": {
-        "captured_at": "2026-11-03T20:07:07.526Z",
-        "provider_input_sha256": "6824cffb6abea1e4ae9d2c9d81d5489cb617bc76aa6afbddb294f52a2b4b1dd6",
-        "provider_output_sha256": "616a587b722afbf2ed97421a75c2ca7a9ebf945d3f0af5c649c65ef972ea6081",
-        "captured_svg_sha256": "126d1756268184cd5eadb7d3d368533283d057688b8585289be4bcd34a5cb931",
+        "provider_input_sha256": "75cdeca06be77e72a88cd8035fb19acc6d68895eee9105e0c3b829e30d17b310",
+        "provider_output_sha256": "185c2907b8eaf5459f475e6cc4d36c8b6a0beaa677501c5c8a01615b78f83fd1",
+        "captured_svg_sha256": "322480752e4432de22c66ed48300b1a95c72e9fb1017d9c4dcccbefe3c916eea",
         "upstream_svg_byte_identical": true,
         "upstream_svg_geometry_identical": true
       },
@@ -9109,7 +9088,7 @@
           ],
           "center": [
             17,
-            113.68333333333334
+            106.33333333333333
           ]
         },
         {
@@ -9120,7 +9099,7 @@
           ],
           "center": [
             96,
-            26
+            27.5
           ]
         },
         {
@@ -9131,7 +9110,7 @@
           ],
           "center": [
             245,
-            126
+            127.5
           ],
           "label_box": {
             "text": "This is a label for note shape",
@@ -9149,7 +9128,7 @@
           ],
           "center": [
             448.23304748535156,
-            69
+            66.5
           ],
           "label_box": {
             "text": "This is a label for stadium shape",
@@ -9167,7 +9146,7 @@
           ],
           "center": [
             685.7160949707031,
-            101.43333333333334
+            98.33333333333334
           ],
           "label_box": {
             "text": "This is a label for odd shape",
@@ -9186,19 +9165,19 @@
           "points": [
             [
               22,
-              98.68333333333334
+              91.33333333333333
             ],
             [
               42,
-              98.68333333333334
+              91.33333333333333
             ],
             [
               42,
-              26
+              27.5
             ],
             [
               82,
-              26
+              27.5
             ]
           ],
           "label_size": null
@@ -9210,23 +9189,23 @@
           "points": [
             [
               22,
-              118.68333333333334
+              111.33333333333333
             ],
             [
               62,
-              118.68333333333334
+              111.33333333333333
             ],
             [
               62,
-              134.66666666666666
+              136.16666666666666
             ],
             [
               96,
-              134.66666666666666
+              136.16666666666666
             ],
             [
               170,
-              134.66666666666666
+              136.16666666666666
             ]
           ],
           "label_size": null
@@ -9238,27 +9217,35 @@
           "points": [
             [
               22,
-              108.68333333333334
+              101.33333333333333
             ],
             [
               62,
-              108.68333333333334
+              101.33333333333333
             ],
             [
               62,
-              69
+              70.5
             ],
             [
               96,
-              69
+              70.5
             ],
             [
               245,
-              69
+              70.5
+            ],
+            [
+              340,
+              70.5
+            ],
+            [
+              340,
+              66.5
             ],
             [
               360,
-              69
+              66.5
             ]
           ],
           "label_size": null
@@ -9270,39 +9257,39 @@
           "points": [
             [
               22,
-              128.68333333333334
+              121.33333333333333
             ],
             [
               42,
-              128.68333333333334
+              121.33333333333333
             ],
             [
               42,
-              182
+              183.5
             ],
             [
               96,
-              182
+              183.5
             ],
             [
               245,
-              182
+              183.5
             ],
             [
               448.23304748535156,
-              182
+              183.5
             ],
             [
               576.4660949707031,
-              182
+              183.5
             ],
             [
               576.4660949707031,
-              115.23333333333332
+              121.33333333333334
             ],
             [
               596.4660949707031,
-              115.23333333333332
+              121.33333333333334
             ]
           ],
           "label_size": null
@@ -9314,19 +9301,19 @@
           "points": [
             [
               110,
-              28
+              29.5
             ],
             [
               130,
-              28
+              29.5
             ],
             [
               130,
-              117.33333333333334
+              118.83333333333333
             ],
             [
               170,
-              117.33333333333334
+              118.83333333333333
             ]
           ],
           "label_size": null
@@ -9338,31 +9325,31 @@
           "points": [
             [
               110,
-              26
+              27.5
             ],
             [
               150,
-              26
+              27.5
             ],
             [
               150,
-              35.5
+              37
             ],
             [
               245,
-              35.5
+              37
             ],
             [
               340,
-              35.5
+              37
             ],
             [
               340,
-              57.5
+              46.5
             ],
             [
               360,
-              57.5
+              46.5
             ]
           ],
           "label_size": null
@@ -9374,35 +9361,35 @@
           "points": [
             [
               110,
-              24
+              25.5
             ],
             [
               130,
-              24
+              25.5
             ],
             [
               130,
-              14.5
+              12
             ],
             [
               245,
-              14.5
+              12
             ],
             [
               448.23304748535156,
-              14.5
+              12
             ],
             [
               576.4660949707031,
-              14.5
+              12
             ],
             [
               576.4660949707031,
-              87.63333333333333
+              75.33333333333334
             ],
             [
               596.4660949707031,
-              87.63333333333333
+              75.33333333333334
             ]
           ],
           "label_size": null
@@ -9414,19 +9401,19 @@
           "points": [
             [
               320,
-              117.33333333333334
+              118.83333333333333
             ],
             [
               340,
-              117.33333333333334
+              118.83333333333333
             ],
             [
               340,
-              80.5
+              86.5
             ],
             [
               360,
-              80.5
+              86.5
             ]
           ],
           "label_size": null
@@ -9438,23 +9425,23 @@
           "points": [
             [
               320,
-              134.66666666666666
+              136.16666666666666
             ],
             [
               448.23304748535156,
-              134.66666666666666
+              136.16666666666666
             ],
             [
               556.4660949707031,
-              134.66666666666666
+              136.16666666666666
             ],
             [
               556.4660949707031,
-              106.03333333333333
+              106
             ],
             [
               596.4660949707031,
-              106.03333333333333
+              106
             ]
           ],
           "label_size": null
@@ -9466,31 +9453,30 @@
           "points": [
             [
               536.4660949707031,
-              69
+              66.5
             ],
             [
               556.4660949707031,
-              69
+              66.5
             ],
             [
               556.4660949707031,
-              96.83333333333331
+              90.66666666666667
             ],
             [
               596.4660949707031,
-              96.83333333333331
+              90.66666666666667
             ]
           ],
           "label_size": null
         }
-      ]
+      ],
+      "upstream_svg_sha256": "322480752e4432de22c66ed48300b1a95c72e9fb1017d9c4dcccbefe3c916eea"
     },
     {
       "fixture": "upstream_cypress_oldshapes_spec_shapessets_shapesset3_tb_allpairs_019",
       "input_sha256": "f6c971829e851ac561ed2bf1b52980f21e633421419515b3eb0068a14c7c6beb",
-      "upstream_svg_sha256": "1d49d941150229d5664f627f61d81e928a190da16b80158098eb4b4fc7bb0da1",
       "capture": {
-        "captured_at": "2026-11-03T20:07:07.860Z",
         "provider_input_sha256": "8982e88a254b611ad3dea708b2eba7ad025dc8ce7af77bfc8b20e77a3e058fda",
         "provider_output_sha256": "168dbed8f441575518381ab4928c1a709a6a04cd7fd6adad65f277ef09a3bc22",
         "captured_svg_sha256": "1d49d941150229d5664f627f61d81e928a190da16b80158098eb4b4fc7bb0da1",
@@ -9872,17 +9858,16 @@
           ],
           "label_size": null
         }
-      ]
+      ],
+      "upstream_svg_sha256": "1d49d941150229d5664f627f61d81e928a190da16b80158098eb4b4fc7bb0da1"
     },
     {
       "fixture": "upstream_cypress_oldshapes_spec_shapessets_shapesset4_lr_allpairs_067",
       "input_sha256": "32c614ef11f3a1b623388a0b72fa2f1db8766fbeb0859c10ae7100a42af79282",
-      "upstream_svg_sha256": "578bc0c7a4bf8d10268611aa18c51bf4c9358e40f07518caaeb8bf4bebd62e09",
       "capture": {
-        "captured_at": "2026-11-03T20:07:08.191Z",
-        "provider_input_sha256": "49f038a58126465adbe336d24f35ef29ce864c7bd1f5d240df771ca91ef3667a",
-        "provider_output_sha256": "16d691ef6d5907d4381abdd3e9dd467326401b4e61fe6b72d68477e7ed189674",
-        "captured_svg_sha256": "578bc0c7a4bf8d10268611aa18c51bf4c9358e40f07518caaeb8bf4bebd62e09",
+        "provider_input_sha256": "f8b09b3a995669f9d41f89c09f9f9fea6ec18a5f0f6a3ae25747a761c9687640",
+        "provider_output_sha256": "8d7286ab9b5f7d79016aa95bb2cef5cd67b5bd169799f6ce657db96d2842bc1b",
+        "captured_svg_sha256": "e1703369831aee2cf7717cae942630fb516b9d293257962849c67a6cde6da6f5",
         "upstream_svg_byte_identical": true,
         "upstream_svg_geometry_identical": true
       },
@@ -9895,7 +9880,7 @@
           ],
           "center": [
             94,
-            217.7829746246338
+            214.3829746246338
           ],
           "label_box": {
             "text": "This is a label for subroutine shape",
@@ -9949,7 +9934,7 @@
           ],
           "center": [
             710.7065887451172,
-            140.9587760925293
+            136.3587760925293
           ],
           "label_box": {
             "text": "This is a label for doublecircle shape",
@@ -9967,7 +9952,7 @@
           ],
           "center": [
             951.5254516601562,
-            209.0066041946411
+            205.60660419464114
           ],
           "label_box": {
             "text": "This is a label for odd shape",
@@ -9986,11 +9971,11 @@
           "points": [
             [
               176,
-              207.58297462463378
+              204.1829746246338
             ],
             [
               196,
-              207.58297462463378
+              204.1829746246338
             ],
             [
               196,
@@ -10010,11 +9995,11 @@
           "points": [
             [
               176,
-              221.1829746246338
+              217.7829746246338
             ],
             [
               216,
-              221.1829746246338
+              217.7829746246338
             ],
             [
               216,
@@ -10038,11 +10023,11 @@
           "points": [
             [
               176,
-              214.3829746246338
+              210.98297462463378
             ],
             [
               216,
-              214.3829746246338
+              210.98297462463378
             ],
             [
               216,
@@ -10062,11 +10047,11 @@
             ],
             [
               599.1377258300781,
-              140.9587760925293
+              136.3587760925293
             ],
             [
               619.1377258300781,
-              140.9587760925293
+              136.3587760925293
             ]
           ],
           "label_size": null
@@ -10078,11 +10063,11 @@
           "points": [
             [
               176,
-              227.9829746246338
+              224.58297462463378
             ],
             [
               196,
-              227.9829746246338
+              224.58297462463378
             ],
             [
               196,
@@ -10106,11 +10091,11 @@
             ],
             [
               842.2754516601562,
-              222.80660419464112
+              228.60660419464114
             ],
             [
               862.2754516601562,
-              222.80660419464112
+              228.60660419464114
             ]
           ],
           "label_size": null
@@ -10158,11 +10143,11 @@
             ],
             [
               599.1377258300781,
-              100.17434463500976
+              95.57434463500977
             ],
             [
               619.1377258300781,
-              100.17434463500976
+              95.57434463500977
             ]
           ],
           "label_size": null
@@ -10182,27 +10167,27 @@
             ],
             [
               400,
-              28.3899131774902
+              23.789913177490234
             ],
             [
               499.56886291503906,
-              28.3899131774902
+              23.789913177490234
             ],
             [
               710.7065887451172,
-              28.3899131774902
+              23.789913177490234
             ],
             [
               842.2754516601562,
-              28.3899131774902
+              23.789913177490234
             ],
             [
               842.2754516601562,
-              195.2066041946411
+              182.60660419464114
             ],
             [
               862.2754516601562,
-              195.2066041946411
+              182.60660419464114
             ]
           ],
           "label_size": null
@@ -10222,11 +10207,11 @@
             ],
             [
               599.1377258300781,
-              181.74320755004882
+              177.14320755004883
             ],
             [
               619.1377258300781,
-              181.74320755004882
+              177.14320755004883
             ]
           ],
           "label_size": null
@@ -10250,11 +10235,11 @@
             ],
             [
               822.2754516601562,
-              213.6066041946411
+              213.2732708613078
             ],
             [
               862.2754516601562,
-              213.6066041946411
+              213.2732708613078
             ]
           ],
           "label_size": null
@@ -10266,31 +10251,30 @@
           "points": [
             [
               802.2754516601562,
-              140.9587760925293
+              136.3587760925293
             ],
             [
               822.2754516601562,
-              140.9587760925293
+              136.3587760925293
             ],
             [
               822.2754516601562,
-              204.40660419464112
+              197.93993752797445
             ],
             [
               862.2754516601562,
-              204.40660419464112
+              197.93993752797445
             ]
           ],
           "label_size": null
         }
-      ]
+      ],
+      "upstream_svg_sha256": "e1703369831aee2cf7717cae942630fb516b9d293257962849c67a6cde6da6f5"
     },
     {
       "fixture": "upstream_cypress_oldshapes_spec_shapessets_shapesset4_tb_allpairs_027",
       "input_sha256": "d6a8402898113d76e7e9427bd6cef848c14f7fc7bfac059cd930d0ca8c7025d2",
-      "upstream_svg_sha256": "6dcc2f63ad0856d5d9afacc4bde1a4b72f396a3a21a61a5a63647a01fd4d64b2",
       "capture": {
-        "captured_at": "2026-11-03T20:07:08.525Z",
         "provider_input_sha256": "14b4927205d44fe60c034ffcad5481895fe6db41ea60a95d5937c9caab40bc76",
         "provider_output_sha256": "70eace7398e10f723478db42901011e790c1cf2e2ca36543b25b9d8ee5c54369",
         "captured_svg_sha256": "6dcc2f63ad0856d5d9afacc4bde1a4b72f396a3a21a61a5a63647a01fd4d64b2",
@@ -10694,17 +10678,16 @@
           ],
           "label_size": null
         }
-      ]
+      ],
+      "upstream_svg_sha256": "6dcc2f63ad0856d5d9afacc4bde1a4b72f396a3a21a61a5a63647a01fd4d64b2"
     },
     {
       "fixture": "upstream_cypress_oldshapes_spec_shapessets_shapesset5_lr_allpairs_075",
       "input_sha256": "1f4adf9cdc960ef73e4a89671e3e10d5fbef2a22a37c8664df5cd6d7b10043e3",
-      "upstream_svg_sha256": "bf94d3748e458d579895aa1fd5bb8a541781195f9749fa86c493f924219920fb",
       "capture": {
-        "captured_at": "2026-11-03T20:07:08.860Z",
-        "provider_input_sha256": "24e1475d3202ff3957d656209546ae157082b9924264b2b9f38952f188283b85",
-        "provider_output_sha256": "cae94d8795ba43f49d58a59eb64185dfe22ae72c723a167f768f1b612bc303e4",
-        "captured_svg_sha256": "bf94d3748e458d579895aa1fd5bb8a541781195f9749fa86c493f924219920fb",
+        "provider_input_sha256": "cf1afeb3896ac6ea06e3cda5f96b1ea0a4d7034ee98fe2686647c0f7cf845fd2",
+        "provider_output_sha256": "17004b28b556615508b1d6fdde2504fd7c9bcc291f9ce6e9981babf7ee12e2ee",
+        "captured_svg_sha256": "49697158f984b6dd89a142efbe0dd19c99601b9466e760cf04bfd9566e1be21d",
         "upstream_svg_byte_identical": true,
         "upstream_svg_geometry_identical": true
       },
@@ -10763,8 +10746,8 @@
             72
           ],
           "center": [
-            754.0018990039825,
-            87.7
+            774.0018990039825,
+            84.5
           ],
           "label_box": {
             "text": "This is a label for trap-t shape",
@@ -10781,7 +10764,7 @@
             57
           ],
           "center": [
-            1043.5018990039825,
+            1063.5018990039825,
             117.00000000000001
           ],
           "label_box": {
@@ -10877,11 +10860,11 @@
             ],
             [
               608.0018990039825,
-              87.7
+              84.5
             ],
             [
-              628.0018990039825,
-              87.7
+              648.0018990039825,
+              84.5
             ]
           ],
           "label_size": null
@@ -10912,20 +10895,20 @@
               187.33333333333331
             ],
             [
-              754.0018990039825,
+              774.0018990039825,
               187.33333333333331
-            ],
-            [
-              920.0018990039825,
-              187.33333333333331
-            ],
-            [
-              920.0018990039825,
-              128.10000000000002
             ],
             [
               940.0018990039825,
-              128.10000000000002
+              187.33333333333331
+            ],
+            [
+              940.0018990039825,
+              135.5
+            ],
+            [
+              960.0018990039825,
+              135.5
             ]
           ],
           "label_size": null
@@ -10981,11 +10964,11 @@
             ],
             [
               608.0018990039825,
-              74.7
+              71.5
             ],
             [
-              628.0018990039825,
-              74.7
+              648.0018990039825,
+              71.5
             ]
           ],
           "label_size": null
@@ -11005,27 +10988,27 @@
             ],
             [
               341.00189900398254,
-              24.45
+              20.75
             ],
             [
               484.50189900398254,
-              24.45
+              20.75
             ],
             [
-              754.0018990039825,
-              24.45
-            ],
-            [
-              920.0018990039825,
-              24.45
-            ],
-            [
-              920.0018990039825,
-              105.90000000000002
+              774.0018990039825,
+              20.75
             ],
             [
               940.0018990039825,
-              105.90000000000002
+              20.75
+            ],
+            [
+              940.0018990039825,
+              98.50000000000001
+            ],
+            [
+              960.0018990039825,
+              98.50000000000001
             ]
           ],
           "label_size": null
@@ -11040,16 +11023,16 @@
               132.66666666666669
             ],
             [
-              608.0018990039825,
+              628.0018990039825,
               132.66666666666669
             ],
             [
-              608.0018990039825,
-              100.7
+              628.0018990039825,
+              97.5
             ],
             [
-              628.0018990039825,
-              100.7
+              648.0018990039825,
+              97.5
             ]
           ],
           "label_size": null
@@ -11064,20 +11047,20 @@
               145
             ],
             [
-              754.0018990039825,
+              774.0018990039825,
               145
             ],
             [
-              900.0018990039825,
+              920.0018990039825,
               145
             ],
             [
-              900.0018990039825,
-              120.7
+              920.0018990039825,
+              123.16666666666667
             ],
             [
-              940.0018990039825,
-              120.7
+              960.0018990039825,
+              123.16666666666667
             ]
           ],
           "label_size": null
@@ -11088,32 +11071,31 @@
           "target": "n44",
           "points": [
             [
-              880.0018990039825,
-              87.7
-            ],
-            [
               900.0018990039825,
-              87.7
+              84.5
             ],
             [
-              900.0018990039825,
-              113.30000000000001
+              920.0018990039825,
+              84.5
             ],
             [
-              940.0018990039825,
-              113.30000000000001
+              920.0018990039825,
+              110.83333333333334
+            ],
+            [
+              960.0018990039825,
+              110.83333333333334
             ]
           ],
           "label_size": null
         }
-      ]
+      ],
+      "upstream_svg_sha256": "49697158f984b6dd89a142efbe0dd19c99601b9466e760cf04bfd9566e1be21d"
     },
     {
       "fixture": "upstream_docs_examples_basic_flowchart_007",
       "input_sha256": "d8c6a25c7cfac0a026c1d7e304a2f7c0b52636878ac64f0de3a797c0cfee5583",
-      "upstream_svg_sha256": "e3a4024444a0abea8d1c7be937de7fe1d2f39aaab72fd3de783f02710a3c3ea2",
       "capture": {
-        "captured_at": "2026-11-03T20:07:09.199Z",
         "provider_input_sha256": "b9244df292dc40636b9903c760241ca538518a65cbfcdc21f5f4158dd4e0514b",
         "provider_output_sha256": "7dc04159d1db4c3966e4bfcea9d3c33e2c9587f2ebc044198b1b4053cfa28ee2",
         "captured_svg_sha256": "e3a4024444a0abea8d1c7be937de7fe1d2f39aaab72fd3de783f02710a3c3ea2",
@@ -11298,14 +11280,13 @@
           ],
           "label_size": null
         }
-      ]
+      ],
+      "upstream_svg_sha256": "e3a4024444a0abea8d1c7be937de7fe1d2f39aaab72fd3de783f02710a3c3ea2"
     },
     {
       "fixture": "upstream_docs_examples_larger_flowchart_with_some_styling_009",
       "input_sha256": "22b7b9e26643b7efeba14a4a6ad048fac3a33832d8a2c7b2a965facd788614ca",
-      "upstream_svg_sha256": "8fd4b1ee937a44c6e1504b6de54dc191612f51fe93a727f97389980bf1b8d81e",
       "capture": {
-        "captured_at": "2026-11-03T20:07:09.534Z",
         "provider_input_sha256": "a708fcc291bbb27cab1af8c4e9336aa302bd8156b6cd409a1521ee58e5a3a92d",
         "provider_output_sha256": "35005bae4cb1408d734f60f5b044030169ff708dd2143c2c8fec202343a94f01",
         "captured_svg_sha256": "8fd4b1ee937a44c6e1504b6de54dc191612f51fe93a727f97389980bf1b8d81e",
@@ -11666,18 +11647,19 @@
           ],
           "label_size": null
         }
-      ]
+      ],
+      "upstream_svg_sha256": "8fd4b1ee937a44c6e1504b6de54dc191612f51fe93a727f97389980bf1b8d81e"
     },
     {
       "fixture": "upstream_flow_node_data_shape_aliases_spec",
       "input_sha256": "c7d5bf784a891b93d53de5d3c4b6a2103431913bfe96f4edfab058032a84bd08",
-      "upstream_svg_sha256": "c188795db516f8d69a4f8a8ad48ffc7ead73d07ea0ad9c1b8014b79416417128",
       "capture": {
-        "captured_at": "2026-11-03T20:07:09.866Z",
         "provider_input_sha256": "92885572eaa18ee46ada0b3628cf35568681f0b9a7cb4164183737af4a330691",
         "provider_output_sha256": "4fd8191ace5d1ac693f647a0735fb0fe8aa96a21515c46ec06e317587c979cb3",
-        "captured_svg_sha256": "96328f7a4c2b135ebd9e9bfb85a9503661b38a3b94a8183973c3b3246961526d",
-        "upstream_svg_byte_identical": false,
+        "captured_svg_sha256": "c188795db516f8d69a4f8a8ad48ffc7ead73d07ea0ad9c1b8014b79416417128",
+        "render_config_sha256": "9e9de8664dfdae70e4b5e6d70b7cb54b3a0cc4f294b04ea2289fc43caac74ddc",
+        "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000-host-security-loose-v1",
+        "upstream_svg_byte_identical": true,
         "upstream_svg_geometry_identical": true
       },
       "nodes": [
@@ -12007,14 +11989,13 @@
           ],
           "label_size": null
         }
-      ]
+      ],
+      "upstream_svg_sha256": "c188795db516f8d69a4f8a8ad48ffc7ead73d07ea0ad9c1b8014b79416417128"
     },
     {
       "fixture": "upstream_flow_text_vertex_text_variants_spec",
       "input_sha256": "30a7411f99f93570337c6cadc5fdd1ed96d6a1813d244e2fd27000b79c6098d8",
-      "upstream_svg_sha256": "f238658cd56ce87ba26d6a9af06ede12e63582f02bbe1de603ce03d6030e120f",
       "capture": {
-        "captured_at": "2026-11-03T20:07:10.205Z",
         "provider_input_sha256": "44c047c759364698c1a75ecc919795d1c8909181b734ae9391b074cc891247df",
         "provider_output_sha256": "2d35a2252dea3ad8eef22a347c7f7126156a0ee32e1fc607673bf9a3dc39fd49",
         "captured_svg_sha256": "f238658cd56ce87ba26d6a9af06ede12e63582f02bbe1de603ce03d6030e120f",
@@ -12605,18 +12586,19 @@
           ],
           "label_size": null
         }
-      ]
+      ],
+      "upstream_svg_sha256": "f238658cd56ce87ba26d6a9af06ede12e63582f02bbe1de603ce03d6030e120f"
     },
     {
       "fixture": "upstream_flowchart_v2_shape_styling_matrix_spec",
       "input_sha256": "f6581a7a3081c7b021fdd22d21d837f9ad3c45b99cbd608088c54d70c513926d",
-      "upstream_svg_sha256": "cc7089a030d713d5ac0742ae2618d639a6d8dd42bcb6904c96216401a086604f",
       "capture": {
-        "captured_at": "2026-11-03T20:07:10.548Z",
         "provider_input_sha256": "3bc601e16329371be2bcc0d92d6883aca90215ad4802082b8002cc72dbe2e52e",
         "provider_output_sha256": "11e183cf3ee3ebc9a735beac30901f047021ae253655e2dd89d0f94472ee4e1a",
-        "captured_svg_sha256": "e3f5395ada61873cbc7abe7858adb05fce58fa3b3e963d42d7e98dab604c5834",
-        "upstream_svg_byte_identical": false,
+        "captured_svg_sha256": "cc7089a030d713d5ac0742ae2618d639a6d8dd42bcb6904c96216401a086604f",
+        "render_config_sha256": "9e9de8664dfdae70e4b5e6d70b7cb54b3a0cc4f294b04ea2289fc43caac74ddc",
+        "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000-host-security-loose-v1",
+        "upstream_svg_byte_identical": true,
         "upstream_svg_geometry_identical": true
       },
       "nodes": [
@@ -13062,14 +13044,13 @@
             21
           ]
         }
-      ]
+      ],
+      "upstream_svg_sha256": "cc7089a030d713d5ac0742ae2618d639a6d8dd42bcb6904c96216401a086604f"
     },
     {
       "fixture": "upstream_html_demos_dataflowchart_data_flow_diagram_demos_001",
       "input_sha256": "446cff8f5ea9e8d0512f8f59783d29f8547a9a6514b0826c1442c2e000c1a351",
-      "upstream_svg_sha256": "37ec71ea75e2ecb2fd52f0b7a0d88179c1057e3b849a3a7ef04e6ff213446812",
       "capture": {
-        "captured_at": "2026-11-03T20:07:10.702Z",
         "provider_input_sha256": "cec33ab8982bf5890e9cf3ec5b0b31db993c2ac059b3f4f4ab3fce24cd36bc2e",
         "provider_output_sha256": "08b20367f261c0b20d9e77db68cf2be9b65e22b1a222770239a5b315f91a1fd6",
         "captured_svg_sha256": "37ec71ea75e2ecb2fd52f0b7a0d88179c1057e3b849a3a7ef04e6ff213446812",
@@ -13171,17 +13152,16 @@
             21
           ]
         }
-      ]
+      ],
+      "upstream_svg_sha256": "37ec71ea75e2ecb2fd52f0b7a0d88179c1057e3b849a3a7ef04e6ff213446812"
     },
     {
       "fixture": "upstream_html_demos_flowchart_flowchart_008",
       "input_sha256": "f3e6d0f86df85611c1a3176374043c66805de9e70ce259601d90e00e51d644d0",
-      "upstream_svg_sha256": "2ae6a91807675dc13095e256de621fa6b66a4bae5828d4d57f5f7c5a31e7fc7b",
       "capture": {
-        "captured_at": "2026-11-03T20:07:11.234Z",
-        "provider_input_sha256": "cf032dc058ecefd1f62643f76d62be34da76661344b99a5992c4b34746fa0a0f",
-        "provider_output_sha256": "9c976eaa8a5d28bf20dd4dc41ecdd054a47a337ef26e1435765fbdfd7de5c2e9",
-        "captured_svg_sha256": "2ae6a91807675dc13095e256de621fa6b66a4bae5828d4d57f5f7c5a31e7fc7b",
+        "provider_input_sha256": "6501dd609caf66276e1743683858c6b55dc9f79fdedc686e31130868f0df0da1",
+        "provider_output_sha256": "6c215d637bb133d09a28e0a3099b3fd82468b610c331768127184fe55677ca7d",
+        "captured_svg_sha256": "8907d71032393be488d2d35eb7e01bdc6af144978a9ad0ab3e5627e1f80d25a8",
         "upstream_svg_byte_identical": true,
         "upstream_svg_geometry_identical": true
       },
@@ -13194,7 +13174,7 @@
           ],
           "center": [
             1847.5269097222222,
-            307.0444444444444
+            308.76666666666665
           ],
           "label_box": {
             "text": "SAM.CommonFA.FMESummary",
@@ -13212,7 +13192,7 @@
           ],
           "center": [
             2244.859375,
-            352.5444444444444
+            354.26666666666665
           ],
           "label_box": {
             "text": "SAM.CommonFA.CommonFAFinanceBudget",
@@ -13230,7 +13210,7 @@
           ],
           "center": [
             1885.3828125,
-            398.0444444444444
+            399.76666666666665
           ],
           "label_box": {
             "text": "SAM.CommonFA.BudgetSubserviceLineVolume",
@@ -13248,7 +13228,7 @@
           ],
           "center": [
             130.875,
-            84.19444444444443
+            85.91666666666666
           ],
           "label_box": {
             "text": "SAM.CommonFA.PopulationFME",
@@ -13410,7 +13390,7 @@
           ],
           "center": [
             425.125,
-            333.65277777777777
+            335.375
           ],
           "label_box": {
             "text": "SAM.CommonFA.ChargeDetails",
@@ -13428,7 +13408,7 @@
           ],
           "center": [
             134.390625,
-            338.81944444444446
+            340.54166666666663
           ],
           "label_box": {
             "text": "SAM.CommonFA.PremetricCost",
@@ -13447,19 +13427,19 @@
           "points": [
             [
               1963.2690972222222,
-              307.0444444444444
+              308.76666666666665
             ],
             [
               2069.796875,
-              307.0444444444444
+              308.76666666666665
             ],
             [
               2069.796875,
-              347.37777777777774
+              349.09999999999997
             ],
             [
               2089.796875,
-              347.37777777777774
+              349.09999999999997
             ]
           ],
           "label_size": null
@@ -13471,19 +13451,19 @@
           "points": [
             [
               2049.796875,
-              398.0444444444444
+              399.76666666666665
             ],
             [
               2069.796875,
-              398.0444444444444
+              399.76666666666665
             ],
             [
               2069.796875,
-              357.7111111111111
+              359.43333333333334
             ],
             [
               2089.796875,
-              357.7111111111111
+              359.43333333333334
             ]
           ],
           "label_size": null
@@ -13495,11 +13475,11 @@
           "points": [
             [
               249.75,
-              76.44444444444443
+              78.16666666666666
             ],
             [
               269.75,
-              76.44444444444443
+              78.16666666666666
             ],
             [
               269.75,
@@ -13527,11 +13507,11 @@
             ],
             [
               1700.96875,
-              294.9888888888889
+              293.26666666666665
             ],
             [
               1731.7847222222222,
-              294.9888888888889
+              293.26666666666665
             ]
           ],
           "label_size": null
@@ -13567,11 +13547,11 @@
             ],
             [
               1660.96875,
-              312.2111111111111
+              315.4095238095238
             ],
             [
               1731.7847222222222,
-              312.2111111111111
+              315.4095238095238
             ]
           ],
           "label_size": null
@@ -13595,11 +13575,11 @@
             ],
             [
               1680.96875,
-              315.6555555555555
+              319.8380952380952
             ],
             [
               1731.7847222222222,
-              315.6555555555555
+              319.8380952380952
             ]
           ],
           "label_size": null
@@ -13619,11 +13599,11 @@
             ],
             [
               1660.96875,
-              301.87777777777774
+              302.1238095238095
             ],
             [
               1731.7847222222222,
-              301.87777777777774
+              302.1238095238095
             ]
           ],
           "label_size": null
@@ -13651,11 +13631,11 @@
             ],
             [
               1700.96875,
-              319.09999999999997
+              324.26666666666665
             ],
             [
               1731.7847222222222,
-              319.09999999999997
+              324.26666666666665
             ]
           ],
           "label_size": null
@@ -13675,11 +13655,11 @@
             ],
             [
               1640.96875,
-              305.3222222222222
+              306.55238095238093
             ],
             [
               1731.7847222222222,
-              305.3222222222222
+              306.55238095238093
             ]
           ],
           "label_size": null
@@ -13703,11 +13683,11 @@
             ],
             [
               1680.96875,
-              298.4333333333333
+              297.6952380952381
             ],
             [
               1731.7847222222222,
-              298.4333333333333
+              297.6952380952381
             ]
           ],
           "label_size": null
@@ -13727,11 +13707,11 @@
             ],
             [
               1640.96875,
-              308.76666666666665
+              310.9809523809524
             ],
             [
               1731.7847222222222,
-              308.76666666666665
+              310.9809523809524
             ]
           ],
           "label_size": null
@@ -13759,35 +13739,35 @@
           "points": [
             [
               249.75,
-              84.19444444444443
+              85.91666666666666
             ],
             [
               289.75,
-              84.19444444444443
+              85.91666666666666
             ],
             [
               289.75,
-              90.81944444444443
+              92.54166666666666
             ],
             [
               425.125,
-              90.81944444444443
+              92.54166666666666
             ],
             [
               724.96875,
-              90.81944444444443
+              92.54166666666666
             ],
             [
               869.4375,
-              90.81944444444443
+              92.54166666666666
             ],
             [
               869.4375,
-              144.33333333333331
+              144.33333333333334
             ],
             [
               926.296875,
-              144.33333333333331
+              144.33333333333334
             ]
           ],
           "label_size": null
@@ -13807,11 +13787,11 @@
             ],
             [
               869.4375,
-              154.66666666666666
+              154.66666666666669
             ],
             [
               926.296875,
-              154.66666666666666
+              154.66666666666669
             ]
           ],
           "label_size": null
@@ -13847,23 +13827,23 @@
           "points": [
             [
               540.5,
-              324.35277777777776
+              326.075
             ],
             [
               560.5,
-              324.35277777777776
+              326.075
             ],
             [
               560.5,
-              151.3361111111111
+              153.05833333333334
             ],
             [
               724.96875,
-              151.3361111111111
+              153.05833333333334
             ],
             [
               849.4375,
-              151.3361111111111
+              153.05833333333334
             ],
             [
               849.4375,
@@ -13883,11 +13863,11 @@
           "points": [
             [
               540.5,
-              330.55277777777775
+              332.275
             ],
             [
               600.5,
-              330.55277777777775
+              332.275
             ],
             [
               600.5,
@@ -13915,11 +13895,11 @@
           "points": [
             [
               540.5,
-              336.7527777777778
+              338.475
             ],
             [
               580.5,
-              336.7527777777778
+              338.475
             ],
             [
               580.5,
@@ -13939,11 +13919,11 @@
           "points": [
             [
               540.5,
-              342.9527777777778
+              344.675
             ],
             [
               560.5,
-              342.9527777777778
+              344.675
             ],
             [
               560.5,
@@ -13963,19 +13943,19 @@
           "points": [
             [
               249.75,
-              91.94444444444443
+              93.66666666666666
             ],
             [
               269.75,
-              91.94444444444443
+              93.66666666666666
             ],
             [
               269.75,
-              328.4861111111111
+              330.2083333333333
             ],
             [
               309.75,
-              328.4861111111111
+              330.2083333333333
             ]
           ],
           "label_size": null
@@ -13987,23 +13967,22 @@
           "points": [
             [
               249.75,
-              338.81944444444446
+              340.54166666666663
             ],
             [
               309.75,
-              338.81944444444446
+              340.5416666666667
             ]
           ],
           "label_size": null
         }
-      ]
+      ],
+      "upstream_svg_sha256": "8907d71032393be488d2d35eb7e01bdc6af144978a9ad0ab3e5627e1f80d25a8"
     },
     {
       "fixture": "upstream_html_demos_flowchart_flowchart_028",
       "input_sha256": "4401c7cee98b1b4d092395efe639cc6d732c4f4920c65fe4bcc368307c23b507",
-      "upstream_svg_sha256": "8558d712d2bc20b9dcf23a3fca4ff46c41aa37208e265bc8e97a38cb452c9026",
       "capture": {
-        "captured_at": "2026-11-03T20:07:11.384Z",
         "provider_input_sha256": "733cff3b31dade58feb37c2368d80d9c8397236f5c78fb06092b373706f130cb",
         "provider_output_sha256": "43cc9702dc204dd8406aa10d63a5fb2d5cceb14865af77c6128b69d2acdc29fa",
         "captured_svg_sha256": "8558d712d2bc20b9dcf23a3fca4ff46c41aa37208e265bc8e97a38cb452c9026",
@@ -14142,17 +14121,16 @@
             21
           ]
         }
-      ]
+      ],
+      "upstream_svg_sha256": "8558d712d2bc20b9dcf23a3fca4ff46c41aa37208e265bc8e97a38cb452c9026"
     },
     {
       "fixture": "upstream_html_demos_flowchart_flowchart_048",
       "input_sha256": "8fc3ac6f51e60dcaa9857187153448556475b420972298456f01b11983dd0048",
-      "upstream_svg_sha256": "4735a7c591906a155e2540d2e219754512a726f1d3a4a05f14c972cd5ca5d090",
       "capture": {
-        "captured_at": "2026-11-03T20:07:11.912Z",
-        "provider_input_sha256": "cf032dc058ecefd1f62643f76d62be34da76661344b99a5992c4b34746fa0a0f",
-        "provider_output_sha256": "9c976eaa8a5d28bf20dd4dc41ecdd054a47a337ef26e1435765fbdfd7de5c2e9",
-        "captured_svg_sha256": "4735a7c591906a155e2540d2e219754512a726f1d3a4a05f14c972cd5ca5d090",
+        "provider_input_sha256": "6501dd609caf66276e1743683858c6b55dc9f79fdedc686e31130868f0df0da1",
+        "provider_output_sha256": "6c215d637bb133d09a28e0a3099b3fd82468b610c331768127184fe55677ca7d",
+        "captured_svg_sha256": "dc4f362b811bcfb676be1f68f8b94d1d3780c7f191dcb84f734c662d0d9991e8",
         "upstream_svg_byte_identical": true,
         "upstream_svg_geometry_identical": true
       },
@@ -14165,7 +14143,7 @@
           ],
           "center": [
             1847.5269097222222,
-            307.0444444444444
+            308.76666666666665
           ],
           "label_box": {
             "text": "SAM.CommonFA.FMESummary",
@@ -14183,7 +14161,7 @@
           ],
           "center": [
             2244.859375,
-            352.5444444444444
+            354.26666666666665
           ],
           "label_box": {
             "text": "SAM.CommonFA.CommonFAFinanceBudget",
@@ -14201,7 +14179,7 @@
           ],
           "center": [
             1885.3828125,
-            398.0444444444444
+            399.76666666666665
           ],
           "label_box": {
             "text": "SAM.CommonFA.BudgetSubserviceLineVolume",
@@ -14219,7 +14197,7 @@
           ],
           "center": [
             130.875,
-            84.19444444444443
+            85.91666666666666
           ],
           "label_box": {
             "text": "SAM.CommonFA.PopulationFME",
@@ -14381,7 +14359,7 @@
           ],
           "center": [
             425.125,
-            333.65277777777777
+            335.375
           ],
           "label_box": {
             "text": "SAM.CommonFA.ChargeDetails",
@@ -14399,7 +14377,7 @@
           ],
           "center": [
             134.390625,
-            338.81944444444446
+            340.54166666666663
           ],
           "label_box": {
             "text": "SAM.CommonFA.PremetricCost",
@@ -14418,19 +14396,19 @@
           "points": [
             [
               1963.2690972222222,
-              307.0444444444444
+              308.76666666666665
             ],
             [
               2069.796875,
-              307.0444444444444
+              308.76666666666665
             ],
             [
               2069.796875,
-              347.37777777777774
+              349.09999999999997
             ],
             [
               2089.796875,
-              347.37777777777774
+              349.09999999999997
             ]
           ],
           "label_size": null
@@ -14442,19 +14420,19 @@
           "points": [
             [
               2049.796875,
-              398.0444444444444
+              399.76666666666665
             ],
             [
               2069.796875,
-              398.0444444444444
+              399.76666666666665
             ],
             [
               2069.796875,
-              357.7111111111111
+              359.43333333333334
             ],
             [
               2089.796875,
-              357.7111111111111
+              359.43333333333334
             ]
           ],
           "label_size": null
@@ -14466,11 +14444,11 @@
           "points": [
             [
               249.75,
-              76.44444444444443
+              78.16666666666666
             ],
             [
               269.75,
-              76.44444444444443
+              78.16666666666666
             ],
             [
               269.75,
@@ -14498,11 +14476,11 @@
             ],
             [
               1700.96875,
-              294.9888888888889
+              293.26666666666665
             ],
             [
               1731.7847222222222,
-              294.9888888888889
+              293.26666666666665
             ]
           ],
           "label_size": null
@@ -14538,11 +14516,11 @@
             ],
             [
               1660.96875,
-              312.2111111111111
+              315.4095238095238
             ],
             [
               1731.7847222222222,
-              312.2111111111111
+              315.4095238095238
             ]
           ],
           "label_size": null
@@ -14566,11 +14544,11 @@
             ],
             [
               1680.96875,
-              315.6555555555555
+              319.8380952380952
             ],
             [
               1731.7847222222222,
-              315.6555555555555
+              319.8380952380952
             ]
           ],
           "label_size": null
@@ -14590,11 +14568,11 @@
             ],
             [
               1660.96875,
-              301.87777777777774
+              302.1238095238095
             ],
             [
               1731.7847222222222,
-              301.87777777777774
+              302.1238095238095
             ]
           ],
           "label_size": null
@@ -14622,11 +14600,11 @@
             ],
             [
               1700.96875,
-              319.09999999999997
+              324.26666666666665
             ],
             [
               1731.7847222222222,
-              319.09999999999997
+              324.26666666666665
             ]
           ],
           "label_size": null
@@ -14646,11 +14624,11 @@
             ],
             [
               1640.96875,
-              305.3222222222222
+              306.55238095238093
             ],
             [
               1731.7847222222222,
-              305.3222222222222
+              306.55238095238093
             ]
           ],
           "label_size": null
@@ -14674,11 +14652,11 @@
             ],
             [
               1680.96875,
-              298.4333333333333
+              297.6952380952381
             ],
             [
               1731.7847222222222,
-              298.4333333333333
+              297.6952380952381
             ]
           ],
           "label_size": null
@@ -14698,11 +14676,11 @@
             ],
             [
               1640.96875,
-              308.76666666666665
+              310.9809523809524
             ],
             [
               1731.7847222222222,
-              308.76666666666665
+              310.9809523809524
             ]
           ],
           "label_size": null
@@ -14730,35 +14708,35 @@
           "points": [
             [
               249.75,
-              84.19444444444443
+              85.91666666666666
             ],
             [
               289.75,
-              84.19444444444443
+              85.91666666666666
             ],
             [
               289.75,
-              90.81944444444443
+              92.54166666666666
             ],
             [
               425.125,
-              90.81944444444443
+              92.54166666666666
             ],
             [
               724.96875,
-              90.81944444444443
+              92.54166666666666
             ],
             [
               869.4375,
-              90.81944444444443
+              92.54166666666666
             ],
             [
               869.4375,
-              144.33333333333331
+              144.33333333333334
             ],
             [
               926.296875,
-              144.33333333333331
+              144.33333333333334
             ]
           ],
           "label_size": null
@@ -14778,11 +14756,11 @@
             ],
             [
               869.4375,
-              154.66666666666666
+              154.66666666666669
             ],
             [
               926.296875,
-              154.66666666666666
+              154.66666666666669
             ]
           ],
           "label_size": null
@@ -14818,23 +14796,23 @@
           "points": [
             [
               540.5,
-              324.35277777777776
+              326.075
             ],
             [
               560.5,
-              324.35277777777776
+              326.075
             ],
             [
               560.5,
-              151.3361111111111
+              153.05833333333334
             ],
             [
               724.96875,
-              151.3361111111111
+              153.05833333333334
             ],
             [
               849.4375,
-              151.3361111111111
+              153.05833333333334
             ],
             [
               849.4375,
@@ -14854,11 +14832,11 @@
           "points": [
             [
               540.5,
-              330.55277777777775
+              332.275
             ],
             [
               600.5,
-              330.55277777777775
+              332.275
             ],
             [
               600.5,
@@ -14886,11 +14864,11 @@
           "points": [
             [
               540.5,
-              336.7527777777778
+              338.475
             ],
             [
               580.5,
-              336.7527777777778
+              338.475
             ],
             [
               580.5,
@@ -14910,11 +14888,11 @@
           "points": [
             [
               540.5,
-              342.9527777777778
+              344.675
             ],
             [
               560.5,
-              342.9527777777778
+              344.675
             ],
             [
               560.5,
@@ -14934,19 +14912,19 @@
           "points": [
             [
               249.75,
-              91.94444444444443
+              93.66666666666666
             ],
             [
               269.75,
-              91.94444444444443
+              93.66666666666666
             ],
             [
               269.75,
-              328.4861111111111
+              330.2083333333333
             ],
             [
               309.75,
-              328.4861111111111
+              330.2083333333333
             ]
           ],
           "label_size": null
@@ -14958,23 +14936,22 @@
           "points": [
             [
               249.75,
-              338.81944444444446
+              340.54166666666663
             ],
             [
               309.75,
-              338.81944444444446
+              340.5416666666667
             ]
           ],
           "label_size": null
         }
-      ]
+      ],
+      "upstream_svg_sha256": "dc4f362b811bcfb676be1f68f8b94d1d3780c7f191dcb84f734c662d0d9991e8"
     },
     {
       "fixture": "upstream_html_demos_flowchart_flowchart_058",
       "input_sha256": "2b3ffe4631d4079993d2a2601ca669be672b1e38910fa3f36494fbc41f512863",
-      "upstream_svg_sha256": "ed54c4ef8905ae7e06d79bdd7a3868b4d3ba0536b41709318910a26093e70570",
       "capture": {
-        "captured_at": "2026-11-03T20:07:12.252Z",
         "provider_input_sha256": "733cff3b31dade58feb37c2368d80d9c8397236f5c78fb06092b373706f130cb",
         "provider_output_sha256": "43cc9702dc204dd8406aa10d63a5fb2d5cceb14865af77c6128b69d2acdc29fa",
         "captured_svg_sha256": "ed54c4ef8905ae7e06d79bdd7a3868b4d3ba0536b41709318910a26093e70570",
@@ -15113,14 +15090,13 @@
             21
           ]
         }
-      ]
+      ],
+      "upstream_svg_sha256": "ed54c4ef8905ae7e06d79bdd7a3868b4d3ba0536b41709318910a26093e70570"
     },
     {
       "fixture": "upstream_html_demos_flowchart_graph_035",
       "input_sha256": "a7182f68913f0b52d998336a98101fdd31095effcac586b11176ec81174ac421",
-      "upstream_svg_sha256": "2e19208a41e11a4bf983d17b442dd54b58f0b76e38a6170927fa3758a80e1e1c",
       "capture": {
-        "captured_at": "2026-11-03T20:07:12.595Z",
         "provider_input_sha256": "775b4bbb8b82bd1a9c1c4a6fc2368fbc02c99c8a38a39e2024276cb1324347e7",
         "provider_output_sha256": "018f559983dcc188e73149359d413cdeecb97506bb0a259a0d604c1ec4bc7257",
         "captured_svg_sha256": "2e19208a41e11a4bf983d17b442dd54b58f0b76e38a6170927fa3758a80e1e1c",
@@ -15900,14 +15876,13 @@
             21
           ]
         }
-      ]
+      ],
+      "upstream_svg_sha256": "2e19208a41e11a4bf983d17b442dd54b58f0b76e38a6170927fa3758a80e1e1c"
     },
     {
       "fixture": "upstream_html_demos_flowchart_graph_037",
       "input_sha256": "55ddff2f6a16cf560ae693f87b2a33493622349b40fbf52399ce20276af43edc",
-      "upstream_svg_sha256": "a0589ccd2d17e412b024eb66ffb8ea428dd19d8590cb30ec20b70e91e44a0aaf",
       "capture": {
-        "captured_at": "2026-11-03T20:07:12.936Z",
         "provider_input_sha256": "8910f89ec687d92bfedd0e8497030316886f07aeb2fe8552b220be6372dcb792",
         "provider_output_sha256": "b4edaa220863acb39f9a5eb4213d774bdcb3be1260834021c42091ffa4437daf",
         "captured_svg_sha256": "a0589ccd2d17e412b024eb66ffb8ea428dd19d8590cb30ec20b70e91e44a0aaf",
@@ -16687,14 +16662,13 @@
             21
           ]
         }
-      ]
+      ],
+      "upstream_svg_sha256": "a0589ccd2d17e412b024eb66ffb8ea428dd19d8590cb30ec20b70e91e44a0aaf"
     },
     {
       "fixture": "upstream_pkgtests_flow_text_spec_288",
       "input_sha256": "86d384e1fa8dd4dba3134c72aa93fa2b2165c493b77cbdc7a74b35a2c4f0a82d",
-      "upstream_svg_sha256": "48c3dd93449f28a758bf5e5121f09727c19d1f62a69647a88473f7e4c861461d",
       "capture": {
-        "captured_at": "2026-11-03T20:07:13.054Z",
         "provider_input_sha256": "e23568f8501c8540f9aea44d47810bcc5dece9ad70a311ab959fb765ac1d1107",
         "provider_output_sha256": "bad34a2bc520d644a07699bf7f183257aea499411e66abeb7f012f887e8e5561",
         "captured_svg_sha256": "48c3dd93449f28a758bf5e5121f09727c19d1f62a69647a88473f7e4c861461d",
@@ -16756,14 +16730,13 @@
           ],
           "label_size": null
         }
-      ]
+      ],
+      "upstream_svg_sha256": "48c3dd93449f28a758bf5e5121f09727c19d1f62a69647a88473f7e4c861461d"
     },
     {
       "fixture": "zed_pr_57644_flowchart",
       "input_sha256": "69a8de26a6293ba50e99b0c06cac2a7f75b0290b62460fccef7f9220f1dd522d",
-      "upstream_svg_sha256": "f8bcfdda067b9cab61ad1a34c7d9fa269e0a551280f9374e8f7985b67f0e8c61",
       "capture": {
-        "captured_at": "2026-11-03T20:07:13.268Z",
         "provider_input_sha256": "3fa74fe0926d314f02748d53946fa065768a67756f9a267dc3da97644340f6b6",
         "provider_output_sha256": "9f90411e050dd0d7bfc731a23648857cd44e0efb7fb1fae10bcd2580a6609d8a",
         "captured_svg_sha256": "f8bcfdda067b9cab61ad1a34c7d9fa269e0a551280f9374e8f7985b67f0e8c61",
@@ -17249,17 +17222,16 @@
           ],
           "label_size": null
         }
-      ]
+      ],
+      "upstream_svg_sha256": "f8bcfdda067b9cab61ad1a34c7d9fa269e0a551280f9374e8f7985b67f0e8c61"
     },
     {
       "fixture": "local_mermaid_12_2_elk_label_clearance_8368",
       "input_sha256": "e82ce307a88afea33da54324d9dfdfb674dfc7c35107dd162e71845ea1b8a497",
-      "upstream_svg_sha256": "26b4dde86ef879321f362a35486a1980d13088ef5d71baa25a449000db7b2fd4",
       "capture": {
-        "captured_at": "2026-11-03T20:07:13.580Z",
-        "provider_input_sha256": "6b8feb109340ad1ca5f4ab8fd267928739e6ca86ef80db54bd074af357277f0b",
-        "provider_output_sha256": "57fe424a503377afaa71f739797daecdd1093676e20b869a8d1a6cbc95c09627",
-        "captured_svg_sha256": "26b4dde86ef879321f362a35486a1980d13088ef5d71baa25a449000db7b2fd4",
+        "provider_input_sha256": "a6d1064c64eb8536d137af36c7fd8dce1f88992a3880744772f7c214fe7e7476",
+        "provider_output_sha256": "b5e2c52dd97f990e44d79e563018e2a8e2a5ce198e6752eb0ee925d66afffa7f",
+        "captured_svg_sha256": "2fb18d1be309976f8ac29af5acbc3cd2e4e9c788bbb64601c6cbd3687a6149b9",
         "upstream_svg_byte_identical": true,
         "upstream_svg_geometry_identical": true
       },
@@ -17267,72 +17239,72 @@
         {
           "id": "A",
           "size": [
-            110.34375,
+            111.4482421875,
             56
           ],
           "center": [
-            67.171875,
-            62.95312499999999
+            67.72412109375,
+            63.396484375
           ],
           "label_box": {
             "text": "Draft",
             "size": [
-              30.34375,
+              31.4482421875,
               15.999999046325684
             ]
           },
           "provider_geometry": [
-            67.171875,
-            62.95312499999999,
-            110.34375,
+            67.72412109375,
+            63.396484375,
+            111.4482421875,
             56
           ]
         },
         {
           "id": "B",
           "size": [
-            101.90625,
-            101.90625
+            102.79296875,
+            102.79296875
           ],
           "center": [
-            310.234375,
-            62.953125
+            311.7822265625,
+            63.396484375
           ],
           "label_box": {
             "text": "Review",
             "size": [
-              45.90625,
+              46.79296875,
               15.999999046325684
             ]
           },
           "provider_geometry": [
-            310.234375,
-            62.953125,
-            101.90625,
-            101.90625
+            311.7822265625,
+            63.396484375,
+            102.79296875,
+            102.79296875
           ]
         },
         {
           "id": "C",
           "size": [
-            141.5,
+            141.703125,
             56
           ],
           "center": [
-            574.328125,
-            62.953125
+            576.623046875,
+            63.396484375
           ],
           "label_box": {
             "text": "Published",
             "size": [
-              61.5,
+              61.703125,
               15.999999046325684
             ]
           },
           "provider_geometry": [
-            574.328125,
-            62.953125,
-            141.5,
+            576.623046875,
+            63.396484375,
+            141.703125,
             56
           ]
         }
@@ -17344,32 +17316,32 @@
           "target": "B",
           "points": [
             [
-              122.34375,
-              56.95312499999999
+              123.4482421875,
+              57.396484375
             ],
             [
-              142.34375,
-              56.95312499999999
+              143.4482421875,
+              57.396484375
             ],
             [
-              142.34375,
-              47.20312499999999
+              143.4482421875,
+              47.646484375
             ],
             [
-              190.8125,
-              47.20312499999999
+              191.9169921875,
+              47.646484375
             ],
             [
-              239.28125,
-              47.20312499999999
+              240.3857421875,
+              47.646484375
             ],
             [
-              239.28125,
-              49.30208333333333
+              240.3857421875,
+              49.59765625
             ],
             [
-              259.28125,
-              49.30208333333333
+              260.3857421875,
+              49.59765625
             ]
           ],
           "label_size": null,
@@ -17381,23 +17353,23 @@
           "target": "C",
           "points": [
             [
-              361.1875,
-              62.953125
+              363.1787109375,
+              63.396484375
             ],
             [
-              503.578125,
-              62.953125
+              505.771484375,
+              63.396484375
             ]
           ],
           "label_size": [
-            62.390625,
+            62.5927734375,
             19.999998092651367
           ],
           "provider_labels": [
             [
-              401.1875,
-              52.453125,
-              62.390625,
+              403.1787109375,
+              52.896484375,
+              62.5927734375,
               19.999998092651367
             ]
           ]
@@ -17408,28 +17380,28 @@
           "target": "A",
           "points": [
             [
-              259.28125,
-              76.60416666666666
+              260.3857421875,
+              77.1953125
             ],
             [
-              239.28125,
-              76.60416666666666
+              240.3857421875,
+              77.1953125
             ],
             [
-              239.28125,
-              78.703125
+              240.3857421875,
+              79.146484375
             ],
             [
-              142.34375,
-              78.703125
+              143.4482421875,
+              79.146484375
             ],
             [
-              142.34375,
-              68.953125
+              143.4482421875,
+              69.396484375
             ],
             [
-              122.34375,
-              68.953125
+              123.4482421875,
+              69.396484375
             ]
           ],
           "label_size": [
@@ -17438,546 +17410,15 @@
           ],
           "provider_labels": [
             [
-              162.34375,
-              68.203125,
+              163.4482421875,
+              68.646484375,
               56.9375,
               19.999998092651367
             ]
           ]
         }
       ],
-      "provider_capture": {
-        "input": {
-          "id": "root",
-          "layoutOptions": {
-            "elk.hierarchyHandling": "INCLUDE_CHILDREN",
-            "elk.algorithm": "elk.layered",
-            "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
-            "elk.layered.nodePlacement.bk.fixedAlignment": "BALANCED",
-            "elk.layered.mergeEdges": false,
-            "elk.direction": "RIGHT",
-            "spacing.baseValue": 40,
-            "elk.layered.crossingMinimization.forceNodeModelOrder": false,
-            "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
-            "elk.layered.unnecessaryBendpoints": true,
-            "elk.layered.cycleBreaking.strategy": "DEPTH_FIRST",
-            "elk.layered.layering.strategy": "NETWORK_SIMPLEX",
-            "elk.layered.layering.coffmanGraham.layerBound": 4,
-            "elk.layered.wrapping.multiEdge.improveCuts": true,
-            "elk.layered.wrapping.multiEdge.improveWrappedEdges": true,
-            "elk.layered.edgeRouting.selfLoopDistribution": "EQUALLY",
-            "elk.layered.mergeHierarchyEdges": true,
-            "elk.spacing.portsSurrounding": "[top=12,left=12,bottom=12,right=12]"
-          },
-          "children": [
-            {
-              "id": "A",
-              "label": "Draft",
-              "labelType": "text",
-              "labelStyle": "",
-              "padding": 20,
-              "cssStyles": [],
-              "cssCompiledStyles": [],
-              "cssClasses": "default ",
-              "look": "classic",
-              "isGroup": false,
-              "shape": "squareRect",
-              "minWidth": 0,
-              "width": 110.34375,
-              "height": 56
-            },
-            {
-              "id": "B",
-              "label": "Review",
-              "labelType": "text",
-              "labelStyle": "",
-              "padding": 20,
-              "cssStyles": [],
-              "cssCompiledStyles": [],
-              "cssClasses": "default ",
-              "look": "classic",
-              "isGroup": false,
-              "shape": "diamond",
-              "minWidth": 0,
-              "width": 101.90625,
-              "height": 101.90625
-            },
-            {
-              "id": "C",
-              "label": "Published",
-              "labelType": "text",
-              "labelStyle": "",
-              "padding": 20,
-              "cssStyles": [],
-              "cssCompiledStyles": [],
-              "cssClasses": "default ",
-              "look": "classic",
-              "isGroup": false,
-              "shape": "squareRect",
-              "minWidth": 0,
-              "width": 141.5,
-              "height": 56
-            }
-          ],
-          "edges": [
-            {
-              "id": "L_A_B_0",
-              "isUserDefinedId": false,
-              "start": "A",
-              "end": "B",
-              "type": "arrow_point",
-              "label": "",
-              "labelType": "text",
-              "labelpos": "c",
-              "thickness": "normal",
-              "minlen": 1,
-              "classes": "edge-thickness-normal edge-pattern-solid flowchart-link",
-              "arrowTypeStart": "none",
-              "arrowTypeEnd": "arrow_point",
-              "arrowheadStyle": "fill: #333",
-              "cssCompiledStyles": [],
-              "labelStyle": [],
-              "style": [],
-              "pattern": "normal",
-              "look": "classic",
-              "text": "",
-              "arrowhead": "normal",
-              "sources": [
-                "A"
-              ],
-              "targets": [
-                "B"
-              ],
-              "sourceId": "A",
-              "targetId": "B",
-              "labels": [
-                {
-                  "width": 0,
-                  "height": 0,
-                  "orgWidth": 0,
-                  "orgHeight": 0,
-                  "text": "",
-                  "layoutOptions": {
-                    "edgeLabels.inline": "true",
-                    "edgeLabels.placement": "CENTER"
-                  }
-                }
-              ]
-            },
-            {
-              "id": "L_B_C_0",
-              "isUserDefinedId": false,
-              "start": "B",
-              "end": "C",
-              "type": "arrow_point",
-              "label": "approved",
-              "labelType": "text",
-              "labelpos": "c",
-              "thickness": "normal",
-              "minlen": 1,
-              "classes": "edge-thickness-normal edge-pattern-solid flowchart-link",
-              "arrowTypeStart": "none",
-              "arrowTypeEnd": "arrow_point",
-              "arrowheadStyle": "fill: #333",
-              "cssCompiledStyles": [],
-              "labelStyle": "",
-              "style": [],
-              "pattern": "normal",
-              "look": "classic",
-              "text": "approved",
-              "arrowhead": "normal",
-              "width": 62.390625,
-              "height": 19.999998092651367,
-              "sources": [
-                "B"
-              ],
-              "targets": [
-                "C"
-              ],
-              "sourceId": "B",
-              "targetId": "C",
-              "labels": [
-                {
-                  "width": 62.390625,
-                  "height": 19.999998092651367,
-                  "orgWidth": 62.390625,
-                  "orgHeight": 19.999998092651367,
-                  "text": "approved",
-                  "layoutOptions": {
-                    "edgeLabels.inline": "true",
-                    "edgeLabels.placement": "CENTER"
-                  }
-                }
-              ]
-            },
-            {
-              "id": "L_B_A_0",
-              "isUserDefinedId": false,
-              "start": "B",
-              "end": "A",
-              "type": "arrow_point",
-              "label": "changes",
-              "labelType": "text",
-              "labelpos": "c",
-              "thickness": "normal",
-              "minlen": 1,
-              "classes": "edge-thickness-normal edge-pattern-solid flowchart-link",
-              "arrowTypeStart": "none",
-              "arrowTypeEnd": "arrow_point",
-              "arrowheadStyle": "fill: #333",
-              "cssCompiledStyles": [],
-              "labelStyle": "",
-              "style": [],
-              "pattern": "normal",
-              "look": "classic",
-              "text": "changes",
-              "arrowhead": "normal",
-              "width": 56.9375,
-              "height": 19.999998092651367,
-              "sources": [
-                "B"
-              ],
-              "targets": [
-                "A"
-              ],
-              "sourceId": "B",
-              "targetId": "A",
-              "labels": [
-                {
-                  "width": 56.9375,
-                  "height": 19.999998092651367,
-                  "orgWidth": 56.9375,
-                  "orgHeight": 19.999998092651367,
-                  "text": "changes",
-                  "layoutOptions": {
-                    "edgeLabels.inline": "true",
-                    "edgeLabels.placement": "CENTER"
-                  }
-                }
-              ]
-            }
-          ]
-        },
-        "output": {
-          "id": "root",
-          "layoutOptions": {
-            "elk.hierarchyHandling": "INCLUDE_CHILDREN",
-            "elk.algorithm": "elk.layered",
-            "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
-            "elk.layered.nodePlacement.bk.fixedAlignment": "BALANCED",
-            "elk.layered.mergeEdges": false,
-            "elk.direction": "RIGHT",
-            "spacing.baseValue": 40,
-            "elk.layered.crossingMinimization.forceNodeModelOrder": false,
-            "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
-            "elk.layered.unnecessaryBendpoints": true,
-            "elk.layered.cycleBreaking.strategy": "DEPTH_FIRST",
-            "elk.layered.layering.strategy": "NETWORK_SIMPLEX",
-            "elk.layered.layering.coffmanGraham.layerBound": 4,
-            "elk.layered.wrapping.multiEdge.improveCuts": true,
-            "elk.layered.wrapping.multiEdge.improveWrappedEdges": true,
-            "elk.layered.edgeRouting.selfLoopDistribution": "EQUALLY",
-            "elk.layered.mergeHierarchyEdges": true,
-            "elk.spacing.portsSurrounding": "[top=12,left=12,bottom=12,right=12]"
-          },
-          "children": [
-            {
-              "id": "A",
-              "label": "Draft",
-              "labelType": "text",
-              "labelStyle": "",
-              "padding": 20,
-              "cssStyles": [],
-              "cssCompiledStyles": [],
-              "cssClasses": "default ",
-              "look": "classic",
-              "isGroup": false,
-              "shape": "squareRect",
-              "minWidth": 0,
-              "width": 110.34375,
-              "height": 56,
-              "$H": 277,
-              "x": 12,
-              "y": 34.95312499999999
-            },
-            {
-              "id": "B",
-              "label": "Review",
-              "labelType": "text",
-              "labelStyle": "",
-              "padding": 20,
-              "cssStyles": [],
-              "cssCompiledStyles": [],
-              "cssClasses": "default ",
-              "look": "classic",
-              "isGroup": false,
-              "shape": "diamond",
-              "minWidth": 0,
-              "width": 101.90625,
-              "height": 101.90625,
-              "$H": 279,
-              "x": 259.28125,
-              "y": 12
-            },
-            {
-              "id": "C",
-              "label": "Published",
-              "labelType": "text",
-              "labelStyle": "",
-              "padding": 20,
-              "cssStyles": [],
-              "cssCompiledStyles": [],
-              "cssClasses": "default ",
-              "look": "classic",
-              "isGroup": false,
-              "shape": "squareRect",
-              "minWidth": 0,
-              "width": 141.5,
-              "height": 56,
-              "$H": 281,
-              "x": 503.578125,
-              "y": 34.953125
-            }
-          ],
-          "edges": [
-            {
-              "id": "L_A_B_0",
-              "isUserDefinedId": false,
-              "start": "A",
-              "end": "B",
-              "type": "arrow_point",
-              "label": "",
-              "labelType": "text",
-              "labelpos": "c",
-              "thickness": "normal",
-              "minlen": 1,
-              "classes": "edge-thickness-normal edge-pattern-solid flowchart-link",
-              "arrowTypeStart": "none",
-              "arrowTypeEnd": "arrow_point",
-              "arrowheadStyle": "fill: #333",
-              "cssCompiledStyles": [],
-              "labelStyle": [],
-              "style": [],
-              "pattern": "normal",
-              "look": "classic",
-              "text": "",
-              "arrowhead": "normal",
-              "sources": [
-                "A"
-              ],
-              "targets": [
-                "B"
-              ],
-              "sourceId": "A",
-              "targetId": "B",
-              "labels": [
-                {
-                  "width": 0,
-                  "height": 0,
-                  "orgWidth": 0,
-                  "orgHeight": 0,
-                  "text": "",
-                  "layoutOptions": {
-                    "edgeLabels.inline": "true",
-                    "edgeLabels.placement": "CENTER"
-                  },
-                  "x": 0,
-                  "y": 0
-                }
-              ],
-              "sections": [
-                {
-                  "id": "L_A_B_0_s0",
-                  "startPoint": {
-                    "x": 122.34375,
-                    "y": 56.95312499999999
-                  },
-                  "endPoint": {
-                    "x": 259.28125,
-                    "y": 49.30208333333333
-                  },
-                  "bendPoints": [
-                    {
-                      "x": 142.34375,
-                      "y": 56.95312499999999
-                    },
-                    {
-                      "x": 142.34375,
-                      "y": 47.20312499999999
-                    },
-                    {
-                      "x": 190.8125,
-                      "y": 47.20312499999999
-                    },
-                    {
-                      "x": 239.28125,
-                      "y": 47.20312499999999
-                    },
-                    {
-                      "x": 239.28125,
-                      "y": 49.30208333333333
-                    }
-                  ],
-                  "incomingShape": "A",
-                  "outgoingShape": "B"
-                }
-              ],
-              "container": "root"
-            },
-            {
-              "id": "L_B_C_0",
-              "isUserDefinedId": false,
-              "start": "B",
-              "end": "C",
-              "type": "arrow_point",
-              "label": "approved",
-              "labelType": "text",
-              "labelpos": "c",
-              "thickness": "normal",
-              "minlen": 1,
-              "classes": "edge-thickness-normal edge-pattern-solid flowchart-link",
-              "arrowTypeStart": "none",
-              "arrowTypeEnd": "arrow_point",
-              "arrowheadStyle": "fill: #333",
-              "cssCompiledStyles": [],
-              "labelStyle": "",
-              "style": [],
-              "pattern": "normal",
-              "look": "classic",
-              "text": "approved",
-              "arrowhead": "normal",
-              "width": 62.390625,
-              "height": 19.999998092651367,
-              "sources": [
-                "B"
-              ],
-              "targets": [
-                "C"
-              ],
-              "sourceId": "B",
-              "targetId": "C",
-              "labels": [
-                {
-                  "width": 62.390625,
-                  "height": 19.999998092651367,
-                  "orgWidth": 62.390625,
-                  "orgHeight": 19.999998092651367,
-                  "text": "approved",
-                  "layoutOptions": {
-                    "edgeLabels.inline": "true",
-                    "edgeLabels.placement": "CENTER"
-                  },
-                  "x": 401.1875,
-                  "y": 52.453125
-                }
-              ],
-              "sections": [
-                {
-                  "id": "L_B_C_0_s0",
-                  "startPoint": {
-                    "x": 361.1875,
-                    "y": 62.953125
-                  },
-                  "endPoint": {
-                    "x": 503.578125,
-                    "y": 62.953125
-                  },
-                  "incomingShape": "B",
-                  "outgoingShape": "C"
-                }
-              ],
-              "container": "root"
-            },
-            {
-              "id": "L_B_A_0",
-              "isUserDefinedId": false,
-              "start": "B",
-              "end": "A",
-              "type": "arrow_point",
-              "label": "changes",
-              "labelType": "text",
-              "labelpos": "c",
-              "thickness": "normal",
-              "minlen": 1,
-              "classes": "edge-thickness-normal edge-pattern-solid flowchart-link",
-              "arrowTypeStart": "none",
-              "arrowTypeEnd": "arrow_point",
-              "arrowheadStyle": "fill: #333",
-              "cssCompiledStyles": [],
-              "labelStyle": "",
-              "style": [],
-              "pattern": "normal",
-              "look": "classic",
-              "text": "changes",
-              "arrowhead": "normal",
-              "width": 56.9375,
-              "height": 19.999998092651367,
-              "sources": [
-                "B"
-              ],
-              "targets": [
-                "A"
-              ],
-              "sourceId": "B",
-              "targetId": "A",
-              "labels": [
-                {
-                  "width": 56.9375,
-                  "height": 19.999998092651367,
-                  "orgWidth": 56.9375,
-                  "orgHeight": 19.999998092651367,
-                  "text": "changes",
-                  "layoutOptions": {
-                    "edgeLabels.inline": "true",
-                    "edgeLabels.placement": "CENTER"
-                  },
-                  "x": 162.34375,
-                  "y": 68.203125
-                }
-              ],
-              "sections": [
-                {
-                  "id": "L_B_A_0_s0",
-                  "startPoint": {
-                    "x": 259.28125,
-                    "y": 76.60416666666666
-                  },
-                  "endPoint": {
-                    "x": 122.34375,
-                    "y": 68.953125
-                  },
-                  "bendPoints": [
-                    {
-                      "x": 239.28125,
-                      "y": 76.60416666666666
-                    },
-                    {
-                      "x": 239.28125,
-                      "y": 78.703125
-                    },
-                    {
-                      "x": 142.34375,
-                      "y": 78.703125
-                    },
-                    {
-                      "x": 142.34375,
-                      "y": 68.953125
-                    }
-                  ],
-                  "incomingShape": "B",
-                  "outgoingShape": "A"
-                }
-              ],
-              "container": "root"
-            }
-          ],
-          "$H": 13,
-          "x": 0,
-          "y": 0,
-          "width": 657.078125,
-          "height": 125.90625
-        }
-      }
+      "upstream_svg_sha256": "2fb18d1be309976f8ac29af5acbc3cd2e4e9c788bbb64601c6cbd3687a6149b9"
     }
   ]
 }

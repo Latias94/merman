@@ -1,6 +1,7 @@
 //! Flowchart route ownership around the shared ELK terminal-channel pass.
 
 use super::ClippedEdgeRoute;
+use merman_model::OperationPhase;
 use merman_render_core::graph_layout::elk_terminal_jogs::TerminalRoute;
 use merman_render_core::resources::OperationWorkMeter;
 use merman_render_core::{LayoutLabel, LayoutPoint};
@@ -35,10 +36,11 @@ impl TerminalRoute for ClippedEdgeRoute {
 pub(in crate::svg) fn straighten_edge_terminals(
     routes: &mut [ClippedEdgeRoute],
     work: &OperationWorkMeter,
+    phase: OperationPhase,
 ) -> merman_render_core::Result<()> {
     merman_render_core::graph_layout::elk_terminal_jogs::straighten_edge_terminals(
         routes,
-        |units| work.charge(units).map_err(Into::into),
+        |units| work.charge_work(units, phase).map_err(Into::into),
     )
 }
 
@@ -47,8 +49,9 @@ pub(in crate::svg) fn separate_edge_labels<'a>(
     routes: &mut [ClippedEdgeRoute],
     endpoints: impl Iterator<Item = (&'a str, &'a str, bool)>,
     work: &OperationWorkMeter,
+    phase: OperationPhase,
 ) -> merman_render_core::Result<()> {
-    work.charge(routes.len().saturating_mul(2))?;
+    work.charge_work(routes.len().saturating_mul(2), phase)?;
     for route in routes.iter_mut() {
         if let Some(label) = route.label.as_mut() {
             label.x += route.origin_x;
@@ -61,7 +64,7 @@ pub(in crate::svg) fn separate_edge_labels<'a>(
             .map(|((from, to, has_label), route)| {
                 (from, to, route.label.as_mut().filter(|_| has_label))
             }),
-        |units| work.charge(units).map_err(Into::into),
+        |units| work.charge_work(units, phase).map_err(Into::into),
     );
     for route in routes {
         if let Some(label) = route.label.as_mut() {
@@ -124,7 +127,7 @@ mod tests {
                 let mut routes = [route(&original, label, (700.0, 300.0))];
                 let work =
                     OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-                straighten_edge_terminals(&mut routes, &work).unwrap();
+                straighten_edge_terminals(&mut routes, &work, OperationPhase::Layout).unwrap();
                 let updated = &routes[0];
                 let label = updated.label.as_ref().unwrap();
                 assert_eq!((label.x, label.y), expected);
@@ -149,7 +152,7 @@ mod tests {
             route(&[(60.0, -5.0), (60.0, 5.0)], (60.0, 0.0), (0.0, 0.0)),
         ];
         let work = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-        straighten_edge_terminals(&mut routes, &work).unwrap();
+        straighten_edge_terminals(&mut routes, &work, OperationPhase::Layout).unwrap();
         assert_eq!(coords(&routes[0].points), original);
         let label = routes[0].label.as_ref().unwrap();
         assert_eq!((label.x, label.y), (60.0, 10.0));
@@ -180,7 +183,7 @@ mod tests {
             }
             let mut routes = [jog, other];
             let work = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-            straighten_edge_terminals(&mut routes, &work).unwrap();
+            straighten_edge_terminals(&mut routes, &work, OperationPhase::Layout).unwrap();
             assert_eq!(coords(&routes[0].points), original);
             assert_eq!(routes[0].origin(), (700.0, 300.0));
             if let Some(label) = routes[0].label.as_ref() {
@@ -207,6 +210,7 @@ mod tests {
                 &mut routes,
                 [("A", "B", true), ("B", "A", true)].into_iter(),
                 &work,
+                OperationPhase::Layout,
             );
             let labels: Vec<_> = routes
                 .iter()

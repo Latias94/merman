@@ -10,6 +10,7 @@ import {
   validateTransportIdentityExport,
 } from "./errors.mjs";
 import { wrapCandidateEngine } from "./candidates/wrap-engine.mjs";
+import { nodePackageLocalLayout } from "./transport-contract.mjs";
 
 const TARGET_PACKAGES = Object.freeze({
   "darwin-arm64": "@mermanjs/node-darwin-arm64",
@@ -27,6 +28,7 @@ const directSvgTransports = new WeakSet();
 const versionCheckedRuntimeCatalogs = new WeakMap();
 const loaderPackageManifest = requireFromPackage("../package.json");
 const loaderPackageVersion = loaderPackageManifest?.version;
+const loaderLocalLayout = nodePackageLocalLayout(loaderPackageManifest);
 
 if (typeof loaderPackageVersion !== "string" || loaderPackageVersion.length === 0) {
   throw new Error("The Merman Node package manifest must declare a non-empty version.");
@@ -36,9 +38,8 @@ export function nodeLoaderPackageVersion() {
   return loaderPackageVersion;
 }
 
-export function nodeLoaderUsesLocalShoal(packageName = "@mermanjs/node") {
-  return loaderPackageManifest.name === packageName &&
-    loaderPackageManifest.private === true && loaderPackageManifest.mermanLocalShoal === true;
+export function nodeLoaderLocalLayout(packageName = "@mermanjs/node") {
+  return loaderPackageManifest.name === packageName ? loaderLocalLayout : null;
 }
 
 export function cacheRuntimeCatalog(transport) {
@@ -130,7 +131,7 @@ export async function loadInstalledNativeTransport(optionsJson, iconPacksJson) {
   });
   const transport = await wrapNativeBinding(binding, optionsJson, iconPacksJson, {
     directSvgAddon: nativeAddon,
-    localShoal: nodeLoaderUsesLocalShoal(),
+    localLayout: nodeLoaderLocalLayout(),
   });
   if (nativeAddon) {
     directSvgTransports.add(transport);
@@ -146,7 +147,7 @@ export async function wrapNativeBinding(
   binding,
   optionsJson,
   iconPacksJson,
-  { directSvgAddon = false, localShoal = false } = {},
+  { directSvgAddon = false, localLayout = null } = {},
 ) {
   const label = "The target-specific Merman addon";
   const NativeEngine = binding?.NativeEngine ?? binding?.default?.NativeEngine;
@@ -159,7 +160,7 @@ export async function wrapNativeBinding(
     expectedPackageVersion: nodeLoaderPackageVersion(),
     expectedTransport: "napi",
     label: "The target-specific Merman package",
-    localShoal,
+    localLayout,
   });
   let transport;
   try {

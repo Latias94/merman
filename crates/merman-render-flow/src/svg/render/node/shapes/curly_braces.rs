@@ -11,7 +11,6 @@ use super::super::roughjs::roughjs_stroke_path_for_svg_path;
 pub(in crate::svg) struct CurlyBraceCommentGeometry {
     pub(in crate::svg) group_tx: f64,
     pub(in crate::svg) label_dx: f64,
-    pub(in crate::svg) label_dy: f64,
     pub(in crate::svg) paths: Vec<CurlyBraceCommentPath>,
 }
 
@@ -37,15 +36,12 @@ pub(in crate::svg) fn curly_brace_comment_geometry(
     );
     let radius = (h * 0.1).max(5.0);
 
-    // The source label transforms use the original node padding, even when
-    // Neo chooses different shape padding. Express them relative to the
-    // shared label renderer's centered label box.
-    let label_padding_dx = (label_w - w + padding) / 2.0;
-    let label_dy = (label_h - h + padding) / 2.0;
+    // Mermaid 12.4 centers the label on its measured box. The left brace still
+    // offsets the label horizontally relative to the brace and its padding.
     let (group_tx, label_dx) = match shape {
         "comment" | "brace" | "brace-l" => (radius, (label_w - w) / 2.0 + radius),
-        "brace-r" => (-radius, label_padding_dx),
-        "braces" => (radius - radius / 4.0, label_padding_dx),
+        "brace-r" => (-radius, 0.0),
+        "braces" => (radius - radius / 4.0, 0.0),
         _ => (0.0, 0.0),
     };
 
@@ -227,7 +223,6 @@ pub(in crate::svg) fn curly_brace_comment_geometry(
     CurlyBraceCommentGeometry {
         group_tx,
         label_dx,
-        label_dy,
         paths,
     }
 }
@@ -256,7 +251,6 @@ pub(in crate::svg::render::node) fn render_curly_brace_comment(
         merman_render_core::config::mermaid_config_diagram_look(ctx.config).is_neo(),
     );
     label.dx = geometry.label_dx;
-    label.dy = geometry.label_dy;
 
     let mut stroke_d = |d: &str| {
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
@@ -359,16 +353,15 @@ mod tests {
 
     #[test]
     fn brace_geometry_matches_layout_and_source_label_transforms() {
-        for (shape, neo_dx, neo_dy) in [
-            ("brace", -4.0, 1.5),
-            ("brace-l", -4.0, 1.5),
-            ("comment", -4.0, 1.5),
-            ("brace-r", -10.5, -4.5),
-            ("braces", -10.5, -4.5),
+        for (shape, neo_dx) in [
+            ("brace", -4.0),
+            ("brace-l", -4.0),
+            ("comment", -4.0),
+            ("brace-r", 0.0),
+            ("braces", 0.0),
         ] {
             let geometry = curly_brace_comment_geometry(shape, 100.0, 20.0, 15.0, true);
             assert_eq!(geometry.label_dx, neo_dx, "{shape}");
-            assert_eq!(geometry.label_dy, neo_dy, "{shape}");
             let bounds = union_translated_path_bounds(&geometry);
             let layout = crate::node_geometry::flowchart_node_render_dimensions(
                 Some(shape),
@@ -401,14 +394,12 @@ mod tests {
                     "{shape}"
                 );
                 assert!((bounds.max_y - bounds.min_y - 10.0).abs() < 1e-9, "{shape}");
-                assert_eq!(empty.label_dy, 0.0, "{shape}");
             }
         }
         // A tall classic label increases radius beyond the default 5px.
         // Left-brace text follows r - padding/2, not the historical -r/2.
         let tall = curly_brace_comment_geometry("brace", 100.0, 85.0, 15.0, false);
         assert_eq!(tall.label_dx, 2.5);
-        assert_eq!(tall.label_dy, 0.0);
     }
 
     #[test]

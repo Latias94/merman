@@ -123,7 +123,8 @@ fn write_usecase_body(
         } else {
             "basic label-container"
         };
-        let (rx, ry) = (node.width / 2.0, node.height / 2.0);
+        let size = node_shape_size(node, plan);
+        let (rx, ry) = (size.width / 2.0, size.height / 2.0);
         if let Some(sketch) = context.sketch {
             sketch.write_shape(
                 out,

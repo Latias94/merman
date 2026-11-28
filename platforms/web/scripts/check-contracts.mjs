@@ -8,16 +8,18 @@ import {
   webPackages,
 } from "./surface-manifest.mjs";
 import { loadTypeScriptContract } from "./typescript-contract.mjs";
-import { parseWasmTargets } from "./wasm-build/targets.mjs";
+import { LOCAL_WASM_LAYOUT_USAGE, parseFullWasmTarget } from "./wasm-build/targets.mjs";
 import { scanWebArchitecture } from "./web-architecture.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const args = process.argv.slice(2);
-if (args.length > 1 || (args.length === 1 && args[0] !== "--local-shoal")) {
-  console.error("usage: node scripts/check-contracts.mjs [--local-shoal]");
+let fullWasm;
+try {
+  fullWasm = parseFullWasmTarget(process.argv.slice(2));
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  console.error(`usage: node scripts/check-contracts.mjs ${LOCAL_WASM_LAYOUT_USAGE}`);
   process.exit(2);
 }
-const [fullWasm] = parseWasmTargets(["--package", "full", ...args]);
 const fullWasmTypes = path.join(fullWasm.outputDir.absolute, "merman_wasm.d.ts");
 const publicEntry = path.join(root, "src", "index.ts");
 const publicCatalog = path.join(root, "src", "public-catalog.ts");

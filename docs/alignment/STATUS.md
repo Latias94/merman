@@ -8,19 +8,18 @@ The [authority map](README.md#machine-authorities) identifies the structured own
 
 | Concern | Current boundary |
 | --- | --- |
-| Development reference | Mermaid `@12.3.0`, source `2086904e76c692331e34a45d7cc3bc30860d040e` |
+| Development reference | Mermaid `@12.4.0`, source `9f93a44a36e46a36b1379f9de72fb1ee5684ee3f` |
 | Published artifacts | Retain the source baseline and capabilities of their own release |
-| Primary SVG matrix | 37 families in the executable compare facts, with selected 12.3 upstream manifests |
+| Primary SVG matrix | 37 families in the executable compare facts, with selected 12.4 upstream manifests |
 | External comparison | ZenUML uses its selected companion graph and a separate browser admission lane |
 | Root viewport | Every primary family participates in root verification; deterministic contracts and browser diagnostics have distinct owners |
 | Semantic edge labels | C4, Flowchart ELK, Architecture, Requirement, State, Class, and ER have fail-closed identity/geometry/presentation admission |
 | Language/editor support | Family capabilities are independent of optional render backends; tolerant Tree-sitter syntax has its own selected baseline |
 | Verification | A successful gate applies to the exact source, artifacts, environment, and revision that ran it |
 
-The [12.3 migration](../migrations/mermaid-12-3.md) describes source behavior and dependency
+The [12.4 migration](../migrations/mermaid-12-4.md) describes source behavior and dependency
 selection. The source lock, reference bundle, and selection receipt bind that graph. Historical
-12.0/12.2 test counts, capture environments, and release results do not qualify 12.3 or later
-uncommitted changes.
+test counts, capture environments, and release results apply to their recorded revisions.
 
 ## Reading Admission
 

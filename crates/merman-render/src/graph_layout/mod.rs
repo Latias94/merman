@@ -91,8 +91,43 @@ pub(crate) use merman_render_flow::graph::{AxisRoutes, RouteTopology};
 pub(crate) enum RouteContract {
     #[default]
     DagreParity,
+    #[cfg(all(
+        feature = "layout-layered",
+        feature = "layout-dagre",
+        any(
+            feature = "diagram-flowchart",
+            feature = "diagram-agentflow",
+            feature = "diagram-swimlane"
+        )
+    ))]
+    LayeredDagreFallback,
+    #[cfg(all(
+        feature = "layout-layered",
+        any(
+            feature = "diagram-flowchart",
+            feature = "diagram-agentflow",
+            feature = "diagram-swimlane"
+        )
+    ))]
+    Layered(std::sync::Arc<merman_render_flow::layered::FlowLayeredRoutes>),
+    #[cfg(all(feature = "diagram-er", feature = "layout-layered"))]
+    ErLayered(std::sync::Arc<merman_render_graph::er::ErLayeredPaint>),
+    #[cfg(all(feature = "diagram-state", feature = "layout-layered"))]
+    StateLayered(std::sync::Arc<merman_render_graph::state::StateLayeredPaint>),
     #[cfg(feature = "layout-elk")]
     ElkParity,
+    #[cfg(all(
+        feature = "layout-grid",
+        any(
+            feature = "diagram-class",
+            feature = "diagram-er",
+            feature = "diagram-flowchart",
+            feature = "diagram-state",
+            feature = "diagram-swimlane",
+            feature = "diagram-agentflow"
+        )
+    ))]
+    Grid(merman_render_core::graph_layout::mermaid_grid::GridPaint),
     #[cfg(any(
         feature = "diagram-flowchart",
         feature = "diagram-swimlane",
@@ -187,6 +222,10 @@ impl RouteContract {
             return true;
         }
         match self {
+            #[cfg(feature = "layout-grid")]
+            Self::Grid(_) => true,
+            #[cfg(feature = "layout-layered")]
+            Self::Layered(_) => true,
             #[cfg(any(feature = "layout-shoal", test))]
             Self::CanonicalAxis(_) => true,
             _ => false,

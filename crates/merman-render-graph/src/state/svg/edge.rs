@@ -344,7 +344,7 @@ fn state_marker_offset_for(arrow_type_end: Option<&str>) -> Option<f64> {
     }
 }
 
-fn state_rounded_end_marker_offset_points(
+pub(super) fn state_rounded_end_marker_offset_points(
     input: &[LayoutPoint],
     arrow_type_end: Option<&str>,
 ) -> Vec<LayoutPoint> {
@@ -369,7 +369,7 @@ fn state_rounded_end_marker_offset_points(
     out
 }
 
-fn state_line_with_end_marker_offset_points(
+pub(super) fn state_line_with_end_marker_offset_points(
     input: &[LayoutPoint],
     arrow_type_end: Option<&str>,
 ) -> Vec<LayoutPoint> {
@@ -631,6 +631,8 @@ pub(super) struct StateEdgePathScratch {
     #[cfg(feature = "layout-shoal")]
     canonical: CanonicalPaintScratch,
     json: Vec<u8>,
+    #[cfg(feature = "layout-layered")]
+    layered_json: String,
     base64: String,
     style: String,
     classes: String,
@@ -738,8 +740,41 @@ fn write_state_edge_path(
         None => None,
     };
 
+    #[cfg(feature = "layout-grid")]
+    let grid = match &ctx.grid_edges {
+        Some(edges) => match edges.get(edge_id) {
+            Some(paint) => Some(paint),
+            None => return Ok(()),
+        },
+        None => None,
+    };
+    #[cfg(feature = "layout-layered")]
+    let layered = match &ctx.layered_edges {
+        Some(edges) => match edges.get(edge_id) {
+            Some(paint) => Some(paint),
+            None => return Ok(()),
+        },
+        None => None,
+    };
     let legacy;
     let (base_d, paint_d, points) = 'geometry: {
+        #[cfg(feature = "layout-layered")]
+        if let Some(paint) = layered {
+            break 'geometry (
+                paint.path.as_str(),
+                paint.path.as_str(),
+                paint.points.as_slice(),
+            );
+        }
+        #[cfg(feature = "layout-grid")]
+        if let Some(paint) = grid {
+            break 'geometry (
+                paint.path.as_str(),
+                paint.path.as_str(),
+                paint.points.as_slice(),
+            );
+        }
+
         #[cfg(feature = "layout-shoal")]
         if let Some(geometry) = &canonical {
             let path_d = geometry.d.as_str();
@@ -754,21 +789,51 @@ fn write_state_edge_path(
         break 'geometry (path_d, path_d, legacy.data_points.as_slice());
     };
     let hopped_d = ctx.elk_line_hop_paths.get(edge_id).map(String::as_str);
+    #[cfg(feature = "layout-grid")]
+    let hopped_d = hopped_d.or_else(|| grid.and_then(|paint| paint.hopped.as_deref()));
+    #[cfg(feature = "layout-layered")]
+    let hopped_d = hopped_d.or_else(|| layered.and_then(|paint| paint.hopped.as_deref()));
     let rendered_d = hopped_d.unwrap_or(paint_d);
-    let rough_d = if sketch && !ctx.uses_canonical_routes() && !rendered_d.is_empty() {
-        Some(merman_render_core::rough_svg::constrained_rough_edge_path(
-            rendered_d,
-            Default::default(),
-            work_meter,
-            &ctx.hand_drawn_seed,
-        )?)
+    let layered_hand_drawn =
+        ctx.uses_layered() && state_effective_look(ctx) == "handDrawn" && hopped_d.is_none();
+    let rough_d =
+        if (sketch || layered_hand_drawn) && !ctx.uses_canonical_routes() && !rendered_d.is_empty()
+        {
+            Some(merman_render_core::rough_svg::constrained_rough_edge_path(
+                rendered_d,
+                Default::default(),
+                work_meter,
+                &ctx.hand_drawn_seed,
+            )?)
+        } else {
+            None
+        };
+    let rendered_d = rough_d.as_deref().unwrap_or(rendered_d);
+    #[cfg(feature = "layout-layered")]
+    let axis_bytes = if let Some(paint) = layered {
+        work_meter.charge_emit_work(points.len())?;
+        scratch.layered_json.clear();
+        merman_render_core::svg_edge_parity::path_numbers::json_stringify_axis_points_into(
+            &mut scratch.layered_json,
+            points,
+            paint.axes,
+            &mut scratch.ryu,
+        );
+        work_meter.charge_emit_work(scratch.layered_json.len())?;
+        Some(scratch.layered_json.as_bytes())
     } else {
         None
     };
-    let rendered_d = rough_d.as_deref().unwrap_or(rendered_d);
-    write_serde_points_json(&mut scratch.json, points, &mut scratch.ryu);
+    #[cfg(not(feature = "layout-layered"))]
+    let axis_bytes = None;
+    let point_bytes = if let Some(bytes) = axis_bytes {
+        bytes
+    } else {
+        write_serde_points_json(&mut scratch.json, points, &mut scratch.ryu);
+        scratch.json.as_slice()
+    };
     scratch.base64.clear();
-    base64::engine::general_purpose::STANDARD.encode_string(&scratch.json, &mut scratch.base64);
+    base64::engine::general_purpose::STANDARD.encode_string(point_bytes, &mut scratch.base64);
     let original_style = &mut scratch.style;
     original_style.clear();
     if look == "neo" && !sketch {
@@ -804,7 +869,16 @@ fn write_state_edge_path(
         "fill:none;;;fill:none"
     });
     let style = if let Some(path) = hopped_d {
-        rewrite_style_after_line_hop(original_style, path, work_meter)?
+        if ctx.uses_layered() {
+            merman_render_core::svg_edge_parity::line_hops::rewrite_style_after_line_hop_with_phase(
+                original_style,
+                path,
+                merman_model::OperationPhase::Emit,
+                work_meter,
+            )?
+        } else {
+            rewrite_style_after_line_hop(original_style, path, work_meter)?
+        }
     } else {
         std::borrow::Cow::Borrowed(original_style.as_str())
     };
@@ -852,7 +926,7 @@ pub(super) fn render_state_edge_path(
     };
     let mut classes = std::mem::take(&mut scratch.classes);
     classes.clear();
-    if (ctx.uses_elk_adapter_dom || ctx.uses_canonical_routes())
+    if (ctx.uses_elk_adapter_dom || ctx.uses_canonical_routes() || ctx.uses_flat_routes())
         && edge
             .classes
             .split_whitespace()
@@ -875,7 +949,7 @@ pub(super) fn render_state_edge_path(
     marker_end_buf.clear();
     let has_marker_end = match edge.arrow_type_end.trim() {
         "arrow_barb" | "arrow_barb_neo" => {
-            let neo = if ctx.uses_canonical_routes() {
+            let neo = if ctx.uses_canonical_routes() || ctx.uses_flat_routes() {
                 ctx.style_plan.compatibility().is_neo()
             } else {
                 state_data_look(ctx) == "neo"
@@ -910,6 +984,27 @@ pub(super) fn render_state_edge_path(
     scratch.classes = classes;
     scratch.marker_end = marker_end_buf;
     result
+}
+
+pub(super) fn state_edge_label_fill(
+    ctx: &StateRenderCtx<'_>,
+    paint: crate::state::compatibility::StateEdgeLabelPaint,
+    center: kurbo::Point,
+) -> Result<Color> {
+    Ok(match paint.mode {
+        EdgeLabelBackground::Auto => {
+            ctx.work_meter
+                .charge_emit_work(ctx.composite_paints.len())?;
+            ctx.composite_paints
+                .values()
+                .fold(paint.canvas, |backdrop, composite| {
+                    composite.composite_at(center, backdrop)
+                })
+        }
+        EdgeLabelBackground::Canvas => paint.canvas,
+        EdgeLabelBackground::Pill => paint.node,
+        EdgeLabelBackground::Transparent => Color::TRANSPARENT,
+    })
 }
 
 pub(super) fn render_state_edge_label(
@@ -1095,9 +1190,13 @@ pub(super) fn render_state_edge_label(
     } else {
         std::borrow::Cow::Borrowed(edge.label.as_str())
     };
-    let label_text = label_text.trim();
+    let label_text = if ctx.uses_layered() {
+        label_text.trim_matches(merman_model::text::is_ecmascript_whitespace)
+    } else {
+        label_text.trim()
+    };
     if label_text.is_empty() {
-        if ctx.uses_elk_adapter_dom {
+        if ctx.uses_elk_adapter_dom || ctx.uses_layered() {
             return Ok(());
         }
         write_empty_edge_label(
@@ -1120,7 +1219,7 @@ pub(super) fn render_state_edge_label(
         x: lbl.x - origin_x,
         y: lbl.y - origin_y,
     };
-    let label_position = if ctx.uses_canonical_routes() {
+    let label_position = if ctx.uses_canonical_routes() || ctx.uses_layered() {
         label_position
     } else {
         let geometry = state_edge_prepare_geometry(
@@ -1163,22 +1262,8 @@ pub(super) fn render_state_edge_label(
     let native_background = ctx.style_plan.compatibility().native_edge_label_paint;
     let mut adaptive_label_style = String::new();
     if let Some(paint) = native_background {
-        let fill = match paint.mode {
-            EdgeLabelBackground::Auto => {
-                let center =
-                    kurbo::Point::new(label_position.x + origin_x, label_position.y + origin_y);
-                ctx.work_meter
-                    .charge_emit_work(ctx.composite_paints.len())?;
-                ctx.composite_paints
-                    .values()
-                    .fold(paint.canvas, |backdrop, composite| {
-                        composite.composite_at(center, backdrop)
-                    })
-            }
-            EdgeLabelBackground::Canvas => paint.canvas,
-            EdgeLabelBackground::Pill => paint.node,
-            EdgeLabelBackground::Transparent => Color::TRANSPARENT,
-        };
+        let center = kurbo::Point::new(label_position.x + origin_x, label_position.y + origin_y);
+        let fill = state_edge_label_fill(ctx, paint, center)?;
         if let Some(default_ink) =
             literal_fill(&ctx.style_plan.compatibility().transition_label_color)
             && let Some(ink) = adaptive_text_ink(fill, default_ink)

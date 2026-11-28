@@ -393,6 +393,11 @@ differ:
 | Apple on main | analysis, ASCII, SVG, math, Dagre, ELK, Cytoscape | Complete local SwiftPM package and thin remote delivery handoff; published v0.9.x remains math-free. |
 | Typst | analysis, SVG, Dagre, ELK, Cytoscape | Exposes `theme-catalog`, `export-theme-preset`, and `resolve-theme` through the seven-function Typst ABI. |
 | Node alpha package group | SVG, math, Dagre, ELK, Cytoscape | Matches the complete deterministic static-SVG interface; codecs and ambient services remain out of the prebuilt download. |
+
+Source builds of the C, UniFFI, Android JNI, WASI, and Web bindings can opt into Mermaid Grid or
+Layered with `layout-grid` or `layout-layered` and a supported diagram feature. The runtime catalog
+reports each engine selected by the loaded artifact. Source and site `layout` settings use the
+same operation planning and admission as other backends. See [layout families](../FEATURES.md#svg-without-general-purpose-layout-engines).
 | Browser packages | package-specific | `web-full` and `web-render` include math; dedicated packages own analysis, editor, and ASCII workflows. |
 | C ABI source reference | complete | Exercises every ABI/output path for custom embedders without defining a default binary download. |
 

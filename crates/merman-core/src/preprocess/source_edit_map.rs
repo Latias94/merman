@@ -195,7 +195,6 @@ impl PreprocessedSource {
         };
     }
 
-    #[cfg(feature = "editor-facts")]
     pub(super) fn try_map_enclosing_span(&self, span: SourceSpan) -> Option<SourceSpan> {
         self.mapped.try_map_enclosing_span(span)
     }

@@ -8,9 +8,9 @@ pub use input::build_flowchart_elk_graph_with_render_labels_and_work_control;
 #[cfg(any(test, feature = "test-support"))]
 pub use input::parent_by_id;
 
-#[cfg(any(test, feature = "test-support"))]
-pub use operation::layout_diagnostic;
 pub use operation::{FlowchartElkLayoutExecution, layout};
+#[cfg(any(test, feature = "test-support"))]
+pub use operation::{layout_diagnostic, solve_diagnostic};
 pub use projection::{FlowchartElkProjection, canonical_subgraphs, project_layout};
 
 #[cfg(any(test, feature = "test-support"))]

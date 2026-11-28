@@ -1,5 +1,7 @@
 //! ER paint geometry derived from a borrowed family layout before the SVG root is opened.
 
+use std::borrow::Cow;
+
 use merman_model::families::er::ErRelationship;
 #[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 use merman_render_core::LayoutPoint;
@@ -15,9 +17,23 @@ pub enum ErSvgRouteKind {
     Elk,
     Swimlane,
     Canonical,
+    #[cfg(feature = "layout-grid")]
+    Grid,
+    #[cfg(feature = "layout-layered")]
+    Layered,
 }
 
 impl ErSvgRouteKind {
+    const fn has_projected_geometry(self) -> bool {
+        match self {
+            #[cfg(feature = "layout-grid")]
+            Self::Grid => true,
+            #[cfg(feature = "layout-layered")]
+            Self::Layered => true,
+            _ => false,
+        }
+    }
+
     const fn uses_rounded_geometry(self) -> bool {
         matches!(self, Self::Elk | Self::Swimlane)
     }
@@ -32,8 +48,8 @@ pub struct ErSvgLayoutView<'a> {
 
 pub struct ErSvgGeometry<'a> {
     clusters: &'a [LayoutCluster],
-    nodes: Vec<LayoutNode>,
-    edges: Vec<LayoutEdge>,
+    nodes: Cow<'a, [LayoutNode]>,
+    edges: Cow<'a, [LayoutEdge]>,
     missing_sections: FxHashSet<String>,
 }
 
@@ -45,6 +61,19 @@ impl<'a> ErSvgGeometry<'a> {
         effective_config: &Value,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self> {
+        if route_kind.has_projected_geometry() {
+            // These edges already carry the selected provider's paint order and label anchors.
+            work_meter.charge_emit_work(layout.nodes.len())?;
+            for edge in layout.edges {
+                work_meter.charge_emit_work(edge.points.len().saturating_add(1))?;
+            }
+            return Ok(Self {
+                clusters: layout.clusters,
+                nodes: Cow::Borrowed(layout.nodes),
+                edges: Cow::Borrowed(layout.edges),
+                missing_sections: FxHashSet::default(),
+            });
+        }
         let uses_canonical_routes = route_kind == ErSvgRouteKind::Canonical;
         let rounded_layout = route_kind.uses_rounded_geometry();
         let is_elk_layout = route_kind == ErSvgRouteKind::Elk;
@@ -153,8 +182,8 @@ impl<'a> ErSvgGeometry<'a> {
 
         Ok(Self {
             clusters: layout.clusters,
-            nodes,
-            edges,
+            nodes: Cow::Owned(nodes),
+            edges: Cow::Owned(edges),
             missing_sections,
         })
     }
@@ -187,6 +216,13 @@ pub fn er_rel_idx_from_edge_id(edge_id: &str) -> Option<usize> {
         return None;
     }
     rest[..digits_len].parse::<usize>().ok()
+}
+
+pub(super) fn er_relationship_dom_id(relationship: &ErRelationship, index: usize) -> String {
+    format!(
+        "id_{}_{}_{index}",
+        relationship.entity_a, relationship.entity_b
+    )
 }
 
 /// Bounds for the layout projection before the SVG painter resolves its edge geometry.
@@ -248,7 +284,7 @@ pub(super) fn calc_label_position(points: &[LayoutPoint]) -> Option<(f64, f64)> 
     Some((points.last()?.x, points.last()?.y))
 }
 
-fn compute_layout_bounds(
+pub(super) fn compute_layout_bounds(
     clusters: &[LayoutCluster],
     nodes: &[LayoutNode],
     edges: &[LayoutEdge],

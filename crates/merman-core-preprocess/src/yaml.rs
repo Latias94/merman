@@ -1,10 +1,19 @@
 //! Bounded YAML parsing and source-order capture for preprocessed text.
 
+#[path = "grid_config.rs"]
+pub(crate) mod grid_config;
+
+pub use grid_config::{
+    GridPlacementFieldSource, GridPlacementOccurrenceSource, GridPlacementSource,
+    GridPlacementsSource,
+};
+
 #[cfg(feature = "yaml-editor")]
 use crate::SourceConfigPath;
-use granit_parser::{Event, Parser, ScalarStyle, Tag};
+use crate::grid_coordinate::GridCoordinateField;
 #[cfg(feature = "yaml-editor")]
-use granit_parser::{Span, StructureStyle};
+use granit_parser::StructureStyle;
+use granit_parser::{Event, Parser, ScalarStyle, Span, Tag};
 use merman_model::json::{
     JSON_OBJECT_ENTRY_CHARGE_BYTES, JSON_VALUE_CHARGE_BYTES, clone_value_nonrecursive,
     drop_value_nonrecursive,
@@ -13,6 +22,7 @@ use merman_model::{MAX_DIAGRAM_NESTING_DEPTH, OperationControl, OperationControl
 use serde_json::{Map, Number, Value};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::mem::size_of;
+use std::ops::Range;
 #[cfg(feature = "yaml-editor")]
 use std::sync::Arc;
 
@@ -93,6 +103,7 @@ pub struct YamlConfigKeyEvidence {
 pub struct YamlValueCapture {
     pub value: Result<Value, String>,
     pub collection_text: YamlCollectionText,
+    pub grid_placements: Option<GridPlacementsSource>,
     #[cfg(feature = "yaml-editor")]
     pub keys: Vec<YamlConfigKeyEvidence>,
     #[cfg(feature = "yaml-editor")]
@@ -102,10 +113,30 @@ pub struct YamlValueCapture {
 /// Ordered JSON text for requested top-level collection fields.
 pub type YamlCollectionText = BTreeMap<&'static str, String>;
 
+/// Numeric values that cannot be represented in the decoded inline JSON object.
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct InlineGridNonfinite {
+    row: Option<YamlNonfiniteNumber>,
+    column: Option<YamlNonfiniteNumber>,
+}
+
+impl InlineGridNonfinite {
+    pub fn get(self, field: GridCoordinateField) -> Option<f64> {
+        match field {
+            GridCoordinateField::Row => self.row,
+            GridCoordinateField::Column => self.column,
+        }
+        .map(YamlNonfiniteNumber::as_f64)
+    }
+}
+
 #[derive(Default)]
 struct Capture<'a> {
     collection_text_keys: &'a [&'static str],
     root_key_order: Option<&'a mut Vec<String>>,
+    inline_grid_nonfinite: Option<&'a mut InlineGridNonfinite>,
+    grid_placements: bool,
     #[cfg(feature = "yaml-editor")]
     ordered_document: Option<&'a mut String>,
     #[cfg(feature = "yaml-editor")]
@@ -170,15 +201,6 @@ pub fn parse_yaml_frontmatter_capture_controlled(
     insert_order_request: Option<YamlInsertOrderRequest<'_>>,
     control: &OperationControl,
 ) -> OperationControlResult<(YamlValueCapture, Option<YamlInsertOrder>)> {
-    let Some(request) = insert_order_request else {
-        let captured = parse_yaml_with_capture_controlled(
-            input,
-            max_nesting_depth,
-            collection_text_keys,
-            control,
-        )?;
-        return Ok((captured, None));
-    };
     let mut insert_order = None;
     let captured = parse_yaml_controlled(
         input,
@@ -187,8 +209,9 @@ pub fn parse_yaml_frontmatter_capture_controlled(
         default_materialization_budget(input),
         Capture {
             collection_text_keys,
-            keys: true,
-            insert_order: Some(InsertOrderCapture {
+            grid_placements: true,
+            keys: insert_order_request.is_some(),
+            insert_order: insert_order_request.map(|request| InsertOrderCapture {
                 request,
                 output: &mut insert_order,
             }),
@@ -199,25 +222,64 @@ pub fn parse_yaml_frontmatter_capture_controlled(
     Ok((captured, insert_order))
 }
 
+#[cfg(not(feature = "yaml-editor"))]
+pub(crate) fn parse_yaml_frontmatter_capture_controlled(
+    input: &str,
+    max_nesting_depth: usize,
+    collection_text_keys: &[&'static str],
+    control: &OperationControl,
+) -> OperationControlResult<YamlValueCapture> {
+    parse_yaml_controlled(
+        input,
+        YAML_PARSER_MAX_INPUT_BYTES,
+        max_nesting_depth,
+        default_materialization_budget(input),
+        Capture {
+            collection_text_keys,
+            grid_placements: true,
+            ..Capture::default()
+        },
+        control,
+    )
+}
+
 /// Parses Mermaid inline YAML and preserves the authored order of its root keys.
 pub fn parse_mermaid_inline_yaml_with_root_order_controlled(
     input: &str,
     control: &OperationControl,
 ) -> OperationControlResult<Result<(Value, Vec<String>), String>> {
-    let input = mermaid_inline_yaml(input);
     let mut root_key_order = Vec::new();
+    let value = parse_mermaid_inline_yaml_with_root_fields_controlled(
+        input,
+        Some(&mut root_key_order),
+        None,
+        control,
+    )?;
+    Ok(value.map(|value| (value, root_key_order)))
+}
+
+/// Projects requested inline evidence from the same bounded YAML decode as the JSON value.
+#[doc(hidden)]
+pub fn parse_mermaid_inline_yaml_with_root_fields_controlled(
+    input: &str,
+    root_key_order: Option<&mut Vec<String>>,
+    inline_grid_nonfinite: Option<&mut InlineGridNonfinite>,
+    control: &OperationControl,
+) -> OperationControlResult<Result<Value, String>> {
+    let input = mermaid_inline_yaml(input);
     let captured = parse_yaml_controlled(
         &input,
         YAML_PARSER_MAX_INPUT_BYTES,
         MAX_DIAGRAM_NESTING_DEPTH,
         default_materialization_budget(&input),
         Capture {
-            root_key_order: Some(&mut root_key_order),
+            root_key_order,
+            inline_grid_nonfinite,
             ..Capture::default()
         },
         control,
     )?;
-    Ok(captured.value.map(|value| (value, root_key_order)))
+    Ok(captured.value)
 }
 
 pub fn parse_yaml_value_with_limits_controlled(
@@ -278,15 +340,24 @@ fn parse_yaml_controlled(
                 "YAML input exceeds the safe parser budget of {max_input_bytes} bytes"
             )),
             collection_text: YamlCollectionText::new(),
+            grid_placements: None,
             #[cfg(feature = "yaml-editor")]
             keys: Vec::new(),
             #[cfg(feature = "yaml-editor")]
             rewrite_safe: false,
         });
     }
+    let grid_root_scope = if capture.grid_placements {
+        GridYamlScope::Root
+    } else if capture.inline_grid_nonfinite.is_some() {
+        GridYamlScope::InlineRoot
+    } else {
+        GridYamlScope::Ignore
+    };
     let mut builder = YamlValueBuilder::new(
         max_nesting_depth,
         materialization_budget,
+        grid_root_scope,
         #[cfg(feature = "yaml-editor")]
         capture.keys,
     );
@@ -307,7 +378,7 @@ fn parse_yaml_controlled(
         if index % 64 == 0 {
             control.checkpoint()?;
         }
-        let (event, _span) = match event {
+        let (event, span) = match event {
             Ok(event) => event,
             Err(error) => {
                 #[cfg(feature = "yaml-editor")]
@@ -335,6 +406,7 @@ fn parse_yaml_controlled(
                 return Ok(YamlValueCapture {
                     value: Err(error.to_string()),
                     collection_text: YamlCollectionText::new(),
+                    grid_placements: None,
                     #[cfg(feature = "yaml-editor")]
                     keys,
                     #[cfg(feature = "yaml-editor")]
@@ -342,18 +414,13 @@ fn parse_yaml_controlled(
                 });
             }
         };
-        if let Err(error) = builder.on_event(
-            #[cfg(feature = "yaml-editor")]
-            input,
-            event,
-            #[cfg(feature = "yaml-editor")]
-            _span,
-        ) {
+        if let Err(error) = builder.on_event(input, event, span) {
             #[cfg(feature = "yaml-editor")]
             let (keys, _) = builder.take_capture();
             return Ok(YamlValueCapture {
                 value: Err(error),
                 collection_text: YamlCollectionText::new(),
+                grid_placements: None,
                 #[cfg(feature = "yaml-editor")]
                 keys,
                 #[cfg(feature = "yaml-editor")]
@@ -380,7 +447,7 @@ fn parse_yaml_controlled(
             {
                 *insert_order.output = Some(YamlInsertOrder::NoRoutes);
             }
-            return Ok(YamlCollectionText::new());
+            return Ok((YamlCollectionText::new(), None));
         }
         #[cfg(feature = "yaml-editor")]
         if let Some(document) = capture.ordered_document
@@ -414,12 +481,23 @@ fn parse_yaml_controlled(
             }
             *insert_order.output = Some(order);
         }
-        if let Some(order) = capture.root_key_order {
-            builder.take_root_key_order(order, control)?;
-        }
-        Ok(collection_text)
+        let grid_placements = if capture.grid_placements
+            && value
+                .as_ref()
+                .is_ok_and(|value| value.pointer("/config/grid/placements").is_some())
+        {
+            builder.grid_placements_source(control)?
+        } else {
+            None
+        };
+        builder.take_inline_root_fields(
+            capture.root_key_order,
+            capture.inline_grid_nonfinite,
+            control,
+        )?;
+        Ok((collection_text, grid_placements))
     })();
-    let collection_text = match captured {
+    let (collection_text, grid_placements) = match captured {
         Ok(text) => text,
         Err(cancelled) => {
             if let Ok(value) = value {
@@ -431,6 +509,7 @@ fn parse_yaml_controlled(
     Ok(YamlValueCapture {
         value,
         collection_text,
+        grid_placements,
         #[cfg(feature = "yaml-editor")]
         keys,
         #[cfg(feature = "yaml-editor")]
@@ -438,8 +517,7 @@ fn parse_yaml_controlled(
     })
 }
 
-#[cfg(feature = "yaml-editor")]
-fn yaml_key_span(input: &str, span: Span, style: ScalarStyle) -> Option<std::ops::Range<usize>> {
+fn yaml_key_span(input: &str, span: Span, style: ScalarStyle) -> Option<Range<usize>> {
     let mut range = span.byte_range()?;
     if matches!(style, ScalarStyle::SingleQuoted | ScalarStyle::DoubleQuoted) {
         let source = input.get(range.clone())?;
@@ -469,6 +547,29 @@ fn yaml_key_span_is_rewrite_safe(
         .is_some_and(|source| source == decoded)
 }
 
+#[derive(Clone, Copy)]
+enum GridYamlScope {
+    Ignore,
+    Root,
+    InlineRoot,
+    Config,
+    GridSection,
+    Placements,
+    Placement,
+    Occurrence,
+    Coordinate,
+}
+
+impl GridYamlScope {
+    fn captures_key(self, key: &str) -> bool {
+        match self {
+            Self::GridSection => key == "placements",
+            Self::Placements | Self::Placement | Self::Occurrence => true,
+            _ => false,
+        }
+    }
+}
+
 struct YamlValueBuilder {
     stack: Vec<Frame>,
     arena: Vec<YamlNode>,
@@ -476,6 +577,9 @@ struct YamlValueBuilder {
     anchors: HashMap<usize, NodeId>,
     max_nesting_depth: usize,
     materialization_budget: usize,
+    grid_root_scope: GridYamlScope,
+    grid_key_spans: HashMap<NodeId, Vec<(usize, Range<usize>)>>,
+    grid_nonfinite_scalars: HashMap<NodeId, YamlNonfiniteNumber>,
     #[cfg(feature = "yaml-editor")]
     capture_keys: bool,
     #[cfg(feature = "yaml-editor")]
@@ -490,6 +594,7 @@ impl YamlValueBuilder {
     fn new(
         max_nesting_depth: usize,
         materialization_budget: usize,
+        grid_root_scope: GridYamlScope,
         #[cfg(feature = "yaml-editor")] capture_keys: bool,
     ) -> Self {
         Self {
@@ -499,6 +604,9 @@ impl YamlValueBuilder {
             anchors: HashMap::new(),
             max_nesting_depth,
             materialization_budget,
+            grid_root_scope,
+            grid_key_spans: HashMap::new(),
+            grid_nonfinite_scalars: HashMap::new(),
             #[cfg(feature = "yaml-editor")]
             capture_keys,
             #[cfg(feature = "yaml-editor")]
@@ -510,12 +618,7 @@ impl YamlValueBuilder {
         }
     }
 
-    fn on_event(
-        &mut self,
-        #[cfg(feature = "yaml-editor")] input: &str,
-        event: Event<'_>,
-        #[cfg(feature = "yaml-editor")] span: Span,
-    ) -> Result<(), String> {
+    fn on_event(&mut self, input: &str, event: Event<'_>, span: Span) -> Result<(), String> {
         match event {
             Event::StreamStart | Event::StreamEnd | Event::DocumentStart(..) => Ok(()),
             Event::DocumentEnd => {
@@ -545,6 +648,7 @@ impl YamlValueBuilder {
                     node,
                     role,
                     0,
+                    None,
                     #[cfg(feature = "yaml-editor")]
                     false,
                 )
@@ -565,21 +669,56 @@ impl YamlValueBuilder {
                     self.rewrite_safe = false;
                 }
                 let role = self.reserve_role()?;
-                let value = scalar_to_value(raw.as_ref(), style, tag.as_deref())?;
+                let raw = raw.as_ref();
+                let tag = tag.as_deref();
+                let nonfinite = if !matches!(self.grid_root_scope, GridYamlScope::Ignore) {
+                    yaml_nonfinite_number(raw).filter(|_| match tag {
+                        None => style == ScalarStyle::Plain,
+                        Some(tag) => {
+                            tag.core_suffix() == Some("float")
+                                && matches!(
+                                    self.grid_scope_for_role(&role),
+                                    GridYamlScope::Coordinate
+                                )
+                        }
+                    })
+                } else {
+                    None
+                };
+                let value = if nonfinite.is_some() {
+                    // Keep the plain YAML string projection for other uses of the arena node.
+                    Value::String(raw.to_owned())
+                } else {
+                    scalar_to_value(raw, style, tag)?
+                };
+                let grid_key_span = if matches!(role, Role::MappingKey)
+                    && self
+                        .stack
+                        .last()
+                        .is_some_and(|frame| frame.grid_scope.captures_key(raw))
+                {
+                    yaml_key_span(input, span, style)
+                } else {
+                    None
+                };
                 #[cfg(feature = "yaml-editor")]
                 let key_source = self.capture_keys.then(|| YamlKeySource {
                     span: yaml_key_span(input, span, style),
-                    rewrite_safe: yaml_key_span_is_rewrite_safe(input, span, style, raw.as_ref()),
+                    rewrite_safe: yaml_key_span_is_rewrite_safe(input, span, style, raw),
                 });
                 let node = self.push_node(YamlNode::Scalar {
                     value,
                     #[cfg(feature = "yaml-editor")]
                     key_source,
                 });
+                if let Some(number) = nonfinite {
+                    self.grid_nonfinite_scalars.insert(node, number);
+                }
                 self.complete_node(
                     node,
                     role,
                     anchor_id,
+                    grid_key_span,
                     #[cfg(feature = "yaml-editor")]
                     true,
                 )
@@ -590,12 +729,15 @@ impl YamlValueBuilder {
                     self.rewrite_safe = false;
                 }
                 let role = self.reserve_role()?;
+                let grid_scope = self.grid_scope_for_role(&role);
                 #[cfg(feature = "yaml-editor")]
                 let path = self.path_for_role(&role);
                 self.push_frame(Frame {
                     container: Container::Sequence(Vec::new()),
                     role,
                     anchor_id,
+                    grid_scope,
+                    grid_key_spans: Vec::new(),
                     #[cfg(feature = "yaml-editor")]
                     path,
                 })
@@ -606,6 +748,7 @@ impl YamlValueBuilder {
                     self.rewrite_safe = false;
                 }
                 let role = self.reserve_role()?;
+                let grid_scope = self.grid_scope_for_role(&role);
                 #[cfg(feature = "yaml-editor")]
                 if self.frontmatter_appendable && matches!(role, Role::Root) {
                     self.frontmatter_appendable =
@@ -621,6 +764,8 @@ impl YamlValueBuilder {
                     },
                     role,
                     anchor_id,
+                    grid_scope,
+                    grid_key_spans: Vec::new(),
                     #[cfg(feature = "yaml-editor")]
                     path,
                 })
@@ -647,10 +792,14 @@ impl YamlValueBuilder {
                     }
                     _ => unreachable!(),
                 };
+                if !frame.grid_key_spans.is_empty() {
+                    self.grid_key_spans.insert(node, frame.grid_key_spans);
+                }
                 self.complete_node(
                     node,
                     frame.role,
                     frame.anchor_id,
+                    None,
                     #[cfg(feature = "yaml-editor")]
                     true,
                 )
@@ -676,6 +825,35 @@ impl YamlValueBuilder {
             // must not publish paths as if they belonged to the surrounding object.
             Role::MappingKey => None,
             Role::SequenceItem | Role::MappingValue(MappingKey::Ignored) => None,
+        }
+    }
+
+    fn grid_scope_for_role(&self, role: &Role) -> GridYamlScope {
+        use GridYamlScope as Grid;
+
+        if matches!(self.grid_root_scope, Grid::Ignore) {
+            return Grid::Ignore;
+        }
+        let parent = self
+            .stack
+            .last()
+            .map_or(Grid::Ignore, |frame| frame.grid_scope);
+        match (parent, role) {
+            (_, Role::Root) => self.grid_root_scope,
+            (Grid::Placement, Role::SequenceItem) => Grid::Occurrence,
+            (parent, Role::MappingValue(MappingKey::String { name, .. })) => {
+                match (parent, name.as_str()) {
+                    (Grid::Root, "config") => Grid::Config,
+                    (Grid::Config, "grid") => Grid::GridSection,
+                    (Grid::GridSection, "placements") => Grid::Placements,
+                    (Grid::Placements, _) => Grid::Placement,
+                    (Grid::Placement | Grid::Occurrence | Grid::InlineRoot, "row" | "column") => {
+                        Grid::Coordinate
+                    }
+                    _ => Grid::Ignore,
+                }
+            }
+            _ => Grid::Ignore,
         }
     }
 
@@ -718,6 +896,7 @@ impl YamlValueBuilder {
         node: NodeId,
         role: Role,
         anchor_id: usize,
+        grid_key_span: Option<Range<usize>>,
         #[cfg(feature = "yaml-editor")] source_addressable: bool,
     ) -> Result<(), String> {
         if anchor_id != 0 {
@@ -776,12 +955,23 @@ impl YamlValueBuilder {
                     }
                 }
                 let Some(Frame {
-                    container: Container::Mapping { pending_key, .. },
+                    container:
+                        Container::Mapping {
+                            entries,
+                            pending_key,
+                            ..
+                        },
+                    grid_key_spans,
                     ..
                 }) = self.stack.last_mut()
                 else {
                     return Err("YAML mapping key had no parent mapping".to_string());
                 };
+                if let Some(span) = grid_key_span
+                    && matches!(key, MappingKey::String { .. })
+                {
+                    grid_key_spans.push((entries.len(), span));
+                }
                 *pending_key = Some(key);
                 Ok(())
             }
@@ -825,6 +1015,115 @@ impl YamlValueBuilder {
             self.materialization_budget,
             control,
         )
+    }
+
+    fn grid_placements_source(
+        &self,
+        control: &OperationControl,
+    ) -> OperationControlResult<Option<GridPlacementsSource>> {
+        let Some(root) = self.root else {
+            return Ok(None);
+        };
+        let Some((_, config)) = self.mapping_member(root, "config", control)? else {
+            return Ok(None);
+        };
+        let Some((_, grid)) = self.mapping_member(config, "grid", control)? else {
+            return Ok(None);
+        };
+        let Some((slot, placements)) = self.mapping_member(grid, "placements", control)? else {
+            return Ok(None);
+        };
+        let mut source = GridPlacementsSource {
+            key_span: self.grid_key_span(grid, slot),
+            entries: Vec::new(),
+        };
+        for (slot, (id, node)) in self.mapping_entries(placements).iter().enumerate() {
+            if slot.is_multiple_of(64) {
+                control.checkpoint()?;
+            }
+            let mut occurrences = Vec::new();
+            match &self.arena[node.0] {
+                YamlNode::Mapping(_) => {
+                    occurrences.push(self.grid_occurrence(*node, None, control)?);
+                }
+                YamlNode::Sequence(items) => {
+                    for (index, item) in items.iter().copied().enumerate() {
+                        if index.is_multiple_of(64) {
+                            control.checkpoint()?;
+                        }
+                        if matches!(self.arena[item.0], YamlNode::Mapping(_)) {
+                            occurrences.push(self.grid_occurrence(item, Some(index), control)?);
+                        }
+                    }
+                }
+                YamlNode::Scalar { .. } => {}
+            }
+            source.entries.push(GridPlacementSource {
+                id: id.clone(),
+                key_span: self.grid_key_span(placements, slot),
+                occurrences,
+            });
+        }
+        Ok(Some(source))
+    }
+
+    fn grid_occurrence(
+        &self,
+        node: NodeId,
+        index: Option<usize>,
+        control: &OperationControl,
+    ) -> OperationControlResult<GridPlacementOccurrenceSource> {
+        let mut fields = Vec::new();
+        for (slot, (name, value)) in self.mapping_entries(node).iter().enumerate() {
+            if slot.is_multiple_of(64) {
+                control.checkpoint()?;
+            }
+            fields.push(GridPlacementFieldSource {
+                name: name.clone(),
+                key_span: self.grid_key_span(node, slot),
+                nonfinite: match name.as_str() {
+                    "row" | "column" => self
+                        .grid_nonfinite_scalars
+                        .get(value)
+                        .copied()
+                        .map(YamlNonfiniteNumber::as_f64),
+                    _ => None,
+                },
+            });
+        }
+        Ok(GridPlacementOccurrenceSource { index, fields })
+    }
+
+    fn mapping_entries(&self, node: NodeId) -> &[(String, NodeId)] {
+        match &self.arena[node.0] {
+            YamlNode::Mapping(entries) => entries,
+            _ => &[],
+        }
+    }
+
+    fn mapping_member(
+        &self,
+        node: NodeId,
+        key: &str,
+        control: &OperationControl,
+    ) -> OperationControlResult<Option<(usize, NodeId)>> {
+        for (index, (name, child)) in self.mapping_entries(node).iter().enumerate() {
+            if index.is_multiple_of(64) {
+                control.checkpoint()?;
+            }
+            if name == key {
+                return Ok(Some((index, *child)));
+            }
+        }
+        Ok(None)
+    }
+
+    fn grid_key_span(&self, node: NodeId, slot: usize) -> Option<Range<usize>> {
+        let spans = self.grid_key_spans.get(&node)?;
+        let index = spans
+            .binary_search_by_key(&slot, |(entry, _)| *entry)
+            .ok()?;
+        Some(spans[index].1.clone())
     }
 
     fn capture_collection_text(
@@ -914,26 +1213,44 @@ impl YamlValueBuilder {
         Ok(written.then_some(json))
     }
 
-    fn take_root_key_order(
+    fn take_inline_root_fields(
         &mut self,
-        order: &mut Vec<String>,
+        mut order: Option<&mut Vec<String>>,
+        nonfinite: Option<&mut InlineGridNonfinite>,
         control: &OperationControl,
     ) -> OperationControlResult<()> {
-        let Some(YamlNode::Mapping(entries)) = self.root.map(|root| &mut self.arena[root.0]) else {
-            return Ok(());
-        };
-        order.reserve(entries.len());
-        for (index, (key, _)) in entries.drain(..).enumerate() {
-            if index.is_multiple_of(64) {
-                control.checkpoint()?;
+        let mut found = InlineGridNonfinite::default();
+        let capture_nonfinite = nonfinite.is_some() && !self.grid_nonfinite_scalars.is_empty();
+        if (order.is_some() || capture_nonfinite)
+            && let Some(YamlNode::Mapping(entries)) = self.root.map(|root| &mut self.arena[root.0])
+        {
+            if let Some(order) = &mut order {
+                order.reserve(entries.len());
             }
-            order.push(key);
+            for (index, (key, value)) in entries.drain(..).enumerate() {
+                if index.is_multiple_of(64) {
+                    control.checkpoint()?;
+                }
+                if capture_nonfinite && let Some(&value) = self.grid_nonfinite_scalars.get(&value) {
+                    match GridCoordinateField::from_key(&key) {
+                        Some(GridCoordinateField::Row) => found.row = Some(value),
+                        Some(GridCoordinateField::Column) => found.column = Some(value),
+                        None => {}
+                    }
+                }
+                if let Some(order) = &mut order {
+                    order.push(key);
+                }
+            }
+        }
+        if let Some(nonfinite) = nonfinite {
+            *nonfinite = found;
         }
         Ok(())
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct NodeId(usize);
 
 enum YamlNode {
@@ -1098,6 +1415,8 @@ struct Frame {
     container: Container,
     role: Role,
     anchor_id: usize,
+    grid_scope: GridYamlScope,
+    grid_key_spans: Vec<(usize, Range<usize>)>,
     #[cfg(feature = "yaml-editor")]
     path: Option<SourceConfigPath>,
 }
@@ -1374,6 +1693,35 @@ fn yaml_node_materialized_cost(node: &YamlNode) -> usize {
 fn drop_materialized_values(values: Vec<Value>) {
     for value in values {
         drop_value_nonrecursive(value);
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum YamlNonfiniteNumber {
+    NaN,
+    Infinity,
+    NegativeInfinity,
+}
+
+impl YamlNonfiniteNumber {
+    fn as_f64(self) -> f64 {
+        match self {
+            Self::NaN => f64::NAN,
+            Self::Infinity => f64::INFINITY,
+            Self::NegativeInfinity => f64::NEG_INFINITY,
+        }
+    }
+}
+
+fn yaml_nonfinite_number(raw: &str) -> Option<YamlNonfiniteNumber> {
+    // Mermaid's js-yaml JSON schema resolves these exact spellings.
+    match raw {
+        ".nan" | ".NaN" | ".NAN" => Some(YamlNonfiniteNumber::NaN),
+        ".inf" | ".Inf" | ".INF" | "+.inf" | "+.Inf" | "+.INF" => {
+            Some(YamlNonfiniteNumber::Infinity)
+        }
+        "-.inf" | "-.Inf" | "-.INF" => Some(YamlNonfiniteNumber::NegativeInfinity),
+        _ => None,
     }
 }
 
@@ -1667,6 +2015,47 @@ mod tests {
         );
     }
 
+    #[test]
+    fn inline_grid_nonfinite_projects_resolved_root_scalars_in_the_value_decode() {
+        let control = OperationControl::new();
+        let input = "z: &num .NAN, b: &text '.nan', row: *num, column: *text, a: {row: -.inf}";
+        let mut order = Vec::new();
+        let mut nonfinite = InlineGridNonfinite::default();
+        let value = parse_mermaid_inline_yaml_with_root_fields_controlled(
+            input,
+            Some(&mut order),
+            Some(&mut nonfinite),
+            &control,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            value,
+            parse_mermaid_inline_yaml_controlled(input, &control)
+                .unwrap()
+                .unwrap()
+        );
+        assert_eq!(order, ["z", "b", "row", "column", "a"]);
+        assert!(nonfinite.get(GridCoordinateField::Row).unwrap().is_nan());
+        assert_eq!(nonfinite.get(GridCoordinateField::Column), None);
+
+        let input = "row: !!str .nan, column: !!float '-.Inf'";
+        let value = parse_mermaid_inline_yaml_with_root_fields_controlled(
+            input,
+            None,
+            Some(&mut nonfinite),
+            &control,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(value["column"], "-.Inf");
+        assert_eq!(nonfinite.get(GridCoordinateField::Row), None);
+        assert_eq!(
+            nonfinite.get(GridCoordinateField::Column),
+            Some(f64::NEG_INFINITY)
+        );
+    }
+
     #[cfg(feature = "yaml-editor")]
     #[test]
     fn yaml_insert_order_distinguishes_absence_and_budget_exhaustion() {
@@ -1718,7 +2107,7 @@ mod tests {
     #[cfg(feature = "yaml-editor")]
     #[test]
     fn yaml_capture_checks_cancellation_while_skipping_selector_entries() {
-        let mut builder = YamlValueBuilder::new(16, 4096, false);
+        let mut builder = YamlValueBuilder::new(16, 4096, GridYamlScope::Ignore, false);
         builder.arena.push(YamlNode::Sequence(Vec::new()));
         builder
             .arena
@@ -1845,6 +2234,126 @@ second: *base
 
         assert_eq!(value["first"], value["base"]);
         assert_eq!(value["second"], value["base"]);
+    }
+
+    fn capture_grid_yaml(input: &str) -> YamlValueCapture {
+        let captured = parse_yaml_frontmatter_capture_controlled(
+            input,
+            16,
+            &[],
+            #[cfg(feature = "yaml-editor")]
+            None,
+            &OperationControl::new(),
+        )
+        .unwrap();
+        #[cfg(feature = "yaml-editor")]
+        let (captured, _) = captured;
+        captured
+    }
+
+    #[test]
+    fn grid_yaml_coordinates_distinguish_nonfinite_numbers_from_strings() {
+        for (spelling, expected) in [
+            (".nan", Some(f64::NAN)),
+            (".NaN", Some(f64::NAN)),
+            (".NAN", Some(f64::NAN)),
+            (".inf", Some(f64::INFINITY)),
+            ("+.Inf", Some(f64::INFINITY)),
+            ("-.INF", Some(f64::NEG_INFINITY)),
+            ("'.nan'", None),
+            (r#"".inf""#, None),
+            ("!!str .nan", None),
+            ("! .nan", None),
+            ("+.nan", None),
+            (".n_an", None),
+            (".nAn", None),
+            ("null", None),
+            ("-3", None),
+        ] {
+            let input =
+                format!("config:\n  grid:\n    placements:\n      A:\n        row: {spelling}\n");
+            let captured = capture_grid_yaml(&input);
+            assert_eq!(captured.value, parse_yaml_value(&input, 16), "{spelling}");
+            let source = captured.grid_placements.unwrap();
+            let field = &source.entries[0].occurrences[0].fields[0];
+            assert_eq!(
+                field.nonfinite.map(f64::to_bits),
+                expected.map(f64::to_bits),
+                "{spelling}"
+            );
+        }
+    }
+
+    #[test]
+    fn grid_yaml_aliases_keep_nonfinite_coordinate_provenance() {
+        let captured = capture_grid_yaml(
+            r#"
+scalar: &nonfinite .NaN
+quoted: &text '.nan'
+defaults: &placement {column: -.Inf, row: *nonfinite}
+ordinary: {row: *nonfinite, column: *text}
+config:
+  grid:
+    placements:
+      A: *placement
+      B: [{row: *nonfinite, column: *text, note: *nonfinite}]
+      C: {<<: *placement, row: 3}
+"#,
+        );
+        let value = captured.value.unwrap();
+        assert_eq!(value["ordinary"], json!({"row": ".NaN", "column": ".nan"}));
+
+        let entries = captured.grid_placements.unwrap().entries;
+        let fields = &entries[0].occurrences[0].fields;
+        assert_eq!(fields[0].name, "column");
+        assert_eq!(fields[0].nonfinite, Some(f64::NEG_INFINITY));
+        assert_eq!(fields[1].name, "row");
+        assert!(fields[1].nonfinite.is_some_and(f64::is_nan));
+        assert!(fields.iter().all(|field| field.key_span.is_none()));
+
+        let slot = &entries[1].occurrences[0];
+        assert_eq!(slot.index, Some(0));
+        assert!(slot.fields[0].nonfinite.is_some_and(f64::is_nan));
+        assert!(
+            slot.fields[1..]
+                .iter()
+                .all(|field| field.nonfinite.is_none())
+        );
+
+        let fields = &entries[2].occurrences[0].fields;
+        assert_eq!(fields[0].name, "<<");
+        assert!(fields.iter().all(|field| field.nonfinite.is_none()));
+        let literal_merge_key = &value["config"]["grid"]["placements"]["C"];
+        assert_eq!(literal_merge_key["row"], 3);
+        assert!(literal_merge_key.get("column").is_none());
+    }
+
+    #[test]
+    fn grid_yaml_tagged_nonfinite_floats_are_scoped_to_direct_coordinates() {
+        let captured = capture_grid_yaml(
+            "config: {grid: {placements: {A: {row: !!float '.nan', column: !!float +.Inf}}}}",
+        );
+        assert!(captured.value.is_ok());
+        let source = captured.grid_placements.unwrap();
+        let fields = &source.entries[0].occurrences[0].fields;
+        assert!(fields[0].nonfinite.is_some_and(f64::is_nan));
+        assert_eq!(fields[1].nonfinite, Some(f64::INFINITY));
+
+        for input in [
+            "outside: !!float .nan\nconfig: {grid: {placements: {A: {row: 1}}}}",
+            "outside: &tagged !!float .nan\nconfig: {grid: {placements: {A: {row: *tagged}}}}",
+            "config: {grid: {placements: {A: {row: !!float +.nan}}}}",
+        ] {
+            let captured = capture_grid_yaml(input);
+            assert_eq!(captured.value, parse_yaml_value(input, 16));
+            assert!(
+                captured
+                    .value
+                    .unwrap_err()
+                    .contains("invalid YAML float scalar")
+            );
+            assert!(captured.grid_placements.is_none());
+        }
     }
 
     #[cfg(feature = "yaml-editor")]

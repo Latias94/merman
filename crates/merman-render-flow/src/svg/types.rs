@@ -13,6 +13,11 @@ use rustc_hash::{FxHashMap, FxHashSet};
 #[derive(Clone, Copy)]
 pub enum FlowchartLayoutEdgeRef<'a> {
     Materialized(&'a merman_render_core::LayoutEdge),
+    #[cfg(feature = "layout-layered")]
+    Layered {
+        edge: &'a merman_render_core::LayoutEdge,
+        route: &'a merman_render_core::graph_layout::SolvedEdge,
+    },
     #[cfg(feature = "layout-shoal")]
     Projected(&'a crate::graph::FlowchartSvgEdgeGeometry),
 }
@@ -33,6 +38,16 @@ impl<'a> FlowchartLayoutEdgeRef<'a> {
                 if let Some(edges) = projected {
                     return (key, Self::Projected(&edges[index]));
                 }
+                #[cfg(feature = "layout-layered")]
+                if let FlowchartSvgRoute::Layered(layered) = layout.route_contract {
+                    return (
+                        key,
+                        Self::Layered {
+                            edge: &layout.edges[index],
+                            route: &layered.edges[index],
+                        },
+                    );
+                }
                 (key, Self::Materialized(&layout.edges[index]))
             })
     }
@@ -40,6 +55,8 @@ impl<'a> FlowchartLayoutEdgeRef<'a> {
     pub fn points(self) -> &'a [merman_render_core::LayoutPoint] {
         match self {
             Self::Materialized(edge) => &edge.points,
+            #[cfg(feature = "layout-layered")]
+            Self::Layered { edge, .. } => &edge.points,
             #[cfg(feature = "layout-shoal")]
             Self::Projected(edge) => &edge.points,
         }
@@ -48,6 +65,8 @@ impl<'a> FlowchartLayoutEdgeRef<'a> {
     pub(super) fn label(self) -> Option<&'a merman_render_core::LayoutLabel> {
         match self {
             Self::Materialized(edge) => edge.label.as_ref(),
+            #[cfg(feature = "layout-layered")]
+            Self::Layered { edge, .. } => edge.label.as_ref(),
             #[cfg(feature = "layout-shoal")]
             Self::Projected(edge) => edge.label.as_ref(),
         }
@@ -56,6 +75,8 @@ impl<'a> FlowchartLayoutEdgeRef<'a> {
     pub(super) fn materialized(self) -> Option<&'a merman_render_core::LayoutEdge> {
         match self {
             Self::Materialized(edge) => Some(edge),
+            #[cfg(feature = "layout-layered")]
+            Self::Layered { edge, .. } => Some(edge),
             #[cfg(feature = "layout-shoal")]
             Self::Projected(_) => None,
         }
@@ -80,6 +101,7 @@ pub struct FlowchartRenderCtx<'a> {
     pub(in crate::svg) palette: super::agentflow::ContainerPalette<'a>,
     pub hand_drawn_seed: roughr::core::RoughRandomness,
     pub work_meter: &'a merman_render_core::resources::OperationWorkMeter,
+    pub(in crate::svg) work_phase: merman_model::OperationPhase,
     pub(in crate::svg) math_renderer:
         Option<&'a (dyn merman_render_core::math::MathRenderer + Send + Sync)>,
     pub(in crate::svg) svg_label_sidecar: Option<&'a crate::svg_label::FlowchartSvgLabelSidecar>,
@@ -231,6 +253,10 @@ pub struct FlowchartEdgeDataPointsScratch {
     pub(in crate::svg) tmp_points_a: Vec<merman_render_core::LayoutPoint>,
     pub(in crate::svg) tmp_points_b: Vec<merman_render_core::LayoutPoint>,
     pub(in crate::svg) tmp_points_c: Vec<merman_render_core::LayoutPoint>,
+    #[cfg(feature = "layout-grid")]
+    pub(in crate::svg) grid_points: Vec<kurbo::Point>,
+    #[cfg(feature = "layout-layered")]
+    pub(in crate::svg) layered_points: Vec<merman_render_core::route_types::RoutePoint>,
     pub(in crate::svg) tmp_points_rev: Vec<merman_render_core::LayoutPoint>,
     #[cfg(feature = "canonical-edge-paint")]
     pub(in crate::svg) canonical_points: Vec<merman_render_core::route_types::RoutePoint>,
@@ -246,10 +272,15 @@ pub struct FlowchartEdgePathGeom {
     pub neo_length: Option<f64>,
     /// Exact point list serialized into `data-points` by Mermaid's `insertEdge`.
     pub data_points: Vec<merman_render_core::LayoutPoint>,
+    #[cfg(feature = "layout-layered")]
+    pub(in crate::svg) axes: Option<Vec<merman_render_core::route_types::Axis>>,
     /// Length of the displaced curve for an unanimated Neo dotted or dashed mask.
     pub(in crate::svg) pre_hop_dash_mask_length: Option<f64>,
     /// A crossing triggered after-paint path rewriting, even if its visible jump was suppressed.
     pub(in crate::svg) line_hop_applied: bool,
+    /// The after-paint shaft, independent of the original path used by labels and Step marks.
+    #[cfg(any(feature = "layout-grid", feature = "layout-layered"))]
+    pub(in crate::svg) after_paint_d: Option<String>,
     /// Input to insertEdge after layout postprocessing, before paint-time clipping.
     pub(in crate::svg) original_label_path_points: Vec<merman_render_core::LayoutPoint>,
     /// Label polyline after endpoint/cluster clipping and before curve preprocessing.

@@ -1,4 +1,7 @@
-use super::{clean_detection_input_controlled, detect_precleaned_controlled};
+use super::{
+    detect_precleaned_controlled, strip_detection_comments_controlled,
+    strip_detection_frontmatter_and_directives_controlled,
+};
 use crate::family::DetectorFact;
 use crate::presentation::SourcePresentationConfig;
 use crate::{OperationControl, OperationControlResult, Result};
@@ -58,13 +61,14 @@ impl DetectorEntry {
 
     fn matches<State>(
         &self,
-        text: &str,
+        builtin_text: &str,
+        custom_text: &str,
         state: &mut State,
         config: impl FnOnce(&mut State) -> &mut SourcePresentationConfig,
     ) -> bool {
         match self {
             Self::Builtin(fact) => {
-                if !(fact.detector)(text) {
+                if !(fact.detector)(builtin_text) {
                     return false;
                 }
                 if let Some((path, value)) = fact.config_effect.assignment() {
@@ -73,9 +77,9 @@ impl DetectorEntry {
                 }
                 true
             }
-            Self::Custom(detector) => (detector.detector)(text, config(state)),
+            Self::Custom(detector) => (detector.detector)(custom_text, config(state)),
             Self::Scoped { detector, .. } => detector(
-                text,
+                custom_text,
                 &mut DetectorConfig {
                     config: config(state),
                 },
@@ -133,8 +137,19 @@ impl DetectorRegistry {
         config: &mut SourcePresentationConfig,
         control: &OperationControl,
     ) -> OperationControlResult<Result<&'static str>> {
-        let cleaned = clean_detection_input_controlled(text, control)?;
-        self.detect_type_cleaned_controlled(cleaned.as_ref(), config, |config| config, control)
+        let source = strip_detection_frontmatter_and_directives_controlled(text, control)?;
+        let custom = self
+            .detectors
+            .iter()
+            .any(|entry| !matches!(entry, DetectorEntry::Builtin(_)))
+            .then(|| crate::utils::cleanup_mermaid_comments(source.as_ref()));
+        self.detect_type_cleaned_controlled(
+            source.as_ref(),
+            custom.as_deref(),
+            config,
+            |config| config,
+            control,
+        )
     }
 
     /// Detects a diagram type assuming the input is already pre-cleaned:
@@ -166,20 +181,30 @@ impl DetectorRegistry {
         control: &OperationControl,
     ) -> OperationControlResult<Result<&'static str>> {
         let text = text.strip_prefix('\u{feff}').unwrap_or(text);
-        self.detect_type_cleaned_controlled(text, state, config, control)
+        self.detect_type_cleaned_controlled(text, Some(text), state, config, control)
     }
 
     fn detect_type_cleaned_controlled<State>(
         &self,
         text: &str,
+        custom_text: Option<&str>,
         state: &mut State,
         mut config: impl FnMut(&mut State) -> &mut SourcePresentationConfig,
         control: &OperationControl,
     ) -> OperationControlResult<Result<&'static str>> {
+        let builtin = strip_detection_comments_controlled(text, control)?;
+        let diagnostic_text = custom_text.unwrap_or(builtin.as_ref());
         Ok(detect_precleaned_controlled(
-            text,
+            diagnostic_text,
             self.detectors.as_slice(),
-            |detector, text| detector.matches(text, state, &mut config),
+            |detector, _| {
+                detector.matches(
+                    builtin.as_ref(),
+                    custom_text.unwrap_or(text),
+                    state,
+                    &mut config,
+                )
+            },
             control,
         )?
         .map(DetectorEntry::id))

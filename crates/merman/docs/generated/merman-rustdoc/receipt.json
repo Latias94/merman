@@ -4,8 +4,8 @@
     "package": "merman-cli",
     "version": "0.11.0",
     "merman_version": "0.11.0",
-    "mermaid_version": "12.3.0",
-    "capability_digest": "sha256:0c26d41286136ae5f3a76c0b6bd1cb6afa8d8166043f91172c0487dcf52d476c",
+    "mermaid_version": "12.4.0",
+    "capability_digest": "sha256:a8890daa18e827266f3c6608004c0b2fabdbb78cda285e82af5366bb6ed08429",
     "profile": "rustdoc-static-v1"
   },
   "inputs": [

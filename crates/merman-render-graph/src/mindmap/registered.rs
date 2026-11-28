@@ -20,7 +20,7 @@ use merman_render_core::{LayoutEdge, LayoutNode, LayoutPoint};
 #[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 use serde_json::Value;
 
-fn edge(model: &MindmapEdgeModel, points: Vec<LayoutPoint>) -> LayoutEdge {
+pub(super) fn edge(model: &MindmapEdgeModel, points: Vec<LayoutPoint>) -> LayoutEdge {
     LayoutEdge {
         id: model.id.clone(),
         from: model.start.clone(),

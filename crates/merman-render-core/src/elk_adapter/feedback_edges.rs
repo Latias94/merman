@@ -1,8 +1,9 @@
 //! Mermaid 12.1 compound feedback-edge orientation around an immutable provider invocation.
 //! Source: elk/subgraphFeedbackEdges.ts and elk/render.ts at 21f72f07ea22c0af48a3149c550654e80d8e40cb.
 
-use super::hierarchy::{
-    HierarchyIndex, charge_adapter_work, checked_adapter_add, checked_adapter_mul,
+use super::{
+    arrowheads::{ArrowheadsForEdge, EdgeArrowheads, crowded_ports},
+    hierarchy::{HierarchyIndex, charge_adapter_work, checked_adapter_add, checked_adapter_mul},
 };
 use crate::Result;
 use crate::layout_work::OperationLayoutWorkControl;
@@ -15,6 +16,7 @@ pub struct FeedbackOrientation<'a> {
     graph: &'a mut elk::Graph,
     reversed: Vec<usize>,
     order_swaps: Vec<(usize, usize)>,
+    port_alignments: Vec<(usize, Option<elk::PortAlignment>)>,
 }
 
 impl FeedbackOrientation<'_> {
@@ -68,6 +70,9 @@ impl Drop for FeedbackOrientation<'_> {
         for &(left, right) in self.order_swaps.iter().rev() {
             self.graph.edges.swap(left, right);
         }
+        for &(node, previous) in &self.port_alignments {
+            self.graph.nodes[node].port_alignment = previous;
+        }
     }
 }
 
@@ -77,6 +82,30 @@ pub fn orient_feedback_edges<'a>(
     graph: &'a mut elk::Graph,
     config: &(impl crate::config::ConfigLookup + ?Sized),
     work: &mut Option<&mut OperationLayoutWorkControl>,
+) -> Result<FeedbackOrientation<'a>> {
+    orient_feedback_edges_impl(graph, config, work, None)
+}
+
+/// Spread crowded leaf ports after feedback orientation and before nesting order is applied.
+/// `arrowheads` reads the semantic markers at an original provider edge index. The guard
+/// restores the previous port options together with edge direction and order on every exit.
+pub fn orient_feedback_edges_with_arrowheads<'a>(
+    graph: &'a mut elk::Graph,
+    config: &(impl crate::config::ConfigLookup + ?Sized),
+    work: &mut Option<&mut OperationLayoutWorkControl>,
+    mut arrowheads: impl FnMut(
+        usize,
+        &mut Option<&mut OperationLayoutWorkControl>,
+    ) -> Result<EdgeArrowheads>,
+) -> Result<FeedbackOrientation<'a>> {
+    orient_feedback_edges_impl(graph, config, work, Some(&mut arrowheads))
+}
+
+fn orient_feedback_edges_impl<'a>(
+    graph: &'a mut elk::Graph,
+    config: &(impl crate::config::ConfigLookup + ?Sized),
+    work: &mut Option<&mut OperationLayoutWorkControl>,
+    arrowheads: Option<&mut ArrowheadsForEdge<'_>>,
 ) -> Result<FeedbackOrientation<'a>> {
     let reversed = if super::options::orient_feedback_edges(config) {
         find_subgraph_feedback_edges(graph, work)?
@@ -93,7 +122,18 @@ pub fn orient_feedback_edges<'a>(
         graph,
         reversed,
         order_swaps: Vec::new(),
+        port_alignments: Vec::new(),
     };
+    if let Some(arrowheads) = arrowheads {
+        let alignments = crowded_ports(orientation.graph, &orientation.reversed, arrowheads, work)?;
+        if !alignments.is_empty() {
+            charge_adapter_work(work, checked_adapter_mul(work, alignments.len(), 2)?)?;
+            for &(index, _) in &alignments {
+                orientation.graph.nodes[index].port_alignment = Some(elk::PortAlignment::Center);
+            }
+            orientation.port_alignments = alignments;
+        }
+    }
     let Some(order) = nested_edge_order(orientation.graph, work)? else {
         return Ok(orientation);
     };
@@ -308,6 +348,7 @@ fn find_subgraph_feedback_edges(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::elk_adapter::arrowheads::Arrowhead;
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
     use std::sync::Arc;
 
@@ -373,6 +414,96 @@ mod tests {
                 .with_limit(ResourceLimitId::MaxLayoutWorkUnits, limit)
                 .unwrap(),
         )))
+    }
+
+    #[test]
+    fn crowded_ports_follow_semantic_markers_through_feedback_and_restore() {
+        let mut input = graph(
+            &[("A", "G"), ("B", "G"), ("C", "G")],
+            &[("A", "B"), ("B", "X"), ("X", "C"), ("C", "D1"), ("C", "D2")],
+        );
+        input.direction = elk::Direction::Right;
+        let target = input.nodes.iter().position(|node| node.id == "C").unwrap();
+        input.nodes[target].port_alignment = Some(elk::PortAlignment::Begin);
+        let original = input.clone();
+        let markers = |index| EdgeArrowheads {
+            start: (index >= 3).then_some(Arrowhead::Point),
+            end: (index == 2).then_some(Arrowhead::Point),
+            margin: true,
+        };
+        let config = serde_json::json!({});
+        let mut measured = work();
+        let guard = orient_feedback_edges_with_arrowheads(
+            &mut input,
+            &config,
+            &mut Some(&mut measured),
+            |index, _| Ok(markers(index)),
+        )
+        .unwrap();
+        assert_eq!(guard.graph().edges[2].source, "C");
+        assert_eq!(
+            guard.graph().nodes[target].port_alignment,
+            Some(elk::PortAlignment::Center)
+        );
+        drop(guard);
+        assert_eq!(input, original);
+
+        let exact = measured.adapter_work();
+        for limit in 1..exact {
+            assert!(
+                matches!(
+                    orient_feedback_edges_with_arrowheads(
+                        &mut input,
+                        &config,
+                        &mut Some(&mut limited_work(limit)),
+                        |index, _| Ok(markers(index)),
+                    ),
+                    Err(crate::Error::ResourceLimitExceeded(_)),
+                ),
+                "limit {limit}"
+            );
+            assert_eq!(input, original, "limit {limit}");
+        }
+        drop(
+            orient_feedback_edges_with_arrowheads(
+                &mut input,
+                &config,
+                &mut Some(&mut limited_work(exact)),
+                |index, _| Ok(markers(index)),
+            )
+            .unwrap(),
+        );
+        assert_eq!(input, original);
+
+        let disabled = serde_json::json!({"elk": {"orientFeedbackEdges": false}});
+        let guard =
+            orient_feedback_edges_with_arrowheads(&mut input, &disabled, &mut None, |index, _| {
+                Ok(markers(index))
+            })
+            .unwrap();
+        assert_eq!(guard.graph(), &original);
+        drop(guard);
+
+        let control = merman_model::OperationControl::new();
+        let mut cancelled =
+            OperationLayoutWorkControl::new(Arc::new(OperationWorkMeter::new_with_control(
+                RenderResourcePolicy::unbounded_for_trusted_input(),
+                control.clone(),
+            )));
+        assert!(matches!(
+            orient_feedback_edges_with_arrowheads(
+                &mut input,
+                &config,
+                &mut Some(&mut cancelled),
+                |index, _| {
+                    // The guard has already flipped feedback edges at this point.
+                    control.cancel();
+                    Ok(markers(index))
+                },
+            ),
+            Err(crate::Error::Cancelled(_)),
+        ));
+        assert_eq!(input, original);
     }
 
     #[test]

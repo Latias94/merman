@@ -18,6 +18,12 @@ use serde_json::Value;
 use std::{collections::BTreeMap, sync::Arc};
 
 mod css_binding;
+#[cfg(feature = "layout-grid")]
+mod grid;
+#[cfg(feature = "layout-layered")]
+mod layered;
+#[cfg(any(feature = "layout-grid", feature = "layout-layered"))]
+mod outline;
 mod registered;
 mod svg;
 pub(crate) use css_binding::MindmapCssBinding;
@@ -95,6 +101,12 @@ pub type MindmapSwimlaneSolver = fn(
 /// The facade selects a Mermaid loader before preparing the family.
 pub enum MindmapLayoutBackend<'a> {
     TidyTree,
+    #[cfg(feature = "layout-grid")]
+    Grid,
+    #[cfg(feature = "layout-layered")]
+    Layered {
+        allow_dagre_retry: bool,
+    },
     #[cfg(feature = "layout-dagre")]
     Dagre,
     #[cfg(feature = "layout-cytoscape")]
@@ -116,9 +128,15 @@ pub struct MindmapLayoutContext<'a> {
     pub work_meter: &'a Arc<OperationWorkMeter>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 enum MindmapEdgeRouting {
     TidyTree,
+    #[cfg(feature = "layout-grid")]
+    Grid(merman_render_core::graph_layout::mermaid_grid::GridPaint),
+    #[cfg(feature = "layout-layered")]
+    Layered(layered::Paint),
+    #[cfg(all(feature = "layout-layered", feature = "layout-dagre"))]
+    LayeredDagreFallback,
     #[cfg(feature = "layout-dagre")]
     Dagre,
     #[cfg(feature = "layout-cytoscape")]
@@ -129,12 +147,22 @@ enum MindmapEdgeRouting {
 }
 
 impl MindmapEdgeRouting {
-    fn clips_circle_endpoints(self) -> bool {
+    fn clips_circle_endpoints(&self) -> bool {
         match self {
             Self::Swimlane => true,
             #[cfg(feature = "layout-dagre")]
             Self::Dagre => true,
+            #[cfg(all(feature = "layout-layered", feature = "layout-dagre"))]
+            Self::LayeredDagreFallback => true,
             _ => false,
+        }
+    }
+
+    fn layout_fallback(&self) -> Option<&'static str> {
+        match self {
+            #[cfg(all(feature = "layout-layered", feature = "layout-dagre"))]
+            Self::LayeredDagreFallback => Some("dagre"),
+            _ => None,
         }
     }
 }
@@ -555,21 +583,18 @@ fn mindmap_node_dimensions_px(
 }
 
 fn compute_bounds(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> {
-    let mut pts: Vec<(f64, f64)> = Vec::new();
-    for n in nodes {
-        let x0 = n.x - n.width / 2.0;
-        let y0 = n.y - n.height / 2.0;
-        let x1 = n.x + n.width / 2.0;
-        let y1 = n.y + n.height / 2.0;
-        pts.push((x0, y0));
-        pts.push((x1, y1));
-    }
-    for e in edges {
-        for p in &e.points {
-            pts.push((p.x, p.y));
-        }
-    }
-    Bounds::from_points(pts)
+    let corners = nodes.iter().flat_map(|node| {
+        let half_width = node.width / 2.0;
+        let half_height = node.height / 2.0;
+        [
+            (node.x - half_width, node.y - half_height),
+            (node.x + half_width, node.y + half_height),
+        ]
+    });
+    let points = edges
+        .iter()
+        .flat_map(|edge| edge.points.iter().map(|point| (point.x, point.y)));
+    Bounds::from_points(corners.chain(points))
 }
 
 fn mindmap_layout_adapter_work(
@@ -596,12 +621,79 @@ fn mindmap_layout_adapter_work(
     )
 }
 
+enum MindmapAttemptError {
+    Host(Error),
+    #[cfg(feature = "layout-layered")]
+    Layered(layered::Rejection),
+}
+
+impl From<Error> for MindmapAttemptError {
+    fn from(error: Error) -> Self {
+        Self::Host(error)
+    }
+}
+
+impl From<resources::OperationWorkError> for MindmapAttemptError {
+    fn from(error: resources::OperationWorkError) -> Self {
+        Self::Host(error.into())
+    }
+}
+
+impl From<MindmapAttemptError> for Error {
+    fn from(error: MindmapAttemptError) -> Self {
+        match error {
+            MindmapAttemptError::Host(error) => error,
+            #[cfg(feature = "layout-layered")]
+            MindmapAttemptError::Layered(reason) => Self::InvalidModel {
+                message: reason.to_string(),
+            },
+        }
+    }
+}
+
 pub fn prepare_mindmap_diagram(
     model: &MindmapModel,
     config: &PresentationConfig,
     native_theme: Option<&FamilyTheme>,
     context: MindmapLayoutContext<'_>,
 ) -> Result<MindmapPreparedArtifact> {
+    let prepared = prepare_mindmap_attempt(model, config, native_theme, &context);
+    #[cfg(feature = "layout-layered")]
+    if let Err(MindmapAttemptError::Layered(_)) = &prepared {
+        context
+            .work_meter
+            .checkpoint(merman_model::OperationPhase::Layout)?;
+        #[cfg(feature = "layout-dagre")]
+        if matches!(
+            context.backend,
+            MindmapLayoutBackend::Layered {
+                allow_dagre_retry: true
+            }
+        ) {
+            // The failed attempt's geometry and retained labels have been dropped. The new
+            // attachment and label preparation use the same operation and its consumed work.
+            let retry = MindmapLayoutContext {
+                backend: MindmapLayoutBackend::Dagre,
+                ..context
+            };
+            let mut artifact = prepare_mindmap_attempt(model, config, native_theme, &retry)?;
+            artifact.routing = MindmapEdgeRouting::LayeredDagreFallback;
+            return Ok(artifact);
+        }
+        return Err(Error::MissingCapability {
+            capability: RenderCapability::LayoutDagre,
+            diagram_type: "mindmap".to_owned(),
+        });
+    }
+    prepared.map_err(Error::from)
+}
+
+fn prepare_mindmap_attempt(
+    model: &MindmapModel,
+    config: &PresentationConfig,
+    native_theme: Option<&FamilyTheme>,
+    context: &MindmapLayoutContext<'_>,
+) -> std::result::Result<MindmapPreparedArtifact, MindmapAttemptError> {
     let appearance = match native_theme {
         Some(theme) => MindmapAppearance::Native(MindmapNativeStyle::resolve(theme)),
         None => {
@@ -616,12 +708,12 @@ pub fn prepare_mindmap_diagram(
         }
     };
     let text_style = appearance.text_style();
-    let backend = context.backend;
+    let backend = &context.backend;
     let work_meter = Arc::clone(context.work_meter);
     let mut work = OperationLayoutWorkControl::new(Arc::clone(&work_meter));
     let adapter_work = mindmap_layout_adapter_work(
         model,
-        matches!(&backend, MindmapLayoutBackend::TidyTree),
+        matches!(backend, MindmapLayoutBackend::TidyTree),
         &work,
     )?;
     work.charge_adapter(adapter_work)?;
@@ -678,19 +770,32 @@ pub fn prepare_mindmap_diagram(
         let Some(&a) = id_to_idx.get(e.start.as_str()) else {
             return Err(Error::InvalidModel {
                 message: format!("edge start node not found: {}", e.start),
-            });
+            }
+            .into());
         };
         let Some(&b) = id_to_idx.get(e.end.as_str()) else {
             return Err(Error::InvalidModel {
                 message: format!("edge end node not found: {}", e.end),
-            });
+            }
+            .into());
         };
         edge_indices.push((a, b));
     }
 
     let (layout, routing) = match backend {
+        #[cfg(feature = "layout-grid")]
+        MindmapLayoutBackend::Grid => {
+            let (layout, paint) = grid::layout(model, nodes, &edge_indices, config, &work_meter)?;
+            (layout, MindmapEdgeRouting::Grid(paint))
+        }
+        #[cfg(feature = "layout-layered")]
+        MindmapLayoutBackend::Layered { .. } => {
+            let (layout, paint) =
+                layered::layout(model, nodes, &edge_indices, config, &work_meter)?;
+            (layout, MindmapEdgeRouting::Layered(paint))
+        }
         MindmapLayoutBackend::Swimlane(solve) => (
-            registered::swimlane(model, nodes, config, work_meter, solve)?,
+            registered::swimlane(model, nodes, config, work_meter, *solve)?,
             MindmapEdgeRouting::Swimlane,
         ),
         #[cfg(feature = "layout-dagre")]
@@ -707,8 +812,8 @@ pub fn prepare_mindmap_diagram(
                 model,
                 nodes,
                 effective_config,
-                algorithm,
-                operation_seed,
+                *algorithm,
+                *operation_seed,
                 &mut work,
             )?,
             MindmapEdgeRouting::Elk,
@@ -737,7 +842,7 @@ pub fn prepare_mindmap_diagram(
                 MindmapEdgeRouting::TidyTree,
             )
         }
-        MindmapLayoutBackend::Unavailable(error) => return Err(error()),
+        MindmapLayoutBackend::Unavailable(error) => return Err(error().into()),
     };
     Ok(MindmapPreparedArtifact {
         layout,

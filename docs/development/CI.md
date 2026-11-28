@@ -64,6 +64,8 @@ The core, native Node, and SVG/browser owners publish separate same-run results 
   exercise raw SVG conversion on the archived CLI, including the empty and missing Fontconfig cases.
 - `feature-contracts` owns Linux representative feature builds, isolated consumers, compile-fail
   examples, Rustdoc subsets/math, feature unification, runtime adapters, FFI and ASCII contracts;
+- The exact CLI process matrix exercises Grid and Layered in separate defaults-off profiles. It
+  verifies reported capabilities, diagram and site-config selection, SVG, and layout JSON;
 - `theme-contracts` verifies embedded Theme v2 preset colors and runs Rust theme, render-operation,
   and prepared-source tests.
 - `svg-parity` owns the complete DOM comparison and Chromium containment oracle;

@@ -23,8 +23,14 @@ use super::FlowchartEdgeLabelText;
 use crate::{
     document::FlowchartDocumentIds,
     projection::FlowchartRenderEdgeRef,
-    style::{compiled::FlowchartCompiledStyles, flowchart_is_source_spelled_label_style_key},
-    svg_label::{FlowchartSvgLabelOwner, FlowchartSvgLabelRenderPlan, OptionalStyleAttr},
+    style::{
+        compiled::FlowchartCompiledStyles, first_label_rect_style,
+        flowchart_is_source_spelled_label_style_key,
+    },
+    svg_label::{
+        FlowchartSvgLabelOwner, FlowchartSvgLabelRenderPlan, OptionalStyleAttr,
+        write_flowchart_svg_label_plan_with_style,
+    },
 };
 
 pub struct SwimlaneEdgeLabel<'a> {
@@ -56,11 +62,9 @@ impl<'a> SwimlaneEdgeLabel<'a> {
         label_text: &'a str,
         default_edge_style: &'a [String],
     ) -> Result<Self> {
-        let first_label_style = default_edge_style
-            .first()
-            .or_else(|| edge.edge.style.first());
-        let compiled_label_styles = ctx.edge_style_plan.swimlane_label_for(edge.key)?;
-        let first_label_style = first_label_style.map_or("", String::as_str);
+        let first_label_style =
+            first_label_rect_style(default_edge_style, &edge.edge.style).map_or("", String::as_str);
+        let compiled_label_styles = ctx.edge_style_plan.label_rect_for(edge.key)?;
         let label_text_style = ctx.metrics_style(edge.key, label_text.is_empty())?;
         Ok(Self {
             ctx,
@@ -134,13 +138,13 @@ impl<'a> SwimlaneEdgeLabel<'a> {
         });
         let lines = prepared
             .as_ref()
+            .filter(|_| paint.canonical)
             .map(FlowchartSvgLabelRenderPlan::wrapped_lines);
-        let centered = paint.canonical && lines.as_ref().is_some_and(|lines| lines.len() > 1);
-        let (text_x, text_y) = if centered {
-            let bbox_y = ctx.measurer.measure_svg_create_text_bbox_y_offset_px(
-                prepared.as_ref().expect("centered SVG label").plain_text(),
-                label_text_style,
-            );
+        let centered = lines.as_ref().is_some_and(|lines| lines.len() > 1);
+        let (text_x, text_y) = if let Some(label) = prepared.as_ref().filter(|_| centered) {
+            let bbox_y = ctx
+                .measurer
+                .measure_svg_create_text_bbox_y_offset_px(label.plain_text(), label_text_style);
             (0.0, -height / 2.0 - bbox_y)
         } else {
             (-width / 2.0, -height / 2.0)
@@ -224,13 +228,23 @@ impl<'a> SwimlaneEdgeLabel<'a> {
             &swimlane_svg_text_style,
             ctx.svg_font_fallback,
         );
-        write_svg_text_source_word_lines_with_style(
-            out,
-            &lines.expect("SVG label lines"),
-            &swimlane_svg_text_style,
-            centered,
-            None,
-        );
+        let prepared = prepared.expect("prepared SVG label");
+        if let Some(lines) = lines {
+            write_svg_text_source_word_lines_with_style(
+                out,
+                &lines,
+                &swimlane_svg_text_style,
+                centered,
+                None,
+            );
+        } else {
+            write_flowchart_svg_label_plan_with_style(
+                out,
+                &prepared,
+                true,
+                Some(swimlane_svg_text_style.as_ref()),
+            );
+        }
         out.push_str("</g></g></g>");
         Ok(())
     }

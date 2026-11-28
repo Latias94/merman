@@ -72,6 +72,23 @@ and [migration reference](../migrations/render-reuse-host-integration.md#reuse-p
 | `%%{init: ...}%%` directives | Known keys | Yes | `sanitize_directive_uses_generated_config_shape_for_all_value_kinds`, `directive_sanitization_uses_generated_config_shape_end_to_end`, deep directive stack tests | The generated selected-source key shape removes unknown, null, and prototype-pollution keys before directives merge after frontmatter. Function and explicit-`undefined` keys remain legal even though they have no JSON default. |
 | Directive top-level `config` field | Known keys | Yes | `parse_metadata_with_type_sync_moves_init_config_without_detection`, alias coverage | `config` is a directive transport wrapper, not a Mermaid config key. Its contents are shape-sanitized and then moved into the detected diagram-specific namespace. |
 
+### Grid placement admission
+
+The Mermaid 12.4 Grid input path validates `grid.placements` from frontmatter and init directives.
+Multiple init directives validate their placement dictionaries before merging and replace whole
+entries for matching IDs. Frontmatter and the resulting init config merge occurrences by array
+slot before final source validation. Source entries keep their literal IDs. An occurrence list
+containing a non-object is discarded as a unit. Coordinates must be signed JavaScript safe
+integers, and invalid values carry `GRID_INVALID_COORDINATE` and the original source span when
+available.
+
+When `layout: grid` is selected, successful body replay is followed by validation of the effective
+placement map. Flowchart, Swimlane, and Agentflow then validate the final inline coordinates in DB
+order. Rendering requires the `layout-grid` Cargo feature and a compiled family adapter. With
+either prerequisite missing, explicit Grid selection returns `UnsupportedLayoutBackend`.
+See the [Grid Core tests](../../crates/merman-core/src/preprocess/config_policy/grid.rs) and
+[inline parser tests](../../crates/merman-core/src/diagrams/grid.rs).
+
 ## Style Origins
 
 For ordinary non-secure configuration, precedence is built-in defaults, site configuration,

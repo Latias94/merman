@@ -401,10 +401,18 @@ pub(crate) fn core_error_candidate(
             diagram_type,
             diagnostic,
         } => {
-            let projection = parse_diagnostic(diagnostic, diagram_type, source_map);
+            let projection = parse_diagnostic(diagnostic, source_map);
+            CoreErrorCandidate {
+                candidate: projection.candidate.with_diagram_type(diagram_type),
+                diagram_type: Some(diagram_type.clone()),
+                parse_location: Some(projection.location),
+            }
+        }
+        CoreError::SourceConfig { diagnostic } => {
+            let projection = parse_diagnostic(diagnostic, source_map);
             CoreErrorCandidate {
                 candidate: projection.candidate,
-                diagram_type: Some(diagram_type.clone()),
+                diagram_type: None,
                 parse_location: Some(projection.location),
             }
         }
@@ -452,7 +460,6 @@ pub(crate) fn core_error_candidate(
 
 fn parse_diagnostic(
     diagnostic: &ParseDiagnostic,
-    diagram_type: &str,
     source_map: &SourceMap,
 ) -> ParseDiagnosticProjection {
     let descriptor = diagnostic
@@ -462,9 +469,8 @@ fn parse_diagnostic(
     let mut out = rule_candidate_without_default_span(
         descriptor,
         AnalysisStatus::ParseError,
-        diagnostic.message().to_string(),
-    )
-    .with_diagram_type(diagram_type);
+        diagnostic.message(),
+    );
     let location;
 
     if let Some(span) = diagnostic
@@ -573,6 +579,53 @@ mod tests {
     };
     #[cfg(feature = "compat-json")]
     use merman_markup::theme_color::ColorError;
+
+    #[test]
+    fn source_config_errors_keep_original_byte_spans_without_a_diagram_type() {
+        let source = "\u{feff}---\r\nconfig:\r\n  grid:\r\n    placements:\r\n      雪: {row: 'é😀'}\r\n---\r\n";
+        let value = "'é😀'";
+        let start = source.find(value).unwrap();
+        let span = merman_model::SourceSpan::new(start, start + value.len());
+        let error = CoreError::SourceConfig {
+            diagnostic: ParseDiagnostic::new("invalid Grid row")
+                .with_span(span, ParseDiagnosticSpanKind::Exact)
+                .with_code("GRID_INVALID_COORDINATE"),
+        };
+
+        let projection = core_error_candidate(&error, &SourceMap::new(source));
+        let diagnostic = projection.candidate.materialize(DiagnosticSeverity::Error);
+
+        assert_eq!(diagnostic.id, DIAGRAM_PARSE_RULE_ID);
+        assert_eq!(diagnostic.category, DiagnosticCategory::Parse);
+        assert_eq!(diagnostic.code, Some(AnalysisStatus::ParseError.code()));
+        assert_eq!(diagnostic.message, "invalid Grid row");
+        assert_eq!(projection.diagram_type, None);
+        assert_eq!(diagnostic.diagram_type, None);
+        assert_eq!(
+            projection.parse_location,
+            Some(ParseDiagnosticLocation::Precise)
+        );
+        let projected_span = diagnostic.span.unwrap();
+        assert_eq!(projected_span.byte_start, span.start);
+        assert_eq!(projected_span.byte_end, span.end);
+        assert_eq!(projected_span.lsp_range.start.line, 4);
+        assert_eq!(projected_span.lsp_range.start.character, 15);
+        assert_eq!(projected_span.lsp_range.end.character, 20);
+        assert!(diagnostic.related.is_empty());
+    }
+
+    #[test]
+    fn source_config_errors_use_registered_diagnostic_codes() {
+        let code = INVALID_FRONT_MATTER_YAML_RULE.id;
+        let error = CoreError::SourceConfig {
+            diagnostic: ParseDiagnostic::new("invalid source configuration").with_code(code),
+        };
+
+        let projection = core_error_candidate(&error, &SourceMap::new(""));
+        let diagnostic = projection.candidate.materialize(DiagnosticSeverity::Error);
+        assert_eq!(diagnostic.id, code);
+        assert_eq!(diagnostic.code, Some(AnalysisStatus::ParseError.code()));
+    }
 
     #[cfg(feature = "compat-json")]
     #[test]

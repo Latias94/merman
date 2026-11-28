@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { repositoryRoot } from "./paths.mjs";
 
@@ -10,6 +11,13 @@ const capabilityDescriptor = JSON.parse(
   ),
 );
 const webBindingOperations = bindingOperationsForWeb(capabilityDescriptor);
+
+export async function assertWasmRuntimeCatalog(runtimeRoot, evidence) {
+  const binary = readFileSync(path.join(runtimeRoot, "merman_wasm_bg.wasm"));
+  const wasm = await import(pathToFileURL(path.join(runtimeRoot, "merman_wasm.js")).href);
+  await wasm.default({ module_or_path: binary });
+  assertRuntimeOwnerEvidence(wasm.runtimeCatalog().capabilities, evidence);
+}
 
 export function assertRuntimeOwnerEvidence(capabilities, evidence) {
   assertExactStringArray(

@@ -402,6 +402,23 @@ features, generated entries, and package assembly from those authorities rather 
 second feature matrix. Use `npm run verify:wasm-inputs --prefix platforms/web` and
 `npm run verify:packages --prefix platforms/web` for the package-specific contracts.
 
+### Try Grid or Layered in Playground
+
+Build and select one local full Web artifact after installing the Web and Playground
+dependencies. For Grid, run these commands from the repository root.
+
+```sh
+npm --prefix platforms/web run build:wasm:full -- --local-layout grid
+npm --prefix playground run assemble:layout -- --local-layout grid
+npm --prefix playground run dev:layout -- --local-layout grid
+```
+
+Set `layout: grid` in the diagram's frontmatter or in the workspace **Config**. For Layered,
+use `layered` in all three commands and in the diagram config. `build:layout` accepts the same
+selector for a production preview build. Both entrypoints verify the selected WASM before
+starting Vite, and each variant uses its own raw package directory under `platforms/web/pkg/`.
+Use the [layout feature table](../../docs/FEATURES.md#the-short-version) to check family support.
+
 ### Try Shoal in Playground
 
 The hosted Playground includes experimental Shoal for its Merman SVG preview. Set `layout: shoal`

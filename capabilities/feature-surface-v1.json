@@ -127,6 +127,28 @@
       }
     },
     {
+      "id": "layout-grid",
+      "kind": "engine",
+      "description": "Select Mermaid Grid for Flowchart, Swimlane, Agentflow, Class, ER, Mindmap, Requirement, State, and Usecase SVG layout.",
+      "targets": ["native", "web"],
+      "implications": ["svg"],
+      "absence": {
+        "error_id": "unsupported-layout-backend",
+        "contract": "Explicit Grid selection requires a compiled family adapter. Selectable families without a Grid adapter reject it as an unsupported layout backend. Denying a compiled Grid selection returns a typed missing-capability error."
+      }
+    },
+    {
+      "id": "layout-layered",
+      "kind": "engine",
+      "description": "Select Mermaid Layered for Flowchart, Swimlane, Agentflow, Class, ER, Mindmap, Requirement, State, and Usecase SVG layout.",
+      "targets": ["native", "web"],
+      "implications": ["svg"],
+      "absence": {
+        "error_id": "unsupported-layout-backend",
+        "contract": "Explicit Layered selection requires a compiled family adapter. Selectable families without a Layered adapter reject it as an unsupported layout backend. Denying a compiled Layered selection returns a typed missing-capability error. A recoverable layout failure requires an available Dagre provider for retry."
+      }
+    },
+    {
       "id": "layout-shoal",
       "kind": "engine",
       "description": "Select the experimental Shoal layout for Flowchart, Agentflow, Architecture, C4, Class, State, ER, Requirement, Swimlane, and Usecase diagrams, or route Block edges on the existing grid.",

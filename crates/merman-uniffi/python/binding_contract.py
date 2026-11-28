@@ -44,6 +44,14 @@ CAPABILITY_SPECS = (
         "implication_ids": ("svg",),
     },
     {
+        "id": "layout-grid",
+        "implication_ids": ("svg",),
+    },
+    {
+        "id": "layout-layered",
+        "implication_ids": ("svg",),
+    },
+    {
         "id": "layout-shoal",
         "implication_ids": ("svg",),
     },

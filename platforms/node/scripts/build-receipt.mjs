@@ -22,7 +22,7 @@ const packageVersion = JSON.parse(
 export function readBuildReceipt(
   artifact,
   {
-    localShoal = false,
+    localLayout = null,
     probeCurrentRuntime = probeCandidateRuntime,
     resolveCurrentEvidence = resolveCandidateBuildEvidence,
   } = {},
@@ -46,7 +46,7 @@ export function readBuildReceipt(
   if (value.cargo_lock_digest !== digestFile(cargoLockPath)) {
     throw new Error("candidate build receipt Cargo lock digest does not match the current lockfile.");
   }
-  const { buildRecipe, capabilityRecipe } = validateCapabilityRecipe(value.config, localShoal);
+  const { buildRecipe, capabilityRecipe } = validateCapabilityRecipe(value.config, localLayout);
   const dependencyClosureDigest = validateDependencyClosure(value.dependency_closure, buildRecipe);
   validateBuildTools(value.tools);
   const expectedInputDigest = digestJson({
@@ -280,7 +280,7 @@ function validateRuntimeEvidence(runtime, buildRecipe) {
   return runtime.catalog_digest;
 }
 
-function validateCapabilityRecipe(config, localShoal) {
+function validateCapabilityRecipe(config, localLayout) {
   if (!config || typeof config !== "object" || Array.isArray(config)) {
     throw new Error("candidate build receipt config must be an object.");
   }
@@ -315,7 +315,7 @@ function validateCapabilityRecipe(config, localShoal) {
     recipe.capabilities,
     "capability recipe capabilities",
   );
-  const expectedRecipe = resolveCandidateRuntimeContract({ localShoal }).capabilityRecipe;
+  const expectedRecipe = resolveCandidateRuntimeContract({ localLayout }).capabilityRecipe;
   if (
     recipe.descriptor !== expectedRecipe.descriptor ||
     recipe.target !== expectedRecipe.target ||
@@ -326,7 +326,7 @@ function validateCapabilityRecipe(config, localShoal) {
   const cargoFeatures = sortedUniqueStrings(config.features, "Cargo features");
   let expectedBuildRecipe;
   try {
-    expectedBuildRecipe = resolveCandidateRecipe(config.candidate, config.target, { localShoal });
+    expectedBuildRecipe = resolveCandidateRecipe(config.candidate, config.target, { localLayout });
   } catch (error) {
     throw new Error(
       `candidate build receipt has an invalid candidate target: ${error instanceof Error ? error.message : String(error)}`,

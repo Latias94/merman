@@ -7,6 +7,18 @@ use merman_render::theme::{NativeTheme, ThemeCompiler};
 use serde_json::json;
 
 #[test]
+fn agentflow_stable_and_beta_headers_render_identically() {
+    let source = "agentflow LR; agentflow[Plan] --> B[Ship]";
+    let beta = source.replacen("agentflow", "agentflow-beta", 1);
+    for backend in ["dagre", "elk"] {
+        let config = json!({ "layout": backend });
+        let stable = render_agentflow_config_probe(source, config.clone(), false);
+        assert_eq!(stable, render_agentflow_config_probe(&beta, config, false));
+        assert!(stable.1.contains("Plan") && stable.1.contains("Ship"));
+    }
+}
+
+#[test]
 fn agentflow_eager_hierarchy_markers_match_upstream_definitions() {
     let fixtures = [
         (

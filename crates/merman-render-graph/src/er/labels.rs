@@ -1,11 +1,10 @@
 //! Prepared ER entity, attribute, relationship and title labels.
 
-#[cfg(test)]
-use super::ErConfigView;
 use super::{
-    ErEntityMeasurementSettings, ErEntitySourceStyle, ErLayoutSettings,
-    compile_er_entity_source_style, swimlane,
+    ErConfigView, ErEntityMeasurementSettings, ErEntitySourceStyle, ErLayoutSettings,
+    compile_er_entity_source_style,
 };
+use crate::label_rect::LabelRect;
 use merman_model::families::er::{ErEntity, ErSubgraph};
 use merman_render_core::{
     Bounds, Error, Result,
@@ -565,7 +564,14 @@ enum ErRelationshipLabelTerminal {
         xhtml_fragment: String,
         svg: Option<ErPreparedSvgRelationshipLabel>,
     },
-    Swimlane(swimlane::ErSwimlaneRelationshipLabel),
+    LabelRect(LabelRect),
+}
+
+#[derive(Clone, Copy)]
+struct ErLabelRectPreparation<'a> {
+    config: &'a merman_model::MermaidConfig,
+    html_labels: bool,
+    grid: bool,
 }
 
 impl ErPreparedRelationshipLabel {
@@ -624,21 +630,21 @@ impl ErPreparedRelationshipLabel {
                 svg.as_ref()
                     .map_or(0, ErPreparedSvgRelationshipLabel::retained_buffer_bytes),
             ),
-            ErRelationshipLabelTerminal::Swimlane(label) => label.retained_buffer_bytes(),
+            ErRelationshipLabelTerminal::LabelRect(label) => label.retained_buffer_bytes(),
         }
     }
 
     pub(super) fn xhtml_fragment(&self) -> &str {
         match &self.terminal {
             ErRelationshipLabelTerminal::Markdown { xhtml_fragment, .. } => xhtml_fragment,
-            ErRelationshipLabelTerminal::Swimlane(label) => label.xhtml_fragment().unwrap_or(""),
+            ErRelationshipLabelTerminal::LabelRect(label) => label.xhtml_fragment().unwrap_or(""),
         }
     }
 
     pub(super) fn svg(&self) -> Option<&ErPreparedSvgRelationshipLabel> {
         match &self.terminal {
             ErRelationshipLabelTerminal::Markdown { svg, .. } => svg.as_ref(),
-            ErRelationshipLabelTerminal::Swimlane(_) => None,
+            ErRelationshipLabelTerminal::LabelRect(_) => None,
         }
     }
 
@@ -648,9 +654,9 @@ impl ErPreparedRelationshipLabel {
         self.metrics.width >= MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX
     }
 
-    pub(super) fn swimlane(&self) -> Option<&swimlane::ErSwimlaneRelationshipLabel> {
+    pub(super) fn label_rect(&self) -> Option<&LabelRect> {
         match &self.terminal {
-            ErRelationshipLabelTerminal::Swimlane(label) => Some(label),
+            ErRelationshipLabelTerminal::LabelRect(label) => Some(label),
             ErRelationshipLabelTerminal::Markdown { .. } => None,
         }
     }
@@ -659,23 +665,26 @@ impl ErPreparedRelationshipLabel {
         (self.metrics.width.max(0.0), self.metrics.height.max(0.0))
     }
 
-    fn new_swimlane(
+    fn new_label_rect(
         text: &str,
         measurer: &dyn TextMeasurer,
         style: &TextStyle,
-        html_labels: bool,
-        config: &merman_model::MermaidConfig,
+        preparation: ErLabelRectPreparation<'_>,
     ) -> Self {
-        let label = swimlane::ErSwimlaneRelationshipLabel::prepare(
+        let wrapping_width =
+            ErConfigView::new(preparation.config.as_value()).swimlane_relationship_wrapping_width();
+        let label = LabelRect::prepare(
             text,
             measurer,
             style,
-            html_labels,
-            config,
+            preparation.html_labels,
+            preparation.config,
+            wrapping_width,
+            preparation.grid,
         );
         Self {
             metrics: label.metrics(),
-            terminal: ErRelationshipLabelTerminal::Swimlane(label),
+            terminal: ErRelationshipLabelTerminal::LabelRect(label),
             _retained: None,
         }
     }
@@ -706,10 +715,66 @@ impl ErPreparedLabels {
         });
         Self::prepare_with_provider(
             model,
+            model.entities.values(),
             measurer,
             settings,
             merman_render_core::config::config_bool(config, &["markdownAutoWrap"]).unwrap_or(true),
-            sanitize_config.as_ref(),
+            sanitize_config
+                .as_ref()
+                .map(|config| ErLabelRectPreparation {
+                    config,
+                    html_labels: settings.relationship_html_labels,
+                    grid: false,
+                }),
+            work_meter,
+        )
+    }
+
+    #[cfg(feature = "layout-grid")]
+    pub fn prepare_for_grid(
+        model: &merman_model::families::er::ErDiagramModel,
+        measurer: &dyn TextMeasurer,
+        settings: &ErLayoutSettings,
+        config: &Value,
+        work_meter: &Arc<OperationWorkMeter>,
+    ) -> Result<Self> {
+        // Grid creates a plain labelRect before measurement. Its labelHelper follows root
+        // htmlLabels, while ordinary ER cluster titles keep the existing effective HTML setting.
+        let html_labels = ErConfigView::new(config).relationship_html_labels(true);
+        let sanitize_config = merman_model::MermaidConfig::from_value(
+            merman_model::json::clone_value_nonrecursive(config),
+        );
+        Self::prepare_with_provider(
+            model,
+            model.entities.values(),
+            measurer,
+            settings,
+            true,
+            Some(ErLabelRectPreparation {
+                config: &sanitize_config,
+                html_labels,
+                grid: true,
+            }),
+            work_meter,
+        )
+    }
+
+    #[cfg(feature = "layout-layered")]
+    pub(super) fn prepare_for_layered<'a>(
+        model: &merman_model::families::er::ErDiagramModel,
+        config: &Value,
+        measurer: &dyn TextMeasurer,
+        settings: &ErLayoutSettings,
+        entities: impl Iterator<Item = &'a ErEntity>,
+        work_meter: &Arc<OperationWorkMeter>,
+    ) -> Result<Self> {
+        Self::prepare_with_provider(
+            model,
+            entities,
+            measurer,
+            settings,
+            merman_render_core::config::config_bool(config, &["markdownAutoWrap"]).unwrap_or(true),
+            None,
             work_meter,
         )
     }
@@ -721,15 +786,24 @@ impl ErPreparedLabels {
         settings: &ErLayoutSettings,
         work_meter: &Arc<OperationWorkMeter>,
     ) -> Result<Self> {
-        Self::prepare_with_provider(model, measurer, settings, true, None, work_meter)
+        Self::prepare_with_provider(
+            model,
+            model.entities.values(),
+            measurer,
+            settings,
+            true,
+            None,
+            work_meter,
+        )
     }
 
-    fn prepare_with_provider(
+    fn prepare_with_provider<'a>(
         model: &merman_model::families::er::ErDiagramModel,
+        entities: impl Iterator<Item = &'a ErEntity>,
         measurer: &dyn TextMeasurer,
         settings: &ErLayoutSettings,
         markdown_auto_wrap: bool,
-        swimlane_config: Option<&merman_model::MermaidConfig>,
+        label_rect: Option<ErLabelRectPreparation<'_>>,
         work_meter: &Arc<OperationWorkMeter>,
     ) -> Result<Self> {
         let owner_bytes = (std::mem::size_of::<Self>() + 2 * std::mem::size_of::<usize>())
@@ -742,7 +816,7 @@ impl ErPreparedLabels {
         work_meter.preflight_prepared_text_retained_bytes(owner_bytes)?;
         let retained = work_meter.reserve_prepared_text_retained_bytes(owner_bytes)?;
         let mut entity_measures = BTreeMap::new();
-        for entity in model.entities.values() {
+        for entity in entities {
             work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
             work_meter
                 .preflight_prepared_text_retained_bytes(std::mem::size_of::<ErEntityMeasure>())?;
@@ -777,13 +851,15 @@ impl ErPreparedLabels {
         let mut relationship_labels = Vec::with_capacity(model.relationships.len());
         for relationship in &model.relationships {
             work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
-            let mut label = if let Some(config) = swimlane_config {
-                ErPreparedRelationshipLabel::new_swimlane(
+            let mut label = if let Some(preparation) = label_rect {
+                if preparation.grid {
+                    work_meter.charge(relationship.role_a.len())?;
+                }
+                ErPreparedRelationshipLabel::new_label_rect(
                     &relationship.role_a,
                     measurer,
                     &settings.relationship_label_style,
-                    settings.relationship_html_labels,
-                    config,
+                    preparation,
                 )
             } else {
                 ErPreparedRelationshipLabel::new(
@@ -913,6 +989,52 @@ pub fn er_subgraph_title_metrics(
         )
     } else {
         text::measure_markdown_with_inline_styles(measurer, &subgraph.title, style, None, wrap_mode)
+    }
+}
+
+#[cfg(feature = "layout-layered")]
+pub(super) fn er_layered_title_size(
+    group: &ErSubgraph,
+    config: &Value,
+    measurer: &dyn TextMeasurer,
+    settings: &ErLayoutSettings,
+) -> merman_render_core::graph_layout::Size {
+    use merman_render_core::graph_layout::Size;
+
+    if group.title.is_empty() {
+        return Size::default();
+    }
+    // labelHelper measures with the root HTML mode. The cluster painter uses the effective mode.
+    let view = ErConfigView::new(config);
+    let html = view.relationship_html_labels(true);
+    let metrics = if group.label_type == "markdown" {
+        let width = Some(view.swimlane_relationship_wrapping_width());
+        if html {
+            let auto_wrap = merman_render_core::config::config_bool(config, &["markdownAutoWrap"])
+                .unwrap_or(true);
+            let fragment = text::mermaid_markdown_to_xhtml_label_fragment(&group.title, auto_wrap);
+            text::measure_xhtml_label_fragment_with_terminal_fonts(
+                measurer,
+                &fragment,
+                &settings.label_style,
+                width,
+                HTML_DOCUMENT_ROOT_FONT_SIZE_PX,
+            )
+        } else {
+            text::measure_markdown_with_inline_styles(
+                measurer,
+                &group.title,
+                &settings.label_style,
+                width,
+                WrapMode::SvgLike,
+            )
+        }
+    } else {
+        er_subgraph_title_metrics(group, measurer, &settings.label_style, html)
+    };
+    Size {
+        width: super::layered::positive(metrics.width),
+        height: super::layered::positive(metrics.height),
     }
 }
 
@@ -1980,7 +2102,7 @@ mod tests {
             let labels = super::prepare_er_labels(&model, &config, &measurer, true);
             let relationship = labels.relationship(0).unwrap();
             let terminal = relationship
-                .swimlane()
+                .label_rect()
                 .expect("provider-owned plain terminal");
             assert_eq!(
                 relationship.dimensions(),
@@ -1990,9 +2112,26 @@ mod tests {
                 let fragment = terminal.xhtml_fragment().unwrap();
                 assert!(fragment.contains("**owns**") && !fragment.contains("<strong>"));
             } else {
-                assert_eq!(
-                    terminal.svg_lines().unwrap(),
-                    &[vec!["**owns**".to_string()]]
+                let mut svg = String::new();
+                terminal
+                    .write(
+                        &mut svg,
+                        &merman_render_core::LayoutLabel {
+                            x: 0.0,
+                            y: 0.0,
+                            width: terminal.metrics().width,
+                            height: terminal.metrics().height,
+                        },
+                        "role",
+                        (0.0, 0.0),
+                        false,
+                    )
+                    .unwrap();
+                let document = roxmltree::Document::parse(&svg).unwrap();
+                assert!(
+                    document
+                        .descendants()
+                        .any(|node| node.is_text() && node.text() == Some("**owns**"))
                 );
             }
         }

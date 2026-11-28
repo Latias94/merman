@@ -7,7 +7,7 @@
 #include <stddef.h>
 
 #define MERMAN_CAPABILITY_DESCRIPTOR_SCHEMA_VERSION 1
-#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:0c26d41286136ae5f3a76c0b6bd1cb6afa8d8166043f91172c0487dcf52d476c"
+#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:a8890daa18e827266f3c6608004c0b2fabdbb78cda285e82af5366bb6ed08429"
 
 #define MERMAN_TARGET_NATIVE "native"
 #define MERMAN_TARGET_TYPST "typst"
@@ -22,6 +22,8 @@
 #define MERMAN_CAPABILITY_LAYOUT_CYTOSCAPE "layout-cytoscape"
 #define MERMAN_CAPABILITY_LAYOUT_DAGRE "layout-dagre"
 #define MERMAN_CAPABILITY_LAYOUT_ELK "layout-elk"
+#define MERMAN_CAPABILITY_LAYOUT_GRID "layout-grid"
+#define MERMAN_CAPABILITY_LAYOUT_LAYERED "layout-layered"
 #define MERMAN_CAPABILITY_LAYOUT_SHOAL "layout-shoal"
 #define MERMAN_CAPABILITY_MARKDOWN "markdown"
 #define MERMAN_CAPABILITY_MATH "math"
@@ -158,6 +160,24 @@ static const char *const MERMAN_CAPABILITY_LAYOUT_ELK_IMPLICATIONS[] = {
     "svg",
 };
 
+static const char *const MERMAN_CAPABILITY_LAYOUT_GRID_TARGETS[] = {
+    "native",
+    "web",
+};
+
+static const char *const MERMAN_CAPABILITY_LAYOUT_GRID_IMPLICATIONS[] = {
+    "svg",
+};
+
+static const char *const MERMAN_CAPABILITY_LAYOUT_LAYERED_TARGETS[] = {
+    "native",
+    "web",
+};
+
+static const char *const MERMAN_CAPABILITY_LAYOUT_LAYERED_IMPLICATIONS[] = {
+    "svg",
+};
+
 static const char *const MERMAN_CAPABILITY_LAYOUT_SHOAL_TARGETS[] = {
     "native",
     "web",
@@ -245,6 +265,8 @@ static const MermanCapabilityDescriptor MERMAN_CAPABILITIES[] = {
     { "layout-cytoscape", "engine", "Enable Mermaid Cytoscape-backed layout behavior.", MERMAN_CAPABILITY_LAYOUT_CYTOSCAPE_TARGETS, 3, MERMAN_CAPABILITY_LAYOUT_CYTOSCAPE_IMPLICATIONS, 1 },
     { "layout-dagre", "engine", "Enable Mermaid Dagre-backed SVG graph layout.", MERMAN_CAPABILITY_LAYOUT_DAGRE_TARGETS, 3, MERMAN_CAPABILITY_LAYOUT_DAGRE_IMPLICATIONS, 1 },
     { "layout-elk", "engine", "Enable Mermaid ELK-backed layout behavior.", MERMAN_CAPABILITY_LAYOUT_ELK_TARGETS, 3, MERMAN_CAPABILITY_LAYOUT_ELK_IMPLICATIONS, 1 },
+    { "layout-grid", "engine", "Select Mermaid Grid for Flowchart, Swimlane, Agentflow, Class, ER, Mindmap, Requirement, State, and Usecase SVG layout.", MERMAN_CAPABILITY_LAYOUT_GRID_TARGETS, 2, MERMAN_CAPABILITY_LAYOUT_GRID_IMPLICATIONS, 1 },
+    { "layout-layered", "engine", "Select Mermaid Layered for Flowchart, Swimlane, Agentflow, Class, ER, Mindmap, Requirement, State, and Usecase SVG layout.", MERMAN_CAPABILITY_LAYOUT_LAYERED_TARGETS, 2, MERMAN_CAPABILITY_LAYOUT_LAYERED_IMPLICATIONS, 1 },
     { "layout-shoal", "engine", "Select the experimental Shoal layout for Flowchart, Agentflow, Architecture, C4, Class, State, ER, Requirement, Swimlane, and Usecase diagrams, or route Block edges on the existing grid.", MERMAN_CAPABILITY_LAYOUT_SHOAL_TARGETS, 2, MERMAN_CAPABILITY_LAYOUT_SHOAL_IMPLICATIONS, 1 },
     { "markdown", "tool", "Compile CLI Markdown batch conversion.", MERMAN_CAPABILITY_MARKDOWN_TARGETS, 1, NULL, 0 },
     { "math", "engine", "Render Mermaid math labels with the selected math engine.", MERMAN_CAPABILITY_MATH_TARGETS, 2, MERMAN_CAPABILITY_MATH_IMPLICATIONS, 1 },
@@ -261,7 +283,7 @@ static const MermanCapabilityDescriptor MERMAN_CAPABILITIES[] = {
     { "system-timezone", "adapter", "Compile the native system time-zone adapter.", MERMAN_CAPABILITY_SYSTEM_TIMEZONE_TARGETS, 1, NULL, 0 },
     { "system-timing", "adapter", "Compile the native monotonic timing adapter.", MERMAN_CAPABILITY_SYSTEM_TIMING_TARGETS, 1, NULL, 0 },
 };
-#define MERMAN_CAPABILITY_COUNT 24u
+#define MERMAN_CAPABILITY_COUNT 26u
 
 static const char *const MERMAN_OUTPUT_ASCII_TARGETS[] = {
     "native",

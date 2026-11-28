@@ -279,6 +279,42 @@ pub const fn layout_elk_available() -> bool {
     cfg!(feature = "layout-elk")
 }
 
+/// Reports whether any compiled family renderer includes Mermaid Grid.
+pub const fn layout_grid_available() -> bool {
+    cfg!(all(
+        feature = "layout-grid",
+        any(
+            feature = "diagram-flowchart",
+            feature = "diagram-agentflow",
+            feature = "diagram-class",
+            feature = "diagram-er",
+            feature = "diagram-mindmap",
+            feature = "diagram-requirement",
+            feature = "diagram-state",
+            feature = "diagram-swimlane",
+            feature = "diagram-usecase"
+        )
+    ))
+}
+
+/// Reports whether any compiled family renderer includes Mermaid Layered.
+pub const fn layout_layered_available() -> bool {
+    cfg!(all(
+        feature = "layout-layered",
+        any(
+            feature = "diagram-flowchart",
+            feature = "diagram-agentflow",
+            feature = "diagram-class",
+            feature = "diagram-er",
+            feature = "diagram-mindmap",
+            feature = "diagram-requirement",
+            feature = "diagram-state",
+            feature = "diagram-swimlane",
+            feature = "diagram-usecase"
+        )
+    ))
+}
+
 /// Reports whether the experimental Shoal layout backend is compiled into this renderer.
 pub const fn layout_shoal_available() -> bool {
     cfg!(feature = "layout-shoal")
@@ -602,6 +638,8 @@ impl std::ops::Deref for LayoutExecution<'_> {
     not(any(
         feature = "layout-dagre",
         feature = "layout-elk",
+        feature = "layout-grid",
+        feature = "layout-layered",
         feature = "layout-shoal"
     )),
     allow(
@@ -635,6 +673,22 @@ pub(crate) fn layout_class_typed_by_engine(
     let backend = options.layout_backend();
     backend.validate_rootless_graph()?;
     match backend {
+        #[cfg(feature = "layout-grid")]
+        layout_backend::GraphLayoutBackend::Grid => class::layout_grid(
+            model,
+            effective_config,
+            options,
+            render_config,
+            &work_control,
+        ),
+        #[cfg(feature = "layout-layered")]
+        layout_backend::GraphLayoutBackend::Layered => class::layout_layered(
+            model,
+            effective_config,
+            options,
+            render_config,
+            &mut work_control,
+        ),
         #[cfg(feature = "layout-shoal")]
         GraphLayoutBackend::Shoal => class::shoal::layout(
             model,
@@ -710,6 +764,7 @@ pub(crate) fn layout_flowchart_typed_by_engine(
     not(any(
         feature = "layout-dagre",
         feature = "layout-elk",
+        feature = "layout-grid",
         feature = "layout-shoal"
     )),
     allow(
@@ -734,6 +789,7 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
     #[cfg(any(
         feature = "layout-dagre",
         feature = "layout-elk",
+        feature = "layout-grid",
         feature = "layout-shoal"
     ))]
     use layout_backend::GraphLayoutBackend;
@@ -745,6 +801,16 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
     let backend = options.layout_backend();
     backend.validate_rootless_graph()?;
     match backend {
+        #[cfg(feature = "layout-grid")]
+        GraphLayoutBackend::Grid => flowchart::grid_layout(
+            model,
+            render_label_sources,
+            class_defs,
+            effective_config,
+            options,
+            svg_label_sidecar,
+            edge_style_plan,
+        ),
         #[cfg(feature = "layout-shoal")]
         GraphLayoutBackend::Shoal => flowchart::shoal::layout(
             model,
@@ -805,6 +871,8 @@ mod tests {
             (RenderCapability::LayoutCytoscape, "layout-cytoscape"),
             (RenderCapability::LayoutElk, "layout-elk"),
             (RenderCapability::LayoutDagre, "layout-dagre"),
+            (RenderCapability::LayoutGrid, "layout-grid"),
+            (RenderCapability::LayoutLayered, "layout-layered"),
             (RenderCapability::Math, "math"),
             (RenderCapability::LayoutShoal, "layout-shoal"),
         ] {
@@ -832,6 +900,8 @@ mod tests {
             RenderCapability::LayoutCytoscape,
             RenderCapability::LayoutElk,
             RenderCapability::LayoutDagre,
+            RenderCapability::LayoutGrid,
+            RenderCapability::LayoutLayered,
             RenderCapability::Math,
             RenderCapability::LayoutShoal,
         ] {
@@ -1619,6 +1689,39 @@ id1(Start)-->id2(Stop)
             };
             assert_eq!(backend, "shoal");
             assert_eq!(diagram_type, parsed.metadata().diagram_type);
+        }
+    }
+
+    #[test]
+    fn pending_mermaid_layout_requests_fail_during_planning_and_preparation() {
+        for (requested, available) in [
+            ("grid", layout_grid_available()),
+            ("layered", layout_layered_available()),
+        ] {
+            if available {
+                continue;
+            }
+            for body in ["flowchart LR\nA --> B", "agentflow LR\nA --> B"] {
+                let source = format!("---\nconfig:\n  layout: {requested}\n---\n{body}\n");
+                let parsed = MermaidEngine::new()
+                    .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                    .unwrap()
+                    .unwrap()
+                    .into_presentation();
+                let session = crate::environment::RenderEnvironment::deterministic()
+                    .begin_session()
+                    .unwrap();
+                for error in [
+                    family::plan_render(&parsed, &session).err(),
+                    family::prepare(&parsed, &LayoutOptions::default(), session).err(),
+                ] {
+                    assert!(matches!(
+                        error,
+                        Some(Error::UnsupportedLayoutBackend { backend, diagram_type })
+                            if backend == requested && diagram_type == parsed.metadata().diagram_type
+                    ));
+                }
+            }
         }
     }
 

@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "repos": {
     "mermaid": {
-      "path": "repo-ref/mermaid-12.3.0",
+      "path": "repo-ref/mermaid-12.4.0",
       "url": "https://github.com/mermaid-js/mermaid.git",
-      "ref": "mermaid@12.3.0",
-      "commit": "2086904e76c692331e34a45d7cc3bc30860d040e"
+      "ref": "mermaid@12.4.0",
+      "commit": "9f93a44a36e46a36b1379f9de72fb1ee5684ee3f"
     },
     "monaqa-tree-sitter-mermaid": {
       "path": "repo-ref/tree-sitter-mermaid-monaqa",

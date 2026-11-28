@@ -17,6 +17,8 @@ mod curve_path;
 mod endpoint;
 mod rect_clip;
 
+#[cfg(any(feature = "layout-grid", feature = "layout-layered"))]
+pub(crate) use endpoint::{EndpointQuery, intersect_for_layout_shape_with_query};
 pub use endpoint::{
     FlowchartEndpointContext, force_intersect_for_layout_shape, intersect_for_layout_shape,
 };
@@ -44,7 +46,6 @@ impl<'a> LegacyEdgeCurve<'a> {
         singleton_fallback: Option<LegacyEdgePointProjection<'_>>,
         edge_type: Option<&str>,
     ) -> Self {
-        let is_rounded = interpolate == "rounded";
         let is_basis = !matches!(
             interpolate,
             "linear"
@@ -75,6 +76,17 @@ impl<'a> LegacyEdgeCurve<'a> {
             }));
         }
 
+        Self::from_clipped_points(points_for_render, interpolate, false, edge_type)
+    }
+
+    /// Keeps the original route for the caller while preparing its independent SVG shaft.
+    pub(crate) fn from_clipped_points(
+        points_for_render: &[LayoutPoint],
+        interpolate: &'a str,
+        skip_corner_fix: bool,
+        edge_type: Option<&str>,
+    ) -> Self {
+        let is_rounded = interpolate == "rounded";
         let mut line_data: Vec<LayoutPoint> = points_for_render
             .iter()
             .filter(|p| !p.y.is_nan())
@@ -83,7 +95,7 @@ impl<'a> LegacyEdgeCurve<'a> {
 
         // Mermaid's rendering-elements/edges.js applies fixCorners before the D3 line
         // generator. The rounded generator has its own corner preparation.
-        if !is_rounded {
+        if !is_rounded && !skip_corner_fix {
             maybe_fix_corners(&mut line_data);
         }
 

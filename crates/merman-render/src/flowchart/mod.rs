@@ -29,8 +29,6 @@ pub(crate) use config::FlowchartLayoutSettings;
 pub(crate) use config::{FlowchartBaseTypographyPlan, FlowchartConfigView};
 #[cfg(any(feature = "diagram-flowchart", feature = "layout-shoal", test))]
 pub(crate) use label::flowchart_label_is_empty_for_render;
-#[cfg(test)]
-pub(crate) use label::{FlowchartLabelMetricsRequest, flowchart_label_metrics_for_layout};
 #[cfg(all(test, feature = "all-diagrams"))]
 pub(crate) use merman_render_core::text::literal_label::FlowchartSvgWidthMode;
 #[cfg(test)]
@@ -50,7 +48,10 @@ pub(crate) use merman_render_flow::node_geometry::{
 pub(crate) use merman_render_flow::shapes::FlowchartShape;
 #[cfg(test)]
 pub(crate) use merman_render_flow::svg_label::FlowchartPreparedLabelResolution;
-#[cfg(any(feature = "layout-shoal", test))]
+#[cfg(any(
+    feature = "layout-shoal",
+    all(test, any(feature = "all-diagrams", feature = "layout-elk"))
+))]
 pub(crate) use merman_render_flow::svg_label::FlowchartSvgLabelOwner;
 #[cfg(all(test, feature = "all-diagrams"))]
 pub(crate) use merman_render_flow::svg_label::FlowchartSvgLabelRenderPlan;
@@ -71,3 +72,72 @@ pub(crate) use style::{
     flowchart_effective_node_class_names, flowchart_insert_style_by_spelling,
     flowchart_split_mermaid_style_decls,
 };
+
+#[cfg(feature = "layout-grid")]
+pub(crate) fn grid_layout(
+    model: &FlowchartModel,
+    context: &FlowchartRenderContext,
+    classes: &FlowchartClassDefinitions<'_>,
+    config: &merman_model::presentation::PresentationConfig,
+    execution: &crate::LayoutExecution<'_>,
+    labels: Option<&FlowchartSvgLabelSidecarBuilder>,
+    edge_style: &style::FlowchartEdgeStylePlan,
+) -> crate::Result<crate::model::FlowchartLayout> {
+    let grid = merman_render_flow::grid::layout(
+        FlowchartRenderModelRef::new(model, context),
+        classes,
+        config,
+        execution.text_measurer(),
+        execution.math_renderer(),
+        labels,
+        edge_style,
+        execution.work_meter_ref(),
+    )?;
+    Ok(crate::model::FlowchartLayout {
+        nodes: grid.nodes,
+        edges: grid.edges,
+        edge_owners: FlowchartEdgeOwners::new(grid.edge_keys),
+        clusters: grid.clusters,
+        bounds: grid.bounds,
+        dom_node_order_by_root: grid.dom_node_order_by_root,
+        route_contract: crate::graph_layout::RouteContract::Grid(grid.paint),
+        placement: Default::default(),
+        uses_elk_adapter_dom: false,
+    })
+}
+
+#[cfg(feature = "layout-layered")]
+pub(crate) fn layered_layout(
+    model: &FlowchartModel,
+    context: &FlowchartRenderContext,
+    classes: &FlowchartClassDefinitions<'_>,
+    config: &merman_model::presentation::PresentationConfig,
+    execution: &crate::LayoutExecution<'_>,
+    labels: Option<&FlowchartSvgLabelSidecarBuilder>,
+    styles: &style::FlowchartEdgeStylePlan,
+) -> std::result::Result<crate::model::FlowchartLayout, merman_render_flow::layered::FlowLayeredError>
+{
+    let layout = merman_render_flow::layered::layout(
+        FlowchartRenderModelRef::new(model, context),
+        classes,
+        config,
+        execution.text_measurer(),
+        execution.math_renderer(),
+        labels,
+        styles,
+        execution.work_meter_ref(),
+    )?;
+    Ok(crate::model::FlowchartLayout {
+        nodes: layout.nodes,
+        edges: layout.edges,
+        edge_owners: layout.edge_owners,
+        clusters: layout.clusters,
+        bounds: layout.bounds,
+        dom_node_order_by_root: layout.dom_node_order_by_root,
+        route_contract: crate::graph_layout::RouteContract::Layered(std::sync::Arc::new(
+            layout.routes,
+        )),
+        placement: Default::default(),
+        uses_elk_adapter_dom: false,
+    })
+}

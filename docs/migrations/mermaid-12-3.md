@@ -1,15 +1,14 @@
 # Mermaid 12.3 development migration
 
-Current source development selects Mermaid `12.3.0` at
+The Merman `0.10.0` release selects Mermaid `12.3.0` at
 `2086904e76c692331e34a45d7cc3bc30860d040e`. Published `0.10.0-alpha.1`
 artifacts retain their Mermaid `12.2.0` identity. Build wrappers and native/WASM
 artifacts from the same source revision when using these development changes.
 
 ## Selected behavior graph
 
-The [reference bundle](../../tools/upstreams/MERMAID_REFERENCE_BUNDLE.json),
-[selection receipt](../../tools/upstreams/MERMAID_SELECTION_DECISION.json) and
-[source lock](../../tools/upstreams/REPOS.lock.json) own the exact identities.
+The [release reference bundle](https://github.com/Latias94/merman/blob/v0.10.0/tools/upstreams/MERMAID_REFERENCE_BUNDLE.json)
+records the exact identities for this migration.
 Both reference workspaces select `elkjs 0.12.1`, Cytoscape `3.34.4`,
 `@braintree/sanitize-url 7.1.2`, DOMPurify `3.4.17`, and reference CLI `12.2.0`.
 Parser `2.0.1`, Tidy Tree `1.0.1`, and ZenUML plugin `1.0.1` keep their

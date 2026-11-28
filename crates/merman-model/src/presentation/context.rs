@@ -101,6 +101,10 @@ impl PresentationContext {
     /// Counts context text while excluding allocations already retained by the paired model.
     pub fn retained_text_bytes_for_model(&self, model: &super::RenderSemanticModel) -> usize {
         match (self, model) {
+            #[cfg(feature = "diagram-agentflow")]
+            (_, super::RenderSemanticModel::Agentflow(model)) => self
+                .retained_text_bytes()
+                .saturating_add(model.visuals.grid_placements().retained_bytes()),
             #[cfg(any(
                 feature = "diagram-flowchart",
                 feature = "diagram-swimlane",

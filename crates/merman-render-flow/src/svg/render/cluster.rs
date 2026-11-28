@@ -110,7 +110,7 @@ pub fn advance_rough_geometry(
             .get(cluster.id.as_str())
             .is_some_and(|lane| lane.parent_id.is_none())
         || (!ctx.subgraph_has_children(cluster.id.as_str())
-            && !super::flowchart_elk_renders_empty_subgraph_as_cluster(ctx))
+            && !super::flowchart_renders_empty_subgraph_as_cluster(ctx))
     {
         return Ok(());
     }
@@ -193,7 +193,7 @@ pub(in crate::svg) fn render_flowchart_cluster_pass(
         });
     };
     if !ctx.subgraph_has_children(cluster.id.as_str())
-        && !super::flowchart_elk_renders_empty_subgraph_as_cluster(ctx)
+        && !super::flowchart_renders_empty_subgraph_as_cluster(ctx)
     {
         return Ok(());
     }

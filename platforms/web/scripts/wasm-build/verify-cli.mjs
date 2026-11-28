@@ -14,7 +14,11 @@ import {
   verifyWasmInputManifest,
 } from "./input-manifest.mjs";
 import { repositoryRoot, webPackageRoot } from "./paths.mjs";
-import { assertWasmTargetEvidence, parseWasmTargets } from "./targets.mjs";
+import {
+  LOCAL_WASM_LAYOUT_USAGE,
+  assertWasmTargetEvidence,
+  parseWasmTargets,
+} from "./targets.mjs";
 
 export function runVerifyWasmInputsCli(args = process.argv.slice(2)) {
   if (hasHelpFlag(args)) {
@@ -68,14 +72,14 @@ export function runVerifyWasmInputsCli(args = process.argv.slice(2)) {
     console.error(`  ${failure.target.descriptor.id}:`);
     for (const reason of failure.reasons) console.error(`    - ${reason}`);
   }
-  const localShoal = args.includes("--local-shoal");
-  const singlePackage = targets.length === 1 ? targets[0].descriptor.id : null;
-  const buildScript = localShoal
-    ? "build:wasm:full -- --local-shoal"
-    : singlePackage ? `build:wasm:${singlePackage}` : "build:wasm";
+  const target = targets.length === 1 ? targets[0] : null;
+  const localArgs = target?.localArgs.join(" ") ?? "";
+  const buildScript = target
+    ? `build:wasm:${target.descriptor.id}${localArgs ? ` -- ${localArgs}` : ""}`
+    : "build:wasm";
   console.error(`  Run \`npm --prefix platforms/web run ${buildScript}\` from the repository root if the inputs are stale.`);
   if (assembled) {
-    const selectors = singlePackage ? ` -- --package ${singlePackage}${localShoal ? " --local-shoal" : ""}` : "";
+    const selectors = target ? ` -- --package ${target.descriptor.id}${localArgs ? ` ${localArgs}` : ""}` : "";
     console.error(`  Run \`npm --prefix platforms/web run build:packages${selectors}\` to refresh the package.`);
   }
   process.exitCode = 1;
@@ -138,5 +142,5 @@ export function assertAssembledWasm(profile, input, artifactRoot) {
 }
 
 function printUsage() {
-  console.log("usage: node scripts/verify-wasm-inputs.mjs [--package <id> | --all-packages] [--local-shoal] [--assembled]");
+  console.log(`usage: node scripts/verify-wasm-inputs.mjs [--package <id> | --all-packages] ${LOCAL_WASM_LAYOUT_USAGE} [--assembled]`);
 }

@@ -49,6 +49,8 @@ pub(super) fn expand_self_loops(
                     source_label: String::new(),
                     label: UsecaseLabelPlan {
                         html: None,
+                        #[cfg(feature = "layout-layered")]
+                        layered_svg: None,
                         text: String::new(),
                         label_type: UsecaseLabelType::Text,
                         text_metrics: TextMetrics {
@@ -73,6 +75,8 @@ pub(super) fn expand_self_loops(
                     is_boundary: false,
                     package: false,
                     ellipse: false,
+                    #[cfg(feature = "layout-layered")]
+                    layered_ellipse: None,
                     table: None,
                     dagre_helper: true,
                 });

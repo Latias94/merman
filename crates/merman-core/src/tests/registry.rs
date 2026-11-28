@@ -449,6 +449,7 @@ fn canonical_header_facts_preserve_the_pinned_authoring_surface() {
             "cynefin-beta",
             "flowchart-elk TD",
             "usecase-beta",
+            "agentflow",
             "agentflow-beta",
         ]
     );

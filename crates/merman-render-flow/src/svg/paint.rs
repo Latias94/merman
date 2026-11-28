@@ -4,6 +4,7 @@ use super::render_input::{
 };
 use super::svg_emit::FlowchartSvgModelRequest;
 use super::*;
+use merman_model::OperationPhase;
 
 #[cfg(feature = "canonical-edge-paint")]
 use merman_render_core::rough_svg::constrained_rough_edge_path;
@@ -14,6 +15,19 @@ use super::swimlane::label_seating as swimlane_label_seating;
 pub fn with_flowchart_paint_context<T>(
     request: FlowchartSvgModelRequest<'_>,
     services: &FlowchartSvgServices<'_>,
+    consume: impl FnOnce(
+        &FlowchartRenderCtx<'_>,
+        &[FlowchartRenderEdge<'_>],
+        &FlowchartHierarchyPlan<'_>,
+    ) -> Result<T>,
+) -> Result<T> {
+    with_flowchart_paint_context_in_phase(request, services, OperationPhase::Layout, consume)
+}
+
+pub(super) fn with_flowchart_paint_context_in_phase<T>(
+    request: FlowchartSvgModelRequest<'_>,
+    services: &FlowchartSvgServices<'_>,
+    work_phase: OperationPhase,
     consume: impl FnOnce(
         &FlowchartRenderCtx<'_>,
         &[FlowchartRenderEdge<'_>],
@@ -63,6 +77,14 @@ pub fn with_flowchart_paint_context<T>(
     };
     #[cfg(not(feature = "layout-shoal"))]
     let owner_occurrences = validate_layout_edges()?;
+    #[cfg(feature = "layout-layered")]
+    if let FlowchartSvgRoute::Layered(layered) = layout.route_contract
+        && layered.edges.len() != layout.edge_owners.len()
+    {
+        return Err(Error::InvalidModel {
+            message: "Flowchart Layered routes do not match the prepared edge owners".to_owned(),
+        });
+    }
 
     let hand_drawn_seed = merman_render_core::rough_svg::operation_randomness(
         services.operation,
@@ -260,6 +282,7 @@ pub fn with_flowchart_paint_context<T>(
         palette,
         hand_drawn_seed,
         work_meter: services.work_meter,
+        work_phase,
         math_renderer: services.math_renderer,
         svg_label_sidecar: Some(svg_label_sidecar),
         icon_registry: services.icon_registry,
@@ -333,15 +356,16 @@ pub(super) fn charged_edge_route_request<'a>(
         trace_enabled: false,
     };
     if let Some(layout_edge) = ctx.layout_edges_by_key.get(&edge.key) {
-        ctx.work_meter.charge(layout_edge.points().len().max(2))?;
+        ctx.work_meter
+            .charge_work(layout_edge.points().len().max(2), edge_paint_phase(ctx))?;
     }
     Ok((request, offsets))
 }
 
-/// Prepares one painted shaft under the same per-edge layout debit as parity.
+/// Prepares one painted shaft under the shared per-edge work debit.
 ///
-/// The caller owns the batch debit and final layout checkpoint. A missing shaft is
-/// outside the compact pilot, not an edge to silently omit.
+/// The caller owns the batch debit and final checkpoint. A missing shaft requires compact
+/// rendering to refuse the request.
 #[cfg(all(
     feature = "diagram-flowchart",
     feature = "layout-dagre",
@@ -358,7 +382,7 @@ pub fn prepare_dagre_linear_edge_route(
 }
 
 /// Prepare the ELK batch through terminal straightening and label separation, before curve
-/// formatting and line hops. The caller owns the batch debit and final layout checkpoint.
+/// formatting and line hops. The caller owns the batch debit and final checkpoint.
 pub(super) fn prepare_elk_clipped_routes<'a>(
     ctx: &'a FlowchartRenderCtx<'a>,
     render_edges: &'a [FlowchartRenderEdge<'_>],
@@ -390,7 +414,7 @@ pub(super) fn prepare_elk_clipped_routes<'a>(
         .and_then(serde_json::Value::as_bool)
         != Some(false)
     {
-        edge_geom::straighten_edge_terminals(&mut routes, ctx.work_meter)?;
+        edge_geom::straighten_edge_terminals(&mut routes, ctx.work_meter, ctx.work_phase)?;
     }
     edge_geom::separate_edge_labels(
         &mut routes,
@@ -404,6 +428,7 @@ pub(super) fn prepare_elk_clipped_routes<'a>(
             )
         }),
         ctx.work_meter,
+        ctx.work_phase,
     )?;
     Ok(routed_edges
         .into_iter()
@@ -421,13 +446,24 @@ pub(super) fn prepare_elk_clipped_routes<'a>(
         }))
 }
 
+pub(super) fn edge_paint_phase(ctx: &FlowchartRenderCtx<'_>) -> OperationPhase {
+    match ctx.layout.route_contract {
+        #[cfg(feature = "layout-grid")]
+        FlowchartSvgRoute::Grid(_) => OperationPhase::Emit,
+        #[cfg(feature = "layout-layered")]
+        FlowchartSvgRoute::Layered(_) => OperationPhase::Emit,
+        _ => ctx.work_phase,
+    }
+}
+
 pub fn prepare_edge_routes(
     ctx: &FlowchartRenderCtx<'_>,
     render_edges: &[FlowchartRenderEdge<'_>],
     hierarchy: &FlowchartHierarchyPlan<'_>,
     measure_neo_length: bool,
 ) -> Result<FxHashMap<crate::projection::FlowchartEdgeKey, FlowchartEdgePathCacheEntry>> {
-    ctx.work_meter.charge(render_edges.len())?;
+    let phase = edge_paint_phase(ctx);
+    ctx.work_meter.charge_work(render_edges.len(), phase)?;
     let mut cache = FxHashMap::with_capacity_and_hasher(render_edges.len(), Default::default());
     let mut scratch = FlowchartEdgeDataPointsScratch::default();
     if ctx.uses_elk_adapter_dom {
@@ -463,6 +499,18 @@ pub fn prepare_edge_routes(
                 );
             }
         }
+    }
+    #[cfg(feature = "layout-grid")]
+    if let Some(settings) = ctx.layout.route_contract.grid_paint() {
+        edge_geom::apply_grid_line_hops(&mut cache, render_edges, settings, ctx.work_meter)?;
+        ctx.work_meter.checkpoint(phase)?;
+        return Ok(cache);
+    }
+    #[cfg(feature = "layout-layered")]
+    if let FlowchartSvgRoute::Layered(routes) = ctx.layout.route_contract {
+        edge_geom::apply_layered_line_hops(ctx, &mut cache, render_edges, routes.routing)?;
+        ctx.work_meter.checkpoint(phase)?;
+        return Ok(cache);
     }
     let preserve_dash_mask_length = |edge: &FlowchartRenderEdge<'_>| {
         ctx.compatibility.look.is_neo()

@@ -34,10 +34,14 @@ use super::{
     ErBoxLabel, ErConfigView, ErCssBinding, ErEntityThemePlan, ErMarkerDefs, ErNativeStyle,
     ErPreparedLabels, ErPreparedRelationshipLabel, ErSvgGeometry, ErSvgLayoutView, ErSvgRouteKind,
     ErSwimlanePaintLayout, er_color_indices, er_redux_color_id, er_rel_idx_from_edge_id,
-    er_unified_marker_id, stylesheet::write_er_stylesheet_with_cluster_titles,
-    write_er_marker_definitions,
+    er_unified_marker_id, geometry::er_relationship_dom_id,
+    stylesheet::write_er_stylesheet_with_cluster_titles, write_er_marker_definitions,
 };
 
+#[cfg(feature = "layout-grid")]
+mod grid;
+#[cfg(feature = "layout-layered")]
+mod layered;
 mod swimlane;
 mod zero_markers;
 
@@ -74,6 +78,10 @@ pub struct ErSvgContext<'a> {
     pub canvas_has_texture: bool,
     pub elk_parity: bool,
     pub swimlane: bool,
+    #[cfg(feature = "layout-grid")]
+    pub grid: Option<merman_render_core::graph_layout::mermaid_grid::GridPaint>,
+    #[cfg(feature = "layout-layered")]
+    pub layered: Option<&'a super::ErLayeredPaint>,
     #[cfg(feature = "layout-shoal")]
     pub canonical_routes: Option<&'a ErCanonicalEdgePainter<'a>>,
     pub work_meter: &'a OperationWorkMeter,
@@ -186,6 +194,7 @@ fn write_er_svg_label_background(out: &mut impl SvgOutput) {
 struct ErSubgraphRenderContext<'a> {
     data_look: &'a str,
     uses_canonical_routes: bool,
+    layered_titles: bool,
     allow_html_label_overflow: bool,
     use_html_labels: bool,
     measurer: &'a dyn text::TextMeasurer,
@@ -261,19 +270,64 @@ fn render_er_subgraph_cluster(
             .ok_or_else(|| Error::InvalidModel {
                 message: format!("ER prepared HTML title is missing subgraph {}", subgraph.id),
             })?;
-        let _ = write!(
-            out,
-            r#"<g class="cluster-label" transform="translate({}, {})"><foreignObject x="{}" y="{}" width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; text-align: center;"><span class="nodeLabel" {}>{}</span></div></foreignObject></g>"#,
-            fmt(title_x),
-            fmt(title_y),
-            fmt(-title_width / 2.0),
-            fmt(-title_height / 2.0),
-            fmt(title_width),
-            fmt(title_height),
-            html_label_overflow_attr(context.allow_html_label_overflow, title_width, title_height),
-            text_style_attr,
-            prepared.fragment(),
-        );
+        if context.layered_titles && subgraph.label_type == "markdown" {
+            context
+                .work_meter
+                .charge_emit_work(prepared.fragment().len())?;
+            let metrics = text::measure_xhtml_label_fragment_with_terminal_fonts(
+                context.measurer,
+                prepared.fragment(),
+                context.label_style,
+                Some(width),
+                super::labels::HTML_DOCUMENT_ROOT_FONT_SIZE_PX,
+            );
+            context.work_meter.checkpoint(OperationPhase::Emit)?;
+            let title_width = metrics.width.max(0.0);
+            let title_height = metrics.height.max(0.0);
+            let constrained = title_width >= width;
+            let _ = write!(
+                out,
+                r#"<g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: {}; white-space: {}; line-height: 1.5; max-width: {}px; text-align: center;"#,
+                fmt(title_x - title_width / 2.0),
+                fmt(top + cluster.title_margin_top),
+                fmt(title_width),
+                fmt(title_height),
+                if constrained { "table" } else { "table-cell" },
+                if constrained {
+                    "break-spaces"
+                } else {
+                    "nowrap"
+                },
+                fmt(width),
+            );
+            if constrained {
+                let _ = write!(out, " width: {}px;", fmt(width));
+            }
+            let _ = write!(
+                out,
+                r#""><span class="nodeLabel" {}>{}</span></div></foreignObject></g>"#,
+                text_style_attr,
+                prepared.fragment()
+            );
+        } else {
+            let _ = write!(
+                out,
+                r#"<g class="cluster-label" transform="translate({}, {})"><foreignObject x="{}" y="{}" width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; text-align: center;"><span class="nodeLabel" {}>{}</span></div></foreignObject></g>"#,
+                fmt(title_x),
+                fmt(title_y),
+                fmt(-title_width / 2.0),
+                fmt(-title_height / 2.0),
+                fmt(title_width),
+                fmt(title_height),
+                html_label_overflow_attr(
+                    context.allow_html_label_overflow,
+                    title_width,
+                    title_height
+                ),
+                text_style_attr,
+                prepared.fragment(),
+            );
+        }
     } else {
         let _ = write!(
             out,
@@ -289,14 +343,20 @@ fn render_er_subgraph_cluster(
                 "",
             );
         } else {
+            if context.layered_titles {
+                context.work_meter.charge_emit_work(subgraph.title.len())?;
+            }
             label::write_svg_text_markdown_wrapped_centered_with_style(
                 out,
                 &subgraph.title,
                 "",
                 context.measurer,
                 context.label_style,
-                None,
+                context.layered_titles.then_some(width),
             );
+            if context.layered_titles {
+                context.work_meter.checkpoint(OperationPhase::Emit)?;
+            }
         }
         out.push_str("</g>");
     }
@@ -341,7 +401,7 @@ fn er_cluster_dom_ids(
     clusters: &[LayoutCluster],
     model: &ErDiagramModel,
     geometry: &ErSvgGeometry<'_>,
-    swimlane: bool,
+    label_rect_nodes: bool,
     diagram_id: SvgId<'_>,
     work: &OperationWorkMeter,
 ) -> Result<Vec<String>> {
@@ -384,7 +444,7 @@ fn er_cluster_dom_ids(
     for edge in geometry.edges() {
         let id = er_edge_dom_id(&edge.id, &model.relationships);
         occupied.insert(format!("{diagram_id}-{id}"));
-        if swimlane {
+        if label_rect_nodes {
             occupied.insert(swimlane::relationship_label_dom_id(edge, &id));
         }
     }
@@ -420,7 +480,7 @@ fn er_edge_dom_id(edge_id: &str, relationships: &[ErRelationship]) -> String {
     // one logical relationship edge. Mermaid's common painter consequently uses the ordinary
     // relationship id for that visible edge; the `cyclic-special-*` ids belong only to the
     // hidden helper labels that remain in the layout model.
-    format!("id_{}_{}_{}", rel.entity_a, rel.entity_b, idx)
+    er_relationship_dom_id(rel, idx)
 }
 
 #[derive(Default)]
@@ -611,6 +671,21 @@ pub fn render_er_diagram_svg_model(
     let uses_canonical_routes = false;
     let is_elk_layout = options.elk_parity;
     let is_swimlane_layout = options.swimlane;
+    #[cfg(feature = "layout-grid")]
+    let grid = options
+        .grid
+        .map(|settings| grid::paint_settings(settings, native));
+    #[cfg(feature = "layout-grid")]
+    let is_grid_layout = grid.is_some();
+    #[cfg(not(feature = "layout-grid"))]
+    let is_grid_layout = false;
+    #[cfg(feature = "layout-layered")]
+    let layered = options.layered.and_then(super::ErLayeredPaint::routes);
+    #[cfg(feature = "layout-layered")]
+    let is_layered_layout = layered.is_some();
+    #[cfg(not(feature = "layout-layered"))]
+    let is_layered_layout = false;
+    let label_rect_nodes = is_swimlane_layout || is_grid_layout;
     let allow_html_label_overflow = uses_canonical_routes || is_swimlane_layout;
     let rounded_layout = is_elk_layout || is_swimlane_layout;
     let route_kind = if uses_canonical_routes {
@@ -622,9 +697,21 @@ pub fn render_er_diagram_svg_model(
     } else {
         ErSvgRouteKind::Dagre
     };
+    #[cfg(feature = "layout-grid")]
+    let route_kind = if is_grid_layout {
+        ErSvgRouteKind::Grid
+    } else {
+        route_kind
+    };
+    #[cfg(feature = "layout-layered")]
+    let route_kind = if is_layered_layout {
+        ErSvgRouteKind::Layered
+    } else {
+        route_kind
+    };
     let data_look = er_render_settings.diagram_look.as_str();
     let redux_border_colors = &binding.redux_border_colors;
-    let color_indices = er_color_indices(model);
+    let color_indices = (!is_layered_layout).then(|| er_color_indices(model));
     let node_border = &binding.node_border;
     let font_family = er_render_settings.font_family.clone();
     let font_size = er_render_settings.font_size;
@@ -646,6 +733,14 @@ pub fn render_er_diagram_svg_model(
     )?;
     let nodes = geometry.nodes();
     let edges = geometry.edges();
+    #[cfg(feature = "layout-layered")]
+    if let Some(routes) = layered
+        && routes.edges.len() != edges.len()
+    {
+        return Err(super::layered::invalid_projection(
+            "route count does not match SVG edges",
+        ));
+    }
 
     let include_md_parent = edges.iter().any(|e| {
         matches!(
@@ -743,7 +838,12 @@ pub fn render_er_diagram_svg_model(
     root_chrome.class = Some("erDiagram");
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
     root_chrome.aria_describedby = aria_describedby.as_deref();
-    let root_document = if uses_canonical_routes {
+    #[cfg(feature = "layout-layered")]
+    if options.layered.is_some() && !is_layered_layout {
+        root_chrome.extra_attrs = &[("data-layout-fallback", "dagre")];
+    }
+    let defer_paint_bounds = uses_canonical_routes || is_grid_layout || is_layered_layout;
+    let root_document = if defer_paint_bounds {
         root_viewport.begin_document(
             &mut out,
             root_svg::DeferredRootSpec::mermaid(use_max_width),
@@ -805,6 +905,7 @@ pub fn render_er_diagram_svg_model(
     let subgraph_context = ErSubgraphRenderContext {
         data_look,
         uses_canonical_routes,
+        layered_titles: is_layered_layout,
         allow_html_label_overflow,
         use_html_labels: edge_html_labels,
         measurer,
@@ -827,7 +928,7 @@ pub fn render_er_diagram_svg_model(
             clusters,
             model,
             &geometry,
-            is_swimlane_layout,
+            label_rect_nodes,
             diagram_id,
             options.work_meter,
         )?;
@@ -843,7 +944,7 @@ pub fn render_er_diagram_svg_model(
         out.push_str("</g>");
     }
 
-    if is_elk_layout {
+    if is_elk_layout || is_grid_layout || is_layered_layout {
         out.push_str(r#"<g class="edges edgePaths">"#);
     } else {
         out.push_str(r#"<g class="edgePaths">"#);
@@ -905,12 +1006,26 @@ pub fn render_er_diagram_svg_model(
     } else {
         std::collections::HashMap::new()
     };
+    #[cfg(feature = "layout-grid")]
+    let hop_paths = if let Some(settings) = grid.filter(|_| options.include_edges && !sketch) {
+        grid::line_hop_paths(edges, settings, options.work_meter)?
+    } else {
+        hop_paths
+    };
+    #[cfg(feature = "layout-layered")]
+    let hop_paths = if let Some(routes) = layered.filter(|_| options.include_edges && !sketch) {
+        layered::line_hop_paths(edges, routes, effective_config, options.work_meter)?
+    } else {
+        hop_paths
+    };
     out.checkpoint()?;
     if options.include_edges {
         #[cfg(feature = "layout-shoal")]
         let mut paint_scratch = CanonicalPaintScratch::default();
         let mut points_json = Vec::new();
         let mut points_base64 = String::new();
+        #[cfg(feature = "layout-layered")]
+        let mut axis_json = layered::AxisPointJson::default();
         for (edge_index, e) in edges.iter().enumerate() {
             let missing_section = geometry.is_missing_section(&e.id);
             if !uses_canonical_routes
@@ -928,6 +1043,8 @@ pub fn render_er_diagram_svg_model(
                 "edge-pattern-solid"
             };
             let line_classes = format!("edge-thickness-normal {pattern_class} relationshipLine");
+            #[cfg(feature = "layout-layered")]
+            let layered_route = layered.map(|routes| (&routes.edges[edge_index], routes.curve));
             let legacy_points;
             let (original_d, shifted) = 'path: {
                 #[cfg(feature = "layout-shoal")]
@@ -944,15 +1061,36 @@ pub fn render_er_diagram_svg_model(
                     content_bounds.max_y = content_bounds.max_y.max(painted.bounds.y1);
                     break 'path (painted.d, painted.points);
                 }
-                legacy_points = e
-                    .points
-                    .iter()
-                    .map(|p| LayoutPoint {
-                        x: p.x + translate_x,
-                        y: p.y + translate_y,
-                    })
-                    .collect::<Vec<_>>();
-                let mut d = er_edge_path_d(&legacy_points, rounded_layout, missing_section, native);
+                let points = if is_layered_layout {
+                    // Layered leaves and clusters are rectangular, so the solved contacts and
+                    // the emitted metadata share the same untranslated points.
+                    e.points.as_slice()
+                } else {
+                    legacy_points = e
+                        .points
+                        .iter()
+                        .map(|p| LayoutPoint {
+                            x: p.x + translate_x,
+                            y: p.y + translate_y,
+                        })
+                        .collect::<Vec<_>>();
+                    legacy_points.as_slice()
+                };
+                let fallback_path =
+                    || er_edge_path_d(points, rounded_layout, missing_section, native);
+                #[cfg(feature = "layout-grid")]
+                let grid_path = grid
+                    .map(|settings| grid::shaft(points, settings, options.work_meter))
+                    .transpose()?;
+                #[cfg(feature = "layout-grid")]
+                let fallback_path = || grid_path.unwrap_or_else(fallback_path);
+                #[cfg(feature = "layout-layered")]
+                let mut d = match layered_route {
+                    Some((route, curve)) => layered::shaft(route, curve, options.work_meter)?,
+                    None => fallback_path(),
+                };
+                #[cfg(not(feature = "layout-layered"))]
+                let mut d = fallback_path();
                 if let Some(native) = native.filter(|_| sketch && !d.is_empty()) {
                     let [start, end] =
                         [e.start_marker.as_deref(), e.end_marker.as_deref()].map(|marker| {
@@ -977,18 +1115,33 @@ pub fn render_er_diagram_svg_model(
                         content_bounds.max_y = content_bounds.max_y.max(bounds.max_y + outset);
                     }
                 }
-                break 'path (d, legacy_points.as_slice());
+                break 'path (d, points);
             };
-            points_json.clear();
-            points_json.reserve(128);
-            if serde_json::to_writer(&mut points_json, shifted).is_err() {
-                points_json.clear();
-            }
             points_base64.clear();
-            base64::engine::general_purpose::STANDARD
-                .encode_string(&points_json, &mut points_base64);
+            #[cfg(feature = "layout-layered")]
+            if let Some((route, _)) = layered_route {
+                axis_json.encode(&mut points_base64, shifted, route, options.work_meter)?;
+            }
+            if !is_layered_layout {
+                points_json.clear();
+                points_json.reserve(128);
+                if serde_json::to_writer(&mut points_json, shifted).is_err() {
+                    points_json.clear();
+                }
+                base64::engine::general_purpose::STANDARD
+                    .encode_string(&points_json, &mut points_base64);
+            }
             let hopped_d = hop_paths.get(e.id.as_str()).map(String::as_str);
             let d = hopped_d.unwrap_or(&original_d);
+            if is_grid_layout || is_layered_layout {
+                options.work_meter.charge_emit_work(d.len())?;
+                if let Some(bounds) = merman_render_core::svg_bounds::svg_path_bounds_from_d(d) {
+                    content_bounds.min_x = content_bounds.min_x.min(bounds.min_x);
+                    content_bounds.min_y = content_bounds.min_y.min(bounds.min_y);
+                    content_bounds.max_x = content_bounds.max_x.max(bounds.max_x);
+                    content_bounds.max_y = content_bounds.max_y.max(bounds.max_y);
+                }
+            }
 
             let mut edge_style = String::new();
             if data_look == "neo"
@@ -1012,7 +1165,20 @@ pub fn render_er_diagram_svg_model(
                 });
             }
             let edge_style = if let Some(hopped_d) = hopped_d {
-                line_hops::rewrite_style_after_line_hop(&edge_style, hopped_d, options.work_meter)?
+                if is_grid_layout || is_layered_layout {
+                    line_hops::rewrite_style_after_line_hop_with_phase(
+                        &edge_style,
+                        hopped_d,
+                        OperationPhase::Emit,
+                        options.work_meter,
+                    )?
+                } else {
+                    line_hops::rewrite_style_after_line_hop(
+                        &edge_style,
+                        hopped_d,
+                        options.work_meter,
+                    )?
+                }
             } else {
                 std::borrow::Cow::Borrowed(edge_style.as_str())
             };
@@ -1076,13 +1242,13 @@ pub fn render_er_diagram_svg_model(
     out.push_str("</g>");
     out.checkpoint()?;
 
-    if is_swimlane_layout {
+    if label_rect_nodes {
         out.push_str(r#"<g class="edgeLabels"/><g class="nodes">"#);
     } else {
         out.push_str(r#"<g class="edgeLabels">"#);
     }
     out.checkpoint()?;
-    if options.include_edges {
+    if options.include_edges && !is_grid_layout {
         for e in edges {
             let rel_idx = er_rel_idx_from_edge_id(&e.id)
                 .and_then(|idx| model.relationships.get(idx).map(|r| (idx, r)));
@@ -1092,9 +1258,10 @@ pub fn render_er_diagram_svg_model(
             let relationship_index = rel_idx.map(|(index, _)| index);
             let prepared_relationship =
                 relationship_index.and_then(|index| prepared_labels.relationship(index));
-            // The common ELK/Swimlane painter checks hasEdgeLabel before preparing
+            // The common ELK/Swimlane/Layered painter checks hasEdgeLabel before preparing
             // a terminal; Dagre also emits its zero-size wrapper for an empty role.
-            if rel_text_raw.is_empty() && (is_elk_layout || is_swimlane_layout) {
+            if rel_text_raw.is_empty() && (is_elk_layout || is_swimlane_layout || is_layered_layout)
+            {
                 continue;
             }
             if is_swimlane_layout {
@@ -1137,8 +1304,19 @@ pub fn render_er_diagram_svg_model(
                     .unwrap_or((0.0, 0.0));
                 (0.0, 0.0, x, y)
             };
+            #[cfg(feature = "layout-layered")]
+            if e.label.is_none()
+                && let Some(routes) = layered
+            {
+                cy += routes.label_y_offset;
+            }
 
-            if !uses_canonical_routes && w > 0.0 && h > 0.0 && !geometry.is_missing_section(&e.id) {
+            if !uses_canonical_routes
+                && !is_layered_layout
+                && w > 0.0
+                && h > 0.0
+                && !geometry.is_missing_section(&e.id)
+            {
                 // Mermaid 12.1 preserves the layout anchor and adds only the midpoint delta
                 // from paint-time clipping. ER has no additional clipping here: curve and marker
                 // projection change `d`, while both label polylines remain the layout route.
@@ -1287,21 +1465,18 @@ pub fn render_er_diagram_svg_model(
             out.checkpoint()?;
         }
     }
-    if !is_swimlane_layout {
+    if !label_rect_nodes {
         out.push_str("</g>\n");
     }
     out.checkpoint()?;
 
     // Entities drawn after relationships so they cover markers when overlapping.
-    if !is_swimlane_layout {
+    if !label_rect_nodes {
         out.push_str(r#"<g class="nodes">"#);
     }
     out.checkpoint()?;
     let mut rough_border = RoughRectBorderPath::default();
-    for n in nodes {
-        if n.is_cluster {
-            continue;
-        }
+    for (ordinal, n) in nodes.iter().filter(|n| !n.is_cluster).enumerate() {
         let Some(entity) = entity_by_id.get(n.id.as_str()).copied() else {
             if n.id.contains("---") {
                 let cx = n.x + translate_x;
@@ -1389,8 +1564,11 @@ pub fn render_er_diagram_svg_model(
             format!("node {}", entity.css_classes.trim())
         };
         let color_id_attr = color_indices
-            .get(entity.id.as_str())
-            .and_then(|index| er_redux_color_id(redux_border_colors, *index))
+            .as_ref()
+            .map_or(Some(ordinal), |indices| {
+                indices.get(entity.id.as_str()).copied()
+            })
+            .and_then(|index| er_redux_color_id(redux_border_colors, index))
             .map(|color_id| format!(r#" data-color-id="{}""#, escape_attr(&color_id)))
             .unwrap_or_default();
         let _ = write!(
@@ -1943,6 +2121,18 @@ pub fn render_er_diagram_svg_model(
         out.push_str("</g>");
         out.checkpoint()?;
     }
+    #[cfg(feature = "layout-grid")]
+    if is_grid_layout && options.include_edges {
+        grid::write_labels(
+            &mut out,
+            nodes,
+            edges,
+            model,
+            prepared_labels,
+            diagram_id,
+            subgraph_context,
+        )?;
+    }
     out.push_str("</g>\n");
     out.checkpoint()?;
     out.push_str("</g>\n</g>\n");
@@ -1972,7 +2162,7 @@ pub fn render_er_diagram_svg_model(
 
     push_er_shadow_defs(&mut out, diagram_id.semantic_str(), binding)?;
 
-    let root_document = if uses_canonical_routes {
+    let root_document = if defer_paint_bounds {
         root_viewport.finish_document(
             &mut out,
             root_document,

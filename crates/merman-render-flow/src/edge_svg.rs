@@ -4,14 +4,16 @@ use std::fmt::Write as _;
 use std::{fmt, sync::Arc};
 
 use base64::Engine as _;
-use merman_model::families::flowchart::FlowEdge;
+use merman_model::{OperationPhase, families::flowchart::FlowEdge};
 use merman_render_core::{
     Error, LayoutPoint, Result,
     config::DiagramLook,
     number_format::canonical_number as fmt,
     resources::OperationWorkMeter,
     svg_edge_parity::path_numbers::json_stringify_points_into,
-    svg_edge_parity::{edge_path::neo_marker_mask_offset, line_hops::rewrite_style_after_line_hop},
+    svg_edge_parity::{
+        edge_path::neo_marker_mask_offset, line_hops::rewrite_style_after_line_hop_with_phase,
+    },
     svg_output::SvgOutput,
     xml::{escape_attr_display, escaped_attr_len},
 };
@@ -88,9 +90,24 @@ struct FlowchartEdgeDataPoints {
 }
 
 impl FlowchartEdgeDataPoints {
-    fn encode(&mut self, points: &[LayoutPoint]) -> &str {
+    fn encode(
+        &mut self,
+        points: &[LayoutPoint],
+        #[cfg(feature = "layout-layered")] axes: Option<&[merman_render_core::route_types::Axis]>,
+    ) -> &str {
         self.json.clear();
-        json_stringify_points_into(&mut self.json, points, &mut self.number);
+        #[cfg(feature = "layout-layered")]
+        if let Some(axes) = axes {
+            merman_render_core::svg_edge_parity::path_numbers::json_stringify_axis_points_into(
+                &mut self.json,
+                points,
+                axes,
+                &mut self.number,
+            );
+        }
+        if self.json.is_empty() {
+            json_stringify_points_into(&mut self.json, points, &mut self.number);
+        }
         self.base64.clear();
         base64::engine::general_purpose::STANDARD
             .encode_string(self.json.as_bytes(), &mut self.base64);
@@ -112,7 +129,7 @@ struct FlowchartEdgeSvgEmission<'a> {
     repeat_inline: bool,
     adaptive_ink: Option<merman_theme_contract::v2::Color>,
     neo_edge_mask: Option<FlowchartNeoEdgeMaskPlan>,
-    line_hop_applied: bool,
+    line_hop_phase: Option<OperationPhase>,
 }
 
 impl FlowchartEdgeSvgEmission<'_> {
@@ -141,12 +158,15 @@ impl FlowchartEdgeSvgEmission<'_> {
             .neo_edge_mask
             .map_or(0, FlowchartNeoEdgeMaskPlan::work_units);
         work_meter.preflight(neo_mask_work)?;
-        let rewritten_style = if self.line_hop_applied {
+        let rewritten_style = if let Some(phase) = self.line_hop_phase {
             work_meter.check_svg_append(0, projected_contribution)?;
             let mut style = String::with_capacity(projected_contribution);
             self.write_paint_style(&mut style, None)
                 .expect("writing into a String cannot fail");
-            Some(rewrite_style_after_line_hop(&style, self.d, work_meter)?.into_owned())
+            Some(
+                rewrite_style_after_line_hop_with_phase(&style, self.d, phase, work_meter)?
+                    .into_owned(),
+            )
         } else {
             None
         };
@@ -619,7 +639,7 @@ mod tests {
             repeat_inline: true,
             adaptive_ink: None,
             neo_edge_mask: Some(neo_edge_mask),
-            line_hop_applied: false,
+            line_hop_phase: None,
         };
         let expected_edge = r##"<path d="M0,0L16,0" id="diagram-merman-flowchart-document-edge-12-segment-2" class="edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 2 2 2 2 2 2 2 2 0; stroke-dashoffset: 0;stroke:#2563eb;opacity:0.5;stroke:#ef4444;;;opacity:0.5;stroke:#ef4444" data-edge="true" data-et="edge" data-id="边#quot;&amp;&lt;]]>" data-points="W3sieCI6MH1d" data-look="neo" marker-start="url(#diagram-flowchart-v2-circleStart)" marker-end="url(#diagram-flowchart-v2-pointEnd)" />"##;
         let initial = "prefix";
@@ -673,7 +693,7 @@ mod tests {
 
         let hopped = FlowchartEdgeSvgEmission {
             d: "M0,0L20,0",
-            line_hop_applied: true,
+            line_hop_phase: Some(OperationPhase::Layout),
             ..emission
         };
         let mut hopped_svg = initial.to_string();

@@ -16,7 +16,7 @@ import { legalProjectionForArtifactProfile } from "./legal-projection.mjs";
 import { packageDistClosure } from "./package-dist-closure.mjs";
 import { webPackages } from "./surface-manifest.mjs";
 import { WASM_INPUT_MANIFEST_NAME } from "./wasm-build/input-manifest.mjs";
-import { assertWasmTargetEvidence, parseWasmTargets } from "./wasm-build/targets.mjs";
+import { LOCAL_WASM_LAYOUT_USAGE, assertWasmTargetEvidence, parseWasmTargets } from "./wasm-build/targets.mjs";
 import {
   WASM_RUNTIME_TOP_LEVEL_FILES,
   assertWasmRuntimeMatchesInput,
@@ -43,7 +43,7 @@ if (isMainModule()) {
     }
     if (targets) assemblePackageArtifacts(targets);
   } else {
-    console.error("usage: node scripts/build-surface-packages.mjs --entries | --assemble [--package <id>] [--local-shoal]");
+    console.error(`usage: node scripts/build-surface-packages.mjs --entries | --assemble [--package <id>] ${LOCAL_WASM_LAYOUT_USAGE}`);
     process.exitCode = 2;
   }
 }

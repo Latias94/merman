@@ -40,6 +40,12 @@ pub(crate) mod flowchart;
 pub(crate) mod gantt;
 #[cfg(feature = "diagram-git-graph")]
 pub(crate) mod git_graph;
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
+mod grid;
 #[cfg(feature = "diagram-info")]
 pub(crate) mod info;
 #[cfg(feature = "diagram-ishikawa")]

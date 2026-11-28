@@ -2,15 +2,15 @@
 // Do not edit it directly; edit tools/upstreams/MERMAID_REFERENCE_BUNDLE.json.
 
 pub(crate) const PINNED_MERMAID_PACKAGE_SHA256: &str =
-    "8dea6d2895b9a75667443ef8a82fc4b8d30f962de057686c7b6ef860bc69d251";
-pub(crate) const PINNED_MERMAID_VERSION: &str = "12.3.0";
+    "e104992b5e4a0c794dd7f3834757173583836a9ee0387ee7460032327bc2ce63";
+pub(crate) const PINNED_MERMAID_VERSION: &str = "12.4.0";
 pub(crate) const PINNED_DOMPURIFY_VERSION: &str = "3.4.17";
 pub(crate) const PINNED_MERMAID_CLI_VERSION: &str = "12.2.0";
-pub(crate) const MERMAID_SOURCE_TAG: &str = "mermaid@12.3.0";
-pub(crate) const MERMAID_SOURCE_COMMIT: &str = "2086904e76c692331e34a45d7cc3bc30860d040e";
+pub(crate) const MERMAID_SOURCE_TAG: &str = "mermaid@12.4.0";
+pub(crate) const MERMAID_SOURCE_COMMIT: &str = "9f93a44a36e46a36b1379f9de72fb1ee5684ee3f";
 pub(crate) const REFERENCE_CLI_PACKAGE_JSON_SHA256: &str =
-    "5b969bc88be5bd1503f89118a90fdcf2c241683d5c40fa6f64651d90ef0608d8";
+    "5f638289fd05a3f23e20ca18dfbba3d46d97d117d7471559e5802cc19cb83458";
 pub(crate) const REFERENCE_CLI_PACKAGE_LOCK_SHA256: &str =
-    "6be7b7ca2156f048e1cfe8560fee60f179ecb325877ced3d13e2dd69e75e5fcc";
+    "1f0ca38a5fb1a39125f887d17c8eb01965e69e002e13bdb1c2cea91987142cdf";
 pub(crate) const REFERENCE_CLI_CONFIG_SHA256: &str =
     "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc";

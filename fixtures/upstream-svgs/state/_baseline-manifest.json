@@ -1,12 +1,12 @@
 {
   "schema_version": 4,
   "source": {
-    "mermaid_version": "12.3.0",
+    "mermaid_version": "12.4.0",
     "mermaid_cli_version": "12.2.0",
-    "mermaid_source_tag": "mermaid@12.3.0",
-    "mermaid_source_commit": "2086904e76c692331e34a45d7cc3bc30860d040e",
-    "package_json_sha256": "5b969bc88be5bd1503f89118a90fdcf2c241683d5c40fa6f64651d90ef0608d8",
-    "package_lock_sha256": "6be7b7ca2156f048e1cfe8560fee60f179ecb325877ced3d13e2dd69e75e5fcc",
+    "mermaid_source_tag": "mermaid@12.4.0",
+    "mermaid_source_commit": "9f93a44a36e46a36b1379f9de72fb1ee5684ee3f",
+    "package_json_sha256": "5f638289fd05a3f23e20ca18dfbba3d46d97d117d7471559e5802cc19cb83458",
+    "package_lock_sha256": "1f0ca38a5fb1a39125f887d17c8eb01965e69e002e13bdb1c2cea91987142cdf",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "renderer_revision": "xtask-upstream-svg-v5"
   },
@@ -14,7 +14,7 @@
     "mode": "generated",
     "render_environment": {
       "browser": {
-        "product": "Chrome",
+        "product": "HeadlessChrome",
         "version": "156.0.8078.47",
         "revision": "@1d17a2e2ee147bb7d6ae2ab6abdb3a2510c17775",
         "locale": "zh-CN",
@@ -24,23 +24,23 @@
         "version": "25.16.0"
       },
       "operating_system": {
-        "platform": "darwin",
-        "arch": "arm64",
-        "release": "27.0.0"
+        "platform": "win32",
+        "arch": "x64",
+        "release": "10.0.26300"
       },
       "mermaid_runtime": {
-        "mermaid_version": "12.3.0",
+        "mermaid_version": "12.4.0",
         "dompurify_version": "3.4.17",
         "compiler_version": "0.28.2",
-        "artifact_sha256": "98084069d6691fe6e3ca8570d57c6c78dc24af3297d4849a33bfc74f76937968",
+        "artifact_sha256": "1683f26875fc5ed4ce134b7c76252add15dbc5053d1301ff6eb22970971fb408",
         "dompurify_package_sha256": "2a67a4d0cb2f51dbde8e63138391edd707e0d4bef608b1ad19c509d162e75bb6",
         "compiler_package_sha256": "0e4a34c8580ead6721d606c22db93fe468cec72ca21824be4dfe4c770e23100e",
-        "mermaid_package_sha256": "8dea6d2895b9a75667443ef8a82fc4b8d30f962de057686c7b6ef860bc69d251",
+        "mermaid_package_sha256": "e104992b5e4a0c794dd7f3834757173583836a9ee0387ee7460032327bc2ce63",
         "mermaid_cli_package_sha256": "7d43b6fab89acc14a4d1164d59675ceccbdcfe5d68944229461597031688ac5d"
       },
       "font_probe": {
         "revision": "mermaid-font-probe-v1",
-        "sha256": "c6b2b6ad65d9a2e47ff3b8c2b54afabae3c184561c20ae0f5b5bb11a35e890e2"
+        "sha256": "b74cb52f625a46ef61df9467965af3dac4a01564ba6a1d67812ff77ad4becc14"
       }
     }
   },
@@ -258,7 +258,7 @@
     },
     "stress_state_html_sanitization_notes_025": {
       "input_sha256": "8c51f2a1edbadb2f83ddd51f5fcca9993e0e11f4a84516845a8890c274aecb9e",
-      "svg_sha256": "c6ef38a0a3b9502b04ee8df7e991a429ffded59f6df3c321f1b7058cb4442551",
+      "svg_sha256": "6b0e9df8532b0ca2ae99237e51f4be57fc19cb8475b84a815d4ca6a5ab517097",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "stress_state_legacy_header_scale_and_direction_037": {
@@ -293,7 +293,7 @@
     },
     "stress_state_multiple_parallel_edges_and_styles_052": {
       "input_sha256": "2e86d2b9925eb66ee257269266c79b7041b95662fc53f60726eb038c3b415399",
-      "svg_sha256": "1bcb876bca457ab234ab8f45e6f4a76c46613eaa0358657debadf965a1bfd053",
+      "svg_sha256": "bd2c5485b91a1e6b385428c6c8cf4dd1b7175be78d723bd1f4ccb435fecf328f",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "stress_state_multiple_recursive_definitions_019": {
@@ -393,12 +393,12 @@
     },
     "stress_state_unicode_and_rtl_036": {
       "input_sha256": "afd57f615782bfcf877564dde11455060e5465737dd9fc4be64c28979eb301aa",
-      "svg_sha256": "c6affad498f38f6a71c60a47a5d4bbae273b2d7b2a56542155dc9d6ad500b8ed",
+      "svg_sha256": "0e57cee3f8850aaf3ac5306ff40d98bd00f133331191f593af8afb152c1e4efc",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "stress_state_unicode_mixed_scripts_021": {
       "input_sha256": "71cc371e79ae86ed496976be0bcb98005f06ee7792d2f2d89f6dd7425059fde9",
-      "svg_sha256": "bea021dd8d3f83ea9d934ab6d671345b9f0af8dde0ccc31b49a309b70ce8c20e",
+      "svg_sha256": "19400094ccf994d0a33e6d1dc0a15404edb936eac881464153df654b7621e402",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "stress_state_unicode_punctuation_009": {
@@ -408,7 +408,7 @@
     },
     "stress_state_unicode_quotes_and_br_in_notes_048": {
       "input_sha256": "de6435299fc36b9370ffbd72deb2bd14fd73ebaa803f71a93d06d3fcd28477f5",
-      "svg_sha256": "869275e1588f28b6e47cb2a28d8bb248a35d8d122b57d04c54c78583f19f1915",
+      "svg_sha256": "785522a0166c439f529b68ad5b472b3bac21b5780729f2eb52e27a02b71cb764",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "stress_state_whitespace_comments_in_composite_031": {
@@ -523,7 +523,7 @@
     },
     "upstream_cypress_statediagram_spec_should_render_multiple_composit_states_016": {
       "input_sha256": "e63881f55293b71b84529e087b45778a7bd3240d9e5e16671b6001a0788a7855",
-      "svg_sha256": "13e99c0be1cfa826d11ea602ef74dd0fb960079ecaf9bd88ea239a49315a1323",
+      "svg_sha256": "c73ff8ab8813503a152755f597b785a46ae3d40b0fb50ed71ca11f4eb39fec68",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_statediagram_spec_should_render_state_descriptions_014": {
@@ -708,7 +708,7 @@
     },
     "upstream_cypress_statediagram_v2_spec_v2_should_render_multiple_composite_states_017": {
       "input_sha256": "c030726d0f3c256a8efd73fd7f4a5de98bfe4f3db1efd618ac342638c7eb7fb6",
-      "svg_sha256": "ace3e3c92944328af25b97d7f9f0252d07c366fd1b799f264179fcbfd5d0946e",
+      "svg_sha256": "23577eafe0956ed260edce5af8b8260d8360e5a5fb8f89be2f8d953cee969103",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_statediagram_v2_spec_v2_should_render_state_descriptions_015": {
@@ -848,7 +848,7 @@
     },
     "upstream_html_demos_state_and_these_are_how_they_are_applied_002": {
       "input_sha256": "7be568e03845ab51fd1b00516b4a963ae6c0bb3020f4fe194087983fa614941a",
-      "svg_sha256": "cd852239efafacfdc65cf424b8a195064d82858948f3f099185566399effc5b2",
+      "svg_sha256": "80ffd2aa5ab0b16be8f9dfab4dd193f9239cb80efe02bd62fe5f37ae51f63463",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_html_demos_state_and_these_are_how_they_are_applied_003": {
@@ -883,7 +883,7 @@
     },
     "upstream_html_demos_state_very_simple_showing_change_from_state1_to_state2_001": {
       "input_sha256": "334c02f611b14240f77b1492c23efa23637d04752c1055db292651660d0f4cd0",
-      "svg_sha256": "c4af17d897cd176d453ac41a536e9c99e14494aa74a3be13c56a9d3b440305da",
+      "svg_sha256": "14d355005fe8876b956c34a36ab06248752cfb69cfc77f209244f1833070fd2b",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_html_demos_state_you_can_add_notes_010": {
@@ -1063,7 +1063,7 @@
     },
     "upstream_pkgtests_statediagram_spec_020": {
       "input_sha256": "33f8107a671b609ade138947d7a5a36c7e33d104d58d3af38a270e8a179bb6d2",
-      "svg_sha256": "66d4e58e9661d2250b52b6cb76cad23b08a9788d3aa01e8bd78fba21d5d1e8d5",
+      "svg_sha256": "fd41ae5e39370dc370e5f4e2bd3e89ddeb7cb2b7c29e9930a3020d356913a84d",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_pkgtests_statediagram_spec_021": {
@@ -1198,7 +1198,7 @@
     },
     "upstream_pkgtests_statediagram_v2_spec_020": {
       "input_sha256": "2006f41e727e3cbd7de7bcc56757dd7c79411fe1e4f02977ec1ccceed0f58218",
-      "svg_sha256": "f4011a2265e30b91ca3ab202053f0bbfb33d99712e8452d4a4a9ee9e249b1124",
+      "svg_sha256": "67a8210fa1522d5c3bbec19b14ba86acd08c770b5a80dde189c901c104a5c7b9",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_pkgtests_statediagram_v2_spec_021": {
@@ -1373,7 +1373,7 @@
     },
     "upstream_stateDiagram_state_definition_with_quotes_spec": {
       "input_sha256": "d5577970f1741fe6f017981c82608e2a294b0314e9fd7b645877a57bf442c782",
-      "svg_sha256": "d53b7f98e88329b59e880791ee408b11904687d704f4ade372a98a25f6817d88",
+      "svg_sha256": "bbbe0ed6d104ab2ff003da3143cba97aedbd3aa32d94fda1e2bfff25d79476f8",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_stateDiagram_state_statements_spec": {
@@ -1458,7 +1458,7 @@
     },
     "upstream_stateDiagram_v2_state_definition_with_quotes_spec": {
       "input_sha256": "ea21ff8bbf5bf6667c39b82328316f67a93edf2effab4f23088ebc1592e41be5",
-      "svg_sha256": "426acb1cb9ef0c6e404bc11de602186dd85f958e97a7e9d17d6c486d7041228f",
+      "svg_sha256": "e4796af0239f617cbd7eb01aeb1941dafc956430e7c598e085b9a7e7c397a736",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_state_parser_spec": {

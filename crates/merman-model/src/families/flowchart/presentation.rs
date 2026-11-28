@@ -4,6 +4,7 @@ use super::{
     FlowEdge, FlowNode, FlowSubgraph, FlowchartLabelSourceOwner, FlowchartModel,
     FlowchartRenderLabelSources, FlowchartSubgraphStyles,
 };
+use crate::grid::{GridInlinePlacements, GridPlacementOwner};
 use crate::{OperationControl, OperationControlResult};
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -17,6 +18,8 @@ pub struct FlowchartRenderContext {
     collapsed_replacements: FxHashMap<String, String>,
     subgraph_color_ordinals: FxHashMap<String, usize>,
     node_dom_indices: FxHashMap<String, usize>,
+    grid_placements: GridInlinePlacements,
+    agentflow_connector_start: Option<usize>,
 }
 
 impl FlowchartRenderContext {
@@ -135,6 +138,26 @@ impl FlowchartRenderContext {
                 return Ok(Err("flowchart DOM ordinals must be distinct"));
             }
         }
+        let id_for_owner = |owner| match owner {
+            GridPlacementOwner::Vertex(slot) if self.grid_node_owner(slot) == owner => {
+                model.nodes.get(slot).map(|node| node.id.as_str())
+            }
+            GridPlacementOwner::Vertex(_) => None,
+            GridPlacementOwner::Connector(slot) => self
+                .agentflow_connector_start
+                .and_then(|start| start.checked_add(slot))
+                .and_then(|slot| model.nodes.get(slot))
+                .map(|node| node.id.as_str()),
+            GridPlacementOwner::Subgraph(slot) => {
+                model.subgraphs.get(slot).map(|graph| graph.id.as_str())
+            }
+        };
+        if let Err(message) = self
+            .grid_placements
+            .validate_owners_controlled(id_for_owner, control)?
+        {
+            return Ok(Err(message));
+        }
         control.checkpoint()?;
         Ok(Ok(()))
     }
@@ -153,8 +176,39 @@ impl FlowchartRenderContext {
             collapsed_subgraphs,
             collapsed_replacements,
             subgraph_color_ordinals: build_subgraph_color_ordinals(subgraphs),
-            node_dom_indices: FxHashMap::default(),
+            ..Self::default()
         }
+    }
+
+    /// Installs the validated inline placements from the family's successful replay.
+    pub fn set_grid_placements(&mut self, placements: GridInlinePlacements) {
+        self.grid_placements = placements;
+    }
+
+    /// Borrows the sparse inline Grid placements in family owner slots.
+    pub fn grid_placements(&self) -> &GridInlinePlacements {
+        &self.grid_placements
+    }
+
+    /// Resolves a slot in `FlowchartModel::nodes` to the underlying Grid owner.
+    pub fn grid_node_owner(&self, node_slot: usize) -> GridPlacementOwner {
+        match self
+            .agentflow_connector_start
+            .and_then(|start| node_slot.checked_sub(start))
+        {
+            Some(slot) => GridPlacementOwner::Connector(slot),
+            None => GridPlacementOwner::Vertex(node_slot),
+        }
+    }
+
+    #[cfg(feature = "diagram-agentflow")]
+    pub(in crate::families) fn set_agentflow_grid_placements(
+        &mut self,
+        placements: GridInlinePlacements,
+        connector_start: usize,
+    ) {
+        self.set_grid_placements(placements);
+        self.agentflow_connector_start = Some(connector_start);
     }
 
     /// Replaces the family-assigned DOM ordinals as one complete indexed data set.
@@ -256,6 +310,7 @@ impl FlowchartRenderContext {
 
     fn retained_bytes_with_labels(&self, label_bytes: usize) -> usize {
         label_bytes
+            .saturating_add(self.grid_placements.retained_bytes())
             .saturating_add(
                 self.collapsed_subgraphs
                     .iter()

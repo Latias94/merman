@@ -73,6 +73,11 @@ pub(super) fn render_class_diagram_svg_model_with_config(
             "render.class.roughjs",
         ),
         elk_parity: route_contract.is_elk_parity(),
+        #[cfg(feature = "layout-grid")]
+        grid: match route_contract {
+            RouteContract::Grid(paint) => Some(*paint),
+            _ => None,
+        },
         #[cfg(feature = "layout-shoal")]
         canonical_routes: canonical_routes.as_ref(),
     };

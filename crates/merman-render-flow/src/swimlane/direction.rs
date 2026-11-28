@@ -7,6 +7,7 @@ use merman_render_core::Result;
 use merman_render_core::{LayoutPoint, SwimlaneDirection, SwimlaneTitleRect};
 use std::collections::HashMap;
 
+mod aligned_edge_straightening;
 mod detour_simplification;
 mod endpoint_clip;
 pub(super) mod geometry;
@@ -20,6 +21,12 @@ mod terminal_stub;
 mod validation;
 
 use geometry::{orthogonalize_polyline, simplify_polyline};
+
+#[derive(Clone, Copy)]
+pub(super) enum PostProcessMode {
+    Shared,
+    LegacyFlow,
+}
 
 fn layout_content_ids(layout: &WorkingLayout) -> Vec<String> {
     layout
@@ -246,6 +253,7 @@ fn finalize_rendered_edges(
 fn post_process_staged(
     layout: &mut WorkingLayout,
     work_budget: &mut LayoutWorkBudget,
+    mode: PostProcessMode,
 ) -> Result<()> {
     match layout.direction {
         SwimlaneDirection::Tb => {}
@@ -278,6 +286,24 @@ fn post_process_staged(
     shared_track_nudging::nudge_shared_interior_subpaths(layout, work_budget)?;
     finalize_rendered_edges(layout, work_budget)?;
 
+    if matches!(mode, PostProcessMode::LegacyFlow)
+        && aligned_edge_straightening::straighten_aligned_cross_group_edges(layout, work_budget)?
+    {
+        label_anchoring::anchor_labels_to_polyline(layout, work_budget)?;
+        // Endpoint preparation rebuilds the node rectangles and scans the materialized routes.
+        work_budget.charge(layout.original_edges.len())?;
+        let refresh_ticks = layout.original_edges.iter().fold(
+            layout
+                .nodes
+                .len()
+                .saturating_add(layout.original_edges.len()),
+            |ticks, edge| ticks.saturating_add(edge.points.len()),
+        );
+        work_budget.preflight(refresh_ticks)?;
+        work_budget.charge(refresh_ticks)?;
+        endpoint_clip::prepare_edge_endpoints_for_renderer(layout);
+    }
+
     for _ in 0..2 {
         materialized_geometry::lift_top_lane_title_bands_above_rails(layout, work_budget)?;
         materialized_geometry::shift_left_lane_title_bands_left_of_rails(layout, work_budget)?;
@@ -304,6 +330,7 @@ fn post_process_snapshot_ticks(layout: &WorkingLayout) -> usize {
 pub(super) fn post_process(
     layout: &mut WorkingLayout,
     work_budget: &mut LayoutWorkBudget,
+    mode: PostProcessMode,
 ) -> Result<()> {
     // Reserve the snapshot and initial transform cost before cloning any geometry.
     work_budget.charge(post_process_snapshot_ticks(layout))?;
@@ -312,7 +339,10 @@ pub(super) fn post_process(
     // One transaction-wide snapshot keeps resource failures atomic without
     // cloning the complete layout again inside each finalization pass.
     let mut staged = layout.clone();
-    post_process_staged(&mut staged, work_budget)?;
+    post_process_staged(&mut staged, work_budget, mode)?;
+    if matches!(mode, PostProcessMode::LegacyFlow) {
+        work_budget.preflight(0)?;
+    }
     work_budget.finish()?;
     *layout = staged;
     Ok(())
@@ -320,7 +350,7 @@ pub(super) fn post_process(
 
 #[cfg(test)]
 mod resource_tests {
-    use super::{LayoutWorkBudget, finalize_rendered_edges, post_process};
+    use super::{LayoutWorkBudget, PostProcessMode, finalize_rendered_edges, post_process};
     use crate::swimlane::working::{WorkingEdge, WorkingLayout, WorkingNode, WorkingNodeKind};
     use indexmap::IndexMap;
     use merman_render_core::resources::{RenderResourcePolicy, ResourceLimitId};
@@ -493,7 +523,7 @@ mod resource_tests {
         // Start at the legal positive boundary so snapshot cost is rejected before cloning.
         let mut budget = LayoutWorkBudget::new(policy(1), 1).unwrap();
 
-        let error = post_process(&mut layout, &mut budget).unwrap_err();
+        let error = post_process(&mut layout, &mut budget, PostProcessMode::Shared).unwrap_err();
         let merman_render_core::Error::ResourceLimitExceeded(error) = error else {
             panic!("expected max_layout_work_units resource limit error");
         };

@@ -2,8 +2,10 @@
 
 use super::*;
 use line_hops::{LineHopConfig, LineHopEdge, LineHopStyle};
-use merman_render_core::{SwimlaneDirection, SwimlaneLaneLayout};
+use merman_render_core::{LayoutLabel, SwimlaneDirection, SwimlaneLaneLayout};
 use std::collections::HashMap;
+
+use crate::label_rect::LabelRect;
 
 pub(super) fn render_cluster(
     out: &mut impl SvgOutput,
@@ -328,41 +330,29 @@ pub(super) fn render_relationship_label(
                 message: format!("missing prepared Swimlane relationship label {index}"),
             })?;
     let prepared = prepared_label
-        .swimlane()
+        .label_rect()
         .ok_or_else(|| Error::InvalidModel {
             message: format!("missing prepared Swimlane relationship terminal {index}"),
         })?;
     let dom_id = er_edge_dom_id(&edge.id, &model.relationships);
     let label_id = relationship_label_dom_id(edge, &dom_id);
-    let _ = write!(
+    write_relationship_label_rect(out, label, &label_id, prepared, context)
+}
+
+pub(super) fn write_relationship_label_rect(
+    out: &mut impl SvgOutput,
+    label: &LayoutLabel,
+    label_id: &str,
+    prepared: &LabelRect,
+    context: ErSubgraphRenderContext<'_>,
+) -> Result<()> {
+    prepared.write(
         out,
-        r#"<g class="label edgeLabel" id="{}" transform="translate({}, {})"><rect width="0.1" height="0.1"/><g class="label" style="" transform="translate({}, {})"><rect/>"#,
-        escape_attr(&label_id),
-        fmt(label.x + context.translate_x),
-        fmt(label.y + context.translate_y),
-        fmt(-label.width / 2.0),
-        fmt(-label.height / 2.0),
-    );
-    if let Some((fragment, wrapper_style)) = prepared.html() {
-        let _ = write!(
-            out,
-            r#"<foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel">{}</span></div></foreignObject>"#,
-            fmt(label.width),
-            fmt(label.height),
-            html_label_overflow_attr(context.allow_html_label_overflow, label.width, label.height),
-            escape_attr(wrapper_style),
-            fragment,
-        );
-    } else {
-        let lines = prepared.svg_lines().ok_or_else(|| Error::InvalidModel {
-            message: format!("missing prepared Swimlane SVG rows for relationship {index}"),
-        })?;
-        write_er_svg_label_background(out);
-        label::write_svg_text_source_word_lines_with_style(out, lines, "", false, None);
-    }
-    out.push_str("</g></g>");
-    out.checkpoint()?;
-    Ok(())
+        label,
+        label_id,
+        (context.translate_x, context.translate_y),
+        context.allow_html_label_overflow,
+    )
 }
 
 pub(super) fn relationship_label_dom_id(edge: &LayoutEdge, dom_id: &str) -> String {

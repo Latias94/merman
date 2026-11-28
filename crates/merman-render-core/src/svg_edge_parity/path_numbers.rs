@@ -112,6 +112,31 @@ pub fn json_stringify_points_into(
     out.push(']');
 }
 
+#[cfg(feature = "layout-layered")]
+pub fn json_stringify_axis_points_into(
+    out: &mut String,
+    points: &[crate::LayoutPoint],
+    axes: &[crate::route_types::Axis],
+    buf: &mut ryu_js::Buffer,
+) {
+    debug_assert_eq!(points.len(), axes.len());
+    out.push('[');
+    for (index, (point, axis)) in points.iter().zip(axes).enumerate() {
+        if index > 0 {
+            out.push(',');
+        }
+        out.push_str(r#"{"x":"#);
+        out.push_str(js_number_to_string(point.x, buf));
+        out.push_str(r#","y":"#);
+        out.push_str(js_number_to_string(point.y, buf));
+        out.push_str(match axis {
+            crate::route_types::Axis::Horizontal => r#","axis":"h"}"#,
+            crate::route_types::Axis::Vertical => r#","axis":"v"}"#,
+        });
+    }
+    out.push(']');
+}
+
 fn js_number_to_string(mut v: f64, buf: &mut ryu_js::Buffer) -> &str {
     if !v.is_finite() {
         return "0";

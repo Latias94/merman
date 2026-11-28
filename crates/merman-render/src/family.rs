@@ -1122,6 +1122,11 @@ pub(crate) enum BuiltinFamilyArtifact<'parsed> {
     Flowchart(Box<FlowchartFamilyArtifact<'parsed, FlowchartLayout>>),
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     Swimlane(Box<FlowchartFamilyArtifact<'parsed, SwimlaneLayout>>),
+    #[cfg(all(
+        feature = "diagram-swimlane",
+        any(feature = "layout-grid", feature = "layout-layered")
+    ))]
+    SwimlaneFlowchart(Box<FlowchartFamilyArtifact<'parsed, FlowchartLayout>>),
     #[cfg(any(feature = "layout-cytoscape", feature = "layout-shoal"))]
     #[cfg(feature = "diagram-architecture")]
     Architecture(Box<ArchitectureFamilyArtifact<'parsed>>),
@@ -1345,6 +1350,11 @@ impl BuiltinFamilyArtifact<'_> {
             Self::Flowchart(_) => DiagramFamilyId::FLOWCHART,
             #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             Self::Swimlane(_) => DiagramFamilyId::SWIMLANE,
+            #[cfg(all(
+                feature = "diagram-swimlane",
+                any(feature = "layout-grid", feature = "layout-layered")
+            ))]
+            Self::SwimlaneFlowchart(_) => DiagramFamilyId::SWIMLANE,
             #[cfg(any(feature = "layout-cytoscape", feature = "layout-shoal"))]
             #[cfg(feature = "diagram-architecture")]
             Self::Architecture(_) => DiagramFamilyId::ARCHITECTURE,
@@ -1413,6 +1423,13 @@ impl BuiltinFamilyArtifact<'_> {
             Self::Flowchart(artifact) => artifact.svg_label_sidecar().prepared_math_evidence(),
             #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             Self::Swimlane(artifact) => artifact.svg_label_sidecar().prepared_math_evidence(),
+            #[cfg(all(
+                feature = "diagram-swimlane",
+                any(feature = "layout-grid", feature = "layout-layered")
+            ))]
+            Self::SwimlaneFlowchart(artifact) => {
+                artifact.svg_label_sidecar().prepared_math_evidence()
+            }
             #[cfg(feature = "diagram-sequence")]
             Self::Sequence(artifact) => artifact.layout.math_sidecar().prepared_math_evidence(),
             _ => PreparedMathEvidenceLease::default(),
@@ -1463,6 +1480,15 @@ impl BuiltinFamilyArtifact<'_> {
             }
             #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             Self::Swimlane(artifact) => {
+                artifact
+                    .pair
+                    .compatibility_json(metadata, output_context, &control)
+            }
+            #[cfg(all(
+                feature = "diagram-swimlane",
+                any(feature = "layout-grid", feature = "layout-layered")
+            ))]
+            Self::SwimlaneFlowchart(artifact) => {
                 artifact
                     .pair
                     .compatibility_json(metadata, output_context, &control)
@@ -1646,6 +1672,13 @@ impl BuiltinFamilyArtifact<'_> {
             }
             #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             Self::Swimlane(artifact) => LayoutProjection::SwimlaneDiagram(artifact.pair.layout()),
+            #[cfg(all(
+                feature = "diagram-swimlane",
+                any(feature = "layout-grid", feature = "layout-layered")
+            ))]
+            Self::SwimlaneFlowchart(artifact) => {
+                LayoutProjection::Flowchart(project_flowchart_layout(artifact)?)
+            }
             #[cfg(any(feature = "layout-cytoscape", feature = "layout-shoal"))]
             #[cfg(feature = "diagram-architecture")]
             Self::Architecture(artifact) => {
@@ -2160,6 +2193,11 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
                 .shoal
                 .as_ref()
                 .map(|shoal| &shoal.placement),
+            #[cfg(all(
+                feature = "diagram-swimlane",
+                any(feature = "layout-grid", feature = "layout-layered")
+            ))]
+            BuiltinFamilyArtifact::SwimlaneFlowchart(flow) => Some(&flow.pair.layout().placement),
             #[cfg(feature = "diagram-agentflow")]
             BuiltinFamilyArtifact::Agentflow { flow, .. } => Some(&flow.pair.layout().placement),
             #[cfg(all(feature = "layout-shoal", feature = "diagram-architecture"))]
@@ -2551,7 +2589,7 @@ fn project_agentflow_flowchart_config(
 ) -> Result<merman_model::presentation::PresentationConfig> {
     let uses_family_spacing = matches!(
         backend,
-        GraphLayoutBackend::Dagre | GraphLayoutBackend::Shoal
+        GraphLayoutBackend::Dagre | GraphLayoutBackend::Shoal | GraphLayoutBackend::Layered
     );
     merman_render_flow::layout_config::project_agentflow_flowchart_config(
         config,
@@ -2709,6 +2747,12 @@ fn prepare_for<'parsed>(
     )
 ))]
 mod flowchart_layout_tests;
+
+#[cfg(all(test, feature = "diagram-flowchart", feature = "layout-grid"))]
+mod grid_tests;
+
+#[cfg(all(test, feature = "diagram-flowchart", feature = "layout-layered"))]
+mod layered_tests;
 
 #[cfg(all(test, feature = "all-diagrams"))]
 mod tests;

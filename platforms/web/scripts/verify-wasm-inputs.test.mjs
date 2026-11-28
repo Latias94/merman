@@ -11,7 +11,7 @@ import {
   wasmArtifactProfileManifest,
 } from "./wasm-build/build.mjs";
 import { collectArtifactEntries, WASM_ARTIFACT_PROFILE_NAME } from "./wasm-build/input-manifest.mjs";
-import { assertWasmTargetEvidence } from "./wasm-build/targets.mjs";
+import { assertWasmTargetEvidence, fullWasmTargetForProvenance } from "./wasm-build/targets.mjs";
 import { assertAssembledWasm, parseVerificationTargets } from "./wasm-build/verify-cli.mjs";
 import { webPackageDescriptors } from "./wasm-build/web-surface-descriptor.mjs";
 import { WASM_RUNTIME_TOP_LEVEL_FILES } from "./wasm-runtime-files.mjs";
@@ -83,6 +83,69 @@ describe("WASM artifact freshness CLI", () => {
         assert.match(result.stderr, /--local-shoal requires the full package/);
       }
     }
+  });
+
+  it("selects exactly one Mermaid layout in the full Web recipe", () => {
+    const [standard] = parseVerificationTargets([]);
+    for (const layout of ["grid", "layered"]) {
+      const [local] = parseVerificationTargets([`--local-layout=${layout}`, "--assembled"]);
+      const capability = `layout-${layout}`;
+      assert.equal(local.outputDir.relative, path.join("pkg", `full-local-${layout}`));
+      assert.deepEqual(local.localArgs, ["--local-layout", layout]);
+      assert.deepEqual(local.profile, {
+        ...standard.profile,
+        name: `web-full-local-${layout}`,
+        features: [...standard.profile.features, capability].sort(),
+        runtime_capability_ids: [...standard.profile.runtime_capability_ids, capability].sort(),
+      });
+    }
+  });
+
+  it("rejects invalid or ambiguous local layouts before starting a build", () => {
+    for (const args of [
+      ["--local-layout"],
+      ["--local-layout", "shoal"],
+      ["--local-layout", "grid,layered"],
+      ["--local-layout", "grid", "--local-layout=layered"],
+      ["--local-layout", "grid", "--package", "full", "--package=render"],
+      ["--local-layout", "grid", "--local-shoal"],
+      ["--local-layout", "grid", "--all-packages"],
+      ["--local-layout", "layered", "--package", "render"],
+    ]) {
+      assert.throws(() => parseVerificationTargets(args), /--local-layout/u);
+    }
+    for (const [script, prefix] of [
+      ["./build-wasm.mjs", []],
+      ["./build-surface-packages.mjs", ["--assemble"]],
+      ["./verify-wasm-inputs.mjs", []],
+    ]) {
+      const result = spawnSync(
+        process.execPath,
+        [fileURLToPath(new URL(script, import.meta.url)), ...prefix, "--local-layout", "grid", "--all-packages"],
+        { encoding: "utf8" },
+      );
+      assert.equal(result.status, 2, result.stderr);
+      assert.match(result.stderr, /--local-layout requires the full package/u);
+    }
+  });
+
+  it("selects the assembled full target by exact profile and catalog IDs", () => {
+    const targets = [[], ["--local-shoal"], ["--local-layout", "grid"], ["--local-layout", "layered"]]
+      .map((args) => parseVerificationTargets(args)[0]);
+    for (const target of targets) {
+      const provenance = {
+        artifact_profile: target.profile.name,
+        runtime_capability_ids: target.profile.runtime_capability_ids,
+        outputs: target.profile.runtime_output_ids,
+      };
+      assert.deepEqual(fullWasmTargetForProvenance(provenance), target);
+    }
+    const [, , grid, layered] = targets;
+    assert.throws(() => fullWasmTargetForProvenance({
+      artifact_profile: grid.profile.name,
+      runtime_capability_ids: layered.profile.runtime_capability_ids,
+      outputs: grid.profile.runtime_output_ids,
+    }), /does not match a known WASM target/u);
   });
 
   it("checks both manifests and rejects assembled bytes from a different build", (context) => {

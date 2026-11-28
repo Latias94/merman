@@ -25,6 +25,7 @@ pub(super) fn write_css(
     binding: &UsecaseCssBinding,
     config: &merman_model::presentation::PresentationConfig,
     canonical: bool,
+    mermaid_grid_label_font: bool,
 ) -> Result<()> {
     let UsecaseCssBinding {
         main,
@@ -70,6 +71,16 @@ pub(super) fn write_css(
             "#{id} .usecase-json-title,#{id} .usecase-json-key,#{id} .usecase-json-value,#{id} .usecase-json-table text{{stroke:none}}"
         );
     }
+    #[cfg(feature = "layout-grid")]
+    if mermaid_grid_label_font {
+        let _ = write!(
+            css,
+            "#{id} .nodes>.label.edgeLabel{{font-size:{}px;font-weight:normal}}",
+            super::super::grid::MERMAID_EDGE_LABEL_FONT_SIZE
+        );
+    }
+    #[cfg(not(feature = "layout-grid"))]
+    let _ = mermaid_grid_label_font;
     for (index, color) in binding.palette.iter().enumerate() {
         let fill = if binding.backgrounds.is_empty() {
             String::new()

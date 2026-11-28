@@ -9,6 +9,7 @@ pub(super) fn write_class_svg_document(
     aria_roledescription: &str,
     root_context: &root_svg::RootViewportContext<'_>,
     viewport: root_svg::RootViewportSpec,
+    extra_attrs: &[(&str, &str)],
 ) -> merman_render_core::Result<root_svg::RootDocument> {
     let has_acc_title = model
         .model()
@@ -25,6 +26,7 @@ pub(super) fn write_class_svg_document(
     let aria_describedby = has_acc_descr.then(|| format!("chart-desc-{diagram_id}"));
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, aria_roledescription);
     root_chrome.class = Some("classDiagram");
+    root_chrome.extra_attrs = extra_attrs;
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
     root_chrome.aria_describedby = aria_describedby.as_deref();
     root_chrome.dom.trailing_newline = false;

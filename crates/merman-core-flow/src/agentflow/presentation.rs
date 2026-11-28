@@ -120,6 +120,7 @@ impl Parser<'_> {
                         syntax_shape: None,
                         metadata: Map::new(),
                         metadata_span: None,
+                        grid_nonfinite: Default::default(),
                         authored_shape: None,
                         class: None,
                     });

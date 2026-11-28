@@ -25,13 +25,16 @@ pub use terminal::{
 
 use std::{borrow::Cow, sync::Arc};
 
+use merman_model::OperationPhase;
 use merman_render_core::resources::{
-    OperationWorkMeter, PreparedTextRetainedReservation, ResourceLimitExceeded,
+    OperationWorkError, OperationWorkMeter, PreparedTextRetainedReservation, ResourceLimitExceeded,
 };
 use merman_render_core::text::{
     TextMeasurer, TextMetrics, TextStyle,
     inline_html::{MermaidMarkdownWordType, SvgTextEntityMode},
-    literal_label::{FlowchartSvgLabelSource, FlowchartSvgWidthMode},
+    literal_label::{
+        FlowchartSvgLabelSource, FlowchartSvgWidthMode, flowchart_svg_label_rows_heap_bytes,
+    },
     measure_svg_markdown_word_lines,
     measurement::{MeasurementReuseKey, TextMeasurementOperation, measurement_reuse_key},
 };
@@ -176,8 +179,8 @@ impl<'a> FlowchartSvgLabelBindingRequest<'a> {
         self.wrapped_key.is_some()
     }
 
-    fn into_owned(self) -> Option<FlowchartSvgLabelBinding> {
-        self.is_reusable().then(|| FlowchartSvgLabelBinding {
+    fn into_owned(self) -> FlowchartSvgLabelBinding {
+        FlowchartSvgLabelBinding {
             wrap_style: FlowchartSvgTextStyleKey::new(self.wrap_style),
             metrics_style: FlowchartSvgTextStyleKey::new(self.metrics_style),
             max_width_bits: self.max_width_bits,
@@ -185,7 +188,7 @@ impl<'a> FlowchartSvgLabelBindingRequest<'a> {
             width_mode: self.width_mode,
             computed_length_key: self.computed_length_key,
             wrapped_key: self.wrapped_key,
-        })
+        }
     }
 }
 
@@ -231,6 +234,7 @@ pub struct PreparedFlowchartSvgLabel {
     binding: FlowchartSvgLabelBinding,
     wrapped_lines: Vec<Vec<String>>,
     metrics: TextMetrics,
+    _retained_reservation: Option<PreparedTextRetainedReservation>,
 }
 
 /// An SVG source projection with its original spelling for occurrence matching.
@@ -238,14 +242,33 @@ pub struct PreparedFlowchartSvgLabel {
 pub struct FlowchartSvgLabelSourceEntry {
     raw_source: Box<str>,
     source: FlowchartSvgLabelSource,
+    _retained_reservation: Option<PreparedTextRetainedReservation>,
 }
 
 impl FlowchartSvgLabelSourceEntry {
-    pub fn new(raw_source: &str) -> Self {
-        Self {
+    fn owner_bytes(raw_source: &str) -> usize {
+        std::mem::size_of::<Self>()
+            .saturating_add(FLOWCHART_PREPARED_OWNER_SLOT_BYTES)
+            .saturating_add(raw_source.len())
+    }
+
+    fn prepare(
+        raw_source: &str,
+        work: Option<&Arc<OperationWorkMeter>>,
+    ) -> Result<Self, OperationWorkError> {
+        let source = FlowchartSvgLabelSource::new(raw_source);
+        let reservation = if let Some(work) = work {
+            work.checkpoint(OperationPhase::Layout)?;
+            let bytes = Self::owner_bytes(raw_source).saturating_add(source.retained_heap_bytes());
+            Some(work.reserve_prepared_text_retained_bytes(bytes)?)
+        } else {
+            None
+        };
+        Ok(Self {
             raw_source: raw_source.into(),
-            source: FlowchartSvgLabelSource::new(raw_source),
-        }
+            source,
+            _retained_reservation: reservation,
+        })
     }
 
     pub fn matches(&self, raw_source: &str) -> bool {
@@ -366,11 +389,36 @@ impl MeasuredFlowchartSvgLabel<'_> {
         self.metrics
     }
 
-    pub fn into_prepared(self) -> Option<PreparedFlowchartSvgLabel> {
-        Some(PreparedFlowchartSvgLabel {
-            binding: self.binding.into_owned()?,
+    fn into_prepared(
+        self,
+        work: Option<&Arc<OperationWorkMeter>>,
+    ) -> Result<Option<PreparedFlowchartSvgLabel>, OperationWorkError> {
+        if let Some(work) = work {
+            // The infallible measurement surface may have observed a terminal while building
+            // the rows. Replay it before a later retention failure, including on opaque routes.
+            work.checkpoint(OperationPhase::Layout)?;
+        }
+        if !self.binding.is_reusable() {
+            return Ok(None);
+        }
+        let reservation = if let Some(work) = work {
+            let mut bytes = std::mem::size_of::<PreparedFlowchartSvgLabel>()
+                .saturating_add(FLOWCHART_PREPARED_OWNER_SLOT_BYTES)
+                .saturating_add(flowchart_svg_label_rows_heap_bytes(&self.wrapped_lines));
+            for style in [self.binding.wrap_style, self.binding.metrics_style] {
+                for value in [&style.font_family, &style.font_weight, &style.font_style] {
+                    bytes = bytes.saturating_add(value.as_ref().map_or(0, String::len));
+                }
+            }
+            Some(work.reserve_prepared_text_retained_bytes(bytes)?)
+        } else {
+            None
+        };
+        Ok(Some(PreparedFlowchartSvgLabel {
+            binding: self.binding.into_owned(),
             wrapped_lines: self.wrapped_lines,
             metrics: self.metrics,
-        })
+            _retained_reservation: reservation,
+        }))
     }
 }

@@ -181,6 +181,15 @@ fn validate_family_context(
 ) -> OperationControlResult<Result<(), PresentationDataError>> {
     control.checkpoint()?;
     match (model, context) {
+        #[cfg(feature = "diagram-agentflow")]
+        (RenderSemanticModel::Agentflow(model), _) => {
+            if let Err(message) = model.validate_grid_placements_controlled(control)? {
+                return Ok(Err(PresentationDataError::FamilyContext {
+                    family: "agentflow",
+                    message,
+                }));
+            }
+        }
         #[cfg(any(
             feature = "diagram-flowchart",
             feature = "diagram-swimlane",

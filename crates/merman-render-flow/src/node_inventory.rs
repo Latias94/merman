@@ -16,6 +16,7 @@ use merman_render_core::{
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::svg::FlowchartLayoutDom;
 use crate::{
     class_style::{
         FlowchartClassDefinitions, FlowchartLabelDom, FlowchartStructuralLabelTypography,
@@ -39,7 +40,7 @@ use crate::{
     svg_label::{FlowchartNodeSourceTypography, FlowchartSvgLabelSidecar},
     theme::FlowchartPreparedTheme,
 };
-use order::{FlowchartDomCandidateBuckets, flowchart_dom_order_for_root, flowchart_elk_dom_order};
+use order::{FlowchartDomCandidateBuckets, flowchart_dom_order_for_root, flowchart_flat_dom_order};
 
 mod order;
 
@@ -52,7 +53,7 @@ pub enum FlowchartNodeLayoutView<'a> {
         dom_node_order_by_root: &'a std::collections::HashMap<String, Vec<String>>,
         edge_owners: &'a FlowchartEdgeOwners,
         solved_parents: Option<&'a [Option<u32>]>,
-        uses_elk_adapter_dom: bool,
+        dom: FlowchartLayoutDom,
         uses_projected_edges: bool,
         canonical: bool,
     },
@@ -67,13 +68,10 @@ pub enum FlowchartNodeLayoutView<'a> {
 
 impl FlowchartNodeLayoutView<'_> {
     pub const fn uses_elk_adapter_dom(self) -> bool {
-        matches!(
-            self,
-            Self::Flowchart {
-                uses_elk_adapter_dom: true,
-                ..
-            }
-        )
+        match self {
+            Self::Flowchart { dom, .. } => dom.is_elk(),
+            Self::Swimlane { .. } => false,
+        }
     }
 
     pub const fn is_swimlane(self) -> bool {
@@ -131,7 +129,7 @@ pub(super) struct FlowchartNodeInventoryInput<'a> {
     pub(super) dom_node_order_by_root:
         std::borrow::Cow<'a, std::collections::HashMap<String, Vec<String>>>,
     pub(super) node_dom_index: FxHashMap<&'a str, usize>,
-    pub(super) uses_elk_adapter_dom: bool,
+    pub(super) uses_flat_adapter_dom: bool,
     subgraph_ids_with_children: FxHashSet<&'a str>,
     pub(super) work_meter: &'a OperationWorkMeter,
 }
@@ -196,13 +194,13 @@ impl<'a> FlowchartNodeInventoryInput<'a> {
             layout_clusters_by_id,
             dom_node_order_by_root,
             recursive_clusters,
-            uses_elk_adapter_dom,
+            uses_flat_adapter_dom,
         ) = match layout {
             FlowchartNodeLayoutView::Flowchart {
                 nodes,
                 clusters,
                 dom_node_order_by_root,
-                uses_elk_adapter_dom,
+                dom,
                 ..
             } => (
                 nodes
@@ -219,7 +217,7 @@ impl<'a> FlowchartNodeInventoryInput<'a> {
                     .filter(|id| !id.is_empty())
                     .map(String::as_str)
                     .collect(),
-                uses_elk_adapter_dom,
+                dom.is_flat(),
             ),
             FlowchartNodeLayoutView::Swimlane {
                 nodes,
@@ -308,7 +306,7 @@ impl<'a> FlowchartNodeInventoryInput<'a> {
             layout_clusters_by_id,
             dom_node_order_by_root,
             node_dom_index,
-            uses_elk_adapter_dom,
+            uses_flat_adapter_dom,
             subgraph_ids_with_children,
             work_meter,
         }
@@ -740,7 +738,7 @@ fn prepared_cluster_ids(
         .iter()
         .map(|(id, _)| id.as_str())
         .collect::<FxHashSet<_>>();
-    if input.uses_elk_adapter_dom {
+    if input.uses_flat_adapter_dom {
         ids.extend(
             input
                 .dom_node_order_by_root
@@ -809,8 +807,8 @@ fn prepare_flowchart_node_root_schedule(
         ctx.work_meter,
     )?;
     let mut candidates = FlowchartDomCandidateBuckets::prepare(ctx, &effective_parents)?;
-    let order = if ctx.uses_elk_adapter_dom {
-        FlowchartNodeRootOrder::flat(flowchart_elk_dom_order(ctx, candidates.take(None))?)
+    let order = if ctx.uses_flat_adapter_dom {
+        FlowchartNodeRootOrder::flat(flowchart_flat_dom_order(ctx, candidates.take(None))?)
     } else {
         FlowchartNodeRootOrder::prepare_nested(
             &ctx.subgraphs_by_id,

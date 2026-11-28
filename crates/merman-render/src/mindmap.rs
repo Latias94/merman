@@ -28,6 +28,15 @@ pub(crate) fn prepare(
     let unavailable = || selected.unavailable_for("mindmap");
     let backend = match selected {
         GraphLayoutBackend::TidyTree => MindmapLayoutBackend::TidyTree,
+        #[cfg(feature = "layout-grid")]
+        GraphLayoutBackend::Grid => MindmapLayoutBackend::Grid,
+        #[cfg(feature = "layout-layered")]
+        GraphLayoutBackend::Layered => MindmapLayoutBackend::Layered {
+            allow_dagre_retry: execution
+                .family
+                .session()
+                .supports_capability(crate::RenderCapability::LayoutDagre),
+        },
         GraphLayoutBackend::Swimlane => MindmapLayoutBackend::Swimlane(solve_swimlane),
         #[cfg(feature = "layout-dagre")]
         GraphLayoutBackend::Dagre => MindmapLayoutBackend::Dagre,

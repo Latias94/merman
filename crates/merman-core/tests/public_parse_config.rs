@@ -202,7 +202,11 @@ fn mindmap_compatibility_projection_retains_the_final_layout_selection() {
     for (site, prefix, expected) in [
         (json!({}), "", json!("cose-bilkent")),
         (json!({"layout": "dagre"}), "", json!("dagre")),
-        (json!({"mindmap": {"layout": "elk"}}), "", json!("elk")),
+        (
+            json!({"mindmap": {"layout": "elk"}}),
+            "",
+            json!("cose-bilkent"),
+        ),
         (
             json!({"layout": "elk"}),
             "---\nconfig:\n  layout: dagre\n---\n",

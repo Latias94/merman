@@ -112,11 +112,11 @@ impl<'plan, 'data> FlowchartGraph<'plan, 'data> {
             timing,
             details,
         };
-        if self.hierarchy.uses_elk_adapter_dom {
+        if self.hierarchy.uses_flat_adapter_dom {
             out.checkpoint()?;
             self.markers.push_extra_markers(out)?;
             out.checkpoint()?;
-            return self.write_elk(out, &mut emission);
+            return self.write_flat(out, &mut emission);
         }
 
         if self.has_depth {
@@ -346,13 +346,13 @@ impl<'plan, 'data> FlowchartGraph<'plan, 'data> {
         edges: &[FlowchartRenderEdgeRef<'_>],
         origin: (f64, f64),
     ) -> Result<()> {
-        let elk = self.hierarchy.uses_elk_adapter_dom;
-        if elk {
+        let flat = self.hierarchy.uses_flat_adapter_dom;
+        if flat {
             self.checkpoint_emit()?;
         }
         emission.paint.prepare_edges(edges)?;
         let _edge_paths_timer = emission.timing.section(&mut emission.details.edge_paths);
-        if elk {
+        if flat {
             if edges.is_empty() {
                 out.push_str(r#"<g class="edges edgePaths"/>"#);
                 return out.checkpoint();
@@ -379,13 +379,13 @@ impl<'plan, 'data> FlowchartGraph<'plan, 'data> {
             out.checkpoint()?;
         }
         out.push_str("</g>");
-        if elk {
+        if flat {
             out.checkpoint()?;
         }
         Ok(())
     }
 
-    fn write_elk<S: SvgOutput>(
+    fn write_flat<S: SvgOutput>(
         &self,
         out: &mut S,
         emission: &mut GraphEmission<'_, '_, '_>,
@@ -393,9 +393,9 @@ impl<'plan, 'data> FlowchartGraph<'plan, 'data> {
         self.checkpoint_emit()?;
         emission.details.root_calls += 1;
 
-        // Mermaid's ELK adapter groups the flat layout under one `.root` wrapper.
+        // The common Mermaid layout renderer groups the flat layout under one `.root` wrapper.
         out.push_str(r#"<g class="root">"#);
-        self.write_elk_subgraphs(
+        self.write_flat_subgraphs(
             out,
             emission,
             if self.has_depth {
@@ -413,7 +413,7 @@ impl<'plan, 'data> FlowchartGraph<'plan, 'data> {
             }
             out.push_str("</g>");
             out.checkpoint()?;
-            self.write_elk_subgraphs(out, emission, FlowchartClusterPass::Label)?;
+            self.write_flat_subgraphs(out, emission, FlowchartClusterPass::Label)?;
         }
 
         let edges_select = emission.timing.section(&mut emission.details.edges_select);
@@ -424,6 +424,12 @@ impl<'plan, 'data> FlowchartGraph<'plan, 'data> {
 
         self.checkpoint_emit()?;
         let edge_labels_timer = emission.timing.section(&mut emission.details.edge_labels);
+        #[cfg(feature = "layout-grid")]
+        let edges = if emission.paint.paints_grid_edge_label_nodes() {
+            &[]
+        } else {
+            edges
+        };
         write_elk_edge_labels(
             out,
             edges,
@@ -433,13 +439,13 @@ impl<'plan, 'data> FlowchartGraph<'plan, 'data> {
         )?;
         drop(edge_labels_timer);
 
-        self.write_elk_nodes(out, emission)?;
+        self.write_flat_nodes(out, emission)?;
         self.step_badges.write_root(out, None)?;
         out.push_str("</g>");
         out.checkpoint()
     }
 
-    fn write_elk_subgraphs<S: SvgOutput>(
+    fn write_flat_subgraphs<S: SvgOutput>(
         &self,
         out: &mut S,
         emission: &mut GraphEmission<'_, '_, '_>,
@@ -465,7 +471,7 @@ impl<'plan, 'data> FlowchartGraph<'plan, 'data> {
         out.checkpoint()
     }
 
-    fn write_elk_nodes<S: SvgOutput>(
+    fn write_flat_nodes<S: SvgOutput>(
         &self,
         out: &mut S,
         emission: &mut GraphEmission<'_, '_, '_>,
@@ -479,7 +485,7 @@ impl<'plan, 'data> FlowchartGraph<'plan, 'data> {
 
         for &id in dom_order {
             self.checkpoint_emit()?;
-            // The flat ELK adapter paints subgraphs as clusters, including empty ones.
+            // Flat adapters paint subgraphs as clusters, including empty ones.
             if self.subgraphs_by_id.contains_key(id) && !self.model.is_subgraph_collapsed(id) {
                 continue;
             }
@@ -491,6 +497,14 @@ impl<'plan, 'data> FlowchartGraph<'plan, 'data> {
             if let Some(start) = node_start {
                 emission.details.nodes += start.elapsed();
             }
+        }
+
+        #[cfg(feature = "layout-grid")]
+        if emission.paint.paints_grid_edge_label_nodes() {
+            let _timer = emission.timing.section(&mut emission.details.edge_labels);
+            emission
+                .paint
+                .write_grid_edge_label_nodes(out, self.hierarchy.ordered_edges())?;
         }
 
         out.push_str("</g>");

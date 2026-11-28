@@ -283,3 +283,20 @@ started from the same compiled module, SHA-256
 The optimized artifact passed package validation. Typst 0.15.1 compiled all 25 smoke fixtures
 and produced the nine expected failure diagnostics. Linux CI verifies the same recipe on its
 own module. The measurements cover artifact size only.
+
+## Mermaid layout integration, 2026-11-28
+
+The Linux Typst publish recipe produced the following sizes at `f75f1e960`. The
+three published-artifact ceilings use 3% headroom, rounded up to 1,000 bytes.
+[PR 385 Typst job](https://github.com/Latias94/merman/actions/runs/46087388251/job/140800155737)
+
+| Metric | Linux measurement | Previous ceiling | Selected ceiling |
+| --- | ---: | ---: | ---: |
+| Raw | 23,395,531 | 24,000,000 | 24,000,000 |
+| Stripped | 11,607,733 | 11,676,000 | 11,956,000 |
+| Gzip | 4,509,235 | 4,485,000 | 4,645,000 |
+| Brotli | 3,284,952 | 3,318,000 | 3,384,000 |
+
+The job completed artifact optimization and reached the size gate before the
+package verification and runtime smoke. The publish recipe keeps the existing
+feature set and compression settings.

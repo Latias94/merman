@@ -16,6 +16,13 @@ use rustc_hash::FxBuildHasher;
 use std::borrow::Cow;
 use std::hash::Hash;
 
+pub(crate) fn first_label_rect_style<'a>(
+    defaults: &'a [String],
+    edge: &'a [String],
+) -> Option<&'a String> {
+    defaults.first().or_else(|| edge.first())
+}
+
 fn parse_style_decl(s: &str) -> Option<(&str, &str, bool)> {
     let parsed = mermaid_style::parse_style_declaration(s)?;
     Some((parsed.property_source(), parsed.value(), parsed.important()))
@@ -572,7 +579,7 @@ fn flowchart_swimlane_label_rect_text_style_with_provenance<'a>(
     default_edge_styles: &[String],
     edge_styles: &[String],
 ) -> FlowchartTextStyleResolution<'a> {
-    let Some(first_style) = default_edge_styles.first().or_else(|| edge_styles.first()) else {
+    let Some(first_style) = first_label_rect_style(default_edge_styles, edge_styles) else {
         return FlowchartTextStyleResolution::borrowed(base);
     };
 

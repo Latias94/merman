@@ -106,6 +106,28 @@ impl<'a> RequirementConfigView<'a> {
         config_diagram_look(self.effective_config)
     }
 
+    #[cfg(feature = "layout-layered")]
+    pub(super) fn flowchart_curve(&self) -> &str {
+        self.effective_config
+            .pointer("/flowchart/curve")
+            .and_then(Value::as_str)
+            .unwrap_or("basis")
+    }
+
+    #[cfg(feature = "layout-layered")]
+    pub(super) fn layered_edge_label_y_offset(&self) -> f64 {
+        let margins = self
+            .effective_config
+            .pointer("/flowchart/subGraphTitleMargin");
+        let [top, bottom] = ["top", "bottom"].map(|side| {
+            margins
+                .and_then(|margin| margin.get(side))
+                .and_then(Value::as_f64)
+                .unwrap_or(0.0)
+        });
+        (top + bottom) / 2.0
+    }
+
     pub fn canonical_stroke_width(&self) -> f64 {
         if self.look().is_neo() {
             merman_render_core::config::config_f64_css_absolute_px(

@@ -10,6 +10,8 @@ pub(crate) enum GraphLayoutBackend {
     Native,
     Dagre,
     Elk(ElkRootAlgorithm),
+    Grid,
+    Layered,
     CoseBilkent,
     Shoal,
     Swimlane,
@@ -32,6 +34,8 @@ impl GraphLayoutBackend {
                 ElkRootAlgorithm::Rectpacking => "elk.rectpacking",
             },
             Self::CoseBilkent => "cytoscape",
+            Self::Grid => "grid",
+            Self::Layered => "layered",
             Self::Shoal => "shoal",
             Self::Swimlane => "swimlane",
             Self::TidyTree => "tidy-tree",
@@ -43,6 +47,8 @@ impl GraphLayoutBackend {
             Self::Native | Self::Swimlane | Self::TidyTree => None,
             Self::Dagre => Some(RenderCapability::LayoutDagre),
             Self::Elk(_) => Some(RenderCapability::LayoutElk),
+            Self::Grid => Some(RenderCapability::LayoutGrid),
+            Self::Layered => Some(RenderCapability::LayoutLayered),
             Self::CoseBilkent => Some(RenderCapability::LayoutCytoscape),
             Self::Shoal => Some(RenderCapability::LayoutShoal),
         }
@@ -122,6 +128,27 @@ fn requested_layout(config: &(impl ConfigLookup + ?Sized)) -> &str {
     config.get("layout").and_then(Value::as_str).unwrap_or("")
 }
 
+fn explicit_mermaid_layout(family: DiagramFamilyId, requested: &str) -> Option<&'static str> {
+    let backend = match requested {
+        "grid" => "grid",
+        "layered" => "layered",
+        _ => return None,
+    };
+    matches!(
+        family,
+        DiagramFamilyId::AGENTFLOW
+            | DiagramFamilyId::CLASS
+            | DiagramFamilyId::ER
+            | DiagramFamilyId::FLOWCHART
+            | DiagramFamilyId::MINDMAP
+            | DiagramFamilyId::REQUIREMENT
+            | DiagramFamilyId::STATE
+            | DiagramFamilyId::SWIMLANE
+            | DiagramFamilyId::USECASE
+    )
+    .then_some(backend)
+}
+
 /// A fixed backend is the family route when the benchmark site option has no effect.
 /// Unavailable or rejected selectable backends must go through normal admission.
 #[cfg(feature = "benchmark-stages")]
@@ -131,6 +158,9 @@ pub(crate) fn benchmark_fixed_layout(
 ) -> Option<GraphLayoutBackend> {
     use GraphLayoutBackend as Backend;
 
+    if explicit_mermaid_layout(family, requested).is_some() {
+        return None;
+    }
     match family {
         DiagramFamilyId::AGENTFLOW
         | DiagramFamilyId::CLASS
@@ -162,6 +192,16 @@ pub(crate) fn resolve(
     use GraphLayoutBackend as Backend;
 
     let requested = requested_layout(config);
+    if let Some(backend) = explicit_mermaid_layout(family, requested) {
+        return match backend {
+            "grid" if crate::layout_grid_available() => Ok(Backend::Grid),
+            "layered" if crate::layout_layered_available() => Ok(Backend::Layered),
+            _ => Err(Error::UnsupportedLayoutBackend {
+                backend,
+                diagram_type: diagram_type.to_owned(),
+            }),
+        };
+    }
     if requested == "shoal" {
         match family {
             DiagramFamilyId::ARCHITECTURE
@@ -301,6 +341,49 @@ mod tests {
             assert_eq!(
                 cose.required_capability(),
                 Some(RenderCapability::LayoutCytoscape)
+            );
+        }
+    }
+
+    #[test]
+    fn mermaid_layouts_apply_only_to_families_with_registered_adapters() {
+        for requested in ["grid", "layered"] {
+            let config = json!({"layout": requested});
+            for (family, diagram_type) in [
+                (DiagramFamilyId::AGENTFLOW, "agentflow"),
+                (DiagramFamilyId::CLASS, "classDiagram"),
+                (DiagramFamilyId::ER, "er"),
+                (DiagramFamilyId::FLOWCHART, "flowchart-v2"),
+                (DiagramFamilyId::MINDMAP, "mindmap"),
+                (DiagramFamilyId::REQUIREMENT, "requirement"),
+                (DiagramFamilyId::STATE, "stateDiagram"),
+                (DiagramFamilyId::SWIMLANE, "swimlane"),
+                (DiagramFamilyId::USECASE, "usecase"),
+            ] {
+                let available = match requested {
+                    "grid" if crate::layout_grid_available() => Some(Backend::Grid),
+                    "layered" if crate::layout_layered_available() => Some(Backend::Layered),
+                    _ => None,
+                };
+                if let Some(backend) = available {
+                    assert_eq!(resolve(family, diagram_type, &config).unwrap(), backend);
+                    continue;
+                }
+                assert!(matches!(
+                    resolve(family, diagram_type, &config),
+                    Err(Error::UnsupportedLayoutBackend { backend, diagram_type: actual })
+                        if backend == requested && actual == diagram_type
+                ));
+                #[cfg(feature = "benchmark-stages")]
+                assert_eq!(benchmark_fixed_layout(family, requested), None);
+            }
+            assert_eq!(
+                resolve(DiagramFamilyId::ARCHITECTURE, "architecture", &config).unwrap(),
+                Backend::CoseBilkent
+            );
+            assert_eq!(
+                resolve(DiagramFamilyId::BLOCK, "block", &config).unwrap(),
+                Backend::Native
             );
         }
     }

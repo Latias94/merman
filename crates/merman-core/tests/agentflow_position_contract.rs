@@ -100,3 +100,46 @@ fn agentflow_positions_skip_bom_and_count_unicode_as_utf16() {
     assert_eq!(diagnostics[0]["position"]["startIndex"], 0);
     assert_eq!(diagnostics[0]["position"]["endIndex"], 0);
 }
+
+#[cfg(feature = "editor-facts")]
+#[test]
+fn agentflow_header_and_standalone_node_keep_distinct_original_spans() {
+    use merman_core::{EditorExpectedSyntaxKind, EditorSemanticRole, ParsedEditorFacts};
+    use merman_model::source::SourceSpan;
+
+    for prefix in ["\u{feff}", "---\r\ntitle: Before\r\n---\r\n"] {
+        let source =
+            format!("{prefix}%% 前置 agentflow\r\n \tagentflow\r\n  agentflow %% body\r\n  B");
+        let snapshot = MermaidEngine::new()
+            .parse_diagram_snapshot_sync(&source)
+            .unwrap()
+            .unwrap();
+        let DiagramParseOutcome::Parsed { model, .. } = snapshot.outcome() else {
+            panic!("Agentflow source should parse for {prefix:?}");
+        };
+        assert_eq!(model["vertices"][0]["id"], "agentflow");
+        assert_eq!(model["vertices"][1]["id"], "B");
+
+        let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+            panic!("expected Agentflow editor facts for {prefix:?}");
+        };
+        let header_start = source.find("\tagentflow\r\n").unwrap() + 1;
+        let header_span = SourceSpan::new(header_start, header_start + "agentflow".len());
+        assert!(facts.expected_syntax.iter().any(|expected| {
+            expected.kind == EditorExpectedSyntaxKind::NodeIdentifier
+                && expected.span == header_span
+        }));
+
+        let node_start = source.find("agentflow %% body").unwrap();
+        let node_span = SourceSpan::new(node_start, node_start + "agentflow".len());
+        assert_eq!(
+            facts
+                .symbols
+                .iter()
+                .filter(|symbol| symbol.name == "agentflow")
+                .map(|symbol| (symbol.role, symbol.selection))
+                .collect::<Vec<_>>(),
+            [(EditorSemanticRole::Entity, node_span)],
+        );
+    }
+}

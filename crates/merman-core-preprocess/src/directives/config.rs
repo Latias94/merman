@@ -1,5 +1,10 @@
 //! Bounded decoding of Mermaid directive bodies.
 
+#[cfg(feature = "yaml")]
+use crate::yaml::grid_config;
+#[cfg(not(feature = "yaml"))]
+#[path = "../grid_config.rs"]
+mod grid_config;
 #[cfg(feature = "yaml-editor")]
 mod json5_evidence;
 mod json5_value;
@@ -13,6 +18,7 @@ use super::{
 };
 use crate::scan::config::config_nesting_exceeds_limit_controlled;
 use crate::scan::controlled::{ControlledScanCheckpoints, push_str_controlled};
+use grid_config::GridPlacementsSource;
 use merman_model::json::drop_value_nonrecursive;
 use merman_model::{MAX_DIAGRAM_NESTING_DEPTH, OperationControl, OperationControlResult};
 use serde_json::Value;
@@ -25,6 +31,8 @@ use std::ops::Range;
 pub struct DecodedDirective {
     pub ty: String,
     pub args: Option<Value>,
+    /// Grid placement order and key ranges relative to the raw directive body.
+    pub grid_placements: Option<GridPlacementsSource>,
     #[cfg(feature = "yaml-editor")]
     pub keyword_span: Range<usize>,
     #[cfg(feature = "yaml-editor")]
@@ -157,6 +165,7 @@ fn parse_directive_capture_controlled(
             directive: Some(DecodedDirective {
                 ty,
                 args: None,
+                grid_placements: None,
                 keyword_span,
                 config_keys: Vec::new(),
                 rewrite_safe: false,
@@ -172,6 +181,7 @@ fn parse_directive_capture_controlled(
     let mut rewrite_safe = true;
     #[cfg(feature = "yaml-editor")]
     let mut arguments_complete = true;
+    let mut grid_placements = None;
 
     let args = match argument {
         Some(DirectiveArgument::Structured {
@@ -185,6 +195,7 @@ fn parse_directive_capture_controlled(
                     directive: Some(DecodedDirective {
                         ty,
                         args: None,
+                        grid_placements: None,
                         #[cfg(feature = "yaml-editor")]
                         keyword_span,
                         #[cfg(feature = "yaml-editor")]
@@ -204,6 +215,7 @@ fn parse_directive_capture_controlled(
                     directive: Some(DecodedDirective {
                         ty,
                         args: None,
+                        grid_placements: None,
                         #[cfg(feature = "yaml-editor")]
                         keyword_span,
                         #[cfg(feature = "yaml-editor")]
@@ -221,10 +233,13 @@ fn parse_directive_capture_controlled(
             checkpoints.finish()?;
             let captured = parse_directive_config_value_controlled(
                 rest,
+                raw,
+                matches!(ty.as_str(), "init" | "initialize"),
                 #[cfg(feature = "yaml-editor")]
                 capture_keys,
                 control,
             )?;
+            grid_placements = captured.grid_placements;
             #[cfg(feature = "yaml-editor")]
             {
                 arguments_complete = captured.value.is_some();
@@ -264,6 +279,7 @@ fn parse_directive_capture_controlled(
         directive: Some(DecodedDirective {
             ty,
             args,
+            grid_placements,
             #[cfg(feature = "yaml-editor")]
             keyword_span,
             #[cfg(feature = "yaml-editor")]
@@ -279,6 +295,7 @@ fn parse_directive_capture_controlled(
 
 struct DirectiveConfigCapture {
     value: Option<Value>,
+    grid_placements: Option<GridPlacementsSource>,
     #[cfg(feature = "yaml-editor")]
     keys: Vec<Json5ConfigKeyEvidence>,
     #[cfg(feature = "yaml-editor")]
@@ -287,41 +304,61 @@ struct DirectiveConfigCapture {
 
 fn parse_directive_config_value_controlled(
     input: &str,
+    raw: &str,
+    capture_grid: bool,
     #[cfg(feature = "yaml-editor")] capture_keys: bool,
     control: &OperationControl,
 ) -> OperationControlResult<DirectiveConfigCapture> {
     control.checkpoint()?;
     // `json5` has no cancellation hook. The caller enforces a hard input and nesting bound, so
     // this is a bounded atomic parser region rather than an unbounded cancellation gap.
-    let captured = {
+    let mut captured = {
         #[cfg(feature = "yaml-editor")]
         {
             if capture_keys {
-                let captured = json5_evidence::parse_json5_config(input);
+                let captured = json5_evidence::parse_json5_config(input, capture_grid);
                 DirectiveConfigCapture {
                     value: captured.value,
+                    grid_placements: captured.grid_placements,
                     keys: captured.keys,
                     #[cfg(feature = "yaml-editor")]
                     rewrite_safe: captured.rewrite_safe,
                 }
             } else {
-                let value = json5_value::parse_json5_value(input);
+                let (value, grid_placements) = json5_value::parse_json5_value(input, capture_grid);
                 DirectiveConfigCapture {
                     #[cfg(feature = "yaml-editor")]
                     rewrite_safe: value.is_some(),
                     value,
+                    grid_placements,
                     keys: Vec::new(),
                 }
             }
         }
         #[cfg(not(feature = "yaml-editor"))]
         {
+            let (value, grid_placements) = json5_value::parse_json5_value(input, capture_grid);
             DirectiveConfigCapture {
-                value: json5_value::parse_json5_value(input),
+                value,
+                grid_placements,
             }
         }
     };
-    if let Err(cancelled) = control.checkpoint() {
+    let rebase_spans = (|| -> OperationControlResult<()> {
+        control.checkpoint()?;
+        if let Some(placements) = &mut captured.grid_placements {
+            for (index, span) in placements.key_spans_mut().enumerate() {
+                if index != 0 && index.is_multiple_of(64) {
+                    control.checkpoint()?;
+                }
+                *span = span
+                    .take()
+                    .and_then(|range| json5_value::key_span_in(raw, range));
+            }
+        }
+        Ok(())
+    })();
+    if let Err(cancelled) = rebase_spans {
         if let Some(value) = captured.value {
             drop_value_nonrecursive(value);
         }
@@ -387,6 +424,156 @@ pub use order::read_ordered_init_directive_controlled;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn grid_json5_preserves_authored_order_original_slots_and_latest_key_origins() {
+        let raw = r#" init : {grid: {placements: {
+            'service.🚀[1]': [null, {row: NaN, column: -2, row: .5, '\u006cook': 'classic'}, [], {}],
+            z: {row: 1}, a: {}, z: {column: 2}
+        }}} "#;
+        let check = |directive: DecodedDirective| {
+            let args = directive.args.unwrap();
+            let placements = directive.grid_placements.unwrap();
+            assert_eq!(&raw[placements.key_span.unwrap()], "placements");
+            assert_eq!(
+                placements
+                    .entries
+                    .iter()
+                    .map(|entry| entry.id.as_str())
+                    .collect::<Vec<_>>(),
+                ["service.🚀[1]", "z", "a"]
+            );
+            let entry = &placements.entries[0];
+            assert_eq!(&raw[entry.key_span.clone().unwrap()], "service.🚀[1]");
+            let slots = &entry.occurrences;
+            assert_eq!(
+                slots.iter().map(|slot| slot.index).collect::<Vec<_>>(),
+                [Some(1), Some(3)]
+            );
+            assert!(slots[1].fields.is_empty());
+            let fields = &slots[0].fields;
+            assert_eq!(
+                fields
+                    .iter()
+                    .map(|field| field.name.as_str())
+                    .collect::<Vec<_>>(),
+                ["row", "column", "look"]
+            );
+            assert_eq!(
+                fields[0].key_span.as_ref().unwrap().start,
+                raw.find("row: .5").unwrap()
+            );
+            assert_eq!(fields[0].nonfinite, None);
+            assert_eq!(&raw[fields[1].key_span.clone().unwrap()], "column");
+            assert!(fields[2].key_span.is_none());
+            assert_eq!(args["grid"]["placements"][&entry.id][1]["row"], 0.5);
+            assert!(args["grid"]["placements"][&entry.id][0].is_null());
+            let replaced = &placements.entries[1];
+            assert_eq!(
+                replaced.key_span.as_ref().unwrap().start,
+                raw.rfind("z:").unwrap()
+            );
+            assert_eq!(replaced.occurrences[0].index, None);
+            assert_eq!(replaced.occurrences[0].fields[0].name, "column");
+        };
+        let control = OperationControl::new();
+        check(
+            decode_directive_controlled(raw, &control)
+                .unwrap()
+                .directive
+                .unwrap(),
+        );
+        #[cfg(feature = "yaml-editor")]
+        check(
+            decode_directive_with_evidence_controlled(raw, true, &control)
+                .unwrap()
+                .directive
+                .unwrap(),
+        );
+    }
+
+    #[test]
+    fn grid_json5_nonfinite_coordinates_keep_their_number_provenance() {
+        let raw = "initialize: {grid: {placements: {service: [\
+                   {row: NaN, column: -Infinity}, {column: +Infinity, row: 'NaN'}\
+                   ]}}}";
+        let check = |directive: DecodedDirective| {
+            let args = directive.args.unwrap();
+            let source = directive.grid_placements.unwrap();
+            let slots = &source.entries[0].occurrences;
+            assert!(slots[0].fields[0].nonfinite.unwrap().is_nan());
+            assert_eq!(slots[0].fields[1].nonfinite, Some(f64::NEG_INFINITY));
+            assert_eq!(slots[1].fields[0].nonfinite, Some(f64::INFINITY));
+            assert_eq!(slots[1].fields[1].nonfinite, None);
+            let placements = &args["grid"]["placements"]["service"];
+            assert_eq!(
+                placements,
+                &serde_json::json!([{"row": null, "column": null}, {"column": null, "row": "NaN"}])
+            );
+        };
+        let control = OperationControl::new();
+        check(
+            decode_directive_controlled(raw, &control)
+                .unwrap()
+                .directive
+                .unwrap(),
+        );
+        #[cfg(feature = "yaml-editor")]
+        {
+            let directive = decode_directive_with_evidence_controlled(raw, true, &control)
+                .unwrap()
+                .directive
+                .unwrap();
+            assert!(!directive.rewrite_safe);
+            check(directive);
+        }
+    }
+
+    #[test]
+    fn non_grid_numbers_and_failed_arguments_keep_their_previous_decode_policy() {
+        let raw = "init: {grid: {placements: {A: {nested: {row: NaN}}}}}";
+        let control = OperationControl::new();
+        let directive = decode_directive_controlled(raw, &control)
+            .unwrap()
+            .directive
+            .unwrap();
+        assert!(directive.args.unwrap()["grid"]["placements"]["A"]["nested"]["row"].is_null());
+        let source = directive.grid_placements.unwrap();
+        assert_eq!(source.entries[0].occurrences[0].fields[0].nonfinite, None);
+        #[cfg(feature = "yaml-editor")]
+        {
+            let editor = decode_directive_with_evidence_controlled(raw, true, &control)
+                .unwrap()
+                .directive
+                .unwrap();
+            assert!(editor.args.is_none());
+            assert!(editor.grid_placements.is_none());
+            assert!(!editor.arguments_complete);
+        }
+        let non_init =
+            decode_directive_controlled("other: {grid: {placements: {A: {row: 1}}}}", &control)
+                .unwrap()
+                .directive
+                .unwrap();
+        assert!(non_init.args.is_some());
+        assert!(non_init.grid_placements.is_none());
+        let replaced = decode_directive_controlled(
+            "init: {grid: {placements: {A: {row: 1}}}, grid: {rowGap: 20}}",
+            &control,
+        )
+        .unwrap()
+        .directive
+        .unwrap();
+        assert!(replaced.args.is_some());
+        assert!(replaced.grid_placements.is_none());
+        let malformed =
+            decode_directive_controlled("init: {grid: {placements: {A: {row: 1}}}} {}", &control)
+                .unwrap()
+                .directive
+                .unwrap();
+        assert!(malformed.args.is_none());
+        assert!(malformed.grid_placements.is_none());
+    }
 
     #[cfg(feature = "yaml-editor")]
     #[test]

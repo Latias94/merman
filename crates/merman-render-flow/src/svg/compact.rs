@@ -44,7 +44,7 @@ use super::paint::prepare_dagre_linear_edge_route;
 use super::{
     FlowchartSvgModelRequest, FlowchartSvgRoute, FlowchartSvgServices,
     defs::compact_classic_point_end,
-    paint::with_flowchart_paint_context,
+    paint::with_flowchart_paint_context_in_phase,
     types::{FlowchartEdgeDataPointsScratch, FlowchartRenderCtx},
     viewbox::{FlowchartRenderedBoundsRequest, prepare_flowchart_rendered_bounds},
 };
@@ -235,7 +235,13 @@ fn admit_edge(
         (edge.end_marker, end),
         (FlowEdgeMarker::None, None) | (FlowEdgeMarker::Point, Some(FlowchartMarkerBase::PointEnd))
     );
+    let valid_curve = match edge.interpolate.as_deref() {
+        None | Some("linear") => true,
+        Some("rounded") => ctx.layout.route_contract.is_elk_parity(),
+        Some(_) => false,
+    };
     if !valid_end
+        || !valid_curve
         || flowchart_edge_marker_start_base(edge).is_some()
         || edge.start_marker != FlowEdgeMarker::None
         || !matches!(
@@ -252,10 +258,6 @@ fn admit_edge(
         || edge.animate.is_some()
         || edge.animation.is_some()
         || edge.step.is_some()
-        || edge
-            .interpolate
-            .as_deref()
-            .is_some_and(|curve| curve != "linear")
         || ctx
             .model
             .edge_label_for_occurrence(render_edge.key, edge)
@@ -641,7 +643,7 @@ fn render_scene(
     }
     let mut commands = Vec::new();
     let mut ranges = Vec::new();
-    meter.charge(edges.len())?;
+    meter.charge_emit_work(edges.len())?;
     reserve(&mut ranges, edges.len())?;
     let mut scratch = FlowchartEdgeDataPointsScratch::default();
     #[cfg(feature = "layout-elk")]
@@ -701,7 +703,7 @@ fn render_scene(
             flowchart_edge_marker_end_base(edge.edge).is_some(),
         ));
     }
-    meter.checkpoint(OperationPhase::Layout)?;
+    meter.checkpoint(OperationPhase::Emit)?;
 
     let root_bounds =
         root_svg::DiagramBounds::from_extents(min_x, min_y, max_x, max_y, config.diagram_padding);
@@ -790,16 +792,21 @@ pub fn render_native_compact(
         trusted_theme_css,
     )?;
     let paint = admit_native_paint(services)?;
-    with_flowchart_paint_context(request, services, |ctx, edges, hierarchy| {
-        render_scene(
-            request,
-            ctx,
-            edges,
-            hierarchy,
-            paint,
-            &services.root_viewport,
-        )
-    })
+    with_flowchart_paint_context_in_phase(
+        request,
+        services,
+        OperationPhase::Emit,
+        |ctx, edges, hierarchy| {
+            render_scene(
+                request,
+                ctx,
+                edges,
+                hierarchy,
+                paint,
+                &services.root_viewport,
+            )
+        },
+    )
 }
 
 #[cfg(all(test, feature = "layout-shoal"))]

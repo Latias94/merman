@@ -1175,14 +1175,11 @@ dependencies = [
  "merman-render-sequence",
  "merman-render-structured",
  "merman-theme-contract",
- "pulldown-cmark",
  "quick-xml",
  "roughr-merman",
  "rustc-hash",
- "ryu-js",
  "serde",
  "serde_json",
- "svgtypes",
  "thiserror 2.0.21",
 ]
 

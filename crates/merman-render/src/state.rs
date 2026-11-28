@@ -10,11 +10,11 @@ type StateNode = merman_model::families::state::StateDiagramRenderNode;
 use merman_render_graph::state::StateCompatibilityPlan;
 #[cfg(feature = "layout-shoal")]
 use merman_render_graph::state::StateLabelOwner;
-pub(crate) use merman_render_graph::state::{
-    StateLabelSidecar, StateLabelSidecarBuilder, StateStylePlan,
-};
+pub(crate) use merman_render_graph::state::{StateLabelSidecar, StateStylePlan};
 #[cfg(feature = "layout-shoal")]
-use merman_render_graph::state::{StateNodeStylePlan, state_value_to_label_text};
+use merman_render_graph::state::{
+    StateLabelSidecarBuilder, StateNodeStylePlan, state_value_to_label_text,
+};
 
 #[cfg(feature = "layout-shoal")]
 mod config {
@@ -37,6 +37,6 @@ mod shoal;
 
 #[cfg(feature = "layout-dagre")]
 pub use dagre_debug::debug_build_state_diagram_dagre_graph;
-pub(crate) use layout::layout_state_diagram_typed_with_work_meter;
+pub(crate) use layout::prepare_state_diagram;
 #[cfg(feature = "layout-dagre")]
 pub use merman_render_graph::state::debug_extract_state_diagram_cluster_graph;

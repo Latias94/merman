@@ -1,12 +1,12 @@
 {
   "compilerOptions": {
-    "composite": true,
+    "incremental": true,
     "skipLibCheck": true,
     "module": "ESNext",
     "moduleResolution": "bundler",
     "allowJs": true,
     "types": ["node"],
-    "outDir": "node_modules/.tmp/tsconfig-node",
+    "noEmit": true,
     "tsBuildInfoFile": "node_modules/.tmp/tsconfig.node.tsbuildinfo",
     "allowSyntheticDefaultImports": true,
     "strict": true

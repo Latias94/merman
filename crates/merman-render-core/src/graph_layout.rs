@@ -9,6 +9,12 @@ pub mod contour;
 pub mod elk_geometry;
 #[cfg(any(feature = "layout-elk", feature = "svg-output"))]
 pub mod elk_terminal_jogs;
+#[cfg(feature = "layout-grid")]
+#[doc(hidden)]
+pub mod mermaid_grid;
+#[cfg(feature = "layout-layered")]
+#[doc(hidden)]
+pub mod mermaid_layered;
 #[cfg(feature = "shoal-bridge")]
 pub mod shoal;
 
@@ -137,6 +143,22 @@ pub struct MeasuredNode {
     pub port_span: Option<f64>,
     pub perpendicular_port_span: Option<f64>,
     pub anchor_y: Option<f64>,
+}
+
+impl MeasuredNode {
+    /// A measured box with no provider-specific port or contour overrides.
+    pub fn new(size: Size, seq: u32, parent: Option<u32>) -> Self {
+        Self {
+            size,
+            #[cfg(feature = "shoal-bridge")]
+            contour: ShapeContourHint::default(),
+            seq,
+            parent,
+            port_span: None,
+            perpendicular_port_span: None,
+            anchor_y: None,
+        }
+    }
 }
 
 #[derive(Debug)]

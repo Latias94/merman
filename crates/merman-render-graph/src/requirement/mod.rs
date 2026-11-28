@@ -1,8 +1,11 @@
 //! Requirement layout, retained label preparation, styling, and SVG emission.
 
 use indexmap::{Equivalent, IndexMap, map::Entry};
-use merman_model::families::requirement::{
-    RequirementDiagramModel, RequirementElement, RequirementNode, RequirementRelationship,
+use merman_model::{
+    OperationPhase,
+    families::requirement::{
+        RequirementDiagramModel, RequirementElement, RequirementNode, RequirementRelationship,
+    },
 };
 use merman_render_core::Bounds;
 use merman_render_core::{
@@ -24,7 +27,11 @@ mod css_binding;
 mod dagre;
 #[cfg(feature = "layout-elk")]
 mod elk;
+#[cfg(feature = "layout-grid")]
+mod grid;
 mod html_label;
+#[cfg(feature = "layout-layered")]
+mod layered;
 mod native_theme;
 mod source_typography;
 mod svg;
@@ -33,8 +40,12 @@ mod theme;
 pub use config::RequirementConfigView;
 pub use css_binding::RequirementCssBinding;
 use css_binding::requirement_color_indices;
+#[cfg(feature = "layout-grid")]
+pub use grid::layout as layout_grid;
 use html_label::RequirementHtmlLabel;
 pub use html_label::sanitize_label_with_sink;
+#[cfg(feature = "layout-layered")]
+pub use layered::layout as layout_layered;
 use native_theme::RequirementNativeStyle;
 pub use source_typography::RequirementNodeTypography;
 #[cfg(feature = "layout-shoal")]
@@ -138,6 +149,10 @@ pub struct RequirementPreparedArtifact {
     nodes: HashMap<String, RequirementNodeRenderPlan>,
     edges: RequirementEdgeLabels,
     measurement_binding: Option<RequirementLabelMeasurementBinding>,
+    #[cfg(feature = "layout-grid")]
+    grid: Option<grid::RequirementGridPaint>,
+    #[cfg(feature = "layout-layered")]
+    layered: Option<layered::Paint>,
 }
 
 impl RequirementPreparedArtifact {
@@ -162,6 +177,10 @@ impl RequirementPreparedArtifact {
             nodes,
             edges,
             measurement_binding,
+            #[cfg(feature = "layout-grid")]
+            grid: None,
+            #[cfg(feature = "layout-layered")]
+            layered: None,
         }
     }
 
@@ -920,6 +939,8 @@ pub fn measure_requirement<'a>(
             20.0,
             20.0,
         );
+        // Replay terminals from the infallible text measurer before validating the next node.
+        work_meter.checkpoint(OperationPhase::Layout)?;
         let (width, height, mut label) = box_layout.into_node_plan();
         label.typography = typography;
         Ok::<_, Error>(MeasuredRequirementNode {
@@ -1052,7 +1073,12 @@ pub fn requirement_layout_node(id: String, rect: Rect) -> LayoutNode {
     }
 }
 
-#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
+#[cfg(any(
+    feature = "layout-dagre",
+    feature = "layout-elk",
+    feature = "layout-grid",
+    feature = "layout-layered"
+))]
 fn requirement_layout_node_from_center(
     id: String,
     x: f64,
@@ -1071,7 +1097,12 @@ fn requirement_layout_node_from_center(
     )
 }
 
-#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
+#[cfg(any(
+    feature = "layout-dagre",
+    feature = "layout-elk",
+    feature = "layout-grid",
+    feature = "layout-layered"
+))]
 fn bounds_for_nodes_edges(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> {
     if nodes.is_empty() && edges.is_empty() {
         return None;

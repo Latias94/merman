@@ -12,7 +12,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { readBuildReceipt } from "./build-receipt.mjs";
-import { candidateArtifactDirectory, localShoalRoot, resolveCandidateRecipe } from "./build-candidate.mjs";
+import { candidateArtifactDirectory, localArtifactRoot, resolveCandidateRecipe } from "./build-candidate.mjs";
+import { readLocalLayoutFlag } from "./local-layout.mjs";
 import { replaceDirectory } from "./replace-directory.mjs";
 
 const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -23,22 +24,22 @@ if (isMainModule()) {
   try {
     const args = process.argv.slice(2);
     const outputRoot = valueAfter(args, "--output-root") ?? undefined;
-    const localShoal = args.includes("--local-shoal");
-    if (localShoal && args.includes("--loader-only")) {
-      throw new Error("--local-shoal requires --wasm or a native --target.");
+    const localLayout = readLocalLayoutFlag(args);
+    if (localLayout !== null && args.includes("--loader-only")) {
+      throw new Error("A local layout requires --wasm or a native --target.");
     }
     if (args.includes("--loader-only")) {
       assembleLoaderOnly(outputRoot);
     } else if (args.includes("--wasm")) {
-      assembleWasmPackage(outputRoot, null, { localShoal });
+      assembleWasmPackage(outputRoot, null, { localLayout });
     } else {
       const target = valueAfter(args, "--target");
       if (!target) {
         throw new Error(
-          "usage: node scripts/assemble-packages.mjs (--loader-only | --wasm | --target <target-id>) [--local-shoal] [--output-root <path>]",
+          "usage: node scripts/assemble-packages.mjs (--loader-only | --wasm | --target <target-id>) [--local-grid | --local-layered | --local-shoal] [--output-root <path>]",
         );
       }
-      assembleNativePackages(target, outputRoot, null, { localShoal });
+      assembleNativePackages(target, outputRoot, null, { localLayout });
     }
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
@@ -50,17 +51,19 @@ export function assembleNativePackages(
   target,
   outputRoot,
   binaryOverride = null,
-  { localShoal = false, readReceipt = readBuildReceipt } = {},
+  { localLayout = null, readReceipt = readBuildReceipt } = {},
 ) {
-  outputRoot ??= localShoal ? path.join(localShoalRoot, "packages") : path.join(nodeRoot, "dist-packages");
+  outputRoot ??= localLayout === null
+    ? path.join(nodeRoot, "dist-packages")
+    : path.join(localArtifactRoot(localLayout), "packages");
   const targetDescriptor = descriptor.targets.find((item) => item.target === target);
   if (!targetDescriptor) throw new Error(`Unknown Node target: ${target}.`);
   assertAssemblyPackageManifest(descriptor.root);
   assertAssemblyPackageManifest(targetDescriptor);
-  const recipe = resolveCandidateRecipe("napi", target, { localShoal });
+  const recipe = resolveCandidateRecipe("napi", target, { localLayout });
   const binary = binaryOverride ?? path.join(candidateArtifactDirectory(recipe), "merman.node");
   assertFile(binary, "native candidate binary");
-  assertNativeBuildProvenance(targetDescriptor, readReceipt(binary, { localShoal }));
+  assertNativeBuildProvenance(targetDescriptor, readReceipt(binary, { localLayout }));
 
   const stage = `${outputRoot}.stage-${process.pid}`;
   rmSync(stage, { recursive: true, force: true });
@@ -68,9 +71,9 @@ export function assembleNativePackages(
   try {
     assembleLoaderPackage(path.join(stage, "node"));
     assemblePlatformPackage(targetDescriptor, binary, path.join(stage, target));
-    if (localShoal) {
-      markLocalShoalPackage(path.join(stage, "node"), targetDescriptor.name);
-      markLocalShoalPackage(path.join(stage, target));
+    if (localLayout !== null) {
+      markLocalLayoutPackage(path.join(stage, "node"), localLayout, targetDescriptor.name);
+      markLocalLayoutPackage(path.join(stage, target), localLayout);
     }
     replaceDirectory(stage, outputRoot);
   } catch (error) {
@@ -79,11 +82,12 @@ export function assembleNativePackages(
   }
 }
 
-function markLocalShoalPackage(directory, optionalDependency) {
+function markLocalLayoutPackage(directory, localLayout, optionalDependency) {
   const manifestPath = path.join(directory, "package.json");
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
   manifest.private = true;
-  manifest.mermanLocalShoal = true;
+  if (localLayout === "shoal") manifest.mermanLocalShoal = true;
+  else manifest.mermanLocalLayout = localLayout;
   delete manifest.publishConfig;
   if (optionalDependency !== undefined) {
     manifest.optionalDependencies = {
@@ -110,20 +114,23 @@ export function assembleLoaderOnly(outputRoot = path.join(nodeRoot, "dist-packag
 export function assembleWasmPackage(
   outputRoot,
   wasmOverride = null,
-  { localShoal = false, readReceipt = readBuildReceipt } = {},
+  { localLayout = null, readReceipt = readBuildReceipt } = {},
 ) {
-  outputRoot ??= localShoal ? path.join(localShoalRoot, "wasm-packages") : path.join(nodeRoot, "dist-packages");
+  outputRoot ??= localLayout === null
+    ? path.join(nodeRoot, "dist-packages")
+    : path.join(localArtifactRoot(localLayout), "wasm-packages");
   const wasmDescriptor = descriptor.wasm;
   if (!wasmDescriptor) throw new Error("Node package surface does not declare a WASM package.");
   assertAssemblyPackageManifest(wasmDescriptor);
+  const recipe = resolveCandidateRecipe("node-wasm", null, { localLayout });
   const candidateRoot = wasmOverride
     ? path.dirname(wasmOverride)
-    : candidateArtifactDirectory(resolveCandidateRecipe("node-wasm", null, { localShoal }));
+    : candidateArtifactDirectory(recipe);
   const wasm = wasmOverride ?? path.join(candidateRoot, wasmDescriptor.wasm_artifact);
   const loader = path.join(candidateRoot, "merman_node.js");
   assertFile(wasm, "Node-targeted WASM binary");
   assertFile(loader, "Node-targeted WASM loader");
-  assertWasmBuildProvenance(wasmDescriptor, readReceipt(wasm, { localShoal }));
+  assertWasmBuildProvenance(wasmDescriptor, readReceipt(wasm, { localLayout }));
 
   const stage = `${outputRoot}.stage-${process.pid}`;
   rmSync(stage, { recursive: true, force: true });
@@ -131,7 +138,7 @@ export function assembleWasmPackage(
   try {
     const packageRoot = path.join(stage, path.basename(wasmDescriptor.directory));
     assembleWasmPackageContents(wasmDescriptor, loader, wasm, packageRoot);
-    if (localShoal) markLocalShoalPackage(packageRoot);
+    if (localLayout !== null) markLocalLayoutPackage(packageRoot, localLayout);
     replaceDirectory(stage, outputRoot);
   } catch (error) {
     rmSync(stage, { recursive: true, force: true });

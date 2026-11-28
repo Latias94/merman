@@ -48,6 +48,8 @@ EXPECTED_SELECTIONS = (
     ("parallel-pdf", ("all-diagrams", "layout-dagre", "parallel-markdown", "pdf"), "exact"),
     ("cytoscape-layout", ("all-diagrams", "layout-cytoscape"), "exact"),
     ("elk-layout", ("all-diagrams", "layout-elk"), "exact"),
+    ("grid-layout", ("all-diagrams", "layout-grid"), "exact"),
+    ("layered-layout", ("all-diagrams", "layout-layered"), "exact"),
     ("math", ("all-diagrams", "layout-dagre", "math"), "exact"),
     ("rustdoc", ("all-diagrams", "layout-dagre", "rustdoc"), "exact"),
     ("completions", ("shell-completions",), "exact"),
@@ -110,6 +112,8 @@ class CliProcessMatrixTests(unittest.TestCase):
         }
         expected_defaults = public_features - diagram_selectors - {
             "experimental-system-font-query",
+            "layout-grid",
+            "layout-layered",
             "layout-shoal",
             "platform-system-font-default",
             "platform-system-font-query",
@@ -131,6 +135,8 @@ class CliProcessMatrixTests(unittest.TestCase):
         self.assertNotIn("layout-dagre", {edge.rsplit("/", 1)[-1] for edge in features["rustdoc"]})
         self.assertNotIn("math", features["default"])
         self.assertIn("layout-dagre", CLI_RELEASE_FEATURES)
+        self.assertNotIn("layout-grid", CLI_RELEASE_FEATURES)
+        self.assertNotIn("layout-layered", CLI_RELEASE_FEATURES)
         self.assertIn("math", CLI_RELEASE_FEATURES)
         self.assertIn("platform-system-font-default", CLI_RELEASE_FEATURES)
 

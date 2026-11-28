@@ -229,6 +229,11 @@ pub fn er_marker_id(card: &str, suffix: &str) -> Option<String> {
     Some(format!("{card}_{suffix}"))
 }
 
+#[cfg(feature = "layout-grid")]
+pub(super) fn has_er_marker(card: &str) -> bool {
+    cardinality(card).is_some()
+}
+
 fn marker_suffix(value: &str) -> Option<(&str, bool)> {
     if let Some(card) = value.strip_suffix("_START") {
         Some((card, true))
