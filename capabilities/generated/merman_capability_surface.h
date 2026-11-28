@@ -7,7 +7,7 @@
 #include <stddef.h>
 
 #define MERMAN_CAPABILITY_DESCRIPTOR_SCHEMA_VERSION 1
-#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:82ce96f52c8ed3e79d05ba19003ea88c25b20133d075dc498c11238c950b1f9d"
+#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:a8890daa18e827266f3c6608004c0b2fabdbb78cda285e82af5366bb6ed08429"
 
 #define MERMAN_TARGET_NATIVE "native"
 #define MERMAN_TARGET_TYPST "typst"
@@ -265,8 +265,8 @@ static const MermanCapabilityDescriptor MERMAN_CAPABILITIES[] = {
     { "layout-cytoscape", "engine", "Enable Mermaid Cytoscape-backed layout behavior.", MERMAN_CAPABILITY_LAYOUT_CYTOSCAPE_TARGETS, 3, MERMAN_CAPABILITY_LAYOUT_CYTOSCAPE_IMPLICATIONS, 1 },
     { "layout-dagre", "engine", "Enable Mermaid Dagre-backed SVG graph layout.", MERMAN_CAPABILITY_LAYOUT_DAGRE_TARGETS, 3, MERMAN_CAPABILITY_LAYOUT_DAGRE_IMPLICATIONS, 1 },
     { "layout-elk", "engine", "Enable Mermaid ELK-backed layout behavior.", MERMAN_CAPABILITY_LAYOUT_ELK_TARGETS, 3, MERMAN_CAPABILITY_LAYOUT_ELK_IMPLICATIONS, 1 },
-    { "layout-grid", "engine", "Select Mermaid Grid for Flowchart, Swimlane, Agentflow, Class, ER, Mindmap, Requirement, and State SVG layout.", MERMAN_CAPABILITY_LAYOUT_GRID_TARGETS, 2, MERMAN_CAPABILITY_LAYOUT_GRID_IMPLICATIONS, 1 },
-    { "layout-layered", "engine", "Select Mermaid Layered for Flowchart, Swimlane, Agentflow, ER, Mindmap, and Requirement SVG layout.", MERMAN_CAPABILITY_LAYOUT_LAYERED_TARGETS, 2, MERMAN_CAPABILITY_LAYOUT_LAYERED_IMPLICATIONS, 1 },
+    { "layout-grid", "engine", "Select Mermaid Grid for Flowchart, Swimlane, Agentflow, Class, ER, Mindmap, Requirement, State, and Usecase SVG layout.", MERMAN_CAPABILITY_LAYOUT_GRID_TARGETS, 2, MERMAN_CAPABILITY_LAYOUT_GRID_IMPLICATIONS, 1 },
+    { "layout-layered", "engine", "Select Mermaid Layered for Flowchart, Swimlane, Agentflow, Class, ER, Mindmap, Requirement, State, and Usecase SVG layout.", MERMAN_CAPABILITY_LAYOUT_LAYERED_TARGETS, 2, MERMAN_CAPABILITY_LAYOUT_LAYERED_IMPLICATIONS, 1 },
     { "layout-shoal", "engine", "Select the experimental Shoal layout for Flowchart, Agentflow, Architecture, C4, Class, State, ER, Requirement, Swimlane, and Usecase diagrams, or route Block edges on the existing grid.", MERMAN_CAPABILITY_LAYOUT_SHOAL_TARGETS, 2, MERMAN_CAPABILITY_LAYOUT_SHOAL_IMPLICATIONS, 1 },
     { "markdown", "tool", "Compile CLI Markdown batch conversion.", MERMAN_CAPABILITY_MARKDOWN_TARGETS, 1, NULL, 0 },
     { "math", "engine", "Render Mermaid math labels with the selected math engine.", MERMAN_CAPABILITY_MATH_TARGETS, 2, MERMAN_CAPABILITY_MATH_IMPLICATIONS, 1 },

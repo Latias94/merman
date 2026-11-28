@@ -865,7 +865,7 @@ fn mermaid_layouts_require_artifact_admission() {
     const SELECTED: ValidatedArtifactContract = SVG_ARTIFACT
         .with_supplemental_capabilities(LAYOUTS)
         .materialize();
-    const SHARED_DIAGRAMS: &[(&str, &str, &[u8])] = &[
+    const DIAGRAMS: &[(&str, &str, &[u8])] = &[
         #[cfg(feature = "diagram-flowchart")]
         (
             "flowchart-v2",
@@ -884,6 +884,8 @@ fn mermaid_layouts_require_artifact_admission() {
             "FlowchartV2",
             b"swimlane-beta LR\nA[Start] -->|Approved| B[Done]\n",
         ),
+        #[cfg(feature = "diagram-class")]
+        ("classDiagram", "ClassDiagramV2", b"classDiagram\nA --> B\n"),
         #[cfg(feature = "diagram-er")]
         (
             "er",
@@ -902,15 +904,17 @@ fn mermaid_layouts_require_artifact_admission() {
             "RequirementDiagram",
             b"requirementDiagram\n  requirement checkout {\n    id: 1\n  }\n",
         ),
-    ];
-    const GRID_ONLY_DIAGRAMS: &[(&str, &str, &[u8])] = &[
-        #[cfg(feature = "diagram-class")]
-        ("classDiagram", "ClassDiagramV2", b"classDiagram\nclass A\n"),
         #[cfg(feature = "diagram-state")]
         (
             "stateDiagram",
             "StateDiagramV2",
             b"stateDiagram-v2\n  Idle --> Ready\n",
+        ),
+        #[cfg(feature = "diagram-usecase")]
+        (
+            "usecase",
+            "UsecaseDiagram",
+            b"usecase-beta\n  actor Customer\n  Checkout[Checkout]\n  Customer --> Checkout\n",
         ),
     ];
 
@@ -927,12 +931,7 @@ fn mermaid_layouts_require_artifact_admission() {
         );
         assert!(!OMITTED.runtime_capabilities().has_capability(id));
 
-        let grid_diagrams = if capability == CapabilityKey::LayoutGrid {
-            GRID_ONLY_DIAGRAMS
-        } else {
-            &[]
-        };
-        for &(diagram_type, variant, source) in SHARED_DIAGRAMS.iter().chain(grid_diagrams) {
+        for &(diagram_type, variant, source) in DIAGRAMS {
             for (engine, ready) in [(&omitted, false), (&selected, true)] {
                 let plan: serde_json::Value =
                     serde_json::from_slice(&engine.svg_plan_json(source).unwrap()).unwrap();

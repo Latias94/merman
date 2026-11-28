@@ -40,6 +40,8 @@ mod canonical;
 pub use canonical::UsecasePaintedEdge;
 #[cfg(feature = "layout-grid")]
 mod grid;
+#[cfg(feature = "layout-layered")]
+mod layered;
 mod shapes;
 mod theme;
 
@@ -89,6 +91,16 @@ fn dom_part(value: &str) -> String {
     } else {
         result.into()
     }
+}
+
+fn node_shape_size(node: &LayoutNode, plan: &UsecaseNodePlan) -> kurbo::Size {
+    #[cfg(feature = "layout-layered")]
+    if let Some(size) = plan.layered_ellipse {
+        return size;
+    }
+    #[cfg(not(feature = "layout-layered"))]
+    let _ = plan;
+    kurbo::Size::new(node.width, node.height)
 }
 
 fn element_role_classes(plan: &UsecaseNodePlan, business: bool) -> String {
@@ -186,8 +198,14 @@ fn write_label(
     let canonical_boundary = matches!(kind, UsecaseLabelKind::Boundary { canonical: true });
     let positioned_node = matches!(kind, UsecaseLabelKind::PositionedNode(_));
     let center_text = is_edge_label || matches!(kind, UsecaseLabelKind::CenteredNode(_));
+    #[cfg(feature = "layout-layered")]
+    let prepared_svg_bbox_y = plan.layered_svg.as_ref().map(|label| label.bbox_y);
+    #[cfg(not(feature = "layout-layered"))]
+    let prepared_svg_bbox_y: Option<f64> = None;
     let svg_bbox_y = if !html && (center_text || positioned_node || canonical_boundary) {
-        measurer.measure_svg_create_text_bbox_y_offset_px(&plan.text, &plan.style)
+        prepared_svg_bbox_y.unwrap_or_else(|| {
+            measurer.measure_svg_create_text_bbox_y_offset_px(&plan.text, &plan.style)
+        })
     } else {
         0.0
     };
@@ -284,8 +302,20 @@ fn write_label(
                 // prepareUsecaseLayoutData escapes plain labels before createText splits
                 // lines and words. Decode those entities only when writing text content,
                 // so a literal <br/> remains visible instead of becoming a line break.
-                let source = create_text_source(&plan.text, plan.label_type);
-                if canonical_boundary {
+                #[cfg(feature = "layout-layered")]
+                let prepared_rows = plan.layered_svg.as_ref().map(|label| &label.rows);
+                #[cfg(not(feature = "layout-layered"))]
+                let prepared_rows: Option<&Vec<Vec<String>>> = None;
+                if let Some(rows) = prepared_rows {
+                    label::write_svg_text_source_word_lines_with_style(
+                        out,
+                        rows,
+                        &css,
+                        center_text,
+                        None,
+                    );
+                } else if canonical_boundary {
+                    let source = create_text_source(&plan.text, plan.label_type);
                     let words = text::DeterministicTextMeasurer::normalized_text_lines(&source)
                         .iter()
                         .map(|line| {
@@ -298,7 +328,7 @@ fn write_label(
                 } else {
                     label::write_svg_text_from_create_text_source_with_style(
                         out,
-                        &source,
+                        &create_text_source(&plan.text, plan.label_type),
                         &css,
                         center_text,
                     );
@@ -329,6 +359,7 @@ fn write_edge_label_mask<'a>(
     diagram_id: SvgId<'_>,
     bounds: root_svg::DiagramBounds,
     positions: impl Iterator<Item = &'a LayoutLabel>,
+    y_offset: f64,
 ) -> Result<bool> {
     let mut positions = positions.peekable();
     if positions.peek().is_none() {
@@ -348,8 +379,10 @@ fn write_edge_label_mask<'a>(
     );
     // Opaque black rectangles subtract the union of the label boxes, including overlaps.
     for position in positions {
-        let rect =
-            Rect::from_center_size((position.x, position.y), (position.width, position.height));
+        let rect = Rect::from_center_size(
+            (position.x, position.y + y_offset),
+            (position.width, position.height),
+        );
         let _ = write!(
             out,
             r#"<rect x="{}" y="{}" width="{}" height="{}" fill="black"/>"#,
@@ -372,7 +405,6 @@ fn write_legacy_base_markers(
 ) -> Result<()> {
     use BaseEdgeMarkerKind::*;
 
-    let arrow = arrow_path(style);
     for kind in [
         PointEnd,
         PointStart,
@@ -387,32 +419,91 @@ fn write_legacy_base_markers(
         CrossEndMargin,
         CrossStartMargin,
     ] {
-        let suffix = kind.suffix();
-        if let Some(path) = arrow.filter(|_| suffix.starts_with("point")) {
-            let transform = if matches!(kind, PointStart | PointStartMargin) {
-                r#" transform="translate(10 0) scale(-1 1)""#
-            } else {
-                ""
-            };
-            let fill = if style == MarkerStyle::Open {
-                "fill:none;"
-            } else {
-                ""
-            };
-            let _ = write!(
-                out,
-                r#"<marker id="{diagram_id}_usecase-{suffix}" class="marker usecase" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto" overflow="visible"><path d="{path}"{transform} style="stroke-width:1;stroke-dasharray:none;stroke-linecap:round;stroke-linejoin:round;{fill}"/></marker>"#,
-            );
-        } else {
-            let cross = if kind.cross() { "cross " } else { "" };
-            let _ = write!(
-                out,
-                r#"<marker id="{diagram_id}_usecase-{suffix}" class="marker {cross}usecase"{}/></marker>"#,
-                kind.shape_fragment(),
-            );
-        }
+        write_base_marker(out, diagram_id, style, kind, kind.suffix(), None);
     }
     out.checkpoint()
+}
+
+fn write_base_marker(
+    out: &mut impl SvgOutput,
+    diagram_id: SvgId<'_>,
+    style: MarkerStyle,
+    kind: BaseEdgeMarkerKind,
+    suffix: &str,
+    paint: Option<&str>,
+) {
+    use BaseEdgeMarkerKind::*;
+
+    let point = kind.suffix().starts_with("point");
+    if let Some(path) = arrow_path(style).filter(|_| point) {
+        let transform = if matches!(kind, PointStart | PointStartMargin) {
+            r#" transform="translate(10 0) scale(-1 1)""#
+        } else {
+            ""
+        };
+        let fill = if style == MarkerStyle::Open {
+            "fill:none;"
+        } else {
+            ""
+        };
+        let _ = write!(
+            out,
+            r#"<marker id="{diagram_id}_usecase-{suffix}" class="marker usecase" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto" overflow="visible"><path d="{path}"{transform} style="stroke-width:1;stroke-dasharray:none;stroke-linecap:round;stroke-linejoin:round;{fill}""#,
+        );
+    } else {
+        let cross = if kind.cross() { "cross " } else { "" };
+        let _ = write!(
+            out,
+            r#"<marker id="{diagram_id}_usecase-{suffix}" class="marker {cross}usecase"{}"#,
+            kind.shape_fragment(),
+        );
+    }
+    if kind.geometry().shape != "polygon" || (point && style != MarkerStyle::Classic) {
+        write_marker_paint(out, paint, point && style != MarkerStyle::Open);
+    }
+    out.push_str("/></marker>");
+}
+
+fn write_marker_paint(out: &mut impl SvgOutput, paint: Option<&str>, fill: bool) {
+    if let Some(paint) = paint {
+        let color = escape_attr(paint);
+        let _ = write!(out, r#" stroke="{color}""#);
+        if fill {
+            let _ = write!(out, r#" fill="{color}""#);
+        }
+    }
+}
+
+fn write_extension_marker(
+    out: &mut impl SvgOutput,
+    diagram_id: SvgId<'_>,
+    suffix: &str,
+    start: bool,
+    margin: bool,
+    paint: Option<&str>,
+) {
+    let _ = write!(
+        out,
+        r#"<marker id="{diagram_id}_usecase-{suffix}" class="marker extension usecase""#
+    );
+    match (start, margin) {
+        (true, false) => {
+            out.push_str(r#" refX="18" refY="7" markerWidth="20" markerHeight="28" orient="auto" markerUnits="userSpaceOnUse"><path d="M 1,7 L18,13 V 1 Z""#);
+        }
+        (false, false) => {
+            out.push_str(r#" refX="1" refY="7" markerWidth="20" markerHeight="28" markerUnits="userSpaceOnUse" orient="auto"><path d="M 1,1 V 13 L18,7 Z""#);
+        }
+        (true, true) => {
+            out.push_str(r#" refX="18" refY="7" markerWidth="20" markerHeight="28" orient="auto" markerUnits="userSpaceOnUse" viewBox="0 0 20 14"><polygon points="10,7 18,13 18,1" style="stroke-width: 2; stroke-dasharray: 0;""#);
+        }
+        (false, true) => {
+            out.push_str(r#" refX="9" refY="7" markerWidth="20" markerHeight="28" orient="auto" markerUnits="userSpaceOnUse" viewBox="0 0 20 14"><polygon points="10,1 10,13 18,7" style="stroke-width: 2; stroke-dasharray: 0;""#);
+        }
+    }
+    if !margin {
+        write_marker_paint(out, paint, false);
+    }
+    out.push_str("/></marker>");
 }
 
 pub fn render_usecase_diagram_svg_model(
@@ -511,6 +602,33 @@ pub fn render_usecase_diagram_svg_model(
     let uses_grid = grid_edges.is_some();
     #[cfg(not(feature = "layout-grid"))]
     let uses_grid = false;
+    #[cfg(feature = "layout-layered")]
+    let layered_routes = prepared.layered.as_ref().and_then(|paint| match paint {
+        super::layered::Paint::Axes(routes) => Some(routes),
+        #[cfg(feature = "layout-dagre")]
+        super::layered::Paint::DagreFallback => None,
+    });
+    #[cfg(feature = "layout-layered")]
+    let layered_edges = layered_routes
+        .map(|routes| {
+            layered::paint_edges(
+                prepared,
+                routes,
+                cfg,
+                &geometry,
+                &plans,
+                &mut viewport_bounds,
+                &options,
+            )
+        })
+        .transpose()?;
+    #[cfg(feature = "layout-layered")]
+    let (uses_layered, label_y_offset) = (
+        layered_edges.is_some(),
+        layered_routes.map_or(0.0, |routes| routes.label_y_offset),
+    );
+    #[cfg(not(feature = "layout-layered"))]
+    let (uses_layered, label_y_offset) = (false, 0.0);
     let elevation = native
         .map(|theme| &theme.elevation)
         .filter(|elevation| **elevation != merman_theme_contract::v2::Elevation::Flat);
@@ -524,7 +642,8 @@ pub fn render_usecase_diagram_svg_model(
                 continue;
             }
             let node = geometry[plan.id.as_str()];
-            let [width, height] = [node.width, node.height];
+            let size = node_shape_size(node, plan);
+            let [width, height] = [size.width, size.height];
             let rect = Rect::new(-width / 2.0, -height / 2.0, width / 2.0, height / 2.0);
             let silhouette = if plan.ellipse {
                 Ellipse::from_rect(rect).to_path(0.1)
@@ -602,6 +721,13 @@ pub fn render_usecase_diagram_svg_model(
     chrome.class = Some("usecaseDiagram");
     chrome.aria_labelledby = acc_title_id.as_deref();
     chrome.aria_describedby = acc_descr_id.as_deref();
+    #[cfg(all(feature = "layout-layered", feature = "layout-dagre"))]
+    if matches!(
+        prepared.layered.as_ref(),
+        Some(super::layered::Paint::DagreFallback)
+    ) {
+        chrome.extra_attrs = &[("data-layout-fallback", "dagre")];
+    }
     let actor_font = &css_binding.actor_font;
     let usecase_font = &css_binding.usecase_font;
     let actor_font_size = format!("{}px", fmt(actor_font.font_size));
@@ -657,27 +783,41 @@ pub fn render_usecase_diagram_svg_model(
     if !uses_canonical {
         write_legacy_base_markers(&mut out, diagram_id, css_binding.marker_style)?;
         out.push_str("<defs>");
-        let _ = write!(
-            out,
-            r#"<marker id="{diagram_id}_usecase-extensionStart" class="marker extension usecase" refX="18" refY="7" markerWidth="20" markerHeight="28" orient="auto" markerUnits="userSpaceOnUse"><path d="M 1,7 L18,13 V 1 Z"/></marker>"#
-        );
+        write_extension_marker(&mut out, diagram_id, "extensionStart", true, false, None);
         out.push_str("</defs><defs>");
-        let _ = write!(
-            out,
-            r#"<marker id="{diagram_id}_usecase-extensionEnd" class="marker extension usecase" refX="1" refY="7" markerWidth="20" markerHeight="28" markerUnits="userSpaceOnUse" orient="auto"><path d="M 1,1 V 13 L18,7 Z"/></marker>"#
-        );
+        write_extension_marker(&mut out, diagram_id, "extensionEnd", false, false, None);
         out.push_str("</defs>");
-        let _ = write!(
-            out,
-            r#"<marker id="{diagram_id}_usecase-extensionStart-margin" class="marker extension usecase" refX="18" refY="7" markerWidth="20" markerHeight="28" orient="auto" markerUnits="userSpaceOnUse" viewBox="0 0 20 14"><polygon points="10,7 18,13 18,1" style="stroke-width: 2; stroke-dasharray: 0;"/></marker>"#
+        write_extension_marker(
+            &mut out,
+            diagram_id,
+            "extensionStart-margin",
+            true,
+            true,
+            None,
         );
         out.push_str("<defs>");
-        let _ = write!(
-            out,
-            r#"<marker id="{diagram_id}_usecase-extensionEnd-margin" class="marker extension usecase" refX="9" refY="7" markerWidth="20" markerHeight="28" orient="auto" markerUnits="userSpaceOnUse" viewBox="0 0 20 14"><polygon points="10,1 10,13 18,7" style="stroke-width: 2; stroke-dasharray: 0;"/></marker>"#
+        write_extension_marker(
+            &mut out,
+            diagram_id,
+            "extensionEnd-margin",
+            false,
+            true,
+            None,
         );
         out.push_str("</defs>");
     }
+    #[cfg(feature = "layout-layered")]
+    let layered_markers = uses_layered
+        .then(|| {
+            layered::write_marker_variants(
+                &mut out,
+                diagram_id,
+                css_binding,
+                &prepared.measured.edges,
+                options.work_meter,
+            )
+        })
+        .transpose()?;
     out.push_str(r#"<g class="root"><g class="clusters">"#);
     let mut legacy_boundaries = prepared
         .measured
@@ -704,7 +844,14 @@ pub fn render_usecase_diagram_svg_model(
         let node = geometry[plan.id.as_str()];
         let boundary = boundaries[plan.id.as_str()];
         let kind = if plan.package { "package" } else { "rect" };
-        let accessible = format!("{kind} system boundary {}", accessible_label(&plan.label));
+        let accessible = if uses_layered {
+            format!(
+                "{kind} system boundary {}",
+                accessible_text(&plan.source_label, boundary.label_type)
+            )
+        } else {
+            format!("{kind} system boundary {}", accessible_label(&plan.label))
+        };
         let appearance = theme::appearance_attributes(css_binding, Some(color_index));
         let canonical_attributes = if uses_canonical {
             format!(r#" data-et="cluster" data-id="{}""#, escape_attr(&plan.id))
@@ -727,8 +874,16 @@ pub fn render_usecase_diagram_svg_model(
             .and_then(|canonical| canonical.titles.get(&plan.id));
         #[cfg(not(feature = "layout-shoal"))]
         let placed_title: Option<&LayoutLabel> = None;
+        #[cfg(feature = "layout-layered")]
+        let height = if uses_layered {
+            layered::boundary_height(node, plan)
+        } else {
+            node.height
+        };
+        #[cfg(not(feature = "layout-layered"))]
+        let height = node.height;
         let left = node.x - node.width / 2.0;
-        let top = node.y - node.height / 2.0;
+        let top = node.y - height / 2.0;
         let (tab_left, tab_width, tab_height) = if plan.package {
             package_tab_geometry(left, top, node.width, &plan.label, placed_title)
         } else {
@@ -757,7 +912,7 @@ pub fn render_usecase_diagram_svg_model(
             left,
             top + body_inset,
             node.width,
-            node.height - body_inset,
+            height - body_inset,
             &plan.source_style,
         );
         if uses_canonical {
@@ -800,6 +955,7 @@ pub fn render_usecase_diagram_svg_model(
     out.checkpoint()?;
     let elk = prepared.elk;
     let sketch = (!uses_canonical
+        && !uses_layered
         && (css_binding.sketches_edges() || (uses_grid && css_binding.edge_look == "handDrawn")))
         .then(|| {
             operation_randomness(
@@ -873,8 +1029,9 @@ pub fn render_usecase_diagram_svg_model(
                     .as_ref()
                     .filter(|label| label.width > 0.0 && label.height > 0.0)
             }),
+            label_y_offset,
         )?;
-    let edge_layer_class = if uses_grid {
+    let edge_layer_class = if uses_grid || uses_layered {
         "edges edgePaths"
     } else {
         "edgePaths edges"
@@ -888,7 +1045,11 @@ pub fn render_usecase_diagram_svg_model(
         let _ = write!(out, r#"<g class="{edge_layer_class}">"#);
     }
     for (edge_index, plan) in prepared.measured.edges.iter().enumerate() {
-        #[cfg(not(any(feature = "layout-shoal", feature = "layout-grid")))]
+        #[cfg(not(any(
+            feature = "layout-shoal",
+            feature = "layout-grid",
+            feature = "layout-layered"
+        )))]
         let _ = edge_index;
         out.checkpoint()?;
         let edge = edge_geometry[plan.id.as_str()];
@@ -897,11 +1058,20 @@ pub fn render_usecase_diagram_svg_model(
         let canonical_edge = canonical_edges.as_mut().and_then(Iterator::next);
         #[cfg(feature = "layout-grid")]
         let grid_edge = grid_edges.as_ref().map(|edges| &edges[edge_index]);
-        let legacy = || {
+        #[cfg(feature = "layout-layered")]
+        let layered_edge = layered_edges.as_ref().map(|edges| &edges[edge_index]);
+        let legacy = || -> (Cow<'_, str>, Cow<'_, str>) {
+            #[cfg(feature = "layout-layered")]
+            if let Some(paint) = layered_edge {
+                return (
+                    Cow::Borrowed(paint.json.as_str()),
+                    Cow::Borrowed(paint.path.as_str()),
+                );
+            }
             #[cfg(feature = "layout-grid")]
             if let Some(paint) = grid_edge {
                 return (
-                    json_stringify_points(&paint.points),
+                    Cow::Owned(json_stringify_points(&paint.points)),
                     Cow::Borrowed(paint.path.as_str()),
                 );
             }
@@ -926,12 +1096,12 @@ pub fn render_usecase_diagram_svg_model(
                 Some(hop) => Cow::Borrowed(hop.as_str()),
                 None => Cow::Owned(path),
             };
-            (data_points, path)
+            (Cow::Owned(data_points), path)
         };
         #[cfg(feature = "layout-shoal")]
         let (data_points, path) = canonical_edge.as_ref().map_or_else(legacy, |painted| {
             (
-                json_stringify_points(&painted.points),
+                Cow::Owned(json_stringify_points(&painted.points)),
                 Cow::Borrowed(painted.path.as_str()),
             )
         });
@@ -948,7 +1118,7 @@ pub fn render_usecase_diagram_svg_model(
             None
         };
         let path = rough.as_deref().unwrap_or(&path);
-        let data_points = base64::engine::general_purpose::STANDARD.encode(data_points);
+        let data_points = base64::engine::general_purpose::STANDARD.encode(data_points.as_bytes());
         let relation = relationships
             .get(plan.original_id.as_deref().unwrap_or(&plan.id))
             .copied();
@@ -1001,6 +1171,14 @@ pub fn render_usecase_diagram_svg_model(
                 }
                 let name = marker.strip_prefix("arrow_").unwrap_or(marker);
                 let side = if start { "Start" } else { "End" };
+                #[cfg(feature = "layout-layered")]
+                if let Some(suffix) = layered_markers
+                    .as_ref()
+                    .and_then(|variants| variants[edge_index][usize::from(!start)].as_deref())
+                {
+                    marker_references.push((end, format!("url(#{diagram_id}_usecase-{suffix})")));
+                    continue;
+                }
                 let reference = format!("url(#{diagram_id}_usecase-{name}{side}{margin})");
                 marker_references.push((end, reference));
             }
@@ -1009,6 +1187,9 @@ pub fn render_usecase_diagram_svg_model(
             "edge-thickness-normal edge-pattern-{} default relationship relationship-{relation_kind}",
             if plan.dotted { "dotted" } else { "solid" }
         );
+        if uses_layered && data_look == "handDrawn" {
+            classes.push_str(" transition");
+        }
         if let Some(edge) = relation {
             for class in &edge.classes {
                 classes.push(' ');
@@ -1077,6 +1258,11 @@ pub fn render_usecase_diagram_svg_model(
             Some(paint) => Cow::Owned(grid::path_style(plan, paint, options.work_meter)?),
             None => source_style,
         };
+        #[cfg(feature = "layout-layered")]
+        let source_style = match layered_edge {
+            Some(paint) => Cow::Owned(layered::path_style(plan, paint, options.work_meter)?),
+            None => source_style,
+        };
         let _ = write!(out, r#" style="{}""#, escape_attr(&source_style));
         for (end, reference) in marker_references {
             let _ = write!(out, r#" marker-{end}="{}""#, escape_attr(&reference));
@@ -1094,7 +1280,7 @@ pub fn render_usecase_diagram_svg_model(
                     label,
                     UsecaseLabelKind::Edge(&plan.id),
                     position.x,
-                    position.y,
+                    position.y + label_y_offset,
                     labels,
                 );
             }

@@ -61,6 +61,7 @@ pub(crate) fn prepare_usecase_diagram(
         feature = "layout-dagre",
         feature = "layout-elk",
         feature = "layout-grid",
+        feature = "layout-layered",
         feature = "layout-shoal"
     ))]
     use crate::layout_backend::GraphLayoutBackend;
@@ -86,6 +87,59 @@ pub(crate) fn prepare_usecase_diagram(
             canonical: None,
         });
     }
+    #[cfg(feature = "layout-layered")]
+    let dagre_retry = if backend == GraphLayoutBackend::Layered {
+        use merman_render_graph::usecase::{UsecaseLayeredError, prepare_layered};
+
+        match prepare_layered(
+            model,
+            effective_config,
+            execution.native_family_theme(),
+            execution.family.session().canvas_background(),
+            execution.text_measurer(),
+            execution.math_renderer(),
+            &work_meter,
+        ) {
+            Ok(prepared) => {
+                return Ok(UsecasePreparedArtifact {
+                    prepared,
+                    #[cfg(feature = "layout-shoal")]
+                    route_contract: None,
+                    #[cfg(feature = "layout-shoal")]
+                    canonical: None,
+                });
+            }
+            Err(UsecaseLayeredError::Host(error)) => return Err(error),
+            Err(error) if error.is_recoverable() => {
+                work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
+                if !cfg!(feature = "layout-dagre")
+                    || !execution
+                        .family
+                        .session()
+                        .supports_capability(crate::RenderCapability::LayoutDagre)
+                {
+                    return Err(crate::Error::MissingCapability {
+                        capability: crate::RenderCapability::LayoutDagre,
+                        diagram_type: "usecase".to_owned(),
+                    });
+                }
+                true
+            }
+            Err(error) => {
+                return Err(crate::Error::InvalidModel {
+                    message: error.to_string(),
+                });
+            }
+        }
+    } else {
+        false
+    };
+    #[cfg(feature = "layout-layered")]
+    let backend = if dagre_retry {
+        GraphLayoutBackend::Dagre
+    } else {
+        backend
+    };
     let config_value = effective_config.as_value();
     let mut work = crate::layout_work::OperationLayoutWorkControl::new(work_meter);
     let measured = prepare_usecase_measurements(
@@ -110,15 +164,25 @@ pub(crate) fn prepare_usecase_diagram(
     }
     match (backend, config_value, measured) {
         #[cfg(feature = "layout-dagre")]
-        (GraphLayoutBackend::Dagre, config, measured) => Ok(UsecasePreparedArtifact {
-            prepared: merman_render_graph::usecase::prepare_dagre(
-                model, config, measured, &mut work,
-            )?,
-            #[cfg(feature = "layout-shoal")]
-            route_contract: Some(RouteContract::DagreParity),
-            #[cfg(feature = "layout-shoal")]
-            canonical: None,
-        }),
+        (GraphLayoutBackend::Dagre, config, measured) => {
+            let prepared =
+                merman_render_graph::usecase::prepare_dagre(model, config, measured, &mut work)?;
+            #[cfg(feature = "layout-layered")]
+            let prepared = {
+                let mut prepared = prepared;
+                if dagre_retry {
+                    prepared.mark_layered_dagre_fallback();
+                }
+                prepared
+            };
+            Ok(UsecasePreparedArtifact {
+                prepared,
+                #[cfg(feature = "layout-shoal")]
+                route_contract: Some(RouteContract::DagreParity),
+                #[cfg(feature = "layout-shoal")]
+                canonical: None,
+            })
+        }
         #[cfg(feature = "layout-elk")]
         (GraphLayoutBackend::Elk(algorithm), config, measured) => Ok(UsecasePreparedArtifact {
             prepared: merman_render_graph::usecase::prepare_elk(

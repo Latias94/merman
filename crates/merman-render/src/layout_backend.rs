@@ -128,7 +128,7 @@ fn requested_layout(config: &(impl ConfigLookup + ?Sized)) -> &str {
     config.get("layout").and_then(Value::as_str).unwrap_or("")
 }
 
-fn unsupported_mermaid_layout(family: DiagramFamilyId, requested: &str) -> Option<&'static str> {
+fn explicit_mermaid_layout(family: DiagramFamilyId, requested: &str) -> Option<&'static str> {
     let backend = match requested {
         "grid" => "grid",
         "layered" => "layered",
@@ -158,7 +158,7 @@ pub(crate) fn benchmark_fixed_layout(
 ) -> Option<GraphLayoutBackend> {
     use GraphLayoutBackend as Backend;
 
-    if unsupported_mermaid_layout(family, requested).is_some() {
+    if explicit_mermaid_layout(family, requested).is_some() {
         return None;
     }
     match family {
@@ -192,44 +192,15 @@ pub(crate) fn resolve(
     use GraphLayoutBackend as Backend;
 
     let requested = requested_layout(config);
-    if requested == "layered"
-        && crate::layout_layered_available()
-        && matches!(
-            family,
-            DiagramFamilyId::FLOWCHART
-                | DiagramFamilyId::AGENTFLOW
-                | DiagramFamilyId::CLASS
-                | DiagramFamilyId::ER
-                | DiagramFamilyId::SWIMLANE
-                | DiagramFamilyId::MINDMAP
-                | DiagramFamilyId::REQUIREMENT
-                | DiagramFamilyId::STATE
-        )
-    {
-        return Ok(Backend::Layered);
-    }
-    if requested == "grid"
-        && crate::layout_grid_available()
-        && matches!(
-            family,
-            DiagramFamilyId::FLOWCHART
-                | DiagramFamilyId::AGENTFLOW
-                | DiagramFamilyId::SWIMLANE
-                | DiagramFamilyId::CLASS
-                | DiagramFamilyId::ER
-                | DiagramFamilyId::MINDMAP
-                | DiagramFamilyId::REQUIREMENT
-                | DiagramFamilyId::STATE
-                | DiagramFamilyId::USECASE
-        )
-    {
-        return Ok(Backend::Grid);
-    }
-    if let Some(backend) = unsupported_mermaid_layout(family, requested) {
-        return Err(Error::UnsupportedLayoutBackend {
-            backend,
-            diagram_type: diagram_type.to_owned(),
-        });
+    if let Some(backend) = explicit_mermaid_layout(family, requested) {
+        return match backend {
+            "grid" if crate::layout_grid_available() => Ok(Backend::Grid),
+            "layered" if crate::layout_layered_available() => Ok(Backend::Layered),
+            _ => Err(Error::UnsupportedLayoutBackend {
+                backend,
+                diagram_type: diagram_type.to_owned(),
+            }),
+        };
     }
     if requested == "shoal" {
         match family {
@@ -394,24 +365,7 @@ mod tests {
                     "layered" if crate::layout_layered_available() => Some(Backend::Layered),
                     _ => None,
                 };
-                let flow_family = matches!(
-                    family,
-                    DiagramFamilyId::FLOWCHART
-                        | DiagramFamilyId::AGENTFLOW
-                        | DiagramFamilyId::SWIMLANE
-                );
-                if let Some(backend) = available
-                    && (flow_family
-                        || matches!(
-                            family,
-                            DiagramFamilyId::CLASS
-                                | DiagramFamilyId::ER
-                                | DiagramFamilyId::MINDMAP
-                                | DiagramFamilyId::REQUIREMENT
-                                | DiagramFamilyId::STATE
-                        )
-                        || (backend == Backend::Grid && family == DiagramFamilyId::USECASE))
-                {
+                if let Some(backend) = available {
                     assert_eq!(resolve(family, diagram_type, &config).unwrap(), backend);
                     continue;
                 }

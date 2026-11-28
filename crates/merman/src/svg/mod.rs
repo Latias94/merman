@@ -80,7 +80,8 @@ pub const fn layout_layered_available() -> bool {
             feature = "diagram-er",
             feature = "diagram-mindmap",
             feature = "diagram-requirement",
-            feature = "diagram-state"
+            feature = "diagram-state",
+            feature = "diagram-usecase"
         )
     )) && merman_render::layout_layered_available()
 }

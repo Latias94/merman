@@ -22,10 +22,13 @@ mod dagre;
 mod elk;
 #[cfg(feature = "layout-grid")]
 mod grid;
+#[cfg(feature = "layout-layered")]
+mod layered;
 #[cfg(any(
     feature = "layout-dagre",
     feature = "layout-elk",
     feature = "layout-grid",
+    feature = "layout-layered",
     feature = "layout-shoal"
 ))]
 pub mod layout;
@@ -41,6 +44,8 @@ mod theme;
 pub use elk::prepare as prepare_elk;
 #[cfg(feature = "layout-grid")]
 pub use grid::prepare as prepare_grid;
+#[cfg(feature = "layout-layered")]
+pub use layered::{UsecaseLayeredError, prepare as prepare_layered};
 #[cfg(feature = "layout-shoal")]
 pub use marker::UsecaseMarker;
 #[cfg(any(feature = "layout-elk", feature = "layout-shoal"))]
@@ -79,6 +84,8 @@ pub struct UsecaseLabelPlan {
     pub(crate) styles: indexmap::IndexMap<String, String>,
     /// Final HTML terminal shared by measurement and emission, including effective Markdown config.
     pub(crate) html: Option<Arc<measure::UsecasePreparedHtmlLabel>>,
+    #[cfg(feature = "layout-layered")]
+    pub(crate) layered_svg: Option<Arc<measure::UsecasePreparedSvgLabel>>,
 }
 
 pub fn package_tab_size(label: &UsecaseLabelPlan) -> (f64, f64) {
@@ -139,6 +146,8 @@ pub struct UsecaseNodePlan {
     pub is_boundary: bool,
     pub package: bool,
     pub ellipse: bool,
+    #[cfg(feature = "layout-layered")]
+    pub(crate) layered_ellipse: Option<kurbo::Size>,
     pub(crate) table: Option<UsecaseJsonTablePlan>,
     pub(crate) dagre_helper: bool,
 }
@@ -147,6 +156,8 @@ pub struct UsecaseNodePlan {
 pub struct UsecaseEdgePlan {
     pub id: String,
     pub source_style: String,
+    #[cfg(feature = "layout-layered")]
+    pub(crate) layered_marker_stroke: Option<String>,
     pub animated: bool,
     pub(crate) original_id: Option<String>,
     pub(crate) self_loop_node: Option<String>,
@@ -215,6 +226,8 @@ pub struct UsecasePrepared {
     elk: bool,
     #[cfg(feature = "layout-grid")]
     grid: Option<grid::UsecaseGridPaint>,
+    #[cfg(feature = "layout-layered")]
+    layered: Option<layered::Paint>,
 }
 
 impl UsecasePrepared {
@@ -231,11 +244,18 @@ impl UsecasePrepared {
             elk,
             #[cfg(feature = "layout-grid")]
             grid: None,
+            #[cfg(feature = "layout-layered")]
+            layered: None,
         }
     }
 
     pub fn layout(&self) -> &UsecaseDiagramLayout {
         &self.layout
+    }
+
+    #[cfg(all(feature = "layout-layered", feature = "layout-dagre"))]
+    pub fn mark_layered_dagre_fallback(&mut self) {
+        self.layered = Some(layered::Paint::DagreFallback);
     }
 
     #[cfg(feature = "layout-shoal")]

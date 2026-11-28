@@ -259,7 +259,8 @@ fn compiled_capabilities_for_auto_detection() -> Vec<&'static str> {
                 feature = "diagram-er",
                 feature = "diagram-mindmap",
                 feature = "diagram-requirement",
-                feature = "diagram-state"
+                feature = "diagram-state",
+                feature = "diagram-usecase"
             )
         ))]
         "layout-layered",
@@ -1193,6 +1194,12 @@ fn workflow_layered() {
                 "state",
                 "stateDiagram-v2\n  Idle --> Ready\n",
                 "StateDiagramV2",
+            ),
+            #[cfg(feature = "diagram-usecase")]
+            (
+                "usecase",
+                "usecase-beta\n  actor Customer\n  Checkout[Checkout]\n  Customer --> Checkout\n",
+                "UsecaseDiagram",
             ),
         ],
     );
