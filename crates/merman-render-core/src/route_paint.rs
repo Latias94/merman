@@ -29,6 +29,7 @@ const STEEP_SWEEP_MIN_ACROSS: f64 = 48.0;
 // Long fan spans keep their distributed curves instead of sharing a flat crossbar.
 const STEEP_SWEEP_MAX_ACROSS: f64 = 960.0;
 const MIN_TURN_ARM: f64 = 8.0;
+const MICRO_JOG_LIMIT: f64 = 8.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum RouteStyle {
@@ -925,6 +926,155 @@ fn right_angle(route: &[RoutePoint], i: usize) -> bool {
     (ab_vert && bc_horiz) || (ab_horiz && bc_vert)
 }
 
+struct RightAngle {
+    knot: Point,
+    incoming: Vec2,
+    outgoing: Vec2,
+    before: f64,
+    after: f64,
+    previous_turn: bool,
+    next_turn: bool,
+}
+
+impl RightAngle {
+    fn at(body: &[RoutePoint], i: usize) -> Option<Self> {
+        if !right_angle(body, i) {
+            return None;
+        }
+        let knot = position(body[i]);
+        let incoming = knot - position(body[i - 1]);
+        let outgoing = position(body[i + 1]) - knot;
+        let before = incoming.hypot();
+        let after = outgoing.hypot();
+        let previous_turn = right_angle(body, i - 1);
+        let next_turn = right_angle(body, i + 1);
+        Some(Self {
+            knot,
+            incoming: incoming / before,
+            outgoing: outgoing / after,
+            before: if previous_turn { before * 0.5 } else { before },
+            after: if next_turn { after * 0.5 } else { after },
+            previous_turn,
+            next_turn,
+        })
+    }
+
+    fn cubic(
+        self,
+        body: &[RoutePoint],
+        i: usize,
+        terminals: (Option<&Terminal>, Option<&Terminal>),
+    ) -> impl Fn(f64) -> CubicBez {
+        let on_normal = |terminal: &Terminal| {
+            let delta = self.knot - terminal.tip;
+            delta.cross(terminal.normal) == 0.0 && delta.dot(terminal.normal) > 0.0
+        };
+        let previous_boundary = body[i - 1].kind == KnotKind::GapBoundary;
+        let next_boundary = body[i + 1].kind == KnotKind::GapBoundary;
+        // Use equal arms when a side terminal turns onto a rail before it leaves the rank.
+        let terminal_turn = !self.previous_turn
+            && !self.next_turn
+            && ((i == 1 && next_boundary && terminals.0.is_some_and(on_normal))
+                || (i + 2 == body.len()
+                    && previous_boundary
+                    && terminals.1.is_some_and(on_normal)));
+        let (before, after, handle) = if terminal_turn {
+            let arm = self.before.min(self.after).min(TERMINAL_TURN_RADIUS);
+            (arm, arm, QUARTER_CIRCLE_HANDLE)
+        } else {
+            // A long straight corridor meeting a short jog needs similarly sized arms.
+            let aspect_cap = self.before.min(self.after) * MAX_CORNER_ASPECT;
+            let cap = if previous_boundary || next_boundary {
+                aspect_cap
+            } else {
+                aspect_cap.min(MAX_CORNER_ARM)
+            };
+            (self.before.min(cap), self.after.min(cap), TURN_HANDLE)
+        };
+        move |scale| {
+            corner_curve(
+                self.knot,
+                self.incoming,
+                self.outgoing,
+                before * scale,
+                after * scale,
+                handle,
+            )
+        }
+    }
+}
+
+fn sweep_shortcut(
+    from: Point,
+    body: &[RoutePoint],
+    i: usize,
+    terminals: (Option<&Terminal>, Option<&Terminal>),
+) -> Option<(CubicBez, usize)> {
+    let [join, next, ..] = body.get(i..)? else {
+        return None;
+    };
+    if (from - position(body[i - 1])).hypot() > ALIGN_EPS
+        || body[i - 1].kind == KnotKind::ContourDeparture
+        || join.kind == KnotKind::ContourDeparture
+        || steep_offset(from, *join).is_some()
+    {
+        return None;
+    }
+    let along = |delta: Vec2| match join.axis {
+        Axis::Horizontal => delta.x,
+        Axis::Vertical => delta.y,
+    };
+    let (end, elbow_join, through) = if let Some(first) = RightAngle::at(body, i + 1) {
+        let last = RightAngle::at(body, i + 2)?;
+        if next.kind != KnotKind::Free
+            || body[i + 2].kind != KnotKind::Free
+            || along(first.incoming).abs() < 1.0 - ALIGN_EPS
+            || (first.incoming - last.outgoing).hypot() > ALIGN_EPS
+        {
+            return None;
+        }
+        let first = first.cubic(body, i + 1, terminals)(1.0);
+        let last = last.cubic(body, i + 2, terminals)(1.0);
+        // The elbows must consume the entire shelf. This can release a gap boundary
+        // at the first join because there is no straight track left to turn onto.
+        if (first.p0 - position(*join)).hypot() > ALIGN_EPS
+            || (first.p3 - last.p0).hypot() > ALIGN_EPS
+        {
+            return None;
+        }
+        (at(last.p3, join.axis), Some(first.p3), i + 2)
+    } else {
+        if join.kind != KnotKind::Free
+            || join.axis != next.axis
+            || aligned(position(*join), position(*next))
+            || steep_offset(position(*join), *next).is_some()
+        {
+            return None;
+        }
+        (*next, None, i + 1)
+    };
+    let chord = position(end) - from;
+    let length = chord.hypot();
+    let run = along(chord);
+    let mut previous = 0.0;
+    let near_chord = |point: Point| {
+        let delta = point - from;
+        let advance = along(delta) * run.signum();
+        let ordered = previous < advance && advance < run.abs();
+        previous = advance;
+        ordered && chord.cross(delta).abs() < MICRO_JOG_LIMIT * length
+    };
+    if length.is_finite()
+        && std::iter::once(position(*join))
+            .chain(elbow_join)
+            .all(near_chord)
+    {
+        Some((sweep_curve(from, end, false, 1.0), through))
+    } else {
+        None
+    }
+}
+
 fn smoothing_scale(blocked: impl Fn(f64) -> bool) -> Option<f64> {
     if !blocked(1.0) {
         return Some(1.0);
@@ -972,25 +1122,19 @@ fn draw_body<E>(
         }
         return Ok(());
     }
+    let shortcut_clearance = clearance.filter(|guard| guard.label_bounds.is_none());
+    let mut merged_through = 0;
     for i in 1..body.len() {
+        if i <= merged_through {
+            continue;
+        }
         let p = position(body[i]);
-        if matches!(style, RouteStyle::Curved | RouteStyle::Rounded(_)) && right_angle(body, i) {
-            let incoming = p - position(body[i - 1]);
-            let outgoing = position(body[i + 1]) - p;
-            let mut before = incoming.hypot();
-            let mut after = outgoing.hypot();
-            let u = incoming / before;
-            let v = outgoing / after;
-            let previous_turn = right_angle(body, i - 1);
-            let next_turn = right_angle(body, i + 1);
-            if previous_turn {
-                before *= 0.5;
-            }
-            if next_turn {
-                after *= 0.5;
-            }
+        if matches!(style, RouteStyle::Curved | RouteStyle::Rounded(_))
+            && let Some(turn) = RightAngle::at(body, i)
+        {
             if let RouteStyle::Rounded(radius) = style {
-                let r = radius.min(before).min(after);
+                let r = radius.min(turn.before).min(turn.after);
+                let (u, v) = (turn.incoming, turn.outgoing);
                 let r = r * clearance.map_or(1., |guard| {
                     smoothing_scale(|scale| {
                         guard.blocks_quarter(p - u * (r * scale), p, p + v * (r * scale))
@@ -1004,38 +1148,7 @@ fn draw_body<E>(
                     pen.line(p)?;
                 }
             } else {
-                // A side terminal can turn onto a rail before it leaves the rank. Use
-                // equal arms so a long horizontal lead doesn't stretch the corner.
-                let on_normal = |terminal: &Terminal| {
-                    let delta = p - terminal.tip;
-                    delta.cross(terminal.normal) == 0.0 && delta.dot(terminal.normal) > 0.0
-                };
-                let terminal_turn = !previous_turn
-                    && !next_turn
-                    && ((i == 1
-                        && body[i + 1].kind == KnotKind::GapBoundary
-                        && terminals.0.is_some_and(on_normal))
-                        || (i + 2 == body.len()
-                            && body[i - 1].kind == KnotKind::GapBoundary
-                            && terminals.1.is_some_and(on_normal)));
-                let track_shelf = body[i - 1].kind == KnotKind::GapBoundary
-                    || body[i + 1].kind == KnotKind::GapBoundary;
-                let (before, after, handle) = if terminal_turn {
-                    let arm = before.min(after).min(TERMINAL_TURN_RADIUS);
-                    (arm, arm, QUARTER_CIRCLE_HANDLE)
-                } else {
-                    // Bound right-angle corner asymmetry so a long straight corridor
-                    // meeting a short jog stays straight instead of bowing into a banana arc.
-                    // Free corners outside explicit GapBoundary shelves also cap arm length.
-                    let cap = before.min(after) * MAX_CORNER_ASPECT;
-                    let (b, a) = (before.min(cap), after.min(cap));
-                    if track_shelf {
-                        (b, a, TURN_HANDLE)
-                    } else {
-                        (b.min(MAX_CORNER_ARM), a.min(MAX_CORNER_ARM), TURN_HANDLE)
-                    }
-                };
-                let curve = |scale| corner_curve(p, u, v, before * scale, after * scale, handle);
+                let curve = turn.cubic(body, i, terminals);
                 let scale = clearance.map_or(1., |guard| {
                     smoothing_scale(|scale| guard.blocks_cubic(curve(scale))).unwrap_or(0.)
                 });
@@ -1048,11 +1161,32 @@ fn draw_body<E>(
                 pen.cubic(safe.p1, safe.p2, safe.p3)?;
             }
         } else if style == RouteStyle::Curved && !aligned(position(body[i - 1]), p) {
-            pen.sweep(
-                body[i],
-                body[i - 1].kind == KnotKind::ContourDeparture,
-                clearance,
-            )?;
+            if let Some(guard) = shortcut_clearance
+                && pen.detour_budget.can_try_shortcut()
+                && let Some((curve, through)) = sweep_shortcut(pen.at, body, i, terminals)
+                && guard.allows_sweep_shortcut(
+                    CubicBez::new(
+                        svg_point(curve.p0),
+                        svg_point(curve.p1),
+                        svg_point(curve.p2),
+                        svg_point(curve.p3),
+                    ),
+                    pen.detour_budget,
+                )
+            {
+                if aligned(curve.p0, curve.p3) {
+                    pen.line(curve.p3)?;
+                } else {
+                    pen.cubic(curve.p1, curve.p2, curve.p3)?;
+                }
+                merged_through = through;
+            } else {
+                pen.sweep(
+                    body[i],
+                    body[i - 1].kind == KnotKind::ContourDeparture,
+                    clearance,
+                )?;
+            }
         } else {
             pen.line(p)?;
         }
@@ -1329,7 +1463,8 @@ impl RoutePaintRequest<'_> {
         let measure_length = scratch.measure_length;
         let record_segments = scratch.record_segments;
         let smooth_terminals = self.smooth_terminals();
-        let mut budget = clearance::DetourBudget::default();
+        let mut budget =
+            clearance::DetourBudget::new(cfg!(feature = "layout-shoal") && smooth_terminals);
         let mut attempt = |request| {
             scratch.measure_length = measure_length;
             scratch.record_segments = record_segments;
@@ -2016,6 +2151,139 @@ mod tests {
             Some(tree.for_edge(0, (Endpoint::Node(0), Endpoint::Node(1)), Vec2::ZERO, 1.)),
         );
         assert!(matches!(result, Err(RoutePaintError::NoClearDetour)));
+    }
+
+    #[cfg(feature = "layout-shoal")]
+    #[test]
+    fn solved_exterior_sweep_keeps_its_stitch_and_terminal_shaft() {
+        let points = [
+            v(68., 0.),
+            v(68., 34.),
+            v(68., 41.),
+            RoutePoint::gap_boundary(34., 82., Axis::Vertical),
+            v(34., 110.),
+            h(0., 110.),
+            v(0., 152.),
+            v(0., 164.),
+        ];
+        let stitches = [BorderStitch {
+            edge: 0,
+            point: 1,
+            group: 0,
+            side: Side::Bottom,
+        }];
+        let tree = Clearance::default();
+        let endpoints = (Endpoint::Node(0), Endpoint::Node(1));
+        let offset = Vec2::new(800., -200.);
+        let request = RoutePaintRequest {
+            points: &points,
+            sides: (Side::Bottom, Side::Top),
+            style: RouteStyle::Curved,
+            markers: (Marker::default(), marker(4., 8.)),
+            curve_terminals: CurveTerminals::Smooth,
+            stitches: &stitches,
+            clearance: Some(tree.for_edge(0, endpoints, offset, 1.)),
+        };
+        let mut scratch = RoutePaintScratch::default();
+        let original = request.paint_svg(&mut scratch).unwrap();
+        scratch.measure_length();
+        scratch.record_segments();
+        let simplified = request.paint_solved_svg(&mut scratch).unwrap();
+        let pieces = segments(&simplified);
+        assert_eq!(pieces, scratch.segments());
+        assert_eq!(
+            scratch.measured_length(),
+            Some(
+                BezPath::from_svg(&simplified.d)
+                    .unwrap()
+                    .perimeter(SVG_LENGTH_ACCURACY)
+            )
+        );
+        let [
+            PathSeg::Line(through_border),
+            PathSeg::Line(guard),
+            PathSeg::Cubic(sweep),
+            PathSeg::Line(shaft),
+        ] = pieces.as_slice()
+        else {
+            panic!("{}", simplified.d);
+        };
+        assert_eq!(through_border.p1, position(points[1]));
+        assert_eq!(guard.p1, position(points[2]));
+        assert_eq!(sweep.p0.x, sweep.p1.x);
+        assert_eq!(sweep.p2.x, sweep.p3.x);
+        assert_eq!(shaft.p0.x, shaft.p1.x);
+        assert_eq!(shaft.p1, Point::new(0., 160.));
+        assert!(shaft.length() >= 8.);
+
+        for obstacle in [Rect::new(50., 64., 51., 66.), Rect::new(56., 64., 57., 68.)] {
+            let tree =
+                Clearance::new(vec![(obstacle + offset, ObstacleOwner::GroupTitle(1))]).unwrap();
+            let guarded = RoutePaintRequest {
+                clearance: Some(tree.for_edge(0, endpoints, offset, 1.)),
+                ..request
+            }
+            .paint_solved_svg(&mut scratch)
+            .unwrap();
+            assert_eq!(guarded.d, original.d);
+            assert!(!samples_inside(&guarded, obstacle.inflate(1., 1.)));
+        }
+        assert_eq!(
+            RoutePaintRequest {
+                clearance: None,
+                ..request
+            }
+            .paint_solved_svg(&mut scratch)
+            .unwrap()
+            .d,
+            original.d
+        );
+
+        let crowded = Clearance::new(vec![
+            (
+                Rect::new(30., 70., 39., 100.) + offset,
+                ObstacleOwner::EdgeLabel(0),
+            );
+            600
+        ])
+        .unwrap();
+        let budget_limited = RoutePaintRequest {
+            clearance: Some(crowded.for_edge(0, endpoints, offset, 1.)),
+            ..request
+        };
+        assert_eq!(
+            budget_limited.paint_solved_svg(&mut scratch).unwrap().d,
+            original.d
+        );
+    }
+
+    #[cfg(feature = "layout-shoal")]
+    #[test]
+    fn solved_curves_drop_only_small_free_jogs() {
+        let tree = Clearance::default();
+        let guard = tree.for_edge(0, (Endpoint::Node(0), Endpoint::Node(1)), Vec2::ZERO, 1.);
+        let mut scratch = RoutePaintScratch::default();
+        for (join, cubics) in [
+            (v(6., 50.), 0),
+            (v(8., 50.), 2),
+            (RoutePoint::gap_boundary(6., 50., Axis::Vertical), 2),
+        ] {
+            let route = RoutePaintRequest {
+                points: &[v(0., 0.), v(0., 20.), join, v(0., 80.), v(0., 100.)],
+                sides: (Side::Bottom, Side::Top),
+                style: RouteStyle::Curved,
+                markers: (marker(3., 8.), marker(4., 8.)),
+                curve_terminals: CurveTerminals::Smooth,
+                stitches: &[],
+                clearance: Some(guard),
+            }
+            .paint_solved_svg(&mut scratch)
+            .unwrap();
+            assert_eq!(route.d.matches('C').count(), cubics, "{}", route.d);
+            if cubics == 0 {
+                assert_eq!(route.d, "M0,3L0,96");
+            }
+        }
     }
 
     #[test]

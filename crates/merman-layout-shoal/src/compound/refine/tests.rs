@@ -661,7 +661,7 @@ fn suggested_on_face(
         items: &[],
         ports: hints,
     };
-    port_hints(&ctx, &output, &mut work).unwrap()
+    port_hints(&ctx, &output, PortOrder::Outer, &mut work).unwrap()
 }
 
 fn suggested(

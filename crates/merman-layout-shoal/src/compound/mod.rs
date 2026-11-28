@@ -17,8 +17,8 @@ mod tests;
 use crate::flat::Expanded;
 use crate::work::{LayoutResult, Work, filled, reserved};
 use crate::{
-    Endpoint, Graph, LayoutDetail, LayoutOutput, Options, RoutingStyle, Side, WidthPolicy,
-    WorkError,
+    Endpoint, Graph, LayoutDetail, LayoutError, LayoutOutput, Options, RoutingStyle, Side,
+    WidthPolicy, WorkError,
 };
 use hierarchy::Hierarchy;
 use solve::Frame;
@@ -115,6 +115,49 @@ impl Frames {
                 refine::count_crossings(ctx.graph, &result, ctx.options.routing, limit, work)?;
         }
         Ok(result)
+    }
+
+    fn try_inner_order(
+        &mut self,
+        current: &Pass<'_>,
+        previous: &Pass<'_>,
+        output: &LayoutOutput,
+        expanded: &mut Expanded,
+        work: &mut Work<'_>,
+    ) -> LayoutResult<Option<LayoutOutput>> {
+        work.visit(current.graph.groups.len())?;
+        if current.graph.groups.iter().all(|group| {
+            group
+                .direction
+                .is_none_or(|dir| dir == current.graph.direction)
+        }) {
+            return Ok(None);
+        }
+        let trial = work.compare(|work| {
+            let Some(ports) = refine::port_hints(current, output, refine::PortOrder::Inner, work)?
+            else {
+                return Ok(None);
+            };
+            let adjusted = Pass {
+                ports: &ports,
+                ..*current
+            };
+            let crossings = output.stats.routed_crossings;
+            let candidate =
+                self.draw(&adjusted, Some(previous), expanded, Some(crossings), work)?;
+            work.visit(output.groups.len())?;
+            let titles_clear = output
+                .groups
+                .iter()
+                .zip(&candidate.groups)
+                .all(|(old, new)| old.title_struck || !new.title_struck);
+            Ok((titles_clear && candidate.stats.routed_crossings < crossings).then_some(candidate))
+        });
+        match trial {
+            Ok(candidate) => Ok(candidate.flatten()),
+            Err(LayoutError::AllocationLimit) => Ok(None),
+            Err(error) => Err(error),
+        }
     }
 }
 
@@ -231,27 +274,31 @@ pub(super) fn run_with_topology(
                 ports: port_keys.as_deref().unwrap_or(baseline.ports),
                 ..*baseline
             };
-            let Some(ports) = refine::port_hints(&current, &output, work)? else {
-                break;
-            };
-            let adjusted = Pass {
-                ports: &ports,
-                ..current
-            };
             // The cache follows the last trial even when its drawing was rejected.
-            let previous = if drawn_independently {
+            let mut previous = if drawn_independently {
                 &independent
             } else {
                 &current
             };
-            let alternative =
-                frames.draw(&adjusted, Some(previous), expanded, Some(crossings), work)?;
-            if alternative.stats.routed_crossings >= crossings {
-                break;
+            let outer = refine::port_hints(&current, &output, refine::PortOrder::Outer, work)?;
+            let adjusted = outer.as_ref().map(|ports| Pass { ports, ..current });
+            if let Some(adjusted) = &adjusted {
+                let alternative =
+                    frames.draw(adjusted, Some(previous), expanded, Some(crossings), work)?;
+                if alternative.stats.routed_crossings < crossings {
+                    output = alternative;
+                    port_keys = outer;
+                    drawn_independently = false;
+                    continue;
+                }
+                previous = adjusted;
             }
-            output = alternative;
-            port_keys = Some(ports);
-            drawn_independently = false;
+            if let Some(candidate) =
+                frames.try_inner_order(&current, previous, &output, expanded, work)?
+            {
+                output = candidate;
+            }
+            break;
         }
     }
     if options.width_policy == WidthPolicy::Natural {

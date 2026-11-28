@@ -1207,6 +1207,47 @@ fn agentflow_shoal_nested_title_clears_entering_edge_in_both_label_modes() {
     }
 }
 
+#[cfg(all(feature = "diagram-agentflow", feature = "layout-shoal"))]
+const AGENTFLOW_ROUGH_STRESS: &str = include_str!(
+    "../../../docs/performance/fixtures/shoal-native-visual/mmd/s39-agentflow-hand-drawn-transparent.mmd"
+);
+
+#[cfg(all(feature = "diagram-agentflow", feature = "layout-shoal"))]
+#[test]
+fn agentflow_shoal_hand_drawn_stays_within_svg_budget() {
+    let svg = render_studio_shoal(AGENTFLOW_ROUGH_STRESS);
+    assert!(svg.len() < 90_000, "Agentflow SVG is {} bytes", svg.len());
+}
+
+#[cfg(all(feature = "diagram-agentflow", feature = "layout-shoal"))]
+#[test]
+fn agentflow_shoal_exterior_return_uses_one_sweep() {
+    use kurbo::{BezPath, PathSeg};
+
+    let svg = render_studio_shoal(&AGENTFLOW_ROUGH_STRESS.replace("  look: handDrawn\n", ""));
+    let doc = roxmltree::Document::parse(&svg).unwrap();
+    let edge = doc
+        .descendants()
+        .find(|node| node.attribute("data-id") == Some("L_done_client_0"))
+        .unwrap();
+    assert!(edge.attribute("marker-end").is_some());
+    let d = edge.attribute("d").unwrap();
+    let path = BezPath::from_svg(d).unwrap();
+    let curves: Vec<_> = path
+        .segments()
+        .filter_map(|segment| match segment {
+            PathSeg::Cubic(curve) => Some(curve),
+            _ => None,
+        })
+        .collect();
+    let [sweep] = curves.as_slice() else {
+        panic!("expected one exterior sweep: {d}");
+    };
+    assert_eq!(sweep.p0.x, sweep.p1.x);
+    assert_eq!(sweep.p2.x, sweep.p3.x);
+    assert!(sweep.p0.y < sweep.p1.y && sweep.p1.y <= sweep.p2.y && sweep.p2.y < sweep.p3.y);
+}
+
 #[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
 #[test]
 fn own_member_markers_point_into_the_group_from_both_semantic_ends() {
