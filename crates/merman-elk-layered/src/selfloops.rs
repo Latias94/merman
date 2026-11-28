@@ -1027,11 +1027,21 @@ fn graph_for_reference<'a>(graph: &'a LGraph, reference: &GraphNodeRef) -> Optio
         return Some(graph);
     }
 
-    graph
-        .layerless_nodes
-        .iter()
-        .filter_map(|node| node.nested_graph.as_deref())
-        .find_map(|nested| graph_for_reference(nested, reference))
+    let mut pending_siblings = Vec::new();
+    let mut nodes = graph.layerless_nodes.iter();
+    loop {
+        if let Some(nested) = nodes.find_map(|node| node.nested_graph.as_deref()) {
+            if reference.belongs_to(nested) {
+                return Some(nested);
+            }
+            if !nodes.as_slice().is_empty() {
+                pending_siblings.push(nodes);
+            }
+            nodes = nested.layerless_nodes.iter();
+        } else {
+            nodes = pending_siblings.pop()?;
+        }
+    }
 }
 
 fn remap_holder_ports(holder: &mut SelfLoopHolder, old_to_new: &[usize]) {
@@ -2737,6 +2747,84 @@ mod tests {
 
     fn connect_to_sink(graph: &mut LGraph, source: PortRef, sink: PortRef, id: &str) {
         graph.add_edge(layered_edge(id, "A", "B", source, sink));
+    }
+
+    #[test]
+    fn deep_self_loop_port_references_survive_remapping_on_a_small_stack() {
+        const DEPTH: usize = 4_096;
+
+        let mut root = LGraph::new("same", LayeredOptions::default());
+        let owner = add_node(&mut root, "owner");
+        add_port(&mut root, owner, PortSide::North);
+        let original = add_port(&mut root, owner, PortSide::North);
+
+        let mut child = LGraph::new("same", LayeredOptions::default());
+        let dummy = add_node(&mut child, "external");
+        let outlet = add_port(&mut child, dummy, PortSide::East);
+        let local = add_port(&mut child, dummy, PortSide::West);
+        let sink = add_node(&mut child, "sink");
+        let inlet = add_port(&mut child, sink, PortSide::West);
+        child.layerless_nodes[dummy].kind = LNodeKind::ExternalPort;
+        child.layerless_nodes[dummy].origin_port = Some(root.scoped_port(original));
+        child.layerless_nodes[sink].origin_port = Some(child.scoped_port(local));
+        child.add_edge(layered_edge("nested", "external", "sink", outlet, inlet));
+        root.layerless_nodes[owner].ports[original.port].port_dummy =
+            Some(child.scoped_node(dummy));
+
+        // A later same-arena view makes the lookup's first-match order observable.
+        let mut later = child.component_shell();
+        let later_dummy = add_node(&mut later, "later-dummy");
+        later.layerless_nodes[later_dummy].origin_port = Some(root.scoped_port(original));
+        for _ in 1..DEPTH {
+            let mut parent = LGraph::new("same", LayeredOptions::default());
+            let parent_node = add_node(&mut parent, "parent");
+            parent.layerless_nodes[parent_node].nested_graph = Some(Box::new(child));
+            child = parent;
+        }
+        let sibling = add_node(&mut child, "sibling");
+        child.layerless_nodes[sibling].nested_graph = Some(Box::new(later));
+        root.layerless_nodes[owner].nested_graph = Some(Box::new(child));
+
+        let result = std::thread::scope(|scope| {
+            std::thread::Builder::new()
+                .stack_size(128 * 1024)
+                .spawn_scoped(scope, || {
+                    assert!(root.reorder_node_ports(owner, [1, 0]));
+                    let owner = &root.layerless_nodes[owner];
+                    let port = &owner.ports[0];
+                    assert_eq!(
+                        north_south_port_connection_sides(&root, port),
+                        [PortSide::East]
+                    );
+                    let found =
+                        graph_for_reference(&root, port.port_dummy.as_ref().unwrap()).unwrap();
+                    let local_origin = found.layerless_nodes[sink].origin_port.as_ref().unwrap();
+                    assert!(local_origin.belongs_to(found));
+                    assert_eq!(local_origin.port, local);
+
+                    let outer_child = owner.nested_graph.as_deref().unwrap();
+                    let later = outer_child.layerless_nodes[sibling]
+                        .nested_graph
+                        .as_deref()
+                        .unwrap();
+                    let origin = later.layerless_nodes[later_dummy]
+                        .origin_port
+                        .as_ref()
+                        .unwrap();
+                    assert!(origin.belongs_to(&root));
+                    assert_eq!(
+                        origin.port,
+                        PortRef {
+                            port: 0,
+                            ..original
+                        }
+                    );
+                })
+                .unwrap()
+                .join()
+        });
+        LNode::drop_nested_graphs(&mut root.layerless_nodes);
+        result.unwrap();
     }
 
     #[test]

@@ -1672,10 +1672,23 @@ fn remap_descendant_origins(
     domain: &GraphReferenceDomain,
     remap: &impl Fn(&mut PortRef),
 ) {
-    for node in &mut graph.layerless_nodes {
+    let mut pending_siblings = Vec::new();
+    let mut nodes = graph.layerless_nodes.iter_mut();
+    loop {
+        let Some(node) = nodes.next() else {
+            let Some(siblings) = pending_siblings.pop() else {
+                return;
+            };
+            nodes = siblings;
+            continue;
+        };
         remap_origin_port(&mut node.origin_port, domain, remap);
         if let Some(nested_graph) = node.nested_graph.as_deref_mut() {
-            remap_descendant_origins(nested_graph, domain, remap);
+            // Finish each node's descendants before visiting its next sibling.
+            if !nodes.as_slice().is_empty() {
+                pending_siblings.push(nodes);
+            }
+            nodes = nested_graph.layerless_nodes.iter_mut();
         }
     }
 }
