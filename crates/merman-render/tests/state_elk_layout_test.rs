@@ -895,3 +895,30 @@ fn state_elk_cyclic_entry_uses_edge_order_inside_a_container() {
 
 #[allow(dead_code)]
 mod common;
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn state_elk_spreads_crowded_transition_ports_on_the_final_state() {
+    let (layout, _) = render(
+        include_str!("../../../fixtures/state/upstream_pkgtests_statediagram_spec_020.mmd"),
+        "elk",
+    );
+    let mut ports = layout["edges"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|edge| edge["to"] == "root_end")
+        .map(|edge| {
+            edge["points"].as_array().unwrap().last().unwrap()["x"]
+                .as_f64()
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+    ports.sort_by(f64::total_cmp);
+    assert_eq!(ports.len(), 4);
+    // Mermaid 12.4 uses CENTER implicit-port alignment when at least three barbs crowd a side.
+    // For the 14px deterministic final state, the four port columns are 2px apart.
+    for pair in ports.windows(2) {
+        assert!((pair[1] - pair[0] - 2.0).abs() < 1e-9, "{ports:?}");
+    }
+}

@@ -15,7 +15,11 @@ use super::{StateDiagramLayout, StateLabelSidecarBuilder, StateStylePlan};
 use merman_layout_elk as elk;
 use merman_model::families::state::StateDiagramRenderModel as StateDiagramModel;
 use merman_render_core::config::config_bool;
-use merman_render_core::elk_adapter::{self, feedback_edges, hierarchy, options};
+use merman_render_core::elk_adapter::{
+    self,
+    arrowheads::{Arrowhead, EdgeArrowheads},
+    feedback_edges, hierarchy, options,
+};
 use merman_render_core::elk_edge_geometry::{self as geometry, Outline, Shape};
 use merman_render_core::graph_layout::{Direction, direction_from_rank, elk_terminal_jogs};
 use merman_render_core::layout_work::OperationLayoutWorkControl;
@@ -201,6 +205,7 @@ pub fn layout(
     }
     let mut source_edges = HashMap::new();
     let mut edges = Vec::with_capacity(model.edges.len());
+    let mut end_markers = Vec::with_capacity(model.edges.len());
     for edge in &model.edges {
         if hidden.is_hidden(&edge.id)
             || hidden.is_hidden(&edge.start)
@@ -226,6 +231,8 @@ pub fn layout(
             terminal_labels: Vec::new(),
             inside_self_loops_yo: false,
         });
+        // State transitions use barb markers, with no start marker. A note edge still takes a port.
+        end_markers.push(!matches!(edge.arrow_type_end.as_str(), "" | "none"));
         source_edges.insert(edge.id.as_str(), edge);
     }
     let mut graph = elk::Graph {
@@ -251,8 +258,17 @@ pub fn layout(
         )?;
     }
     hierarchy::apply_to_graph(&mut graph, work)?;
-    let oriented =
-        feedback_edges::orient_feedback_edges(&mut graph, config, &mut Some(&mut *work))?;
+    let oriented = feedback_edges::orient_feedback_edges_with_arrowheads(
+        &mut graph,
+        config,
+        &mut Some(&mut *work),
+        |index, _| {
+            Ok(EdgeArrowheads {
+                end: end_markers[index].then_some(Arrowhead::Other),
+                ..Default::default()
+            })
+        },
+    )?;
     let solved = {
         #[cfg(feature = "benchmark-stages")]
         let _stage = merman_model::benchmark_stages::enter(
