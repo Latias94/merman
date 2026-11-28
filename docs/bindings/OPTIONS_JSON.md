@@ -363,7 +363,7 @@ selection supplied at preparation, pass a new selection to replace it for one ou
 `"none"` or `null` to clear it. Redraws reuse the frozen parse configuration and runtime policy and
 stay within the original resource ceiling.
 
-The top-level `background` replaces the graphical canvas base and keeps any theme textures. It accepts `#RRGGBB`, `#RRGGBBAA`, or `transparent`. The top-level `export_matte` accepts an opaque hex color and selects the raster matte or PDF page paint. For terminal output, `ascii.theme` takes precedence over colors projected from the native theme. Color projection takes effect in `truecolor` and `ansi256` modes.
+The top-level `background` replaces the graphical canvas base. It accepts `#RRGGBB`, `#RRGGBBAA`, or `transparent`. Theme textures remain visible over paint with nonzero opacity. A fully transparent background suppresses them. The top-level `export_matte` accepts an opaque hex color and selects the raster matte or PDF page paint. For terminal output, `ascii.theme` takes precedence over colors projected from the native theme. Color projection takes effect in `truecolor` and `ansi256` modes.
 
 ### Theme authoring operations
 
@@ -824,9 +824,9 @@ General bindings reject `svg.scoped_css`, `svg.scopedCss`, `svg.css_override_pol
 decisions and therefore remain limited to trusted Rust and native CLI integrations. This rejection
 applies to one-shot options, reusable-engine constructors, and request-local overlays.
 
-Top-level `background` replaces the diagram canvas paint and preserves any theme textures. With
-`background` omitted, `svg.root_background_color` can set the root SVG's inline CSS background
-using a single declaration value. Native canvas paint is drawn over that CSS background.
+With top-level `background` omitted, `svg.root_background_color` can set the root SVG's inline
+CSS background using a single declaration value. Native canvas paint is drawn over that CSS
+background. [Diagram theme options](#diagram-theme)
 
 ## Native Export Options
 
