@@ -17,7 +17,11 @@ test("Playground loads the selected Web WASM and admits only its layout provider
   const response = await openPlayground(page);
   const assembledWasm = await readFile(path.join(packageRoot, "artifacts/wasm/merman_wasm_bg.wasm"));
   expect(response.ok()).toBe(true);
-  expect(sha256(await response.body())).toBe(sha256(assembledWasm));
+  // The WASM can exceed Chromium's inspector response cache limit.
+  const servedWasm = await page.request.get(response.url());
+  expect(servedWasm.ok()).toBe(true);
+  expect(sha256(await servedWasm.body())).toBe(sha256(assembledWasm));
+  await servedWasm.dispose();
 
   await page.route("**/__layout_profile/**", async (route) => {
     const relative = new URL(route.request().url()).pathname.split("/__layout_profile/")[1];
