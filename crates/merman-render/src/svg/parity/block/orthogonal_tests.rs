@@ -1,9 +1,13 @@
-use crate::{environment::RenderEnvironment, model::LayoutPoint, svg::SvgRenderOptions};
+use crate::{
+    environment::RenderEnvironment, model::LayoutPoint, svg::SvgRenderOptions, theme::NativeTheme,
+};
 use base64::Engine as _;
-use kurbo::{BezPath, ParamCurve, PathEl, Point, Rect, Shape, Vec2};
+use kurbo::{BezPath, ParamCurve, PathEl, PathSeg, Point, Rect, Shape, Vec2};
 use merman_core::{MermaidEngine, ParseOptions};
+use merman_theme_contract::v2::{Appearance, BuiltinPreset, ThemeCompiler};
 use roxmltree::{Document, Node};
 use serde_json::Value;
+use svgtypes::{PathParser, PathSegment};
 
 fn render(source: &str, shoal: bool) -> (Value, String) {
     let source = if shoal {
@@ -11,12 +15,25 @@ fn render(source: &str, shoal: bool) -> (Value, String) {
     } else {
         source.to_owned()
     };
+    render_with_studio(&source, None)
+}
+
+fn render_with_studio(source: &str, appearance: Option<Appearance>) -> (Value, String) {
     let diagram = MermaidEngine::new()
-        .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
         .unwrap()
         .into_presentation();
-    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let environment = RenderEnvironment::deterministic();
+    let session = if let Some(appearance) = appearance {
+        let theme = ThemeCompiler::new()
+            .compile_preset(BuiltinPreset::Studio, Some(appearance))
+            .unwrap();
+        environment.begin_session_with_native_theme(NativeTheme::new(theme))
+    } else {
+        environment.begin_session()
+    }
+    .unwrap();
     let artifact = crate::family::prepare(&diagram, &crate::LayoutOptions::default(), session)
         .expect("prepare Block geometry");
     let layout =
@@ -102,6 +119,20 @@ fn translate(node: Node<'_, '_>) -> Point {
         .split_once(',')
         .unwrap();
     Point::new(x.trim().parse().unwrap(), y.trim().parse().unwrap())
+}
+
+fn paths_cross(path: &BezPath, other: &BezPath) -> bool {
+    let mut flattened = BezPath::new();
+    kurbo::flatten(other.elements().iter().copied(), 0.01, |element| {
+        flattened.push(element);
+    });
+    flattened.segments().any(|segment| {
+        let PathSeg::Line(line) = segment else {
+            unreachable!("flattening yields lines")
+        };
+        path.segments()
+            .any(|curve| !curve.intersect_line(line).is_empty())
+    })
 }
 
 #[test]
@@ -255,4 +286,170 @@ fn enabled_block_grid_falls_back_when_an_anchored_label_is_blocked() {
     for attribute in ["d", "data-points", "marker-end"] {
         assert_eq!(path.attribute(attribute), legacy_path.attribute(attribute));
     }
+}
+
+#[test]
+fn enabled_block_grid_spreads_nested_storage_branches_and_caps_free_bends() {
+    let source = r#"---
+config:
+  layout: shoal
+  htmlLabels: true
+---
+block
+  columns 4
+  Header["🌐 分布式流式计算平台总览 Architecture Overview"]:4
+  space:4
+  block:ingest:2
+    columns 2
+    InTitle["数据接入层"]:2
+    Kafka[("Kafka 集群")]
+    Pulsar[("Pulsar 队列")]
+  end
+  arr1<["实时投递"]>(right)
+  Compute["⚡ Flink 流式计算引擎<br/>Exactly-Once 状态快照"]
+  space:4
+  block:storage:4
+    columns 3
+    OLTP[("PostgreSQL 主库")]
+    OLAP[("ClickHouse 实时数仓")]
+    Archive[("S3 冷归档")]
+  end
+  Compute --> Archive
+  Compute --> OLTP
+  Compute --> OLAP
+  Kafka --> Compute
+"#;
+    let (_, svg) = render_with_studio(source, Some(Appearance::Light));
+    let doc = Document::parse(&svg).unwrap();
+    let bottom = svg_rect(&doc, "Compute").y1;
+    let mut radii = Vec::new();
+    let paths = ["-Compute-OLTP", "-Compute-OLAP", "-Compute-Archive"].map(|id| {
+        let d = edge(&doc, id).attribute("d").unwrap();
+        for segment in PathParser::from(d) {
+            if let PathSegment::EllipticalArc { rx, ry, .. } = segment.unwrap() {
+                assert_eq!(rx, ry);
+                radii.push(rx);
+            }
+        }
+        BezPath::from_svg(d).unwrap()
+    });
+    let ports = paths
+        .each_ref()
+        .map(|path| path.segments().next().unwrap().start());
+    assert!(ports.iter().all(|port| (port.y - bottom).abs() < 1e-6));
+    assert!(ports.windows(2).all(|pair| pair[1].x - pair[0].x >= 8.0));
+    for (index, path) in paths.iter().enumerate() {
+        assert!(paths[..index].iter().all(|other| !paths_cross(path, other)));
+    }
+    assert!(
+        radii.contains(&24.0),
+        "the long turn reaches the radius cap"
+    );
+    assert!(radii.iter().all(|&radius| radius <= 24.0));
+}
+
+#[test]
+fn enabled_block_grid_uses_other_faces_when_a_face_cannot_fit_parallel_markers() {
+    let source = format!(
+        "---\nconfig:\n  layout: shoal\n---\nblock\n  columns 2\n  A B\n{}",
+        "  A --> B\n".repeat(5)
+    );
+    let (_, svg) = render_with_studio(&source, Some(Appearance::Light));
+    let doc = Document::parse(&svg).unwrap();
+    let contacts = ["1-A-B", "2-A-B", "3-A-B", "4-A-B", "5-A-B"].map(|id| {
+        let d = edge(&doc, id).attribute("d").unwrap();
+        BezPath::from_svg(d)
+            .unwrap()
+            .segments()
+            .next()
+            .unwrap()
+            .start()
+    });
+    assert!(contacts.iter().any(|port| *port != contacts[0]));
+}
+
+#[test]
+fn enabled_block_grid_keeps_sketch_fanout_clear_of_peer_labels() {
+    let source = r#"---
+config:
+  layout: shoal
+  look: handDrawn
+  htmlLabels: false
+---
+block
+  columns 6
+  A["Gateway"]:2 space B["Router"]:2 space
+  space:6
+  block:workers:4
+    columns 2
+    W1["Worker A"] W2["Worker B"]
+    W3["Worker C"] W4["Worker D"]
+  end
+  DB[("Shared DB")]:2
+  A -- "route" --> B
+  B -- "fanout 1" --> W1
+  B -- "fanout 2" --> W2
+  W1 --> DB
+  W2 --> DB
+  W3 --> DB
+  W4 --> DB
+  style B fill:#123456,opacity:0.5
+"#;
+    let (_, svg) = render_with_studio(source, Some(Appearance::Dark));
+    let (_, legacy) = render_with_studio(
+        &source.replace("layout: shoal", "layout: dagre"),
+        Some(Appearance::Dark),
+    );
+    let doc = Document::parse(&svg).unwrap();
+    let legacy = Document::parse(&legacy).unwrap();
+    let ids = ["1-B-W1", "1-B-W2"];
+    let label_bounds = |doc: &Document<'_>| {
+        ids.map(|id| {
+            let group = doc
+                .descendants()
+                .find(|n| {
+                    n.attribute("class") == Some("label") && n.attribute("data-id") == Some(id)
+                })
+                .unwrap();
+            let bg = group.first_element_child().unwrap();
+            let origin = translate(group.parent_element().unwrap()) + translate(group).to_vec2();
+            Rect::from_origin_size(
+                origin + Vec2::new(number(bg, "x"), number(bg, "y")),
+                (number(bg, "width"), number(bg, "height")),
+            )
+        })
+    };
+    let labels = label_bounds(&doc);
+    assert_eq!(labels, label_bounds(&legacy));
+    let paths = ids.map(|id| BezPath::from_svg(edge(&doc, id).attribute("d").unwrap()).unwrap());
+    assert!(!paths_cross(&paths[0], &paths[1]));
+    for (index, path) in paths.iter().enumerate() {
+        let first = path.segments().next().unwrap();
+        let last = path.segments().last().unwrap();
+        for runway in [first, last] {
+            let start = runway.start();
+            assert!(runway.end().y - start.y >= merman_render_core::route_paint::LEAD - 1e-6);
+            for t in [0.25, 0.5, 0.75, 1.0] {
+                assert!((runway.eval(t).x - start.x).abs() < 1e-6);
+            }
+        }
+        assert!(paths_cross(path, &labels[index].to_path(0.01)));
+        assert!(!paths_cross(
+            path,
+            &labels[1 - index].inflate(0.5, 0.5).to_path(0.01)
+        ));
+        assert!(path.segments().any(|s| matches!(s, PathSeg::Cubic(_))));
+    }
+
+    let router = node(&doc, "B");
+    let shape = router.children().find(|n| n.has_tag_name("path")).unwrap();
+    assert!(shape.attribute("d").unwrap().ends_with('Z'));
+    let style = shape.attribute("style").unwrap();
+    assert!(style.contains("fill:#123456;") && style.contains("opacity:0.5;"));
+    assert!(router.descendants().any(|n| n.text() == Some("Router")));
+    assert!(
+        node(&legacy, "B")
+            .children()
+            .any(|n| n.has_tag_name("rect"))
+    );
 }

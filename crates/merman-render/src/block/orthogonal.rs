@@ -12,7 +12,9 @@ use crate::model::{BlockDiagramLayout, LayoutLabel, LayoutPoint};
 use crate::resources::OperationWorkMeter;
 use crate::svg::BaseEdgeMarkerKind;
 use kurbo::{Point, Rect, Vec2};
-use merman_layout_shoal::{OrthogonalSpan, Rect as Obstacle, RoutePoint, Side, route_fixed_spans};
+use merman_layout_shoal::{
+    OrthogonalSpan, Rect as Obstacle, RoutePoint, Side, Spacing, route_fixed_spans,
+};
 use merman_model::families::block::{BlockDiagramRenderModel, BlockEdge};
 use merman_render_core::graph_layout::{Endpoint, Marker};
 use merman_render_core::route_paint::{
@@ -21,6 +23,8 @@ use merman_render_core::route_paint::{
 use merman_render_structured::block::BlockEdgeMarkerGeometry;
 use merman_theme_contract::v2::EdgeStyle;
 use std::{collections::HashMap, sync::Arc};
+
+const CORNER_RADIUS: f64 = 24.0;
 
 fn edge_marker_geometry(edge: &BlockEdge, start: bool) -> Option<BlockEdgeMarkerGeometry> {
     let arrow = if start {
@@ -68,12 +72,18 @@ impl Terminal {
         side: Side,
         marker: Option<BlockEdgeMarkerGeometry>,
         margin: f64,
+        across: Option<f64>,
     ) -> Option<Self> {
         let normal = normal(side);
         let bounds = shape_box(shape);
         let center = Point::new(shape.allocated.x, shape.allocated.y);
-        let direction = center + normal * (bounds.width().max(bounds.height()) + 1.0);
-        let contact = to_point(&shape.intersect(&layout_point(direction)));
+        let contact = to_point(&match across {
+            Some(across) => shape.face_contact(side, across)?,
+            None => {
+                let direction = center + normal * (bounds.width().max(bounds.height()) + 1.0);
+                shape.intersect(&layout_point(direction))
+            }
+        });
         let face = match side {
             Side::Top => bounds.y0,
             Side::Right => bounds.x1,
@@ -198,6 +208,39 @@ struct Request {
 }
 
 impl Request {
+    fn score(&self) -> f64 {
+        score(&self.ends[0], &self.ends[1], self.label)
+    }
+
+    fn marker_walls(&self) -> impl Iterator<Item = Wall> {
+        self.ends
+            .iter()
+            .filter_map(Terminal::marker_bounds)
+            .map(|rect| Wall {
+                rect,
+                owner: Owner::Marker(self.occurrence),
+            })
+    }
+
+    fn clear(
+        &self,
+        walls: &[Wall],
+        margin: f64,
+        work: &mut OperationLayoutWorkControl,
+    ) -> Result<bool> {
+        let [a, b] = &self.ends;
+        let [from, to] = self.bodies;
+        if !clear_pair(a, b)
+            || !a.clear(walls, from, self.occurrence, margin, work)?
+            || !b.clear(walls, to, self.occurrence, margin, work)?
+        {
+            return Ok(false);
+        }
+        self.label.map_or(Ok(true), |label| {
+            label.clear(walls, self.occurrence, margin, work)
+        })
+    }
+
     fn spans(&self) -> impl Iterator<Item = OrthogonalSpan> {
         let [a, b] = &self.ends;
         let end = b.anchor();
@@ -346,7 +389,110 @@ fn terminals(
     let marker = edge_marker_geometry(edge, start);
     [Side::Top, Side::Right, Side::Bottom, Side::Left]
         .into_iter()
-        .filter_map(move |side| Terminal::new(shape, side, marker, margin))
+        .filter_map(move |side| Terminal::new(shape, side, marker, margin, None))
+}
+
+struct FaceEndpoint {
+    request: usize,
+    slot: usize,
+    node: usize,
+    side: Side,
+    peer_across: f64,
+    peer_along: f64,
+}
+
+fn spread_face_terminals(
+    requests: &mut [Request],
+    shapes: &[BlockShapeGeometry],
+    walls: &[Wall],
+    margin: f64,
+    work: &mut OperationLayoutWorkControl,
+) -> Result<()> {
+    let count = work.checked_mul(requests.len(), 2)?;
+    let levels = count.checked_ilog2().map_or(0, |n| n as usize + 1);
+    work.charge_adapter(work.checked_mul(count, levels)?)?;
+    let mut endpoints = Vec::with_capacity(count);
+    for (request, edge) in requests.iter().enumerate() {
+        for (slot, end) in edge.ends.iter().enumerate() {
+            let peer = &shapes[edge.bodies[1 - slot]].allocated;
+            let (peer_across, peer_along) = match end.side {
+                Side::Top | Side::Bottom => (peer.x, peer.y),
+                Side::Left | Side::Right => (peer.y, peer.x),
+            };
+            endpoints.push(FaceEndpoint {
+                request,
+                slot,
+                node: edge.bodies[slot],
+                side: end.side,
+                peer_across,
+                peer_along,
+            });
+        }
+    }
+    endpoints.sort_unstable_by(|a, b| {
+        (a.node, a.side as u8)
+            .cmp(&(b.node, b.side as u8))
+            .then_with(|| a.peer_across.total_cmp(&b.peer_across))
+            .then_with(|| a.peer_along.total_cmp(&b.peer_along))
+            .then_with(|| (a.request, a.slot).cmp(&(b.request, b.slot)))
+    });
+    let spacing = Spacing::default();
+    for face in endpoints.chunk_by(|a, b| a.node == b.node && a.side == b.side) {
+        let [first, _, ..] = face else { continue };
+        let shape = &shapes[first.node];
+        let bounds = shape_box(shape);
+        let (lo, hi) = match first.side {
+            Side::Top | Side::Bottom => (bounds.x0, bounds.x1),
+            Side::Left | Side::Right => (bounds.y0, bounds.y1),
+        };
+        let widest = face
+            .iter()
+            .filter_map(|end| requests[end.request].ends[end.slot].marker)
+            .map(|marker| marker.routing.width)
+            .fold(0.0, f64::max);
+        let required_pitch = widest + 2.0 * margin;
+        let room_per_side = (hi - lo - (face.len() - 1) as f64 * required_pitch) / 2.0;
+        let inset = spacing
+            .corner_clearance
+            .min(room_per_side)
+            .max(required_pitch / 2.0);
+        let (lo, hi) = (lo + inset, hi - inset);
+        let pitch = spacing
+            .port_pitch
+            .max(required_pitch)
+            .min((hi - lo) / (face.len() - 1) as f64);
+        if pitch < required_pitch {
+            continue;
+        }
+        let mut next = lo;
+        let mut assigned = Vec::with_capacity(face.len());
+        let contact_work = match &shape.boundary {
+            BlockShapeBoundary::Polygon { points, .. } => points.len(),
+            _ => 1,
+        };
+        for (rank, end) in face.iter().enumerate() {
+            work.charge_adapter(contact_work)?;
+            let last = hi - pitch * (face.len() - 1 - rank) as f64;
+            let across = end.peer_across.clamp(next.min(last), last);
+            let request = &requests[end.request];
+            let marker = request.ends[end.slot].marker;
+            let Some(terminal) = Terminal::new(shape, end.side, marker, margin, Some(across))
+            else {
+                break;
+            };
+            if !terminal.clear(walls, end.node, request.occurrence, margin, work)? {
+                break;
+            }
+            assigned.push(terminal);
+            next = across + pitch;
+        }
+        if assigned.len() == face.len() {
+            for (end, terminal) in face.iter().zip(assigned) {
+                requests[end.request].ends[end.slot] = terminal;
+            }
+        }
+    }
+    Ok(())
 }
 
 fn clearance_boxes(
@@ -466,7 +612,11 @@ pub(super) fn prepare(
         return Ok(Vec::new());
     }
     let edge_style = typography.native().map(|style| style.form.edge_style);
-    let route_style = edge_style.map_or(RouteStyle::Step, RouteStyle::from_theme);
+    let route_style = match edge_style {
+        Some(EdgeStyle::Curved) => RouteStyle::Rounded(CORNER_RADIUS),
+        Some(style) => RouteStyle::from_theme(style),
+        None => RouteStyle::Step,
+    };
     let Some(mut walls) = clearance_boxes(
         model,
         layout,
@@ -488,24 +638,18 @@ pub(super) fn prepare(
         return Ok(Vec::new());
     }
     let margin = edge_sep / 2.0;
-    let mut requests = Vec::new();
-    for (occurrence, edge) in model.edges.iter().enumerate() {
-        work.charge_adapter(1)?;
-        let (Some(&index), Some(&from), Some(&to)) = (
-            edge_indices.get(edge.id.as_str()),
-            bodies.get(edge.start.as_str()),
-            bodies.get(edge.end.as_str()),
-        ) else {
-            continue;
-        };
-        if from == to {
-            continue;
-        }
+    let choose_request = |occurrence: usize,
+                          index: usize,
+                          bodies: [usize; 2],
+                          walls: &[Wall],
+                          work: &mut OperationLayoutWorkControl|
+     -> Result<Option<Request>> {
+        let edge = &model.edges[occurrence];
         let mut label_passes = Vec::new();
         if let Some(label) = &layout.edges[index].label {
-            let centers = [from, to].map(|i| Point::new(layout.nodes[i].x, layout.nodes[i].y));
+            let centers = bodies.map(|i| Point::new(layout.nodes[i].x, layout.nodes[i].y));
             for pass in LabelPass::candidates(label, centers, margin) {
-                if pass.clear(&walls, occurrence, margin, &mut work)? {
+                if pass.clear(walls, occurrence, margin, work)? {
                     label_passes.push(Some(pass));
                 }
             }
@@ -513,12 +657,12 @@ pub(super) fn prepare(
             label_passes.push(None);
         }
         if label_passes.is_empty() {
-            continue;
+            return Ok(None);
         }
         let mut ends = [Vec::new(), Vec::new()];
-        for (slot, node) in [from, to].into_iter().enumerate() {
+        for (slot, node) in bodies.into_iter().enumerate() {
             for terminal in terminals(&layout.shape_geometries[node], edge, slot == 0, margin) {
-                if terminal.clear(&walls, node, occurrence, margin, &mut work)? {
+                if terminal.clear(walls, node, occurrence, margin, work)? {
                     ends[slot].push(terminal);
                 }
             }
@@ -540,46 +684,99 @@ pub(super) fn prepare(
                     })
             })
             .min_by(|a, b| a.0.total_cmp(&b.0));
-        if let Some((_, a, b, label)) = pair {
+        Ok(pair.map(|(_, a, b, label)| {
             let [mut starts, mut finishes] = ends;
             let ends = [starts.swap_remove(a), finishes.swap_remove(b)];
-            for rect in ends.iter().filter_map(Terminal::marker_bounds) {
-                walls.push(Wall {
-                    rect,
-                    owner: Owner::Marker(occurrence),
-                });
-            }
-            requests.push(Request {
+            Request {
                 index,
                 occurrence,
-                bodies: [from, to],
+                bodies,
                 ends,
                 label,
-            });
+            }
+        }))
+    };
+    let mut requests = Vec::new();
+    for (occurrence, edge) in model.edges.iter().enumerate() {
+        work.charge_adapter(1)?;
+        let (Some(&index), Some(&from), Some(&to)) = (
+            edge_indices.get(edge.id.as_str()),
+            bodies.get(edge.start.as_str()),
+            bodies.get(edge.end.as_str()),
+        ) else {
+            continue;
+        };
+        if from != to
+            && let Some(request) = choose_request(occurrence, index, [from, to], &walls, &mut work)?
+        {
+            requests.push(request);
         }
     }
     if requests.is_empty() {
         return Ok(Vec::new());
     }
-    // Include both old and new marker positions so a per-edge fallback cannot invalidate a peer.
-    // Check the earlier leads again now that later edges have chosen their marker positions.
+    spread_face_terminals(
+        &mut requests,
+        &layout.shape_geometries,
+        &walls,
+        margin,
+        &mut work,
+    )?;
+    // Keep fallback markers reserved while validating the new marker positions together.
+    let original_walls = walls.len();
+    walls.extend(requests.iter().flat_map(Request::marker_walls));
     let mut admitted = Vec::new();
+    let mut rejected = Vec::new();
     for request in requests {
-        let [a, b] = &request.ends;
-        let [from, to] = request.bodies;
-        if a.clear(&walls, from, request.occurrence, margin, &mut work)?
-            && b.clear(&walls, to, request.occurrence, margin, &mut work)?
-        {
-            if let Some(label) = request.label
-                && !label.clear(&walls, request.occurrence, margin, &mut work)?
-            {
-                continue;
-            }
+        if request.clear(&walls, margin, &mut work)? {
             admitted.push(request);
+        } else {
+            rejected.push(request);
         }
     }
+    if !rejected.is_empty() {
+        walls.truncate(original_walls);
+        walls.extend(admitted.iter().flat_map(Request::marker_walls));
+        // A face can be too small for its markers. Retry those edges against only the
+        // admitted markers so the usual side selection can use other faces.
+        for original in rejected {
+            let Some(request) = choose_request(
+                original.occurrence,
+                original.index,
+                original.bodies,
+                &walls,
+                &mut work,
+            )?
+            else {
+                continue;
+            };
+            let markers: Vec<_> = request.marker_walls().collect();
+            let mut clear = true;
+            if !markers.is_empty() {
+                for existing in &admitted {
+                    if !existing.clear(&markers, margin, &mut work)? {
+                        clear = false;
+                        break;
+                    }
+                }
+            }
+            if clear {
+                walls.extend(markers);
+                admitted.push(request);
+            }
+        }
+    }
+    // Inner branches take their short corridors first. A farther branch can then leave the
+    // shared face before crossing over to its lane instead of sealing off a nearer destination.
+    let levels = admitted.len().checked_ilog2().map_or(0, |n| n as usize + 1);
+    work.charge_adapter(work.checked_mul(admitted.len(), levels)?)?;
+    admitted.sort_unstable_by(|a, b| {
+        a.score()
+            .total_cmp(&b.score())
+            .then_with(|| a.occurrence.cmp(&b.occurrence))
+    });
     work.charge_adapter(work.checked_add(walls.len(), work.checked_mul(admitted.len(), 2)?)?)?;
-    let clearance = if route_style == RouteStyle::Curved {
+    let clearance = if matches!(route_style, RouteStyle::Rounded(_)) {
         let levels = walls.len().checked_ilog2().map_or(0, |n| n as usize + 1);
         work.charge_adapter(work.checked_mul(walls.len(), levels)?)?;
         let mut obstacles = Vec::with_capacity(walls.len());

@@ -6,7 +6,7 @@
 //! cylinder.
 
 use super::BlockShapeSettings;
-use merman_render_core::{LayoutNode, LayoutPoint};
+use merman_render_core::{LayoutNode, LayoutPoint, route_types::Side};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -196,6 +196,81 @@ impl BlockShapeGeometry {
         self.intersect(target)
     }
 
+    /// Intersect the outline along a face normal at a fixed drawing coordinate.
+    #[doc(hidden)]
+    pub fn face_contact(&self, side: Side, across: f64) -> Option<LayoutPoint> {
+        let vertical = matches!(side, Side::Top | Side::Bottom);
+        let low = matches!(side, Side::Top | Side::Left);
+        let (center_across, center_along) = if vertical {
+            (self.allocated.x, self.allocated.y)
+        } else {
+            (self.allocated.y, self.allocated.x)
+        };
+        let offset = across - center_across;
+        let along = match &self.boundary {
+            BlockShapeBoundary::Polygon {
+                points,
+                translation,
+            } => polygon_face_coordinate(points, translation, vertical, low, offset)?,
+            boundary => {
+                // Each symmetric Block outline is a rectangle with elliptical corners.
+                let (width, height, rx, ry) = match *boundary {
+                    BlockShapeBoundary::Rectangle {
+                        width,
+                        height,
+                        radius,
+                        ..
+                    } => (width, height, radius, radius),
+                    BlockShapeBoundary::Stadium { width, height } => {
+                        (width, height, height / 2.0, height / 2.0)
+                    }
+                    BlockShapeBoundary::Circle { radius, .. }
+                    | BlockShapeBoundary::DoubleCircle {
+                        outer_radius: radius,
+                        ..
+                    } => (2.0 * radius, 2.0 * radius, radius, radius),
+                    BlockShapeBoundary::Cylinder {
+                        width,
+                        body_height,
+                        radius_x,
+                        radius_y,
+                    } => (width, body_height + 2.0 * radius_y, radius_x, radius_y),
+                    BlockShapeBoundary::Polygon { .. } => unreachable!(),
+                };
+                let (half_across, half_along, round_across, round_along) = if vertical {
+                    (width / 2.0, height / 2.0, rx, ry)
+                } else {
+                    (height / 2.0, width / 2.0, ry, rx)
+                };
+                if offset.abs() > half_across {
+                    return None;
+                }
+                let round_across = round_across.min(half_across);
+                let round_along = round_along.min(half_along);
+                let corner_offset = offset.abs() - (half_across - round_across);
+                let extent = if corner_offset > 0.0 {
+                    let ratio = corner_offset / round_across;
+                    half_along - round_along + round_along * (1.0 - ratio * ratio).max(0.0).sqrt()
+                } else {
+                    half_along
+                };
+                if low { -extent } else { extent }
+            }
+        } + center_along;
+        let point = if vertical {
+            LayoutPoint {
+                x: across,
+                y: along,
+            }
+        } else {
+            LayoutPoint {
+                x: along,
+                y: across,
+            }
+        };
+        (point.x.is_finite() && point.y.is_finite()).then_some(point)
+    }
+
     /// Returns the geometric bounds of the emitted outline in diagram coordinates.
     ///
     /// Block layout stores the grid slot separately from the shape that Mermaid actually draws.
@@ -223,6 +298,39 @@ impl BlockShapeGeometry {
             _ => 0.0,
         }
     }
+}
+
+fn polygon_face_coordinate(
+    points: &[LayoutPoint],
+    translation: &LayoutPoint,
+    vertical: bool,
+    low: bool,
+    offset: f64,
+) -> Option<f64> {
+    let axes = |point: &LayoutPoint| {
+        if vertical {
+            (point.x, point.y)
+        } else {
+            (point.y, point.x)
+        }
+    };
+    let (translate_across, translate_along) = axes(translation);
+    let at = offset - translate_across;
+    points
+        .iter()
+        .zip(points.iter().cycle().skip(1))
+        .filter_map(|(a, b)| {
+            let ((u0, v0), (u1, v1)) = (axes(a), axes(b));
+            if at < u0.min(u1) || at > u0.max(u1) {
+                None
+            } else if u0 == u1 {
+                Some(if low { v0.min(v1) } else { v0.max(v1) })
+            } else {
+                Some(v0 + (v1 - v0) * ((at - u0) / (u1 - u0)))
+            }
+        })
+        .reduce(|a, b| if low { a.min(b) } else { a.max(b) })
+        .map(|along| along + translate_along)
 }
 
 /// Computes the intrinsic shape size used while the grid is choosing a common slot.

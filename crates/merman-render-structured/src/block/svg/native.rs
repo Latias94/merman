@@ -1,9 +1,12 @@
 use kurbo::{Affine, BezPath, Circle, Ellipse, Rect, Shape};
 use merman_theme_contract::v2::{Elevation, MarkerStyle};
+use roughr::core::{OpType, OptionsBuilder};
+use roughr::work::{WorkControl, WorkError};
 
 use merman_render_core::{
     Result,
     number_format::canonical_number as fmt,
+    rough_svg::{RoughRandomness, controlled, ops_to_svg_path_d},
     svg_css::SvgId,
     svg_edge_parity::markers::{self, BaseEdgeMarkerKind},
     svg_output::SvgOutput,
@@ -123,6 +126,60 @@ fn silhouette(boundary: &BlockShapeBoundary) -> Option<BezPath> {
         }
     };
     Some(path)
+}
+
+pub(super) fn hand_drawn_shape_path(
+    geometry: &BlockShapeGeometry,
+    randomness: &RoughRandomness,
+    options: &BlockSvgContext<'_>,
+) -> Result<Option<String>> {
+    let (x0, y0, x1, y1) = geometry.rendered_extents();
+    if ![x0, y0, x1, y1].into_iter().all(f64::is_finite) {
+        return Ok(None);
+    }
+    let Some(outer) = silhouette(&geometry.boundary) else {
+        return Ok(None);
+    };
+    let inner = match geometry.boundary {
+        BlockShapeBoundary::DoubleCircle { inner_radius, .. } if inner_radius > 0.0 => {
+            Some(Circle::new((0.0, 0.0), inner_radius).to_path(0.05))
+        }
+        _ => None,
+    };
+    controlled::generate(
+        options.work_meter,
+        merman_model::OperationPhase::Emit,
+        |control| {
+            let mut rough_options = OptionsBuilder::default()
+                .randomness(randomness.clone())
+                .roughness(0.7)
+                .preserve_vertices(true)
+                .disable_multi_stroke(true)
+                .build()
+                .map_err(|_| WorkError::InvalidGeometry)?;
+            let mut d = String::new();
+            for outline in std::iter::once(outer).chain(inner) {
+                control.charge(outline.elements().len())?;
+                let path = outline.to_svg();
+                let segments =
+                    roughr::points_on_path::normalized_path_with_control(&path, control)?;
+                let mut rough = roughr::renderer::svg_normalized_segments_with_control::<f64>(
+                    &segments,
+                    &mut rough_options,
+                    control,
+                )?;
+                // Join the single-pass segments so one closed path paints fill and stroke.
+                control.charge(rough.ops.len())?;
+                let mut first = true;
+                rough
+                    .ops
+                    .retain(|op| std::mem::take(&mut first) || op.op != OpType::Move);
+                d.push_str(&ops_to_svg_path_d(&rough));
+                d.push('Z');
+            }
+            Ok(Some(d))
+        },
+    )
 }
 
 pub(super) fn write_node_depth(

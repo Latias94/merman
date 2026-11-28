@@ -191,11 +191,8 @@ fn shoal_block_honors_native_styles_on_routed_edges() {
             .descendants()
             .find(|node| node.attribute("data-et") == Some("edge"))
             .unwrap();
-        assert_eq!(
-            edge.attribute("d").unwrap().contains('C'),
-            has_curves,
-            "{style}: {edge:?}"
-        );
+        let d = edge.attribute("d").unwrap();
+        assert_eq!(d.contains(['A', 'C']), has_curves, "{style}: {edge:?}");
     }
 }
 

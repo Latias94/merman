@@ -560,6 +560,7 @@ pub fn render_block_diagram_svg_model_with_theme(
     let native = typography_theme.native();
     let palette_size = typography_theme.css_binding().palette.len();
     let look = DiagramLook::from_raw(Some(&typography_theme.css_binding().look));
+    let shoal_hand_drawn = options.shoal && look.is_hand_drawn();
     let hand_drawn_seed = operation_randomness(
         options.operation,
         typography_theme
@@ -753,13 +754,36 @@ pub fn render_block_diagram_svg_model_with_theme(
         }
         out.push('>');
 
-        match &geometry.boundary {
-            BlockShapeBoundary::Rectangle {
-                width,
-                height,
-                radius,
-                kind,
-            } => {
+        let sketch = if shoal_hand_drawn {
+            super::native::hand_drawn_shape_path(geometry, &hand_drawn_seed, options)?
+        } else {
+            None
+        };
+        match (sketch, &geometry.boundary) {
+            (Some(d), boundary) => {
+                let class = match boundary {
+                    BlockShapeBoundary::Rectangle {
+                        kind: BlockRectangleKind::Composite,
+                        ..
+                    } => "basic cluster composite label-container",
+                    _ => "basic label-container outer-path",
+                };
+                let _ = write!(
+                    out,
+                    r#"<path d="{}" class="{class}" style="{}"/>"#,
+                    escape_attr(&d),
+                    escape_attr(node_box_style),
+                );
+            }
+            (
+                None,
+                BlockShapeBoundary::Rectangle {
+                    width,
+                    height,
+                    radius,
+                    kind,
+                },
+            ) => {
                 let class = match kind {
                     BlockRectangleKind::Basic => "basic label-container",
                     BlockRectangleKind::Composite => "basic cluster composite label-container",
@@ -777,7 +801,7 @@ pub fn render_block_diagram_svg_model_with_theme(
                     fmt(*height)
                 );
             }
-            BlockShapeBoundary::Circle { radius, .. } => {
+            (None, BlockShapeBoundary::Circle { radius, .. }) => {
                 let _ = write!(
                     &mut out,
                     r#"<circle class="basic label-container" style="{}" r="{}" cx="0" cy="0"/>"#,
@@ -785,11 +809,14 @@ pub fn render_block_diagram_svg_model_with_theme(
                     fmt(*radius),
                 );
             }
-            BlockShapeBoundary::DoubleCircle {
-                outer_radius,
-                inner_radius,
-                ..
-            } => {
+            (
+                None,
+                BlockShapeBoundary::DoubleCircle {
+                    outer_radius,
+                    inner_radius,
+                    ..
+                },
+            ) => {
                 let circle_style = if options.shoal {
                     let mut style = String::new();
                     merman_render_core::mermaid_style::visit_parsed_style_declarations(
@@ -820,7 +847,7 @@ pub fn render_block_diagram_svg_model_with_theme(
                     fmt(*inner_radius),
                 );
             }
-            BlockShapeBoundary::Stadium { width, height } => {
+            (None, BlockShapeBoundary::Stadium { width, height }) => {
                 let points = block_stadium_points(*width, *height);
                 let path_data = closed_path_d_from_points(
                     &points
@@ -858,12 +885,15 @@ pub fn render_block_diagram_svg_model_with_theme(
                     );
                 }
             }
-            BlockShapeBoundary::Cylinder {
-                width,
-                body_height,
-                radius_x,
-                radius_y,
-            } => {
+            (
+                None,
+                BlockShapeBoundary::Cylinder {
+                    width,
+                    body_height,
+                    radius_x,
+                    radius_y,
+                },
+            ) => {
                 let _ = write!(
                     &mut out,
                     r#"<path d="{}" class="basic label-container outer-path" style="{}" transform="translate({}, {})"/>"#,
@@ -873,10 +903,13 @@ pub fn render_block_diagram_svg_model_with_theme(
                     fmt(-(body_height / 2.0 + radius_y))
                 );
             }
-            BlockShapeBoundary::Polygon {
-                points,
-                translation,
-            } => {
+            (
+                None,
+                BlockShapeBoundary::Polygon {
+                    points,
+                    translation,
+                },
+            ) => {
                 let odd_shape = matches!(node.block_type, "odd" | "rect_left_inv_arrow");
                 let points_as_tuples: Vec<(f64, f64)> =
                     points.iter().map(|point| (point.x, point.y)).collect();
@@ -1028,7 +1061,8 @@ pub fn render_block_diagram_svg_model_with_theme(
             BaseEdgeMarkerKind::from_arrow(e.arrow_type_start.as_deref(), true),
             BaseEdgeMarkerKind::from_arrow(e.arrow_type_end.as_deref(), false),
         ];
-        let rough_d = if edge_style == Some(EdgeStyle::Sketch) && points.len() >= 2 {
+        let sketch = edge_style == Some(EdgeStyle::Sketch) || (shoal_hand_drawn && route.is_some());
+        let rough_d = if sketch && points.len() >= 2 {
             let markers = route.map_or_else(
                 || {
                     let [start, end] = marker_kinds.map(|kind| {
