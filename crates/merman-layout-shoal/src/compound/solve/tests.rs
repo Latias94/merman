@@ -438,6 +438,66 @@ fn explicit_titles_use_measured_padding_on_all_six_slots() {
 }
 
 #[test]
+fn right_aligned_titles_keep_an_isolated_port_on_its_trunk() {
+    let mut spec = group(0, None, Direction::Down);
+    spec.padding.right = 15.1;
+    let options = Options::default();
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+
+    for (position, side, title_width, content_width) in [
+        (TitlePosition::TopRight, Side::Top, 2030.0, 84.2),
+        (TitlePosition::BottomRight, Side::Bottom, 1859.1, 297.0),
+    ] {
+        spec.title_position = position;
+        spec.title = Some(size(title_width, 18.0));
+        let content = size(content_width, 40.0);
+        let inner = Contact {
+            at: face(
+                Rect {
+                    width: content.width,
+                    height: content.height,
+                    ..Rect::default()
+                },
+                side,
+                content.width / 2.0,
+            ),
+            side,
+        };
+        let wires = [Wire {
+            ends: [
+                End::Border {
+                    slot: 0,
+                    side,
+                    flat: None,
+                    hint: PortSideHint::Auto,
+                },
+                End::Item {
+                    slot: 0,
+                    hint: PortSideHint::Auto,
+                    child: None,
+                },
+            ],
+            spec: edge(GroupId(0), NodeId(0)),
+            route: None,
+            contacts: [None, Some(inner)],
+        }];
+        let fit =
+            fit::Fit::new(Some(&spec), content, &[], &wires, 0.0, &options, &mut work).unwrap();
+        let mut ports = ports::border(&wires, &[], &fit, 1, &options, &mut work).unwrap();
+        let title = fit
+            .title(Some(&spec), &wires, &ports, &mut work)
+            .unwrap()
+            .unwrap()
+            .rect;
+        let trunk = inner.at.x + fit.offset.x;
+        assert!(trunk < title.x - fit.title_margin(), "{position:?}");
+        ports::beside_title(&wires, &mut ports, title, side, &fit, &options, &mut work).unwrap();
+        assert_eq!(ports[0].x, trunk);
+    }
+}
+
+#[test]
 fn automatic_top_titles_prefer_left_right_then_center() {
     let mut spec = group(0, None, Direction::Down);
     spec.title = Some(size(80., 18.));

@@ -243,6 +243,9 @@ impl Alignment {
         // A partly shared face can exclude the midpoint even when the two terminals are
         // within one pixel. Use the nearest legal shared row before checking the ink.
         let center = start.midpoint(end).clamp(lo, hi);
+        if !center.is_finite() {
+            return None;
+        }
         let mut previous = start_along;
         let mut shaft = false;
         for p in &edge.points {
@@ -682,6 +685,18 @@ mod tests {
         )));
         align_parallel(&graph, &mut solved, 0.5, &mut work).unwrap();
         solved
+    }
+
+    #[test]
+    fn er_parallel_alignment_rejects_a_nan_center() {
+        let edge = relationship(&[(20.0, f64::NAN), (80.0, 20.0)], None);
+        let bodies = [0.0, 80.0].map(|x| NodeRect {
+            x,
+            y: 0.0,
+            width: 20.0,
+            height: 60.0,
+        });
+        assert!(Alignment::propose(&edge, Side::Right, bodies).is_none());
     }
 
     #[test]

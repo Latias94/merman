@@ -149,7 +149,8 @@ Keep one public Shoal IR, `WorkControl`, DDLT verifier, and `route_paint` contra
   it can resolve solid fills and the applicable stroke style. Swimlane compacts complete bands and
   checks specialized handoffs and returns against occupied geometry before committing them. A node
   alignment fits inside the lane padding and preserves adjacent captions, both terminal runways,
-  and clearance from retained route segments.
+  and clearance from retained route segments. Shafts, markers, and captions reserve the same
+  edge gap from unrelated nodes, including those moved by an accepted alignment.
 
 ## Consequences
 
