@@ -334,7 +334,8 @@ fn studio_nested_clusters_and_compound_fill_avoid_wiggles_bananas_and_crushed_sw
         "studio-compound-fill",
         compound_fill,
         3.0,
-        Some(6),
+        // Two steep offsets can use a pair of corners each.
+        Some(8),
         Some(3.05),
     );
 }

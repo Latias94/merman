@@ -35,6 +35,7 @@ struct AxisPath {
     contacts: (RoutePoint, RoutePoint),
     sides: (Side, Side),
     markers: (Marker, Marker),
+    label_bounds: Option<kurbo::Rect>,
     knots: Vec<(Axis, KnotKind)>,
     stitches: Range<usize>,
     corridor_clearance: f64,
@@ -51,12 +52,81 @@ pub(crate) struct CanonicalRoutes {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) enum CaptionClearance {
-    #[allow(dead_code, reason = "C4-only builds use caption cutouts.")]
+pub(crate) enum CaptionClearance<'a> {
+    #[allow(
+        dead_code,
+        reason = "Architecture and C4 supply their own clearance geometry."
+    )]
     Avoid,
+    /// The routing box can contain space reserved for separate visible shapes and titles.
+    #[allow(dead_code, reason = "Architecture supplies a painted node inventory.")]
+    AvoidWithPaintedNodes(&'a [PaintedNodeBounds]),
     /// The family clips the painted shafts behind captions after route painting.
     #[cfg(feature = "diagram-c4")]
     Cutout,
+}
+
+impl CaptionClearance<'_> {
+    fn avoids_captions(self) -> bool {
+        match self {
+            Self::Avoid | Self::AvoidWithPaintedNodes(_) => true,
+            #[cfg(feature = "diagram-c4")]
+            Self::Cutout => false,
+        }
+    }
+}
+
+pub(crate) struct PaintedNodeBounds {
+    pub(crate) shape: kurbo::Rect,
+    pub(crate) title: Option<kurbo::Rect>,
+}
+
+pub(crate) struct RouteContours<'a> {
+    pub(crate) solved: &'a SolvedGraph,
+    pub(crate) profiles: &'a [ShapePortProfile],
+}
+
+impl RouteContours<'_> {
+    fn group(&self, id: u32, side: Side, port: RoutePoint, radius: f64) -> RoutePoint {
+        if radius == 0.0 {
+            return port;
+        }
+        let rect = self.solved.groups[id as usize].rect;
+        ShapePortProfile::rounded_rectangle(rect.width, rect.height, radius, radius).contact(
+            &rect_center(rect),
+            side,
+            port,
+        )
+    }
+
+    pub(crate) fn terminal(
+        &self,
+        endpoint: Endpoint,
+        side: Side,
+        port: RoutePoint,
+        neighbor: RoutePoint,
+        group_corner_radius: impl FnOnce(u32) -> f64,
+    ) -> (RoutePoint, Side) {
+        match endpoint {
+            Endpoint::Node(id) => {
+                let index = id as usize;
+                let center = rect_center(self.solved.nodes[index]);
+                (self.profiles[index].contact(&center, side, port), side)
+            }
+            Endpoint::Group(id) => (
+                self.group(id, side, port, group_corner_radius(id)),
+                route_paint::group_lead_side(side, port, neighbor),
+            ),
+        }
+    }
+}
+
+fn rect_center(rect: Rect) -> LayoutPoint {
+    let center = rect.center();
+    LayoutPoint {
+        x: center.x,
+        y: center.y,
+    }
 }
 
 pub(crate) struct CanonicalPaintedEdge<Points = Vec<LayoutPoint>> {
@@ -114,7 +184,7 @@ impl CanonicalRoutes {
         profiles: &[ShapePortProfile],
         group_corner_radius: impl Fn(u32) -> f64,
         edge_ids: impl ExactSizeIterator<Item = &'id str>,
-        captions: CaptionClearance,
+        captions: CaptionClearance<'_>,
         work: &mut OperationLayoutWorkControl,
     ) -> Result<Self> {
         let invalid = |message: &str| Error::InvalidModel {
@@ -123,6 +193,7 @@ impl CanonicalRoutes {
         if edge_ids.len() != solved.edges.len()
             || graph.edges.len() != solved.edges.len()
             || profiles.len() != solved.nodes.len()
+            || matches!(captions, CaptionClearance::AvoidWithPaintedNodes(nodes) if nodes.len() != solved.nodes.len())
         {
             return Err(invalid(
                 "Canonical geometry does not match the family bindings",
@@ -132,42 +203,9 @@ impl CanonicalRoutes {
         let mut paths = FxHashMap::with_capacity_and_hasher(edge_ids.len(), Default::default());
         let mut stitch_contacts = Vec::with_capacity(solved.border_stitches.len());
         let mut obstacles = obstacle_inventory(solved, captions, work)?;
-        let group_contact = |id, side, port| {
-            let radius = group_corner_radius(id);
-            if radius == 0.0 {
-                return port;
-            }
-            let rect = solved.groups[id as usize].rect;
-            let center = rect.center();
-            ShapePortProfile::rounded_rectangle(rect.width, rect.height, radius, radius).contact(
-                &LayoutPoint {
-                    x: center.x,
-                    y: center.y,
-                },
-                side,
-                port,
-            )
-        };
-        let contact = |endpoint, side, point, neighbor| match endpoint {
-            Endpoint::Node(id) => {
-                let index = id as usize;
-                let center = solved.nodes[index].center();
-                (
-                    profiles[index].contact(
-                        &LayoutPoint {
-                            x: center.x,
-                            y: center.y,
-                        },
-                        side,
-                        point,
-                    ),
-                    side,
-                )
-            }
-            Endpoint::Group(id) => (
-                group_contact(id, side, point),
-                route_paint::group_lead_side(side, point, neighbor),
-            ),
+        let contours = RouteContours { solved, profiles };
+        let contact = |endpoint, side, point, neighbor| {
+            contours.terminal(endpoint, side, point, neighbor, &group_corner_radius)
         };
         let mut next_stitch = 0;
         for (occurrence, ((id, edge), measured)) in
@@ -193,7 +231,12 @@ impl CanonicalRoutes {
                     .points
                     .get(stitch.point)
                     .ok_or_else(|| invalid("Missing canonical group stitch"))?;
-                stitch_contacts.push(group_contact(stitch.group, stitch.side, port));
+                stitch_contacts.push(contours.group(
+                    stitch.group,
+                    stitch.side,
+                    port,
+                    group_corner_radius(stitch.group),
+                ));
                 next_stitch += 1;
             }
             let path = AxisPath {
@@ -202,6 +245,7 @@ impl CanonicalRoutes {
                 contacts: (from, to),
                 sides: (start_side, end_side),
                 markers: (measured.start_marker, measured.end_marker),
+                label_bounds: edge.label.as_ref().map(label_bounds),
                 knots: edge.points.iter().map(|p| (p.axis, p.kind)).collect(),
                 stitches: start_stitch..next_stitch,
                 corridor_clearance: if (from, to) == (*first, *last) {
@@ -210,7 +254,7 @@ impl CanonicalRoutes {
                     0.0
                 },
             };
-            if matches!(captions, CaptionClearance::Avoid) {
+            if captions.avoids_captions() {
                 work.charge_adapter(2)?;
                 obstacles.extend(
                     [
@@ -420,6 +464,7 @@ impl CanonicalRoutes {
         let clearance = if style == RouteStyle::Curved
             && route.corridor_clearance > stroke_outset
             && stitches.is_empty()
+            && !route_paint::may_use_rounded_crossbar(points)
         {
             None
         } else {
@@ -432,7 +477,8 @@ impl CanonicalRoutes {
                         -translation,
                         stroke_outset,
                     )
-                    .with_terminal_contacts(route.contacts),
+                    .with_terminal_contacts(route.contacts)
+                    .with_label_bounds(route.label_bounds.map(|label| label + translation)),
             )
         };
         let path = route_paint::build_svg_path_with_scratch(
@@ -467,16 +513,19 @@ fn label_bounds(label: &LayoutLabel) -> kurbo::Rect {
 
 fn obstacle_inventory(
     solved: &SolvedGraph,
-    captions: CaptionClearance,
+    captions: CaptionClearance<'_>,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<Vec<(kurbo::Rect, ObstacleOwner)>> {
     if solved.edges.is_empty() {
         return Ok(Vec::new());
     }
-    let shapes = work.checked_add(solved.nodes.len(), solved.groups.len())?;
+    let mut shapes = work.checked_add(solved.nodes.len(), solved.groups.len())?;
+    if matches!(captions, CaptionClearance::AvoidWithPaintedNodes(_)) {
+        shapes = work.checked_add(shapes, solved.nodes.len())?;
+    }
     work.charge_adapter(work.checked_add(shapes, solved.edges.len())?)?;
     let mut entries = Vec::new();
-    let edge_slots = if matches!(captions, CaptionClearance::Avoid) {
+    let edge_slots = if captions.avoids_captions() {
         work.checked_mul(solved.edges.len(), 5)?
     } else {
         0
@@ -484,15 +533,23 @@ fn obstacle_inventory(
     entries
         .try_reserve_exact(work.checked_add(shapes, edge_slots)?)
         .map_err(|_| Error::LayoutAllocationFailed { backend: "shoal" })?;
-    for (index, &node) in solved.nodes.iter().enumerate() {
-        entries.push((bounds(node), ObstacleOwner::Node(index as u32)));
+    if let CaptionClearance::AvoidWithPaintedNodes(nodes) = captions {
+        for (index, node) in nodes.iter().enumerate() {
+            let owner = ObstacleOwner::Node(index as u32);
+            entries.push((node.shape, owner));
+            entries.extend(node.title.map(|title| (title, owner)));
+        }
+    } else {
+        for (index, &node) in solved.nodes.iter().enumerate() {
+            entries.push((bounds(node), ObstacleOwner::Node(index as u32)));
+        }
     }
     for (index, group) in solved.groups.iter().enumerate() {
         if let Some(title) = &group.title {
             entries.push((label_bounds(title), ObstacleOwner::GroupTitle(index as u32)));
         }
     }
-    if matches!(captions, CaptionClearance::Avoid) {
+    if captions.avoids_captions() {
         for (index, edge) in solved.edges.iter().enumerate() {
             for label in [&edge.label, &edge.start_label, &edge.end_label]
                 .into_iter()
