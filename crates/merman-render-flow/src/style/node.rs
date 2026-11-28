@@ -1,8 +1,9 @@
 //! Source CSS and native defaults for node SVG.
 
-use std::sync::Arc;
+use std::{fmt::Write as _, sync::Arc};
 
 use merman_render_core::{Result, mermaid_style, resources::OperationWorkMeter};
+use merman_theme_contract::v2::Color;
 
 use super::{
     compiled::{FlowchartCompiledStyles, FlowchartNodeClassStyles},
@@ -28,16 +29,46 @@ pub struct PreparedNodeTerminal {
 
 #[derive(Debug)]
 pub struct PreparedNodeSelection {
-    pub inline_style: Option<String>,
     pub junction_style: Option<String>,
-    pub theme_style: String,
-    native_fill: Option<String>,
+    native_fill: Option<PreparedNativeNodeFill>,
     collapsed_agentflow: bool,
     pub stroke_width: f32,
     pub native_radius: Option<f32>,
     pub source_radii: [Option<f64>; 2],
     pub configured_radius: Option<f64>,
     pub native_label_color: Option<String>,
+}
+
+/// The full shape style also stores the native-only declaration and raw paint as suffixes.
+#[derive(Debug)]
+struct PreparedNativeNodeFill {
+    inline_style: String,
+    declaration_start: usize,
+}
+
+impl PreparedNativeNodeFill {
+    const DECLARATION_PREFIX: &str = "fill:";
+
+    fn new(source_style: &str, color: Color) -> Self {
+        let separator = if source_style.is_empty() { "" } else { ";" };
+        let declaration_start = source_style.len() + separator.len();
+        let prefix = Self::DECLARATION_PREFIX;
+        let mut inline_style =
+            String::with_capacity(declaration_start + prefix.len() + "#RRGGBBAA".len());
+        let _ = write!(inline_style, "{source_style}{separator}{prefix}{color}");
+        Self {
+            inline_style,
+            declaration_start,
+        }
+    }
+
+    fn declaration(&self) -> &str {
+        &self.inline_style[self.declaration_start..]
+    }
+
+    fn color(&self) -> &str {
+        &self.declaration()[Self::DECLARATION_PREFIX.len()..]
+    }
 }
 
 /// Structural selectors can own a native terminal without joining its source transport.
@@ -148,8 +179,6 @@ impl PreparedNodeSelection {
         });
         Self {
             junction_style: None,
-            inline_style: None,
-            theme_style: String::new(),
             native_fill: None,
             collapsed_agentflow: ctx.collapsed_agentflow,
             stroke_width: width.unwrap_or(1.3),
@@ -160,6 +189,18 @@ impl PreparedNodeSelection {
                 .then_some(compatibility.node_corner_radius),
             native_label_color: None,
         }
+    }
+
+    pub(crate) fn inline_style(&self) -> Option<&str> {
+        self.native_fill
+            .as_ref()
+            .map(|fill| fill.inline_style.as_str())
+    }
+
+    pub(crate) fn theme_style(&self) -> &str {
+        self.native_fill
+            .as_ref()
+            .map_or("", PreparedNativeNodeFill::declaration)
     }
 
     fn default_stroke<'a>(&self, compatibility: &'a FlowchartCompatibilityBinding) -> &'a str {
@@ -235,15 +276,8 @@ impl PreparedNodeTerminal {
             let shape = terminal_shape.and_then(FlowchartShape::resolve);
             if let Some((fill, text)) = native.node_colors(shape, ordinal, classes) {
                 if source.fill.is_none() && !terminal_sources.fill {
-                    let fill = fill.to_string();
-                    selection.theme_style = format!("fill:{fill}");
-                    selection.native_fill = Some(fill);
-                    let mut inline = source.node_style.clone();
-                    if !inline.is_empty() {
-                        inline.push(';');
-                    }
-                    inline.push_str(&selection.theme_style);
-                    selection.inline_style = Some(inline);
+                    selection.native_fill =
+                        Some(PreparedNativeNodeFill::new(&source.node_style, fill));
                 }
                 if !source.has_source_label_foreground() && structural.foreground.is_none() {
                     selection.native_label_color = Some(text.to_string());
@@ -265,7 +299,7 @@ impl PreparedNodeTerminal {
         if matches!(
             terminal_shape,
             Some("f-circ" | "junction" | "filled-circle")
-        ) && selection.inline_style.is_none()
+        ) && selection.native_fill.is_none()
             && source.node_style.trim().is_empty()
         {
             let border = selection.default_stroke(inputs.compatibility);
@@ -289,7 +323,8 @@ impl PreparedNodeTerminal {
     pub fn fill_color<'a>(&'a self, compatibility: &'a FlowchartCompatibilityBinding) -> &'a str {
         self.selection
             .native_fill
-            .as_deref()
+            .as_ref()
+            .map(PreparedNativeNodeFill::color)
             .or(self.source.fill.as_deref())
             .unwrap_or(&compatibility.main_bkg)
     }
@@ -330,6 +365,31 @@ fn prepare_hand_drawn_shape_group_style(inline_styles: &[String]) -> String {
         text_decls.join(";")
     } else {
         node_decls.join(";")
+    }
+}
+
+#[cfg(test)]
+mod native_fill_style_tests {
+    use super::*;
+
+    #[test]
+    fn plain_native_fill_needs_no_style_separator() {
+        let fill = PreparedNativeNodeFill::new("", Color::rgb(1, 42, 175));
+        assert_eq!(fill.inline_style, "fill:#012AAF");
+        assert_eq!(fill.declaration(), "fill:#012AAF");
+        assert_eq!(fill.color(), "#012AAF");
+    }
+
+    #[test]
+    fn native_fill_views_skip_the_authored_utf8_style_prefix() {
+        let source = "STROKE:#123456 !important;--custom:é🙂 !important";
+        let fill = PreparedNativeNodeFill::new(source, Color::rgba(0, 16, 170, 64));
+        assert_eq!(
+            fill.inline_style,
+            "STROKE:#123456 !important;--custom:é🙂 !important;fill:#0010AA40"
+        );
+        assert_eq!(fill.declaration(), "fill:#0010AA40");
+        assert_eq!(fill.color(), "#0010AA40");
     }
 }
 
