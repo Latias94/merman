@@ -96,7 +96,7 @@ pub(super) fn ordered(
     }
     for level in &hierarchy.levels {
         work.visit(1)?;
-        if level.direction != graph.direction {
+        if level.direction != graph.direction && !level.ports.is_empty() {
             return Ok(None);
         }
     }
@@ -121,7 +121,8 @@ pub(super) fn ordered(
             parent: None,
             ..original
         };
-        node.align_flow(graph.direction);
+        let level = original.parent.map_or(root, |id| id.0 as usize);
+        node.align_flow(hierarchy.levels[level].direction);
         proxy.nodes.push(node);
     }
     for (parent, level) in hierarchy.levels[..root].iter().enumerate() {
@@ -142,9 +143,14 @@ pub(super) fn ordered(
     )?;
     proxy.edges = reserved(graph.edges.len())?;
     let mut proxy_edge = reserved(graph.edges.len())?;
+    let shares_direction = |node: crate::NodeId| {
+        let level = groups[node.0 as usize].map_or(root, |id| id.0 as usize);
+        hierarchy.levels[level].direction == graph.direction
+    };
     for &edge in &graph.edges {
         work.visit(1)?;
-        if matches!((edge.source, edge.target), (Endpoint::Node(from), Endpoint::Node(to)) if from != to)
+        if matches!((edge.source, edge.target), (Endpoint::Node(from), Endpoint::Node(to))
+            if from != to && shares_direction(from) && shares_direction(to))
         {
             proxy_edge.push(Some(proxy.edges.len()));
             proxy.edges.push(edge);
@@ -174,7 +180,9 @@ pub(super) fn ordered(
                             "non-finite leaf order coordinate",
                         ));
                     }
-                    keys[index] = Some(mean);
+                    if hierarchy.levels[level].direction == graph.direction {
+                        keys[index] = Some(mean);
+                    }
                     Leaves {
                         count: 1,
                         mean,
@@ -244,7 +252,8 @@ mod tests {
     use crate::compound::hierarchy::build;
     use crate::compound::sides;
     use crate::{
-        Direction, EdgeSpec, GroupSpec, NodeId, NodeSpec, NoopWorkControl, Size, WorkControl,
+        Axis, Direction, EdgeSpec, GroupSpec, NodeId, NodeSpec, NoopWorkControl, PortSideHint,
+        Size, WorkControl,
     };
 
     fn fan() -> Graph {
@@ -350,6 +359,50 @@ mod tests {
         assert_eq!(actual.ports, expected.ports);
         assert_eq!(actual.flat_crossings, expected.flat_crossings);
         assert_eq!(graph.groups[0].parent, Some(GroupId(1)));
+    }
+
+    #[test]
+    fn an_isolated_rotated_leaf_does_not_disable_same_axis_port_ordering() {
+        let mut graph = fan();
+        let isolated = GroupId(4);
+        graph.groups[isolated.0 as usize].direction = Some(Direction::Right);
+        let first = graph.nodes.len();
+        for seq in first..first + 2 {
+            let mut node = NodeSpec::new(
+                Size {
+                    width: 20.0,
+                    height: 100.0,
+                },
+                seq as u32,
+            );
+            node.parent = Some(isolated);
+            node.flow_relative_axis = Some(Axis::Horizontal);
+            graph.nodes.push(node);
+        }
+        let mut local_edge =
+            EdgeSpec::new(NodeId(first as u32).into(), NodeId(first as u32 + 1).into());
+        local_edge.source_port = PortSideHint::FixedOffset {
+            side: Side::Right,
+            offset: 20.0,
+        };
+        graph.edges.push(local_edge);
+        let mut options = Options::default();
+        options.group_policy.inherit_crossed_direction = false;
+        let mut expanded = Expanded::default();
+        let ordered = hints(&graph, &options, &mut expanded).unwrap();
+        assert!(ordered.items[..first].iter().all(Option::is_some));
+        assert_eq!(ordered.items[first..first + 2], [None, None]);
+        assert!(ordered.ports.iter().all(Option::is_some));
+        let layout = crate::layout(&graph, &options).unwrap();
+        let source = layout.nodes[first];
+        let contact = layout.edges.last().unwrap().points[0];
+        assert!((contact.x - source.x - source.width).abs() < 1e-9);
+        assert!((contact.y - source.center().y - 20.0).abs() < 1e-9);
+
+        graph
+            .edges
+            .push(EdgeSpec::new(NodeId(6).into(), NodeId(first as u32).into()));
+        assert!(hints(&graph, &options, &mut expanded).is_none());
     }
 
     #[test]

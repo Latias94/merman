@@ -5,8 +5,8 @@ use crate::flat::{self, Expanded};
 use crate::validate;
 use crate::work::{LayoutResult, Work, reserved};
 use crate::{
-    Axis, Direction, Endpoint, Graph, GroupSpec, LayoutDetail, LayoutError, LayoutOutput, Options,
-    PackingPolicy, PortSideHint, Side, TitlePosition, WidthPolicy,
+    Axis, Direction, Endpoint, Graph, GroupId, Insets, LayoutDetail, LayoutError, LayoutOutput,
+    Options, PackingPolicy, PortSideHint, RoutingStyle, Side, TitlePosition, WidthPolicy,
 };
 
 #[derive(Clone, Copy)]
@@ -28,7 +28,7 @@ impl WidthTrial {
             turn_down(graph, &self.options, work)?;
         }
         if self.tight_groups {
-            tighten_groups(&mut graph.groups, work)?;
+            tighten_groups(graph, work)?;
         }
         if let Some(max_width) = self.fold_at {
             flat::fold(
@@ -44,6 +44,24 @@ impl WidthTrial {
                 crate::solve(graph, &self.options, expanded, LayoutDetail::Full, work)?;
             crate::compound::relax_seams(graph, &self.options, &mut output, work)?;
             Ok(Some(output))
+        }
+    }
+
+    pub(crate) fn refine_lanes(
+        self,
+        graph: &Graph,
+        drawing: &mut LayoutOutput,
+        work: &mut Work<'_>,
+    ) -> LayoutResult<()> {
+        if self.turned
+            && self.options.routing == RoutingStyle::Orthogonal
+            && self.options.global_orthogonal
+        {
+            let mut turned = copy_graph(graph, work)?;
+            turn_down(&mut turned, &self.options, work)?;
+            crate::orthogonal::refine(&turned, drawing, &self.options, work)
+        } else {
+            crate::orthogonal::refine(graph, drawing, &self.options, work)
         }
     }
 }
@@ -122,7 +140,7 @@ fn candidates(
         solve(graph, &tight, None, expanded, work)
     } else {
         let mut compact = copy_graph(graph, work)?;
-        tighten_groups(&mut compact.groups, work)?;
+        tighten_groups(&mut compact, work)?;
         // Tightening changes only padding and spacing. Topology owns the validated
         // hierarchy and semantic port sides, which are the same for both widths.
         solve(&compact, &tight, topology.as_ref(), expanded, work)
@@ -166,7 +184,7 @@ fn candidates(
         if best.0.bounds.width <= max_width {
             return Ok(best);
         }
-        tighten_groups(&mut turned.groups, work)?;
+        tighten_groups(&mut turned, work)?;
         let tight_turn_trial = WidthTrial {
             options: tight,
             turned: true,
@@ -279,6 +297,8 @@ pub(super) fn copy_graph(graph: &Graph, work: &mut Work<'_>) -> LayoutResult<Gra
 fn turn_down(graph: &mut Graph, options: &Options, work: &mut Work<'_>) -> LayoutResult<()> {
     let original = graph.direction;
     let flat = graph.groups.is_empty();
+    let lanes = !graph.lane_order.is_empty();
+    let lane_shell = |id: GroupId| lanes && graph.groups[id.0 as usize].parent.is_none();
     let levels = if flat {
         None
     } else {
@@ -289,9 +309,13 @@ fn turn_down(graph: &mut Graph, options: &Options, work: &mut Work<'_>) -> Layou
         )?)
     };
     let node_axis = |node: &crate::NodeSpec| {
-        levels
-            .as_ref()
-            .map_or(original.axis(), |levels| levels.axis(node.parent))
+        if node.parent.is_some_and(lane_shell) {
+            original.axis()
+        } else {
+            levels
+                .as_ref()
+                .map_or(original.axis(), |levels| levels.axis(node.parent))
+        }
     };
     graph.direction = Direction::Down;
     for node in &mut graph.nodes {
@@ -310,6 +334,9 @@ fn turn_down(graph: &mut Graph, options: &Options, work: &mut Work<'_>) -> Layou
         }
     }
     let turn_port = |endpoint, opposite, hint, work: &mut Work<'_>| -> LayoutResult<_> {
+        if matches!(endpoint, Endpoint::Group(id) if lane_shell(id)) {
+            return Ok(flat::to_canonical_port(original, hint));
+        }
         if !matches!(
             hint,
             PortSideHint::Side(Side::Left | Side::Right)
@@ -358,6 +385,30 @@ fn turn_down(graph: &mut Graph, options: &Options, work: &mut Work<'_>) -> Layou
     }
     for group in &mut graph.groups {
         work.visit(1)?;
+        if lanes && group.parent.is_none() {
+            if let Some(title) = &mut group.title {
+                std::mem::swap(&mut title.width, &mut title.height);
+            }
+            let Insets {
+                top,
+                right,
+                bottom,
+                left,
+            } = group.padding;
+            let (before, after) = if original == Direction::Right {
+                (left, right)
+            } else {
+                (right, left)
+            };
+            group.padding = Insets {
+                top: before,
+                right: bottom,
+                bottom: after,
+                left: top,
+            };
+            group.direction = Some(Direction::Down);
+            continue;
+        }
         if let Some(direction) = group.direction
             && direction.axis() == Axis::Horizontal
         {
@@ -371,9 +422,30 @@ fn turn_down(graph: &mut Graph, options: &Options, work: &mut Work<'_>) -> Layou
     Ok(())
 }
 
-fn tighten_groups(groups: &mut [GroupSpec], work: &mut Work<'_>) -> LayoutResult<()> {
-    for group in groups {
+fn tighten_groups(graph: &mut Graph, work: &mut Work<'_>) -> LayoutResult<()> {
+    let lanes = !graph.lane_order.is_empty();
+    for group in &mut graph.groups {
         work.visit(1)?;
+        if lanes && group.parent.is_none() {
+            // Preserve the body gap after the lane header on the entry face.
+            let Insets {
+                top,
+                right,
+                bottom,
+                left,
+            } = &mut group.padding;
+            for (entry, inset) in [
+                (Direction::Down, top),
+                (Direction::Left, right),
+                (Direction::Up, bottom),
+                (Direction::Right, left),
+            ] {
+                if entry != graph.direction {
+                    *inset *= 0.6;
+                }
+            }
+            continue;
+        }
         let title_height = group.title.map_or(0.0, |title| title.height);
         let [top, bottom] = match group.title_position {
             TitlePosition::TopAuto
@@ -397,7 +469,7 @@ fn tighten_groups(groups: &mut [GroupSpec], work: &mut Work<'_>) -> LayoutResult
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{EdgeSpec, GroupId, NodeId, NodeSpec, Size};
+    use crate::{EdgeSpec, GroupSpec, NodeId, NodeSpec, Size};
 
     #[test]
     fn a_horizontal_width_trial_remaps_flow_ports_and_matching_subgroups() {

@@ -6,13 +6,14 @@ mod projection;
 use super::solve::TITLE_CLEAR;
 #[cfg(test)]
 use crate::Rect;
-use crate::geom::Bounds;
+use crate::geom::{Bounds, Bvh, BvhEntry};
 use crate::work::{LayoutResult, Work, filled, push, reserved};
 use crate::{
     Axis, BorderStitch, Endpoint, Graph, GroupId, KnotKind, LayoutError, LayoutOutput, Options,
     Point, PortSideHint, RoutePoint, RoutingStyle, Side, Size,
 };
 use projection::Lane;
+use std::ops::ControlFlow;
 
 const MAX_LANE_SHIFT: f64 = 12.0;
 
@@ -89,10 +90,13 @@ impl Bounds {
     }
 }
 
-struct Obstacles {
-    boxes: Vec<Bounds>,
-    edges: Vec<Bounds>,
+enum Obstacle {
+    Box,
+    Edge(usize),
+    Group(GroupId),
 }
+
+struct Obstacles(Bvh<(Bounds, Obstacle)>);
 
 impl Obstacles {
     fn new(graph: &Graph, output: &LayoutOutput, work: &mut Work<'_>) -> LayoutResult<Self> {
@@ -103,30 +107,45 @@ impl Obstacles {
                 .nodes
                 .iter()
                 .filter(|node| node.width > 0.0 && node.height > 0.0)
-                .map(|&node| Bounds::of(node)),
+                .map(|&node| (Bounds::of(node), Obstacle::Box)),
         );
-        for (group, spec) in output.groups.iter().zip(&graph.groups) {
+        for (index, group) in output.groups.iter().enumerate() {
             work.visit(1)?;
-            if let (Some(center), Some(size)) = (group.title_center, spec.title) {
+            push(
+                &mut boxes,
+                (
+                    Bounds::of(group.rect),
+                    Obstacle::Group(GroupId(index as u32)),
+                ),
+            )?;
+            if let (Some(center), Some(size)) = (
+                group.title_center,
+                graph.groups.get(index).and_then(|spec| spec.title),
+            ) {
                 let padding = 2.0 * TITLE_CLEAR;
                 let clearance = Size {
                     width: size.width + padding,
                     height: size.height + padding,
                 };
-                push(&mut boxes, Bounds::centered(center, clearance))?;
+                push(
+                    &mut boxes,
+                    (Bounds::centered(center, clearance), Obstacle::Box),
+                )?;
             }
         }
-        let mut edges = reserved(output.edges.len())?;
-        for (edge, spec) in output.edges.iter().zip(&graph.edges) {
+        for (index, (edge, spec)) in output.edges.iter().zip(&graph.edges).enumerate() {
             work.visit(1)?;
-            edges.push(Bounds::route(&edge.points, work)?);
+            push(
+                &mut boxes,
+                (Bounds::route(&edge.points, work)?, Obstacle::Edge(index)),
+            )?;
             for (center, size) in [
                 (edge.label_center, spec.label),
                 (edge.start_label_center, spec.start_label),
                 (edge.end_label_center, spec.end_label),
             ] {
                 if let (Some(center), Some(size)) = (center, size) {
-                    push(&mut boxes, Bounds::centered(center, size))?;
+                    push(&mut boxes, (Bounds::centered(center, size), Obstacle::Box))?;
                 }
             }
             for (point, marker) in [
@@ -137,21 +156,24 @@ impl Obstacles {
                 if radius > 0.0 {
                     push(
                         &mut boxes,
-                        Bounds::centered(
-                            Point {
-                                x: point.x,
-                                y: point.y,
-                            },
-                            Size {
-                                width: radius * 2.0,
-                                height: radius * 2.0,
-                            },
+                        (
+                            Bounds::centered(
+                                Point {
+                                    x: point.x,
+                                    y: point.y,
+                                },
+                                Size {
+                                    width: radius * 2.0,
+                                    height: radius * 2.0,
+                                },
+                            ),
+                            Obstacle::Box,
                         ),
                     )?;
                 }
             }
         }
-        Ok(Self { boxes, edges })
+        Ok(Self(Bvh::build_with_work(boxes, |item| item.0, work)?))
     }
 
     fn clear(
@@ -163,38 +185,42 @@ impl Obstacles {
         accepted: impl Iterator<Item = (usize, Bounds)>,
         work: &mut Work<'_>,
     ) -> LayoutResult<bool> {
-        for &obstacle in &self.boxes {
+        let blocked = self.0.visit(|entry| -> LayoutResult<_> {
             work.visit(1)?;
-            if bounds.overlaps(obstacle) {
-                return Ok(false);
+            let (obstacle, owner) = match entry {
+                BvhEntry::Node(region) => {
+                    return Ok(ControlFlow::Continue(bounds.overlaps(region)));
+                }
+                BvhEntry::Item((obstacle, owner)) => (*obstacle, owner),
+            };
+            if !bounds.overlaps(obstacle) {
+                return Ok(ControlFlow::Continue(true));
             }
-        }
-        for (other, &obstacle) in self.edges.iter().enumerate() {
-            work.visit(1)?;
-            if other != edge && bounds.overlaps(obstacle) {
-                return Ok(false);
+            match *owner {
+                Obstacle::Edge(other) if other == edge => return Ok(ControlFlow::Continue(true)),
+                Obstacle::Group(group) => {
+                    if groups.contains(&group) {
+                        return Ok(ControlFlow::Continue(true));
+                    }
+                    let mut ancestor = drawing.groups[groups[0].0 as usize].parent;
+                    while let Some(id) = ancestor {
+                        work.visit(1)?;
+                        if id == group {
+                            return Ok(ControlFlow::Continue(true));
+                        }
+                        ancestor = drawing.groups[id.0 as usize].parent;
+                    }
+                }
+                _ => {}
             }
+            Ok(ControlFlow::Break(()))
+        })?;
+        if blocked.is_break() {
+            return Ok(false);
         }
         for (accepted_edge, footprint) in accepted {
             work.visit(1)?;
             if accepted_edge != edge && bounds.overlaps(footprint) {
-                return Ok(false);
-            }
-        }
-        for (index, group) in drawing.groups.iter().enumerate() {
-            work.visit(1)?;
-            if !bounds.overlaps(Bounds::of(group.rect)) || groups.contains(&GroupId(index as u32)) {
-                continue;
-            }
-            let mut ancestor = drawing.groups[groups[0].0 as usize].parent;
-            while let Some(id) = ancestor {
-                work.visit(1)?;
-                if id.0 as usize == index {
-                    break;
-                }
-                ancestor = drawing.groups[id.0 as usize].parent;
-            }
-            if ancestor.is_none() {
                 return Ok(false);
             }
         }
@@ -396,9 +422,74 @@ fn fixed_seams(
 
 type Corridor = [(GroupId, u8); 2];
 
+struct FaceContact {
+    face: (GroupId, u8),
+    edge: usize,
+    point: usize,
+    stitched: bool,
+}
+
 struct FaceLanes {
     corridors: Vec<Option<Corridor>>,
     accepted: Vec<Option<f64>>,
+    contacts: Vec<FaceContact>,
+}
+
+impl FaceLanes {
+    fn new(graph: &Graph, output: &LayoutOutput, work: &mut Work<'_>) -> LayoutResult<Self> {
+        work.charge(output.edges.len())?;
+        let mut contacts = reserved(output.border_stitches.len())?;
+        for seam in &output.border_stitches {
+            work.visit(1)?;
+            contacts.push(FaceContact {
+                face: (seam.group, seam.side as u8),
+                edge: seam.edge.0 as usize,
+                point: seam.point,
+                stitched: true,
+            });
+        }
+        for (index, (edge, spec)) in output.edges.iter().zip(&graph.edges).enumerate() {
+            work.visit(1)?;
+            for (end, side, point) in [
+                (spec.source, edge.ports.0, 0),
+                (spec.target, edge.ports.1, edge.points.len() - 1),
+            ] {
+                if let Endpoint::Group(id) = end {
+                    push(
+                        &mut contacts,
+                        FaceContact {
+                            face: (id, side as u8),
+                            edge: index,
+                            point,
+                            stitched: false,
+                        },
+                    )?;
+                }
+            }
+        }
+        work.charge_sort(contacts.len())?;
+        contacts.sort_unstable_by_key(|contact| (contact.face, contact.edge, contact.point));
+        work.check()?;
+        Ok(Self {
+            corridors: filled(output.edges.len(), None)?,
+            accepted: filled(output.edges.len(), None)?,
+            contacts,
+        })
+    }
+
+    fn on_face(
+        &self,
+        group: GroupId,
+        side: Side,
+        work: &mut Work<'_>,
+    ) -> LayoutResult<impl Iterator<Item = &FaceContact> + use<'_>> {
+        let face = (group, side as u8);
+        work.visit(self.contacts.len().max(1).ilog2() as usize + 1)?;
+        let start = self.contacts.partition_point(|contact| contact.face < face);
+        Ok(self.contacts[start..]
+            .iter()
+            .take_while(move |contact| contact.face == face))
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -455,38 +546,19 @@ fn lane_limits(
             .1
             .min(start + length - corner)
             .min(lane + MAX_LANE_SHIFT);
-        for neighbor in &output.border_stitches {
+        for neighbor in faces.on_face(seam.group, seam.side, work)? {
             work.visit(1)?;
-            if neighbor.group != seam.group || neighbor.side != seam.side {
-                continue;
-            }
-            let edge = neighbor.edge.0 as usize;
-            if faces.corridors[edge] == Some(slide.corridor) {
+            let edge = neighbor.edge;
+            if neighbor.stitched && faces.corridors[edge] == Some(slide.corridor) {
                 continue;
             }
             let original = travel.across(output.edges[edge].points[neighbor.point]);
-            let current = faces.accepted[edge].unwrap_or(original);
+            let current = if neighbor.stitched {
+                faces.accepted[edge].unwrap_or(original)
+            } else {
+                original
+            };
             restrict_lane(&mut limits, lane, original, current, spacing.min_port_pitch);
-        }
-        for (edge, spec) in output.edges.iter().zip(&ctx.graph.edges) {
-            work.visit(1)?;
-            let endpoint = Endpoint::Group(seam.group);
-            let last = edge.points.len() - 1;
-            for (end, side, point) in [
-                (spec.source, edge.ports.0, edge.points[0]),
-                (spec.target, edge.ports.1, edge.points[last]),
-            ] {
-                if end == endpoint && side == seam.side {
-                    let neighbor = travel.across(point);
-                    restrict_lane(
-                        &mut limits,
-                        lane,
-                        neighbor,
-                        neighbor,
-                        spacing.min_port_pitch,
-                    );
-                }
-            }
         }
     }
     Ok(limits)
@@ -757,10 +829,10 @@ fn seam_paths(output: &LayoutOutput) -> impl Iterator<Item = (usize, &[BorderSti
 fn fixed_edits(
     ctx: &Scene<'_>,
     output: &LayoutOutput,
+    obstacles: &mut Option<Obstacles>,
     work: &mut Work<'_>,
 ) -> LayoutResult<Vec<Edit>> {
     let mut edits = Vec::new();
-    let mut obstacles = None;
     for (stitch, seams) in seam_paths(output) {
         work.visit(seams.len())?;
         let &[first, last] = seams else {
@@ -773,7 +845,7 @@ fn fixed_edits(
             continue;
         };
         if obstacles.is_none() {
-            obstacles = Some(Obstacles::new(ctx.graph, output, work)?);
+            *obstacles = Some(Obstacles::new(ctx.graph, output, work)?);
         }
         let edge = first.edge.0 as usize;
         if !obstacles.as_ref().unwrap().clear(
@@ -798,6 +870,7 @@ fn slide_edits(
     ctx: &Scene<'_>,
     output: &LayoutOutput,
     fixed: &[Edit],
+    obstacles: &mut Option<Obstacles>,
     work: &mut Work<'_>,
 ) -> LayoutResult<Vec<Edit>> {
     let mut slides = Vec::new();
@@ -822,11 +895,7 @@ fn slide_edits(
             .then_with(|| slides[a].originals[0].total_cmp(&slides[b].originals[0]))
             .then(a.cmp(&b))
     })?;
-    work.charge(output.edges.len())?;
-    let mut faces = FaceLanes {
-        corridors: filled(output.edges.len(), None)?,
-        accepted: filled(output.edges.len(), None)?,
-    };
+    let mut faces = FaceLanes::new(ctx.graph, output, work)?;
     for slide in &slides {
         work.visit(1)?;
         faces.corridors[slide.edge()] = Some(slide.corridor);
@@ -834,7 +903,6 @@ fn slide_edits(
     let mut lanes = reserved(slides.len())?;
     let mut planned = reserved(slides.len())?;
     let mut edits = reserved(slides.len())?;
-    let mut obstacles = None;
     let pitch = ctx.options.spacing.min_port_pitch;
     'corridors: for members in order.chunk_by(|&a, &b| slides[a].corridor == slides[b].corridor) {
         lanes.clear();
@@ -874,7 +942,7 @@ fn slide_edits(
                 continue 'corridors;
             };
             if obstacles.is_none() {
-                obstacles = Some(Obstacles::new(ctx.graph, output, work)?);
+                *obstacles = Some(Obstacles::new(ctx.graph, output, work)?);
             }
             let edge = slide.edge();
             let groups = slide.pair.seams.map(|seam| seam.group);
@@ -938,16 +1006,18 @@ pub(super) fn relax(
     }
     let scene = Scene { graph, options };
     face_order::relax(&scene, output, work)?;
-    let fixed = match work.compare(|trial| fixed_edits(&scene, output, trial)) {
+    let mut obstacles = None;
+    let fixed = match work.compare(|trial| fixed_edits(&scene, output, &mut obstacles, trial)) {
         Ok(Some(edits)) => edits,
         Ok(None) | Err(LayoutError::AllocationLimit) => return Ok(()),
         Err(error) => return Err(error),
     };
-    let slid = match work.compare(|trial| slide_edits(&scene, output, &fixed, trial)) {
-        Ok(Some(edits)) => edits,
-        Ok(None) | Err(LayoutError::AllocationLimit) => Vec::new(),
-        Err(error) => return Err(error),
-    };
+    let slid =
+        match work.compare(|trial| slide_edits(&scene, output, &fixed, &mut obstacles, trial)) {
+            Ok(Some(edits)) => edits,
+            Ok(None) | Err(LayoutError::AllocationLimit) => Vec::new(),
+            Err(error) => return Err(error),
+        };
     for edit in fixed.into_iter().chain(slid) {
         output.edges[edit.edge].points = edit.route;
         output.border_stitches[edit.stitch].point = edit.point;

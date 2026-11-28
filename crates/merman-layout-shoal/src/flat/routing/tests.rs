@@ -874,7 +874,7 @@ fn weighted_track_order_matches_an_all_pairs_oracle_including_ties_and_cycles() 
             placed[next] = Some((minimum..count).find(|&track| !taken[track]).unwrap());
         }
         for (id, expected) in ids.into_iter().zip(placed) {
-            assert_eq!(pieces[id].track, expected);
+            assert_eq!(pieces[id].track, expected.map(Track::Row));
         }
     }
 }
@@ -977,6 +977,189 @@ fn same_direction_sweeps_with_overlapping_crossbars_use_distinct_shelves() {
         .unwrap();
     assert_eq!(gap.tracks, 2);
     assert_ne!(gap.pieces[0].track, gap.pieces[1].track);
+}
+
+#[test]
+fn short_fan_sweeps_clear_the_outer_shelves_in_both_flow_axes() {
+    for (direction, outgoing, incoming) in [
+        (Direction::Down, Side::Bottom, Side::Top),
+        (Direction::Up, Side::Top, Side::Bottom),
+        (Direction::Right, Side::Right, Side::Left),
+        (Direction::Left, Side::Left, Side::Right),
+    ] {
+        let size = match direction.axis() {
+            Axis::Vertical => Size {
+                width: 152.,
+                height: 41.,
+            },
+            Axis::Horizontal => Size {
+                width: 41.,
+                height: 152.,
+            },
+        };
+        for fan_in in [false, true] {
+            let graph = Graph {
+                direction,
+                nodes: (0..5).map(|i| NodeSpec::new(size, i)).collect(),
+                edges: [-36., -20., 20., 36.]
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, offset)| {
+                        let leaf = NodeId(i as u32 + 1).into();
+                        let hub = NodeId(0).into();
+                        let (from, to) = if fan_in { (leaf, hub) } else { (hub, leaf) };
+                        let mut edge = EdgeSpec::new(from, to);
+                        if fan_in {
+                            edge.target_port = PortSideHint::FixedOffset {
+                                side: incoming,
+                                offset,
+                            };
+                        } else {
+                            edge.source_port = PortSideHint::FixedOffset {
+                                side: outgoing,
+                                offset,
+                            };
+                        }
+                        edge.end_marker = MarkerMetrics {
+                            length: 8.,
+                            width: 10.,
+                        };
+                        edge.set_marker_runways([0., 16.75]);
+                        edge
+                    })
+                    .collect(),
+                ..Graph::default()
+            };
+            let drawing = crate::layout(&graph, &Options::default()).unwrap();
+            assert_eq!(drawing.stats.topological_crossings, 0);
+            assert_eq!(
+                drawing.stats.routed_crossings, 0,
+                "{direction:?}, fan_in={fan_in}"
+            );
+
+            let along = |p: RoutePoint| match direction.axis() {
+                Axis::Vertical => p.y,
+                Axis::Horizontal => p.x,
+            };
+            let across = |p: RoutePoint| match direction.axis() {
+                Axis::Vertical => p.x,
+                Axis::Horizontal => p.y,
+            };
+            for (i, edge) in drawing.edges.iter().enumerate() {
+                let mut turns = edge
+                    .points
+                    .windows(2)
+                    .filter(|leg| across(leg[0]) != across(leg[1]));
+                let turn = turns.next().expect("one transverse leg");
+                assert!(
+                    turns.next().is_none(),
+                    "more than one transverse leg: {edge:?}"
+                );
+                let run = (along(turn[1]) - along(turn[0])).abs();
+                if i == 0 || i == 3 {
+                    assert_eq!(run, 0., "outer edge should keep its shelf");
+                } else {
+                    let width = across(turn[1]) - across(turn[0]);
+                    assert!(
+                        run > 0. && run >= steep_sweep_run_limit(width),
+                        "inner edge should paint one cubic: {edge:?}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn bounded_sweep_probe_matches_exhaustive_segment_distance() {
+    let distance_to_segment = |point: Point, a: Point, b: Point| {
+        let (dx, dy) = (b.x - a.x, b.y - a.y);
+        let length = dx.hypot(dy);
+        let (ux, uy) = if length > 0.0 {
+            (dx / length, dy / length)
+        } else {
+            (0.0, 0.0)
+        };
+        let (px, py) = (point.x - a.x, point.y - a.y);
+        let along = (px * ux + py * uy).clamp(0.0, length);
+        (px - along * ux).hypot(py - along * uy)
+    };
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    for first in [-320.0, -80.0, 0.0, 80.0, 320.0] {
+        for second in [-170.0, -52.0, 0.0, 52.0, 170.0] {
+            for offset in [-12.0, -0.75, 1.25, 11.0, 80.0] {
+                let points = sample(
+                    Span {
+                        from: 0.0,
+                        to: first,
+                    },
+                    36.0,
+                );
+                let line = sample(
+                    Span {
+                        from: offset,
+                        to: offset + second,
+                    },
+                    36.0,
+                );
+                let expected = points.iter().any(|&point| {
+                    line.windows(2)
+                        .any(|ends| distance_to_segment(point, ends[0], ends[1]) < LEVEL_TOUCH)
+                });
+                assert_eq!(
+                    reaches(&points, &line, LEVEL_TOUCH, &mut work).unwrap(),
+                    expected,
+                    "sweeps {first}, {second}, offset {offset}",
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn disjoint_curved_shelves_center_independently_and_leave_quiet_sweeps_alone() {
+    let scene = Scene::new(
+        &[10.; 10],
+        &[&[0, 1, 2, 3, 4], &[5, 6, 7, 8, 9]],
+        &[&[0, 5], &[1, 6], &[2, 7], &[3, 8], &[4, 9]],
+        &[0., 24., 48., 500., 1500., 140., 164., 188., 1000., 1520.],
+    );
+    let mut meter = Meter::default();
+    let drawing = scene.draw_with(&mut meter).unwrap();
+    let top = drawing.nodes[0].y + drawing.nodes[0].height;
+    let bottom = drawing.nodes[5].y;
+    let shelf = |i: usize| level(&drawing.edges[i].1.points);
+    assert!(shelf(2) < shelf(1) && shelf(1) < shelf(0));
+    assert_eq!(shelf(0).midpoint(shelf(2)), top.midpoint(bottom));
+    assert_eq!(shelf(3), top.midpoint(bottom));
+    let quiet = &drawing.edges[4].1.points;
+    assert_eq!(quiet.len(), 2);
+    assert_eq!([quiet[0].y, quiet[1].y], [top, bottom]);
+
+    let mut denied = Meter {
+        limit: Some(meter.used - 1),
+        ..Meter::default()
+    };
+    assert!(matches!(
+        scene.draw_with(&mut denied),
+        Err(LayoutError::Work(WorkError::Interrupted))
+    ));
+    assert_eq!(scene.draw().edges, drawing.edges);
+}
+
+#[test]
+fn subpixel_mates_share_a_weighted_curved_shelf_at_either_end() {
+    for reversed in [false, true] {
+        for (offset, tracks) in [(0.25, 2), (0.5, 3)] {
+            let spans = [(0., 130.), (offset, 145.), (30., 160.)];
+            let spans = spans.map(|(from, to)| if reversed { (to, from) } else { (from, to) });
+            let mut gap = gap(&spans);
+            gap.grade(&Options::default(), &mut Work::new(&mut NoopWorkControl))
+                .unwrap();
+            assert_eq!(gap.tracks, tracks, "offset={offset}, reversed={reversed}");
+        }
+    }
 }
 
 #[test]

@@ -496,7 +496,7 @@ fn an_automatic_contact_can_change_faces_when_a_label_blocks_the_narrow_face() {
 }
 
 #[test]
-fn invalid_lane_membership_and_explicit_width_fitting_report_errors() {
+fn invalid_lane_membership_and_width_policy_report_errors() {
     let graph = shared_ranks();
     let mut options = Options::default();
     let invalid = |graph: &Graph| {
@@ -519,15 +519,63 @@ fn invalid_lane_membership_and_explicit_width_fitting_report_errors() {
         invalid(&invalid_graph);
     }
     options.width_policy = WidthPolicy::FitWidth {
-        max_width: 400.0,
+        max_width: 0.0,
         allow_turn: false,
         turn_breakpoint: 0.0,
         fold_wide_ranks: false,
     };
     assert!(matches!(
         layout(&graph, &options),
-        Err(LayoutError::Unsupported(_))
+        Err(LayoutError::InvalidInput(_))
     ));
+}
+
+#[test]
+fn fit_width_turns_measured_lane_titles_and_keeps_upright_nodes_and_lane_order() {
+    let mut graph = Graph::default();
+    graph.groups = vec![
+        group(0, None, size(20.0, 100.0)),
+        group(1, None, size(24.0, 120.0)),
+    ];
+    graph.lane_order = vec![GroupId(1), GroupId(0)];
+    graph.nodes = (0..6).map(|id| node(id, id / 3)).collect();
+    graph.edges = (0..5).map(|id| edge(NodeId(id), NodeId(id + 1))).collect();
+    let mut options = Options::default();
+    options.routing = RoutingStyle::Orthogonal;
+    options.global_orthogonal = true;
+    options.width_policy = WidthPolicy::FitWidth {
+        max_width: 400.0,
+        allow_turn: true,
+        turn_breakpoint: 640.0,
+        fold_wide_ranks: true,
+    };
+    for direction in [Direction::Right, Direction::Left] {
+        graph.direction = direction;
+        let fitted = layout(&graph, &options).unwrap();
+        assert_eq!(fitted.direction, Direction::Down);
+        assert!(fitted.bounds.width <= 400.0);
+        let [right, left] = fitted.groups.as_slice() else {
+            unreachable!()
+        };
+        near(left.rect.x + left.rect.width, right.rect.x);
+        for (id, geometry) in fitted.groups.iter().enumerate() {
+            let title = graph.groups[id].title.unwrap();
+            let title = label(
+                geometry.title_center.unwrap(),
+                size(title.height, title.width),
+            );
+            assert!(contains(geometry.rect, title));
+            for (node, rect) in graph.nodes.iter().zip(&fitted.nodes) {
+                assert_eq!(rect.width, node.size.width);
+                assert_eq!(rect.height, node.size.height);
+                if node.parent == Some(GroupId(id as u32)) {
+                    assert!(contains(geometry.rect, *rect));
+                }
+                assert!(!interior_overlap(title, *rect));
+            }
+            assert!(fitted.edges.iter().all(|edge| !enters(&edge.points, title)));
+        }
+    }
 }
 
 #[test]

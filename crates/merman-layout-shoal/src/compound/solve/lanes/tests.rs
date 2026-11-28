@@ -247,6 +247,47 @@ fn same_lane_feedback_uses_a_reserved_margin_in_all_directions() {
 }
 
 #[test]
+fn same_lane_feedback_does_not_widen_the_unused_margin() {
+    let graph = swimlane(&[0, 0, 0], &[(0, 1), (1, 2), (2, 0)]);
+    let mut options = orthogonal();
+    options.spacing.port_pitch = 128.0;
+    let drawing = layout(&graph, &options).unwrap();
+    let route = drawing
+        .edges
+        .iter()
+        .find(|edge| edge.reversed_for_ranking)
+        .unwrap();
+    assert_eq!(route.points.len(), 4);
+    assert_eq!(route.ports.0, route.ports.1);
+    clear_nodes(route, &drawing);
+
+    let shell = crate::geom::Bounds::of(drawing.groups[0].rect).x;
+    let unused = match route.ports.0 {
+        Side::Right => {
+            drawing
+                .nodes
+                .iter()
+                .map(|node| node.x)
+                .fold(f64::INFINITY, f64::min)
+                - shell[0]
+        }
+        Side::Left => {
+            shell[1]
+                - drawing
+                    .nodes
+                    .iter()
+                    .map(|node| node.x + node.width)
+                    .fold(f64::NEG_INFINITY, f64::max)
+        }
+        side => panic!("expected a feedback rail at a lane side, got {side:?}"),
+    };
+    assert!(
+        unused < options.spacing.port_pitch,
+        "unused margin {unused}"
+    );
+}
+
+#[test]
 fn close_compacts_only_empty_turn_free_transition_depth() {
     let mut graph = swimlane(&[0, 0, 0], &[(0, 1), (1, 2)]);
     graph.edges[0].min_rank_span = 4;
